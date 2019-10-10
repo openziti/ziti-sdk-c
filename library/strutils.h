@@ -1,0 +1,1 @@
+char* zitistrndup(const char* s, int n);

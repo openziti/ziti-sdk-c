@@ -1,0 +1,20 @@
+[submodule "deps/mjson"]
+	path = deps/mjson
+	url = https://github.com/cesanta/mjson
+	branch = master
+[submodule "deps/http-parser"]
+	path = deps/http-parser
+	url = https://github.com/ekoby/http-parser
+	branch = support-opaque-urls
+[submodule "deps/uv-mbed"]
+	path = deps/uv-mbed
+	url = https://github.com/ekoby/uv-mbed.git
+	branch = master
+[submodule "deps/subcommand"]
+	path = deps/subcommand
+	url = https://github.com/dimitri/subcommands.c.git
+	branch = master
+[submodule "deps/Catch2"]
+	path = deps/Catch2
+	url = https://github.com/catchorg/Catch2.git
+	branch = master

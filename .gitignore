@@ -1,0 +1,17 @@
+.DS_Store
+
+build-*/
+build/
+cmake-build-debug/
+
+# visual studio files
+.vs
+**/obj/
+**/bin/
+**/Debug/
+*.user
+ziti_libs/
+
+#docfx related
+docfx_site
+windows/packages
