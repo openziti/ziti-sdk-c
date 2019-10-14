@@ -8,7 +8,7 @@
 	branch = support-opaque-urls
 [submodule "deps/uv-mbed"]
 	path = deps/uv-mbed
-	url = https://github.com/ekoby/uv-mbed.git
+	url = https://github.com/nf-dev/uv-mbed.git
 	branch = master
 [submodule "deps/subcommand"]
 	path = deps/subcommand
