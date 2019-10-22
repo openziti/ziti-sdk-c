@@ -1,0 +1,12 @@
+prefix=@prefix@
+exec_prefix=${prefix}
+libdir=@libdir@
+includedir=@includedir@
+
+Name: ziti
+Version: @PROJECT_VERSION@
+Description: multi-platform support library to build Ziti Enabled Applications
+URL: http://netfoundry.io/
+
+Libs: -L${libdir} -lziti -luv_mbed -lmbedtls -lmbedx509 -lmbedcrypto -luv_a -lpthread -lprotobuf-c
+Cflags: -I${includedir}

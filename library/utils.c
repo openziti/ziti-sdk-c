@@ -1,0 +1,136 @@
+/*
+Copyright 2019 Netfoundry, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+#include <mbedtls/error.h>
+#include <mjson.h>
+#include <uv.h>
+#include "utils.h"
+
+
+#if !defined(ZITI_VERSION)
+#define ZITI_VERSION unknown
+#endif
+
+#if !defined(ZITI_BUILDNUM)
+#define ZITI_BUILDNUM <local>
+#endif
+
+#if !defined(ZITI_BRANCH)
+#define ZITI_BRANCH "<no-branch>"
+#define ZITI_COMMIT "<sha>"
+#endif
+
+#define to_str(x) str(x)
+#define str(x) #x
+
+const char* ziti_get_version(int verbose) {
+    if (verbose) {
+        return "\n\tVersion:\t" to_str(ZITI_VERSION)
+               "\n\tBuild Date:\t" to_str(BUILD_DATE)
+               "\n\tGit Branch:\t" to_str(ZITI_BRANCH)
+               "\n\tGit SHA:\t" to_str(ZITI_COMMIT)
+               "\n\tOS:\t" // TODO
+               "\n\tArch:\t" // TODO
+               "\n";
+
+    }
+    return to_str(ZITI_VERSION) "-" to_str(ZITI_BUILDNUM);
+}
+
+const char* ziti_git_branch() {
+    return to_str(ZITI_BRANCH);
+}
+
+const char* ziti_git_commit() {
+    return to_str(ZITI_COMMIT);
+}
+
+int ziti_debug_level = INFO;
+FILE *ziti_debug_out;
+
+#if _WIN32
+LARGE_INTEGER frequency;
+LARGE_INTEGER start;
+LARGE_INTEGER end;
+#else
+struct timespec starttime;
+#endif
+
+void init_debug() {
+    char *level = getenv("ZITI_LOG");
+    if (level != NULL) {
+        ziti_debug_level = (int) strtol(level, NULL, 10);
+    }
+    ziti_debug_out = stderr;
+#if _WIN32
+	QueryPerformanceFrequency(&frequency);
+	QueryPerformanceCounter(&start);
+#else
+    clock_gettime(CLOCK_MONOTONIC, &starttime);
+#endif
+}
+
+long get_elapsed() {
+#if _WIN32
+	QueryPerformanceCounter(&end);
+	return end.QuadPart - start.QuadPart;
+#else
+	struct timespec cur;
+	clock_gettime(CLOCK_MONOTONIC, &cur);
+	return (cur.tv_sec - starttime.tv_sec) * 1000 + ((cur.tv_nsec - starttime.tv_nsec) / ((long)1e6));
+#endif
+}
+
+static char errbuf[1024];
+char* fmt_mbederr(int err) {
+    mbedtls_strerror(err, errbuf, sizeof(errbuf));
+    return errbuf;
+}
+
+void ziti_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
+    buf->base = (char *) malloc(suggested_size);
+    if (buf->base == NULL) {
+        ZITI_LOG(ERROR, "failed to allocate %ld bytes. Prepare for crash", suggested_size);
+        buf->len = 0;
+    }
+    else {
+        buf->len = suggested_size;
+    }
+}
+
+char* zitistrndup(const char* s, int n)
+{
+	size_t len = strnlen(s, n);
+	char* new = (char*)malloc(len + 1);
+	if (new == NULL)
+		return NULL;
+	new[len] = '\0';
+	return (char*)memcpy(new, s, len);
+}
+
+int get_url_data(const char *url, struct http_parser_url *parser, int uf, char *out, size_t maxout) {
+    if ((parser->field_set & (1 << uf)) != 0) {
+        snprintf(out, maxout, "%*.*s", parser->field_data[uf].len, parser->field_data[uf].len,
+                 url + parser->field_data[uf].off);
+        return 1;
+    }
+    out[0] = 0;
+    return 0;
+}
+
+int lt_zero(int v) { return v < 0; }
+
+int non_zero(int v) { return v != 0; }
