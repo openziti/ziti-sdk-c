@@ -47,7 +47,7 @@ pipeline {
     stage('Build all platforms') {
       environment {
         JFROG_CLI_OFFER_CONFIG = false
-        JFROG_API_KEY = credentials("curttudor")
+        JFROG_API_KEY = credentials('ad-tf-var-jfrog-api-key')
       }
       steps {
         sh './uber-build.sh'
