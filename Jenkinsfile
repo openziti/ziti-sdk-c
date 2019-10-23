@@ -59,10 +59,4 @@ pipeline {
       }
     }
   }
-  post {
-    always {
-      // Clear the source and build dirs before next run
-      deleteDir()
-    }
-  }
 }
