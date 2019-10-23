@@ -17,12 +17,17 @@ pipeline {
         }
       }
     }
+    stage('Build all platforms') {
+      steps {
+        sh 'uber-build.sh'
+      }
+    }
   }
   post {
     always {
       // Archive the CTest xml output
       archiveArtifacts (
-        artifacts: 'build/Testing/**/*.xml',
+        artifacts: 'build-test/Testing/**/*.xml',
         fingerprint: true
       )
 
@@ -35,7 +40,7 @@ pipeline {
           failed(failureThreshold: '0')
         ],
       tools: [CTest(
-          pattern: 'build/Testing/**/*.xml',
+          pattern: 'build-test/Testing/**/*.xml',
           deleteOutputFiles: true,
           failIfNotNew: false,
           skipNoTestFiles: true,
