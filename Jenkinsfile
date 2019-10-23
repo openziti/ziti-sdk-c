@@ -19,6 +19,8 @@ pipeline {
     }
     stage('Build all platforms') {
       steps {
+        sh '/bin/pwd'
+        sh 'ls -al'
         sh 'uber-build.sh'
       }
     }
