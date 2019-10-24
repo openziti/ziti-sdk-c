@@ -83,7 +83,11 @@ pipeline {
       }
       steps {
         sh "./make_publish_spec.sh"
-        sh "echo publish.json"
+        sh "cat publish.json"
+        rtUpload {
+          serverId: "netfoundry-upload",
+          specPath: "./publish.json"
+        }
       }
     }
   }
