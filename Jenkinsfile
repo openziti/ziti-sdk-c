@@ -50,13 +50,23 @@ pipeline {
         stage('Linux-x86_64') {
           steps {
             echo "building ${STAGE_NAME}"
-            //sh 'mkdir '
+            sh "mkdir -p build/${STAGE_NAME}"
+            dir("build/${STAGE_NAME}") {
+               echo "building ${STAGE_NAME} in ${env.PWD}"
+               sh 'cmake -DCMAKE_BUILD_TYPE=Debug ../..'
+               sh 'cmake --build . --target package'
+            }
           }
         }
         stage('Linux-arm') {
           steps {
             echo "building ${STAGE_NAME}"
-            //sh 'mkdir '
+            sh "mkdir -p build/${STAGE_NAME}"
+            dir("build/${STAGE_NAME}") {
+               echo "building ${STAGE_NAME} in ${env.PWD}"
+               sh 'cmake -DCMAKE_BUILD_TYPE=Debug -DDCMAKE_TOOLCHAIN_FILE=../../toolchans/${STAGE_NAME}.cmake ../..'
+               sh 'cmake --build . --target package'
+            }//sh 'mkdir '
           }
         }
       }
