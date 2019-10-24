@@ -64,7 +64,7 @@ pipeline {
             sh "mkdir -p build/${STAGE_NAME}"
             dir("build/${STAGE_NAME}") {
                echo "building ${STAGE_NAME} in ${env.PWD}"
-               sh 'cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=../../toolchans/${STAGE_NAME}.cmake ../..'
+               sh 'cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=../../toolchains/${STAGE_NAME}.cmake ../..'
                sh 'cmake --build . --target package'
             }//sh 'mkdir '
           }
