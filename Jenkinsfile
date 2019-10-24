@@ -82,6 +82,8 @@ pipeline {
         JFROG_API_KEY = credentials('ad-tf-var-jfrog-api-key')
       }
       steps {
+        sh "echo $PATH"
+        sh "type -a jfrog"
         sh "./publish.sh"
       }
     }
