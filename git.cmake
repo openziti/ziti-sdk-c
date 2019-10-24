@@ -24,7 +24,7 @@ execute_process(
 
 # lookup most recent tag to derive version
 execute_process(
-        COMMAND git describe  HEAD
+        COMMAND git describe HEAD
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         OUTPUT_VARIABLE GIT_INFO
         OUTPUT_STRIP_TRAILING_WHITESPACE
