@@ -21,6 +21,7 @@ target_sources(ziti
 
 target_link_libraries(ziti
         PUBLIC uv_mbed
+        PUBLIC m
         )
 
 target_include_directories(ziti
