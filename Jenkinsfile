@@ -78,11 +78,13 @@ pipeline {
     }
     stage('Publish') {
       steps {
-        sh "./make_publish_spec.sh"
-        sh "cat publish.json"
-        rtUpload {
-          serverId: "ziti-uploads",
-          specPath: "./publish.json"
+        script {
+            sh "./make_publish_spec.sh"
+            sh "cat publish.json"
+            rtUpload {
+              serverId: "ziti-uploads",
+              specPath: "./publish.json"
+            }
         }
       }
     }
