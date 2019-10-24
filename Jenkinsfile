@@ -10,7 +10,7 @@ pipeline {
       }
     }
     stage('Tagging') {
-      when { branch {'master'}}
+      when { branch 'master'}
       steps {
         echo 'creating new tag'
       }
