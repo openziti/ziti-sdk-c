@@ -83,7 +83,7 @@ pipeline {
       }
       steps {
         sh "echo $PATH"
-        sh "type -a jfrog"
+        sh "id"
         sh "./publish.sh"
       }
     }
