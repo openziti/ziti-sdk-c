@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.12)
-file(READ version ver)
+include(git.cmake)
 
 project (ziti-sdk
         VERSION ${ver}
@@ -7,6 +7,10 @@ project (ziti-sdk
         )
 
 message("project version: ${PROJECT_VERSION}")
+message("git info:")
+message("   branch : ${GIT_BRANCH}")
+message("     hash : ${GIT_COMMIT_HASH}")
+message("     date : ${BUILD_DATE}")
 
 if (WIN32)
     message("WIN32 build. Creating: ${CMAKE_BINARY_DIR}/cmake_install")
@@ -22,37 +26,8 @@ message("cross-compiling ${CMAKE_CROSSCOMPILING}")
 
 enable_testing()
 
-# Get the current working branch
-execute_process(
-        COMMAND git rev-parse --abbrev-ref HEAD
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        OUTPUT_VARIABLE GIT_BRANCH
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-# Get the latest abbreviated commit hash of the working branch
-execute_process(
-        COMMAND git log -1 --format=%h
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        OUTPUT_VARIABLE GIT_COMMIT_HASH
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-# capture build date
-execute_process(
-        COMMAND date +%a-%m/%d/%Y-%H:%M:%S-%Z
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        OUTPUT_VARIABLE BUILD_DATE
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-message("git info:")
-message("   branch : ${GIT_BRANCH}")
-message("     hash : ${GIT_COMMIT_HASH}")
-message("     date : ${BUILD_DATE}")
-
-if (DEFINED ENV{BITBUCKET_BUILD_NUMBER})
-    set(ZITI_BUILDNUM $ENV{BITBUCKET_BUILD_NUMBER})
+if (DEFINED ENV{BUILD_NUMBER})
+    set(ZITI_BUILDNUM $ENV{BUILD_NUMBER})
 else ()
     set(ZITI_BUILDNUM local)
 endif ()
