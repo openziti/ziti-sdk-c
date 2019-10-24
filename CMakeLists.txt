@@ -52,7 +52,9 @@ elseif (WIN32)
 endif ()
 
 include(CPack)
-add_custom_target(publish)
+add_custom_target(publish
+        COMMENT "generate publish specs"
+        )
 
 if(${GIT_BRANCH} STREQUAL master)
     set(PUB_PFX ziti-staging)
@@ -75,7 +77,13 @@ macro(PUBCOMP comp)
 
     add_custom_target(${comp}-pub
             DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${comp}-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.tar.gz
-            COMMAND jfrog rt u ${PUB_OPTS} --props='${${comp}_PUB_PROPS}' ${comp}-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.tar.gz ${${comp}_PUB_PATH}
+            # COMMAND jfrog rt u ${PUB_OPTS} --props='${${comp}_PUB_PROPS}' ${comp}-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.tar.gz ${${comp}_PUB_PATH}
+            COMMAND echo "{"
+            \"target\": \"${${comp}_PUB_PATH}\",
+            \"pattern\": \"${CMAKE_CURRENT_BINARY_DIR}/${comp}-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.tar.gz\",
+            \"props\": \"${${comp}_PUB_PROPS}\"
+            "}" > ${CMAKE_BINARY_DIR}/${comp}-pub-spec.json
+            VERBATIM
             )
 
     add_dependencies(publish ${comp}-pub)

@@ -60,7 +60,7 @@ pipeline {
             sh "mkdir -p build-${STAGE_NAME}"
             dir("build-${STAGE_NAME}") {
                sh 'cmake -DCMAKE_BUILD_TYPE=Debug ..'
-               sh 'cmake --build . --target package'
+               sh 'cmake --build . --target package --target publish'
             }
           }
         }
@@ -70,7 +70,7 @@ pipeline {
             sh "mkdir -p build-${STAGE_NAME}"
             dir("build-${STAGE_NAME}") {
                sh 'cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=../toolchains/${STAGE_NAME}.cmake ..'
-               sh 'cmake --build . --target package'
+               sh 'cmake --build . --target package --target publish'
             }
           }
         }
@@ -82,9 +82,8 @@ pipeline {
         JFROG_API_KEY = credentials('ad-tf-var-jfrog-api-key')
       }
       steps {
-        sh "echo $PATH"
-        sh "id"
-        sh "./publish.sh"
+        sh "./make_publish_spec.sh"
+        sh "echo publish.json"
       }
     }
   }
