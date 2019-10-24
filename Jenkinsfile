@@ -57,9 +57,9 @@ pipeline {
         stage('Linux-x86_64') {
           steps {
             echo "building ${STAGE_NAME}"
-            sh "mkdir -p build/${STAGE_NAME}"
-            dir("build/${STAGE_NAME}") {
-               sh 'cmake -DCMAKE_BUILD_TYPE=Debug ../..'
+            sh "mkdir -p build-${STAGE_NAME}"
+            dir("build-${STAGE_NAME}") {
+               sh 'cmake -DCMAKE_BUILD_TYPE=Debug ..'
                sh 'cmake --build . --target package'
             }
           }
@@ -67,9 +67,9 @@ pipeline {
         stage('Linux-arm') {
           steps {
             echo "building ${STAGE_NAME}"
-            sh "mkdir -p build/${STAGE_NAME}"
-            dir("build/${STAGE_NAME}") {
-               sh 'cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=../../toolchains/${STAGE_NAME}.cmake ../..'
+            sh "mkdir -p build-${STAGE_NAME}"
+            dir("build-${STAGE_NAME}") {
+               sh 'cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=../toolchains/${STAGE_NAME}.cmake ..'
                sh 'cmake --build . --target package'
             }
           }
