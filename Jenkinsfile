@@ -7,7 +7,7 @@ pipeline {
         sh 'git submodule update --init --recursive'
         sh 'git submodule status --recursive'
         sh 'git log'
-        sh 'git fetch --tags'
+        sh 'git fetch --verbose --tags'
         sh 'git tag --list'
         sh 'git describe'
       }
