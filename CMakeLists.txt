@@ -75,7 +75,7 @@ macro(PUBCOMP comp)
 
     add_custom_target(${comp}-pub
             DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${comp}-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.tar.gz
-            COMMAND echo jfrog rt u ${PUB_OPTS} --props='${${comp}_PUB_PROPS}' ${comp}-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.tar.gz ${${comp}_PUB_PATH}
+            COMMAND jfrog rt u ${PUB_OPTS} --props='${${comp}_PUB_PROPS}' ${comp}-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.tar.gz ${${comp}_PUB_PATH}
             )
 
     add_dependencies(publish ${comp}-pub)
