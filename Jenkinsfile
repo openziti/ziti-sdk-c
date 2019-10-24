@@ -77,15 +77,11 @@ pipeline {
       }
     }
     stage('Publish') {
-      environment {
-        JFROG_CLI_OFFER_CONFIG = false
-        JFROG_API_KEY = credentials('ad-tf-var-jfrog-api-key')
-      }
       steps {
         sh "./make_publish_spec.sh"
         sh "cat publish.json"
         rtUpload {
-          serverId: "netfoundry-upload",
+          serverId: "mop-user",
           specPath: "./publish.json"
         }
       }
