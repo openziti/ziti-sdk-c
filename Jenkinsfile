@@ -45,17 +45,30 @@ pipeline {
       }
     }
     stage('Build all platforms') {
+      failFast true
+      parallel {
+        stage('Linux-x86_64') {
+          steps {
+            echo "building ${STAGE_NAME}"
+            //sh 'mkdir '
+          }
+        }
+        stage('Linux-arm') {
+          steps {
+            echo "building ${STAGE_NAME}"
+            //sh 'mkdir '
+          }
+        }
+      }
+    }
+    stage('Publish') {
       environment {
         JFROG_CLI_OFFER_CONFIG = false
         JFROG_API_KEY = credentials('ad-tf-var-jfrog-api-key')
       }
       steps {
-        sh './uber-build.sh'
-      }
-      post {
-        success {
-          sh "./publish.sh"
-        }
+        // sh "./publish.sh"
+        echo "not publishing yet"
       }
     }
   }
