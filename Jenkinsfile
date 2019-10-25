@@ -7,6 +7,10 @@ pipeline {
         sh 'git submodule update --init --recursive'
         sh 'git submodule status --recursive'
         sh 'git fetch --verbose --tags'
+        script {
+          git_info = sh(returnStdout: true, script: 'git describe')
+          commiter = sh(returnStdout: true, script: 'git show -s --pretty=%ae')
+        }
       }
     }
     stage('Tagging') {
@@ -94,6 +98,19 @@ pipeline {
           serverId: 'ziti-uploads',
           specPath: "./publish.json"
         )
+      }
+    }
+  }
+  post {
+    always {
+      script {
+         slackSend channel: 'dev-notifications',
+           message: "${RUN_DISPLAY_URL}\n"+
+            "*Branch*:    ${branch}\n"+
+            "*Version*:   ${git_info}\n"+
+            "*Committer*: ${committer}\n"+
+            "*Status*:    ${STATUS}\n"+
+            "*Duration*:  ${currentBuild.durationString}\n"
       }
     }
   }
