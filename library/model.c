@@ -24,10 +24,15 @@ limitations under the License.
 
 #endif
 
+#define MJSON_API_ONLY
 #include <mjson.h>
+
+
+#include <stdbool.h>
 #include <utils.h>
 
 #include "model.h"
+#include <math.h>
 
 typedef int (*dump_func)(void *, int);
 typedef void *(*parse_func)(const char *, int);
@@ -77,17 +82,18 @@ static int dump_timeval_t(struct timeval *t) {
 }
 
 static int parse_bool(const char *json, int json_len, const char *path) {
-    return mjson_get_bool(json, json_len, path, 0);
+    int result;
+    int rc =  mjson_get_bool(json, json_len, path, &result);
+    if (rc == 0) return false;
+    return result;
 }
 
 static int parse_int(const char *json, int json_len, const char *path) {
-    const char *f;
-    int n;
-    int result = 0;
-    if (mjson_find(json, json_len, path, &f, &n) == MJSON_TOK_NUMBER) {
-        result = (int) mjson_get_number(f, n, "$", result);
+    double result;
+    if (mjson_get_number(json, json_len, path, &result)) {
+        return (int)round(result);
     }
-    return result;
+    return -1;
 }
 
 static void *parse_ptr(const char *json, int json_len, char *path, void *(*parse_func)(const char *, int)) {

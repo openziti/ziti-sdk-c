@@ -17,7 +17,6 @@ add_library(ziti STATIC
         )
 
 target_sources(ziti
-        PRIVATE ${PROJECT_SOURCE_DIR}/deps/mjson/mjson.c
         PRIVATE ${PROJECT_SOURCE_DIR}/deps/http-parser/http_parser.c)
 
 target_link_libraries(ziti

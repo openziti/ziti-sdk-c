@@ -4,11 +4,11 @@
 	branch = master
 [submodule "deps/http-parser"]
 	path = deps/http-parser
-	url = https://github.com/ekoby/http-parser
+	url = https://github.com/NetFoundry/http-parser
 	branch = support-opaque-urls
 [submodule "deps/uv-mbed"]
 	path = deps/uv-mbed
-	url = https://github.com/ekoby/uv-mbed.git
+	url = https://github.com/NetFoundry/uv-mbed.git
 	branch = master
 [submodule "deps/subcommand"]
 	path = deps/subcommand

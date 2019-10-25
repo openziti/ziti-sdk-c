@@ -156,8 +156,10 @@ TEST_CASE("parse-services-array", "[model]") {
 
     REQUIRE(idx == 2);
     REQUIRE(strcmp(services[0]->name, "Azure-Ping") == 0);
+    REQUIRE(services[0]->dns_port == 443);
     REQUIRE(services[0]->hostable);
     REQUIRE(strcmp(services[1]->name, "wttr.in-80") == 0);
+    REQUIRE(services[1]->dns_port == 80);
     REQUIRE_FALSE(services[1]->hostable);
     REQUIRE(services[idx] == NULL);
 

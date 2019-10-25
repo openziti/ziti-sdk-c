@@ -16,12 +16,14 @@ limitations under the License.
 
 #include <stdlib.h>
 #include <http_parser.h>
-#include <mjson.h>
 #include "controller.h"
 #include "utils.h"
 #include "zt_internal.h"
 #include "strutils.h"
 #include "model.h"
+
+#define MJSON_API_ONLY
+#include <mjson.h>
 
 #if _WIN32
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
@@ -162,8 +164,7 @@ int ziti_ctrl_login(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine *ssl) {
     uv_os_uname(&osInfo);
 
     uint8_t *req = NULL;
-    struct mjson_out req_json = MJSON_OUT_DYNAMIC_BUF(&req);
-    int req_len = mjson_printf(&req_json,
+    int req_len = mjson_printf(&mjson_print_dynamic_buf, &req,
             "{"
             "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q}, "
             "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q}"

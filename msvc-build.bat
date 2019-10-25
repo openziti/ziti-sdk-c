@@ -21,10 +21,10 @@ popd
 ECHO Build from cmake using: 
 ECHO     cmake --build %BUILDFOLDER%\x86 --config Debug
 ECHO     cmake --build %BUILDFOLDER%\x86 --config Release
-ECHO 
+ECHO. 
 ECHO     cmake --build %BUILDFOLDER%\x64 --config Debug
 ECHO     cmake --build %BUILDFOLDER%\x64 --config Release
-ECHO 
+ECHO. 
 ECHO Or open %BUILDFOLDER%\ziti-sdk.sln
 
 goto end
