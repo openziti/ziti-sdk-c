@@ -1,5 +1,5 @@
 pipeline {
-  agent any //{ docker { image 'netfoundry/ziti-build-pipeline:latest'}}
+  agent { docker { image 'netfoundry/ziti-build-pipeline:latest'}}
 
   stages {
 //     stage("Setup") {
@@ -81,7 +81,8 @@ pipeline {
         //sh "./make_publish_spec.sh"
         script {
             //sh "cat publish.json"
-            rtUpload {serverId: 'ziti-uploads',
+            rtUpload (
+              serverId: 'ziti-uploads',
               // specPath: "./publish.json"
               spec:
                         """{
@@ -92,7 +93,7 @@ pipeline {
                         }
                         ]
                         }"""
-            }
+            )
         }
       }
     }
