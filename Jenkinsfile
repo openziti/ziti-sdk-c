@@ -9,7 +9,7 @@ pipeline {
         sh 'git fetch --verbose --tags'
         script {
           git_info = sh(returnStdout: true, script: 'git describe')
-          commiter = sh(returnStdout: true, script: 'git show -s --pretty=%ae')
+          committer = sh(returnStdout: true, script: 'git show -s --pretty=%ae')
         }
       }
     }
