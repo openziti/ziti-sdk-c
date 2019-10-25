@@ -1,3 +1,19 @@
+/*
+Copyright 2019 Netfoundry, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 
 #include <stdlib.h>
 #include <string.h>
@@ -157,7 +173,8 @@ void NF_dump(struct nf_ctx *ctx) {
     char info[1024];
     printf("Identity:\n%s\n", info);
 
-    printf("Session: %s\n", VAL_OR_ELSE(ctx->ziti_session, "<not logged in>"));
+    printf("\n=================\nServices:\n");
+    dump_ziti_session(ctx->session, 0);
 
     printf("\n=================\nServices:\n");
     for (int i = 0; ctx->services[i] != NULL; i++) {
@@ -214,7 +231,7 @@ int NF_write(nf_connection conn, uint8_t *buf, size_t length, nf_write_cb cb, vo
 }
 
 int NF_service_available(nf_context nf, const char *service) {
-    for(ziti_service **s = nf->services; s != NULL; s++) {
+    for (ziti_service **s = nf->services; *s != NULL; s++) {
         if (strcmp(service, (*s)->name) == 0) {
             return ZITI_OK;
         }

@@ -147,7 +147,7 @@ struct nf_ctx {
     uint16_t controller_port;
     tls_context *tlsCtx;
 
-    char *ziti_session;
+    ziti_session *session;
     ziti_service **services;
     ziti_net_session **net_sessions;
 

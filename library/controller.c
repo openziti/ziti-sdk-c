@@ -1,6 +1,18 @@
-//
-// Created by eugene on 3/1/19.
-//
+/*
+Copyright 2019 Netfoundry, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 #include <stdlib.h>
 #include <http_parser.h>
@@ -33,11 +45,17 @@ struct controller_resp {
     int complete;
     size_t body_len;
     uint8_t *body;
+
+    const uint8_t *data;
+    int data_len;
+    enum mjson_tok data_type;
+    ziti_error *error;
 };
 
 void free_resp(struct controller_resp *r) {
     free(r->msg);
     free(r->body);
+    if (r->error != NULL) { free_ziti_error(r->error); }
 }
 
 int status_cb(http_parser* p, const char* d, size_t len) {
@@ -92,7 +110,8 @@ static int ziti_controller_req(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine
                                const char *conttype, const unsigned char *content, size_t content_len,
                                struct controller_resp *resp);
 
-static bool is_ip(const char* hostname);
+static int code_to_error(const char *code);
+
 
 int ziti_ctrl_logout(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine *ssl) {
     if (ssl == NULL) {
@@ -102,9 +121,9 @@ int ziti_ctrl_logout(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine *ssl) {
     struct controller_resp resp;
     memset(&resp, 0, sizeof(struct controller_resp));
     ziti_controller_req(ctx, ctrl, ssl, "DELETE", "/current-session", NULL, NULL, 0, &resp);
-    if (ctx->ziti_session != NULL) {
-        free(ctx->ziti_session);
-        ctx->ziti_session = NULL;
+    if (ctx->session != NULL) {
+        free_ziti_session(ctx->session);
+        ctx->session = NULL;
     }
     free_resp(&resp);
     return ZITI_OK;
@@ -121,11 +140,10 @@ int ziti_ctrl_version(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine *ssl) {
     ziti_controller_req(ctx, ctrl, ssl, "GET", "/version", "application/json", "", 0, &resp);
 
     if (resp.status == 200) {
-        const char *s;
-        int len;
-        if (mjson_find(resp.body, (int) resp.body_len, "$.data", &s, &len) == MJSON_TOK_OBJECT) {
-            ctrl_version *v = parse_ctrl_version(s, len);
-            ZITI_LOG(INFO, "connected to controller %s:%d version %s(%s %s)", ctx->controller, ctx->controller_port, v->version, v->revision, v->build_date);
+        if (resp.data_type == MJSON_TOK_OBJECT) {
+            ctrl_version *v = parse_ctrl_version(resp.data, resp.data_len);
+            ZITI_LOG(INFO, "connected to controller %s:%d version %s(%s %s)",
+                     ctx->controller, ctx->controller_port, v->version, v->revision, v->build_date);
             free_ctrl_version(v);
         }
         else {
@@ -163,24 +181,21 @@ int ziti_ctrl_login(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine *ssl) {
 
     struct controller_resp resp;
     memset(&resp, 0, sizeof(struct controller_resp));
-    ziti_controller_req(ctx, ctrl, ssl, "POST", "/authenticate?method=cert", "application/json", req, req_len, &resp);
+    int rc = ziti_controller_req(ctx, ctrl, ssl, "POST", "/authenticate?method=cert", "application/json", req, req_len,
+                                 &resp);
 
-    if (resp.status == 200) {
-        const char *s;
-        int len;
-        if (mjson_find(resp.body, (int) resp.body_len, "$.data.session.token", &s, &len) == MJSON_TOK_STRING) {
-            ctx->ziti_session = malloc(len + 1);
-            mjson_get_string((const char *) resp.body, (int) resp.body_len, "$.data.session.token", ctx->ziti_session, len + 1);
+    if (rc == ZITI_OK) {
+        if (resp.data_type == MJSON_TOK_OBJECT) {
+            ctx->session = parse_ziti_session(resp.data, resp.data_len);
         }
         else {
-            return ZITI_WTF;
+            rc = ZITI_WTF;
         }
     }
 
-    // TODO handle errors better
     free(req);
     free_resp(&resp);
-    return ZITI_OK;
+    return rc;
 }
 
 int ziti_ctrl_get_services(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine *ssl) {
@@ -191,21 +206,19 @@ int ziti_ctrl_get_services(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine *ss
 
     struct controller_resp resp;
     memset(&resp, 0, sizeof(struct controller_resp));
-    ziti_controller_req(ctx, ctrl, ssl, "GET", "/services?limit=100", "", NULL, 0, &resp);
+    int rc = ziti_controller_req(ctx, ctrl, ssl, "GET", "/services?limit=100", "", NULL, 0, &resp);
 
-    if (resp.status == 200) {
-        const char* data;
-        int data_len;
-        if (mjson_find(resp.body, resp.body_len, "$.data", &data, &data_len) == MJSON_TOK_ARRAY) {
-            ctx->services = parse_ziti_service_array(data, data_len);
+    if (rc == ZITI_OK) {
+        if (resp.data_type == MJSON_TOK_ARRAY) {
+            ctx->services = parse_ziti_service_array(resp.data, resp.data_len);
         }
         else {
             ZITI_LOG(ERROR, "unexpected response format, expected array of services");
-            return ZITI_WTF;
+            rc = ZITI_WTF;
         }
     }
     free_resp(&resp);
-    return ZITI_OK;
+    return rc;
 }
 
 int ziti_ctrl_get_network_sessions(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine *ssl) {
@@ -242,10 +255,8 @@ int ziti_ctrl_get_network_sessions(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_en
                      resp.msg, (int) resp.body_len, resp.body);
         }
 
-        const char* data;
-        int data_len;
-        if (mjson_find(resp.body, resp.body_len, "$.data", &data, &data_len) == MJSON_TOK_OBJECT) {
-            ziti_net_session *ns = parse_ziti_net_session(data, data_len);
+        if (resp.data_type == MJSON_TOK_OBJECT) {
+            ziti_net_session *ns = parse_ziti_net_session(resp.data, resp.data_len);
             if (ns != NULL) {
                 ns->service_id = strdup(ctx->services[i]->id);
                 ctx->net_sessions[ns_idx] = ns;
@@ -267,8 +278,8 @@ static int ziti_controller_req(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine
                                const char *conttype, const unsigned char *content, size_t content_len,
                                struct controller_resp *resp) {
     char sess_hdr[128] = "";
-    if (ctx->ziti_session != NULL) {
-        sprintf(sess_hdr, "zt-session: %s\r\n", ctx->ziti_session);
+    if (ctx->session != NULL) {
+        sprintf(sess_hdr, "zt-session: %s\r\n", ctx->session->token);
     }
 
     size_t req_size = 1024;
@@ -346,6 +357,21 @@ static int ziti_controller_req(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine
     ZITI_LOG(DEBUG, "%s %s => %d [%zd bytes]", method, path, parser.status_code, resp->body_len);
     ZITI_LOG(TRACE, ">>> %*.*s\n", resp->body_len, resp->body_len, resp->body);
 
+    if (parser.status_code > 299) {
+        const char *p;
+        int len;
+        if (mjson_find(resp->body, resp->body_len, "$.error", &p, &len) == MJSON_TOK_OBJECT) {
+            resp->error = parse_ziti_error(p, len);
+            ZITI_LOG(ERROR, "controller returned error: %d %s(%s)", parser.status_code, resp->error->code,
+                     resp->error->message);
+            return code_to_error(resp->error->code);
+        }
+        ZITI_LOG(WARN, "unparseable error with code %d", parser.status_code);
+        return ZITI_WTF;
+    }
+
+    resp->data_type = mjson_find(resp->body, resp->body_len, "$.data", (const char **) &resp->data, &resp->data_len);
+
     return 0;
 }
 
@@ -379,6 +405,22 @@ int ziti_ctrl_process(struct nf_ctx* ctx, ...) {
     struct addrinfo *address, *ap;
     int r = getaddrinfo(ctx->controller, port, &hints, &address);
     if (r != 0 || address == NULL) {
+        /*
+        Copyright 2019 Netfoundry, Inc.
+
+        Licensed under the Apache License, Version 2.0 (the "License");
+        you may not use this file except in compliance with the License.
+        You may obtain a copy of the License at
+
+        https://www.apache.org/licenses/LICENSE-2.0
+
+        Unless required by applicable law or agreed to in writing, software
+        distributed under the License is distributed on an "AS IS" BASIS,
+        WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+        See the License for the specific language governing permissions and
+        limitations under the License.
+        */
+
         ZITI_LOG(ERROR, "failed to resolve controller(%s): %s", ctx->controller, strerror(errno));
         return ZITI_CONTROLLER_UNAVAILABLE;
     }
@@ -446,15 +488,20 @@ int ziti_ctrl_process(struct nf_ctx* ctx, ...) {
     return rc;
 }
 
-static bool is_ip(const char* hostname) {
-    struct in_addr ipv4;
-    struct in6_addr ipv6;
 
-    if (inet_pton(AF_INET, hostname, &ipv4) == 1) {
-        return true;
-    } else if (inet_pton(AF_INET6, hostname, &ipv6) == 1){
-        return true;
-    }
+static int code_to_error(const char *code) {
 
-    return false;
+#define CODE_MAP(XX) \
+XX(NO_ROUTABLE_INGRESS_NODES, ZITI_GATEWAY_UNAVAILABLE) \
+XX(INVALID_AUTHENTICATION, ZITI_NOT_AUTHORIZED) \
+XX(REQUIRES_CERT_AUTH, ZITI_NOT_AUTHORIZED)\
+XX(UNAUTHORIZED, ZITI_NOT_AUTHORIZED)\
+XX(INVALID_AUTH, ZITI_NOT_AUTHORIZED)
+
+#define CODE_MATCH(c, err) if (strcmp(code,#c) == 0) return err;
+
+    CODE_MAP(CODE_MATCH)
+
+    ZITI_LOG(WARN, "unmapped error code: %s", code);
+    return ZITI_WTF;
 }
