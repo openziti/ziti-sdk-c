@@ -6,6 +6,23 @@ pipeline {
       steps {
         sh 'git submodule update --init --recursive'
         sh 'git submodule status --recursive'
+        sh 'git fetch --verbose --tags'
+      }
+    }
+    stage('Tagging') {
+      when { branch 'master'}
+      steps {
+        echo 'NO TAGGING YET!'
+        script {
+           def zitiVer = readFile('version').trim()
+           def tagVer = sh(returnStdout: true, script: 'git describe')
+           echo "zitiVer = ${zitiVer} tagVer = ${tagVer}"
+           if (zitiVer > tagVer) {
+              echo "advancing tag based on 'version' file"
+           } else {
+              echo "advancing tag based on commits"
+           }
+        }
       }
     }
     stage('Tests') {
@@ -45,17 +62,38 @@ pipeline {
       }
     }
     stage('Build all platforms') {
-      environment {
-        JFROG_CLI_OFFER_CONFIG = false
-        JFROG_API_KEY = credentials('ad-tf-var-jfrog-api-key')
-      }
-      steps {
-        sh './uber-build.sh'
-      }
-      post {
-        success {
-          sh "./publish.sh"
+      failFast true
+      parallel {
+        stage('Linux-x86_64') {
+          steps {
+            echo "building ${STAGE_NAME}"
+            sh "mkdir -p build-${STAGE_NAME}"
+            dir("build-${STAGE_NAME}") {
+               sh 'cmake -DCMAKE_BUILD_TYPE=Debug ..'
+               sh 'cmake --build . --target package --target publish'
+            }
+          }
         }
+        stage('Linux-arm') {
+          steps {
+            echo "building ${STAGE_NAME}"
+            sh "mkdir -p build-${STAGE_NAME}"
+            dir("build-${STAGE_NAME}") {
+               sh 'cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=../toolchains/${STAGE_NAME}.cmake ..'
+               sh 'cmake --build . --target package --target publish'
+            }
+          }
+        }
+      }
+    }
+    stage('Publish') {
+      steps {
+        sh "./make_publish_spec.sh"
+        sh "cat publish.json"
+        rtUpload (
+          serverId: 'ziti-uploads',
+          specPath: "./publish.json"
+        )
       }
     }
   }

@@ -91,7 +91,7 @@ static int parse_bool(const char *json, int json_len, const char *path) {
 static int parse_int(const char *json, int json_len, const char *path) {
     double result;
     if (mjson_get_number(json, json_len, path, &result)) {
-        return (int)round(result);
+        return (int)lrint(result);
     }
     return -1;
 }
