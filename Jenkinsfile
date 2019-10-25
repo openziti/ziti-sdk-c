@@ -80,10 +80,19 @@ pipeline {
       steps {
         script {
             sh "./make_publish_spec.sh"
-            sh "cat publish.json"
+            //sh "cat publish.json"
             rtUpload {
               serverId: "ziti-uploads",
-              specPath: "./publish.json"
+              // specPath: "./publish.json"
+              spec:
+                        """{
+                        "files": [
+                        {
+                            "pattern": "./publish.json",
+                            "target": "ziti-snapshot/testfile/"
+                        }
+                        ]
+                        }"""
             }
         }
       }
