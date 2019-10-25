@@ -12,7 +12,17 @@ pipeline {
     stage('Tagging') {
       when { branch 'master'}
       steps {
-        echo 'creating new tag'
+        echo 'NO TAGGING YET!'
+        script {
+           def zitiVer = readFile('version').trim()
+           def tagVer = sh(returnStdout: true, script: 'git describe')
+           echo "zitiVer = ${zitiVer} tagVer = ${tagVer}"
+           if (zitiVer > tagVer) {
+              echo "advancing tag based on 'version' file"
+           } else {
+              echo "advancing tag based on commits"
+           }
+        }
       }
     }
     stage('Tests') {
@@ -80,12 +90,10 @@ pipeline {
       steps {
         sh "./make_publish_spec.sh"
         sh "cat publish.json"
-        script {
-            rtUpload (
-              serverId: 'ziti-uploads',
-              specPath: "./publish.json"
-            )
-        }
+        rtUpload (
+          serverId: 'ziti-uploads',
+          specPath: "./publish.json"
+        )
       }
     }
   }
