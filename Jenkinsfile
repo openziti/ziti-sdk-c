@@ -106,10 +106,10 @@ pipeline {
       script {
          slackSend channel: 'dev-notifications',
            message: "${RUN_DISPLAY_URL}\n"+
-            "*Branch*:    ${branch}\n"+
+            "*Branch*:    ${BRANCH_NAME}\n"+
             "*Version*:   ${git_info}\n"+
             "*Committer*: ${committer}\n"+
-            "*Status*:    ${STATUS}\n"+
+            "*Status*:    ${currentBuild.status}\n"+
             "*Duration*:  ${currentBuild.durationString}\n"
       }
     }
