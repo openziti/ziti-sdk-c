@@ -81,7 +81,7 @@ pipeline {
         //sh "./make_publish_spec.sh"
         script {
             //sh "cat publish.json"
-            rtUpload {serverId:"ziti-uploads",
+            rtUpload {serverId:'ziti-uploads',
               // specPath: "./publish.json"
               spec:
                         """{
