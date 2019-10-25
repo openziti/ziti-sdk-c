@@ -109,7 +109,7 @@ pipeline {
             "*Branch*:    ${BRANCH_NAME}\n"+
             "*Version*:   ${git_info}\n"+
             "*Committer*: ${committer}\n"+
-            "*Status*:    ${currentBuild.status}\n"+
+            "*Status*:    ${currentBuild.result}\n"+
             "*Duration*:  ${currentBuild.durationString}\n"
       }
     }
