@@ -1,5 +1,5 @@
 pipeline {
-  agent { docker { image 'netfoundry/ziti-build-pipeline:latest'}}
+  agent any //{ docker { image 'netfoundry/ziti-build-pipeline:latest'}}
 
   stages {
 //     stage("Setup") {
