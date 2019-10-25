@@ -493,8 +493,8 @@ static void send_hello(ziti_channel_t *ch) {
     hdr_t headers[] = {
             {
                     .header_id = SessionTokenHeader,
-                    .length = strlen(ch->ctx->ziti_session),
-                    .value = ch->ctx->ziti_session
+                    .length = strlen(ch->ctx->session->token),
+                    .value = ch->ctx->session->token
             }
     };
 

@@ -173,7 +173,8 @@ void NF_dump(struct nf_ctx *ctx) {
     char info[1024];
     printf("Identity:\n%s\n", info);
 
-    printf("Session: %s\n", VAL_OR_ELSE(ctx->ziti_session, "<not logged in>"));
+    printf("\n=================\nServices:\n");
+    dump_ziti_session(ctx->session, 0);
 
     printf("\n=================\nServices:\n");
     for (int i = 0; ctx->services[i] != NULL; i++) {
@@ -230,7 +231,7 @@ int NF_write(nf_connection conn, uint8_t *buf, size_t length, nf_write_cb cb, vo
 }
 
 int NF_service_available(nf_context nf, const char *service) {
-    for(ziti_service **s = nf->services; s != NULL; s++) {
+    for (ziti_service **s = nf->services; *s != NULL; s++) {
         if (strcmp(service, (*s)->name) == 0) {
             return ZITI_OK;
         }

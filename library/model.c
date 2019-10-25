@@ -13,17 +13,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
+
+#if _WIN32
+#error "fix me: strptime() is needed"
+#else
+#define _GNU_SOURCE
+
+#include <time.h>
+
+#endif
+
 #define MJSON_API_ONLY
 #include <mjson.h>
 
 
 #include <stdbool.h>
+#include <utils.h>
+
 #include "model.h"
 #include <math.h>
-
-
-//#define free_int(_)
-//#define free_bool(_)
 
 typedef int (*dump_func)(void *, int);
 typedef void *(*parse_func)(const char *, int);
@@ -39,6 +48,7 @@ void free_string(string s) {
     }
 }
 
+
 static string parse_string(const char *json, int json_len, const char *path) {
     const char *f;
     int n;
@@ -48,6 +58,27 @@ static string parse_string(const char *json, int json_len, const char *path) {
         mjson_get_string(f, n, "$", result, n);
     }
     return result;
+}
+
+static struct timeval *parse_timeval_t(const char *json, int json_len) {
+    char *date_str = parse_string(json, json_len, "$");
+    NEWP(t, struct timeval);
+    struct tm t2 = {0};
+    strptime(date_str, "%Y-%m-%dT%H:%M:%S", &t2);
+
+    t->tv_sec = timegm(&t2);
+
+    free(date_str);
+    return t;
+}
+
+static void free_timeval_t(struct timeval *t) {
+    free(t);
+}
+
+static int dump_timeval_t(struct timeval *t) {
+    printf("TODO\n");
+    return 0;
 }
 
 static int parse_bool(const char *json, int json_len, const char *path) {
@@ -68,8 +99,11 @@ static int parse_int(const char *json, int json_len, const char *path) {
 static void *parse_ptr(const char *json, int json_len, char *path, void *(*parse_func)(const char *, int)) {
     const char *f;
     int n;
-    if (mjson_find(json, json_len, path, &f, &n) == MJSON_TOK_OBJECT) {
-        return parse_func(f, n);
+    enum mjson_tok tok = mjson_find(json, json_len, path, &f, &n);
+    switch (tok) {
+        case MJSON_TOK_OBJECT:
+        case MJSON_TOK_STRING:
+            return parse_func(f, n);
     }
     return NULL;
 }
@@ -214,3 +248,9 @@ MODEL_IMPL(ziti_gateway, ZITI_GATEWAY_MODEL)
 MODEL_IMPL(ziti_net_session, ZITI_NET_SESSION_MODEL)
 
 MODEL_IMPL(ctrl_version, ZITI_CTRL_VERSION)
+
+MODEL_IMPL(ziti_session, ZITI_SESSION_MODEL)
+
+MODEL_IMPL(ziti_identity, ZITI_IDENITIY_MODEL)
+
+MODEL_IMPL(ziti_error, ZITI_ERROR_MODEL)

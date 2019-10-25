@@ -158,14 +158,8 @@ static int mp11_init(mp11_context *p11, const char *lib, const char *slot, const
     CK_C_GetFunctionList f;
     
 #if _WIN32
-    //unimplemented in windows at this time
-    ZITI_LOG(ERROR, "p11 not supported on Windows at this time");
-    return 1;
-    
-    /*
     TRY(P11, (p11->lib = LoadLibrary(lib)) != NULL ? CKR_OK : CKR_LIBRARY_LOAD_FAILED);
-    TRY(P11, (f = (CK_C_GetFunctionList)GetProcAddress(p11->lib, "C_GetFunctionList")) != NULL ? CKR_OK : CKR_LIBRARY_LOAD_FAILED);
-    */
+    TRY(P11, (f = GetProcAddress(p11->lib, "C_GetFunctionList")) != NULL ? CKR_OK : CKR_LIBRARY_LOAD_FAILED);
 #else
     TRY(P11, (p11->lib = dlopen(lib, RTLD_LAZY)) != NULL ? CKR_OK : CKR_LIBRARY_LOAD_FAILED);
     TRY(P11, (f = dlsym(p11->lib, "C_GetFunctionList")) != NULL ? CKR_OK : CKR_LIBRARY_LOAD_FAILED);

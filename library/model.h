@@ -17,6 +17,11 @@ limitations under the License.
 #ifndef ZT_SDK_MODEL_H
 #define ZT_SDK_MODEL_H
 
+#ifndef __cplusplus
+#include <stdbool.h>
+#endif
+
+#include <sys/time.h>
 /*
  * set of macros to help generate struct and function for our model;
  *
@@ -62,6 +67,7 @@ void free_##type##_array(type** arr); \
 int dump_##type(type* type, int len);
 
 typedef char* string;
+typedef struct timeval timeval_t;
 
 #define ZITI_CTRL_VERSION(XX) \
 XX(version, string, none, "$.version") \
@@ -93,6 +99,20 @@ XX(hosting, bool, none, "$.hosting") \
 XX(gateways, ziti_gateway, array, "$.gateways") \
 XX(service_id, string, none, NULL)
 
+#define ZITI_SESSION_MODEL(XX)\
+XX(id, string, none, "$.id") \
+XX(token, string, none, "$.token") \
+XX(expires, timeval_t, ptr, "$.expiresAt")\
+XX(identity, ziti_identity, ptr, "$.identity")
+
+#define ZITI_IDENITIY_MODEL(XX) \
+XX(id, string, none, "$.id") \
+XX(name, string, none, "$.name")
+
+#define ZITI_ERROR_MODEL(XX) \
+XX(code, string, none, "$.code") \
+XX(message, string, none, "$.message")
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -104,6 +124,11 @@ DECLARE_MODEL(ziti_service, ZITI_SERVICE_MODEL)
 
 DECLARE_MODEL(ziti_gateway, ZITI_GATEWAY_MODEL)
 DECLARE_MODEL(ziti_net_session, ZITI_NET_SESSION_MODEL)
+
+DECLARE_MODEL(ziti_identity, ZITI_IDENITIY_MODEL)
+DECLARE_MODEL(ziti_session, ZITI_SESSION_MODEL)
+
+DECLARE_MODEL(ziti_error, ZITI_ERROR_MODEL)
 
 #ifdef __cplusplus
 }
