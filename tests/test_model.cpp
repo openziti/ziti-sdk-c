@@ -20,6 +20,10 @@ limitations under the License.
 
 #include "../library/model.h"
 
+#if _WIN32
+#define gmtime(v) _gmtime32(v)
+#endif
+
 using Catch::Matchers::Equals;
 
 TEST_CASE("multi-gateway session", "[model]") {
@@ -54,9 +58,9 @@ TEST_CASE("multi-gateway session", "[model]") {
 
     dump_ziti_net_session(s, 0);
 
-    REQUIRE(s->gateways[0] != NULL);
-    REQUIRE(s->gateways[1] != NULL);
-    REQUIRE(s->gateways[2] == NULL);
+    REQUIRE(s->gateways[0] != nullptr);
+    REQUIRE(s->gateways[1] != nullptr);
+    REQUIRE(s->gateways[2] == nullptr);
 
     REQUIRE(strcmp(s->gateways[1]->url_tls, "tls://ec2-18-188-224-88.us-east-2.compute.amazonaws.com:3022") == 0);
 
@@ -161,7 +165,7 @@ TEST_CASE("parse-services-array", "[model]") {
     REQUIRE(strcmp(services[1]->name, "wttr.in-80") == 0);
     REQUIRE(services[1]->dns_port == 80);
     REQUIRE_FALSE(services[1]->hostable);
-    REQUIRE(services[idx] == NULL);
+    REQUIRE(services[idx] == nullptr);
 
     free_ziti_service_array(services);
 }

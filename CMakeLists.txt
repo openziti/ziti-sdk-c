@@ -13,6 +13,8 @@ message("     hash : ${GIT_COMMIT_HASH}")
 message("     date : ${BUILD_DATE}")
 
 if (WIN32)
+    set(CMAKE_INSTALL_LIBDIR lib)
+    set(CMAKE_INSTALL_INCLUDEDIR include)
     message("WIN32 build. Creating: ${CMAKE_BINARY_DIR}/cmake_install")
     file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/cmake_install)
     message("WIN32 build. Creating: ${CMAKE_BINARY_DIR}/cmake_install/ziti-sdk-${PROJECT_VERSION}")

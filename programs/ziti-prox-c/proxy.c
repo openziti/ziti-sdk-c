@@ -24,7 +24,6 @@ limitations under the License.
 #include <sys/queue.h>
 
 #if(WIN32)
-#include <Windows.h>
 #define strsignal(s) "_windows_unimplemented_"
 #endif
 

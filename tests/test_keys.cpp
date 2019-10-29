@@ -19,7 +19,6 @@ limitations under the License.
 #include <mbedtls/error.h>
 #if _WIN32
 #define PATH_MAX 256
-#include <Windows.h>
 #include <direct.h>
 #include <processenv.h>
 

@@ -16,7 +16,7 @@ limitations under the License.
 
 
 #if _WIN32
-#error "fix me: strptime() is needed"
+#define timegm(v) _mkgmtime(v)
 #else
 #define _GNU_SOURCE
 
@@ -64,7 +64,12 @@ static struct timeval *parse_timeval_t(const char *json, int json_len) {
     char *date_str = parse_string(json, json_len, "$");
     NEWP(t, struct timeval);
     struct tm t2 = {0};
-    strptime(date_str, "%Y-%m-%dT%H:%M:%S", &t2);
+    // "2019-08-05T14:02:52.337619Z"
+    int rc = sscanf(date_str, "%d-%d-%dT%d:%d:%d.%ldZ",
+            &t2.tm_year, &t2.tm_mon, &t2.tm_mday,
+            &t2.tm_hour, &t2.tm_min, &t2.tm_sec, &t->tv_usec);
+    t2.tm_year -= 1900;
+    t2.tm_mon -= 1;
 
     t->tv_sec = timegm(&t2);
 
