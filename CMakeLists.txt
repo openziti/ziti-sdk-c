@@ -49,8 +49,10 @@ set(CPACK_PACKAGE_VERSION ${ZITI_VERSION})
 set(CPACK_OUTPUT_FILE_PREFIX ${CMAKE_CURRENT_BINARY_DIR})
 if (UNIX)
     set(CPACK_GENERATOR "TGZ")
+    set(archive_sfx "tar.gz")
 elseif (WIN32)
     set(CPACK_GENERATOR "ZIP")
+    set(archive_sfx "zip")
 endif ()
 
 include(CPack)
@@ -73,23 +75,21 @@ if(${PUB_ARCH} STREQUAL "x86_64" )
 endif()
 
 macro(PUBCOMP comp)
-    if(NOT WIN32)
-    set(${comp}_PUB_PATH ${PUB_PFX}/${comp}/${PUB_ARCH}/${PUB_OS}/${ZITI_VERSION}/${comp}.tar.gz)
+    set(${comp}_PUB_PATH ${PUB_PFX}/${comp}/${PUB_ARCH}/${PUB_OS}/${ZITI_VERSION}/${comp}.${archive_sfx})
     set(${comp}_PUB_PROPS "version=${ZITI_VERSION}\;name=${comp}\;arch=${PUB_ARCH}\;os=${PUB_OS}\;branch=${GIT_BRANCH}")
 
     add_custom_target(${comp}-pub
-            DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${comp}-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.tar.gz
-            # COMMAND jfrog rt u ${PUB_OPTS} --props='${${comp}_PUB_PROPS}' ${comp}-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.tar.gz ${${comp}_PUB_PATH}
+            BYPRODUCTS ${CMAKE_BINARY_DIR}/${comp}-pub-spec.json
+            DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${comp}-${ZITI_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx}
             COMMAND echo "{"
             \"target\": \"${${comp}_PUB_PATH}\",
-            \"pattern\": \"${CMAKE_CURRENT_BINARY_DIR}/${comp}-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.tar.gz\",
+            \"pattern\": \"${CMAKE_CURRENT_BINARY_DIR}/${comp}-${ZITI_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx}\",
             \"props\": \"${${comp}_PUB_PROPS}\"
             "}" > ${CMAKE_BINARY_DIR}/${comp}-pub-spec.json
             VERBATIM
             )
 
     add_dependencies(publish ${comp}-pub)
-    endif()
 endmacro(PUBCOMP)
 
 # use prefix length to trim path for logging, see inc_internal/utils.h __FILENAME__
@@ -100,6 +100,9 @@ add_subdirectory(library)
 
 if(NOT ${PUB_OS} STREQUAL "ios" )
     add_subdirectory(programs)
+endif()
+
+if(NOT ${CMAKE_CROSSCOMPILING})
     add_subdirectory(tests)
 endif()
 

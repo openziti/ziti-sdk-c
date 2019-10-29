@@ -10,11 +10,17 @@ endif()
 target_link_libraries(ziti-prox-c PUBLIC ziti subcommand)
 target_include_directories(ziti-prox-c PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 
-add_custom_target(ziti-prox-c-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.tar.gz ALL
-        DEPENDS ziti-prox-c
-        COMMAND tar zcf ziti-prox-c-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.tar.gz ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}
-        )
+if (UNIX)
+    add_custom_target(ziti-prox-c-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.${archive_sfx}
+            DEPENDS ziti-prox-c
+            COMMAND tar zcf ziti-prox-c-${ZITI_VERSION}-${CMAKE_SYSTEM_NAME}.${archive_sfx} ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}
+            )
+else()
+    add_custom_target(ziti-prox-c-${ZITI_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx}
+            DEPENDS ziti-prox-c
+            COMMAND zip ziti-prox-c-${ZITI_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx} ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}
+            )
+endif()
 
-#add_dependencies(package ziti-prox-c-pack)
-
+add_dependencies(publish ziti-prox-c-${ZITI_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx})
 PUBCOMP(ziti-prox-c)
