@@ -66,7 +66,6 @@ pipeline {
       }
     }
     stage('Build all platforms') {
-      failFast true
       parallel {
         stage('Linux-x86_64') {
           steps {
