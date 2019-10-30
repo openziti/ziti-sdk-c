@@ -17,7 +17,7 @@ limitations under the License.
 #include <stdint.h>
 #include <stdlib.h>
 #if _WIN32
-#define MIN(a,b) min(a,b)
+#define MIN(a,b) ((a)<(b) ? (a) : (b))
 #else
 #include <sys/param.h>
 #endif

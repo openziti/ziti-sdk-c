@@ -21,12 +21,8 @@ limitations under the License.
 #include "zt_internal.h"
 #include "utils.h"
 
-#ifdef _WIN32
-#include <WinInet.h>
-#endif
-
 #ifndef MAXHOSTNAMELEN
-#define MAXHOSTNAMELEN INTERNET_MAX_HOST_NAME_LENGTH
+#define MAXHOSTNAMELEN 255
 #endif
 
 static void on_channel_connect_internal(uv_connect_t *req, int status);

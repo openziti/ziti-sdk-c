@@ -41,6 +41,7 @@ target_compile_definitions(ziti PUBLIC
 if (WIN32)
     # on windows GDI defines ERROR which conflicts with the SDK declaration of DEBUG_LEVELS in utils.h
     target_compile_definitions(ziti PUBLIC NOGDI)
+    target_link_libraries(ziti PUBLIC crypt32)
 endif()
 
 set_property(TARGET ziti PROPERTY C_STANDARD 11)
@@ -53,8 +54,12 @@ configure_file(${PROJECT_SOURCE_DIR}/ziti.pc.in ${CMAKE_CURRENT_BINARY_DIR}/ziti
 
 set(CMAKE_INSTALL_DOCDIR share/doc)
 
-install(TARGETS ziti DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/includes/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(TARGETS ziti
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        )
+
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/includes/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 install(FILES ${CMAKE_SOURCE_DIR}/deps/http-parser/LICENSE-MIT DESTINATION ${CMAKE_INSTALL_DOCDIR}/http-parser)
 install(FILES ${CMAKE_SOURCE_DIR}/deps/mjson/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mjson)
