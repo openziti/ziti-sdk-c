@@ -40,10 +40,6 @@ link_directories(${CMAKE_BINARY_DIR}/lib)
 
 add_subdirectory(deps)
 
-if(WIN32)
-  add_subdirectory(windows)
-endif()
-
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY 0)
 set(CPACK_PACKAGE_VERSION ${ZITI_VERSION})
 set(CPACK_OUTPUT_FILE_PREFIX ${CMAKE_CURRENT_BINARY_DIR})
