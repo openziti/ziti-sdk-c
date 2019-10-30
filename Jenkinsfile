@@ -88,6 +88,7 @@ pipeline {
           }
         }
         stage('Windows-x86') {
+          when { expression { false } }
           steps {
             echo "building ${STAGE_NAME}"
             sh "mkdir -p build-${STAGE_NAME}"
