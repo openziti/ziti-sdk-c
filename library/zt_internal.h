@@ -191,9 +191,6 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
 
 int load_config(const char *filename, nf_config **);
 
-int tls_context_init(nf_config *config, nf_tls_context *tls);
-int tls_context_free(nf_tls_context *tls);
-
 int ziti_auth(nf_context ctx);
 int ziti_logout(nf_context ctx);
 
