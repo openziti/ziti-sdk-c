@@ -141,7 +141,8 @@ pipeline {
     stage('git push tag') {
       when { branch 'master' }
       steps {
-        sh 'git push origin ${new_tag}'
+        echo "new tag = $new_tag"
+        sh "git push origin ${new_tag}"
       }
     }
     stage('Publish') {
