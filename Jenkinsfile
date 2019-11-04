@@ -21,7 +21,9 @@ pipeline {
            def zitiVer = readFile('version').trim()
            echo "$zitiVer"
            def zitiMatcher = ( zitiVer =~ /^(\d+)\.(\d+)\.(\d+)$/ )
-           def ( zitiMajor, zitiMinor, zitiPatch ) = zitiMatcher[0][1..3]
+           def zitiMajor = zitiMatcher[0][1]
+           def zitiMinor = zitiMatcher[0][2]
+           def zitiPatch = zitiMatcher[0][3]
 
            def tagVer = sh(returnStdout: true, script: 'git describe --long')
            def tagMatcher = ( tagVer !=~ /^(\d+)\.(\d+)\.(\d+)-(\d+)-(.+)/ )
