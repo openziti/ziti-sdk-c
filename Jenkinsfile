@@ -11,6 +11,7 @@ pipeline {
         sh 'git fetch --verbose --tags'
         script {
           git_url = ${env.GIT_URL}.replace("https://", "")
+          sh 'git describe --long'
           git_info = sh(returnStdout: true, script: 'git describe --long')
           committer = sh(returnStdout: true, script: 'git show -s --pretty=%ae')
         }
@@ -144,7 +145,7 @@ pipeline {
     stage('git push tag') {
       when { branch 'master' }
       steps {
-        echo "pushing $new_tag to ${env.GIT_URL}" 
+        echo "pushing $new_tag to ${env.GIT_URL}"
         withCredentials(
           [usernamePassword(credentialsId: 'github',
                             usernameVariable: 'USER',
