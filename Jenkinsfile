@@ -141,8 +141,14 @@ pipeline {
     stage('git push tag') {
       when { branch 'master' }
       steps {
-        echo "new tag = $new_tag"
-        sh "git push origin ${new_tag}"
+        echo "pushing $new_tag to ${env.GIT_URL}"
+        withCredentials(
+          [usernamePassword(credentialsId: env.GIT_CREDENTIAL_ID,
+                            usernameVariable: 'USER',
+                            passwordVariable: 'PASS')
+                            ]) {
+                    sh 'git push https://${USER}:${PASS}@${GIT_URL} ${new_tag}'
+                }
       }
     }
     stage('Publish') {
