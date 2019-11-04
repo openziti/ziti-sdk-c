@@ -4,11 +4,15 @@ pipeline {
   stages {
     stage("Setup") {
       steps {
+        sh 'env'
         sh 'git submodule update --init --recursive'
         sh 'git submodule status --recursive'
+        sh 'git tag --delete $(git tag -l)'
         sh 'git fetch --verbose --tags'
         script {
-          git_info = sh(returnStdout: true, script: 'git describe')
+          git_url = "${env.GIT_URL}".replace("https://", "")
+          sh 'git describe --long'
+          git_info = sh(returnStdout: true, script: 'git describe --long')
           committer = sh(returnStdout: true, script: 'git show -s --pretty=%ae')
         }
       }
@@ -16,15 +20,43 @@ pipeline {
     stage('Tagging') {
       when { branch 'master'}
       steps {
-        echo 'NO TAGGING YET!'
         script {
+           try {
            def zitiVer = readFile('version').trim()
-           def tagVer = sh(returnStdout: true, script: 'git describe')
-           echo "zitiVer = ${zitiVer} tagVer = ${tagVer}"
-           if (zitiVer > tagVer) {
-              echo "advancing tag based on 'version' file"
+           def (zitiMajor, zitiMinor, zitiPatch) = zitiVer.split(/\./).collect{ it.toInteger() }
+
+           echo "${zitiMajor}.${zitiMinor}.${zitiPatch}"
+
+           def tagVer = sh(returnStdout: true, script: 'git describe --long')
+           def tagVerSplit = tagVer.split(/[\.-]/)
+           def (tagMajor, tagMinor, tagPatch, ahead) = [
+               tagVerSplit[0].toInteger(),
+               tagVerSplit[1].toInteger(),
+               tagVerSplit[2].toInteger(),
+               tagVerSplit[3].toInteger()
+           ]
+
+           if ( zitiMajor > tagMajor ||
+                (zitiMajor == tagMajor && zitiMinor > tagMinor ) ||
+                (zitiMinor == tagMajor && zitiMinor == tagMinor && zitiPatch > tagPatch) )
+           {
+                new_tag = zitiVer
+                echo "advancing tag($new_tag) based on 'version' file"
            } else {
-              echo "advancing tag based on commits"
+               if (ahead == "0") {
+                    echo "already has tag = ${tagMajor}.${tagMinor}.${tagPatch}"
+                    new_tag = "${tagMajor}.${tagMinor}.${tagPatch}"
+               }
+               else {
+                    echo "bumping up new tag"
+                    new_tag = "${tagMajor}.${tagMinor}.${tagPatch + 1}"
+                    echo "setting new tag = $new_tag"
+                    sh "git tag -a ${new_tag} -m \'CI tag ${new_tag} \'"
+               }
+           }
+           } catch (ex) {
+               echo "$ex"
+               currentBuild.status = 'FAILURE'
            }
         }
       }
@@ -108,6 +140,20 @@ pipeline {
             }
           }
         }
+      }
+    }
+    stage('git push tag') {
+      when { branch 'master' }
+      steps {
+        echo "pushing $new_tag to ${env.GIT_URL}"
+        withCredentials(
+          [usernamePassword(credentialsId: 'github',
+                            usernameVariable: 'USER',
+                            passwordVariable: 'PASS')
+                            ]) {
+                    echo "user = ${env.USER}/github"
+                    sh 'git push https://${USER}:${PASS}@${git_url} ${new_tag}'
+                }
       }
     }
     stage('Publish') {
