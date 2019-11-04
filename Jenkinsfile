@@ -23,8 +23,7 @@ pipeline {
            def (zitiMajor, zitiMinor, zitiPatch) = zitiVer.split(/\./).collect{ it.toInteger() }
 
            def tagVer = sh(returnStdout: true, script: 'git describe --long')
-           def tagMatcher = ( tagVer !=~ /^(\d+)\.(\d+)\.(\d+)-(\d+)-(.+)/ )
-           def (tagMajor, tagMinor, tagPatch, ahead, commit) = tagMatcher[0][1..5]
+           def (tagMajor, tagMinor, tagPatch, ahead) = tagVer.split(/[\.-]/).take(4).collect { it.toInteger() }
 
            if ( zitiMajor > tagMajor ||
                 (zitiMajor == tagMajor && zitiMinor > tagMinor ) ||
@@ -33,7 +32,7 @@ pipeline {
                 new_tag = zitiVer
                 echo "advancing tag($new_tag) based on 'version' file"
            } else {
-               if (ahead == '0') {
+               if (ahead == "0") {
                     echo "already has tag = ${tagMajor}.${tagMinor}.${tagPatch}"
                     new_tag = "${tagMajor}.${tagMinor}.${tagPatch}"
                }
