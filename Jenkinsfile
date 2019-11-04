@@ -44,7 +44,7 @@ pipeline {
                     new_tag = "${tagMajor}.${tagMinor}.${tagPatch}"
                }
                else {
-                    echo "setting new tag = $new_tag"
+                    echo "bumping up new tag"
                     new_tag = "${tagMajor}.${tagMinor}.${tagPatch + 1}"
                     echo "setting new tag = $new_tag"
                     sh "git tag -a ${new_tag} -m \'CI tag ${new_tag} \'"
