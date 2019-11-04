@@ -18,6 +18,7 @@ pipeline {
       steps {
         script {
            def zitiVer = readFile('version').trim()
+           echo "$zitiVer"
            def zitiMatcher = ( zitiVer =~ /^(\d+)\.(\d+)\.(\d+)$/ )
            def ( zitiMajor, zitiMinor, zitiPatch ) = zitiMatcher[0][1..3]
 
