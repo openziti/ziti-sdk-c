@@ -17,6 +17,7 @@ pipeline {
       when { branch 'master'}
       steps {
         script {
+           try {
            def zitiVer = readFile('version').trim()
            echo "$zitiVer"
            def zitiMatcher = ( zitiVer =~ /^(\d+)\.(\d+)\.(\d+)$/ )
@@ -42,6 +43,10 @@ pipeline {
                     echo "setting new tag = $new_tag"
                     sh "git tag -a ${new_tag} -m \'CI tag ${new_tag} \'"
                }
+           }
+           } catch (ex) {
+               echo "$ex"
+               currentBuild.status = 'FAILURE'
            }
         }
       }
