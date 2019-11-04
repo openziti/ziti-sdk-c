@@ -8,7 +8,7 @@ pipeline {
         sh 'git submodule status --recursive'
         sh 'git fetch --verbose --tags'
         script {
-          git_info = sh(returnStdout: true, script: 'git describe')
+          git_info = sh(returnStdout: true, script: 'git describe --long')
           committer = sh(returnStdout: true, script: 'git show -s --pretty=%ae')
         }
       }
@@ -16,15 +16,31 @@ pipeline {
     stage('Tagging') {
       when { branch 'master'}
       steps {
-        echo 'NO TAGGING YET!'
         script {
            def zitiVer = readFile('version').trim()
-           def tagVer = sh(returnStdout: true, script: 'git describe')
-           echo "zitiVer = ${zitiVer} tagVer = ${tagVer}"
-           if (zitiVer > tagVer) {
-              echo "advancing tag based on 'version' file"
+           def zitiMatcher = ( zitiVer =~ /^(\d+)\.(\d+)\.(\d+)$/ )
+           def ( zitiMajor, zitiMinor, zitiPatch ) = zitiMatcher[0][1..3]
+
+           def tagVer = sh(returnStdout: true, script: 'git describe --long')
+           def tagMatcher = ( tagVer !=~ /^(\d+)\.(\d+)\.(\d+)-(\d+)-(.+)/ )
+           def (tagMajor, tagMinor, tagPatch, ahead, commit) = tagMatcher[0][1..5]
+
+           if ( zitiMajor > tagMajor ||
+                (zitiMajor == tagMajor && zitiMinor > tagMinor ) ||
+                (zitiMinor == tagMajor && zitiMinor == tagMinor && zitiPatch > tagPatch) )
+           {
+                new_tag = zitiVer
+                echo "advancing tag($new_tag) based on 'version' file"
            } else {
-              echo "advancing tag based on commits"
+               if (ahead == '0') {
+                    echo "already has tag = ${tagMajor}.${tagMinor}.${tagPatch}"
+                    new_tag = "${tagMajor}.${tagMinor}.${tagPatch}"
+               }
+               else {
+                    new_tag = "${tagMajor}.${tagMinor}.${tagPatch.toInteger() + 1}"
+                    echo "setting new tag = $new_tag"
+                    sh "git tag -a ${new_tag} -m \'CI tag ${new_tag} \'"
+               }
            }
         }
       }
@@ -108,6 +124,12 @@ pipeline {
             }
           }
         }
+      }
+    }
+    stage('git push tag') {
+      when { branch 'master' }
+      steps {
+        sh 'git push origin ${new_tag}'
       }
     }
     stage('Publish') {
