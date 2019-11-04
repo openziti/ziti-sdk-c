@@ -24,6 +24,16 @@ limitations under the License.
 #include "zt_internal.h"
 #include <http_parser.h>
 
+#ifndef MAXPATHLEN
+#ifdef _MAX_PATH
+#define MAXPATHLEN _MAX_PATH
+#elif _WIN32
+#define MAXPATHLEN 260
+#else
+#define MAXPATHLEN 4096
+#endif
+#endif
+
 #define DEFAULT_TIMEOUT 5000
 
 struct nf_init_req {
