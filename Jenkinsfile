@@ -147,6 +147,7 @@ pipeline {
                             usernameVariable: 'USER',
                             passwordVariable: 'PASS')
                             ]) {
+                    echo "user = ${env.USER}/${env.GIT_CREDENTIAL_ID}"
                     sh 'git push https://${USER}:${PASS}@${GIT_URL} ${new_tag}'
                 }
       }
