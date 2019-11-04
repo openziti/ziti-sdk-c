@@ -23,7 +23,13 @@ pipeline {
            def (zitiMajor, zitiMinor, zitiPatch) = zitiVer.split(/\./).collect{ it.toInteger() }
 
            def tagVer = sh(returnStdout: true, script: 'git describe --long')
-           def (tagMajor, tagMinor, tagPatch, ahead) = tagVer.split(/[\.-]/).take(4).collect { it.toInteger() }
+           def tagVerSplit = tagVer.split(/[\.-]/)
+           def (tagMajor, tagMinor, tagPatch, ahead) = [
+               tagVerSplit[0].toInteger(),
+               tagVerSplit[1].toInteger(),
+               tagVerSplit[2].toInteger(),
+               tagVerSplit[3].toInteger()
+           ]
 
            if ( zitiMajor > tagMajor ||
                 (zitiMajor == tagMajor && zitiMinor > tagMinor ) ||
