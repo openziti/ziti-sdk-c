@@ -144,11 +144,11 @@ pipeline {
       steps {
         echo "pushing $new_tag to ${env.GIT_URL}"
         withCredentials(
-          [usernamePassword(credentialsId: env.GIT_CREDENTIAL_ID,
+          [usernamePassword(credentialsId: 'github',
                             usernameVariable: 'USER',
                             passwordVariable: 'PASS')
                             ]) {
-                    echo "user = ${env.USER}/${env.GIT_CREDENTIAL_ID}"
+                    echo "user = ${env.USER}/github"
                     sh 'git push https://${USER}:${PASS}@${GIT_URL} ${new_tag}'
                 }
       }
@@ -165,6 +165,13 @@ pipeline {
     }
   }
   post {
+    failure {
+       when { branch 'master' }
+       script {
+          echo "deleting tag ${new_tag}"
+          sh "git tag --delete ${new_tag}"
+       }
+    }
     always {
       script {
          slackSend channel: 'dev-notifications',
