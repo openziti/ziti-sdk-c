@@ -10,7 +10,7 @@ pipeline {
         sh 'git tag --delete $(git tag -l)'
         sh 'git fetch --verbose --tags'
         script {
-          git_url = ${env.GIT_URL}.replace("https://", "")
+          git_url = "${env.GIT_URL}".replace("https://", "")
           sh 'git describe --long'
           git_info = sh(returnStdout: true, script: 'git describe --long')
           committer = sh(returnStdout: true, script: 'git show -s --pretty=%ae')
