@@ -19,8 +19,9 @@ pipeline {
         script {
            try {
            def zitiVer = readFile('version').trim()
-           echo "$zitiVer"
            def (zitiMajor, zitiMinor, zitiPatch) = zitiVer.split(/\./).collect{ it.toInteger() }
+
+           echo "${zitiMajor}.${zitiMinor}.${zitiPatch}"
 
            def tagVer = sh(returnStdout: true, script: 'git describe --long')
            def tagVerSplit = tagVer.split(/[\.-]/)
@@ -43,7 +44,8 @@ pipeline {
                     new_tag = "${tagMajor}.${tagMinor}.${tagPatch}"
                }
                else {
-                    new_tag = "${tagMajor}.${tagMinor}.${tagPatch.toInteger() + 1}"
+                    echo "setting new tag = $new_tag"
+                    new_tag = "${tagMajor}.${tagMinor}.${tagPatch + 1}"
                     echo "setting new tag = $new_tag"
                     sh "git tag -a ${new_tag} -m \'CI tag ${new_tag} \'"
                }
