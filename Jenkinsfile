@@ -7,6 +7,7 @@ pipeline {
         sh 'env'
         sh 'git submodule update --init --recursive'
         sh 'git submodule status --recursive'
+        sh 'git tag --delete $(git tag -l)'
         sh 'git fetch --verbose --tags'
         script {
           git_info = sh(returnStdout: true, script: 'git describe --long')
@@ -143,13 +144,14 @@ pipeline {
       when { branch 'master' }
       steps {
         echo "pushing $new_tag to ${env.GIT_URL}"
+        def url = ${env.GIT_URL}.replace("https://", "")
         withCredentials(
           [usernamePassword(credentialsId: 'github',
                             usernameVariable: 'USER',
                             passwordVariable: 'PASS')
                             ]) {
                     echo "user = ${env.USER}/github"
-                    sh 'git push https://${USER}:${PASS}@${GIT_URL} ${new_tag}'
+                    sh 'git push https://${USER}:${PASS}@${url} ${new_tag}'
                 }
       }
     }
@@ -165,13 +167,6 @@ pipeline {
     }
   }
   post {
-    failure {
-       when { branch 'master' }
-       script {
-          echo "deleting tag ${new_tag}"
-          sh "git tag --delete ${new_tag}"
-       }
-    }
     always {
       script {
          slackSend channel: 'dev-notifications',
