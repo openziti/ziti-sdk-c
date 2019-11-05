@@ -151,11 +151,8 @@ pipeline {
                             usernameVariable: 'GIT_USER',
                             passwordVariable: 'GIT_PASS')
                             ]) {
-                    echo "user = ${env.USER}/github"
-                    sh """
-                    git config --global credential.username {GIT_USER}
-                    git config --global credential.helper "!echo password={GIT_PASS}; echo"
-                    git push ${env.GIT_URL} ${new_tag}"""
+                    echo "user = ${env.USER}/${git_url}"
+                    echo """git push https://${GIT_USER}:${GIT_PASS}@${git_url} ${new_tag}"""
                 }
       }
     }
