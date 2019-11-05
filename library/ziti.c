@@ -24,6 +24,16 @@ limitations under the License.
 #include "zt_internal.h"
 #include <http_parser.h>
 
+#ifndef MAXPATHLEN
+#ifdef _MAX_PATH
+#define MAXPATHLEN _MAX_PATH
+#elif _WIN32
+#define MAXPATHLEN 260
+#else
+#define MAXPATHLEN 4096
+#endif
+#endif
+
 #define DEFAULT_TIMEOUT 5000
 
 struct nf_init_req {
@@ -83,6 +93,30 @@ static size_t parse_ref(const char *val, const char **res) {
     return len;
 }
 
+static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout) {
+    int optlen = strlen(opt);
+    do {
+        // found it
+        if (strncasecmp(q, opt, optlen) == 0 && (q[optlen] == '=' || q[optlen] == 0)) {
+            const char *val = q + optlen + 1;
+            char *end = strchr(val, '&');
+            int vlen = (int)(end == NULL ? strlen(val) : end - val);
+            snprintf(out, maxout, "%*.*s", vlen, vlen, val);
+            return 0;
+
+        }
+        else { // skip to next '&'
+            q = strchr(q, '&');
+            if (q == NULL) {
+                break;
+            }
+            q += 1;
+        }
+    } while (q != NULL);
+    out[0] = '\0';
+    return ZITI_INVALID_CONFIG;
+}
+
 int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx) {
     init_debug();
 
@@ -97,13 +131,35 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
     }
 
     // load ca from nf config if present
-    const char *ca, *key, *cert;
+    const char *ca, *cert;
     size_t ca_len = parse_ref(cfg->ca, &ca);
-    size_t key_len = parse_ref(cfg->key, &key);
     size_t cert_len = parse_ref(cfg->cert, &cert);
-
     tls_context *tls = default_tls_context(ca, ca_len);
-    tls->api->set_own_cert(tls->ctx, cert, cert_len, key, key_len);
+
+    if (strncmp(cfg->key, "pkcs11://", strlen("pkcs11://")) == 0) {
+        char path[MAXPATHLEN] = {0};
+        char pin[32] = {0};
+        char slot[32] = {0};
+        char id[32] = {0};
+
+        char *p = cfg->key + strlen("pkcs11://");
+        char *endp = strchr(p, '?');
+        char *q = endp + 1;
+        if (endp == NULL) {
+            TRY(ziti, ("invalid pkcs11 key specification", ZITI_INVALID_CONFIG));
+        }
+        sprintf(path, "%*.*s", (int)(endp - p), (int)(endp - p), p);
+
+        TRY(ziti, parse_getopt(q, "pin", pin, sizeof(pin)));
+        TRY(ziti, parse_getopt(q, "slot", slot, sizeof(slot)));
+        TRY(ziti, parse_getopt(q, "id", id, sizeof(id)));
+
+        tls->api->set_own_cert_pkcs11(tls->ctx, cert, cert_len, path, pin, slot, id);
+    } else {
+        const char *key;
+        size_t key_len = parse_ref(cfg->key, &key);
+        tls->api->set_own_cert(tls->ctx, cert, cert_len, key, key_len);
+    }
 
     return NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx);
 }

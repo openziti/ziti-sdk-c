@@ -20,6 +20,7 @@ limitations under the License.
 #define ZITI_ERRORS(XX) \
     XX(OK, "OK") \
     XX(CONFIG_NOT_FOUND, "Configuration not found") \
+    XX(INVALID_CONFIG, "configuration is invalid") \
     XX(NOT_AUTHORIZED, "Not Authorized") \
     XX(CONTROLLER_UNAVAILABLE, "Ziti Controller is not available") \
     XX(GATEWAY_UNAVAILABLE, "Ziti Gateway is not available") \

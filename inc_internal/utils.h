@@ -41,7 +41,7 @@ typedef int *(*cond_error_t)(int);
 #define VAL_OR_ELSE(v, def) ((v) != NULL ? (v) : (def))
 #define FREE(v) if ((v) != NULL) { free(v); (v) = NULL; }
 
-#define __FILENAME__ (__FILE__ + SOURCE_PATH_SIZE)
+#define __FILENAME__ (&__FILE__[SOURCE_PATH_SIZE])
 
 
 char *fmt_mbederr(int err);

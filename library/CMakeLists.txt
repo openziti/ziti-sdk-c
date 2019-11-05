@@ -3,7 +3,6 @@ add_library(ziti STATIC
         ziti.c
         zt_auth.c
         config.c
-        tls.c
         errors.c
         controller.c
         model.c
@@ -11,9 +10,6 @@ add_library(ziti STATIC
         channel.c
         message.c
         buffer.c
-        p11/mbed_p11.c
-        p11/p11_ecdsa.c
-        p11/p11_rsa.c
         )
 
 target_sources(ziti
