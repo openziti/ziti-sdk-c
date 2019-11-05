@@ -151,8 +151,12 @@ pipeline {
                             usernameVariable: 'GIT_USER',
                             passwordVariable: 'GIT_PASS')
                             ]) {
-                    echo "user = ${env.USER}/${git_url}"
-                    echo """git push https://${GIT_USER}:${GIT_PASS}@${git_url} ${new_tag}"""
+
+                    script {
+                        def u = URLEncoder.encode(GIT_USER, "UTF-8")
+                        def p = URLEncoder.encode(GIT_PASS, "UTF-8")
+                        sh "git push https://${u}:${p}@${git_url} ${new_tag}"
+                    }
                 }
       }
     }
