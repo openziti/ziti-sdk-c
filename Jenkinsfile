@@ -148,11 +148,14 @@ pipeline {
         echo "pushing $new_tag to ${env.GIT_URL}"
         withCredentials(
           [usernamePassword(credentialsId: 'github',
-                            usernameVariable: 'USER',
-                            passwordVariable: 'PASS')
+                            usernameVariable: 'GIT_USER',
+                            passwordVariable: 'GIT_PASS')
                             ]) {
                     echo "user = ${env.USER}/github"
-                    sh 'git push https://${USER}:${PASS}@${git_url} ${new_tag}'
+                    sh """
+                    git config --global credential.username {GIT_USER}
+                    git config --global credential.helper "!echo password={GIT_PASS}; echo"
+                    git push ${env.GIT_URL} ${new_tag}"""
                 }
       }
     }
