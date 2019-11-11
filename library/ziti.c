@@ -226,10 +226,7 @@ int NF_free(nf_context *ctxp) {
 }
 
 void NF_dump(struct nf_ctx *ctx) {
-    char info[1024];
-    printf("Identity:\n%s\n", info);
-
-    printf("\n=================\nServices:\n");
+    printf("\n=================\nSession:\n");
     dump_ziti_session(ctx->session, 0);
 
     printf("\n=================\nServices:\n");
