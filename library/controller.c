@@ -249,14 +249,14 @@ int ziti_ctrl_get_network_sessions(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_en
         uint8_t content[128];
         size_t len = (size_t) sprintf((char *) content, "{\"serviceId\":\"%s\",\"hosting\":%s}",
                                       ctx->services[i]->id, ctx->services[i]->hostable ? "true" : "false");
-        TRY(ziti, ziti_controller_req(ctx, ctrl, ssl, method, path, conttype, content, len, &resp));
+        int rc = ziti_controller_req(ctx, ctrl, ssl, method, path, conttype, content, len, &resp);
 
         if (resp.status > 299) {
-            ZITI_LOG(WARN, "failed to get network session for [%s]: (%d %s) %*s", ctx->services[i]->name, resp.status,
-                     resp.msg, (int) resp.body_len, resp.body);
+            ZITI_LOG(WARN, "failed to get network session for [%s]: (%d %s) %s", ctx->services[i]->name, resp.status,
+                     resp.msg, resp.error->message);
         }
 
-        if (resp.data_type == MJSON_TOK_OBJECT) {
+        if (rc == ZITI_OK && resp.data_type == MJSON_TOK_OBJECT) {
             ziti_net_session *ns = parse_ziti_net_session(resp.data, resp.data_len);
             if (ns != NULL) {
                 ns->service_id = strdup(ctx->services[i]->id);
@@ -494,6 +494,7 @@ static int code_to_error(const char *code) {
 
 #define CODE_MAP(XX) \
 XX(NO_ROUTABLE_INGRESS_NODES, ZITI_GATEWAY_UNAVAILABLE) \
+XX(NO_EDGE_ROUTERS_AVAILABLE, ZITI_GATEWAY_UNAVAILABLE) \
 XX(INVALID_AUTHENTICATION, ZITI_NOT_AUTHORIZED) \
 XX(REQUIRES_CERT_AUTH, ZITI_NOT_AUTHORIZED)\
 XX(UNAUTHORIZED, ZITI_NOT_AUTHORIZED)\
