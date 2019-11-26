@@ -14,14 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include <time.h>
 
 #if _WIN32
 #define timegm(v) _mkgmtime(v)
 #else
 #define _GNU_SOURCE
-
-#include <time.h>
-
 #endif
 
 #define MJSON_API_ONLY

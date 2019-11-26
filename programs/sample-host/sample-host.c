@@ -85,7 +85,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Usage: %s <config-file> <service-name>", argv[0]);
         exit(1);
     }
-    int res;
     uv_loop_t *loop = uv_default_loop();
 
     service = argv[2];
