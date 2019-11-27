@@ -16,9 +16,14 @@ target_sources(ziti
         PRIVATE ${PROJECT_SOURCE_DIR}/deps/http-parser/http_parser.c)
 
 target_link_libraries(ziti
-        PUBLIC uv_mbed
+    PUBLIC uv_mbed
+)
+        
+if (NOT WIN32)
+    target_link_libraries(ziti
         PUBLIC m
         )
+endif()
 
 target_include_directories(ziti
         PUBLIC ../includes

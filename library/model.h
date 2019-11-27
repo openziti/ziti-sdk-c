@@ -21,7 +21,11 @@ limitations under the License.
 #include <stdbool.h>
 #endif
 
+#if _WIN32
+#else
 #include <sys/time.h>
+#endif
+
 /*
  * set of macros to help generate struct and function for our model;
  *

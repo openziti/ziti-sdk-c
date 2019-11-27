@@ -53,7 +53,7 @@ void on_data(nf_connection c, uint8_t *buf, int len) {
 
 static void on_write(nf_connection conn, ssize_t status, void *ctx) {
     if (status < 0) {
-        fprintf(stderr, "request failed to submit status[%zd]: %s\n", status, ziti_errorstr(status));
+        fprintf(stderr, "request failed to submit status[%zd]: %s\n", status, ziti_errorstr((int)status));
     }
     else {
         printf("request success: %zd bytes sent\n", status);
@@ -89,7 +89,6 @@ int main(int argc, char** argv) {
     //changes the output to UTF-8 so that the windows output looks correct and not all jumbly
     SetConsoleOutputCP(65001);
 #endif
-    int res;
     uv_loop_t *loop = uv_default_loop();
 
     DIE(NF_init(argv[1], loop, on_nf_init, NULL));

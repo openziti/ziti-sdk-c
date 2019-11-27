@@ -34,6 +34,10 @@ limitations under the License.
 #endif
 #endif
 
+#if _WIN32
+#define strncasecmp _strnicmp
+#endif
+
 #define DEFAULT_TIMEOUT 5000
 
 struct nf_init_req {
