@@ -1,0 +1,27 @@
+language: c
+
+jobs:
+        include:
+                - stage: Linux build
+                  os: linux
+                  compiler:
+                          - gcc
+                          - clang
+
+                - stage: MacOS build
+                  os: osx
+                  osx_image: xcode11.2
+                  compiler:
+                          - clang
+
+                - stage: Win64 build
+                  os: windows
+                  compiler:
+                          - gcc
+
+before_script:
+        - mkdir build
+        - cd build
+        - cmake ..
+
+script: cmake --build .
