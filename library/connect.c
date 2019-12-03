@@ -38,7 +38,7 @@ static void free_handle(uv_handle_t *h) {
 
 void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int status) {
     if (req->conn == NULL) {
-        ZITI_LOG(WARN, "write completed for timed out connection");
+        ZITI_LOG(DEBUG, "write completed for timed out or closed connection");
         free(req);
         return;
     }
@@ -104,7 +104,6 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
     }
     else {
         ZITI_LOG(TRACE, "conn[%d] is already using another channel", req->conn->conn_id);
-        // nothing to do here
     }
 
 }
@@ -121,6 +120,7 @@ static void connect_timeout(uv_timer_t *timer) {
 
     uv_timer_stop(timer);
     uv_close((uv_handle_t *) timer, free_handle);
+    req->t = NULL;
 }
 
 static int ziti_connect(struct nf_ctx *ctx, const ziti_net_session *session, struct nf_conn_req *req) {
@@ -285,21 +285,23 @@ void connect_reply_cb(void *ctx, message *msg) {
             if (conn->state == Connecting) {
                 ZITI_LOG(TRACE, "edge conn_id[%d]: connected.", conn->conn_id);
                 conn->state = Connected;
+                req->cb(conn, ZITI_OK);
             }
             else if (conn->state == Binding) {
                 ZITI_LOG(TRACE, "edge conn_id[%d]: bound.", conn->conn_id);
                 conn->state = Bound;
+                req->cb(conn, ZITI_OK);
             }
             else if (conn->state == Accepting) {
                 ZITI_LOG(TRACE, "edge conn_id[%d]: accepted.", conn->conn_id);
                 conn->state = Connected;
+                req->cb(conn, ZITI_OK);
             }
             else if (conn->state == Closed) {
-                ZITI_LOG(WARN, "received connect reply for closed connection[%d]. timeout?", conn->conn_id);
+                ZITI_LOG(WARN, "received connect reply for closed/timedout connection[%d]", conn->conn_id);
                 ziti_disconnect(conn);
                 SLIST_REMOVE(&conn->channel->connections, conn, nf_conn, next);
             }
-            req->cb(conn, ZITI_OK);
             break;
 
         default:
@@ -316,8 +318,6 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
     req->conn->channel = ch;
     req->conn->conn_id = ch->conn_seq++;
 
-    SLIST_INSERT_HEAD(&ch->connections, req->conn, next);
-
     ZITI_LOG(TRACE, "ch[%d] => Edge Connect request token[%s] conn_id[%d]", ch->id, req->conn->token,
              req->conn->conn_id);
 
@@ -329,10 +329,16 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
         case Connecting:
             content_type = ContentTypeConnect;
             break;
+        case Closed:
+            ZITI_LOG(WARN, "channel did not connect in time for connection[%d]. ", req->conn->conn_id);
+            return ZITI_OK;
         default:
             ZITI_LOG(ERROR, "connection[%d] is in unexpected state[%d]", req->conn->conn_id, req->conn->state);
             return ZITI_WTF;
     }
+
+    SLIST_INSERT_HEAD(&ch->connections, req->conn, next);
+
     int32_t conn_id = htole32(req->conn->conn_id);
     int32_t msg_seq = htole32(0);
     hdr_t headers[] = {
