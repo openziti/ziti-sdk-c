@@ -16,13 +16,17 @@ limitations under the License.
 
 #include <catch2/catch.hpp>
 #include <string.h>
-#include <time.h>
-
-#include "../library/model.h"
 
 #if _WIN32
+#include <windows.h>
+#define timegm(v) _mkgmtime(v)
 #define gmtime(v) _gmtime32(v)
+#else
+#define _GNU_SOURCE //add time.h include after defining _GNU_SOURCE
+#include <time.h>
 #endif
+
+#include "../library/model.h"
 
 using Catch::Matchers::Equals;
 
@@ -54,7 +58,7 @@ TEST_CASE("multi-gateway session", "[model]") {
                      "    \"token\": \"caaf0f67-5394-4ddd-b718-bfdc8fcfb367\"\n"
                      "}";
 
-    ziti_net_session *s = parse_ziti_net_session(ns, strlen(ns));
+    ziti_net_session *s = parse_ziti_net_session(ns, (int)strlen(ns));
 
     dump_ziti_net_session(s, 0);
 
@@ -150,7 +154,7 @@ TEST_CASE("parse-services-array", "[model]") {
                      "            \"updatedAt\": \"2019-08-05T14:02:52.337619Z\"\n"
                      "        }] ";
 
-    ziti_service** services = parse_ziti_service_array(json, strlen(json));
+    ziti_service** services = parse_ziti_service_array(json, (int)strlen(json));
     ziti_service **s;
     int idx;
     for (idx = 0, s = services; *s != nullptr; s++, idx++) {
@@ -196,7 +200,7 @@ TEST_CASE("parse-session", "[model]") {
                        "        \"updatedAt\": \"2019-10-14T14:49:48.340512Z\"\n"
                        "    }";
 
-    ziti_session *session = parse_ziti_session(json, strlen(json));
+    ziti_session *session = parse_ziti_session(json, (int)strlen(json));
 
     REQUIRE_THAT(session->id, Equals("f0bd2587-1510-455a-96ca-6f1aea1c04f3"));
     REQUIRE_THAT(session->token, Equals("6fb97fe8-3507-4811-a83a-1d660b1022a3"));
@@ -225,6 +229,6 @@ TEST_CASE("parse-error", "[model]") {
                        "        \"requestId\": \"e6123851-2e6d-43cb-8bd5-0d363dd66636\"\n"
                        "    }";
 
-    ziti_error *err = parse_ziti_error(json, strlen(json));
+    ziti_error *err = parse_ziti_error(json, (int)strlen(json));
     REQUIRE_THAT(err->code, Equals("UNAUTHORIZED"));
 }
