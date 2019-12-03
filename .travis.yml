@@ -2,19 +2,18 @@ language: c
 
 jobs:
         include:
-                - stage: Linux build
+                - stage: build all
                   os: linux
                   compiler:
                           - gcc
-                          - clang
 
-                - stage: MacOS build
+                - #stage: MacOS build
                   os: osx
                   osx_image: xcode11.2
                   compiler:
                           - clang
 
-                - stage: Win64 build
+                - #stage: Win64 build
                   os: windows
                   compiler:
                           - gcc
