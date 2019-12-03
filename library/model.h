@@ -22,6 +22,7 @@ limitations under the License.
 #endif
 
 #if _WIN32
+#include <time.h>
 #else
 #include <sys/time.h>
 #endif
