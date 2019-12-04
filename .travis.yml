@@ -30,9 +30,9 @@ before_script:
   - env
   - mkdir build
   - cd build
-  - cmake ${CMAKE_FLAGS} ..
+  - cmake --config Debug ..
 
 script:
   - cmake --build . --target all_tests
-  - ctest --no-compress-output -T Test
+  - ctest --no-compress-output -C Debug -T Test
   - cmake --build . --target all
