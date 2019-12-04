@@ -2,6 +2,9 @@
 
 The following steps should get your C SDK for Ziti building. C development is specific to your operating system and tool chain used. These steps should work properly for you but if your OS has variations you may need to adapt these steps accordingly.
 
+## Status 
+[![Build Status](https://travis-ci.org/netfoundry/ziti-sdk-c.svg?branch=master)](https://travis-ci.org/netfoundry/ziti-sdk-c)
+
 ## Prerequisites
 
 ### Build
