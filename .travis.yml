@@ -17,20 +17,22 @@ jobs:
       compiler: gcc
       addons:
         homebrew:
-          packages: 
+          packages:
             - ninja
 
     - #stage: Win64 build
       os: windows
       compiler: gcc
+      install:
+        - choco install ninja
 
 before_script:
   - env
   - mkdir build
   - cd build
-  - cmake -G Ninja ..
+  - cmake ${CMAKE_FLAGS} ..
 
 script:
   - cmake --build . --target all_tests
   - ctest --no-compress-output -T Test
-  - cmake --build all
+  - cmake --build . --target all
