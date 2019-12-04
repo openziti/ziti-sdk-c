@@ -4,6 +4,7 @@ jobs:
   include:
     - stage: build all
       os: linux
+      dist: bionic
       compiler: gcc
 
     - #stage: MacOS build
@@ -19,6 +20,9 @@ before_script:
   - env
   - mkdir build
   - cd build
-  - cmake ..
+  - cmake -G Ninja ..
 
-script: cmake --build .
+script:
+  - cmake --build . --target all_tests
+  - ctest --no-compress-output -T Test
+  - cmake --build all
