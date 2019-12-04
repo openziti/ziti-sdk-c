@@ -30,7 +30,7 @@ before_script:
   - env
   - mkdir build
   - cd build
-  - cmake --config Debug ..
+  - cmake -G Ninja --config Debug ..
 
 script:
   - cmake --build . --target all_tests
