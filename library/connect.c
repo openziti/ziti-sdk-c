@@ -139,11 +139,7 @@ static int ziti_connect(struct nf_ctx *ctx, const ziti_net_session *session, str
 void ziti_connect_async(uv_async_t *ar) {
     struct nf_conn_req *req = ar->data;
     struct nf_ctx *ctx = req->conn->nf_ctx;
-
-    req->t = malloc(sizeof(uv_timer_t));
-    uv_timer_init(ar->loop, req->t);
-    req->t->data = req;
-    uv_timer_start(req->t, connect_timeout, req->conn->timeout, 0);
+    uv_loop_t *loop = ar->loop;
 
     uv_close((uv_handle_t *) ar, free_handle);
 
@@ -172,6 +168,11 @@ void ziti_connect_async(uv_async_t *ar) {
         req->cb(req->conn, ZITI_SERVICE_UNAVALABLE);
     }
     else {
+        req->t = malloc(sizeof(uv_timer_t));
+        uv_timer_init(loop, req->t);
+        req->t->data = req;
+        uv_timer_start(req->t, connect_timeout, req->conn->timeout, 0);
+
         ziti_connect(ctx, net_session, req);
     }
 }
