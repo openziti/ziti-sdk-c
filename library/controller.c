@@ -211,7 +211,12 @@ int ziti_ctrl_get_services(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine *ss
 
     if (rc == ZITI_OK) {
         if (resp.data_type == MJSON_TOK_ARRAY) {
-            ctx->services = parse_ziti_service_array(resp.data, resp.data_len);
+            // TODO parse directly into list
+            ziti_service **arr = parse_ziti_service_array(resp.data, resp.data_len);
+            for (ziti_service **it = arr; *it != NULL; it++) {
+                SLIST_INSERT_HEAD(&ctx->services, *it, _next);
+            }
+            free(arr);
         }
         else {
             ZITI_LOG(ERROR, "unexpected response format, expected array of services");
@@ -233,36 +238,27 @@ int ziti_ctrl_get_network_sessions(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_en
     const char* path = "/network-sessions";
     const char* conttype = "application/json";
 
-    int capacity = 10;
-    ctx->net_sessions = calloc(10, sizeof(ziti_net_session*));
-    int ns_idx = 0;
-
-    for (int i = 0; ctx->services[i] != NULL; i++) {
-        if (ns_idx >= capacity) {
-            ctx->net_sessions = realloc(ctx->net_sessions, (capacity + 10) * sizeof(ziti_net_session));
-            memset(ctx->net_sessions + capacity, 0, 10 * sizeof(ziti_net_session));
-            capacity += 10;
-        }
+    ziti_service *s;
+    SLIST_FOREACH (s, &ctx->services, _next) {
         struct controller_resp resp;
         memset(&resp, 0, sizeof(resp));
 
         uint8_t content[128];
         size_t len = (size_t) sprintf((char *) content, "{\"serviceId\":\"%s\",\"hosting\":%s}",
-                                      ctx->services[i]->id, ctx->services[i]->hostable ? "true" : "false");
+                                      s->id, s->hostable ? "true" : "false");
         int rc = ziti_controller_req(ctx, ctrl, ssl, method, path, conttype, content, len, &resp);
 
         if (resp.status > 299) {
-            ZITI_LOG(WARN, "failed to get network session for [%s]: (%d %s) %s", ctx->services[i]->name, resp.status,
+            ZITI_LOG(WARN, "failed to get network session for [%s]: (%d %s) %s", s->name, resp.status,
                      resp.msg, resp.error->message);
         }
 
         if (rc == ZITI_OK && resp.data_type == MJSON_TOK_OBJECT) {
             ziti_net_session *ns = parse_ziti_net_session(resp.data, resp.data_len);
             if (ns != NULL) {
-                ns->service_id = strdup(ctx->services[i]->id);
-                ctx->net_sessions[ns_idx] = ns;
+                ns->service_id = strdup(s->id);
 
-                ns_idx++;
+                SLIST_INSERT_HEAD(&ctx->net_sessions, ns, _next);
             }
         }
         free_resp(&resp);
@@ -356,7 +352,7 @@ static int ziti_controller_req(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine
     } while (!resp->complete);
 
     ZITI_LOG(DEBUG, "%s %s => %d [%zd bytes]", method, path, parser.status_code, resp->body_len);
-    ZITI_LOG(TRACE, ">>> %*.*s\n", resp->body_len, resp->body_len, resp->body);
+    ZITI_LOG(TRACE, ">>> %*.*s\n", (int)resp->body_len, (int)resp->body_len, resp->body);
 
     if (parser.status_code > 299) {
         const char *p;

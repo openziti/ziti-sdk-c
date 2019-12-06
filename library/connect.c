@@ -145,17 +145,24 @@ void ziti_connect_async(uv_async_t *ar) {
 
     // find service
     const ziti_net_session *net_session = NULL;
-    const char *service_id;
-    for (ziti_service **s = ctx->services; *s != NULL; s++) {
-        if (strcmp(req->service_id, (*s)->name) == 0) {
-            service_id = (*s)->id;
+    const char *service_id = NULL;
+    ziti_service *s;
+    SLIST_FOREACH (s, &ctx->services, _next) {
+        if (strcmp(req->service_id, s->name) == 0) {
+            service_id = s->id;
             break;
         }
     }
 
-    for(ziti_net_session **ns = ctx->net_sessions; *ns != NULL; ns++) {
-        if (strcmp(service_id, (*ns)->service_id) == 0) {
-            net_session = (*ns);
+    if (service_id == NULL) {
+        req->cb(req->conn, ZITI_SERVICE_UNAVALABLE);
+        return;
+    }
+
+    ziti_net_session *it;
+    SLIST_FOREACH(it, &ctx->net_sessions, _next) {
+        if (strcmp(service_id, it->service_id) == 0) {
+            net_session = it;
             break;
         }
     }

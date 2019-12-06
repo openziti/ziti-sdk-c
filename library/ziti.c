@@ -234,13 +234,15 @@ void NF_dump(struct nf_ctx *ctx) {
     dump_ziti_session(ctx->session, 0);
 
     printf("\n=================\nServices:\n");
-    for (int i = 0; ctx->services[i] != NULL; i++) {
-        dump_ziti_service(ctx->services[i], 0);
+    ziti_service *zs;
+    SLIST_FOREACH(zs, &ctx->services, _next) {
+        dump_ziti_service(zs, 0);
     }
 
     printf("\n==================\nNet Sessions:\n");
-    for (int i = 0; ctx->net_sessions[i] != NULL; i++) {
-        dump_ziti_net_session(ctx->net_sessions[i], 0);
+    ziti_net_session *it;
+    SLIST_FOREACH(it, &ctx->net_sessions, _next) {
+        dump_ziti_net_session(it, 0);
     }
 }
 
@@ -288,8 +290,9 @@ int NF_write(nf_connection conn, uint8_t *buf, size_t length, nf_write_cb cb, vo
 }
 
 int NF_service_available(nf_context nf, const char *service) {
-    for (ziti_service **s = nf->services; *s != NULL; s++) {
-        if (strcmp(service, (*s)->name) == 0) {
+    ziti_service *s;
+    SLIST_FOREACH (s, &nf->services, _next) {
+        if (strcmp(service, s->name) == 0) {
             return ZITI_OK;
         }
     }

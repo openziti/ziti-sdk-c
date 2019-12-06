@@ -21,6 +21,8 @@ limitations under the License.
 #include <stdbool.h>
 #endif
 
+#include <sys/queue.h>
+
 #if _WIN32
 #include <time.h>
 #else
@@ -62,13 +64,16 @@ limitations under the License.
  * Model declaration: struct type, and functions
  */
 #define DECLARE_MODEL(type, model) \
-typedef struct {\
+typedef struct type##_s {\
 model(FIELD_DECL) \
+SLIST_ENTRY(type##_s) _next; \
 } type;\
+typedef SLIST_HEAD(type##_l, type##_s) type##_list;\
 type* parse_##type(const char* json, int json_len);\
 type** parse_##type##_array(const char* json, int json_len);\
 void free_##type(type* type);\
 void free_##type##_array(type** arr); \
+void free_##type##_list(type##_list* l); \
 int dump_##type(type* type, int len);
 
 typedef char* string;
