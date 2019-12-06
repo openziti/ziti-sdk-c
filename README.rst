@@ -1,5 +1,3 @@
-.. include:: <isonum.txt>
-
 Ziti C SDK - Setup for Development
 ==================================
 
@@ -75,5 +73,7 @@ to address them.
 .. _Discourse: https://netfoundry.discourse.group/
 .. _issues: https://github.com/NetFoundry/ziti-sdk-c/issues
 .. _cmake: https://cmake.org/install/
+
+.. |copy|   unicode:: U+000A9 .. COPYRIGHT SIGN
 
 Copyright |copy| 2018-2019. NetFoundry, Inc.
