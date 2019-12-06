@@ -23,7 +23,6 @@ limitations under the License.
 #include <uv_mbed/uv_mbed.h>
 
 #include <nf/ziti.h>
-#include "tls.h"
 #include "model.h"
 #include "buffer.h"
 #include "message.h"
@@ -160,8 +159,8 @@ struct nf_ctx {
     tls_context *tlsCtx;
 
     ziti_session *session;
-    ziti_service **services;
-    ziti_net_session **net_sessions;
+    ziti_service_list services;
+    ziti_net_session_list net_sessions;
 
     uv_loop_t *loop;
     uv_thread_t loop_thread;

@@ -1,6 +1,7 @@
 # Ziti C SDK - Setup for Development
 
-The following steps should get your C SDK for Ziti building. C development is specific to your operating system and tool chain used. These steps should work properly for you but if your OS has variations you may need to adapt these steps accordingly.
+The following steps should get your C SDK for Ziti building. C development is specific to your operating system and 
+tool chain used. These steps should work properly for you but if your OS has variations you may need to adapt these steps accordingly.
 
 ## Status 
 [![Build Status](https://travis-ci.org/netfoundry/ziti-sdk-c.svg?branch=master)](https://travis-ci.org/netfoundry/ziti-sdk-c)
@@ -10,13 +11,6 @@ The following steps should get your C SDK for Ziti building. C development is sp
 ### Build
 
 * [Cmake (3.12+)](https://cmake.org/install/)
-* protobuf-c - only needed when you change `.proto` files, see [below](#working-with-protobuf)
-
-### Test
-
-* ubuntu: `softhsm2`, `opensc`
-* fedora: `softhsm`, `opensc`
-* macOS (brew): `softhsm (cask)`, `opensc`
 
 ## Init
 
@@ -42,7 +36,8 @@ If you are cross compiling, you _must_ name the build directory as `build-$(unam
 
 ### Windows
 
-The easiest method to build on windows is to open a "Developer Command Prompt for VS 2019" and execute `msvc-build.bat`. Open that file to see the individual steps needed to build the C SDK on Windows. The steps the script will do are:
+The easiest method to build on windows is to open a "Developer Command Prompt for VS 2019" and execute `msvc-build.bat`. 
+Open that file to see the individual steps needed to build the C SDK on Windows. The steps the script will do are:
 
 ```
 mkdir build
@@ -51,20 +46,14 @@ cmake .. -DCMAKE_INSTALL_INCLUDEDIR=include -DCMAKE_INSTALL_LIBDIR=lib
 cmake --build . --config Debug [Release]
 ```
 
-## Working with protobuf
-Required version of protobuf-c compiler (get it for your specific environment)
+Getting Help
+------------
+Please use these community resources for getting help. We use GitHub [issues](https://github.com/NetFoundry/ziti-sdk-c/issues) 
+for tracking bugs and feature requests and have limited bandwidth to address them.
 
-```bash
-$ protoc-c --version
-protobuf-c 1.3.1
-libprotoc 3.6.1
+- Read the [docs](https://netfoundry.github.io/ziti-doc/ziti/overview.html)
+- Join our [Developer Community](https://developer.netfoundry.io)
+- Participate in discussion on [Discourse](https://netfoundry.discourse.group/)
 
-Generate source files from protocol definitions and check them in
-```
 
-$ cd library/proto/
-$ protoc-c --c_out=. *.proto
-$ git add *.h *.c
-...
-```
 Copyright&copy; 2018-2019. NetFoundry, Inc.

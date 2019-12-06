@@ -560,10 +560,6 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
                 on_channel_close(ch, ZITI_EOF);
                 break;
 
-            case MBEDTLS_ERR_SSL_WANT_READ:
-                ZITI_LOG(DEBUG, "on_channel_data() rc+%zd(%s)", len, fmt_mbederr(len));
-                return;
-
             default:
                 ZITI_LOG(ERROR, "unhandled error on_data rc=%zd (%s)", len, uv_strerror(len));
                 on_channel_close(ch, len);

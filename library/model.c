@@ -228,7 +228,19 @@ free(obj);\
 }
 
 #define FREE_MODEL_ARR(type) void free_##type##_array(type **arr) {\
-free_array((void**)arr, (free_func)free_##type); \
+    type **pptr; \
+    for (pptr = arr; *pptr != NULL; pptr++) {\
+        free_##type(*pptr);\
+    }\
+}
+
+#define FREE_MODEL_LIST(type) void free_##type##_list(type##_list *l) {\
+    type *it; \
+    while(!SLIST_EMPTY(l)){\
+        it = SLIST_FIRST(l);\
+        SLIST_REMOVE_HEAD(l, _next);\
+        free_##type(it); \
+    }\
 }
 
 #define DUMP_MODEL(type, model) int dump_##type(type *obj, int ind) {\
@@ -242,6 +254,7 @@ FROM_JSON(type, model) \
 FROM_JSON_ARR(type) \
 FREE_MODEL(type, model) \
 FREE_MODEL_ARR(type) \
+FREE_MODEL_LIST(type) \
 DUMP_MODEL(type, model)
 
 MODEL_IMPL(ziti_service, ZITI_SERVICE_MODEL)

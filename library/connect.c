@@ -139,27 +139,30 @@ static int ziti_connect(struct nf_ctx *ctx, const ziti_net_session *session, str
 void ziti_connect_async(uv_async_t *ar) {
     struct nf_conn_req *req = ar->data;
     struct nf_ctx *ctx = req->conn->nf_ctx;
-
-    req->t = malloc(sizeof(uv_timer_t));
-    uv_timer_init(ar->loop, req->t);
-    req->t->data = req;
-    uv_timer_start(req->t, connect_timeout, req->conn->timeout, 0);
+    uv_loop_t *loop = ar->loop;
 
     uv_close((uv_handle_t *) ar, free_handle);
 
     // find service
     const ziti_net_session *net_session = NULL;
-    const char *service_id;
-    for (ziti_service **s = ctx->services; *s != NULL; s++) {
-        if (strcmp(req->service_id, (*s)->name) == 0) {
-            service_id = (*s)->id;
+    const char *service_id = NULL;
+    ziti_service *s;
+    SLIST_FOREACH (s, &ctx->services, _next) {
+        if (strcmp(req->service_id, s->name) == 0) {
+            service_id = s->id;
             break;
         }
     }
 
-    for(ziti_net_session **ns = ctx->net_sessions; *ns != NULL; ns++) {
-        if (strcmp(service_id, (*ns)->service_id) == 0) {
-            net_session = (*ns);
+    if (service_id == NULL) {
+        req->cb(req->conn, ZITI_SERVICE_UNAVALABLE);
+        return;
+    }
+
+    ziti_net_session *it;
+    SLIST_FOREACH(it, &ctx->net_sessions, _next) {
+        if (strcmp(service_id, it->service_id) == 0) {
+            net_session = it;
             break;
         }
     }
@@ -172,6 +175,11 @@ void ziti_connect_async(uv_async_t *ar) {
         req->cb(req->conn, ZITI_SERVICE_UNAVALABLE);
     }
     else {
+        req->t = malloc(sizeof(uv_timer_t));
+        uv_timer_init(loop, req->t);
+        req->t->data = req;
+        uv_timer_start(req->t, connect_timeout, req->conn->timeout, 0);
+
         ziti_connect(ctx, net_session, req);
     }
 }

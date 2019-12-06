@@ -17,20 +17,18 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include "model.h"
 #include "utils.h"
-#include "tls.h"
 #include "zt_internal.h"
 #include "controller.h"
-
 
 int ziti_logout(struct nf_ctx* ctx) {
     PREPF(ziti, ziti_errorstr);
     ziti_ctrl_logout(ctx, 0, NULL);
 
-    free_ziti_service_array(ctx->services);
-    ctx->services = NULL;
-    free_ziti_net_session_array(ctx->net_sessions);
-    ctx->net_sessions = NULL;
+    free_ziti_service_list(&ctx->services);
+    free_ziti_net_session_list(&ctx->net_sessions);
+
 
     CATCH(ziti);
     return ZITI_OK;
