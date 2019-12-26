@@ -19,7 +19,7 @@ limitations under the License.
 
 
 #include <stdbool.h>
-#include <sys/queue.h>
+#include <uv_mbed/queue.h>
 #include <uv_mbed/uv_mbed.h>
 
 #include <nf/ziti.h>

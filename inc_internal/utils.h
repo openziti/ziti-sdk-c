@@ -22,6 +22,7 @@ limitations under the License.
 #include <uv.h>
 #include <http_parser.h>
 #include <stdlib.h>
+#include <uv_mbed/queue.h>
 
 #ifdef __cplusplus
 extern "C" {

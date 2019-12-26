@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <utils.h>
 #include <nf/ziti.h>
-#include <sys/queue.h>
 
 #if(WIN32)
 #define strsignal(s) "_windows_unimplemented_"
