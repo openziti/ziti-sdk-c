@@ -107,7 +107,7 @@ XX(token, string, none, "$.token")\
 XX(id, string, none, "$.id") \
 XX(hosting, bool, none, "$.hosting") \
 XX(gateways, ziti_gateway, array, "$.gateways") \
-XX(service_id, string, none, NULL)
+XX(service_id, string, none, "$.service.id")
 
 #define ZITI_SESSION_MODEL(XX)\
 XX(id, string, none, "$.id") \

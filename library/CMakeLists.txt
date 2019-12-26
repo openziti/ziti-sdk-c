@@ -4,7 +4,7 @@ add_library(ziti STATIC
         zt_auth.c
         config.c
         errors.c
-        controller.c
+        ziti_ctrl.c
         model.c
         connect.c
         channel.c

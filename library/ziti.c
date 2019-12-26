@@ -121,18 +121,8 @@ static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout
     return ZITI_INVALID_CONFIG;
 }
 
-int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx) {
-    init_debug();
-
-    ZITI_LOG(INFO, "ZitiSDK version %s @%s(%s)", ziti_get_version(false), ziti_git_commit(), ziti_git_branch());
-
-    PREP(ziti);
-    nf_config *cfg;
-    TRY(ziti, load_config(config, &cfg));
-
-    CATCH(ziti) {
-        return ERR(ziti);
-    }
+int load_tls(nf_config *cfg, tls_context **ctx) {
+     PREP(ziti);
 
     // load ca from nf config if present
     const char *ca, *cert;
@@ -163,6 +153,30 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
         const char *key;
         size_t key_len = parse_ref(cfg->key, &key);
         tls->api->set_own_cert(tls->ctx, cert, cert_len, key, key_len);
+    }
+
+     CATCH(ziti) {
+        return ERR(ziti);
+    }
+
+    *ctx = tls;
+    return ZITI_OK;
+}
+
+int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx) {
+    init_debug();
+
+    ZITI_LOG(INFO, "ZitiSDK version %s @%s(%s)", ziti_get_version(false), ziti_git_commit(), ziti_git_branch());
+
+    PREP(ziti);
+    nf_config *cfg;
+    tls_context *tls = NULL;
+
+    TRY(ziti, load_config(config, &cfg));
+    TRY(ziti, load_tls(cfg, &tls));
+
+    CATCH(ziti) {
+        return ERR(ziti);
     }
 
     return NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx);

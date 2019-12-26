@@ -223,8 +223,10 @@ return (type**)parse_array(json, json_len, "$", (parse_func)parse_##type); \
 }
 
 #define FREE_MODEL(type, model) void free_##type(type *obj) {\
+if (obj != NULL) {\
 model(free_field)\
 free(obj);\
+}\
 }
 
 #define FREE_MODEL_ARR(type) void free_##type##_array(type **arr) {\

@@ -39,7 +39,7 @@ int ziti_auth(struct nf_ctx *ctx) {
 
     TRY(ziti, ziti_ctrl_process(ctx,
             ziti_ctrl_version,
-            ziti_ctrl_login,
+            ziti_ctrl_login_old,
             ziti_ctrl_get_services,
             ziti_ctrl_get_network_sessions,
             NULL));

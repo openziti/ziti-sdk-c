@@ -24,7 +24,7 @@ typedef int (*ctrl_req)(struct nf_ctx *, uv_os_sock_t sock, tls_engine *ssl);
 int ziti_ctrl_process(nf_context ctx, ...);
 
 int ziti_ctrl_version(nf_context ctx, uv_os_sock_t, tls_engine *);
-int ziti_ctrl_login(nf_context ctx, uv_os_sock_t, tls_engine *);
+int ziti_ctrl_login_old(nf_context ctx, uv_os_sock_t, tls_engine *);
 
 int ziti_ctrl_logout(nf_context ctx, uv_os_sock_t, tls_engine *);
 
