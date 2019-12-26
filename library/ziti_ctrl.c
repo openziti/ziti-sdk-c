@@ -21,6 +21,8 @@ limitations under the License.
 #include "zt_internal.h"
 #include "strutils.h"
 #include "model.h"
+#include <ziti_ctrl.h>
+#include <uv_mbed/um_http.h>
 
 #define MJSON_API_ONLY
 #include <mjson.h>
@@ -29,8 +31,6 @@ limitations under the License.
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 #else
 #include <unistd.h>
-#include <ziti_ctrl.h>
-#include <uv_mbed/um_http.h>
 
 #define SOCKET int //differences tween windows and posix
 #endif
