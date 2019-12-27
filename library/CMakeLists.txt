@@ -64,7 +64,9 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/includes/
 
 install(FILES ${CMAKE_SOURCE_DIR}/deps/http-parser/LICENSE-MIT DESTINATION ${CMAKE_INSTALL_DOCDIR}/http-parser)
 install(FILES ${CMAKE_SOURCE_DIR}/deps/mjson/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mjson)
-install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/mbedtls/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls)
+install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/deps/mbedtls/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls)
+install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/deps/uv_link_t/README.md DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
+install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/deps/mbedtls/crypto/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls/crypto)
 install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_mbed)
 
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ziti.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
