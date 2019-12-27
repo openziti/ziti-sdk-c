@@ -83,7 +83,7 @@ TEST_CASE("controller_test","[integ]") {
         AND_THEN("login should get session") {
             REQUIRE(session.error == nullptr);
             REQUIRE(session.resp != nullptr);
-            REQUIRE(ctrl.session != NULL);
+            REQUIRE(ctrl.session != nullptr);
         }
     }
 
