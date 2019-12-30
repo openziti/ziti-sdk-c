@@ -115,9 +115,9 @@ static int ziti_controller_req(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine
                                const char *conttype, const unsigned char *content, size_t content_len,
                                struct controller_resp *resp);
 
-static int code_to_error(const char *code);
+int code_to_error(const char *code);
 
-
+/*
 int ziti_ctrl_logout(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine *ssl) {
     if (ssl == NULL) {
         return ziti_ctrl_process(ctx, ziti_ctrl_logout, NULL);
@@ -405,21 +405,7 @@ int ziti_ctrl_process(struct nf_ctx* ctx, ...) {
     struct addrinfo *address, *ap;
     int r = getaddrinfo(ctx->controller, port, &hints, &address);
     if (r != 0 || address == NULL) {
-        /*
-        Copyright 2019 Netfoundry, Inc.
 
-        Licensed under the Apache License, Version 2.0 (the "License");
-        you may not use this file except in compliance with the License.
-        You may obtain a copy of the License at
-
-        https://www.apache.org/licenses/LICENSE-2.0
-
-        Unless required by applicable law or agreed to in writing, software
-        distributed under the License is distributed on an "AS IS" BASIS,
-        WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-        See the License for the specific language governing permissions and
-        limitations under the License.
-        */
 
         ZITI_LOG(ERROR, "failed to resolve controller(%s): %s", ctx->controller, strerror(errno));
         return ZITI_CONTROLLER_UNAVAILABLE;
@@ -488,8 +474,9 @@ int ziti_ctrl_process(struct nf_ctx* ctx, ...) {
     return rc;
 }
 
+*/
 
-static int code_to_error(const char *code) {
+int code_to_error(const char *code) {
 
 #define CODE_MAP(XX) \
 XX(NO_ROUTABLE_INGRESS_NODES, ZITI_GATEWAY_UNAVAILABLE) \
@@ -538,8 +525,9 @@ static void ctrl_resp_cb(um_http_req_t *req, int code, um_header_list *headers) 
 }
 
 static void ctrl_default_cb (void *s, ziti_error *e, struct ctrl_resp *resp) {
-    if (resp->resp_cb)
+    if (resp->resp_cb) {
         resp->resp_cb(s, e, resp->ctx);
+    }
 
     free(resp);
 }
@@ -594,6 +582,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char* b, ssize_t len) {
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_context *tls) {
     um_http_init(loop, &ctrl->client, url);
     um_http_set_ssl(&ctrl->client, tls);
+    um_http_idle_keepalive(&ctrl->client, 15000);
     ctrl->session = NULL;
 
     return ZITI_OK;

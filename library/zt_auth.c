@@ -22,7 +22,9 @@ limitations under the License.
 #include "zt_internal.h"
 #include "controller.h"
 
+// TODO remove theses
 int ziti_logout(struct nf_ctx* ctx) {
+    /*
     PREPF(ziti, ziti_errorstr);
     ziti_ctrl_logout(ctx, 0, NULL);
 
@@ -31,10 +33,12 @@ int ziti_logout(struct nf_ctx* ctx) {
 
 
     CATCH(ziti);
+     */
     return ZITI_OK;
 }
 
 int ziti_auth(struct nf_ctx *ctx) {
+    /*
     PREPF(ziti, ziti_errorstr);
 
     TRY(ziti, ziti_ctrl_process(ctx,
@@ -47,6 +51,6 @@ int ziti_auth(struct nf_ctx *ctx) {
     CATCH(ziti){
         return ERR(ziti);
     }
-
+*/
     return ZITI_OK;
 }

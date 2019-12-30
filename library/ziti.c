@@ -47,6 +47,10 @@ struct nf_init_req {
     void* init_ctx;
 };
 
+int code_to_error(const char *code);
+static void version_cb(ctrl_version* v, ziti_error* err, void* ctx);
+static void session_cb(ziti_session *session, ziti_error *err, void *ctx);
+
 static void init_work(uv_work_t *req) {
     ZITI_LOG(INFO, "initializing ziti");
     PREPF(ziti, ziti_errorstr);
@@ -193,23 +197,18 @@ NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop
     }
 
     NEWP(ctx, struct nf_ctx);
-
-    struct http_parser_url url;
-    http_parser_url_init(&url);
-    http_parser_parse_url(ctrl_url, strlen(ctrl_url), 0, &url);
-    strncpy(ctx->controller, ctrl_url + url.field_data[UF_HOST].off, url.field_data[UF_HOST].len);
-    ctx->controller_port = url.port;
-
     ctx->tlsCtx = tls_context;
+    ctx->loop = loop;
+    ctx->ziti_timeout = DEFAULT_TIMEOUT;
+
+    ziti_ctrl_init(loop, &ctx->controller, ctrl_url, tls_context);
+    ziti_ctrl_get_version(&ctx->controller, version_cb, &ctx->controller);
 
     NEWP(init_req, struct nf_init_req);
     init_req->init_cb = init_cb;
     init_req->init_ctx = init_ctx;
     init_req->nf = ctx;
-
-    NEWP(iw, uv_work_t);
-    iw->data = init_req;
-    uv_queue_work(loop, iw, init_work, init_complete);
+    ziti_ctrl_login(&ctx->controller, session_cb, init_req);
 
     return ZITI_OK;
 }
@@ -227,6 +226,7 @@ int NF_set_timeout(nf_context ctx, int timeout) {
 int NF_shutdown(nf_context ctx) {
     ZITI_LOG(INFO, "Ziti is shutting down");
 
+    ziti_ctrl_close(&ctx->controller);
     ziti_close_channels(ctx);
 
     return ziti_logout(ctx);
@@ -320,4 +320,34 @@ extern int NF_listen(nf_connection serv_conn, const char *service, nf_listen_cb 
 
 extern int NF_accept(nf_connection clt, nf_conn_cb cb, nf_data_cb data_cb) {
     return ziti_accept(clt, cb, data_cb);
+}
+
+static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
+    struct nf_init_req *init_req = ctx;
+
+    int errCode = err ? code_to_error(err->code) : ZITI_OK;
+
+    if (init_req != NULL) {
+        init_req->nf->session = session;
+        init_req->init_cb(init_req->nf, errCode, init_req->init_ctx);
+    }
+    else {
+        FREE(session);
+    }
+    FREE(err);
+    free(init_req);
+}
+
+static void version_cb(ctrl_version *v, ziti_error *err, void *ctx) {
+    ziti_controller *ctrl = ctx;
+    if (err != NULL) {
+        ZITI_LOG(ERROR, "failed to get controller version from %s:%s %s(%s)",
+                 ctrl->client.host, ctrl->client.port, err->code, err->message);
+        free_ziti_error(err);
+    }
+    else {
+        ZITI_LOG(INFO, "connected to controller %s:%s version %s(%s %s)",
+                 ctrl->client.host, ctrl->client.port, v->version, v->revision, v->build_date);
+        free_ctrl_version(v);
+    }
 }

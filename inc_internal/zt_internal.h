@@ -26,6 +26,7 @@ limitations under the License.
 #include "model.h"
 #include "buffer.h"
 #include "message.h"
+#include "ziti_ctrl.h"
 
 //#define SIZEOF(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -154,8 +155,8 @@ struct nf_conn {
 
 
 struct nf_ctx {
-    char controller[128];
-    uint16_t controller_port;
+    ziti_controller controller;
+
     tls_context *tlsCtx;
 
     ziti_session *session;
