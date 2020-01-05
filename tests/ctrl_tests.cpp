@@ -45,6 +45,12 @@ template <class T> void resp_cb(T* r, ziti_error *err, void* ctx) {
     rc->resp = r;
 }
 
+auto logout_cb = [](void*, ziti_error* err, void* ctx) {
+    auto logout = static_cast<resp_capture<const char> *>(ctx);
+    logout->error = err;
+    logout->resp = "logout called";
+};
+
 TEST_CASE("controller_test","[integ]") {
     uv_mbed_set_debug(5, stdout);
 
@@ -118,6 +124,8 @@ TEST_CASE("controller_test","[integ]") {
             resp_capture<ziti_service> service;
             resp_capture<ziti_net_session> ns;
 
+            resp_capture<const char> logout;
+
             ziti_controller *c;
         } r;
         r.c = &ctrl;
@@ -128,6 +136,8 @@ TEST_CASE("controller_test","[integ]") {
             if (e == nullptr) {
                 ziti_ctrl_get_net_session(re->c, s, resp_cb, &re->ns);
             }
+            ziti_ctrl_logout(re->c, logout_cb, &re->logout);
+
         };
         ziti_ctrl_login(&ctrl, resp_cb, &r.session);
         ziti_ctrl_get_service(&ctrl, "wttr.in", serv_cb, &r);
@@ -142,6 +152,10 @@ TEST_CASE("controller_test","[integ]") {
             REQUIRE(r.ns.error == nullptr);
             REQUIRE(r.ns.resp != nullptr);
             REQUIRE(r.ns.resp->token != nullptr);
+        }
+        AND_THEN("logout should succeed") {
+            REQUIRE(r.logout.error == nullptr);
+            REQUIRE_THAT(r.logout.resp, Equals("logout called"));
         }
 
         free_ziti_session(r.session.resp);

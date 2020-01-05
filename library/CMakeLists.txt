@@ -1,7 +1,6 @@
 add_library(ziti STATIC
         utils.c strutils.h
         ziti.c
-        zt_auth.c
         config.c
         errors.c
         ziti_ctrl.c

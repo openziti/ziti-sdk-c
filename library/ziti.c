@@ -51,38 +51,6 @@ int code_to_error(const char *code);
 static void version_cb(ctrl_version* v, ziti_error* err, void* ctx);
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx);
 
-static void init_work(uv_work_t *req) {
-    ZITI_LOG(INFO, "initializing ziti");
-    PREPF(ziti, ziti_errorstr);
-
-    struct nf_init_req *init_req = req->data;
-
-    nf_context ctx = init_req->nf;
-    SLIST_INIT(&ctx->channels);
-
-    TRY(ziti, ziti_auth(ctx));
-
-    CATCH(ziti) {
-        init_req->init_status = ERR(ziti);
-    }
-}
-
-static void init_complete(uv_work_t* req, int status) {
-    struct nf_init_req *init_req = req->data;
-
-    if (init_req->init_status == ZITI_OK) {
-        struct nf_ctx *nf = init_req->nf;
-        nf->loop = req->loop;
-        nf->loop_thread = uv_thread_self();
-        nf->ziti_timeout = DEFAULT_TIMEOUT;
-        nf->ch_counter = 0;
-    }
-
-    init_req->init_cb(init_req->nf, init_req->init_status, init_req->init_ctx);
-    free(init_req);
-    free(req);
-}
-
 static size_t parse_ref(const char *val, const char **res) {
     size_t len = 0;
     *res = NULL;
@@ -229,7 +197,9 @@ int NF_shutdown(nf_context ctx) {
     ziti_ctrl_close(&ctx->controller);
     ziti_close_channels(ctx);
 
-    return ziti_logout(ctx);
+    ziti_ctrl_logout(&ctx->controller, NULL, NULL);
+
+    return ZITI_OK;
 }
 
 int NF_free(nf_context *ctxp) {
