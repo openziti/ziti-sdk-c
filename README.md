@@ -56,4 +56,4 @@ for tracking bugs and feature requests and have limited bandwidth to address the
 - Participate in discussion on [Discourse](https://netfoundry.discourse.group/)
 
 
-Copyright&copy; 2018-2019. NetFoundry, Inc.
+Copyright&copy; 2018-2020. NetFoundry, Inc.
