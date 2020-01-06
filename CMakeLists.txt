@@ -3,7 +3,7 @@ include(git.cmake)
 
 project (ziti-sdk
         VERSION ${ver}
-        LANGUAGES C
+        LANGUAGES C CXX
         )
 
 message("project version: ${PROJECT_VERSION}")

@@ -1,4 +1,3 @@
-enable_language(CXX)
 
 add_executable(all_tests
         all_tests.cpp
