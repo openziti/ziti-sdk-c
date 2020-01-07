@@ -127,10 +127,10 @@ static int ziti_connect(struct nf_ctx *ctx, const ziti_net_session *session, str
     struct nf_conn *conn = req->conn;
     conn->token = session->token;
 
-    ziti_gateway **gw;
-    for (gw = session->gateways; *gw != NULL; gw++) {
-        ZITI_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*gw)->name, (*gw)->url_tls, conn->token);
-        ziti_channel_connect(ctx, (*gw)->url_tls, on_channel_connected, req);
+    ziti_edge_router **er;
+    for (er = session->edge_routers; *er != NULL; er++) {
+        ZITI_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, (*er)->url_tls, conn->token);
+        ziti_channel_connect(ctx, (*er)->url_tls, on_channel_connected, req);
     }
 
     return 0;

@@ -97,7 +97,7 @@ XX(cert, string, none, "$.id.cert") \
 XX(key, string, none, "$.id.key") \
 XX(ca, string, none, "$.id.ca")
 
-#define ZITI_GATEWAY_MODEL(XX)\
+#define ZITI_EDGE_ROUTER_MODEL(XX)\
 XX(name, string, none, "$.name")\
 XX(hostname, string, none, "$.hostname") \
 XX(url_tls, string, none, "$.urls.tls")
@@ -106,7 +106,7 @@ XX(url_tls, string, none, "$.urls.tls")
 XX(token, string, none, "$.token")\
 XX(id, string, none, "$.id") \
 XX(hosting, bool, none, "$.hosting") \
-XX(gateways, ziti_gateway, array, "$.gateways") \
+XX(edge_routers, ziti_edge_router, array, "$.edgeRouters") \
 XX(service_id, string, none, NULL)
 
 #define ZITI_SESSION_MODEL(XX)\
@@ -115,7 +115,7 @@ XX(token, string, none, "$.token") \
 XX(expires, timeval_t, ptr, "$.expiresAt")\
 XX(identity, ziti_identity, ptr, "$.identity")
 
-#define ZITI_IDENITIY_MODEL(XX) \
+#define ZITI_IDENTITY_MODEL(XX) \
 XX(id, string, none, "$.id") \
 XX(name, string, none, "$.name")
 
@@ -132,10 +132,10 @@ DECLARE_MODEL(ctrl_version, ZITI_CTRL_VERSION)
 DECLARE_MODEL(nf_config, ZITI_CONFIG_MODEL)
 DECLARE_MODEL(ziti_service, ZITI_SERVICE_MODEL)
 
-DECLARE_MODEL(ziti_gateway, ZITI_GATEWAY_MODEL)
+DECLARE_MODEL(ziti_edge_router, ZITI_EDGE_ROUTER_MODEL)
 DECLARE_MODEL(ziti_net_session, ZITI_NET_SESSION_MODEL)
 
-DECLARE_MODEL(ziti_identity, ZITI_IDENITIY_MODEL)
+DECLARE_MODEL(ziti_identity, ZITI_IDENTITY_MODEL)
 DECLARE_MODEL(ziti_session, ZITI_SESSION_MODEL)
 
 DECLARE_MODEL(ziti_error, ZITI_ERROR_MODEL)
