@@ -122,7 +122,7 @@ int ziti_ctrl_logout(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_engine *ssl) {
 
     struct controller_resp resp;
     memset(&resp, 0, sizeof(struct controller_resp));
-    ziti_controller_req(ctx, ctrl, ssl, "DELETE", "/current-session", NULL, NULL, 0, &resp);
+    ziti_controller_req(ctx, ctrl, ssl, "DELETE", "/current-api-session", NULL, NULL, 0, &resp);
     if (ctx->session != NULL) {
         free_ziti_session(ctx->session);
         ctx->session = NULL;
@@ -235,7 +235,7 @@ int ziti_ctrl_get_network_sessions(struct nf_ctx *ctx, uv_os_sock_t ctrl, tls_en
 
     PREPF(ziti, ziti_errorstr);
     const char* method = "POST";
-    const char* path = "/network-sessions";
+    const char* path = "/sessions";
     const char* conttype = "application/json";
 
     ziti_service *s;

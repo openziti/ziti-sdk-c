@@ -35,7 +35,7 @@ TEST_CASE("multi-edge-router session", "[model]") {
     const char *ns = "{\n"
                      "    \"_links\": {\n"
                      "      \"self\": {\n"
-                     "        \"href\": \"./network-sessions/1276df75-3ba3-4658-98ad-fe5a0e96021a\"\n"
+                     "        \"href\": \"./sessions/1276df75-3ba3-4658-98ad-fe5a0e96021a\"\n"
                      "      }\n"
                      "    },\n"
                      "    \"edgeRouters\": [\n"
