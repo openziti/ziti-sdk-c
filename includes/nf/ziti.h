@@ -141,7 +141,15 @@ extern int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data);
  */
 extern void *NF_conn_data(nf_connection conn);
 
-extern int NF_service_available(nf_context nf_ctx, const char *service);
+/**
+ * \brief Checks availability of the service for the given edge context.
+ * @param nf_ctx
+ * @param service
+ * @param cb callback called with ZITI_OK or ZITI_SERVICE_NOT_AVAILABLE
+ * @param ctx custom data
+ * @return
+ */
+extern int NF_service_available(nf_context nf_ctx, const char *service, nf_service_cb cb, void *ctx);
 
 /**
  * \brief Establishes connection to a Ziti service.

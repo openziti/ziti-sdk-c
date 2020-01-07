@@ -203,7 +203,7 @@ void ziti_connect_async(uv_async_t *ar) {
         }
     }
 
-    ziti_net_session *it;
+    ziti_net_session *it = NULL;
     SLIST_FOREACH(it, &ctx->net_sessions, _next) {
         if (strcmp(req->service->id, it->service_id) == 0) {
             net_session = it;

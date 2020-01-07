@@ -273,14 +273,41 @@ int NF_write(nf_connection conn, uint8_t *buf, size_t length, nf_write_cb cb, vo
     return ziti_write(req);
 }
 
-int NF_service_available(nf_context nf, const char *service) {
+struct service_req_s {
+    struct nf_ctx *nf;
+    char *service;
+    nf_service_cb cb;
+    void *cb_ctx;
+};
+
+static void service_cb (ziti_service *s, ziti_error *err, void *ctx) {
+    struct service_req_s *req = ctx;
+    int rc = ZITI_SERVICE_UNAVALABLE;
+
+    if (s != NULL) {
+        SLIST_INSERT_HEAD(&req->nf->services, s, _next);
+        rc = ZITI_OK;
+    }
+
+    req->cb(req->nf, req->service, rc, req->cb_ctx);
+    free(req);
+}
+
+int NF_service_available(nf_context nf, const char *service, nf_service_cb cb, void *ctx) {
     ziti_service *s;
     SLIST_FOREACH (s, &nf->services, _next) {
         if (strcmp(service, s->name) == 0) {
-            return ZITI_OK;
+            cb(nf, service, ZITI_OK, ctx);
         }
     }
 
+    NEWP(req, struct service_req_s);
+    req->nf = nf;
+    req->service = strdup(service);
+    req->cb = cb;
+    req->cb_ctx = ctx;
+
+    ziti_ctrl_get_service(&nf->controller, service, service_cb, req);
     return ZITI_SERVICE_UNAVALABLE;
 }
 
