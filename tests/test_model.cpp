@@ -30,15 +30,15 @@ limitations under the License.
 
 using Catch::Matchers::Equals;
 
-TEST_CASE("multi-gateway session", "[model]") {
+TEST_CASE("multi-edge-router session", "[model]") {
 
     const char *ns = "{\n"
                      "    \"_links\": {\n"
                      "      \"self\": {\n"
-                     "        \"href\": \"./network-sessions/1276df75-3ba3-4658-98ad-fe5a0e96021a\"\n"
+                     "        \"href\": \"./sessions/1276df75-3ba3-4658-98ad-fe5a0e96021a\"\n"
                      "      }\n"
                      "    },\n"
-                     "    \"gateways\": [\n"
+                     "    \"edgeRouters\": [\n"
                      "      {\n"
                      "        \"hostname\": \"ec2-18-223-205-231.us-east-2.compute.amazonaws.com\",\n"
                      "        \"name\": \"ziti-bridge-us-east\",\n"
@@ -62,11 +62,11 @@ TEST_CASE("multi-gateway session", "[model]") {
 
     dump_ziti_net_session(s, 0);
 
-    REQUIRE(s->gateways[0] != nullptr);
-    REQUIRE(s->gateways[1] != nullptr);
-    REQUIRE(s->gateways[2] == nullptr);
+    REQUIRE(s->edge_routers[0] != nullptr);
+    REQUIRE(s->edge_routers[1] != nullptr);
+    REQUIRE(s->edge_routers[2] == nullptr);
 
-    REQUIRE(strcmp(s->gateways[1]->url_tls, "tls://ec2-18-188-224-88.us-east-2.compute.amazonaws.com:3022") == 0);
+    REQUIRE(strcmp(s->edge_routers[1]->url_tls, "tls://ec2-18-188-224-88.us-east-2.compute.amazonaws.com:3022") == 0);
 
     free_ziti_net_session(s);
 }
