@@ -15,3 +15,6 @@ ziti_libs/
 #docfx related
 docfx_site
 windows/packages
+
+#ide related
+.vscode
