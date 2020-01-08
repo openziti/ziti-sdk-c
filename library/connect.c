@@ -154,7 +154,7 @@ static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) 
         uv_async_send(ar);
     }
 
-    FREE(err);
+    free_ziti_error(err);
 }
 
 static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, void *ctx) {
@@ -174,7 +174,7 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
         uv_async_send(ar);
     }
 
-    FREE(err);
+    free_ziti_error(err);
 }
 
 void ziti_connect_async(uv_async_t *ar) {
