@@ -203,7 +203,7 @@ void ziti_ctrl_login(ziti_controller *ctrl, void(*cb)(ziti_session*, ziti_error*
 }
 
 void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void*, ziti_error*, void*), void *ctx) {
-    um_http_req_t *req = um_http_req(&ctrl->client, "DELETE", "/current-session");
+    um_http_req_t *req = um_http_req(&ctrl->client, "DELETE", "/current-api-session");
     req->resp_cb = ctrl_resp_cb;
     req->body_cb = ctrl_body_cb;
 
@@ -259,7 +259,7 @@ void ziti_ctrl_get_net_session(
     size_t len = (size_t) sprintf(content, "{\"serviceId\":\"%s\",\"hosting\":%s}",
                                       service->id, service->hostable ? "true" : "false");
 
-    um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/network-sessions");
+    um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/sessions");
     req->resp_cb = ctrl_resp_cb;
     req->body_cb = ctrl_body_cb;
     um_http_req_header(req, "Content-Type", "application/json");
@@ -278,7 +278,7 @@ void ziti_ctrl_get_net_session(
 void ziti_ctrl_get_net_sessions(
         ziti_controller *ctrl, void (*cb)(ziti_net_session **, ziti_error*, void*), void* ctx) {
 
-    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/network-sessions");
+    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/sessions");
     req->resp_cb = ctrl_resp_cb;
     req->body_cb = ctrl_body_cb;
 
