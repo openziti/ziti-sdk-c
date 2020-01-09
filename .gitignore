@@ -16,4 +16,9 @@ ziti_libs/
 docfx_site
 windows/packages
 
+<<<<<<< HEAD
 .idea
+=======
+#ide related
+.vscode
+>>>>>>> new branch with just Doxyfile and md
