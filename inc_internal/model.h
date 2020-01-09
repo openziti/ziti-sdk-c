@@ -21,7 +21,7 @@ limitations under the License.
 #include <stdbool.h>
 #endif
 
-#include <sys/queue.h>
+#include <uv_mbed/queue.h>
 
 #if _WIN32
 #include <time.h>

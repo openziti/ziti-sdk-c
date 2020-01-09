@@ -26,7 +26,7 @@ limitations under the License.
 #include <time.h>
 #endif
 
-#include "../library/model.h"
+#include "model.h"
 
 using Catch::Matchers::Equals;
 

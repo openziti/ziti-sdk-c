@@ -459,12 +459,6 @@ static void hello_reply_cb(void *ctx, message *msg) {
     bool found = message_get_bool_header(msg, ResultSuccessHeader, &success);
     assert(found);
 
-    hdr_t *headers;
-    int nhdrs = parse_hdrs(msg->headers, msg->header.headers_len, &headers);
-
-    for (int i = 0; i < nhdrs; i++) {
-        ZITI_LOG(TRACE, "hdr[%d] id[%d], len[%d]", i, headers[i].header_id, headers[i].length);
-    }
     ziti_channel_t *ch = ctx;
 
     int cb_code = ZITI_OK;

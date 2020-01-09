@@ -21,7 +21,7 @@ limitations under the License.
 #else
 #include <sys/param.h>
 #endif
-#include <sys/queue.h>
+#include <uv_mbed/queue.h>
 
 #include "buffer.h"
 
