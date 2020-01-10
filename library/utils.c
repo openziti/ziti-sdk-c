@@ -36,14 +36,44 @@ limitations under the License.
 #define to_str(x) str(x)
 #define str(x) #x
 
+/*
+ * https://sourceforge.net/p/predef/wiki/OperatingSystems/
+ */
+#if defined(WIN32)
+#define ZITI_OS Windows
+#elif defined(__ANDROID__)
+#define ZITI_OS Android
+#elif defined(__linux__)
+#define ZITI_OS Linux
+#elif defined(__APPLE__)
+#define ZITI_OS MacOS
+#else
+#define ZITI_OS UKNOWN
+#endif
+
+/*
+ * from https://sourceforge.net/p/predef/wiki/Architectures/
+ */
+#if defined(__aarch64__)
+#define ZITI_ARCH arm64
+#elif defined(__arm__)
+#define ZITI_ARCH arm
+#elif defined(__amd64__)
+#define ZITI_ARCH amd64
+#elif defined(__i386__)
+#define ZITI_ARCH x86
+#else
+#define ZITI_ARCH UKNOWN
+#endif
+
 const char* ziti_get_version(int verbose) {
     if (verbose) {
         return "\n\tVersion:\t" to_str(ZITI_VERSION)
                "\n\tBuild Date:\t" to_str(BUILD_DATE)
                "\n\tGit Branch:\t" to_str(ZITI_BRANCH)
                "\n\tGit SHA:\t" to_str(ZITI_COMMIT)
-               "\n\tOS:\t" // TODO
-               "\n\tArch:\t" // TODO
+               "\n\tOS:\t" to_str(ZITI_OS)
+               "\n\tArch:\t" to_str(ZITI_ARCH)
                "\n";
 
     }

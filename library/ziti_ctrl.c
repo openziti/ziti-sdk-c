@@ -26,6 +26,12 @@ limitations under the License.
 #define MJSON_API_ONLY
 #include <mjson.h>
 
+#if _WIN32
+
+#define strcasecmp _stricmp
+#define strncasecmp _strnicmp
+
+#endif
 
 int code_to_error(const char *code) {
 
