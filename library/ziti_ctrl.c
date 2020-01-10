@@ -84,8 +84,14 @@ static void ctrl_default_cb (void *s, ziti_error *e, struct ctrl_resp *resp) {
 }
 
 static void ctrl_login_cb(ziti_session *s, ziti_error *e, struct ctrl_resp *resp) {
-    resp->ctrl->session = strdup(s->token);
-    um_http_header(&resp->ctrl->client, "zt-session", s->token);
+    if (e) {
+        ZITI_LOG(ERROR, "%s(%s)", e->code, e->message);
+    }
+
+    if (s) {
+        resp->ctrl->session = strdup(s->token);
+        um_http_header(&resp->ctrl->client, "zt-session", s->token);
+    }
     ctrl_default_cb(s, e, resp);
 }
 
@@ -168,6 +174,7 @@ void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ctrl_version *, ziti
 
 void ziti_ctrl_login(ziti_controller *ctrl, void(*cb)(ziti_session*, ziti_error*, void*), void *ctx) {
     um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/authenticate?method=cert");
+    um_http_req_header(req, "Content-Type", "application/json");
     req->resp_cb = ctrl_resp_cb;
     req->body_cb = ctrl_body_cb;
 
