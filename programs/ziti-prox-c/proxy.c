@@ -149,6 +149,7 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         NF_close((nf_connection *) &clt->nf_conn);
 
         uv_read_stop(stream);
+        free(buf->base);
     }
     else {
         clt->inb_reqs += 1;

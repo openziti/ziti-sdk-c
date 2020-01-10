@@ -138,7 +138,16 @@ int load_tls(nf_config *cfg, tls_context **ctx) {
 int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx) {
     init_debug();
 
-    ZITI_LOG(INFO, "ZitiSDK version %s @%s(%s)", ziti_get_version(false), ziti_git_commit(), ziti_git_branch());
+    uv_timeval64_t start_time;
+    uv_gettimeofday(&start_time);
+
+    struct tm *start_tm = gmtime(&start_time.tv_sec);
+    char time_str[32];
+    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
+
+    ZITI_LOG(INFO, "ZitiSDK version %s @%s(%s) starting at (%s.%03d)",
+            ziti_get_version(false), ziti_git_commit(), ziti_git_branch(),
+            time_str, start_time.tv_usec/1000);
 
     PREP(ziti);
     nf_config *cfg;
@@ -290,6 +299,7 @@ static void service_cb (ziti_service *s, ziti_error *err, void *ctx) {
     }
 
     req->cb(req->nf, req->service, rc, req->cb_ctx);
+    FREE(req->service);
     free(req);
 }
 
@@ -325,13 +335,18 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     int errCode = err ? code_to_error(err->code) : ZITI_OK;
 
     if (init_req != NULL) {
-        init_req->nf->session = session;
+        if (session) {
+            init_req->nf->session = session;
+            ZITI_LOG(INFO, "logged in successfully => api_session[%s]", session->id);
+        } else {
+            ZITI_LOG(ERROR, "failed to login: %s[%d](%s)", err->code, errCode, err->message);
+        }
         init_req->init_cb(init_req->nf, errCode, init_req->init_ctx);
     }
     else {
-        FREE(session);
+        free_ziti_session(session);
     }
-    FREE(err);
+    free_ziti_error(err);
     free(init_req);
 }
 
