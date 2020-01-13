@@ -180,14 +180,13 @@ void on_ziti_data(nf_connection conn, uint8_t *data, int len) {
         memcpy(copy, data, len);
         uv_buf_t buf = uv_buf_init(copy, len);
         req->data = copy;
+        ZITI_LOG(TRACE, "writing %d bytes to [%s] wqs[%zd]", len, c->addr_s, clt->write_queue_size);
         uv_write(req, (uv_stream_t *) clt, &buf, 1, on_client_write);
-        ZITI_LOG(TRACE, "[%s] wqs[%zd]", c->addr_s, clt->write_queue_size);
     }
-    else {
+    else if (len < 0) {
         ZITI_LOG(DEBUG, "ziti connection closed with [%d](%s)", len, ziti_errorstr(len));
         uv_close((uv_handle_t *) clt, close_cb);
     }
-
 }
 
 static void on_client(uv_stream_t *server, int status) {
