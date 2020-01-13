@@ -181,6 +181,10 @@ NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop
     ziti_ctrl_init(loop, &ctx->controller, ctrl_url, tls_context);
     ziti_ctrl_get_version(&ctx->controller, version_cb, &ctx->controller);
 
+    uv_timer_init(loop, &ctx->session_timer);
+    uv_unref((uv_handle_t *) &ctx->session_timer);
+    ctx->session_timer.data = ctx;
+
     NEWP(init_req, struct nf_init_req);
     init_req->init_cb = init_cb;
     init_req->init_ctx = init_ctx;
@@ -203,6 +207,7 @@ int NF_set_timeout(nf_context ctx, int timeout) {
 int NF_shutdown(nf_context ctx) {
     ZITI_LOG(INFO, "Ziti is shutting down");
 
+    uv_timer_stop(&ctx->session_timer);
     ziti_ctrl_close(&ctx->controller);
     ziti_close_channels(ctx);
 
@@ -329,25 +334,43 @@ extern int NF_accept(nf_connection clt, nf_conn_cb cb, nf_data_cb data_cb) {
     return ziti_accept(clt, cb, data_cb);
 }
 
+static void session_refresh(uv_timer_t *t) {
+    nf_context nf = t->data;
+    struct nf_init_req *req = calloc(1, sizeof(struct nf_init_req));
+    req->nf = nf;
+
+    ZITI_LOG(DEBUG, "refreshing API session");
+    ziti_ctrl_current_api_session(&nf->controller, session_cb, req);
+}
+
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     struct nf_init_req *init_req = ctx;
+    nf_context nf = init_req->nf;
 
     int errCode = err ? code_to_error(err->code) : ZITI_OK;
 
-    if (init_req != NULL) {
-        if (session) {
-            init_req->nf->session = session;
-            ZITI_LOG(INFO, "logged in successfully => api_session[%s]", session->id);
-        } else {
-            ZITI_LOG(ERROR, "failed to login: %s[%d](%s)", err->code, errCode, err->message);
+    if (session) {
+        ZITI_LOG(DEBUG, "%s successfully => api_session[%s]", nf->session ? "refreshed" : "logged in", session->id);
+        free_ziti_session(nf->session);
+        nf->session = session;
+
+        if (session->expires) {
+            uv_timeval64_t now;
+            uv_gettimeofday(&now);
+            ZITI_LOG(DEBUG, "ziti API session expires in %ld seconds", (long)(session->expires->tv_sec - now.tv_sec));
+            long delay = (session->expires->tv_sec - now.tv_sec) * 3 / 4;
+            uv_timer_start(&nf->session_timer, session_refresh, delay * 1000, 0);
         }
-        init_req->init_cb(init_req->nf, errCode, init_req->init_ctx);
+    } else {
+        ZITI_LOG(ERROR, "failed to login: %s[%d](%s)", err->code, errCode, err->message);
     }
-    else {
-        free_ziti_session(session);
+
+    if (init_req->init_cb) {
+        init_req->init_cb(nf, errCode, init_req->init_ctx);
     }
+
     free_ziti_error(err);
-    free(init_req);
+    FREE(init_req);
 }
 
 static void version_cb(ctrl_version *v, ziti_error *err, void *ctx) {
