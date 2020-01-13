@@ -37,6 +37,8 @@ void ziti_ctrl_get_version(ziti_controller *ctrl, void (*ver_cb)(ctrl_version*, 
 
 void ziti_ctrl_login(ziti_controller *ctrl, void (*login_cb)(ziti_session*, ziti_error*, void*), void* ctx);
 
+void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session*, ziti_error*, void*), void *ctx);
+
 void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void*, ziti_error*, void*), void *ctx);
 
 void ziti_ctrl_get_services(ziti_controller *ctrl, void (*srv_cb)(ziti_service *, ziti_error*, void*), void* ctx);

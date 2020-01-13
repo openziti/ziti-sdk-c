@@ -92,6 +92,8 @@ static void ctrl_default_cb (void *s, ziti_error *e, struct ctrl_resp *resp) {
 static void ctrl_login_cb(ziti_session *s, ziti_error *e, struct ctrl_resp *resp) {
     if (e) {
         ZITI_LOG(ERROR, "%s(%s)", e->code, e->message);
+        FREE(resp->ctrl->session);
+        um_http_header(&resp->ctrl->client, "zt-session", NULL);
     }
 
     if (s) {
@@ -204,6 +206,21 @@ void ziti_ctrl_login(ziti_controller *ctrl, void(*cb)(ziti_session*, ziti_error*
             "osVersion", osInfo.version,
             "arch", osInfo.machine);
     um_http_req_data(req, body, body_len, free_body_cb);
+
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = (void *(*)(const char *, int)) parse_ziti_session;
+    resp->resp_cb = (void (*)(void *, ziti_error*, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_login_cb;
+
+    req->data = resp;
+}
+
+void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session*, ziti_error*, void*), void *ctx) {
+    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/current-api-session");
+    req->resp_cb = ctrl_resp_cb;
+    req->body_cb = ctrl_body_cb;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (void *(*)(const char *, int)) parse_ziti_session;
