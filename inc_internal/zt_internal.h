@@ -163,6 +163,8 @@ struct nf_ctx {
     ziti_service_list services;
     ziti_net_session_list net_sessions;
 
+    uv_timer_t session_timer;
+
     uv_loop_t *loop;
     uv_thread_t loop_thread;
     uint32_t ch_counter;
