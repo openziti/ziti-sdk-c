@@ -38,7 +38,6 @@ limitations under the License.
 #define strncasecmp _strnicmp
 #endif
 
-#define DEFAULT_TIMEOUT 5000
 
 struct nf_init_req {
     nf_context nf;
@@ -170,7 +169,7 @@ NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop
 
     if (tls_context == NULL) {
         ZITI_LOG(ERROR, "tls context is required");
-        return ZITI_CONFIG_NOT_FOUND;
+        return ZITI_INVALID_CONFIG;
     }
 
     NEWP(ctx, struct nf_ctx);

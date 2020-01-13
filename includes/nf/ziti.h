@@ -34,6 +34,11 @@ extern "C" {
 #endif
 
 /**
+ * The default timeout in milliseconds for connections and write operations to succeed.
+ */
+#define DEFAULT_TIMEOUT 5000
+
+/**
  * \brief Ziti edge identity context
  * \see NF_init()
  */
