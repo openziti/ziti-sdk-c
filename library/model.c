@@ -1,5 +1,5 @@
 /*
-Copyright 2019 Netfoundry, Inc.
+Copyright 2019-2020 Netfoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -223,8 +223,10 @@ return (type**)parse_array(json, json_len, "$", (parse_func)parse_##type); \
 }
 
 #define FREE_MODEL(type, model) void free_##type(type *obj) {\
+if (obj != NULL) {\
 model(free_field)\
 free(obj);\
+}\
 }
 
 #define FREE_MODEL_ARR(type) void free_##type##_array(type **arr) {\
@@ -260,13 +262,13 @@ DUMP_MODEL(type, model)
 MODEL_IMPL(ziti_service, ZITI_SERVICE_MODEL)
 MODEL_IMPL(nf_config, ZITI_CONFIG_MODEL)
 
-MODEL_IMPL(ziti_gateway, ZITI_GATEWAY_MODEL)
+MODEL_IMPL(ziti_edge_router, ZITI_EDGE_ROUTER_MODEL)
 MODEL_IMPL(ziti_net_session, ZITI_NET_SESSION_MODEL)
 
 MODEL_IMPL(ctrl_version, ZITI_CTRL_VERSION)
 
 MODEL_IMPL(ziti_session, ZITI_SESSION_MODEL)
 
-MODEL_IMPL(ziti_identity, ZITI_IDENITIY_MODEL)
+MODEL_IMPL(ziti_identity, ZITI_IDENTITY_MODEL)
 
 MODEL_IMPL(ziti_error, ZITI_ERROR_MODEL)

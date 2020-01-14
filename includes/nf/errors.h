@@ -1,5 +1,5 @@
 /*
-Copyright 2019 Netfoundry, Inc.
+Copyright 2019-2020 Netfoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ limitations under the License.
     XX(SERVICE_UNAVALABLE, "Service not available") \
     XX(EOF, "Connection closed") \
     XX(TIMEOUT, "Operation did not complete in time") \
-    XX(CONNABORT, "Connection to gateway terminated") \
+    XX(CONNABORT, "Connection to edge router terminated") \
     XX(KEY_SPEC_UNSUPPORTED, "unsupported key specification") \
     XX(KEY_INVALID, "invalid key") \
     XX(WTF, "WTF: programming error")

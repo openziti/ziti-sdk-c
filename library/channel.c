@@ -1,5 +1,5 @@
 /*
-Copyright 2019 Netfoundry, Inc.
+Copyright 2019-2020 Netfoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -459,12 +459,6 @@ static void hello_reply_cb(void *ctx, message *msg) {
     bool found = message_get_bool_header(msg, ResultSuccessHeader, &success);
     assert(found);
 
-    hdr_t *headers;
-    int nhdrs = parse_hdrs(msg->headers, msg->header.headers_len, &headers);
-
-    for (int i = 0; i < nhdrs; i++) {
-        ZITI_LOG(TRACE, "hdr[%d] id[%d], len[%d]", i, headers[i].header_id, headers[i].length);
-    }
     ziti_channel_t *ch = ctx;
 
     int cb_code = ZITI_OK;

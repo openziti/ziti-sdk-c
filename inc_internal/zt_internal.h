@@ -1,5 +1,5 @@
 /*
-Copyright 2019 Netfoundry, Inc.
+Copyright 2019-2020 Netfoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,13 +19,14 @@ limitations under the License.
 
 
 #include <stdbool.h>
-#include <sys/queue.h>
+#include <uv_mbed/queue.h>
 #include <uv_mbed/uv_mbed.h>
 
 #include <nf/ziti.h>
 #include "model.h"
 #include "buffer.h"
 #include "message.h"
+#include "ziti_ctrl.h"
 
 //#define SIZEOF(arr) (sizeof(arr) / sizeof((arr)[0]))
 
@@ -154,13 +155,15 @@ struct nf_conn {
 
 
 struct nf_ctx {
-    char controller[128];
-    uint16_t controller_port;
+    ziti_controller controller;
+
     tls_context *tlsCtx;
 
     ziti_session *session;
     ziti_service_list services;
     ziti_net_session_list net_sessions;
+
+    uv_timer_t session_timer;
 
     uv_loop_t *loop;
     uv_thread_t loop_thread;
@@ -172,6 +175,9 @@ struct nf_ctx {
     int ziti_timeout;
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 int ziti_close_channels(nf_context);
 
@@ -190,6 +196,8 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
 
 int load_config(const char *filename, nf_config **);
 
+int load_tls(nf_config* cfg, tls_context **tls);
+
 int ziti_auth(nf_context ctx);
 int ziti_logout(nf_context ctx);
 
@@ -203,4 +211,8 @@ int ziti_write(struct nf_write_req *req);
 int ziti_disconnect(struct nf_conn *conn);
 
 void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int status);
+
+#ifdef __cplusplus
+}
+#endif
 #endif //ZT_SDK_ZT_INTERNAL_H

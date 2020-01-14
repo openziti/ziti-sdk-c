@@ -42,6 +42,7 @@ pipeline {
            {
                 new_tag = zitiVer
                 echo "advancing tag($new_tag) based on 'version' file"
+                sh "git tag -a ${new_tag} -m \'CI tag ${new_tag} \'"
            } else {
                if (ahead == "0") {
                     echo "already has tag = ${tagMajor}.${tagMinor}.${tagPatch}"

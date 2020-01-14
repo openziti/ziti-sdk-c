@@ -1,5 +1,5 @@
 /*
-Copyright 2019 Netfoundry, Inc.
+Copyright 2019-2020 Netfoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@ limitations under the License.
 */
 
 #include <stdlib.h>
-#include <assert.h>
 
 #include "zt_internal.h"
 #include "utils.h"
@@ -23,18 +22,28 @@ limitations under the License.
 
 struct nf_conn_req {
     struct nf_conn *conn;
-    char *service_id;
+    char *service_name;
+    ziti_service *service;
     ziti_channel_t *channel;
     nf_conn_cb cb;
 
-    uv_timer_t *t;
+    uv_timer_t *conn_timeout;
 };
 
+static void ziti_connect_async(uv_async_t *ar);
 int ziti_channel_start_connection(struct nf_conn_req *req);
 
 static void free_handle(uv_handle_t *h) {
     free(h);
 }
+
+static void free_conn_req(struct nf_conn_req *r) {
+    FREE(r->service_name);
+    if (r->conn_timeout) {
+        uv_close((uv_handle_t *) r->conn_timeout, free_handle);
+    }
+    free(r);
+};
 
 void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int status) {
     if (req->conn == NULL) {
@@ -119,77 +128,120 @@ static void connect_timeout(uv_timer_t *timer) {
     }
 
     uv_timer_stop(timer);
-    uv_close((uv_handle_t *) timer, free_handle);
-    req->t = NULL;
+    free_conn_req(req);
 }
 
 static int ziti_connect(struct nf_ctx *ctx, const ziti_net_session *session, struct nf_conn_req *req) {
     struct nf_conn *conn = req->conn;
     conn->token = session->token;
 
-    ziti_gateway **gw;
-    for (gw = session->gateways; *gw != NULL; gw++) {
-        ZITI_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*gw)->name, (*gw)->url_tls, conn->token);
-        ziti_channel_connect(ctx, (*gw)->url_tls, on_channel_connected, req);
+    ziti_edge_router **er;
+    for (er = session->edge_routers; *er != NULL; er++) {
+        ZITI_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, (*er)->url_tls, conn->token);
+        ziti_channel_connect(ctx, (*er)->url_tls, on_channel_connected, req);
     }
 
     return 0;
 }
 
-void ziti_connect_async(uv_async_t *ar) {
+static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) {
+    uv_async_t *ar = ctx;
+    struct nf_conn_req *req = ar->data;
+    struct nf_ctx *nf_ctx = req->conn->nf_ctx;
+
+    if (err != NULL) {
+        ZITI_LOG(ERROR, "failed to load service (%s): %s(%s)", req->service_name, err->code, err->message);
+    }
+    if (s == NULL) {
+        req->cb(req->conn, ZITI_SERVICE_UNAVALABLE);
+        free_conn_req(req);
+    } else {
+        ZITI_LOG(INFO, "got service[%s] id[%s]", s->name, s->id);
+        SLIST_INSERT_HEAD(&nf_ctx->services, s, _next);
+        req->service = s;
+        ziti_connect_async(ar);
+    }
+
+    free_ziti_error(err);
+}
+
+static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, void *ctx) {
+    uv_async_t *ar = ctx;
+    struct nf_conn_req *req = ar->data;
+    struct nf_ctx *nf_ctx = req->conn->nf_ctx;
+
+    if (err != NULL) {
+        ZITI_LOG(ERROR, "failed to load service[%s]: %s(%s)", req->service_name, err->code, err->message);
+    }
+    if (s == NULL) {
+        req->cb(req->conn, ZITI_SERVICE_UNAVALABLE);
+        free_conn_req(req);
+    } else {
+        ZITI_LOG(INFO, "got session[%s] for service[%s]", s->id, req->service->name);
+        s->service_id = strdup(req->service->id);
+        SLIST_INSERT_HEAD(&nf_ctx->net_sessions, s, _next);
+        ziti_connect_async(ar);
+    }
+
+    free_ziti_error(err);
+}
+
+static void ziti_connect_async(uv_async_t *ar) {
     struct nf_conn_req *req = ar->data;
     struct nf_ctx *ctx = req->conn->nf_ctx;
     uv_loop_t *loop = ar->loop;
 
-    uv_close((uv_handle_t *) ar, free_handle);
-
-    // find service
     const ziti_net_session *net_session = NULL;
     const char *service_id = NULL;
-    ziti_service *s;
-    SLIST_FOREACH (s, &ctx->services, _next) {
-        if (strcmp(req->service_id, s->name) == 0) {
-            service_id = s->id;
-            break;
+
+    // find service
+    if (req->service == NULL) {
+        ziti_service *s;
+        SLIST_FOREACH (s, &ctx->services, _next) {
+            if (strcmp(req->service_name, s->name) == 0) {
+                service_id = s->id;
+                req->service = s;
+                break;
+            }
+        }
+
+        if (service_id == NULL) {
+            ZITI_LOG(DEBUG, "service[%s] not loaded yet, requesting it", req->service_name);
+            ziti_ctrl_get_service(&ctx->controller, req->service_name, connect_get_service_cb, ar);
+            return;
         }
     }
 
-    if (service_id == NULL) {
-        req->cb(req->conn, ZITI_SERVICE_UNAVALABLE);
-        return;
-    }
-
-    ziti_net_session *it;
+    ziti_net_session *it = NULL;
     SLIST_FOREACH(it, &ctx->net_sessions, _next) {
-        if (strcmp(service_id, it->service_id) == 0) {
+        if (strcmp(req->service->id, it->service_id) == 0) {
             net_session = it;
             break;
         }
     }
 
-    //at this point the service_id allocated in ziti_dial is no longer needed - free it
-    free(req->service_id);
-    req->service_id = NULL;
-
     if (net_session == NULL) {
-        req->cb(req->conn, ZITI_SERVICE_UNAVALABLE);
+        ZITI_LOG(DEBUG, "requesting session for service[%s]", req->service_name);
+        ziti_ctrl_get_net_session(&ctx->controller, req->service, connect_get_net_session_cb, ar);
+        return;
     }
     else {
-        req->t = malloc(sizeof(uv_timer_t));
-        uv_timer_init(loop, req->t);
-        req->t->data = req;
-        uv_timer_start(req->t, connect_timeout, req->conn->timeout, 0);
+        req->conn_timeout = malloc(sizeof(uv_timer_t));
+        uv_timer_init(loop, req->conn_timeout);
+        req->conn_timeout->data = req;
+        uv_timer_start(req->conn_timeout, connect_timeout, req->conn->timeout, 0);
 
+        ZITI_LOG(DEBUG, "starting connection for service[%s] with session[%s]", req->service_name, net_session->id);
         ziti_connect(ctx, net_session, req);
     }
+
+    uv_close((uv_handle_t *) ar, free_handle);
 }
 
 int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb) {
     NEWP(req, struct nf_conn_req);
 
-    //duplicate the service name in case the callee reclaims the memory
-    //this string is free'd in ziti_connect_async
-    req->service_id = strdup(service);
+    req->service_name = strdup(service);
     req->conn = conn;
     req->cb = conn_cb;
 
@@ -273,10 +325,8 @@ void connect_reply_cb(void *ctx, message *msg) {
     struct nf_conn_req* req = ctx;
     struct nf_conn *conn = req->conn;
 
-    if (req->t != NULL) {
-        uv_timer_stop(req->t);
-        uv_close((uv_handle_t *) req->t, free_handle);
-        req->t = NULL;
+    if (req->conn_timeout != NULL) {
+        uv_timer_stop(req->conn_timeout);
     }
 
     switch (msg->header.content) {
@@ -317,7 +367,7 @@ void connect_reply_cb(void *ctx, message *msg) {
             ziti_disconnect(conn);
             SLIST_REMOVE(&conn->channel->connections, conn, nf_conn, next);
     }
-    free(ctx);
+    free_conn_req(req);
 }
 
 int ziti_channel_start_connection(struct nf_conn_req *req) {
@@ -370,9 +420,7 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
 int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, nf_client_cb on_clt_cb) {
     NEWP(req, struct nf_conn_req);
 
-    //duplicate the service name in case the callee reclaims the memory
-    //this string is free'd in ziti_connect_async
-    req->service_id = strdup(service);
+    req->service_name = strdup(service);
     req->conn = conn;
     req->cb = listen_cb;
 

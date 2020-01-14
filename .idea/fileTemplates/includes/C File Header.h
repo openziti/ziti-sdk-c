@@ -1,5 +1,6 @@
+#if ($HEADER_COMMENTS)
 /*
-Copyright 2019-2020 Netfoundry, Inc.
+Copyright (c) $YEAR Netfoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,5 +14,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+#if ($ORGANIZATION_NAME && $ORGANIZATION_NAME != "")
+// Copyright (c) $YEAR ${ORGANIZATION_NAME}#if (!$ORGANIZATION_NAME.endsWith(".")).#end All rights reserved.
+#end
 
-char* zitistrndup(const char* s, int n);
+#end
+

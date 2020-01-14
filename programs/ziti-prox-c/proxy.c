@@ -1,5 +1,5 @@
 /*
-Copyright 2019 Netfoundry, Inc.
+Copyright 2019-2020 Netfoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <utils.h>
 #include <nf/ziti.h>
-#include <sys/queue.h>
 
 #if(WIN32)
 #define strsignal(s) "_windows_unimplemented_"
@@ -150,6 +149,7 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         NF_close((nf_connection *) &clt->nf_conn);
 
         uv_read_stop(stream);
+        free(buf->base);
     }
     else {
         clt->inb_reqs += 1;
@@ -180,14 +180,13 @@ void on_ziti_data(nf_connection conn, uint8_t *data, int len) {
         memcpy(copy, data, len);
         uv_buf_t buf = uv_buf_init(copy, len);
         req->data = copy;
+        ZITI_LOG(TRACE, "writing %d bytes to [%s] wqs[%zd]", len, c->addr_s, clt->write_queue_size);
         uv_write(req, (uv_stream_t *) clt, &buf, 1, on_client_write);
-        ZITI_LOG(TRACE, "[%s] wqs[%zd]", c->addr_s, clt->write_queue_size);
     }
-    else {
+    else if (len < 0) {
         ZITI_LOG(DEBUG, "ziti connection closed with [%d](%s)", len, ziti_errorstr(len));
         uv_close((uv_handle_t *) clt, close_cb);
     }
-
 }
 
 static void on_client(uv_stream_t *server, int status) {
@@ -224,8 +223,28 @@ static void on_client(uv_stream_t *server, int status) {
 
 }
 
-static void on_nf_init(nf_context nf_ctx, int status, void* ctx) {
+static void service_avail_cb(nf_context nf_ctx, const char* service, int status, void *ctx) {
+    struct listener *l = ctx;
     PREPF(uv, uv_strerror);
+
+    if (status == ZITI_OK) {
+        ZITI_LOG(INFO, "starting listener for service[%s] on port[%d]", l->service_name, l->port);
+
+        NEWP(addr, struct sockaddr_in);
+        TRY(uv, uv_ip4_addr("0.0.0.0", l->port, addr));
+        TRY(uv, uv_tcp_bind(&l->server, (const struct sockaddr *) addr, 0));
+        TRY(uv, uv_listen((uv_stream_t *) &l->server, 5, on_client));
+    }
+    else {
+        ZITI_LOG(ERROR, "service %s is not available. not starting listener", service);
+    }
+
+    CATCH(uv) {
+        exit(2);
+    }
+}
+
+static void on_nf_init(nf_context nf_ctx, int status, void* ctx) {
     PREPF(ziti, ziti_errorstr);
     TRY(ziti, status);
     CATCH(ziti) {
@@ -237,23 +256,7 @@ static void on_nf_init(nf_context nf_ctx, int status, void* ctx) {
     SLIST_HEAD(listeners, listener) *listeners = ctx;
     struct listener *l;
     SLIST_FOREACH(l, listeners, next) {
-        int rc;
-        if ((rc = NF_service_available(nf, l->service_name)) == ZITI_OK) {
-
-            ZITI_LOG(INFO, "listening for service[%s] on port[%d]", l->service_name, l->port);
-
-            NEWP(addr, struct sockaddr_in);
-            TRY(uv, uv_ip4_addr("0.0.0.0", l->port, addr));
-            TRY(uv, uv_tcp_bind(&l->server, (const struct sockaddr *) addr, 0));
-            TRY(uv, uv_listen((uv_stream_t *) &l->server, 5, on_client));
-        }
-        else {
-            ZITI_LOG(WARN, "%s: %s[%d]", l->service_name, ziti_errorstr(rc), rc);
-        }
-    }
-
-    CATCH(uv) {
-        exit(2);
+        NF_service_available(nf, l->service_name, service_avail_cb, l);
     }
 }
 
