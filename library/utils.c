@@ -17,6 +17,7 @@ limitations under the License.
 #include <mbedtls/error.h>
 #include <mjson.h>
 #include <uv.h>
+#include <uv_mbed/uv_mbed.h>
 #include "utils.h"
 
 
@@ -105,6 +106,8 @@ void init_debug() {
         ziti_debug_level = (int) strtol(level, NULL, 10);
     }
     ziti_debug_out = stderr;
+
+    uv_mbed_set_debug(ziti_debug_level, ziti_debug_out);
 #if _WIN32
 	QueryPerformanceFrequency(&frequency);
 	QueryPerformanceCounter(&start);
