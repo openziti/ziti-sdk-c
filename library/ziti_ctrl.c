@@ -97,6 +97,7 @@ static void ctrl_login_cb(ziti_session *s, ziti_error *e, struct ctrl_resp *resp
     }
 
     if (s) {
+        FREE(resp->ctrl->session);
         resp->ctrl->session = strdup(s->token);
         um_http_header(&resp->ctrl->client, "zt-session", s->token);
     }

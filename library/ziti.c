@@ -159,8 +159,9 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
     CATCH(ziti) {
         return ERR(ziti);
     }
-
-    return NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx);
+    int rc =  NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx);
+    free_nf_config(cfg);
+    return rc;
 }
 
 int
@@ -206,6 +207,8 @@ int NF_set_timeout(nf_context ctx, int timeout) {
 
 int NF_shutdown(nf_context ctx) {
     ZITI_LOG(INFO, "Ziti is shutting down");
+
+    free_ziti_session(ctx->session);
 
     uv_timer_stop(&ctx->session_timer);
     ziti_ctrl_close(&ctx->controller);
