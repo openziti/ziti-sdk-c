@@ -39,7 +39,7 @@ extern "C" {
 #define DEFAULT_TIMEOUT 5000
 
 /**
- * \brief Ziti edge identity context
+ * \brief Ziti edge identity context NF_init()
  * \see NF_init()
  */
 typedef struct nf_ctx *nf_context;

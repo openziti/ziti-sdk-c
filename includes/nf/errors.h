@@ -55,10 +55,6 @@ limitations under the License.
     XX(TIMEOUT, "Operation did not complete in time") \
     /** The connection has been closed abnormally. */ \
     XX(CONNABORT, "Connection to edge router terminated") \
-    /** The key spec uses is unsupported */ \
-    XX(KEY_SPEC_UNSUPPORTED, "unsupported key specification") \
-    /** The key provided is invalid */ \
-    XX(KEY_INVALID, "invalid key") \
     /** Inspired by the Android SDK: What a Terrible Failure: A condition that should never happen. */ \
     XX(WTF, "WTF: programming error")
 
