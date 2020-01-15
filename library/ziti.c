@@ -175,7 +175,7 @@ NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop
     NEWP(ctx, struct nf_ctx);
     ctx->tlsCtx = tls_context;
     ctx->loop = loop;
-    ctx->ziti_timeout = DEFAULT_TIMEOUT;
+    ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
 
     ziti_ctrl_init(loop, &ctx->controller, ctrl_url, tls_context);
     ziti_ctrl_get_version(&ctx->controller, version_cb, &ctx->controller);
@@ -198,7 +198,7 @@ int NF_set_timeout(nf_context ctx, int timeout) {
         ctx->ziti_timeout = timeout;
     }
     else {
-        ctx->ziti_timeout = DEFAULT_TIMEOUT;
+        ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
     }
     return 0;
 }

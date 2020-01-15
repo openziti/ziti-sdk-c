@@ -16,7 +16,7 @@ limitations under the License.
 
 /**
  * @file ziti.h
- * @brief Ziti C SDK API.
+ * @brief Defines the macros, functions, typedefs and constants required to interface with a Ziti Network
  */
 
 #ifndef NF_ZT_H
@@ -36,7 +36,7 @@ extern "C" {
 /**
  * The default timeout in milliseconds for connections and write operations to succeed.
  */
-#define DEFAULT_TIMEOUT 5000
+#define NF_DEFAULT_TIMEOUT 5000
 
 /**
  * \brief Ziti edge identity context NF_init()

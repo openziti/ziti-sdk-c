@@ -14,6 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+/**
+ * @file errors.h
+ * @brief Defines the macros, functions, typedefs and constants pertaining to errors observed when using a Ziti Network
+ */
+
 #ifndef ZT_SDK_ERRORS_H
 
 // @cond
