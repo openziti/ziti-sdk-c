@@ -55,7 +55,7 @@ limitations under the License.
     XX(TIMEOUT, "Operation did not complete in time") \
     /** The connection has been closed abnormally. */ \
     XX(CONNABORT, "Connection to edge router terminated") \
-    /** Inspired by the Android SDK: What a Terrible Failure: A condition that should never happen. */ \
+    /** Inspired by the Android SDK: What a Terrible Failure. A condition that should never happen. */ \
     XX(WTF, "WTF: programming error")
 
 
