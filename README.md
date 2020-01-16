@@ -16,7 +16,7 @@ existing underlay networks.
 
 ## Builing
 
-See the [building.md]() for information on how to build the project.
+See the [building.md] for information on how to build the project.
 
 ## Getting Help
 
