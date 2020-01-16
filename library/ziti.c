@@ -299,7 +299,7 @@ struct service_req_s {
 
 static void service_cb (ziti_service *s, ziti_error *err, void *ctx) {
     struct service_req_s *req = ctx;
-    int rc = ZITI_SERVICE_UNAVALABLE;
+    int rc = ZITI_SERVICE_UNAVAILABLE;
 
     if (s != NULL) {
         for (int i = 0; s->permissions[i] != NULL; i++) {
