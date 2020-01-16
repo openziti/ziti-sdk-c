@@ -224,11 +224,11 @@ static void on_client(uv_stream_t *server, int status) {
 
 }
 
-static void service_avail_cb(nf_context nf_ctx, const char* service, int status, void *ctx) {
+static void service_avail_cb(nf_context nf_ctx, const char* service, int status, unsigned int permissions, void *ctx) {
     struct listener *l = ctx;
     PREPF(uv, uv_strerror);
 
-    if (status == ZITI_OK) {
+    if (status == ZITI_OK && (permissions & ZITI_CAN_DIAL) ) {
         ZITI_LOG(INFO, "starting listener for service[%s] on port[%d]", l->service_name, l->port);
 
         NEWP(addr, struct sockaddr_in);

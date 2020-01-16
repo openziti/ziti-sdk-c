@@ -34,6 +34,16 @@ extern "C" {
 #endif
 
 /**
+ * Flag indicating service `Dial` permission
+ */
+#define ZITI_CAN_DIAL 1
+
+/**
+ * Flag indicating service `Bind` permission
+ */
+#define ZITI_CAN_BIND 2
+
+/**
  * \brief Ziti edge identity context
  * \see NF_init()
  */
@@ -56,7 +66,7 @@ typedef void (*nf_init_cb)(nf_context nf_ctx, int status, void* init_ctx);
 /**
  * \brief Service status callback type.
  */
-typedef void (*nf_service_cb)(nf_context nf_ctx, const char* service_name, int status, void *data);
+typedef void (*nf_service_cb)(nf_context nf_ctx, const char* service_name, int status, unsigned int flags, void *data);
 
 /**
  * \brief Data callback.
