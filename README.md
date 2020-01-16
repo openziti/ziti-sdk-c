@@ -14,6 +14,10 @@ existing underlay networks.
 ## Status
 [![Build Status](https://travis-ci.org/netfoundry/ziti-sdk-c.svg?branch=master)](https://travis-ci.org/netfoundry/ziti-sdk-c)
 
+## Builing
+
+See the [](building.md) for information on how to build the project.
+
 ## Getting Help
 
 ------------
