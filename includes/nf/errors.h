@@ -24,7 +24,7 @@ limitations under the License.
     XX(NOT_AUTHORIZED, "Not Authorized") \
     XX(CONTROLLER_UNAVAILABLE, "Ziti Controller is not available") \
     XX(GATEWAY_UNAVAILABLE, "Ziti Gateway is not available") \
-    XX(SERVICE_UNAVALABLE, "Service not available") \
+    XX(SERVICE_UNAVAILABLE, "Service not available") \
     XX(EOF, "Connection closed") \
     XX(TIMEOUT, "Operation did not complete in time") \
     XX(CONNABORT, "Connection to edge router terminated") \
