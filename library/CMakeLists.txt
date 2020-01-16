@@ -9,6 +9,7 @@ add_library(ziti STATIC
         channel.c
         message.c
         buffer.c
+        ${ZITI_HEADER_FILES}
         )
 
 set_property(TARGET ziti PROPERTY C_STANDARD 11)

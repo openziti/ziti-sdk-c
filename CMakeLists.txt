@@ -12,6 +12,8 @@ message("   branch : ${GIT_BRANCH}")
 message("     hash : ${GIT_COMMIT_HASH}")
 message("     date : ${BUILD_DATE}")
 
+set(ZITI_HEADER_FILES ${PROJECT_SOURCE_DIR}/includes/nf/errors.h ${PROJECT_SOURCE_DIR}/includes/nf/ziti.h)
+
 if (WIN32)
     set(CMAKE_INSTALL_LIBDIR lib)
     set(CMAKE_INSTALL_INCLUDEDIR include)
