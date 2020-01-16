@@ -299,7 +299,7 @@ struct service_req_s {
 
 static void service_cb (ziti_service *s, ziti_error *err, void *ctx) {
     struct service_req_s *req = ctx;
-    int rc = ZITI_SERVICE_UNAVALABLE;
+    int rc = ZITI_SERVICE_UNAVAILABLE;
 
     if (s != NULL) {
         SLIST_INSERT_HEAD(&req->nf->services, s, _next);
@@ -326,7 +326,7 @@ int NF_service_available(nf_context nf, const char *service, nf_service_cb cb, v
     req->cb_ctx = ctx;
 
     ziti_ctrl_get_service(&nf->controller, service, service_cb, req);
-    return ZITI_SERVICE_UNAVALABLE;
+    return ZITI_SERVICE_UNAVAILABLE;
 }
 
 extern int NF_listen(nf_connection serv_conn, const char *service, nf_listen_cb lcb, nf_client_cb cb) {

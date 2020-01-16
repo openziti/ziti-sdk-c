@@ -153,7 +153,7 @@ static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) 
         ZITI_LOG(ERROR, "failed to load service (%s): %s(%s)", req->service_name, err->code, err->message);
     }
     if (s == NULL) {
-        req->cb(req->conn, ZITI_SERVICE_UNAVALABLE);
+        req->cb(req->conn, ZITI_SERVICE_UNAVAILABLE);
         free_conn_req(req);
     } else {
         ZITI_LOG(INFO, "got service[%s] id[%s]", s->name, s->id);
@@ -174,7 +174,7 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
         ZITI_LOG(ERROR, "failed to load service[%s]: %s(%s)", req->service_name, err->code, err->message);
     }
     if (s == NULL) {
-        req->cb(req->conn, ZITI_SERVICE_UNAVALABLE);
+        req->cb(req->conn, ZITI_SERVICE_UNAVAILABLE);
         free_conn_req(req);
     } else {
         ZITI_LOG(INFO, "got session[%s] for service[%s]", s->id, req->service->name);
