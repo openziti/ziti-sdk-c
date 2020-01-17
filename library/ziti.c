@@ -255,6 +255,7 @@ int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data) {
     c->channel = NULL;
     c->state = Initial;
     c->timeout = ctx->ziti_timeout;
+    c->edge_msg_seq = 1;
 
     *conn = c;
     return ZITI_OK;

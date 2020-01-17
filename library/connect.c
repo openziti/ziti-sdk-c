@@ -106,8 +106,6 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
     else if (req->conn->channel == NULL) { // first channel to connect
         ZITI_LOG(TRACE, "channel connected status[%d]", status);
 
-        req->conn->edge_msg_seq = 1;
-
         req->channel = ch;
         req->conn->channel = ch;
         ziti_channel_start_connection(req);
