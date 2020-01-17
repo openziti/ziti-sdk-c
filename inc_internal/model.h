@@ -29,7 +29,7 @@ limitations under the License.
 #include <sys/time.h>
 #endif
 
-/*
+/**
  * set of macros to help generate struct and function for our model;
  *
  * - DECLARE_MODEL(type, model_def) :
@@ -39,6 +39,9 @@ limitations under the License.
  *    NOTE: matching MODEL_IMPL macro in model.c is used to generate function implementations
  *
  * Fields are defined with name, type, type modifier, and path (for JSON mapping)
+ *   type could be primitives (bool, int, string) or other model types
+ *   type modifier: none, ptr, arr (nested model types has to be used with ptr or arr)
+ *   fields could be mapped from nested JSON structure with `.`(dot) notation.
  *
  * The following functions are generated:
  * - TYPE* parse_TYPE(json, len) -- parses json into an allocated struct
@@ -57,8 +60,9 @@ limitations under the License.
  * Nested model objects are supported as pointers and NULL-terminated arrays of pointers
  */
 #define none(type) type
-#define array(type) type**
+#define array(type) type##_array
 #define ptr(type) type*
+
 
 /*
  * Model declaration: struct type, and functions
@@ -66,9 +70,10 @@ limitations under the License.
 #define DECLARE_MODEL(type, model) \
 typedef struct type##_s {\
 model(FIELD_DECL) \
-SLIST_ENTRY(type##_s) _next; \
+LIST_ENTRY(type##_s) _next; \
 } type;\
-typedef SLIST_HEAD(type##_l, type##_s) type##_list;\
+typedef LIST_HEAD(type##_l, type##_s) type##_list;\
+typedef type** type##_array; \
 type* parse_##type(const char* json, int json_len);\
 type** parse_##type##_array(const char* json, int json_len);\
 void free_##type(type* type);\
@@ -77,51 +82,53 @@ void free_##type##_list(type##_list* l); \
 int dump_##type(type* type, int len);
 
 typedef char* string;
+typedef string* string_array;
 typedef struct timeval timeval_t;
 
 #define ZITI_CTRL_VERSION(XX) \
-XX(version, string, none, "$.version") \
-XX(revision, string, none, "$.revision") \
-XX(build_date, string, none, "$.buildDate")
+XX(version, string, none, version) \
+XX(revision, string, none, revision) \
+XX(build_date, string, none, buildDate)
 
 #define ZITI_SERVICE_MODEL(XX) \
-XX(id, string, none, "$.id") \
-XX(name, string, none, "$.name") \
-XX(dns_host, string, none, "$.dns.hostname") \
-XX(dns_port, int, none, "$.dns.port") \
-XX(hostable, bool, none, "$.hostable")
+XX(id, string, none, id) \
+XX(name, string, none, name) \
+XX(dns_host, string, none, dns.hostname) \
+XX(dns_port, int, none, dns.port) \
+XX(permissions, string, array, permissions) \
+XX(perm_flags, int, none, NULL)
 
 #define ZITI_CONFIG_MODEL(XX) \
-XX(controller_url, string, none, "$.ztAPI") \
-XX(cert, string, none, "$.id.cert") \
-XX(key, string, none, "$.id.key") \
-XX(ca, string, none, "$.id.ca")
+XX(controller_url, string, none, ztAPI) \
+XX(cert, string, none, id.cert) \
+XX(key, string, none, id.key) \
+XX(ca, string, none, id.ca)
 
 #define ZITI_EDGE_ROUTER_MODEL(XX)\
-XX(name, string, none, "$.name")\
-XX(hostname, string, none, "$.hostname") \
-XX(url_tls, string, none, "$.urls.tls")
+XX(name, string, none, name)\
+XX(hostname, string, none, hostname) \
+XX(url_tls, string, none, urls.tls)
 
 #define ZITI_NET_SESSION_MODEL(XX) \
-XX(token, string, none, "$.token")\
-XX(id, string, none, "$.id") \
-XX(hosting, bool, none, "$.hosting") \
-XX(edge_routers, ziti_edge_router, array, "$.edgeRouters") \
+XX(token, string, none, token)\
+XX(id, string, none, id) \
+XX(hosting, bool, none, hosting) \
+XX(edge_routers, ziti_edge_router, array, edgeRouters) \
 XX(service_id, string, none, NULL)
 
 #define ZITI_SESSION_MODEL(XX)\
-XX(id, string, none, "$.id") \
-XX(token, string, none, "$.token") \
-XX(expires, timeval_t, ptr, "$.expiresAt")\
-XX(identity, ziti_identity, ptr, "$.identity")
+XX(id, string, none, id) \
+XX(token, string, none, token) \
+XX(expires, timeval_t, ptr, expiresAt)\
+XX(identity, ziti_identity, ptr, identity)
 
 #define ZITI_IDENTITY_MODEL(XX) \
-XX(id, string, none, "$.id") \
-XX(name, string, none, "$.name")
+XX(id, string, none, id) \
+XX(name, string, none, name)
 
 #define ZITI_ERROR_MODEL(XX) \
-XX(code, string, none, "$.code") \
-XX(message, string, none, "$.message")
+XX(code, string, none, code) \
+XX(message, string, none, message)
 
 #ifdef __cplusplus
 extern "C" {

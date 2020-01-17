@@ -236,13 +236,13 @@ void NF_dump(struct nf_ctx *ctx) {
 
     printf("\n=================\nServices:\n");
     ziti_service *zs;
-    SLIST_FOREACH(zs, &ctx->services, _next) {
+    LIST_FOREACH(zs, &ctx->services, _next) {
         dump_ziti_service(zs, 0);
     }
 
     printf("\n==================\nNet Sessions:\n");
     ziti_net_session *it;
-    SLIST_FOREACH(it, &ctx->net_sessions, _next) {
+    LIST_FOREACH(it, &ctx->net_sessions, _next) {
         dump_ziti_net_session(it, 0);
     }
 }
@@ -302,20 +302,28 @@ static void service_cb (ziti_service *s, ziti_error *err, void *ctx) {
     int rc = ZITI_SERVICE_UNAVAILABLE;
 
     if (s != NULL) {
-        SLIST_INSERT_HEAD(&req->nf->services, s, _next);
+        for (int i = 0; s->permissions[i] != NULL; i++) {
+            if (strcmp(s->permissions[i], "Dial") == 0) {
+                 s->perm_flags |= ZITI_CAN_DIAL;
+            }
+            if (strcmp(s->permissions[i], "Bind") == 0) {
+                s->perm_flags |= ZITI_CAN_BIND;
+            }
+        }
+        LIST_INSERT_HEAD(&req->nf->services, s, _next);
         rc = ZITI_OK;
     }
 
-    req->cb(req->nf, req->service, rc, req->cb_ctx);
+    req->cb(req->nf, req->service, rc, s ? s->perm_flags : 0, req->cb_ctx);
     FREE(req->service);
     free(req);
 }
 
 int NF_service_available(nf_context nf, const char *service, nf_service_cb cb, void *ctx) {
     ziti_service *s;
-    SLIST_FOREACH (s, &nf->services, _next) {
+    LIST_FOREACH (s, &nf->services, _next) {
         if (strcmp(service, s->name) == 0) {
-            cb(nf, service, ZITI_OK, ctx);
+            cb(nf, service, ZITI_OK, s->perm_flags, ctx);
         }
     }
 
@@ -326,7 +334,7 @@ int NF_service_available(nf_context nf, const char *service, nf_service_cb cb, v
     req->cb_ctx = ctx;
 
     ziti_ctrl_get_service(&nf->controller, service, service_cb, req);
-    return ZITI_SERVICE_UNAVAILABLE;
+    return ZITI_OK;
 }
 
 extern int NF_listen(nf_connection serv_conn, const char *service, nf_listen_cb lcb, nf_client_cb cb) {

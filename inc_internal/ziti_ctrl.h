@@ -46,7 +46,7 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*srv_cb)(ziti_service *
 void ziti_ctrl_get_service(ziti_controller *ctrl, const char* service_name, void (*srv_cb)(ziti_service *, ziti_error*, void*), void* ctx);
 
 void ziti_ctrl_get_net_session(
-        ziti_controller *ctrl, ziti_service *service,
+        ziti_controller *ctrl, ziti_service *service, bool bind,
         void (*cb)(ziti_net_session *, ziti_error*, void*), void* ctx);
 
 void ziti_ctrl_get_net_sessions(

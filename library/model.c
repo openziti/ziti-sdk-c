@@ -47,10 +47,11 @@ void free_string(string s) {
 }
 
 
-static string parse_string(const char *json, int json_len, const char *path) {
+static string parse_string(const char *json, int json_len) {
     const char *f;
     int n;
     string result = NULL;
+    const char path[] = "$";
     if (path != NULL && mjson_find(json, json_len, path, &f, &n) == MJSON_TOK_STRING) {
         result = calloc(1, n + 1);
         mjson_get_string(f, n, "$", result, n);
@@ -59,7 +60,7 @@ static string parse_string(const char *json, int json_len, const char *path) {
 }
 
 static struct timeval *parse_timeval_t(const char *json, int json_len) {
-    char *date_str = parse_string(json, json_len, "$");
+    char *date_str = parse_string(json, json_len);
     NEWP(t, struct timeval);
     struct tm t2 = {0};
     // "2019-08-05T14:02:52.337619Z"
@@ -84,16 +85,16 @@ static int dump_timeval_t(struct timeval *t) {
     return 0;
 }
 
-static int parse_bool(const char *json, int json_len, const char *path) {
+static int parse_bool(const char *json, int json_len) {
     int result;
-    int rc =  mjson_get_bool(json, json_len, path, &result);
+    int rc =  mjson_get_bool(json, json_len, "$", &result);
     if (rc == 0) return false;
     return result;
 }
 
-static int parse_int(const char *json, int json_len, const char *path) {
+static int parse_int(const char *json, int json_len) {
     double result;
-    if (mjson_get_number(json, json_len, path, &result)) {
+    if (mjson_get_number(json, json_len, "$", &result)) {
         return (int)lrint(result);
     }
     return -1;
@@ -149,7 +150,7 @@ static void **parse_array(const char *json, int json_len, char *path, void *(*pa
 #define free_none(f, func) func(f)
 
 int dump_string(const char *s, int len) {
-    printf("%s\n", s ? s : "<null>");
+    printf("%*s%s\n", len, "", s ? s : "<null>");
     return 0;
 }
 
@@ -163,18 +164,28 @@ int dump_bool(bool v, int len) {
     return 0;
 }
 
-#define parse_none(json, len, path, func) func(json, len, path)
+static void* parse_none(const char *json, int json_len, char *path, void *(*parse_func)(const char *, int)) {
+    const char *obj;
+    int obj_len;
+    void *result = NULL;
 
+    enum mjson_tok tok = mjson_find(json, json_len, path, &obj, &obj_len);
+
+    if (tok != MJSON_TOK_INVALID) {
+        result = parse_func(obj, obj_len);
+    }
+    return result;
+}
 
 
 int dump_none(void *obj, char *name, dump_func func, int indent) {
-    printf("%*.*s%s: ", indent, indent, "", name);
-    func(obj, indent);
+    printf("%*s%s: ", indent, "", name);
+    func(obj, 0);
     return 0;
 }
 
 int dump_ptr(void *obj, char *name, int (*dump_func)(void *o, int ind), int ind) {
-    printf("%*.*s%s = ", ind, ind, "", name);
+    printf("%*s%s = ", ind, "", name);
     if (obj != NULL) {
         dump_func(obj, ind + 2);
     }
@@ -185,11 +196,12 @@ int dump_ptr(void *obj, char *name, int (*dump_func)(void *o, int ind), int ind)
 }
 
 int dump_array(void **arr, char *name, int (*dump_func)(void *o, int ind), int ind) {
-    printf("%*.*s%s > [\n", ind, ind, "", name);
-    for (int i = 0; arr[i] != NULL; i++) {
+    printf("%*.*s%s > [", ind, ind, "", name);
+    for (int i = 0; arr && arr[i] != NULL; i++) {
+        printf("\n");
         dump_func(arr[i], ind + 2);
     }
-    printf("%*.*s]\n", ind, ind, "");
+    printf("%*s]\n", ind, "");
     return 0;
 }
 
@@ -198,7 +210,7 @@ void free_ptr(void *obj, free_func f) {
 }
 
 void free_array(void **arr, free_func f) {
-    for (int i = 0; arr[i] != NULL; i++) {
+    for (int i = 0; arr && arr[i] != NULL; i++) {
         f(arr[i]);
     }
     free(arr);
@@ -208,7 +220,7 @@ void free_array(void **arr, free_func f) {
 #define cast_ptr(t) t*
 #define cast_none(t) t
 
-#define parse_field(n, type, mod, path) obj->n = ( mod(type) ) parse_##mod(json, json_len, path, (parse_func)parse_##type);
+#define parse_field(n, type, mod, path) obj->n = ( mod(type) ) parse_##mod(json, json_len, "$." #path, (parse_func)parse_##type);
 #define free_field(f, type, mod, _) free_##mod((cast_##mod(type))obj->f, free_##type);
 #define dump_field(f, type, mod, _) dump_##mod((void*)obj->f, #f, (dump_func)dump_##type, ind + 2);
 
@@ -238,9 +250,9 @@ free(obj);\
 
 #define FREE_MODEL_LIST(type) void free_##type##_list(type##_list *l) {\
     type *it; \
-    while(!SLIST_EMPTY(l)){\
-        it = SLIST_FIRST(l);\
-        SLIST_REMOVE_HEAD(l, _next);\
+    while(!LIST_EMPTY(l)){\
+        it = LIST_FIRST(l);\
+        LIST_REMOVE(it, _next);\
         free_##type(it); \
     }\
 }
