@@ -77,7 +77,7 @@ static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout
             char *end = strchr(val, '&');
             int vlen = (int)(end == NULL ? strlen(val) : end - val);
             snprintf(out, maxout, "%*.*s", vlen, vlen, val);
-            return 0;
+            return ZITI_OK;
 
         }
         else { // skip to next '&'
@@ -200,7 +200,7 @@ int NF_set_timeout(nf_context ctx, int timeout) {
     else {
         ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
     }
-    return 0;
+    return ZITI_OK;
 }
 
 int NF_shutdown(nf_context ctx) {
@@ -223,7 +223,7 @@ int NF_free(nf_context *ctxp) {
     *ctxp = NULL;
 
     ZITI_LOG(INFO, "shutdown is complete\n");
-    return 0;
+    return ZITI_OK;
 }
 
 void NF_dump(nf_context ctx) {
@@ -271,17 +271,17 @@ int NF_close(nf_connection *conn) {
 
     *conn = NULL;
 
-    return 0;
+    return ZITI_OK;
 }
 
-int NF_write(nf_connection conn, uint8_t *buf, size_t length, nf_write_cb cb, void *ctx) {
+int NF_write(nf_connection conn, uint8_t* data, size_t length, nf_write_cb write_cb, void* write_ctx) {
 
     NEWP(req, struct nf_write_req);
     req->conn = conn;
-    req->buf = buf;
+    req->buf = data;
     req->len = length;
-    req->cb = cb;
-    req->ctx = ctx;
+    req->cb = write_cb;
+    req->ctx = write_ctx;
 
     return ziti_write(req);
 }
