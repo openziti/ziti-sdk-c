@@ -1,4 +1,4 @@
 project(sample-host)
 
-add_executable(sample-host sample-host.c ${ZITI_HEADER_FILES})
+add_executable(sample-host sample-host.c)
 target_link_libraries(sample-host PUBLIC ziti)
