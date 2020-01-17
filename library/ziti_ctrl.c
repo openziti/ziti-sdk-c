@@ -97,6 +97,7 @@ static void ctrl_login_cb(ziti_session *s, ziti_error *e, struct ctrl_resp *resp
     }
 
     if (s) {
+        FREE(resp->ctrl->session);
         resp->ctrl->session = strdup(s->token);
         um_http_header(&resp->ctrl->client, "zt-session", s->token);
     }
@@ -282,12 +283,14 @@ void ziti_ctrl_get_service(ziti_controller *ctrl, const char* service_name, void
 }
 
 void ziti_ctrl_get_net_session(
-        ziti_controller *ctrl, ziti_service *service,
+        ziti_controller *ctrl, ziti_service *service, bool bind,
         void (*cb)(ziti_net_session *, ziti_error*, void*), void* ctx) {
 
-    char *content = malloc(128);
-    size_t len = (size_t) sprintf(content, "{\"serviceId\":\"%s\",\"hosting\":%s}",
-                                      service->id, service->hostable ? "true" : "false");
+    char *content = NULL;
+    size_t len = mjson_printf(&mjson_print_dynamic_buf, &content,
+            "{%Q: %Q, %Q: %B}",
+            "serviceId", service->id,
+            "hosting", bind);
 
     um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/sessions");
     req->resp_cb = ctrl_resp_cb;

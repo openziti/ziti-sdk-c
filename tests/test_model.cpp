@@ -73,103 +73,84 @@ TEST_CASE("multi-edge-router session", "[model]") {
 
 TEST_CASE("parse-services-array", "[model]") {
     const char *json = "[\n"
-                     "        {\n"
-                     "            \"_links\": {\n"
-                     "                \"clusters\": {\n"
-                     "                    \"href\": \"./services/b67f9870-8d07-4177-be05-c0cba699e84d/clusters\"\n"
-                     "                }, \n"
-                     "                \"self\": {\n"
-                     "                    \"href\": \"./services/b67f9870-8d07-4177-be05-c0cba699e84d\"\n"
-                     "                }\n"
-                     "            }, \n"
-                     "            \"clusters\": [\n"
-                     "                {\n"
-                     "                    \"_links\": {\n"
-                     "                        \"gateways\": {\n"
-                     "                            \"href\": \"./clusters/6cd04fd4-10e3-455e-893d-b71c3c530603/gateways\"\n"
-                     "                        }, \n"
-                     "                        \"self\": {\n"
-                     "                            \"href\": \"./clusters/6cd04fd4-10e3-455e-893d-b71c3c530603\"\n"
-                     "                        }\n"
-                     "                    }, \n"
-                     "                    \"createdAt\": \"2019-01-21T14:28:52.986383Z\", \n"
-                     "                    \"id\": \"6cd04fd4-10e3-455e-893d-b71c3c530603\", \n"
-                     "                    \"name\": \"azure\", \n"
-                     "                    \"tags\": {}, \n"
-                     "                    \"updatedAt\": \"2019-08-22T21:20:51.611174Z\"\n"
-                     "                }\n"
-                     "            ], \n"
-                     "            \"createdAt\": \"2019-02-27T21:58:04.574338Z\", \n"
-                     "            \"dns\": {\n"
-                     "                \"hostname\": \"demosecuredfunction.azurewebsites.net\", \n"
-                     "                \"port\": 443\n"
-                     "            }, \n"
-                     "            \"egressRouter\": \"unknown\", \n"
-                     "            \"endpointAddress\": null, \n"
-                     "            \"hostable\": true, \n"
-                     "            \"id\": \"b67f9870-8d07-4177-be05-c0cba699e84d\", \n"
-                     "            \"legacyPassthrough\": false, \n"
-                     "            \"name\": \"Azure-Ping\", \n"
-                     "            \"tags\": {}, \n"
-                     "            \"updatedAt\": \"2019-02-27T21:58:04.574338Z\"\n"
-                     "        }, \n"
-                     "        {\n"
-                     "            \"_links\": {\n"
-                     "                \"clusters\": {\n"
-                     "                    \"href\": \"./services/1ab83c54-9024-4486-8e33-b117f7f64435/clusters\"\n"
-                     "                }, \n"
-                     "                \"self\": {\n"
-                     "                    \"href\": \"./services/1ab83c54-9024-4486-8e33-b117f7f64435\"\n"
-                     "                }\n"
-                     "            }, \n"
-                     "            \"clusters\": [\n"
-                     "                {\n"
-                     "                    \"_links\": {\n"
-                     "                        \"gateways\": {\n"
-                     "                            \"href\": \"./clusters/6cd04fd4-10e3-455e-893d-b71c3c530603/gateways\"\n"
-                     "                        }, \n"
-                     "                        \"self\": {\n"
-                     "                            \"href\": \"./clusters/6cd04fd4-10e3-455e-893d-b71c3c530603\"\n"
-                     "                        }\n"
-                     "                    }, \n"
-                     "                    \"createdAt\": \"2019-01-21T14:28:52.986383Z\", \n"
-                     "                    \"id\": \"6cd04fd4-10e3-455e-893d-b71c3c530603\", \n"
-                     "                    \"name\": \"azure\", \n"
-                     "                    \"tags\": {}, \n"
-                     "                    \"updatedAt\": \"2019-08-22T21:20:51.611174Z\"\n"
-                     "                }\n"
-                     "            ], \n"
-                     "            \"createdAt\": \"2019-07-29T17:03:42.85819Z\", \n"
-                     "            \"dns\": {\n"
-                     "                \"hostname\": \"wttr.in\", \n"
-                     "                \"port\": 80\n"
-                     "            }, \n"
-                     "            \"egressRouter\": \"unknown\", \n"
-                     "            \"endpointAddress\": null, \n"
-                     "            \"hostable\": false, \n"
-                     "            \"id\": \"1ab83c54-9024-4486-8e33-b117f7f64435\", \n"
-                     "            \"legacyPassthrough\": false, \n"
-                     "            \"name\": \"wttr.in-80\", \n"
-                     "            \"tags\": {}, \n"
-                     "            \"updatedAt\": \"2019-08-05T14:02:52.337619Z\"\n"
-                     "        }] ";
+                     " {\n"
+                       "    \"id\": \"4aba8ab0-df3f-45fd-bed7-79127d2c3d29\",\n"
+                       "    \"createdAt\": \"2020-01-10T17:04:30.679489183Z\",\n"
+                       "    \"updatedAt\": \"2020-01-10T17:04:30.679489183Z\",\n"
+                       "    \"_links\": {\n"
+                       "      \"edge-routers\": {\n"
+                       "        \"href\": \"./services/4aba8ab0-df3f-45fd-bed7-79127d2c3d29/edge-routers\"\n"
+                       "      },\n"
+                       "      \"self\": {\n"
+                       "        \"href\": \"./services/4aba8ab0-df3f-45fd-bed7-79127d2c3d29\"\n"
+                       "      },\n"
+                       "      \"service-policies\": {\n"
+                       "        \"href\": \"./services/4aba8ab0-df3f-45fd-bed7-79127d2c3d29/identities\"\n"
+                       "      }\n"
+                       "    },\n"
+                       "    \"tags\": {},\n"
+                       "    \"name\": \"hosting\",\n"
+                       "    \"dns\": {\n"
+                       "      \"hostname\": \"sample.host.org\",\n"
+                       "      \"port\": 80\n"
+                       "    },\n"
+                       "    \"endpointAddress\": \"tcp:httpbin.org:80\",\n"
+                       "    \"egressRouter\": \"1bcefeb5-6385-42e4-bd92-be1085825b58\",\n"
+                       "    \"edgeRouterRoles\": null,\n"
+                       "    \"roleAttributes\": null,\n"
+                       "    \"permissions\": [\n"
+                       "      \"Bind\"\n"
+                       "    ]\n"
+                       "  },"
+                     " {\n"
+                       "    \"id\": \"4aba8ab0-df3f-45fd-bed7-79127d2c3d29\",\n"
+                       "    \"createdAt\": \"2020-01-10T17:04:30.679489183Z\",\n"
+                       "    \"updatedAt\": \"2020-01-10T17:04:30.679489183Z\",\n"
+                       "    \"_links\": {\n"
+                       "      \"edge-routers\": {\n"
+                       "        \"href\": \"./services/4aba8ab0-df3f-45fd-bed7-79127d2c3d29/edge-routers\"\n"
+                       "      },\n"
+                       "      \"self\": {\n"
+                       "        \"href\": \"./services/4aba8ab0-df3f-45fd-bed7-79127d2c3d29\"\n"
+                       "      },\n"
+                       "      \"service-policies\": {\n"
+                       "        \"href\": \"./services/4aba8ab0-df3f-45fd-bed7-79127d2c3d29/identities\"\n"
+                       "      }\n"
+                       "    },\n"
+                       "    \"tags\": {},\n"
+                       "    \"name\": \"httpbin\",\n"
+                       "    \"dns\": {\n"
+                       "      \"hostname\": \"httpbin.org\",\n"
+                       "      \"port\": 80\n"
+                       "    },\n"
+                       "    \"endpointAddress\": \"tcp:httpbin.org:80\",\n"
+                       "    \"egressRouter\": \"1bcefeb5-6385-42e4-bd92-be1085825b58\",\n"
+                       "    \"edgeRouterRoles\": null,\n"
+                       "    \"roleAttributes\": null,\n"
+                       "    \"permissions\": [\n"
+                       "      \"Dial\"\n"
+                       "    ]\n"
+                       "  }"
+                       "]";
 
     ziti_service** services = parse_ziti_service_array(json, (int)strlen(json));
     ziti_service **s;
     int idx;
+
     for (idx = 0, s = services; *s != nullptr; s++, idx++) {
         printf ("service #%d: %s\n", idx, (*s)->name);
         dump_ziti_service(services[idx], 2);
     }
-
     REQUIRE(idx == 2);
-    REQUIRE(strcmp(services[0]->name, "Azure-Ping") == 0);
-    REQUIRE(services[0]->dns_port == 443);
-    REQUIRE(services[0]->hostable);
-    REQUIRE(strcmp(services[1]->name, "wttr.in-80") == 0);
-    REQUIRE(services[1]->dns_port == 80);
-    REQUIRE_FALSE(services[1]->hostable);
     REQUIRE(services[idx] == nullptr);
+
+    REQUIRE_THAT(services[0]->name, Equals("hosting"));
+    REQUIRE(services[0]->dns_port == 80);
+    REQUIRE_THAT(services[0]->permissions[0], Equals("Bind"));
+
+    REQUIRE(strcmp(services[1]->name, "httpbin") == 0);
+    REQUIRE(services[1]->dns_port == 80);
+    REQUIRE_THAT(services[1]->permissions[0], Equals("Dial"));
 
     free_ziti_service_array(services);
 }

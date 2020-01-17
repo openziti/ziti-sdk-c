@@ -134,7 +134,7 @@ TEST_CASE("controller_test","[integ]") {
             auto *re = static_cast<struct uber_resp_s *>(ctx);
             resp_cb(s, e, &re->service);
             if (e == nullptr) {
-                ziti_ctrl_get_net_session(re->c, s, resp_cb, &re->ns);
+                ziti_ctrl_get_net_session(re->c, s, false, resp_cb, &re->ns);
             }
             ziti_ctrl_logout(re->c, logout_cb, &re->logout);
 
@@ -172,6 +172,7 @@ TEST_CASE("controller_test","[integ]") {
     free_ziti_session(session.resp);
 
     ziti_ctrl_close(&ctrl);
+    uv_run(loop, UV_RUN_DEFAULT);
     tls->api->free_ctx(tls);
     free_nf_config(config);
 }

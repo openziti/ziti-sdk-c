@@ -28,7 +28,7 @@ limitations under the License.
 
 #define MAX_WRITES 4
 
-static const char *config = NULL;
+static char *config = NULL;
 static nf_context nf;
 static uv_signal_t sig;
 
@@ -114,6 +114,7 @@ static void alloc_cb(uv_handle_t *h, size_t suggested_size, uv_buf_t *buf) {
         buf->len = suggested_size;
     }
     else {
+        ZITI_LOG(WARN, "maximum outstanding writes reached clt[%s]", clt->addr_s);
         buf->base = NULL;
         buf->len = 0;
     }
@@ -140,7 +141,7 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
     struct client *clt = stream->data;
 
     if (nread == UV_ENOBUFS) {
-        // this error indicates that we are throttled by backend, see alloc_cb()
+        ZITI_LOG(WARN, "client[%s] is throttled", clt->addr_s);
     }
     else if (nread < 0) {
         ZITI_LOG(DEBUG,  "connection closed %s [%zd/%s](%s)",
@@ -223,17 +224,18 @@ static void on_client(uv_stream_t *server, int status) {
 
 }
 
-static void service_avail_cb(nf_context nf_ctx, const char* service, int status, void *ctx) {
+static void service_avail_cb(nf_context nf_ctx, const char* service, int status, unsigned int permissions, void *ctx) {
     struct listener *l = ctx;
     PREPF(uv, uv_strerror);
 
-    if (status == ZITI_OK) {
+    if (status == ZITI_OK && (permissions & ZITI_CAN_DIAL) ) {
         ZITI_LOG(INFO, "starting listener for service[%s] on port[%d]", l->service_name, l->port);
 
         NEWP(addr, struct sockaddr_in);
         TRY(uv, uv_ip4_addr("0.0.0.0", l->port, addr));
         TRY(uv, uv_tcp_bind(&l->server, (const struct sockaddr *) addr, 0));
         TRY(uv, uv_listen((uv_stream_t *) &l->server, 5, on_client));
+        free(addr);
     }
     else {
         ZITI_LOG(ERROR, "service %s is not available. not starting listener", service);

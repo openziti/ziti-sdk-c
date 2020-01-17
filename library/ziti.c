@@ -158,8 +158,9 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
     CATCH(ziti) {
         return ERR(ziti);
     }
-
-    return NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx);
+    int rc =  NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx);
+    free_nf_config(cfg);
+    return rc;
 }
 
 int
@@ -206,6 +207,8 @@ int NF_set_timeout(nf_context ctx, int timeout) {
 int NF_shutdown(nf_context ctx) {
     ZITI_LOG(INFO, "Ziti is shutting down");
 
+    free_ziti_session(ctx->session);
+
     uv_timer_stop(&ctx->session_timer);
     ziti_ctrl_close(&ctx->controller);
     ziti_close_channels(ctx);
@@ -232,13 +235,13 @@ void NF_dump(nf_context ctx) {
 
     printf("\n=================\nServices:\n");
     ziti_service *zs;
-    SLIST_FOREACH(zs, &ctx->services, _next) {
+    LIST_FOREACH(zs, &ctx->services, _next) {
         dump_ziti_service(zs, 0);
     }
 
     printf("\n==================\nNet Sessions:\n");
     ziti_net_session *it;
-    SLIST_FOREACH(it, &ctx->net_sessions, _next) {
+    LIST_FOREACH(it, &ctx->net_sessions, _next) {
         dump_ziti_net_session(it, 0);
     }
 }
@@ -251,6 +254,7 @@ int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data) {
     c->channel = NULL;
     c->state = Initial;
     c->timeout = ctx->ziti_timeout;
+    c->edge_msg_seq = 1;
 
     *conn = c;
     return ZITI_OK;
@@ -295,23 +299,31 @@ struct service_req_s {
 
 static void service_cb (ziti_service *s, ziti_error *err, void *ctx) {
     struct service_req_s *req = ctx;
-    int rc = ZITI_SERVICE_UNAVALABLE;
+    int rc = ZITI_SERVICE_UNAVAILABLE;
 
     if (s != NULL) {
-        SLIST_INSERT_HEAD(&req->nf->services, s, _next);
+        for (int i = 0; s->permissions[i] != NULL; i++) {
+            if (strcmp(s->permissions[i], "Dial") == 0) {
+                 s->perm_flags |= ZITI_CAN_DIAL;
+            }
+            if (strcmp(s->permissions[i], "Bind") == 0) {
+                s->perm_flags |= ZITI_CAN_BIND;
+            }
+        }
+        LIST_INSERT_HEAD(&req->nf->services, s, _next);
         rc = ZITI_OK;
     }
 
-    req->cb(req->nf, req->service, rc, req->cb_ctx);
+    req->cb(req->nf, req->service, rc, s ? s->perm_flags : 0, req->cb_ctx);
     FREE(req->service);
     free(req);
 }
 
 int NF_service_available(nf_context nf, const char *service, nf_service_cb cb, void *ctx) {
     ziti_service *s;
-    SLIST_FOREACH (s, &nf->services, _next) {
+    LIST_FOREACH (s, &nf->services, _next) {
         if (strcmp(service, s->name) == 0) {
-            cb(nf, service, ZITI_OK, ctx);
+            cb(nf, service, ZITI_OK, s->perm_flags, ctx);
         }
     }
 
@@ -322,7 +334,7 @@ int NF_service_available(nf_context nf, const char *service, nf_service_cb cb, v
     req->cb_ctx = ctx;
 
     ziti_ctrl_get_service(&nf->controller, service, service_cb, req);
-    return ZITI_SERVICE_UNAVALABLE;
+    return ZITI_OK;
 }
 
 extern int NF_listen(nf_connection serv_conn, const char *service, nf_listen_cb lcb, nf_client_cb cb) {

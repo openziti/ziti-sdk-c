@@ -23,6 +23,7 @@ limitations under the License.
 struct nf_conn_req {
     struct nf_conn *conn;
     char *service_name;
+    bool bind;
     ziti_service *service;
     ziti_channel_t *channel;
     nf_conn_cb cb;
@@ -105,8 +106,6 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
     else if (req->conn->channel == NULL) { // first channel to connect
         ZITI_LOG(TRACE, "channel connected status[%d]", status);
 
-        req->conn->edge_msg_seq = 1;
-
         req->channel = ch;
         req->conn->channel = ch;
         ziti_channel_start_connection(req);
@@ -153,11 +152,19 @@ static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) 
         ZITI_LOG(ERROR, "failed to load service (%s): %s(%s)", req->service_name, err->code, err->message);
     }
     if (s == NULL) {
-        req->cb(req->conn, ZITI_SERVICE_UNAVALABLE);
+        req->cb(req->conn, ZITI_SERVICE_UNAVAILABLE);
         free_conn_req(req);
     } else {
         ZITI_LOG(INFO, "got service[%s] id[%s]", s->name, s->id);
-        SLIST_INSERT_HEAD(&nf_ctx->services, s, _next);
+        for (int i = 0; s->permissions[i] != NULL; i++) {
+            if (strcmp(s->permissions[i], "Dial") == 0) {
+                 s->perm_flags |= ZITI_CAN_DIAL;
+            }
+            if (strcmp(s->permissions[i], "Bind") == 0) {
+                s->perm_flags |= ZITI_CAN_BIND;
+            }
+        }
+        LIST_INSERT_HEAD(&nf_ctx->services, s, _next);
         req->service = s;
         ziti_connect_async(ar);
     }
@@ -174,12 +181,12 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
         ZITI_LOG(ERROR, "failed to load service[%s]: %s(%s)", req->service_name, err->code, err->message);
     }
     if (s == NULL) {
-        req->cb(req->conn, ZITI_SERVICE_UNAVALABLE);
+        req->cb(req->conn, ZITI_SERVICE_UNAVAILABLE);
         free_conn_req(req);
     } else {
         ZITI_LOG(INFO, "got session[%s] for service[%s]", s->id, req->service->name);
         s->service_id = strdup(req->service->id);
-        SLIST_INSERT_HEAD(&nf_ctx->net_sessions, s, _next);
+        LIST_INSERT_HEAD(&nf_ctx->net_sessions, s, _next);
         ziti_connect_async(ar);
     }
 
@@ -197,7 +204,7 @@ static void ziti_connect_async(uv_async_t *ar) {
     // find service
     if (req->service == NULL) {
         ziti_service *s;
-        SLIST_FOREACH (s, &ctx->services, _next) {
+        LIST_FOREACH (s, &ctx->services, _next) {
             if (strcmp(req->service_name, s->name) == 0) {
                 service_id = s->id;
                 req->service = s;
@@ -213,8 +220,8 @@ static void ziti_connect_async(uv_async_t *ar) {
     }
 
     ziti_net_session *it = NULL;
-    SLIST_FOREACH(it, &ctx->net_sessions, _next) {
-        if (strcmp(req->service->id, it->service_id) == 0) {
+    LIST_FOREACH(it, &ctx->net_sessions, _next) {
+        if (strcmp(req->service->id, it->service_id) == 0 && (req->bind == it->hosting) ) {
             net_session = it;
             break;
         }
@@ -222,7 +229,7 @@ static void ziti_connect_async(uv_async_t *ar) {
 
     if (net_session == NULL) {
         ZITI_LOG(DEBUG, "requesting session for service[%s]", req->service_name);
-        ziti_ctrl_get_net_session(&ctx->controller, req->service, connect_get_net_session_cb, ar);
+        ziti_ctrl_get_net_session(&ctx->controller, req->service, req->bind, connect_get_net_session_cb, ar);
         return;
     }
     else {
@@ -331,9 +338,9 @@ void connect_reply_cb(void *ctx, message *msg) {
 
     switch (msg->header.content) {
         case ContentTypeStateClosed:
-            ZITI_LOG(ERROR, "edge conn_id[%d]: failed to %s, reason=%*s",
+            ZITI_LOG(ERROR, "edge conn_id[%d]: failed to %s, reason=%*.*s",
                      conn->conn_id, conn->state == Binding ? "bind" : "connect",
-                     msg->header.body_len, msg->body);
+                     msg->header.body_len, msg->header.body_len, msg->body);
             conn->state = Closed;
             req->cb(conn, ZITI_EOF);
             SLIST_REMOVE(&req->channel->connections, conn, nf_conn, next);
@@ -421,6 +428,7 @@ int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, n
     NEWP(req, struct nf_conn_req);
 
     req->service_name = strdup(service);
+    req->bind = true;
     req->conn = conn;
     req->cb = listen_cb;
 

@@ -31,7 +31,6 @@ limitations under the License.
 extern "C" {
 #endif
 
-// ReSharper disable CppInconsistentNaming
 /**
  * The default timeout in milliseconds for connections and write operations to succeed.
  */
