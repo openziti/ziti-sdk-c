@@ -32,6 +32,16 @@ extern "C" {
 #endif
 
 /**
+* Flag indicating service `Dial` permission
+*/
+#define ZITI_CAN_DIAL 1
+
+/**
+* Flag indicating service `Bind` permission
+*/
+#define ZITI_CAN_BIND 2
+
+/**
  * The default timeout in milliseconds for connections and write operations to succeed.
  */
 #define NF_DEFAULT_TIMEOUT 5000

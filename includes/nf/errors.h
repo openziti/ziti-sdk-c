@@ -53,7 +53,7 @@ limitations under the License.
     * the service does not exist
     * the identity connecting is not associated with the given service
     */ \
-    XX(SERVICE_UNAVALABLE, "Service not available") \
+    XX(SERVICE_UNAVAILABLE, "Service not available") \
     /** The connection has been closed gracefully */ \
     XX(EOF, "Connection closed") \
     /** A connect or write operation did not complete in the alloted timeout. #DEFAULT_TIMEOUT */ \
