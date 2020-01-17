@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <catch2/catch.hpp>
 #include <iostream>
-#include <model.h>
 #include <zt_internal.h>
 #include <ziti_ctrl.h>
 #include <utils.h>
