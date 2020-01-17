@@ -226,7 +226,7 @@ int NF_free(nf_context *ctxp) {
     return 0;
 }
 
-void NF_dump(struct nf_ctx *ctx) {
+void NF_dump(nf_context ctx) {
     printf("\n=================\nSession:\n");
     dump_ziti_session(ctx->session, 0);
 
