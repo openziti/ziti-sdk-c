@@ -1,6 +1,6 @@
 project(ziti-prox-c)
 
-add_executable(ziti-prox-c proxy.c ${ZITI_HEADER_FILES})
+add_executable(ziti-prox-c proxy.c)
 
 if(WIN32)
     target_include_directories(ziti-prox-c PRIVATE win32/include)
