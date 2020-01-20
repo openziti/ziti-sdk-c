@@ -16,7 +16,7 @@ limitations under the License.
 
 /**
  * @file ziti.h
- * @brief Defines the macros, functions, typedefs and constants required to interface with a Ziti Network
+ * @brief Defines the macros, functions, typedefs and constants required to interface with a Ziti Network.
  */
 
 #ifndef NF_ZT_H
@@ -156,7 +156,7 @@ typedef void (*nf_conn_cb)(nf_connection conn, int status);
 typedef void (*nf_client_cb)(nf_connection serv, nf_connection client, int status);
 
 /**
- * @brief Defines the nf_listen_cb
+ * @brief Defines the nf_listen_cb.
  * 
  * A convenience to make the API align better when a human looks at it and as a place to change the listen
  * callback in the unlikely event it is needed.
@@ -192,7 +192,7 @@ typedef void (*nf_write_cb)(nf_connection conn, ssize_t status, void *write_ctx)
  * @param config location of identity configuration
  * @param loop libuv event loop
  * @param init_cb callback to be called when initialization is complete
- * @param init_ctx custom data to be passed into init_cb callback
+ * @param init_ctx additional context to be passed into #nf_init_cb callback
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  *
@@ -210,7 +210,7 @@ extern int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void
  * @param tls_context the context to use when establishing new TLS connections
  * @param loop libuv event loop
  * @param init_cb callback to be called when initialization is complete
- * @param init_ctx custom data to be passed into callback
+ * @param init_ctx additional context to be passed into the #nf_init_cb callback
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  *
@@ -237,7 +237,7 @@ NF_init_with_tls(const char* ctrl_url, tls_context* tls_context, uv_loop_t* loop
 extern int NF_set_timeout(nf_context nf_ctx, int timeout);
 
 /**
- * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #nf_context
+ * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #nf_context.
  * 
  * @param nf_ctx the Ziti Edge identity context to be shut down
  *
@@ -246,7 +246,7 @@ extern int NF_set_timeout(nf_context nf_ctx, int timeout);
 extern int NF_shutdown(nf_context nf_ctx);
 
 /**
- * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #nf_context
+ * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #nf_context.
  *
  * This function will output debugging information to standard out. The output from this command may
  * be useful when submitting issues.
@@ -272,7 +272,7 @@ extern void NF_dump(nf_context nf_ctx);
 extern int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data);
 
 /**
- * @brief Retrieves any custom data associated with the given #nf_connection
+ * @brief Retrieves any custom data associated with the given #nf_connection.
  * 
  * This function returns the custom data associated to the #nf_connection supplied
  * in the NF_conn_init() function.
@@ -287,12 +287,13 @@ extern void *NF_conn_data(nf_connection conn);
  * @brief Checks availability of the service for the given edge context.
  *
  * Checks to see if a given #nf_context has a service available by the name supplied. The supplied name
- * is case sensitive.
+ * is case sensitive. This function is not synchronous - the #nf_service_cb specified is invoked at the
+ * end of the function invocation with the result.
  *
  * @param nf_ctx the Ziti Edge identity context to use to check for the service's availability on
  * @param service the name of the service to check
  * @param cb callback called with #ZITI_OK or #ZITI_SERVICE_NOT_AVAILABLE
- * @param ctx custom data passed to the #nf_service_cb
+ * @param ctx additional context to be passed to the #nf_service_cb
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
@@ -301,42 +302,79 @@ extern int NF_service_available(nf_context nf_ctx, const char *service, nf_servi
 /**
  * @brief Establishes connection to a Ziti service.
  *
- * @param conn connection object
- * @param service service name
- * @param cb
- * @param data_cb
+ * Before any bytes can be sent over the Ziti Network a #nf_connection must be dialed to a service. This
+ * function will attempt to dial the service with the given name. The result of the service dial will be
+ * called back using the provided #nf_conn_cb.
+ *
+ * If the dial succeeds the provided #nf_data_cb is used to handle bytes returned from the service. If the
+ * dial fails only the #nf_conn_cb will be invoked with the corresponding #ZITI_ERRORS code.
+ *
+ * @param conn the #nf_connection to use in the dial operation
+ * @param service the name of the service to dial
+ * @param cb invoked after the dial operation completes
+ * @param data_cb invoked if the dial operation succeeds with data received over the connection
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ *
+ * @see NF_dial(), NF_write()
  */
 extern int NF_dial(nf_connection conn, const char *service, nf_conn_cb cb, nf_data_cb data_cb);
 
 /**
  * @brief Start accepting ziti client connections.
  *
- * @param serv_conn
- * @param service service name
- * @param lcb listen callback
- * @param cb client callback, called when client is attempting to connect to advertised service.
+ * This function is invoked to tell the Ziti SDK to accept connections from other Ziti clients for the
+ * provided service name. The identity configured in the Ziti C SDK will need to be configured to host
+ * the service via the Ziti Controller.
+ *
+ * When this function completes the #nf_listen_cb callback will be invoked. This callback is what will
+ * verify the success or failure of the listen operation.
+ *
+ * Once successfully listening the #nf_client_cb will be invoked when a Ziti client attempts to dial
+ * this service name.
+ *
+ * @param serv_conn the #nf_connection acting as a server which will be hosting the service
+ * @param service the name of the service to be hosted
+ * @param lcb invoked after the function completes
+ * @param cb a callback invoked when when client is attempting to connect to advertised service
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ *
+ * @see NF_accept()
  */
 extern int NF_listen(nf_connection serv_conn, const char *service, nf_listen_cb lcb, nf_client_cb cb);
 
 /**
  * @brief Completes client connection.
  *
- * @param clt client connection
- * @param cb connection callback
- * @param data_cb data callback
+ * After a client connects to a hosted Ziti service this function is invoked to finish the connection
+ * establishment.  This function will establish the callbacks necessary to send data to the connecting
+ * client or to process data sent by the client.
+ *
+ * After this function completes the #nf_conn_cb callback is invoked. The callback will contain the
+ * status of the function call as well so it's important to verify the status.
+ *
+ * Data sent by the client is processed in the #nf_data_cb callback. Every invocation of the callback
+ * could indicate an error or that the connection is no longer usable so it is important to check the
+ * status of the function each time it is invoked.
+ *
+ * @param clt a #nf_connection representing the incoming client connection
+ * @param cb a callback invoked when the function completes
+ * @param data_cb a callback invoked each time the client sends data
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ *
+ * @see NF_listen()
  */
 extern int NF_accept(nf_connection clt, nf_conn_cb cb, nf_data_cb data_cb);
 
 /**
- * @brief Close connection.
+ * @brief Closes the given connection.
  *
- * @param conn
+ * When no longer needed a [connection](#nf_connection) should be closed to gracefully disconnect. This
+ * function should be invoked after any status is returned which indicates an error situation.
+ *
+ * @param conn the #nf_connection to be closed
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
@@ -345,18 +383,20 @@ extern int NF_close(nf_connection *conn);
 /**
  * @brief Send data to the connection peer.
  *
- * data buffer passed into this function should be intact until callback is called. It is only safe to free the buffer in
+ * This function is invoked to send data from the Ziti C SDK to the peer on the other side of the Ziti connection. It is
+ * used to send data over the given connection and to establish the callback invoked after the data is sent. It is
+ * important to not free the buffer until the #nf_write_cb callback is invoked. It is *only* safe to free the buffer in
  * the write callback.
- * @param conn
- * @param data
- * @param length
- * @param write_cb
- * @param write_ctx
+ *
+ * @param conn the #nf_connection used to write data to
+ * @param data a buffer of data to write over the provided #nf_connection
+ * @param length the length of data in the data buffer to send. Make sure to not specify 
+ * @param write_cb a callback invoked after the function completes indicating the buffer can now be reclaimed
+ * @param write_ctx additional context to be passed to the #nf_write_cb callback
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
 extern int NF_write(nf_connection conn, uint8_t *data, size_t length, nf_write_cb write_cb, void *write_ctx);
-// ReSharper enable CppInconsistentNaming
 
 #ifdef __cplusplus
 }
