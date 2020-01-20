@@ -23,7 +23,6 @@ limitations under the License.
 #include <uv_mbed/uv_mbed.h>
 
 #include <nf/ziti.h>
-#include "model.h"
 #include "buffer.h"
 #include "message.h"
 #include "ziti_ctrl.h"
