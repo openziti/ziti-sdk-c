@@ -19,7 +19,6 @@ limitations under the License.
 #include "utils.h"
 #include "zt_internal.h"
 #include "strutils.h"
-#include "model.h"
 #include <ziti_ctrl.h>
 #include <uv_mbed/um_http.h>
 

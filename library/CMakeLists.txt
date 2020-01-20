@@ -5,6 +5,7 @@ add_library(ziti STATIC
         errors.c
         ziti_ctrl.c
         model.c
+        ziti_model.c
         connect.c
         channel.c
         message.c

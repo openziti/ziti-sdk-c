@@ -26,7 +26,7 @@ limitations under the License.
 #include <time.h>
 #endif
 
-#include "model.h"
+#include "ziti_model.h"
 
 using Catch::Matchers::Equals;
 
