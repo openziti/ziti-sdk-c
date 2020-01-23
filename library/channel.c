@@ -52,7 +52,6 @@ int ziti_channel_init(struct nf_ctx *ctx, ziti_channel_t *ch) {
     ch->ctx = ctx;
     ch->id = ctx->ch_counter++;
     ch->msg_seq = -1;
-    ch->conn_seq = 0;
 
     char hostname[MAXHOSTNAMELEN];
     size_t hostlen = sizeof(hostname);

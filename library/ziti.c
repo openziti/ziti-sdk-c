@@ -93,6 +93,11 @@ static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout
     return ZITI_INVALID_CONFIG;
 }
 
+static void async_connects(uv_async_t *ar) {
+    nf_context nf = ar->data;
+    ziti_process_connect_reqs(nf);
+}
+
 int load_tls(nf_config *cfg, tls_context **ctx) {
      PREP(ziti);
 
@@ -155,13 +160,13 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
 
     TRY(ziti, load_config(config, &cfg));
     TRY(ziti, load_tls(cfg, &tls));
+    TRY(ziti, NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx));
 
-    CATCH(ziti) {
-        return ERR(ziti);
-    }
-    int rc =  NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx);
+    CATCH(ziti);
+
     free_nf_config(cfg);
-    return rc;
+
+    return ERR(ziti);
 }
 
 int
@@ -181,6 +186,7 @@ NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop
 
     ziti_ctrl_init(loop, &ctx->controller, ctrl_url, tls_context);
     ziti_ctrl_get_version(&ctx->controller, version_cb, &ctx->controller);
+    uv_async_init(loop, &ctx->connect_async, async_connects);
 
     uv_timer_init(loop, &ctx->session_timer);
     uv_unref((uv_handle_t *) &ctx->session_timer);
@@ -256,6 +262,7 @@ int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data) {
     c->state = Initial;
     c->timeout = ctx->ziti_timeout;
     c->edge_msg_seq = 1;
+    c->conn_id = nf_ctx->conn_seq++;
 
     *conn = c;
     return ZITI_OK;

@@ -103,7 +103,6 @@ typedef struct ziti_channel {
     struct ch_conn_req **conn_reqs;
     int conn_reqs_n;
 
-    uint32_t conn_seq;
     uint32_t msg_seq;
 
     buffer *incoming;
@@ -170,6 +169,10 @@ struct nf_ctx {
 
     SLIST_HEAD(channels, ziti_channel) channels;
 
+    LIST_HEAD(conn_reqs, nf_conn_req) connect_requests;
+    uv_async_t connect_async;
+    uint32_t conn_seq;
+
     /* options */
     int ziti_timeout;
 };
@@ -177,6 +180,8 @@ struct nf_ctx {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+int ziti_process_connect_reqs(nf_context nf);
 
 int ziti_close_channels(nf_context);
 
@@ -197,9 +202,6 @@ int load_config(const char *filename, nf_config **);
 
 int load_tls(nf_config* cfg, tls_context **tls);
 
-int ziti_auth(nf_context ctx);
-int ziti_logout(nf_context ctx);
-
 int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, nf_client_cb on_clt_cb);
 
 int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb);
@@ -207,6 +209,7 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb);
 int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb);
 
 int ziti_write(struct nf_write_req *req);
+
 int ziti_disconnect(struct nf_conn *conn);
 
 void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int status);

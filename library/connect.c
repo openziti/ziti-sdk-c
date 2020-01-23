@@ -381,7 +381,6 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
     ziti_channel_t *ch = req->channel;
 
     req->conn->channel = ch;
-    req->conn->conn_id = ch->conn_seq++;
 
     ZITI_LOG(TRACE, "ch[%d] => Edge Connect request token[%s] conn_id[%d]", ch->id, req->conn->token,
              req->conn->conn_id);
@@ -447,7 +446,6 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb) {
     ziti_channel_t *ch = conn->parent->channel;
 
     conn->channel = ch;
-    conn->conn_id = ch->conn_seq++;
     conn->data_cb = data_cb;
 
     SLIST_INSERT_HEAD(&ch->connections, conn, next);
@@ -484,6 +482,12 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb) {
     req->cb = cb;
     ziti_channel_send_for_reply(ch, content_type, headers, 3, (const uint8_t *) &clt_conn_id, sizeof(clt_conn_id),
                                 connect_reply_cb, req);
+
+    return ZITI_OK;
+}
+
+int ziti_process_connect_reqs(nf_context nf) {
+    ZITI_LOG(WARN, "TODO");
 
     return ZITI_OK;
 }
