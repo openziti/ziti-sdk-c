@@ -30,6 +30,7 @@ limitations under the License.
     XX(CONNABORT, "Connection to edge router terminated") \
     XX(KEY_SPEC_UNSUPPORTED, "unsupported key specification") \
     XX(KEY_INVALID, "invalid key") \
+    XX(INVALID_STATE, "invalid state") \
     XX(WTF, "WTF: programming error")
 
 
