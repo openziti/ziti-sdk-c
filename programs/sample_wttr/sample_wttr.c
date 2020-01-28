@@ -98,5 +98,5 @@ int main(int argc, char** argv) {
 
     printf("========================\n");
 
-    NF_free(&nf);
+    NF_shutdown(nf);
 }

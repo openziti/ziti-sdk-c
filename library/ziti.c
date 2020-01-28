@@ -38,7 +38,6 @@ limitations under the License.
 #define strncasecmp _strnicmp
 #endif
 
-#define DEFAULT_TIMEOUT 5000
 
 struct nf_init_req {
     nf_context nf;
@@ -99,7 +98,7 @@ static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout
             char *end = strchr(val, '&');
             int vlen = (int)(end == NULL ? strlen(val) : end - val);
             snprintf(out, maxout, "%*.*s", vlen, vlen, val);
-            return 0;
+            return ZITI_OK;
 
         }
         else { // skip to next '&'
@@ -197,13 +196,13 @@ NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop
 
     if (tls_context == NULL) {
         ZITI_LOG(ERROR, "tls context is required");
-        return ZITI_CONFIG_NOT_FOUND;
+        return ZITI_INVALID_CONFIG;
     }
 
     NEWP(ctx, struct nf_ctx);
     ctx->tlsCtx = tls_context;
     ctx->loop = loop;
-    ctx->ziti_timeout = DEFAULT_TIMEOUT;
+    ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
     LIST_INIT(&ctx->connect_requests);
 
     uv_async_init(loop, &ctx->connect_async, async_connects);
@@ -230,9 +229,9 @@ int NF_set_timeout(nf_context ctx, int timeout) {
         ctx->ziti_timeout = timeout;
     }
     else {
-        ctx->ziti_timeout = DEFAULT_TIMEOUT;
+        ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
     }
-    return 0;
+    return ZITI_OK;
 }
 
 int NF_shutdown(nf_context ctx) {
@@ -257,10 +256,10 @@ int NF_free(nf_context *ctxp) {
     *ctxp = NULL;
 
     ZITI_LOG(INFO, "shutdown is complete\n");
-    return 0;
+    return ZITI_OK;
 }
 
-void NF_dump(struct nf_ctx *ctx) {
+void NF_dump(nf_context ctx) {
     printf("\n=================\nSession:\n");
     dump_ziti_session(ctx->session, 0);
 
@@ -318,17 +317,17 @@ int NF_close(nf_connection *conn) {
 
     *conn = NULL;
 
-    return 0;
+    return ZITI_OK;
 }
 
-int NF_write(nf_connection conn, uint8_t *buf, size_t length, nf_write_cb cb, void *ctx) {
+int NF_write(nf_connection conn, uint8_t* data, size_t length, nf_write_cb write_cb, void* write_ctx) {
 
     NEWP(req, struct nf_write_req);
     req->conn = conn;
-    req->buf = buf;
+    req->buf = data;
     req->len = length;
-    req->cb = cb;
-    req->ctx = ctx;
+    req->cb = write_cb;
+    req->ctx = write_ctx;
 
     return ziti_write(req);
 }

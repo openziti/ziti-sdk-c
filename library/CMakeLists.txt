@@ -1,3 +1,5 @@
+set(ZITI_HEADER_FILES ${PROJECT_SOURCE_DIR}/includes/nf/errors.h ${PROJECT_SOURCE_DIR}/includes/nf/ziti.h)
+
 add_library(ziti STATIC
         utils.c strutils.h
         ziti.c
@@ -10,7 +12,10 @@ add_library(ziti STATIC
         channel.c
         message.c
         buffer.c
+        ${ZITI_HEADER_FILES}
         )
+
+set_property(TARGET ziti PROPERTY C_STANDARD 11)
 
 target_sources(ziti
         PRIVATE ${PROJECT_SOURCE_DIR}/deps/http-parser/http_parser.c)
@@ -41,11 +46,9 @@ target_compile_definitions(ziti PUBLIC
 
 if (WIN32)
     # on windows GDI defines ERROR which conflicts with the SDK declaration of DEBUG_LEVELS in utils.h
-    target_compile_definitions(ziti PUBLIC NOGDI)
+    target_compile_definitions(ziti PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
     target_link_libraries(ziti PUBLIC crypt32)
 endif()
-
-set_property(TARGET ziti PROPERTY C_STANDARD 11)
 
 set(includedir ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR})
 set(libdir ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
