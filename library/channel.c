@@ -40,7 +40,7 @@ struct waiter_s {
     reply_cb cb;
     void *reply_ctx;
 
-    SLIST_ENTRY(waiter_s) next;
+    LIST_ENTRY(waiter_s) next;
 };
 
 struct ch_conn_req {
@@ -69,8 +69,8 @@ int ziti_channel_init(struct nf_ctx *ctx, ziti_channel_t *ch) {
     ch->in_body_offset = 0;
     ch->incoming = new_buffer();
 
-    SLIST_INIT(&ch->connections);
-    SLIST_INIT(&ch->waiters);
+    LIST_INIT(&ch->connections);
+    LIST_INIT(&ch->waiters);
 
     uv_mbed_init(ctx->loop, &ch->connection, ctx->tlsCtx);
     uv_mbed_keepalive(&ch->connection, true, 60);
@@ -87,7 +87,7 @@ void ziti_channel_free(ziti_channel_t* ch) {
 
 int ziti_close_channels(struct nf_ctx *ziti) {
     ziti_channel_t *ch;
-    SLIST_FOREACH(ch, &ziti->channels, next) {
+    LIST_FOREACH(ch, &ziti->channels, next) {
         ziti_channel_close(ch);
     }
     return ZITI_OK;
@@ -108,7 +108,7 @@ int ziti_channel_close(ziti_channel_t *ch) {
 
 int ziti_channel_connect(nf_context ziti, const char *url, ch_connect_cb cb, void *cb_ctx) {
     ziti_channel_t *ch = NULL;
-    SLIST_FOREACH(ch, &ziti->channels, next) {
+    LIST_FOREACH(ch, &ziti->channels, next) {
         if (strcmp(url, ch->ingress) == 0) {
             break;
         }
@@ -163,7 +163,7 @@ int ziti_channel_connect(nf_context ziti, const char *url, ch_connect_cb cb, voi
 
     ch->state = Connecting;
 
-    SLIST_INSERT_HEAD(&ch->ctx->channels, ch, next);
+    LIST_INSERT_HEAD(&ch->ctx->channels, ch, next);
     
     uv_mbed_connect(req, &ch->connection, host, ingress.port, on_channel_connect_internal);
     return ZITI_OK;
@@ -247,7 +247,7 @@ int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_
         w->cb = rep_cb;
         w->reply_ctx = reply_ctx;
 
-        SLIST_INSERT_HEAD(&ch->waiters, w, next);
+        LIST_INSERT_HEAD(&ch->waiters, w, next);
     }
 
     NEWP(wr, struct async_write_req);
@@ -271,7 +271,7 @@ int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_
 
 static struct nf_conn *find_conn(ziti_channel_t *ch, uint32_t conn_id) {
     struct nf_conn *c;
-    SLIST_FOREACH(c, &ch->connections, next) {
+    LIST_FOREACH(c, &ch->connections, next) {
         if (c->conn_id == conn_id) {
             return c;
         }
@@ -295,7 +295,7 @@ static void process_edge_message(struct nf_conn *conn, message *msg) {
                 conn->data_cb(conn, NULL, ZITI_EOF);
             }
             conn->state = Closed;
-            SLIST_REMOVE(&conn->channel->connections, conn, nf_conn, next);
+            LIST_REMOVE(conn, next);
             break;
 
         case ContentTypeData:
@@ -343,14 +343,14 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
     bool is_reply = message_get_int32_header(m, ReplyForHeader, &reply_to);
 
     if (is_reply) {
-        SLIST_FOREACH(w, &ch->waiters, next) {
+        LIST_FOREACH(w, &ch->waiters, next) {
             if (w->seq == reply_to) {
                 break;
             }
         }
 
         if (w) {
-            SLIST_REMOVE(&ch->waiters, w, waiter_s, next);
+            LIST_REMOVE(w, next);
             ZITI_LOG(TRACE, "ch[%d] found waiter for [rep_to=%d]", ch->id, w->seq);
 
             w->cb(w->reply_ctx, m);
@@ -503,12 +503,12 @@ static void async_write(uv_async_t* ar) {
 
 static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
     nf_context nf = ch->ctx;
-    if (!SLIST_EMPTY(&nf->channels)) {
-        SLIST_REMOVE(&nf->channels, ch, ziti_channel, next);
+    if (!LIST_EMPTY(&nf->channels)) {
+        LIST_REMOVE(ch, next);
     }
 
     nf_connection con;
-    SLIST_FOREACH(con, &ch->connections, next) {
+    LIST_FOREACH(con, &ch->connections, next) {
         if (con->state == Connected) {
             con->state = Closed;
             con->data_cb(con, NULL, code);

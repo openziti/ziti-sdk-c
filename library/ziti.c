@@ -183,10 +183,13 @@ NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop
     ctx->tlsCtx = tls_context;
     ctx->loop = loop;
     ctx->ziti_timeout = DEFAULT_TIMEOUT;
+    LIST_INIT(&ctx->connect_requests);
+
+    uv_async_init(loop, &ctx->connect_async, async_connects);
+    uv_unref((uv_handle_t *) &ctx->connect_async);
 
     ziti_ctrl_init(loop, &ctx->controller, ctrl_url, tls_context);
     ziti_ctrl_get_version(&ctx->controller, version_cb, &ctx->controller);
-    uv_async_init(loop, &ctx->connect_async, async_connects);
 
     uv_timer_init(loop, &ctx->session_timer);
     uv_unref((uv_handle_t *) &ctx->session_timer);
@@ -250,6 +253,16 @@ void NF_dump(struct nf_ctx *ctx) {
     ziti_net_session *it;
     LIST_FOREACH(it, &ctx->net_sessions, _next) {
         dump_ziti_net_session(it, 0);
+    }
+
+    printf("\n==================\nChannels:\n");
+    ziti_channel_t *ch;
+    LIST_FOREACH(ch, &ctx->channels, next) {
+        printf("ch[%d](%s)\n", ch->id, ch->ingress);
+        nf_connection conn;
+        LIST_FOREACH(conn, &ch->connections, next) {
+            printf("\tconn[%d]: service[%s] session[%s]\n", conn->conn_id, "TODO", "TODO");
+        }
     }
 }
 

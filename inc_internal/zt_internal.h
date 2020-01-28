@@ -110,10 +110,10 @@ typedef struct ziti_channel {
     message *in_next;
     int in_body_offset;
 
-    SLIST_HEAD(con_list, nf_conn) connections;
-    SLIST_HEAD(waiter, waiter_s) waiters;
+    LIST_HEAD(con_list, nf_conn) connections;
+    LIST_HEAD(waiter, waiter_s) waiters;
 
-    SLIST_ENTRY(ziti_channel) next;
+    LIST_ENTRY(ziti_channel) next;
 } ziti_channel_t;
 
 struct nf_write_req {
@@ -148,7 +148,7 @@ struct nf_conn {
     struct nf_conn *parent;
     uint32_t dial_req_seq;
 
-    SLIST_ENTRY(nf_conn) next;
+    LIST_ENTRY(nf_conn) next;
 };
 
 
@@ -167,7 +167,7 @@ struct nf_ctx {
     uv_thread_t loop_thread;
     uint32_t ch_counter;
 
-    SLIST_HEAD(channels, ziti_channel) channels;
+    LIST_HEAD(channels, ziti_channel) channels;
 
     LIST_HEAD(conn_reqs, nf_conn_req) connect_requests;
     uv_async_t connect_async;

@@ -36,8 +36,10 @@ struct listener {
     const char *service_name;
     int port;
     uv_tcp_t server;
-    SLIST_ENTRY(listener) next;
+    LIST_ENTRY(listener) next;
 };
+
+typedef LIST_HEAD(listeners, listener) listener_l;
 
 struct client {
     struct sockaddr_in addr;
@@ -58,14 +60,12 @@ static void close_server_cb(uv_handle_t *h) {
     ZITI_LOG(DEBUG, "listener closed for %s", l->service_name);
 }
 
-static void signal_cb(uv_signal_t *s, int signum) {
-    ZITI_LOG(INFO, "signal[%d/%s] received", signum, strsignal(signum));
+static void process_stop(uv_loop_t *loop, listener_l *listeners) {
     PREPF(uv, uv_strerror);
-     
+
     // shutdown listeners
-    SLIST_HEAD(listeners, listener) *listeners = s->data;
     struct listener *l;
-    SLIST_FOREACH(l, listeners, next) {
+    LIST_FOREACH(l, listeners, next) {
         if (uv_is_active((const uv_handle_t *) &l->server)) {
             uv_close((uv_handle_t *) &l->server, close_server_cb);
         }
@@ -73,10 +73,37 @@ static void signal_cb(uv_signal_t *s, int signum) {
 
     // try to cleanup
     NF_shutdown(nf);
-    uv_loop_close(s->loop);
+    uv_loop_close(loop);
 
     CATCH(uv);
     ZITI_LOG(INFO, "exiting");
+}
+
+static void debug_dump(listener_l *listeners) {
+    struct listener *l;
+
+    LIST_FOREACH(l, listeners, next) {
+        printf("listening for service[%s] on port[%d]\n", l->service_name, l->port);
+    }
+    NF_dump(nf);
+}
+
+static void signal_cb(uv_signal_t *s, int signum) {
+    ZITI_LOG(INFO, "signal[%d/%s] received", signum, strsignal(signum));
+
+    switch (signum) {
+        case SIGINT:
+        case SIGTERM:
+            process_stop(s->loop, s->data);
+            break;
+
+        case SIGUSR1:
+            debug_dump(s->data);
+            break;
+
+        default:
+            break;
+    }
 }
 
 static void close_cb(uv_handle_t *h) {
@@ -255,9 +282,9 @@ static void on_nf_init(nf_context nf_ctx, int status, void* ctx) {
 
     nf = nf_ctx;
 
-    SLIST_HEAD(listeners, listener) *listeners = ctx;
+    listener_l *listeners = ctx;
     struct listener *l;
-    SLIST_FOREACH(l, listeners, next) {
+    LIST_FOREACH(l, listeners, next) {
         NF_service_available(nf, l->service_name, service_avail_cb, l);
     }
 }
@@ -271,7 +298,7 @@ void run(int argc, char **argv) {
     NEWP(loop, uv_loop_t);
     uv_loop_init(loop);
 
-    SLIST_HEAD(listeners, listener) listeners = SLIST_HEAD_INITIALIZER(listeners);
+    listener_l listeners = LIST_HEAD_INITIALIZER(listeners);
     for (int i = 0; i < argc; i++) {
 
         char *p = strchr(argv[i], ':');
@@ -285,7 +312,7 @@ void run(int argc, char **argv) {
 
         l->server.data = l;
 
-        SLIST_INSERT_HEAD(&listeners, l, next);
+        LIST_INSERT_HEAD(&listeners, l, next);
     }
 
     NF_init(config, loop, on_nf_init, &listeners);
@@ -294,6 +321,8 @@ void run(int argc, char **argv) {
     sig.data = &listeners;
     TRY(uv, uv_signal_start(&sig, signal_cb, SIGINT));
     TRY(uv, uv_signal_start(&sig, signal_cb, SIGTERM));
+    TRY(uv, uv_signal_start(&sig, signal_cb, SIGUSR1));
+
     uv_unref((uv_handle_t *) &sig);
 
     ZITI_LOG(INFO, "starting event loop");

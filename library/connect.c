@@ -29,6 +29,8 @@ struct nf_conn_req {
     nf_conn_cb cb;
 
     uv_timer_t *conn_timeout;
+
+    LIST_ENTRY(nf_conn_req) _next;
 };
 
 static void ziti_connect_async(uv_async_t *ar);
@@ -56,7 +58,7 @@ void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int stat
 
     if (status < 0) {
         conn->state = Closed;
-        SLIST_REMOVE(&conn->channel->connections, conn, nf_conn, next);
+        LIST_REMOVE(conn, next);
     }
 
     if (req->timeout != NULL) {
@@ -97,8 +99,19 @@ static int send_message(struct nf_conn *conn, uint32_t content, uint8_t *body, u
 }
 
 static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
+    nf_context nf = ch->ctx;
 
-    struct nf_conn_req * req = ctx;
+    struct nf_conn_req *req;
+
+    LIST_FOREACH(req, &nf->connect_requests, _next) {
+        if (req == ctx)
+            break;
+    }
+    if (req == NULL) {
+        ZITI_LOG(DEBUG, "req was removed");
+        return;
+    }
+
     if (status < 0) {
         ZITI_LOG(ERROR, "ch[%d] failed to connect status[%d](%s)", ch->id, status, uv_strerror(status));
         req->cb(req->conn, ZITI_GATEWAY_UNAVAILABLE);
@@ -124,6 +137,10 @@ static void connect_timeout(uv_timer_t *timer) {
         ZITI_LOG(WARN, "ziti connection timed out");
         conn->state = Closed;
         req->cb(conn, ZITI_TIMEOUT);
+
+        LIST_REMOVE(req, _next);
+    } else {
+        ZITI_LOG(ERROR, "timeout for connection[%d] in unexpected state[%d]", conn->conn_id, conn->state);
     }
 
     uv_timer_stop(timer);
@@ -246,6 +263,15 @@ static void ziti_connect_async(uv_async_t *ar) {
 }
 
 int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb) {
+
+    nf_context nf = conn->nf_ctx;
+
+    PREPF(ziti, ziti_errorstr);
+    if (conn->state != Initial) {
+        TRY(ziti, ZITI_INVALID_STATE);
+    }
+
+
     NEWP(req, struct nf_conn_req);
 
     req->service_name = strdup(service);
@@ -254,6 +280,12 @@ int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_da
 
     conn->data_cb = data_cb;
     conn->state = Connecting;
+
+    LIST_INSERT_HEAD(&nf->connect_requests, req, _next);
+
+    CATCH(ziti) {
+        return ERR(ziti);
+    }
 
     NEWP(async_cr, uv_async_t);
     uv_async_init(conn->nf_ctx->loop, async_cr, ziti_connect_async);
@@ -275,7 +307,7 @@ static void ziti_write_timeout(uv_timer_t *t) {
     if (conn->state != Closed) {
         conn->state = Closed;
         req->cb(conn, ZITI_TIMEOUT, req->ctx);
-        SLIST_REMOVE(&ch->connections, conn, nf_conn, next);
+        LIST_REMOVE(conn, next);
     }
 
     if (conn->write_reqs == 0) {
@@ -343,7 +375,7 @@ void connect_reply_cb(void *ctx, message *msg) {
                      msg->header.body_len, msg->header.body_len, msg->body);
             conn->state = Closed;
             req->cb(conn, ZITI_EOF);
-            SLIST_REMOVE(&req->channel->connections, conn, nf_conn, next);
+            LIST_REMOVE(conn, next);
             break;
 
         case ContentTypeStateConnected:
@@ -365,15 +397,16 @@ void connect_reply_cb(void *ctx, message *msg) {
             else if (conn->state == Closed) {
                 ZITI_LOG(WARN, "received connect reply for closed/timedout connection[%d]", conn->conn_id);
                 ziti_disconnect(conn);
-                SLIST_REMOVE(&conn->channel->connections, conn, nf_conn, next);
+                LIST_REMOVE(conn, next);
             }
             break;
 
         default:
             ZITI_LOG(WARN, "unexpected content_type[%d] conn_id[%d]", msg->header.content, conn->conn_id);
             ziti_disconnect(conn);
-            SLIST_REMOVE(&conn->channel->connections, conn, nf_conn, next);
+            LIST_REMOVE(conn, next);
     }
+    LIST_REMOVE(req, _next);
     free_conn_req(req);
 }
 
@@ -401,7 +434,7 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
             return ZITI_WTF;
     }
 
-    SLIST_INSERT_HEAD(&ch->connections, req->conn, next);
+    LIST_INSERT_HEAD(&ch->connections, req->conn, next);
 
     int32_t conn_id = htole32(req->conn->conn_id);
     int32_t msg_seq = htole32(0);
@@ -424,6 +457,8 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
 }
 
 int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, nf_client_cb on_clt_cb) {
+    nf_context nf = conn->nf_ctx;
+
     NEWP(req, struct nf_conn_req);
 
     req->service_name = strdup(service);
@@ -433,6 +468,8 @@ int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, n
 
     conn->client_cb = on_clt_cb;
     conn->state = Binding;
+
+    LIST_INSERT_HEAD(&nf->connect_requests, req, _next);
 
     NEWP(async_cr, uv_async_t);
     uv_async_init(conn->nf_ctx->loop, async_cr, ziti_connect_async);
@@ -448,7 +485,7 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb) {
     conn->channel = ch;
     conn->data_cb = data_cb;
 
-    SLIST_INSERT_HEAD(&ch->connections, conn, next);
+    LIST_INSERT_HEAD(&ch->connections, conn, next);
 
     ZITI_LOG(TRACE, "ch[%d] => Edge Accept conn_id[%d] parent_conn_id[%d]", ch->id, conn->conn_id,
              conn->parent->conn_id);
