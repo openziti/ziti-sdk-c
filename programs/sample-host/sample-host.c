@@ -97,6 +97,6 @@ int main(int argc, char **argv) {
     printf("========================\n"
            "uv loop is done\n");
 
-    NF_free(&nf);
+    NF_shutdown(nf);
 }
 
