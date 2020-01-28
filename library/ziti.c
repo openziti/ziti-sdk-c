@@ -51,6 +51,27 @@ int code_to_error(const char *code);
 static void version_cb(ctrl_version* v, ziti_error* err, void* ctx);
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx);
 
+#define CONN_STATES(XX) \
+XX(Initial)\
+    XX(Connecting)\
+    XX(Connected)\
+    XX(Binding)\
+    XX(Bound)\
+    XX(Accepting) \
+    XX(Closed)
+
+static const char* strstate(enum conn_state st) {
+#define state_case(s) case s: return #s;
+
+    switch (st) {
+
+        CONN_STATES(state_case)
+
+        default: return "<unknown>";
+    }
+#undef state_case
+}
+
 static size_t parse_ref(const char *val, const char **res) {
     size_t len = 0;
     *res = NULL;
@@ -261,7 +282,8 @@ void NF_dump(struct nf_ctx *ctx) {
         printf("ch[%d](%s)\n", ch->id, ch->ingress);
         nf_connection conn;
         LIST_FOREACH(conn, &ch->connections, next) {
-            printf("\tconn[%d]: service[%s] session[%s]\n", conn->conn_id, "TODO", "TODO");
+            printf("\tconn[%d]: state[%s] service[%s] session[%s]\n", conn->conn_id, strstate(conn->state),
+                    "TODO", "TODO"); // TODO
         }
     }
 }

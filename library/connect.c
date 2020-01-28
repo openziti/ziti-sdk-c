@@ -56,11 +56,6 @@ void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int stat
     }
     conn->write_reqs--;
 
-    if (status < 0) {
-        conn->state = Closed;
-        LIST_REMOVE(conn, next);
-    }
-
     if (req->timeout != NULL) {
         uv_timer_stop(req->timeout);
         uv_close((uv_handle_t *) req->timeout, free_handle);
@@ -70,10 +65,16 @@ void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int stat
         if (status == 0) {
             status = req->len;
         }
+
+        if (status < 0) {
+            conn->state = Closed;
+        }
+
         req->cb(conn, status, req->ctx);
     }
 
     if (conn->state == Closed && conn->write_reqs == 0) {
+        LIST_REMOVE(conn, next);
         free(conn);
     }
     free(req);
@@ -95,6 +96,7 @@ static int send_message(struct nf_conn *conn, uint32_t content, uint8_t *body, u
                     .value = (uint8_t *) &msg_seq
             }
     };
+    conn->write_reqs++;
     return ziti_channel_send(ch, content, headers, 2, body, body_len, wr);
 }
 
@@ -321,8 +323,6 @@ static void ziti_write_async(uv_async_t *ar) {
     struct nf_write_req *req = ar->data;
     struct nf_conn *conn = req->conn;
 
-    conn->write_reqs++;
-
     if (req->cb) {
         req->timeout = calloc(1, sizeof(uv_timer_t));
         uv_timer_init(ar->loop, req->timeout);
@@ -342,6 +342,10 @@ int ziti_write(struct nf_write_req *req) {
     return uv_async_send(ar);
 }
 
+static void ziti_disconnect_cb(nf_connection conn, ssize_t status, void *ctx) {
+    conn->state = Closed;
+}
+
 static void ziti_disconnect_async(uv_async_t *ar) {
     struct nf_conn *conn = ar->data;
 
@@ -349,6 +353,8 @@ static void ziti_disconnect_async(uv_async_t *ar) {
 
     if (conn->state == Connected) {
         NEWP(wr, struct nf_write_req);
+        wr->conn = conn;
+        wr->cb = ziti_disconnect_cb;
         send_message(conn, ContentTypeStateClosed, NULL, 0, wr);
     }
 }
@@ -517,6 +523,8 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb) {
     req->channel = conn->channel;
     req->conn = conn;
     req->cb = cb;
+    LIST_INSERT_HEAD(&conn->nf_ctx->connect_requests, req, _next);
+
     ziti_channel_send_for_reply(ch, content_type, headers, 3, (const uint8_t *) &clt_conn_id, sizeof(clt_conn_id),
                                 connect_reply_cb, req);
 

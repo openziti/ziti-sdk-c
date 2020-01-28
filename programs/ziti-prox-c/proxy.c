@@ -177,6 +177,7 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         NF_close((nf_connection *) &clt->nf_conn);
 
         uv_read_stop(stream);
+        uv_close((uv_handle_t *) stream, close_cb);
         free(buf->base);
     }
     else {
