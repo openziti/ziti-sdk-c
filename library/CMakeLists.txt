@@ -1,3 +1,5 @@
+set(ZITI_HEADER_FILES ${PROJECT_SOURCE_DIR}/includes/nf/errors.h ${PROJECT_SOURCE_DIR}/includes/nf/ziti.h)
+
 add_library(ziti STATIC
         utils.c strutils.h
         ziti.c
