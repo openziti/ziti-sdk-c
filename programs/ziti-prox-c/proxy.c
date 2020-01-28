@@ -26,6 +26,10 @@ limitations under the License.
 #define strsignal(s) "_windows_unimplemented_"
 #endif
 
+#if !defined (SIGUSR1)
+#define SIGUSR1 10
+#endif
+
 #define MAX_WRITES 4
 
 static char *config = NULL;
