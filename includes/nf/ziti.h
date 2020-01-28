@@ -105,7 +105,7 @@ typedef void (*nf_init_cb)(nf_context nf_ctx, int status, void* init_ctx);
  *
  * @see NF_service_available(), ZITI_ERRORS
  */
-typedef void (*nf_service_cb)(nf_context nf_ctx, const char* service_name, int status, void *data);
+typedef void (*nf_service_cb)(nf_context nf_ctx, const char* service_name, int status, unsigned int flags, void *data);
 
 /**
  * @brief Data callback.
