@@ -60,6 +60,8 @@ limitations under the License.
     XX(TIMEOUT, "Operation did not complete in time") \
     /** The connection has been closed abnormally. */ \
     XX(CONNABORT, "Connection to edge router terminated") \
+    /** SDK detected invalid state, most likely caaused by improper use. */ \
+    XX(INVALID_STATE, "invalid state") \
     /** Inspired by the Android SDK: What a Terrible Failure. A condition that should never happen. */ \
     XX(WTF, "WTF: programming error")
 

@@ -50,6 +50,32 @@ auto logout_cb = [](void*, ziti_error* err, void* ctx) {
     logout->resp = "logout called";
 };
 
+TEST_CASE("invalid_controller", "[controller][GH-44]") {
+    ziti_controller ctrl;
+    uv_loop_t *loop = uv_default_loop();
+    resp_capture<ctrl_version> version;
+
+    PREP(ziti);
+    TRY(ziti, ziti_ctrl_init(loop, &ctrl, "https://not.a.ziti.controll.er", nullptr));
+    WHEN("get version") {
+        ziti_ctrl_get_version(&ctrl, resp_cb, &version);
+        uv_run(loop, UV_RUN_DEFAULT);
+
+        THEN("callback with proper error") {
+            REQUIRE(version.error != nullptr);
+            REQUIRE_THAT(version.error->code, Equals("CONTROLLER_UNAVAILABLE"));
+        }
+    }
+
+
+    CATCH(ziti) {
+        FAIL("unexpected error");
+    }
+
+    ziti_ctrl_close(&ctrl);
+    uv_run(loop, UV_RUN_DEFAULT);
+}
+
 TEST_CASE("controller_test","[integ]") {
     uv_mbed_set_debug(5, stdout);
 

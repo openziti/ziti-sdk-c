@@ -80,8 +80,8 @@ void free_timeval_t(struct timeval *t) {
     free(t);
 }
 
-int dump_timeval_t(struct timeval *t) {
-    printf("TODO\n");
+int dump_timeval_t(struct timeval *t, int off) {
+    printf("%*.*s%s\n", off, off, "", ctime(&t->tv_sec));
     return 0;
 }
 
@@ -150,7 +150,7 @@ void **parse_array(const char *json, int json_len, char *path, void *(*parse_fun
 #define free_none(f, func) func(f)
 
 int dump_string(const char *s, int len) {
-    printf("%*s%s\n", len, "", s ? s : "<null>");
+    printf("%*.*s%s\n", len, len, "", s ? s : "<null>");
     return 0;
 }
 

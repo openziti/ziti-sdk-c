@@ -50,6 +50,27 @@ int code_to_error(const char *code);
 static void version_cb(ctrl_version* v, ziti_error* err, void* ctx);
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx);
 
+#define CONN_STATES(XX) \
+XX(Initial)\
+    XX(Connecting)\
+    XX(Connected)\
+    XX(Binding)\
+    XX(Bound)\
+    XX(Accepting) \
+    XX(Closed)
+
+static const char* strstate(enum conn_state st) {
+#define state_case(s) case s: return #s;
+
+    switch (st) {
+
+        CONN_STATES(state_case)
+
+        default: return "<unknown>";
+    }
+#undef state_case
+}
+
 static size_t parse_ref(const char *val, const char **res) {
     size_t len = 0;
     *res = NULL;
@@ -90,6 +111,11 @@ static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout
     } while (q != NULL);
     out[0] = '\0';
     return ZITI_INVALID_CONFIG;
+}
+
+static void async_connects(uv_async_t *ar) {
+    nf_context nf = ar->data;
+    ziti_process_connect_reqs(nf);
 }
 
 int load_tls(nf_config *cfg, tls_context **ctx) {
@@ -154,13 +180,13 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
 
     TRY(ziti, load_config(config, &cfg));
     TRY(ziti, load_tls(cfg, &tls));
+    TRY(ziti, NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx));
 
-    CATCH(ziti) {
-        return ERR(ziti);
-    }
-    int rc =  NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx);
+    CATCH(ziti);
+
     free_nf_config(cfg);
-    return rc;
+
+    return ERR(ziti);
 }
 
 int
@@ -177,6 +203,10 @@ NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop
     ctx->tlsCtx = tls_context;
     ctx->loop = loop;
     ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
+    LIST_INIT(&ctx->connect_requests);
+
+    uv_async_init(loop, &ctx->connect_async, async_connects);
+    uv_unref((uv_handle_t *) &ctx->connect_async);
 
     ziti_ctrl_init(loop, &ctx->controller, ctrl_url, tls_context);
     ziti_ctrl_get_version(&ctx->controller, version_cb, &ctx->controller);
@@ -244,6 +274,17 @@ void NF_dump(nf_context ctx) {
     LIST_FOREACH(it, &ctx->net_sessions, _next) {
         dump_ziti_net_session(it, 0);
     }
+
+    printf("\n==================\nChannels:\n");
+    ziti_channel_t *ch;
+    LIST_FOREACH(ch, &ctx->channels, next) {
+        printf("ch[%d](%s)\n", ch->id, ch->ingress);
+        nf_connection conn;
+        LIST_FOREACH(conn, &ch->connections, next) {
+            printf("\tconn[%d]: state[%s] service[%s] session[%s]\n", conn->conn_id, strstate(conn->state),
+                    "TODO", "TODO"); // TODO
+        }
+    }
 }
 
 int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data) {
@@ -255,6 +296,7 @@ int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data) {
     c->state = Initial;
     c->timeout = ctx->ziti_timeout;
     c->edge_msg_seq = 1;
+    c->conn_id = nf_ctx->conn_seq++;
 
     *conn = c;
     return ZITI_OK;
