@@ -21,8 +21,11 @@ target_sources(ziti
         PRIVATE ${PROJECT_SOURCE_DIR}/deps/http-parser/http_parser.c)
 
 target_link_libraries(ziti
-    PUBLIC uv_mbed
+        PUBLIC uv_mbed
+        PUBLIC sodium
 )
+
+# target_link_libraries(ziti PUBLIC sodium)
         
 if (NOT WIN32)
     target_link_libraries(ziti
@@ -33,9 +36,10 @@ endif()
 target_include_directories(ziti
         PUBLIC ../includes
         PRIVATE ../inc_internal
-        PRIVATE ${PROJECT_BINARY_DIR}/include
+        #PRIVATE ${PROJECT_BINARY_DIR}/include
         PRIVATE ${PROJECT_SOURCE_DIR}/deps/mjson
-        PUBLIC ${PROJECT_SOURCE_DIR}/deps/http-parser)
+        PUBLIC ${PROJECT_SOURCE_DIR}/deps/http-parser
+        )
 
 target_compile_definitions(ziti PUBLIC
         ZITI_BUILDNUM=${ZITI_BUILDNUM}

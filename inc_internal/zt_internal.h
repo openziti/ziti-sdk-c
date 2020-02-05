@@ -27,6 +27,8 @@ limitations under the License.
 #include "message.h"
 #include "ziti_ctrl.h"
 
+#include <sodium.h>
+
 //#define SIZEOF(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 #if !defined(UUID_STR_LEN)
@@ -148,6 +150,10 @@ struct nf_conn {
     struct nf_conn *parent;
     uint32_t dial_req_seq;
 
+    crypto_secretstream_xchacha20poly1305_state crypt_o;
+    crypto_secretstream_xchacha20poly1305_state crypt_i;
+    bool in_crypto;
+
     LIST_ENTRY(nf_conn) next;
 };
 
@@ -205,6 +211,8 @@ int load_tls(nf_config* cfg, tls_context **tls);
 int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, nf_client_cb on_clt_cb);
 
 int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb);
+
+void conn_inbound_data_msg(nf_connection conn, message *msg);
 
 int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb);
 
