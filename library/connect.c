@@ -20,10 +20,13 @@ limitations under the License.
 #include "utils.h"
 #include "endian_internal.h"
 
+static const char *TYPE_BIND = "Bind";
+static const char *TYPE_DIAL = "Dial";
+
 struct nf_conn_req {
     struct nf_conn *conn;
     char *service_name;
-    bool bind;
+    const char *session_type;
     ziti_service *service;
     ziti_channel_t *channel;
     nf_conn_cb cb;
@@ -240,7 +243,7 @@ static void ziti_connect_async(uv_async_t *ar) {
 
     ziti_net_session *it = NULL;
     LIST_FOREACH(it, &ctx->net_sessions, _next) {
-        if (strcmp(req->service->id, it->service_id) == 0 && (req->bind == it->hosting) ) {
+        if (strcmp(req->service->id, it->service_id) == 0 && strcmp(req->session_type, it->session_type) == 0 ) {
             net_session = it;
             break;
         }
@@ -248,7 +251,7 @@ static void ziti_connect_async(uv_async_t *ar) {
 
     if (net_session == NULL) {
         ZITI_LOG(DEBUG, "requesting session for service[%s]", req->service_name);
-        ziti_ctrl_get_net_session(&ctx->controller, req->service, req->bind, connect_get_net_session_cb, ar);
+        ziti_ctrl_get_net_session(&ctx->controller, req->service, req->session_type, connect_get_net_session_cb, ar);
         return;
     }
     else {
@@ -277,6 +280,7 @@ int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_da
     NEWP(req, struct nf_conn_req);
 
     req->service_name = strdup(service);
+    req->session_type = TYPE_DIAL;
     req->conn = conn;
     req->cb = conn_cb;
 
@@ -468,7 +472,7 @@ int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, n
     NEWP(req, struct nf_conn_req);
 
     req->service_name = strdup(service);
-    req->bind = true;
+    req->session_type = TYPE_BIND;
     req->conn = conn;
     req->cb = listen_cb;
 
