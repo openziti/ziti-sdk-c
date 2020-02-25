@@ -95,14 +95,14 @@ static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout
         // found it
         if (strncasecmp(q, opt, optlen) == 0 && (q[optlen] == '=' || q[optlen] == 0)) {
             const char *val = q + optlen + 1;
-            char *end = strchr(val, L'&');
+            char *end = strchr(val, '&');
             int vlen = (int)(end == NULL ? strlen(val) : end - val);
             snprintf(out, maxout, "%*.*s", vlen, vlen, val);
             return ZITI_OK;
 
         }
         else { // skip to next '&'
-            q = strchr(q, L'&');
+            q = strchr(q, '&');
             if (q == NULL) {
                 break;
             }
