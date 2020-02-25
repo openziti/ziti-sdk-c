@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2020 Netfoundry, Inc.
+Copyright 2019-2020 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -126,6 +126,7 @@ int main(int argc, char **argv) {
 #if _WIN32
     //changes the output to UTF-8 so that the windows output looks correct and not all jumbly
     SetConsoleOutputCP(65001);
+
 #endif
     if (argc != 4) {
         fprintf(stderr, "Usage: %s <client|server> <config-file> <service-name>", argv[0]);

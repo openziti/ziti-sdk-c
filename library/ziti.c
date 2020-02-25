@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2020 Netfoundry, Inc.
+Copyright 2019-2020 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -95,14 +95,14 @@ static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout
         // found it
         if (strncasecmp(q, opt, optlen) == 0 && (q[optlen] == '=' || q[optlen] == 0)) {
             const char *val = q + optlen + 1;
-            char *end = strchr(val, '&');
+            char *end = strchr(val, L'&');
             int vlen = (int)(end == NULL ? strlen(val) : end - val);
             snprintf(out, maxout, "%*.*s", vlen, vlen, val);
             return ZITI_OK;
 
         }
         else { // skip to next '&'
-            q = strchr(q, '&');
+            q = strchr(q, L'&');
             if (q == NULL) {
                 break;
             }
