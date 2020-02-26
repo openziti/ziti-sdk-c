@@ -291,14 +291,14 @@ void ziti_ctrl_get_service(ziti_controller *ctrl, const char* service_name, void
 }
 
 void ziti_ctrl_get_net_session(
-        ziti_controller *ctrl, ziti_service *service, bool bind,
+        ziti_controller *ctrl, ziti_service *service, const char* type,
         void (*cb)(ziti_net_session *, ziti_error*, void*), void* ctx) {
 
     char *content = NULL;
     size_t len = mjson_printf(&mjson_print_dynamic_buf, &content,
-            "{%Q: %Q, %Q: %B}",
+            "{%Q: %Q, %Q: %Q}",
             "serviceId", service->id,
-            "hosting", bind);
+            "type", type);
 
     um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/sessions");
     req->resp_cb = ctrl_resp_cb;

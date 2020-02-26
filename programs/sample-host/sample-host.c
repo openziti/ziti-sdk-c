@@ -82,8 +82,6 @@ static void on_write(nf_connection conn, ssize_t status, void* ctx) {
 void on_connect(nf_connection conn, int status) {
     DIE(status);
 
-    printf("sending HTTP request\n");
-
     uint8_t* req = "hello";
 
     DIE(NF_write(conn, req, strlen(req), on_write, NULL));
