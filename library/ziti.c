@@ -175,7 +175,7 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
             time_str, start_time.tv_usec/1000);
 
     PREP(ziti);
-    nf_config *cfg;
+    nf_config *cfg = NULL;
     tls_context *tls = NULL;
 
     TRY(ziti, load_config(config, &cfg));
