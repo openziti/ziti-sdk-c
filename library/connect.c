@@ -451,7 +451,8 @@ void conn_inbound_data_msg(nf_connection conn, message *msg) {
         CATCH(crypto) {
             conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
             LIST_REMOVE(conn, next);
-            free(conn);
+            FREE(conn->rx);
+            FREE(conn);
         }
         FREE(plain_text);
     } else {
