@@ -382,7 +382,11 @@ int ziti_disconnect(struct nf_conn *conn) {
 }
 
 static void crypto_wr_cb(nf_connection conn, ssize_t status, void* ctx) {
-
+    if (status < 0) {
+        ZITI_LOG(ERROR, "crypto header write failed with status[%zd]", status);
+        conn->data_cb(conn, NULL, status);
+        LIST_REMOVE(conn, next);
+    }
 }
 
 static int establish_crypto (nf_connection conn, message *msg) {
