@@ -66,12 +66,13 @@ enum header_id {
     HelloListenerHeader = 3,
 
     // Headers in the range 128-255 inclusive will be reflected when creating replies
-            ReflectedHeaderBitMask = 1 << 7,
+    ReflectedHeaderBitMask = 1 << 7,
     MaxReflectedHeader = (1 << 8) - 1,
 
     ConnIdHeader = 1000,
     SeqHeader = 1001,
     SessionTokenHeader = 1002,
+    PublicKeyHeader = 1003,
 };
 
 typedef struct ziti_channel ziti_channel_t;
@@ -150,9 +151,13 @@ struct nf_conn {
     struct nf_conn *parent;
     uint32_t dial_req_seq;
 
+    uint8_t sk[crypto_kx_SECRETKEYBYTES];
+    uint8_t pk[crypto_kx_PUBLICKEYBYTES];
+    uint8_t *rx;
+
     crypto_secretstream_xchacha20poly1305_state crypt_o;
     crypto_secretstream_xchacha20poly1305_state crypt_i;
-    bool in_crypto;
+    bool encrypted;
 
     LIST_ENTRY(nf_conn) next;
 };
