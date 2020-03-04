@@ -337,12 +337,15 @@ static void ziti_write_async(uv_async_t *ar) {
         uv_timer_start(req->timeout, ziti_write_timeout, conn->timeout, 0);
     }
 
-    uint32_t crypto_len = req->len + crypto_secretstream_xchacha20poly1305_abytes();
-    unsigned char *cipher_text = malloc(crypto_len);
-    int rc = crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, cipher_text, NULL, req->buf, req->len, NULL, 0, 0);
-    ZITI_LOG(WARN, "rc = %d", rc);
-
-    send_message(conn, ContentTypeData, cipher_text, crypto_len, req);
+    if (conn->encrypted) {
+        uint32_t crypto_len = req->len + crypto_secretstream_xchacha20poly1305_abytes();
+        unsigned char *cipher_text = malloc(crypto_len);
+        crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, cipher_text, NULL, req->buf, req->len, NULL, 0, 0);
+        send_message(conn, ContentTypeData, cipher_text, crypto_len, req);
+        free(cipher_text);
+    } else {
+        send_message(conn, ContentTypeData, req->buf, req->len, req);
+    }
 
     uv_close((uv_handle_t *) ar, free_handle);
 }
@@ -378,39 +381,77 @@ int ziti_disconnect(struct nf_conn *conn) {
     return uv_async_send(ar);
 }
 
-static unsigned char POC_KEY[crypto_secretstream_xchacha20poly1305_KEYBYTES] = "this is POC key, to be removed";
 static void crypto_wr_cb(nf_connection conn, ssize_t status, void* ctx) {
 
 }
-static void send_crypto_header (nf_connection conn) {
+
+static int establish_crypto (nf_connection conn, message *msg) {
+
+    size_t peer_key_len;
+    uint8_t *peer_key;
+    bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
+    if (!peer_key_sent) {
+        ZITI_LOG(DEBUG, "did not recieve peer key. connection[%d] will not be encrypted", conn->conn_id);
+        conn->encrypted = false;
+        return ZITI_OK;
+    }
+
+    conn->encrypted = true;
+    uint8_t tx[crypto_secretstream_xchacha20poly1305_KEYBYTES];
+    conn->rx = calloc(1, crypto_secretstream_xchacha20poly1305_KEYBYTES);
+    int rc;
+    if (conn->state == Connecting) {
+        rc = crypto_kx_client_session_keys(conn->rx, tx, conn->pk, conn->sk, peer_key);
+    } else if (conn->state == Accepting) {
+        rc = crypto_kx_server_session_keys(conn->rx, tx, conn->parent->pk, conn->parent->sk, peer_key);
+    } else {
+        ZITI_LOG(ERROR, "cannot establish crypto in %d state", conn->state);
+        return ZITI_INVALID_STATE;
+    }
+    if (rc != 0) {
+        return ZITI_CRYPTO_FAIL;
+    }
+
     NEWP(wr, struct nf_write_req);
     wr->conn = conn;
     uint8_t *header = calloc(1, crypto_secretstream_xchacha20poly1305_headerbytes());
     wr->buf = header;
     wr->cb = crypto_wr_cb;
 
-    crypto_secretstream_xchacha20poly1305_init_push(&conn->crypt_o, header, POC_KEY);
+    crypto_secretstream_xchacha20poly1305_init_push(&conn->crypt_o, header, tx);
     send_message(conn, ContentTypeData, header, crypto_secretstream_xchacha20poly1305_headerbytes(), wr);
+    free(header);
+    return ZITI_OK;
 }
 
 void conn_inbound_data_msg(nf_connection conn, message *msg) {
     int rc = 0;
-    if (!conn->in_crypto) {
-        if (msg->header.body_len == crypto(headerbytes)()) {
-            rc = crypto_secretstream_xchacha20poly1305_init_pull(&conn->crypt_i, msg->body, POC_KEY);
-            ZITI_LOG(WARN, "rc = %d", rc);
-            conn->in_crypto = true;
+    if (conn->encrypted) {
+        uint8_t *plain_text = NULL;
+        PREP(crypto);
+        // first message is expected to be peer crypto header
+        if (conn->rx != NULL) {
+            TRY(crypto, msg->header.body_len != crypto_secretstream_xchacha20poly1305_HEADERBYTES);
+            TRY(crypto, crypto_secretstream_xchacha20poly1305_init_pull(&conn->crypt_i, msg->body, conn->rx));
+            FREE(conn->rx);
         } else {
-            ZITI_LOG(ERROR, "wrong incoming crypto header size[%d] expected[%ld]", msg->header.body_len, crypto(headerbytes)());
-        }
-    } else {
-        unsigned long long plain_len;
-        unsigned char tag;
-        unsigned char *plain_text = malloc(msg->header.body_len);
-        rc = crypto_secretstream_xchacha20poly1305_pull(&conn->crypt_i, plain_text, &plain_len, &tag, msg->body, msg->header.body_len, NULL, 0);
-        ZITI_LOG(WARN, "rc = %d", rc);
-        conn->data_cb(conn, plain_text, (int)plain_len);
+            unsigned long long plain_len;
+            unsigned char tag;
+            plain_text = malloc(msg->header.body_len);
 
+            TRY(crypto, crypto_secretstream_xchacha20poly1305_pull(&conn->crypt_i, plain_text, &plain_len, &tag, msg->body, msg->header.body_len, NULL, 0));
+
+            conn->data_cb(conn, plain_text, (int)plain_len);
+        }
+
+        CATCH(crypto) {
+            conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
+            LIST_REMOVE(conn, next);
+            free(conn);
+        }
+        FREE(plain_text);
+    } else {
+        conn->data_cb(conn, msg->body, (int)msg->header.body_len);
     }
 }
 
@@ -436,8 +477,8 @@ void connect_reply_cb(void *ctx, message *msg) {
         case ContentTypeStateConnected:
             if (conn->state == Connecting) {
                 ZITI_LOG(TRACE, "edge conn_id[%d]: connected.", conn->conn_id);
+                establish_crypto(conn, msg);
                 conn->state = Connected;
-                send_crypto_header(conn);
                 req->cb(conn, ZITI_OK);
             }
             else if (conn->state == Binding) {
@@ -447,8 +488,8 @@ void connect_reply_cb(void *ctx, message *msg) {
             }
             else if (conn->state == Accepting) {
                 ZITI_LOG(TRACE, "edge conn_id[%d]: accepted.", conn->conn_id);
+                establish_crypto(conn, msg);
                 conn->state = Connected;
-                send_crypto_header(conn);
                 req->cb(conn, ZITI_OK);
             }
             else if (conn->state == Closed) {
@@ -495,6 +536,8 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
 
     int32_t conn_id = htole32(req->conn->conn_id);
     int32_t msg_seq = htole32(0);
+    crypto_kx_keypair(req->conn->pk, req->conn->sk);
+
     hdr_t headers[] = {
             {
                     .header_id = ConnIdHeader,
@@ -505,10 +548,15 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
                     .header_id = SeqHeader,
                     .length = sizeof(msg_seq),
                     .value = (uint8_t *) &msg_seq
+            },
+            {
+                    .header_id = PublicKeyHeader,
+                    .length = sizeof(req->conn->pk),
+                    .value = req->conn->pk,
             }
     };
     req->ref_count++;
-    ziti_channel_send_for_reply(ch, content_type, headers, 2, req->conn->token, strlen(req->conn->token),
+    ziti_channel_send_for_reply(ch, content_type, headers, 3, req->conn->token, strlen(req->conn->token),
                                 connect_reply_cb, req);
 
     return ZITI_OK;
