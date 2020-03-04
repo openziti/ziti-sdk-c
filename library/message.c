@@ -132,3 +132,13 @@ bool message_get_int32_header(message *m, int header_id, int32_t *v) {
     }
     return false;
 }
+
+bool message_get_bytes_header(message *m, int header_id, uint8_t **v, size_t *len) {
+    hdr_t *h = find_header(m, header_id);
+    if (h != NULL) {
+        *len = h->length;
+        *v = h->value;
+        return true;
+    }
+    return false;
+}
