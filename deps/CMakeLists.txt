@@ -2,6 +2,8 @@ project(ziti-deps)
 
 include(ExternalProject)
 
+include(openssl.cmake)
+
 set(ENABLE_UM_TESTS OFF CACHE BOOL "" FORCE)
 add_subdirectory(uv-mbed)
 

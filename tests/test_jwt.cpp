@@ -16,7 +16,10 @@ limitations under the License.
 
 #include "catch2/catch.hpp"
 #include <string.h>
+// #include <iostream>
 #include "../deps/mjson/mjson.h"
+#include <zt_internal.h>
+#include <utils.h>
 #include "ziti_model.h"
 
 static char* url64to64(const char* in, size_t ilen, size_t *olen) {
@@ -82,6 +85,8 @@ TEST_CASE("parse jwt", "[jwt]") {
 
     REQUIRE_THAT(ze->controller, Catch::Matchers::Equals("https://demo.ziti.netfoundry.io:1080"));
     REQUIRE_THAT(ze->method, Catch::Matchers::Equals("ott"));
+    REQUIRE_THAT(ze->subject, Catch::Matchers::Equals("c17291f4-37fe-4cdb-9f57-3eb757b648f5"));
+    REQUIRE_THAT(ze->token, Catch::Matchers::Equals("f581d770-fffc-11e9-a81a-000d3a1b4b17"));
 
     size_t sig64len;
     char *sig64 = url64to64(dot2 + 1, end - dot2 - 1, &sig64len);
@@ -92,5 +97,25 @@ TEST_CASE("parse jwt", "[jwt]") {
     rc = mjson_base64_dec(sig64, sig64len, sig, siglen);
 
     printf("sig64[%ld] = %*.*s siglen = %ld rc = %d\n", sig64len, (int)sig64len, (int)sig64len, sig64, siglen, rc);
+
+}
+
+
+TEST_CASE("load_jwt","[jwt]") {
+
+    char *conf = getenv("ZITI_SDK_JWT_FILE");
+    if (conf == nullptr) {
+        FAIL("ZITI_SDK_JWT_FILE environment variable is not set");
+        return;
+    }
+
+    ziti_enrollment_jwt *zej = NULL;
+
+    load_jwt(conf, &zej);
+
+    REQUIRE_THAT(zej->controller, Catch::Matchers::Equals("https://demo.ziti.netfoundry.io:1080"));
+    REQUIRE_THAT(zej->method, Catch::Matchers::Equals("ott"));
+    REQUIRE_THAT(zej->subject, Catch::Matchers::Equals("c17291f4-37fe-4cdb-9f57-3eb757b648f5"));
+    REQUIRE_THAT(zej->token, Catch::Matchers::Equals("f581d770-fffc-11e9-a81a-000d3a1b4b17"));
 
 }

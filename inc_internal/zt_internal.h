@@ -200,6 +200,8 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
 
 int load_config(const char *filename, nf_config **);
 
+int load_jwt(const char *filename, ziti_enrollment_jwt **);
+
 int load_tls(nf_config* cfg, tls_context **tls);
 
 int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, nf_client_cb on_clt_cb);

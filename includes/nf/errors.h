@@ -34,6 +34,8 @@ limitations under the License.
     XX(OK, "OK") \
     /** The provided configuration was not found */ \
     XX(CONFIG_NOT_FOUND, "Configuration not found") \
+    /** The provided JWT was not found */ \
+    XX(JWT_NOT_FOUND, "JWT not found") \
     /** Some or all of the provided configuration is incorrect */ \
     XX(INVALID_CONFIG, "Configuration is invalid") \
     /** Returned when the identity does not have the correct level of access needed.

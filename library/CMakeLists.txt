@@ -5,6 +5,8 @@ add_library(ziti STATIC
         ziti.c
         config.c
         errors.c
+        crypto.c
+        jwt.c
         ziti_ctrl.c
         model.c
         ziti_model.c
@@ -23,6 +25,8 @@ target_sources(ziti
 target_link_libraries(ziti
     PUBLIC uv_mbed
 )
+
+link_libraries(deps/openssl/openssl)
         
 if (NOT WIN32)
     target_link_libraries(ziti
@@ -35,6 +39,7 @@ target_include_directories(ziti
         PRIVATE ../inc_internal
         PRIVATE ${PROJECT_BINARY_DIR}/include
         PRIVATE ${PROJECT_SOURCE_DIR}/deps/mjson
+        PUBLIC ${PROJECT_SOURCE_DIR}/deps/openssl/include
         PUBLIC ${PROJECT_SOURCE_DIR}/deps/http-parser)
 
 target_compile_definitions(ziti PUBLIC
@@ -67,6 +72,7 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/includes/
 
 install(FILES ${CMAKE_SOURCE_DIR}/deps/http-parser/LICENSE-MIT DESTINATION ${CMAKE_INSTALL_DOCDIR}/http-parser)
 install(FILES ${CMAKE_SOURCE_DIR}/deps/mjson/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mjson)
+install(FILES ${CMAKE_SOURCE_DIR}/deps/openssl/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/openssl)
 install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/deps/mbedtls/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls)
 install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/deps/uv_link_t/README.md DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
 install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/deps/mbedtls/crypto/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls/crypto)

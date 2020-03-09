@@ -17,12 +17,16 @@ limitations under the License.
 
 #include <stdlib.h>
 #include <string.h>
+#include <openssl/pem.h>
 
 #include <nf/ziti.h>
 #include <uv.h>
 #include "utils.h"
 #include "zt_internal.h"
 #include <http_parser.h>
+
+// #include <openssl/err.h>
+// #include <openssl/ec.h>
 
 #ifndef MAXPATHLEN
 #ifdef _MAX_PATH
@@ -158,6 +162,32 @@ int load_tls(nf_config *cfg, tls_context **ctx) {
 
     *ctx = tls;
     return ZITI_OK;
+}
+
+int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb enroll_cb) {
+    init_debug();
+
+    uv_timeval64_t start_time;
+    uv_gettimeofday(&start_time);
+
+    struct tm *start_tm = gmtime(&start_time.tv_sec);
+    char time_str[32];
+    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
+
+    ZITI_LOG(INFO, "ZitiSDK version %s @%s(%s) starting at (%s.%03d)",
+            ziti_get_version(false), ziti_git_commit(), ziti_git_branch(),
+            time_str, start_time.tv_usec/1000);
+
+    PREP(ziti);
+    ziti_enrollment_jwt *zej = NULL;
+    EVP_PKEY *pkey = NULL;
+
+    TRY(ziti, load_jwt(jwt_file, &zej));
+    TRY(ziti, generate_key(&pkey));
+
+    CATCH(ziti);
+
+    return ERR(ziti);
 }
 
 int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx) {

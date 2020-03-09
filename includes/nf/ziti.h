@@ -180,6 +180,38 @@ typedef nf_conn_cb nf_listen_cb;
 typedef void (*nf_write_cb)(nf_connection conn, ssize_t status, void *write_ctx);
 
 /**
+ * @brief Callback called after NF_enroll() is complete.
+ *
+ * This callback is invoked on the conclusion of the NF_enroll() function. The result of the
+ * NF_enroll() function may be an error condition so it is important to verify the provided
+ * status code in this callback.
+ *
+ * This callback also returns a Ziti identity json salvo if the enrollment was successful. 
+ * This identity should be persisted into a file, and used in subsequent calls to NF_init().
+ *
+ * @param data identity json data buffer
+ * @param length size of identity json or error code as defined in #ZITI_ERRORS
+ *
+ * @see NF_init(), ZITI_ERRORS
+ */
+typedef void (*nf_enroll_cb)(uint8_t *data, int length, int status);
+
+/**
+ * @brief Performs a Ziti enrollment.
+ * 
+ * This function is used to enroll a Ziti Edge identity. The Ziti C SDK is based around the [libuv](http://libuv.org/)
+ * library and is maintains similar semantics.  This function is used to setup the chain of callbacks
+ * needed once the loop begins to execute.
+ *
+ * @param jwt location of JWT file
+ * @param loop libuv event loop
+ * @param enroll_cb callback to be called when enrollment is complete
+ *
+ * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ */
+extern int NF_enroll(const char* jwt, uv_loop_t* loop, nf_enroll_cb enroll_cb);
+
+/**
  * @brief Initializes a Ziti Edge identity.
  * 
  * This function is used to initialize a Ziti Edge identity. The Ziti C SDK is based around the [libuv](http://libuv.org/)
