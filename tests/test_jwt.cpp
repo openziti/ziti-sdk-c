@@ -101,7 +101,7 @@ TEST_CASE("parse jwt", "[jwt]") {
 }
 
 
-TEST_CASE("load_jwt","[jwt]") {
+TEST_CASE("load_jwt","[integ]") {
 
     char *conf = getenv("ZITI_SDK_JWT_FILE");
     if (conf == nullptr) {
