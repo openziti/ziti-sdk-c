@@ -167,3 +167,41 @@ int get_url_data(const char *url, struct http_parser_url *parser, int uf, char *
 int lt_zero(int v) { return v < 0; }
 
 int non_zero(int v) { return v != 0; }
+
+void hexDump (char *desc, void *addr, int len) {
+    if (DEBUG > ziti_debug_level) return;
+    ZITI_LOG(DEBUG, " ");
+    int i;
+    unsigned char buffLine[17];
+    unsigned char *pc = (unsigned char*)addr;
+    if (desc != NULL){
+       printf ("%s:\n", desc);
+    }
+    for (i = 0; i < len; i++) {
+        if ((i % 16) == 0) {
+            if (i != 0) {
+                printf ("  %s\n", buffLine);
+            }
+            printf ("  %07x ", i);
+        }
+        printf ("%02x", pc[i]);
+        if ((i % 2) == 1) {
+            printf (" "); 
+        }
+        if ((pc[i] < 0x20) || (pc[i] > 0x7e)) {
+            buffLine[i % 16] = '.';
+        }
+        else{
+           buffLine[i % 16] = pc[i];
+        }    
+
+        buffLine[(i % 16) + 1] = '\0'; //Clears the next array buffLine
+    }
+    while ((i % 16) != 0) {
+        printf ("   ");
+        i++;
+    }
+    printf ("  %s\n", buffLine);
+    fflush(stdout); 
+    ZITI_LOG(DEBUG, " ");
+}

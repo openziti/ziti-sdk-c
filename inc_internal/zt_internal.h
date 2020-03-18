@@ -25,6 +25,7 @@ limitations under the License.
 #include <nf/ziti.h>
 #include "buffer.h"
 #include "message.h"
+#include "ziti_enroll.h"
 #include "ziti_ctrl.h"
 
 //#define SIZEOF(arr) (sizeof(arr) / sizeof((arr)[0]))
@@ -215,6 +216,10 @@ int ziti_write(struct nf_write_req *req);
 int ziti_disconnect(struct nf_conn *conn);
 
 void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int status);
+
+int gen_key(mbedtls_pk_context *pk_context);
+
+int gen_csr(enroll_cfg *cfg);
 
 #ifdef __cplusplus
 }

@@ -36,6 +36,12 @@ limitations under the License.
     XX(CONFIG_NOT_FOUND, "Configuration not found") \
     /** The provided JWT was not found */ \
     XX(JWT_NOT_FOUND, "JWT not found") \
+    /** Attempt to generate a key failed */ \
+    XX(ENROLLMENT_METHOD_UNSUPPORTED, "unsupported enrollment method") \
+    /** Attempt to generate a key failed */ \
+    XX(KEY_GENERATION_FAILED, "error generating an ECC key") \
+    /** Attempt to generate a CSR failed */ \
+    XX(CSR_GENERATION_FAILED, "error generating a CSR") \
     /** Some or all of the provided configuration is incorrect */ \
     XX(INVALID_CONFIG, "Configuration is invalid") \
     /** Returned when the identity does not have the correct level of access needed.

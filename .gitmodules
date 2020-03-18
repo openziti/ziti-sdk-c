@@ -14,7 +14,3 @@
 	path = deps/subcommand
 	url = https://github.com/dimitri/subcommands.c.git
 	branch = master
-[submodule "deps/openssl-cmake"]
-	path = deps/openssl-cmake
-	url = https://github.com/viaduck/openssl-cmake
-	branch = master

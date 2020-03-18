@@ -55,6 +55,7 @@ struct ctrl_resp {
     char *body;
     size_t received;
     bool resp_chunked;
+    bool resp_text_plain;
 
     void* (*body_parse_func)(const char*, int);
     void (*resp_cb)(void*, ziti_error*, void*);
@@ -78,7 +79,7 @@ static void ctrl_resp_cb(um_http_req_t *req, int code, um_header_list *headers) 
         um_http_hdr *h;
         LIST_FOREACH(h, headers, _next) {
             if (strcasecmp(h->name, "Content-Length") == 0) {
-                resp->body = malloc(atol(h->value));
+                resp->body = calloc(1, atol(h->value) + 1);
                 break;
             }
             if (strcasecmp(h->name, "Transfer-Encoding") == 0 && strcmp(h->value, "chunked") == 0) {
@@ -138,7 +139,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char* b, ssize_t len) {
         memcpy(resp->body + resp->received, b, len);
         resp->received += len;
     } else if (len == UV_EOF) {
-        const char* data;
+        const char* data = NULL;
         int data_len;
         void *resp_obj = NULL;
         ziti_error *err = NULL;
@@ -146,6 +147,9 @@ static void ctrl_body_cb(um_http_req_t *req, const char* b, ssize_t len) {
         if (resp->status > 299) {
             mjson_find(resp->body, resp->received, "$.error", (const char **) &data, &data_len);
             err = parse_ziti_error(data, data_len);
+        } else if (resp->resp_text_plain) {
+            resp_obj = calloc(1, resp->received + 1);
+            memcpy(resp_obj, resp->body, resp->received);
         } else {
             mjson_find(resp->body, resp->received, "$.data", (const char **) &data, &data_len);
             resp_obj = resp->body_parse_func ? resp->body_parse_func(data, data_len) : NULL;
@@ -326,6 +330,46 @@ void ziti_ctrl_get_net_sessions(
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (void *(*)(const char *, int)) parse_ziti_net_session_array;
     resp->resp_cb = (void (*)(void *, ziti_error*, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    req->data = resp;
+}
+
+void ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(nf_config*, ziti_error*), void *ctx) {
+    char *content = strdup(ecfg->x509_CSR);
+
+    char path[1024];
+    snprintf(path, sizeof(path), "/enroll?method=%s&token=%s", ecfg->zej->method, ecfg->zej->token);
+
+    um_http_req_t *req = um_http_req(&ctrl->client, "POST", path);
+
+    req->resp_cb = ctrl_resp_cb;
+    req->body_cb = ctrl_body_cb;
+    um_http_req_header(req, "Content-Type", "text/plain");
+    um_http_req_data(req, content, strlen(content), free_body_cb);
+
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->resp_text_plain = true;   // Make no attempt in ctrl_resp_cb to parse response as JSON
+    resp->body_parse_func = NULL;   //   "  "  "  
+    resp->resp_cb = (void (*)(nf_config*, ziti_error*)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    req->data = resp;
+}
+
+void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(nf_config*, ziti_error*), void *ctx) {
+    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/.well-known/est/cacerts");
+    req->resp_cb = ctrl_resp_cb;
+    req->body_cb = ctrl_body_cb;
+
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->resp_text_plain = true;   // Make no attempt in ctrl_resp_cb to parse response as JSON
+    resp->body_parse_func = NULL;   //   "  "  "  
+    resp->resp_cb = (void (*)(nf_config*, ziti_error*)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
