@@ -40,6 +40,7 @@ typedef struct enroll_cfg_s {
 
     nf_enroll_cb external_enroll_cb;
 
+    ziti_enrollment_jwt_header *zejh;
     ziti_enrollment_jwt *zej;
 
     char *CA;

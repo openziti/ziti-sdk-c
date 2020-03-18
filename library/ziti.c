@@ -31,6 +31,8 @@ limitations under the License.
 #include <mbedtls/base64.h>
 #include <mbedtls/oid.h>
 #include <mbedtls/x509_crt.h>
+#include <mbedtls/net_sockets.h>
+#include "mbedtls/md.h"
 #include <utils.h>
 
 #define MJSON_API_ONLY
@@ -183,6 +185,7 @@ int load_tls(nf_config *cfg, tls_context **ctx) {
 int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enroll_cb) {
     init_debug();
 
+    int ret;
     struct enroll_cfg_s *ecfg = NULL;
     uv_timeval64_t start_time;
     uv_gettimeofday(&start_time);
@@ -203,15 +206,123 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     ecfg = calloc(1, sizeof(enroll_cfg));
     ecfg->external_enroll_cb = external_enroll_cb;
 
-    TRY(ziti, load_jwt(jwt_file, &ecfg->zej));
+    TRY(ziti, load_jwt(jwt_file, &ecfg->zejh, &ecfg->zej));
     if (DEBUG <= ziti_debug_level) {
+        dump_ziti_enrollment_jwt_header(ecfg->zejh, 0);
         dump_ziti_enrollment_jwt(ecfg->zej, 0);
     }
+
+    // JWT validation start
+    mbedtls_net_context server_fd;
+    mbedtls_entropy_context entropy;
+    mbedtls_ctr_drbg_context ctr_drbg;
+    mbedtls_ssl_context ssl;
+    mbedtls_ssl_config conf;
+    mbedtls_x509_crt cacert;
+    uint32_t flags;
+    const char *pers = "ziti-sdk-c";
+
+    // Initialize the RNG and the session data
+    mbedtls_net_init( &server_fd );
+    mbedtls_ssl_init( &ssl );
+    mbedtls_ssl_config_init( &conf );
+    mbedtls_x509_crt_init( &cacert );
+    mbedtls_ctr_drbg_init( &ctr_drbg );
+
+    mbedtls_entropy_init( &entropy );
+    if( ( ret = mbedtls_ctr_drbg_seed( &ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *) pers, strlen( pers ) ) ) != 0 ) {
+        ZITI_LOG(ERROR, "mbedtls_ctr_drbg_seed returned -0x%04x", -ret);
+        return ZITI_KEY_GENERATION_FAILED;
+    }
+
+    struct http_parser_url controller_url;
+    http_parser_url_init(&controller_url);
+    http_parser_parse_url(ecfg->zej->controller, strlen(ecfg->zej->controller), 0, &controller_url);
+    char host[128];
+    char port[16];
+    int hostlen = controller_url.field_data[UF_HOST].len;
+    int hostoffset = controller_url.field_data[UF_HOST].off;
+    snprintf(host, sizeof(host), "%*.*s", hostlen, hostlen, ecfg->zej->controller + hostoffset);
+    sprintf(port, "%d", controller_url.port);
+
+    // Start the connection
+    ZITI_LOG(DEBUG, "Connecting to tcp/%s/%s...", host, port);
+    if( ( ret = mbedtls_net_connect( &server_fd, host, port, MBEDTLS_NET_PROTO_TCP ) ) != 0 ) {
+        ZITI_LOG(ERROR, "mbedtls_net_connect returned %d", ret);
+        return ZITI_KEY_GENERATION_FAILED;
+    }
+
+    if( ( ret = mbedtls_ssl_config_defaults( &conf, MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT ) ) != 0 ) {
+        ZITI_LOG(ERROR, "mbedtls_ssl_config_defaults returned %d", ret);
+        return ZITI_KEY_GENERATION_FAILED;
+    }
+
+    mbedtls_ssl_conf_authmode( &conf, MBEDTLS_SSL_VERIFY_NONE );
+    mbedtls_ssl_conf_ca_chain( &conf, &cacert, NULL );
+    mbedtls_ssl_conf_rng( &conf, mbedtls_ctr_drbg_random, &ctr_drbg );
+    // mbedtls_ssl_conf_dbg( &conf, my_debug, stdout );
+
+    if( ( ret = mbedtls_ssl_setup( &ssl, &conf ) ) != 0 ) {
+        ZITI_LOG(ERROR, "mbedtls_ssl_setup returned %d", ret);
+        return ZITI_KEY_GENERATION_FAILED;
+    }
+
+    if( ( ret = mbedtls_ssl_set_hostname( &ssl, host ) ) != 0 ) {
+        ZITI_LOG(ERROR, "mbedtls_ssl_set_hostname returned %d", ret);
+        return ZITI_KEY_GENERATION_FAILED;
+    }
+
+    mbedtls_ssl_set_bio( &ssl, &server_fd, mbedtls_net_send, mbedtls_net_recv, NULL );
+
+    // Handshake
+    ZITI_LOG(DEBUG, "Performing the SSL/TLS handshake...");
+    while( ( ret = mbedtls_ssl_handshake( &ssl ) ) != 0 ) {
+        if( ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE ) {
+            ZITI_LOG(ERROR, "mbedtls_ssl_handshake returned -0x%x\n\n", -ret);
+            return ZITI_KEY_GENERATION_FAILED;
+        }
+    }
+
+    // Verify the server certificate
+    ZITI_LOG(DEBUG, "Verifying peer X.509 certificate...");
+    if( ( flags = mbedtls_ssl_get_verify_result( &ssl ) ) != 0 ) {
+        char vrfy_buf[512];
+        ZITI_LOG(ERROR, "X.509 certificate failed verification");
+        mbedtls_x509_crt_verify_info( vrfy_buf, sizeof( vrfy_buf ), "  ! ", flags );
+        ZITI_LOG(ERROR, "%s", vrfy_buf);
+        return ZITI_KEY_GENERATION_FAILED;
+    }
+    else {
+        ZITI_LOG(DEBUG, "X.509 certificate is OK");
+    }
+
+    const mbedtls_x509_crt *peerCert = mbedtls_ssl_get_peer_cert( &ssl );
+
+    size_t olen;
+    mbedtls_base64_encode( NULL, 0, &olen, peerCert->raw.p, peerCert->raw.len );  // determine size of buffer we need to allocate
+    char *peerCertString = calloc(1, olen + 1);
+    mbedtls_base64_encode( peerCertString, olen, &olen, peerCert->raw.p, peerCert->raw.len );
+
+
+    if (strcmp(ecfg->zejh->alg, "RS256") == 0) {
+
+        // TODO... perform the necessary mbedtls_pk_verify() magic here...
+
+    }
+    else /* default: */
+    {
+        ZITI_LOG(ERROR, "JWT signing algorithm '%s' is not supported", ecfg->zejh->alg);
+        return ZITI_JWT_SIGNING_ALG_UNSUPPORTED;
+    }
+
+
+
+
+
 
     TRY(ziti, gen_key(&ecfg->pk_context));
 
     ecfg->PrivateKey = calloc(1, 16000);
-    int ret;
     if( ( ret = mbedtls_pk_write_key_pem( &ecfg->pk_context, ecfg->PrivateKey, 16000 ) ) != 0 ) {
         ZITI_LOG(ERROR, "mbedtls_pk_write_key_pem returned -0x%04x", -ret);
         return ZITI_KEY_GENERATION_FAILED;

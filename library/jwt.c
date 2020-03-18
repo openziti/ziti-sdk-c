@@ -44,7 +44,7 @@ static char* url64to64(const char* in, size_t ilen, size_t *olen) {
     return out;
 }
 
-int load_jwt_file(const char *filename, ziti_enrollment_jwt **zej) {
+int load_jwt_file(const char *filename, ziti_enrollment_jwt_header **zejh, ziti_enrollment_jwt **zej) {
     ZITI_LOG(DEBUG, "filename is: %s", filename);
     struct stat stats;
     int s = stat(filename, &stats);
@@ -83,8 +83,12 @@ int load_jwt_file(const char *filename, ziti_enrollment_jwt **zej) {
 
     int rc2 = mjson_base64_dec(header64, header64len, head, head_len);
 
-    char algo[32];
-    rc2 = mjson_get_string(header, rc2, "$.alg", algo, sizeof(algo));
+    // char algo[32];
+    // rc2 = mjson_get_string(head, rc2, "$.alg", algo, sizeof(algo));
+    // ZITI_LOG(DEBUG, "jwt alg is: %s", algo);
+    // ZITI_LOG(DEBUG, "head is: %s", head);
+    *zejh = parse_ziti_enrollment_jwt_header(head, rc2);
+
 
     rc2 = mjson_base64_dec(body64, body64len, body, sizeof(body));
 
@@ -96,20 +100,20 @@ int load_jwt_file(const char *filename, ziti_enrollment_jwt **zej) {
     return ZITI_OK;
 }
 
-int load_jwt(const char *filename, ziti_enrollment_jwt **zej) {
+int load_jwt(const char *filename, ziti_enrollment_jwt_header **zejh, ziti_enrollment_jwt **zej) {
 
     ZITI_LOG(DEBUG, "filename is: %s", filename);
 
     if (filename != NULL) {
-        return load_jwt_file(filename, zej);
+        return load_jwt_file(filename, zejh, zej);
     }
 
     char *fn = getenv(ZITI_SDK_JWT_FILE);
     if (fn != NULL) {
-        return load_jwt_file(fn, zej);
+        return load_jwt_file(fn, zejh, zej);
     }
 
     char def[1024];
     sprintf(def, "%s/.netfoundry/ziti/ziti.jwt", getenv("HOME"));
-    return load_jwt_file(def, zej);
+    return load_jwt_file(def, zejh, zej);
 }

@@ -109,9 +109,12 @@ TEST_CASE("load_jwt","[integ]") {
         return;
     }
 
+    ziti_enrollment_jwt_header *zejh = NULL;
     ziti_enrollment_jwt *zej = NULL;
 
-    load_jwt(conf, &zej);
+    load_jwt(conf, &zejh, &zej);
+
+    REQUIRE_THAT(zejh->alg, Catch::Matchers::Equals("RS256"));
 
     REQUIRE_THAT(zej->controller, Catch::Matchers::Equals("https://demo.ziti.netfoundry.io:1080"));
     REQUIRE_THAT(zej->method, Catch::Matchers::Equals("ott"));

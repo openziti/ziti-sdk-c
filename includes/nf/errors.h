@@ -37,6 +37,8 @@ limitations under the License.
     /** The provided JWT was not found */ \
     XX(JWT_NOT_FOUND, "JWT not found") \
     /** Attempt to generate a key failed */ \
+    XX(JWT_SIGNING_ALG_UNSUPPORTED, "unsupported JWT signing algorithm") \
+    /** Attempt to generate a key failed */ \
     XX(ENROLLMENT_METHOD_UNSUPPORTED, "unsupported enrollment method") \
     /** Attempt to generate a key failed */ \
     XX(KEY_GENERATION_FAILED, "error generating an ECC key") \
