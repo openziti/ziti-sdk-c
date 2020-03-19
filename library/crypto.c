@@ -168,7 +168,7 @@ int gen_csr(enroll_cfg *cfg) {
 
     mbedtls_x509write_csr_set_key( &cfg->x509_csr, &cfg->pk_context );
 
-    memset( cfg->x509_CSR, 0, 4096 );
+    memset( cfg->x509_CSR, 0, sizeof(cfg->x509_CSR) );
 
     if( ( ret = mbedtls_x509write_csr_pem( &cfg->x509_csr, cfg->x509_CSR, 4096, mbedtls_ctr_drbg_random, &ctr_drbg ) ) < 0 ) {
         ZITI_LOG(ERROR, "mbedtls_x509write_csr_pem returned %d", ret);

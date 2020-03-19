@@ -186,7 +186,7 @@ typedef void (*nf_write_cb)(nf_connection conn, ssize_t status, void *write_ctx)
  * NF_enroll() function may be an error condition so it is important to verify the provided
  * status code in this callback.
  *
- * This callback also returns a Ziti identity json salvo if the enrollment was successful. 
+ * This callback also receives a Ziti identity json salvo if the enrollment was successful. 
  * This identity should be persisted into a file, and used in subsequent calls to NF_init().
  *
  * @param data identity json data buffer
