@@ -66,7 +66,8 @@ struct nf_enroll_req {
     enroll_cfg *ecfg;
 };
 
-#define ZITI_MD_MAX_SIZE 32  /* longest known is SHA256 or less */
+#define ZITI_MD_MAX_SIZE_256 32  /* longest known is SHA256 or less */
+#define ZITI_MD_MAX_SIZE_512 64  /* longest known is SHA512 */
 
 int code_to_error(const char *code);
 static void version_cb(ctrl_version* v, ziti_error* err, void* ctx);
@@ -181,6 +182,45 @@ int load_tls(nf_config *cfg, tls_context **ctx) {
     }
 
     *ctx = tls;
+    return ZITI_OK;
+}
+
+int verify_256(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
+    int ret;
+    unsigned char hash[ZITI_MD_MAX_SIZE_256];
+    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
+    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
+    if( ( ret = mbedtls_pk_verify( ctx, MBEDTLS_MD_SHA256, hash, 0, ecfg->jwt_sig, ecfg->jwt_sig_len ) ) != 0 ) {
+        ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
+        return ZITI_JWT_VERIFICATION_FAILED;
+    }
+    return ZITI_OK;
+}
+
+int verify_384(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
+    int ret;
+    unsigned char hash[ZITI_MD_MAX_SIZE_512];
+    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);
+    mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
+    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
+    if( ( ret = mbedtls_pk_verify( ctx, MBEDTLS_MD_SHA384, hash, 0, ecfg->jwt_sig, ecfg->jwt_sig_len ) ) != 0 ) {
+        ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
+        return ZITI_JWT_VERIFICATION_FAILED;
+    }
+    return ZITI_OK;
+}
+
+int verify_512(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
+    int ret;
+    unsigned char hash[ZITI_MD_MAX_SIZE_512];
+    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
+    mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
+    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
+    if( ( ret = mbedtls_pk_verify( ctx, MBEDTLS_MD_SHA512, hash, 0, ecfg->jwt_sig, ecfg->jwt_sig_len ) ) != 0 ) {
+        ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
+        return ZITI_JWT_VERIFICATION_FAILED;
+    }
     return ZITI_OK;
 }
 
@@ -313,18 +353,23 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
 
     if (strcmp(ecfg->zejh->alg, "RS256") == 0) {
 
-        unsigned char hash[ZITI_MD_MAX_SIZE];
+        if( ( ret = verify_256( ecfg, &peerCert->pk ) ) != 0 ) return ret;
 
-        const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    }
+    else if (strcmp(ecfg->zejh->alg, "ES256") == 0) {
 
-        mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
+        if( ( ret = verify_256( ecfg, &peerCert->pk ) ) != 0 ) return ret;
 
-        ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
+    }
+    else if (strcmp(ecfg->zejh->alg, "ES384") == 0) {
 
-        if( ( ret = mbedtls_pk_verify( &peerCert->pk, MBEDTLS_MD_SHA256, hash, 0, ecfg->jwt_sig, ecfg->jwt_sig_len ) ) != 0 ) {
-            ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
-            return ZITI_JWT_VERIFICATION_FAILED;
-        }
+        if( ( ret = verify_384( ecfg, &peerCert->pk ) ) != 0 ) return ret;
+
+    }
+    else if (strcmp(ecfg->zejh->alg, "ES512") == 0) {
+
+        if( ( ret = verify_512( ecfg, &peerCert->pk ) ) != 0 ) return ret;
+
     }
     else /* default: */
     {

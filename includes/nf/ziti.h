@@ -200,7 +200,7 @@ typedef void (*nf_enroll_cb)(uint8_t *data, int length, int status);
  * @brief Performs a Ziti enrollment.
  * 
  * This function is used to enroll a Ziti Edge identity. The Ziti C SDK is based around the [libuv](http://libuv.org/)
- * library and is maintains similar semantics.  This function is used to setup the chain of callbacks
+ * library and maintains similar semantics.  This function is used to setup the chain of callbacks
  * needed once the loop begins to execute.
  *
  * @param jwt location of JWT file
@@ -215,7 +215,7 @@ extern int NF_enroll(const char* jwt, uv_loop_t* loop, nf_enroll_cb enroll_cb);
  * @brief Initializes a Ziti Edge identity.
  * 
  * This function is used to initialize a Ziti Edge identity. The Ziti C SDK is based around the [libuv](http://libuv.org/)
- * library and is maintains similar semantics.  This function is used to setup the chain of callbacks
+ * library and maintains similar semantics.  This function is used to setup the chain of callbacks
  * needed once the loop begins to execute.
  *
  * This function will initialize the Ziti C SDK using the default TLS engine [mbed](https://tls.mbed.org/). If a
