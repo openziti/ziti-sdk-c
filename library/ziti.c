@@ -66,6 +66,8 @@ struct nf_enroll_req {
     enroll_cfg *ecfg;
 };
 
+#define ZITI_MD_MAX_SIZE 32  /* longest known is SHA256 or less */
+
 int code_to_error(const char *code);
 static void version_cb(ctrl_version* v, ziti_error* err, void* ctx);
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx);
@@ -206,13 +208,14 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     ecfg = calloc(1, sizeof(enroll_cfg));
     ecfg->external_enroll_cb = external_enroll_cb;
 
-    TRY(ziti, load_jwt(jwt_file, &ecfg->zejh, &ecfg->zej));
+    TRY(ziti, load_jwt(jwt_file, ecfg, &ecfg->zejh, &ecfg->zej));
     if (DEBUG <= ziti_debug_level) {
         dump_ziti_enrollment_jwt_header(ecfg->zejh, 0);
         dump_ziti_enrollment_jwt(ecfg->zej, 0);
     }
 
     // JWT validation start
+
     mbedtls_net_context server_fd;
     mbedtls_entropy_context entropy;
     mbedtls_ctr_drbg_context ctr_drbg;
@@ -232,7 +235,7 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     mbedtls_entropy_init( &entropy );
     if( ( ret = mbedtls_ctr_drbg_seed( &ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *) pers, strlen( pers ) ) ) != 0 ) {
         ZITI_LOG(ERROR, "mbedtls_ctr_drbg_seed returned -0x%04x", -ret);
-        return ZITI_KEY_GENERATION_FAILED;
+        return ZITI_JWT_VERIFICATION_FAILED;
     }
 
     struct http_parser_url controller_url;
@@ -249,12 +252,12 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     ZITI_LOG(DEBUG, "Connecting to tcp/%s/%s...", host, port);
     if( ( ret = mbedtls_net_connect( &server_fd, host, port, MBEDTLS_NET_PROTO_TCP ) ) != 0 ) {
         ZITI_LOG(ERROR, "mbedtls_net_connect returned %d", ret);
-        return ZITI_KEY_GENERATION_FAILED;
+        return ZITI_JWT_VERIFICATION_FAILED;
     }
 
     if( ( ret = mbedtls_ssl_config_defaults( &conf, MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT ) ) != 0 ) {
         ZITI_LOG(ERROR, "mbedtls_ssl_config_defaults returned %d", ret);
-        return ZITI_KEY_GENERATION_FAILED;
+        return ZITI_JWT_VERIFICATION_FAILED;
     }
 
     mbedtls_ssl_conf_authmode( &conf, MBEDTLS_SSL_VERIFY_NONE );
@@ -264,12 +267,12 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
 
     if( ( ret = mbedtls_ssl_setup( &ssl, &conf ) ) != 0 ) {
         ZITI_LOG(ERROR, "mbedtls_ssl_setup returned %d", ret);
-        return ZITI_KEY_GENERATION_FAILED;
+        return ZITI_JWT_VERIFICATION_FAILED;
     }
 
     if( ( ret = mbedtls_ssl_set_hostname( &ssl, host ) ) != 0 ) {
         ZITI_LOG(ERROR, "mbedtls_ssl_set_hostname returned %d", ret);
-        return ZITI_KEY_GENERATION_FAILED;
+        return ZITI_JWT_VERIFICATION_FAILED;
     }
 
     mbedtls_ssl_set_bio( &ssl, &server_fd, mbedtls_net_send, mbedtls_net_recv, NULL );
@@ -279,7 +282,7 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     while( ( ret = mbedtls_ssl_handshake( &ssl ) ) != 0 ) {
         if( ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE ) {
             ZITI_LOG(ERROR, "mbedtls_ssl_handshake returned -0x%x\n\n", -ret);
-            return ZITI_KEY_GENERATION_FAILED;
+            return ZITI_JWT_VERIFICATION_FAILED;
         }
     }
 
@@ -290,7 +293,7 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
         ZITI_LOG(ERROR, "X.509 certificate failed verification");
         mbedtls_x509_crt_verify_info( vrfy_buf, sizeof( vrfy_buf ), "  ! ", flags );
         ZITI_LOG(ERROR, "%s", vrfy_buf);
-        return ZITI_KEY_GENERATION_FAILED;
+        return ZITI_JWT_VERIFICATION_FAILED;
     }
     else {
         ZITI_LOG(DEBUG, "X.509 certificate is OK");
@@ -302,12 +305,26 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     mbedtls_base64_encode( NULL, 0, &olen, peerCert->raw.p, peerCert->raw.len );  // determine size of buffer we need to allocate
     char *peerCertString = calloc(1, olen + 1);
     mbedtls_base64_encode( peerCertString, olen, &olen, peerCert->raw.p, peerCert->raw.len );
+    ZITI_LOG(DEBUG, "peer X.509 certificate is: %s", peerCertString);
 
+    unsigned char output_buf[16000];
+    mbedtls_pk_write_pubkey_pem( &peerCert->pk, output_buf, 16000 );
+    ZITI_LOG(DEBUG, "peer X.509 public key is: %s", output_buf);
 
     if (strcmp(ecfg->zejh->alg, "RS256") == 0) {
 
-        // TODO... perform the necessary mbedtls_pk_verify() magic here...
+        unsigned char hash[ZITI_MD_MAX_SIZE];
 
+        const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+
+        mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
+
+        ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
+
+        if( ( ret = mbedtls_pk_verify( &peerCert->pk, MBEDTLS_MD_SHA256, hash, 0, ecfg->jwt_sig, ecfg->jwt_sig_len ) ) != 0 ) {
+            ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
+            return ZITI_JWT_VERIFICATION_FAILED;
+        }
     }
     else /* default: */
     {
@@ -315,7 +332,9 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
         return ZITI_JWT_SIGNING_ALG_UNSUPPORTED;
     }
 
+    ZITI_LOG(DEBUG, "JWT verification succeeded !");
 
+    // JWT validation end
 
 
 

@@ -42,6 +42,10 @@ typedef struct enroll_cfg_s {
 
     ziti_enrollment_jwt_header *zejh;
     ziti_enrollment_jwt *zej;
+    char *raw_jwt;
+    char *jwt_signing_input;
+    char *jwt_sig;
+    size_t jwt_sig_len;
 
     char *CA;
 

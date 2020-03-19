@@ -201,7 +201,7 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
 
 int load_config(const char *filename, nf_config **);
 
-int load_jwt(const char *filename, ziti_enrollment_jwt_header **, ziti_enrollment_jwt **);
+int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **, ziti_enrollment_jwt **);
 
 int load_tls(nf_config* cfg, tls_context **tls);
 

@@ -39,6 +39,8 @@ limitations under the License.
     /** Attempt to generate a key failed */ \
     XX(JWT_SIGNING_ALG_UNSUPPORTED, "unsupported JWT signing algorithm") \
     /** Attempt to generate a key failed */ \
+    XX(JWT_VERIFICATION_FAILED, "JWT verification failed") \
+    /** Attempt to generate a key failed */ \
     XX(ENROLLMENT_METHOD_UNSUPPORTED, "unsupported enrollment method") \
     /** Attempt to generate a key failed */ \
     XX(KEY_GENERATION_FAILED, "error generating an ECC key") \

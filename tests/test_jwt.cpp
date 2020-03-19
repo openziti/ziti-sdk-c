@@ -109,10 +109,11 @@ TEST_CASE("load_jwt","[integ]") {
         return;
     }
 
+    struct enroll_cfg_s *ecfg = (struct enroll_cfg_s *)calloc(1, sizeof(enroll_cfg));
     ziti_enrollment_jwt_header *zejh = NULL;
     ziti_enrollment_jwt *zej = NULL;
 
-    load_jwt(conf, &zejh, &zej);
+    load_jwt(conf, ecfg, &zejh, &zej);
 
     REQUIRE_THAT(zejh->alg, Catch::Matchers::Equals("RS256"));
 
