@@ -128,7 +128,7 @@ int gen_csr(enroll_cfg *cfg) {
     const char *pers = "gen_csr";
 
     // Set to sane values
-    mbedtls_x509write_csr_init( &cfg->x509_csr );
+    mbedtls_x509write_csr_init( &cfg->x509_csr_ctx );
     mbedtls_pk_init( &key );
     mbedtls_ctr_drbg_init( &ctr_drbg );
     memset( buf, 0, sizeof( buf ) );
@@ -149,11 +149,11 @@ int gen_csr(enroll_cfg *cfg) {
     csropt.force_ns_cert_type  = 1;
     csropt.md_alg              = MBEDTLS_MD_SHA256;
 
-    mbedtls_x509write_csr_set_md_alg( &cfg->x509_csr, csropt.md_alg );
+    mbedtls_x509write_csr_set_md_alg( &cfg->x509_csr_ctx, csropt.md_alg );
 
-    mbedtls_x509write_csr_set_key_usage( &cfg->x509_csr, csropt.key_usage );
+    mbedtls_x509write_csr_set_key_usage( &cfg->x509_csr_ctx, csropt.key_usage );
 
-    mbedtls_x509write_csr_set_ns_cert_type( &cfg->x509_csr, csropt.ns_cert_type );
+    mbedtls_x509write_csr_set_ns_cert_type( &cfg->x509_csr_ctx, csropt.ns_cert_type );
 
     mbedtls_entropy_init( &entropy );
     if( ( ret = mbedtls_ctr_drbg_seed( &ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *) pers, strlen( pers ) ) ) != 0 ) {
@@ -161,16 +161,16 @@ int gen_csr(enroll_cfg *cfg) {
         return ZITI_CSR_GENERATION_FAILED;
     }
 
-    if( ( ret = mbedtls_x509write_csr_set_subject_name( &cfg->x509_csr, csropt.subject_name ) ) != 0 ) {
+    if( ( ret = mbedtls_x509write_csr_set_subject_name( &cfg->x509_csr_ctx, csropt.subject_name ) ) != 0 ) {
         ZITI_LOG(ERROR, "mbedtls_x509write_csr_set_subject_name returned %d", ret);
         return ZITI_CSR_GENERATION_FAILED;
     }
 
-    mbedtls_x509write_csr_set_key( &cfg->x509_csr, &cfg->pk_context );
+    mbedtls_x509write_csr_set_key( &cfg->x509_csr_ctx, &cfg->pk_context );
 
-    memset( cfg->x509_CSR, 0, sizeof(cfg->x509_CSR) );
+    memset( cfg->x509_csr_pem, 0, sizeof(cfg->x509_csr_pem) );
 
-    if( ( ret = mbedtls_x509write_csr_pem( &cfg->x509_csr, cfg->x509_CSR, 4096, mbedtls_ctr_drbg_random, &ctr_drbg ) ) < 0 ) {
+    if( ( ret = mbedtls_x509write_csr_pem( &cfg->x509_csr_ctx, cfg->x509_csr_pem, 4096, mbedtls_ctr_drbg_random, &ctr_drbg ) ) < 0 ) {
         ZITI_LOG(ERROR, "mbedtls_x509write_csr_pem returned %d", ret);
         return ZITI_CSR_GENERATION_FAILED;
     }

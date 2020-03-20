@@ -338,7 +338,7 @@ void ziti_ctrl_get_net_sessions(
 }
 
 void ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(nf_config*, ziti_error*), void *ctx) {
-    char *content = strdup(ecfg->x509_CSR);
+    char *content = strdup(ecfg->x509_csr_pem);
 
     char path[1024];
     snprintf(path, sizeof(path), "/enroll?method=%s&token=%s", ecfg->zej->method, ecfg->zej->token);
@@ -363,6 +363,22 @@ void ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(nf_con
 
 void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(nf_config*, ziti_error*), void *ctx) {
     um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/.well-known/est/cacerts");
+    req->resp_cb = ctrl_resp_cb;
+    req->body_cb = ctrl_body_cb;
+
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->resp_text_plain = true;   // Make no attempt in ctrl_resp_cb to parse response as JSON
+    resp->body_parse_func = NULL;   //   "  "  "  
+    resp->resp_cb = (void (*)(nf_config*, ziti_error*)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    req->data = resp;
+}
+
+void ziti_ctrl_get_public_cert(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(nf_config*, ziti_error*), void *ctx) {
+    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/");
     req->resp_cb = ctrl_resp_cb;
     req->body_cb = ctrl_body_cb;
 
