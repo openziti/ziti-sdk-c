@@ -104,7 +104,7 @@ void ziti_close_cb(uv_handle_t *h) {
 
 int ziti_channel_close(ziti_channel_t *ch) {
     int r = 0;
-    if (ch->state == Connected) {
+    if (ch->state != Closed) {
         r = uv_mbed_close(&ch->connection, ziti_close_cb);
         ch->state = Closed;
     }
