@@ -238,6 +238,7 @@ int NF_shutdown(nf_context ctx) {
     ZITI_LOG(INFO, "Ziti is shutting down");
 
     free_ziti_session(ctx->session);
+    ctx->session = NULL;
 
     uv_timer_stop(&ctx->session_timer);
     ziti_ctrl_close(&ctx->controller);

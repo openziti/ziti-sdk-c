@@ -103,7 +103,12 @@ void ziti_close_cb(uv_handle_t *h) {
 }
 
 int ziti_channel_close(ziti_channel_t *ch) {
-    return uv_mbed_close(&ch->connection, ziti_close_cb);
+    int r = 0;
+    if (ch->state != Closed) {
+        r = uv_mbed_close(&ch->connection, ziti_close_cb);
+        ch->state = Closed;
+    }
+    return r;
 }
 
 int ziti_channel_connect(nf_context ziti, const char *url, ch_connect_cb cb, void *cb_ctx) {
