@@ -173,8 +173,10 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_
 }
 
 int ziti_ctrl_close(ziti_controller *ctrl) {
-    FREE(ctrl->session);
-    um_http_close(&ctrl->client);
+    if (ctrl->session != NULL) {
+        FREE(ctrl->session);
+        um_http_close(&ctrl->client);
+    }
     return ZITI_OK;
 }
 
