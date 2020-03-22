@@ -36,6 +36,15 @@ limitations under the License.
 extern "C" {
 #endif
 
+typedef struct wellknown_cert {
+
+    char *cert;
+    char *pem;
+
+    LIST_ENTRY(wellknown_cert) _next;
+
+} ;
+
 typedef struct enroll_cfg_s {
 
     nf_enroll_cb external_enroll_cb;
@@ -55,7 +64,16 @@ typedef struct enroll_cfg_s {
     unsigned char x509_csr_pem[4096];
     mbedtls_x509write_csr x509_csr_ctx;
     
+    LIST_HEAD(cert_list, wellknown_cert) wk_certs;
+
 } enroll_cfg;
+
+
+struct nf_enroll_req {
+    nf_enroll_cb enroll_cb;
+    struct nf_ctx * enroll_ctx;
+    enroll_cfg *ecfg;
+};
 
 
 #ifdef __cplusplus

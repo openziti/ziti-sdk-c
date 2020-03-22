@@ -36,6 +36,12 @@ limitations under the License.
     XX(CONFIG_NOT_FOUND, "Configuration not found") \
     /** The provided JWT was not found */ \
     XX(JWT_NOT_FOUND, "JWT not found") \
+    /** The provided JWT is not accepted by controller */ \
+    XX(JWT_INVALID, "JWT not accepted by controller") \
+    /** The provided JWT has invalid format */ \
+    XX(JWT_INVALID_FORMAT, "JWT has invalid format") \
+    /** PKCS7/ASN.1 parsing failed */ \
+    XX(PKCS7_ASN1_PARSING_FAILED, "PKCS7/ASN.1 parsing failed") \
     /** Attempt to generate a key failed */ \
     XX(JWT_SIGNING_ALG_UNSUPPORTED, "unsupported JWT signing algorithm") \
     /** Attempt to generate a key failed */ \

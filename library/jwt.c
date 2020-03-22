@@ -78,8 +78,6 @@ static int base64url_decode_len(const char *bufcoded) {
 }
 
 static int base64url_decode(char *bufplain, const char *bufcoded) {
-    ZITI_LOG(DEBUG, "bufcoded len is: %s", bufcoded);
-
     register const unsigned char *bufin;
     register unsigned char *bufout;
     register int nprbytes;
@@ -137,7 +135,15 @@ int load_jwt_file(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollme
     ZITI_LOG(DEBUG, "jwt file content is: \n%s", ecfg->raw_jwt);
 
     const char *dot1 = strchr(ecfg->raw_jwt, '.');
+    if (NULL == dot1) {
+        ZITI_LOG(ERROR, "%s - lacks a dot", filename);
+        return ZITI_JWT_INVALID_FORMAT;
+    }
     const char *dot2 = strchr(dot1 + 1, '.');
+    if (NULL == dot2) {
+        ZITI_LOG(ERROR, "%s - lacks a second dot", filename);
+        return ZITI_JWT_INVALID_FORMAT;
+    }
     const char *end = ecfg->raw_jwt + strlen(ecfg->raw_jwt);
     ecfg->jwt_signing_input = (char*)calloc(1, strlen(ecfg->raw_jwt) + 1 );
     strncpy(ecfg->jwt_signing_input, ecfg->raw_jwt, (dot2 - ecfg->raw_jwt) );

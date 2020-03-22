@@ -191,10 +191,11 @@ typedef void (*nf_write_cb)(nf_connection conn, ssize_t status, void *write_ctx)
  *
  * @param data identity json data buffer
  * @param length size of identity json or error code as defined in #ZITI_ERRORS
+ * @param err_message description of error, or NULL if enrollment succeeded
  *
- * @see NF_init(), ZITI_ERRORS
+ * @see NF_enroll(), ZITI_ERRORS
  */
-typedef void (*nf_enroll_cb)(uint8_t *data, int length, int status);
+typedef void (*nf_enroll_cb)(uint8_t *data, int length, char* err_message);
 
 /**
  * @brief Performs a Ziti enrollment.

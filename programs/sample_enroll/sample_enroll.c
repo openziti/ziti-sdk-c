@@ -52,8 +52,11 @@ static int write_identity_file( char *data )
     return( ZITI_OK );
 }
 
-void on_nf_enroll(uint8_t *data, int length, int status) {
-    DIE(status);
+void on_nf_enroll(uint8_t *data, int length, char* err_message) {
+    if ((NULL == data) || (0 == length)) {
+        fprintf(stderr, "ERROR: => %d => %s\n", length, err_message);
+        exit(length);
+    }
 
     int rc = write_identity_file( (char*) data );
 
