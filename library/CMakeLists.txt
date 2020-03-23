@@ -31,7 +31,9 @@ SET(ZITI_INCLUDE_DIRS
 )
 
 add_library(ziti     STATIC ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
+set_target_properties(ziti PROPERTIES OUTPUT_NAME "ziti")
 add_library(ziti_dll SHARED ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
+set_target_properties(ziti_dll PROPERTIES OUTPUT_NAME "ziti")
 set_property(TARGET ziti ziti_dll PROPERTY C_STANDARD 11)
 
 target_sources(ziti     PRIVATE ${ZITI_PRIVATE_SRC_FILES})
