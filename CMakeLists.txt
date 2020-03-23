@@ -1,5 +1,7 @@
 cmake_minimum_required (VERSION 3.12)
 include(git.cmake)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 
 project (ziti-sdk
         VERSION ${ver}
