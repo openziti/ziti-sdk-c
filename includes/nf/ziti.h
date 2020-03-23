@@ -27,6 +27,29 @@ limitations under the License.
 #include <uv_mbed/tls_engine.h>
 #include "errors.h"
 
+#if defined(BUILDING_ZITI_SHARED) && defined(USING_ZITI_SHARED)
+#error "Define either BUILDING_ZITI_SHARED or USING_ZITI_SHARED, not both."
+#endif
+
+#ifndef ZITI_FUNC
+
+#ifdef _WIN32
+# if defined(BUILDING_ZITI_SHARED)
+#   define ZITI_FUNC __declspec(dllexport)
+# elif defined(USING_ZITI_SHARED)
+#   define ZITI_FUNC __declspec(dllimport)
+# else
+#   define ZITI_FUNC /* nothing */
+# endif
+#elif __GNUC__ >= 4
+# define ZITI_FUNC __attribute__((visibility("default")))
+#else
+# define ZITI_FUNC /* nothing */
+#endif
+
+#endif
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -198,6 +221,7 @@ typedef void (*nf_write_cb)(nf_connection conn, ssize_t status, void *write_ctx)
  *
  * @see NF_init_with_tls()
  */
+ZITI_FUNC
 extern int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx);
 
 /**
@@ -216,6 +240,7 @@ extern int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void
  *
  * @see NF_init()
  */
+ZITI_FUNC
 extern int
 NF_init_with_tls(const char* ctrl_url, tls_context* tls_context, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx);
 
@@ -234,6 +259,7 @@ NF_init_with_tls(const char* ctrl_url, tls_context* tls_context, uv_loop_t* loop
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
+ZITI_FUNC
 extern int NF_set_timeout(nf_context nf_ctx, int timeout);
 
 /**
@@ -243,6 +269,7 @@ extern int NF_set_timeout(nf_context nf_ctx, int timeout);
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
+ZITI_FUNC
 extern int NF_shutdown(nf_context nf_ctx);
 
 /**
@@ -253,6 +280,7 @@ extern int NF_shutdown(nf_context nf_ctx);
  *
  * @param nf_ctx the Ziti Edge identity context to print debug information for
 */
+ZITI_FUNC
 extern void NF_dump(nf_context nf_ctx);
 
 /**
@@ -269,6 +297,7 @@ extern void NF_dump(nf_context nf_ctx);
  *
  * @see NF_dial(), NF_listen(), ZITI_ERRORS
  */
+ZITI_FUNC
 extern int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data);
 
 /**
@@ -281,6 +310,7 @@ extern int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data);
  *
  * @return custom data passed into NF_conn_init()
  */
+ZITI_FUNC
 extern void *NF_conn_data(nf_connection conn);
 
 /**
@@ -297,6 +327,7 @@ extern void *NF_conn_data(nf_connection conn);
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
+ZITI_FUNC
 extern int NF_service_available(nf_context nf_ctx, const char *service, nf_service_cb cb, void *ctx);
 
 /**
@@ -318,6 +349,7 @@ extern int NF_service_available(nf_context nf_ctx, const char *service, nf_servi
  *
  * @see NF_dial(), NF_write()
  */
+ZITI_FUNC
 extern int NF_dial(nf_connection conn, const char *service, nf_conn_cb cb, nf_data_cb data_cb);
 
 /**
@@ -342,6 +374,7 @@ extern int NF_dial(nf_connection conn, const char *service, nf_conn_cb cb, nf_da
  *
  * @see NF_accept()
  */
+ZITI_FUNC
 extern int NF_listen(nf_connection serv_conn, const char *service, nf_listen_cb lcb, nf_client_cb cb);
 
 /**
@@ -366,6 +399,7 @@ extern int NF_listen(nf_connection serv_conn, const char *service, nf_listen_cb 
  *
  * @see NF_listen()
  */
+ZITI_FUNC
 extern int NF_accept(nf_connection clt, nf_conn_cb cb, nf_data_cb data_cb);
 
 /**
@@ -378,6 +412,7 @@ extern int NF_accept(nf_connection clt, nf_conn_cb cb, nf_data_cb data_cb);
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
+ZITI_FUNC
 extern int NF_close(nf_connection *conn);
 
 /**
@@ -396,6 +431,7 @@ extern int NF_close(nf_connection *conn);
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
+ZITI_FUNC
 extern int NF_write(nf_connection conn, uint8_t *data, size_t length, nf_write_cb write_cb, void *write_ctx);
 
 #ifdef __cplusplus

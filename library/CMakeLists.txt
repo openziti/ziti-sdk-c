@@ -1,6 +1,9 @@
-set(ZITI_HEADER_FILES ${PROJECT_SOURCE_DIR}/includes/nf/errors.h ${PROJECT_SOURCE_DIR}/includes/nf/ziti.h)
+set(ZITI_HEADER_FILES 
+    ${PROJECT_SOURCE_DIR}/includes/nf/errors.h 
+    ${PROJECT_SOURCE_DIR}/includes/nf/ziti.h
+)
 
-add_library(ziti STATIC
+SET(ZITI_SRC_FILES
         utils.c strutils.h
         ziti.c
         config.c
@@ -12,42 +15,64 @@ add_library(ziti STATIC
         channel.c
         message.c
         buffer.c
-        ${ZITI_HEADER_FILES}
-        )
-
-set_property(TARGET ziti PROPERTY C_STANDARD 11)
-
-target_sources(ziti
-        PRIVATE ${PROJECT_SOURCE_DIR}/deps/http-parser/http_parser.c)
-
-target_link_libraries(ziti
-    PUBLIC uv_mbed
 )
+
+SET(ZITI_PRIVATE_SRC_FILES 
+    ${PROJECT_SOURCE_DIR}/deps/http-parser/http_parser.c
+)
+
+SET(ZITI_INCLUDE_DIRS
+    PUBLIC ../includes
+    PUBLIC ${PROJECT_SOURCE_DIR}/deps/http-parser
+
+    PRIVATE ../inc_internal
+    PRIVATE ${PROJECT_BINARY_DIR}/include
+    PRIVATE ${PROJECT_SOURCE_DIR}/deps/mjson
+)
+
+add_library(ziti     STATIC ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
+add_library(ziti_dll SHARED ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
+set_property(TARGET ziti ziti_dll PROPERTY C_STANDARD 11)
+
+target_sources(ziti     PRIVATE ${ZITI_PRIVATE_SRC_FILES})
+target_sources(ziti_dll PRIVATE ${ZITI_PRIVATE_SRC_FILES})
+
+target_link_libraries(ziti     PUBLIC uv_mbed)
+target_link_libraries(ziti_dll PUBLIC uv_mbed)
         
 if (NOT WIN32)
-    target_link_libraries(ziti
-        PUBLIC m
-        )
+    target_link_libraries(ziti     PUBLIC m )
+    target_link_libraries(ziti_dll PUBLIC m )
 endif()
 
-target_include_directories(ziti
-        PUBLIC ../includes
-        PRIVATE ../inc_internal
-        PRIVATE ${PROJECT_BINARY_DIR}/include
-        PRIVATE ${PROJECT_SOURCE_DIR}/deps/mjson
-        PUBLIC ${PROJECT_SOURCE_DIR}/deps/http-parser)
+target_include_directories(ziti     ${ZITI_INCLUDE_DIRS})
+target_include_directories(ziti_dll ${ZITI_INCLUDE_DIRS})
 
 target_compile_definitions(ziti PUBLIC
         ZITI_BUILDNUM=${ZITI_BUILDNUM}
         BUILD_DATE=${BUILD_DATE}
         ZITI_VERSION=${PROJECT_VERSION}
         ZITI_BRANCH=${GIT_BRANCH}
-        ZITI_COMMIT=${GIT_COMMIT_HASH})
+        ZITI_COMMIT=${GIT_COMMIT_HASH}
+)
+
+target_compile_definitions(ziti_dll PUBLIC
+        ZITI_BUILDNUM=${ZITI_BUILDNUM}
+        BUILD_DATE=${BUILD_DATE}
+        ZITI_VERSION=${PROJECT_VERSION}
+        ZITI_BRANCH=${GIT_BRANCH}
+        ZITI_COMMIT=${GIT_COMMIT_HASH}
+        INTERFACE USING_ZITI_SHARED=1
+        PRIVATE BUILDING_ZITI_SHARED=1
+)
 
 if (WIN32)
     # on windows GDI defines ERROR which conflicts with the SDK declaration of DEBUG_LEVELS in utils.h
-    target_compile_definitions(ziti PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
-    target_link_libraries(ziti PUBLIC crypt32)
+    target_compile_definitions(ziti     PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
+    target_compile_definitions(ziti_dll PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
+    
+    target_link_libraries(ziti     PUBLIC crypt32)
+    target_link_libraries(ziti_dll PUBLIC crypt32)
 endif()
 
 set(includedir ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR})
@@ -58,7 +83,7 @@ configure_file(${PROJECT_SOURCE_DIR}/ziti.pc.in ${CMAKE_CURRENT_BINARY_DIR}/ziti
 
 set(CMAKE_INSTALL_DOCDIR share/doc)
 
-install(TARGETS ziti
+install(TARGETS ziti ziti_dll
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )
 
