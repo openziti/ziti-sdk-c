@@ -376,26 +376,17 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
             total_pem_len = pem_len;
 
         } else {
-            ca = realloc(ca, (total_pem_len + pem_len));
+            ca = realloc(ca, (total_pem_len + pem_len + 1));
+            pem_ptr = ca + total_pem_len;
             total_pem_len += pem_len;
         }
 
         strcpy(pem_ptr, cbeg);
-        if (DEBUG <= ziti_debug_level) {
-            hexDump("2 pem_ptr", ca, total_pem_len + 16);
-        }
         strcat(pem_ptr, wc->cert);
-        if (DEBUG <= ziti_debug_level) {
-            hexDump("3 pem_ptr", ca, total_pem_len + 16);
-        }
         strcat(pem_ptr, cend);
-        if (DEBUG <= ziti_debug_level) {
-            hexDump("4 pem_ptr", ca, total_pem_len + 16);
-        }
 
         ZITI_LOG(DEBUG, "CA: \n%s\n", ca);
 
-        pem_ptr += pem_len;
     }
 
     tls_context *tls = NULL;
