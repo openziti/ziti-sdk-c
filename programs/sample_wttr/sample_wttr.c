@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2020 Netfoundry, Inc.
+Copyright 2019-2020 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -98,5 +98,5 @@ int main(int argc, char** argv) {
 
     printf("========================\n");
 
-    NF_free(&nf);
+    NF_shutdown(nf);
 }

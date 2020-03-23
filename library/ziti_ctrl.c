@@ -1,5 +1,5 @@
 /*
-Copyright 2019 Netfoundry, Inc.
+Copyright 2019 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -64,18 +64,27 @@ struct ctrl_resp {
     void (*ctrl_cb)(void*, ziti_error*, struct ctrl_resp*);
 };
 
+static void ctrl_default_cb (void *s, ziti_error *e, struct ctrl_resp *resp);
+
 static void ctrl_resp_cb(um_http_req_t *req, int code, um_header_list *headers) {
     struct ctrl_resp *resp = req->data;
     resp->status = code;
-    um_http_hdr *h;
-    LIST_FOREACH(h, headers, _next) {
-        if (strcasecmp(h->name, "Content-Length") == 0) {
-            resp->body = malloc(atol(h->value));
-            break;
-        }
-        if (strcasecmp(h->name, "Transfer-Encoding") == 0 && strcmp(h->value, "chunked") == 0) {
-            resp->resp_chunked = true;
-            resp->body = malloc(0);
+    if (code < 0) {
+        NEWP(err, ziti_error);
+        err->code = strdup("CONTROLLER_UNAVAILABLE");
+        err->message = strdup(uv_strerror(code));
+        ctrl_default_cb(NULL, err, resp);
+    } else {
+        um_http_hdr *h;
+        LIST_FOREACH(h, headers, _next) {
+            if (strcasecmp(h->name, "Content-Length") == 0) {
+                resp->body = malloc(atol(h->value));
+                break;
+            }
+            if (strcasecmp(h->name, "Transfer-Encoding") == 0 && strcmp(h->value, "chunked") == 0) {
+                resp->resp_chunked = true;
+                resp->body = malloc(0);
+            }
         }
     }
 }
@@ -282,14 +291,14 @@ void ziti_ctrl_get_service(ziti_controller *ctrl, const char* service_name, void
 }
 
 void ziti_ctrl_get_net_session(
-        ziti_controller *ctrl, ziti_service *service, bool bind,
+        ziti_controller *ctrl, ziti_service *service, const char* type,
         void (*cb)(ziti_net_session *, ziti_error*, void*), void* ctx) {
 
     char *content = NULL;
     size_t len = mjson_printf(&mjson_print_dynamic_buf, &content,
-            "{%Q: %Q, %Q: %B}",
+            "{%Q: %Q, %Q: %Q}",
             "serviceId", service->id,
-            "hosting", bind);
+            "type", type);
 
     um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/sessions");
     req->resp_cb = ctrl_resp_cb;

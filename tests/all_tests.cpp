@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2020 Netfoundry, Inc.
+Copyright 2019-2020 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,8 @@ limitations under the License.
 
 #define CATCH_CONFIG_MAIN  // This tells Catch to provide a main() - only do this in one cpp file
 
-#include <catch2/catch.hpp>
+#include "catch2/catch.hpp"
 #include "../inc_internal/utils.h"
-#include <nf/errors.h>
 
 int init() {
     init_debug();

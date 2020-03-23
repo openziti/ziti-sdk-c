@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020 Netfoundry, Inc.
+Copyright (c) 2020 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ XX(url_tls, string, none, urls.tls)
 #define ZITI_NET_SESSION_MODEL(XX) \
 XX(token, string, none, token)\
 XX(id, string, none, id) \
-XX(hosting, bool, none, hosting) \
+XX(session_type, string, none, type) \
 XX(edge_routers, ziti_edge_router, array, edgeRouters) \
 XX(service_id, string, none, NULL)
 

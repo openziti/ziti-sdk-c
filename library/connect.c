@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2020 Netfoundry, Inc.
+Copyright 2019-2020 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,15 +20,20 @@ limitations under the License.
 #include "utils.h"
 #include "endian_internal.h"
 
+static const char *TYPE_BIND = "Bind";
+static const char *TYPE_DIAL = "Dial";
+
 struct nf_conn_req {
     struct nf_conn *conn;
     char *service_name;
-    bool bind;
+    const char *session_type;
     ziti_service *service;
     ziti_channel_t *channel;
     nf_conn_cb cb;
 
     uv_timer_t *conn_timeout;
+
+    LIST_ENTRY(nf_conn_req) _next;
 };
 
 static void ziti_connect_async(uv_async_t *ar);
@@ -54,11 +59,6 @@ void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int stat
     }
     conn->write_reqs--;
 
-    if (status < 0) {
-        conn->state = Closed;
-        SLIST_REMOVE(&conn->channel->connections, conn, nf_conn, next);
-    }
-
     if (req->timeout != NULL) {
         uv_timer_stop(req->timeout);
         uv_close((uv_handle_t *) req->timeout, free_handle);
@@ -68,10 +68,16 @@ void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int stat
         if (status == 0) {
             status = req->len;
         }
+
+        if (status < 0) {
+            conn->state = Closed;
+        }
+
         req->cb(conn, status, req->ctx);
     }
 
     if (conn->state == Closed && conn->write_reqs == 0) {
+        LIST_REMOVE(conn, next);
         free(conn);
     }
     free(req);
@@ -93,12 +99,24 @@ static int send_message(struct nf_conn *conn, uint32_t content, uint8_t *body, u
                     .value = (uint8_t *) &msg_seq
             }
     };
+    conn->write_reqs++;
     return ziti_channel_send(ch, content, headers, 2, body, body_len, wr);
 }
 
 static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
+    nf_context nf = ch->ctx;
 
-    struct nf_conn_req * req = ctx;
+    struct nf_conn_req *req;
+
+    LIST_FOREACH(req, &nf->connect_requests, _next) {
+        if (req == ctx)
+            break;
+    }
+    if (req == NULL) {
+        ZITI_LOG(DEBUG, "req was removed");
+        return;
+    }
+
     if (status < 0) {
         ZITI_LOG(ERROR, "ch[%d] failed to connect status[%d](%s)", ch->id, status, uv_strerror(status));
         req->cb(req->conn, ZITI_GATEWAY_UNAVAILABLE);
@@ -124,6 +142,10 @@ static void connect_timeout(uv_timer_t *timer) {
         ZITI_LOG(WARN, "ziti connection timed out");
         conn->state = Closed;
         req->cb(conn, ZITI_TIMEOUT);
+
+        LIST_REMOVE(req, _next);
+    } else {
+        ZITI_LOG(ERROR, "timeout for connection[%d] in unexpected state[%d]", conn->conn_id, conn->state);
     }
 
     uv_timer_stop(timer);
@@ -221,7 +243,7 @@ static void ziti_connect_async(uv_async_t *ar) {
 
     ziti_net_session *it = NULL;
     LIST_FOREACH(it, &ctx->net_sessions, _next) {
-        if (strcmp(req->service->id, it->service_id) == 0 && (req->bind == it->hosting) ) {
+        if (strcmp(req->service->id, it->service_id) == 0 && strcmp(req->session_type, it->session_type) == 0 ) {
             net_session = it;
             break;
         }
@@ -229,7 +251,7 @@ static void ziti_connect_async(uv_async_t *ar) {
 
     if (net_session == NULL) {
         ZITI_LOG(DEBUG, "requesting session for service[%s]", req->service_name);
-        ziti_ctrl_get_net_session(&ctx->controller, req->service, req->bind, connect_get_net_session_cb, ar);
+        ziti_ctrl_get_net_session(&ctx->controller, req->service, req->session_type, connect_get_net_session_cb, ar);
         return;
     }
     else {
@@ -246,14 +268,30 @@ static void ziti_connect_async(uv_async_t *ar) {
 }
 
 int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb) {
+
+    nf_context nf = conn->nf_ctx;
+
+    PREPF(ziti, ziti_errorstr);
+    if (conn->state != Initial) {
+        TRY(ziti, ZITI_INVALID_STATE);
+    }
+
+
     NEWP(req, struct nf_conn_req);
 
     req->service_name = strdup(service);
+    req->session_type = TYPE_DIAL;
     req->conn = conn;
     req->cb = conn_cb;
 
     conn->data_cb = data_cb;
     conn->state = Connecting;
+
+    LIST_INSERT_HEAD(&nf->connect_requests, req, _next);
+
+    CATCH(ziti) {
+        return ERR(ziti);
+    }
 
     NEWP(async_cr, uv_async_t);
     uv_async_init(conn->nf_ctx->loop, async_cr, ziti_connect_async);
@@ -275,7 +313,7 @@ static void ziti_write_timeout(uv_timer_t *t) {
     if (conn->state != Closed) {
         conn->state = Closed;
         req->cb(conn, ZITI_TIMEOUT, req->ctx);
-        SLIST_REMOVE(&ch->connections, conn, nf_conn, next);
+        LIST_REMOVE(conn, next);
     }
 
     if (conn->write_reqs == 0) {
@@ -288,8 +326,6 @@ static void ziti_write_timeout(uv_timer_t *t) {
 static void ziti_write_async(uv_async_t *ar) {
     struct nf_write_req *req = ar->data;
     struct nf_conn *conn = req->conn;
-
-    conn->write_reqs++;
 
     if (req->cb) {
         req->timeout = calloc(1, sizeof(uv_timer_t));
@@ -310,6 +346,10 @@ int ziti_write(struct nf_write_req *req) {
     return uv_async_send(ar);
 }
 
+static void ziti_disconnect_cb(nf_connection conn, ssize_t status, void *ctx) {
+    conn->state = Closed;
+}
+
 static void ziti_disconnect_async(uv_async_t *ar) {
     struct nf_conn *conn = ar->data;
 
@@ -317,6 +357,8 @@ static void ziti_disconnect_async(uv_async_t *ar) {
 
     if (conn->state == Connected) {
         NEWP(wr, struct nf_write_req);
+        wr->conn = conn;
+        wr->cb = ziti_disconnect_cb;
         send_message(conn, ContentTypeStateClosed, NULL, 0, wr);
     }
 }
@@ -343,7 +385,7 @@ void connect_reply_cb(void *ctx, message *msg) {
                      msg->header.body_len, msg->header.body_len, msg->body);
             conn->state = Closed;
             req->cb(conn, ZITI_EOF);
-            SLIST_REMOVE(&req->channel->connections, conn, nf_conn, next);
+            LIST_REMOVE(conn, next);
             break;
 
         case ContentTypeStateConnected:
@@ -365,15 +407,16 @@ void connect_reply_cb(void *ctx, message *msg) {
             else if (conn->state == Closed) {
                 ZITI_LOG(WARN, "received connect reply for closed/timedout connection[%d]", conn->conn_id);
                 ziti_disconnect(conn);
-                SLIST_REMOVE(&conn->channel->connections, conn, nf_conn, next);
+                LIST_REMOVE(conn, next);
             }
             break;
 
         default:
             ZITI_LOG(WARN, "unexpected content_type[%d] conn_id[%d]", msg->header.content, conn->conn_id);
             ziti_disconnect(conn);
-            SLIST_REMOVE(&conn->channel->connections, conn, nf_conn, next);
+            LIST_REMOVE(conn, next);
     }
+    LIST_REMOVE(req, _next);
     free_conn_req(req);
 }
 
@@ -381,7 +424,6 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
     ziti_channel_t *ch = req->channel;
 
     req->conn->channel = ch;
-    req->conn->conn_id = ch->conn_seq++;
 
     ZITI_LOG(TRACE, "ch[%d] => Edge Connect request token[%s] conn_id[%d]", ch->id, req->conn->token,
              req->conn->conn_id);
@@ -402,7 +444,7 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
             return ZITI_WTF;
     }
 
-    SLIST_INSERT_HEAD(&ch->connections, req->conn, next);
+    LIST_INSERT_HEAD(&ch->connections, req->conn, next);
 
     int32_t conn_id = htole32(req->conn->conn_id);
     int32_t msg_seq = htole32(0);
@@ -425,15 +467,19 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
 }
 
 int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, nf_client_cb on_clt_cb) {
+    nf_context nf = conn->nf_ctx;
+
     NEWP(req, struct nf_conn_req);
 
     req->service_name = strdup(service);
-    req->bind = true;
+    req->session_type = TYPE_BIND;
     req->conn = conn;
     req->cb = listen_cb;
 
     conn->client_cb = on_clt_cb;
     conn->state = Binding;
+
+    LIST_INSERT_HEAD(&nf->connect_requests, req, _next);
 
     NEWP(async_cr, uv_async_t);
     uv_async_init(conn->nf_ctx->loop, async_cr, ziti_connect_async);
@@ -447,10 +493,9 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb) {
     ziti_channel_t *ch = conn->parent->channel;
 
     conn->channel = ch;
-    conn->conn_id = ch->conn_seq++;
     conn->data_cb = data_cb;
 
-    SLIST_INSERT_HEAD(&ch->connections, conn, next);
+    LIST_INSERT_HEAD(&ch->connections, conn, next);
 
     ZITI_LOG(TRACE, "ch[%d] => Edge Accept conn_id[%d] parent_conn_id[%d]", ch->id, conn->conn_id,
              conn->parent->conn_id);
@@ -482,8 +527,16 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb) {
     req->channel = conn->channel;
     req->conn = conn;
     req->cb = cb;
+    LIST_INSERT_HEAD(&conn->nf_ctx->connect_requests, req, _next);
+
     ziti_channel_send_for_reply(ch, content_type, headers, 3, (const uint8_t *) &clt_conn_id, sizeof(clt_conn_id),
                                 connect_reply_cb, req);
+
+    return ZITI_OK;
+}
+
+int ziti_process_connect_reqs(nf_context nf) {
+    ZITI_LOG(WARN, "TODO");
 
     return ZITI_OK;
 }

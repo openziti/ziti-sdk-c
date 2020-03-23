@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2019-2020 Netfoundry, Inc.
+Copyright (c) 2019-2020 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*srv_cb)(ziti_service *
 void ziti_ctrl_get_service(ziti_controller *ctrl, const char* service_name, void (*srv_cb)(ziti_service *, ziti_error*, void*), void* ctx);
 
 void ziti_ctrl_get_net_session(
-        ziti_controller *ctrl, ziti_service *service, bool bind,
+        ziti_controller *ctrl, ziti_service *service, const char* type,
         void (*cb)(ziti_net_session *, ziti_error*, void*), void* ctx);
 
 void ziti_ctrl_get_net_sessions(

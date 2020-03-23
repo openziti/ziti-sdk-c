@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2019 Netfoundry, Inc.
+Copyright (c) 2019 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <catch2/catch.hpp>
+#include "catch2/catch.hpp"
 #include <iostream>
 #include <zt_internal.h>
 #include <ziti_ctrl.h>
@@ -49,6 +49,32 @@ auto logout_cb = [](void*, ziti_error* err, void* ctx) {
     logout->error = err;
     logout->resp = "logout called";
 };
+
+TEST_CASE("invalid_controller", "[controller][GH-44]") {
+    ziti_controller ctrl;
+    uv_loop_t *loop = uv_default_loop();
+    resp_capture<ctrl_version> version;
+
+    PREP(ziti);
+    TRY(ziti, ziti_ctrl_init(loop, &ctrl, "https://not.a.ziti.controll.er", nullptr));
+    WHEN("get version") {
+        ziti_ctrl_get_version(&ctrl, resp_cb, &version);
+        uv_run(loop, UV_RUN_DEFAULT);
+
+        THEN("callback with proper error") {
+            REQUIRE(version.error != nullptr);
+            REQUIRE_THAT(version.error->code, Equals("CONTROLLER_UNAVAILABLE"));
+        }
+    }
+
+
+    CATCH(ziti) {
+        FAIL("unexpected error");
+    }
+
+    ziti_ctrl_close(&ctrl);
+    uv_run(loop, UV_RUN_DEFAULT);
+}
 
 TEST_CASE("controller_test","[integ]") {
     uv_mbed_set_debug(5, stdout);
@@ -133,7 +159,7 @@ TEST_CASE("controller_test","[integ]") {
             auto *re = static_cast<struct uber_resp_s *>(ctx);
             resp_cb(s, e, &re->service);
             if (e == nullptr) {
-                ziti_ctrl_get_net_session(re->c, s, false, resp_cb, &re->ns);
+                ziti_ctrl_get_net_session(re->c, s, "Dial", resp_cb, &re->ns);
             }
             ziti_ctrl_logout(re->c, logout_cb, &re->logout);
 

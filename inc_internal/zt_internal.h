@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2020 Netfoundry, Inc.
+Copyright 2019-2020 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -103,7 +103,6 @@ typedef struct ziti_channel {
     struct ch_conn_req **conn_reqs;
     int conn_reqs_n;
 
-    uint32_t conn_seq;
     uint32_t msg_seq;
 
     buffer *incoming;
@@ -111,10 +110,10 @@ typedef struct ziti_channel {
     message *in_next;
     int in_body_offset;
 
-    SLIST_HEAD(con_list, nf_conn) connections;
-    SLIST_HEAD(waiter, waiter_s) waiters;
+    LIST_HEAD(con_list, nf_conn) connections;
+    LIST_HEAD(waiter, waiter_s) waiters;
 
-    SLIST_ENTRY(ziti_channel) next;
+    LIST_ENTRY(ziti_channel) next;
 } ziti_channel_t;
 
 struct nf_write_req {
@@ -149,7 +148,7 @@ struct nf_conn {
     struct nf_conn *parent;
     uint32_t dial_req_seq;
 
-    SLIST_ENTRY(nf_conn) next;
+    LIST_ENTRY(nf_conn) next;
 };
 
 
@@ -168,7 +167,11 @@ struct nf_ctx {
     uv_thread_t loop_thread;
     uint32_t ch_counter;
 
-    SLIST_HEAD(channels, ziti_channel) channels;
+    LIST_HEAD(channels, ziti_channel) channels;
+
+    LIST_HEAD(conn_reqs, nf_conn_req) connect_requests;
+    uv_async_t connect_async;
+    uint32_t conn_seq;
 
     /* options */
     int ziti_timeout;
@@ -177,6 +180,8 @@ struct nf_ctx {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+int ziti_process_connect_reqs(nf_context nf);
 
 int ziti_close_channels(nf_context);
 
@@ -197,9 +202,6 @@ int load_config(const char *filename, nf_config **);
 
 int load_tls(nf_config* cfg, tls_context **tls);
 
-int ziti_auth(nf_context ctx);
-int ziti_logout(nf_context ctx);
-
 int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, nf_client_cb on_clt_cb);
 
 int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb);
@@ -207,6 +209,7 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb);
 int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb);
 
 int ziti_write(struct nf_write_req *req);
+
 int ziti_disconnect(struct nf_conn *conn);
 
 void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int status);
