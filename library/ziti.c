@@ -65,7 +65,6 @@ struct nf_init_req {
 int code_to_error(const char *code);
 static void version_cb(ctrl_version* v, ziti_error* err, void* ctx);
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx);
-static void enroll_cb(char *cert, ziti_error *err, void *ctx);
 
 #define CONN_STATES(XX) \
 XX(Initial)\

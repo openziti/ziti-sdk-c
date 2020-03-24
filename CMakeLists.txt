@@ -12,8 +12,6 @@ message("   branch : ${GIT_BRANCH}")
 message("     hash : ${GIT_COMMIT_HASH}")
 message("     date : ${BUILD_DATE}")
 
-set(CMAKE_CXX_FLAGS_DEBUG  "-g")
-
 if (WIN32)
     set(CMAKE_INSTALL_LIBDIR lib)
     set(CMAKE_INSTALL_INCLUDEDIR include)

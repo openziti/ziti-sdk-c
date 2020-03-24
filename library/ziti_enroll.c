@@ -71,7 +71,7 @@ static void async_connects(uv_async_t *ar) {
     ziti_process_connect_reqs(nf);
 }
 
-int verify_256(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
+int verify_rs256(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     int ret;
     unsigned char hash[ZITI_MD_MAX_SIZE_256];
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
@@ -84,26 +84,78 @@ int verify_256(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     return ZITI_OK;
 }
 
-int verify_384(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
+typedef int32_t psa_status_t;
+#define PSA_BITS_TO_BYTES(bits) (((bits) + 7) / 8)
+#define PSA_BYTES_TO_BITS(bytes) ((bytes) * 8)
+
+static int psa_ecdsa_verify( mbedtls_ecp_keypair *ecp,
+                                      const uint8_t *hash,
+                                      size_t hash_length,
+                                      const uint8_t *signature,
+                                      size_t signature_length )
+{
+    int ret;
+    mbedtls_mpi r, s;
+    size_t curve_bytes = PSA_BITS_TO_BYTES( ecp->grp.pbits );
+    mbedtls_mpi_init( &r );
+    mbedtls_mpi_init( &s );
+
+    if( signature_length != 2 * curve_bytes )
+        return( ZITI_JWT_VERIFICATION_FAILED );
+
+    MBEDTLS_MPI_CHK( mbedtls_mpi_read_binary( &r,
+                                              signature,
+                                              curve_bytes ) );
+    MBEDTLS_MPI_CHK( mbedtls_mpi_read_binary( &s,
+                                              signature + curve_bytes,
+                                              curve_bytes ) );
+
+    ret = mbedtls_ecdsa_verify( &ecp->grp, hash, hash_length,
+                                &ecp->Q, &r, &s );
+
+cleanup:
+    mbedtls_mpi_free( &r );
+    mbedtls_mpi_free( &s );
+    return( ret );
+}
+
+int verify_es256(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
+    int ret;
+    unsigned char hash[ZITI_MD_MAX_SIZE_256];
+    const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
+    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
+    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec( *ctx );
+    if( ( ret = psa_ecdsa_verify( ecp, hash, ZITI_MD_MAX_SIZE_256, ecfg->jwt_sig, ecfg->jwt_sig_len) ) != 0 ) {
+        ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
+        return ZITI_JWT_VERIFICATION_FAILED;
+    }
+    return ZITI_OK;
+
+}
+
+int verify_es384(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     int ret;
     unsigned char hash[ZITI_MD_MAX_SIZE_512];
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);
     mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
     ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
-    if( ( ret = mbedtls_pk_verify( ctx, MBEDTLS_MD_SHA384, hash, 0, ecfg->jwt_sig, ecfg->jwt_sig_len ) ) != 0 ) {
+    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec( *ctx );
+    if( ( ret = psa_ecdsa_verify( ecp, hash, ZITI_MD_MAX_SIZE_512, ecfg->jwt_sig, ecfg->jwt_sig_len) ) != 0 ) {
         ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
         return ZITI_JWT_VERIFICATION_FAILED;
     }
     return ZITI_OK;
 }
 
-int verify_512(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
+int verify_es512(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     int ret;
     unsigned char hash[ZITI_MD_MAX_SIZE_512];
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
     mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
     ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
-    if( ( ret = mbedtls_pk_verify( ctx, MBEDTLS_MD_SHA512, hash, 0, ecfg->jwt_sig, ecfg->jwt_sig_len ) ) != 0 ) {
+    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec( *ctx );
+    if( ( ret = psa_ecdsa_verify( ecp, hash, ZITI_MD_MAX_SIZE_512, ecfg->jwt_sig, ecfg->jwt_sig_len) ) != 0 ) {
         ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
         return ZITI_JWT_VERIFICATION_FAILED;
     }
@@ -128,9 +180,6 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
 
     PREP(ziti);
     
-    nf_config *cfg = NULL;
-    tls_context *tls = NULL;
-
     ecfg = calloc(1, sizeof(enroll_cfg));
     ecfg->external_enroll_cb = external_enroll_cb;
 
@@ -239,22 +288,22 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
 
     if (strcmp(ecfg->zejh->alg, "RS256") == 0) {
 
-        if( ( ret = verify_256( ecfg, &peerCert->pk ) ) != 0 ) return ret;
+        if( ( ret = verify_rs256( ecfg, &peerCert->pk ) ) != 0 ) return ret;
 
     }
     else if (strcmp(ecfg->zejh->alg, "ES256") == 0) {
 
-        if( ( ret = verify_256( ecfg, &peerCert->pk ) ) != 0 ) return ret;
+        if( ( ret = verify_es256( ecfg, &peerCert->pk ) ) != 0 ) return ret;
 
     }
     else if (strcmp(ecfg->zejh->alg, "ES384") == 0) {
 
-        if( ( ret = verify_384( ecfg, &peerCert->pk ) ) != 0 ) return ret;
+        if( ( ret = verify_es384( ecfg, &peerCert->pk ) ) != 0 ) return ret;
 
     }
     else if (strcmp(ecfg->zejh->alg, "ES512") == 0) {
 
-        if( ( ret = verify_512( ecfg, &peerCert->pk ) ) != 0 ) return ret;
+        if( ( ret = verify_es512( ecfg, &peerCert->pk ) ) != 0 ) return ret;
 
     }
     else /* default: */
@@ -352,7 +401,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
 
     if( ( rc = extract_well_known_certs( base64_encoded_pkcs7, req ) ) != 0 ) {
         if (enroll_req->enroll_cb) {
-            enroll_req->enroll_cb(NULL, 0, rc);
+            enroll_req->enroll_cb(NULL, ZITI_PKCS7_ASN1_PARSING_FAILED, "cannot extract well-known certs");
         }
         return;
     }
@@ -436,7 +485,7 @@ static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
 
         char *content = NULL;
         size_t len = mjson_printf(
-            &mjson_print_dynamic_buf, 
+            &mjson_print_dynamic_buf,
             &content,
             "{\n\t\"ztAPI\": %Q, \n\t\"id\": {\n\t\t\"key\": \"pem:%s\", \n\t\t\"cert\": \"pem:%s\", \n\t\t\"ca\": \"pem:-----BEGIN CERTIFICATE-----\n%s\n-----END CERTIFICATE-----\"\n\t}\n}",
             enroll_req->ecfg->zej->controller,

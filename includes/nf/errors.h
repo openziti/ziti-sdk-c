@@ -42,13 +42,13 @@ limitations under the License.
     XX(JWT_INVALID_FORMAT, "JWT has invalid format") \
     /** PKCS7/ASN.1 parsing failed */ \
     XX(PKCS7_ASN1_PARSING_FAILED, "PKCS7/ASN.1 parsing failed") \
-    /** Attempt to generate a key failed */ \
+    /** unsupported JWT signing algorithm */ \
     XX(JWT_SIGNING_ALG_UNSUPPORTED, "unsupported JWT signing algorithm") \
-    /** Attempt to generate a key failed */ \
+    /** JWT verification failed */ \
     XX(JWT_VERIFICATION_FAILED, "JWT verification failed") \
-    /** Attempt to generate a key failed */ \
+    /** unsupported enrollment method */ \
     XX(ENROLLMENT_METHOD_UNSUPPORTED, "unsupported enrollment method") \
-    /** Attempt to generate a key failed */ \
+    /** Attempt to generate an ECC key failed */ \
     XX(KEY_GENERATION_FAILED, "error generating an ECC key") \
     /** Attempt to generate a CSR failed */ \
     XX(CSR_GENERATION_FAILED, "error generating a CSR") \

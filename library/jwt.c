@@ -106,7 +106,7 @@ static int base64url_decode(char *bufplain, const char *bufcoded) {
 
     size_t len = ((char*)bufout - bufplain);
 
-    ZITI_LOG(DEBUG, "base64url_decode len is: %d", len);
+    ZITI_LOG(DEBUG, "base64url_decode len is: %zu", len);
 
     return len;
 }
@@ -144,9 +144,8 @@ int load_jwt_file(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollme
         ZITI_LOG(ERROR, "%s - lacks a second dot", filename);
         return ZITI_JWT_INVALID_FORMAT;
     }
-    const char *end = ecfg->raw_jwt + strlen(ecfg->raw_jwt);
-    ecfg->jwt_signing_input = (char*)calloc(1, strlen(ecfg->raw_jwt) + 1 );
-    strncpy(ecfg->jwt_signing_input, ecfg->raw_jwt, (dot2 - ecfg->raw_jwt) );
+    ecfg->jwt_signing_input = (unsigned char*)calloc(1, strlen(ecfg->raw_jwt) + 1 );
+    strncpy((char *)ecfg->jwt_signing_input, ecfg->raw_jwt, (dot2 - ecfg->raw_jwt) );
     ZITI_LOG(DEBUG, "ecfg->jwt_signing_input is: \n%s", ecfg->jwt_signing_input);
 
     size_t header64len;
@@ -155,13 +154,10 @@ int load_jwt_file(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollme
     size_t head_len = (header64len / 4) * 3;
 
     char *head = (char*)calloc(1, head_len + 1);
-    char header[1024], body[1024];
+    char body[1024];
 
     size_t body64len;
     char *body64 = url64to64(dot1 + 1, dot2 - dot1 - 1, &body64len);
-
-    size_t sig64len;
-    char *sig64 = url64to64(dot2 + 1, dot2 - dot1 - 2, &sig64len);
 
     ZITI_LOG(DEBUG, "sig is: \n%s", dot2 + 1);
 
