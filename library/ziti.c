@@ -59,9 +59,6 @@ struct nf_init_req {
     void* init_ctx;
 };
 
-#define ZITI_MD_MAX_SIZE_256 32  /* longest known is SHA256 or less */
-#define ZITI_MD_MAX_SIZE_512 64  /* longest known is SHA512 */
-
 int code_to_error(const char *code);
 static void version_cb(ctrl_version* v, ziti_error* err, void* ctx);
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx);

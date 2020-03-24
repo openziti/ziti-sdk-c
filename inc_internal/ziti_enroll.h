@@ -58,7 +58,7 @@ typedef struct enroll_cfg_s {
 
     char *CA;
 
-    char *PrivateKey;
+    char *private_key;
     mbedtls_pk_context pk_context;
 
     unsigned char x509_csr_pem[4096];

@@ -53,12 +53,6 @@ limitations under the License.
 #endif
 
 
-// struct nf_enroll_req {
-//     nf_enroll_cb enroll_cb;
-//     struct nf_ctx * enroll_ctx;
-//     enroll_cfg *ecfg;
-// };
-
 #define ZITI_MD_MAX_SIZE_256 32  /* longest known is SHA256 or less */
 #define ZITI_MD_MAX_SIZE_512 64  /* longest known is SHA512 */
 
@@ -321,8 +315,8 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
 
     TRY(ziti, gen_key(&ecfg->pk_context));
 
-    ecfg->PrivateKey = calloc(1, 16000);
-    if( ( ret = mbedtls_pk_write_key_pem( &ecfg->pk_context, ecfg->PrivateKey, 16000 ) ) != 0 ) {
+    ecfg->private_key = calloc(1, 16000);
+    if( ( ret = mbedtls_pk_write_key_pem( &ecfg->pk_context, ecfg->private_key, 16000 ) ) != 0 ) {
         ZITI_LOG(ERROR, "mbedtls_pk_write_key_pem returned -0x%04x", -ret);
         return ZITI_KEY_GENERATION_FAILED;
     }
@@ -489,7 +483,7 @@ static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
             &content,
             "{\n\t\"ztAPI\": %Q, \n\t\"id\": {\n\t\t\"key\": \"pem:%s\", \n\t\t\"cert\": \"pem:%s\", \n\t\t\"ca\": \"pem:-----BEGIN CERTIFICATE-----\n%s\n-----END CERTIFICATE-----\"\n\t}\n}",
             enroll_req->ecfg->zej->controller,
-            enroll_req->ecfg->PrivateKey,
+            enroll_req->ecfg->private_key,
             cert,
             enroll_req->ecfg->CA
         );
