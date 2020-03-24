@@ -21,9 +21,16 @@ limitations under the License.
 #include <mbedtls/x509_crt.h>
 #include <utils.h>
 #include "catch2/catch.hpp"
+#include "zt_internal.h"
+#include "ziti_enroll.h"
 
 
-const char *pkcs7_bundle =
+extern "C" {
+int extract_well_known_certs(char *base64_encoded_pkcs7, void *req);
+}
+
+
+char *pkcs7_bundle =
         "MIIL8QYJKoZIhvcNAQcCoIIL4jCCC94CAQExADALBgkqhkiG9w0BBwGgggvEMIIF\n"
         "3zCCA8egAwIBAgIQBgjdXUgQ+nYu9WqjujdxCDANBgkqhkiG9w0BAQsFADB5MQsw\n"
         "CQYDVQQGEwJVUzESMBAGA1UEBxMJQ2hhcmxvdHRlMRMwEQYDVQQKEwpOZXRmb3Vu\n"
@@ -89,6 +96,9 @@ const char *pkcs7_bundle =
         "/CovbcktdVivi8k+RC/KZZbq6IDTONRGsUrzOqUKsi7PkN685ML0pAaPEgHdr23y\n"
         "fcwJ0v2IisYTCMavk0DJSj9Hd+coMSyTa7ghp8ja/0PSoQAxAA==";
 
+char *cert1 = "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";
+char *cert2 = "MIIF3TCCA8WgAwIBAgIRALz8TtjBurle5i3mzXZfk0IwDQYJKoZIhvcNAQELBQAweTELMAkGA1UEBhMCVVMxEjAQBgNVBAcTCUNoYXJsb3R0ZTETMBEGA1UEChMKTmV0Zm91bmRyeTEQMA4GA1UECxMHQURWLURFVjEvMC0GA1UEAxMmTmV0Zm91bmRyeSwgSW5jLiBDZXJ0aWZpY2F0ZSBBdXRob3JpdHkwHhcNMTkwOTAzMTgzNDQ3WhcNMjAwOTAyMTgzNTQ0WjBzMQswCQYDVQQGEwJVUzESMBAGA1UEBxMJQ2hhcmxvdHRlMRMwEQYDVQQKEwpOZXRmb3VuZHJ5MRAwDgYDVQQLEwdBRFYtREVWMSkwJwYDVQQDEyBOZXRmb3VuZHJ5LCBJbmMuIEludGVybWVkaWF0ZSBDQTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAOzfpVQkA28O1ifxEDnWLwD3sbToh3TK46/mwOihPlr2olG6wJlwfz5kEZwPOKbmOSau4Q4+y9T1l1+g6Cq2SDIdeXOLA++MV/VBVo0MJDcWIo6wMjOEw4ijzCNoYqKQIXYaPlsuWcBzHMs0n2uoCcibmCBPfvojW9p06XVQxSxOGqD+uWcRTNmeTDkhu62sRSU8sqOafLk77l3CudHXZeEqE3HvxvaNsEgnf7qHNiDeofhEnhGw+z8zjgg8G9cSthdzSs+IVRfOQeZC18U0Tm/gDC2LHS7QXocL5BdfvMmI74/KjRzfm22Rbj5OVL2F8esraigVhjS0Jl9nysUqBVmvWFk+GsUOdLO3EjM1NccqBKPm99QzMaFS7FZ9HqNmK3TLzBRZdgjsB7wQIwDLTNYm0qbMxc859Y/4ldJyQTarU7ETmiRz93ChzoWxuo/+Me2+u6DL/nAo+tTMJUdQ0XWw4YHpyeZ9I2aXDiBkKGs5pxcWa6nSo3wJXrLiQi14yomskrMjDxiywgt7UfV5YffJWc8l9qRF24JlYPE9o7maXmgWozHikXHAaIFeGillj7kdE6E5NcW6m1b63NNgh9snsBFnmibKa7JPGaKmhXPIq2MypljUW2V1yrrScbWv7whGd7Acx7aNptWKKoHSQcqSvPz7TNQazyI7XKwaj4OBAgMBAAGjZjBkMA4GA1UdDwEB/wQEAwIBhjASBgNVHRMBAf8ECDAGAQH/AgEAMB0GA1UdDgQWBBSJmLd3lA/rYRb6agc+gS2APX+60zAfBgNVHSMEGDAWgBQFvCMToPtjKMiHaeN6pqSpPYAKVzANBgkqhkiG9w0BAQsFAAOCAgEAdvTVkiO9baxyyyqq53E2nPZmA6+sIrbqAEurwTR795xykHUO2w2gBk3MTVoyqeIq+EbVnxvomP4AR1s6t/6mNPrawH1CSsu+WEGV95J4YqhiTF70CCtNYYo1DxCtX4iLGkCBvqL5mv9/sL1b1uBIq/eYJ9OTbFLcOIL32Pcl10O81oNrN3R5ugp0VdQAOgySKzXwTX+fI37XnOZ5JDT2+/jqfH1fVBmrGQU0eR9B/9z2rXO2nfXPI7k+BJE5+Hh/tpvgQp7ab0V/g8vBq/AkfvkCjjW5MO0Wdx/QeuXzYCXq/awj3q71eLZk3zGYu05Qm3tUl7OgERp5XNsEAjzmj5cSc5dejmYj5f8iG6OkS64AjB3CJTpsa5sTAdTJKl8Kp7MXC4vNl/pMTtIRrnWLlbvQpxdiYrWH4T1WqykdUEuQ/o1tRKlDPnRtirnyVPvLtAqgk8R+x20oO+q45EvqvVBa+itXqZMy6WfNWx45fQFKGgAnKVeMbDDWgGF+FvKlLJffa1xzCoIogXP9rwZhy92uMmq4GYtUnZriFCXynVEucVjpPmfKaWkZNeiNOCT8Ki9tyS11WK+LyT5EL8pllurogNM41EaxSvM6pQqyLs+Q3rzkwvSkBo8SAd2vbfJ9zAnS/YiKxhMIxq+TQMlKP0d35ygxLJNruCGnyNr/Q9I=";
+
 #define OID_PKCS7 MBEDTLS_OID_PKCS "\x07"
 #define OID_PKCS7_DATA OID_PKCS7 "\x02"
 #define OID_PKCS7_SIGNED_DATA OID_PKCS7 "\x01"
@@ -96,82 +106,32 @@ const char *pkcs7_bundle =
 TEST_CASE("parse pkcs7") {
     int rc;
     PREP(p7);
-    unsigned char *der = (unsigned char*)malloc(strlen((const char *)(pkcs7_bundle)));
-    size_t der_len;
-    unsigned char *p;
-    unsigned char *end;
-    mbedtls_x509_crt *cp;
-    mbedtls_x509_crt certs={0};
-    unsigned char *cert_buf;
-    TRY(p7,mbedtls_base64_decode(der, strlen(pkcs7_bundle), &der_len, (const unsigned char*)pkcs7_bundle, strlen(pkcs7_bundle)));
 
-    p = der;
-    end = der + der_len;
-    size_t len;
-    TRY(p7,mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE));
+    struct enroll_cfg_s *ecfg = NULL;
+    ecfg = (struct enroll_cfg_s *)calloc(1, sizeof(enroll_cfg));
 
-    TRY(p7,mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_OID));
+    struct nf_enroll_req *enroll_req = (struct nf_enroll_req *)calloc(1, sizeof(struct nf_enroll_req));
+    enroll_req->ecfg = ecfg;
 
-    mbedtls_asn1_buf oid;
-    oid.p = p;
-    oid.len = len;
-    if (!MBEDTLS_OID_CMP(OID_PKCS7_SIGNED_DATA, &oid)) {
+    if( ( rc = extract_well_known_certs( pkcs7_bundle, enroll_req ) ) != 0 ) {
         FAIL("invalid");
     }
-    p += len;
 
-    TRY(p7,mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_CONSTRUCTED|MBEDTLS_ASN1_CONTEXT_SPECIFIC));
+    struct wellknown_cert *wc;
+    char *ca = NULL;
+    char *pem_ptr = NULL;
+    int i = 0;
 
-    TRY(p7,mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE));
+    LIST_FOREACH (wc, &enroll_req->ecfg->wk_certs, _next) {
 
-    int ver;
-    TRY(p7,mbedtls_asn1_get_int(&p, end, &ver));
-    printf("ver = %d\n", ver);
-
-    TRY(p7,mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_CONSTRUCTED|MBEDTLS_ASN1_SET));
-    TRY(p7, mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE));
-
-    TRY(p7, mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_OID));
-    oid.p = p;
-    oid.len = len;
-    if (!MBEDTLS_OID_CMP(OID_PKCS7_DATA, &oid)) {
-        FAIL("invalid");
+        if (i == 0) {
+            REQUIRE_THAT(wc->cert, Catch::Matchers::Equals(cert1));
+        } else {
+            REQUIRE_THAT(wc->cert, Catch::Matchers::Equals(cert2));
+        }
+        i++;
     }
-    p += len;
-
-    TRY(p7,mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_CONTEXT_SPECIFIC));
-
-    cert_buf = p;
-
-    do {
-        size_t cert_len;
-        unsigned char *cbp = cert_buf;
-        rc = mbedtls_asn1_get_tag(&cbp, end, &cert_len, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE);
-        if (rc != 0) break;
-        cert_len += (cbp - cert_buf);
-        rc = mbedtls_x509_crt_parse(&certs, cert_buf, cert_len);
-        cert_buf += cert_len;
-    } while (rc == 0);
-
-    cp = &certs;
-    do {
-        unsigned char pem[4096];
-        size_t olen;
-
-        mbedtls_base64_encode( pem, 4096, &olen, cp->raw.p, cp->raw.len );
-        printf("pem: %s\n", pem);
-
-
-        char dn[1024];
-        int dn_len = mbedtls_x509_dn_gets(dn, sizeof(dn), &cp->subject);
-        printf("subj: %.*s\n", dn_len, dn);
-        dn_len = mbedtls_x509_dn_gets(dn, sizeof(dn), &cp->issuer);
-        printf("issr: %.*s\n", dn_len, dn);
-        cp = cp->next;
-    } while(cp != NULL);
 
     CATCH(p7);
-    //mbedtls_asn1_named_data signed_data;
-    //mbedtls_asn1_find_named_data(&signed_data, OID_PKCS7_SIGNED_DATA,)
 
 }

@@ -24,14 +24,6 @@ limitations under the License.
 #include "zt_internal.h"
 #include <http_parser.h>
 
-
-#include <mbedtls/ssl.h>
-#include <mbedtls/asn1.h>
-#include <mbedtls/base64.h>
-#include <mbedtls/oid.h>
-#include <mbedtls/x509_crt.h>
-#include <mbedtls/net_sockets.h>
-#include "mbedtls/md.h"
 #include <utils.h>
 
 #define MJSON_API_ONLY
