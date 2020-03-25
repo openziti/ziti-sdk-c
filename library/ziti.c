@@ -24,6 +24,11 @@ limitations under the License.
 #include "zt_internal.h"
 #include <http_parser.h>
 
+#include <utils.h>
+
+#define MJSON_API_ONLY
+#include <mjson.h>
+
 #ifndef MAXPATHLEN
 #ifdef _MAX_PATH
 #define MAXPATHLEN _MAX_PATH
@@ -238,6 +243,7 @@ int NF_shutdown(nf_context ctx) {
     ZITI_LOG(INFO, "Ziti is shutting down");
 
     free_ziti_session(ctx->session);
+    ctx->session = NULL;
 
     uv_timer_stop(&ctx->session_timer);
     ziti_ctrl_close(&ctx->controller);

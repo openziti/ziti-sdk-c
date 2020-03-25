@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
 
     DIE(NF_init(argv[1], loop, on_nf_init, NULL));
 
-    // loop will finish afger the request is complete and NF_shutdown is called
+    // loop will finish after the request is complete and NF_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
 
     printf("========================\n");
