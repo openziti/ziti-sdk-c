@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <uv_mbed/um_http.h>
 #include "ziti_model.h"
+#include "zt_internal.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,6 +53,10 @@ void ziti_ctrl_get_net_session(
 
 void ziti_ctrl_get_net_sessions(
         ziti_controller *ctrl, void (*cb)(ziti_net_session **, ziti_error*, void*), void* ctx);
+
+void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, enroll_cfg *cfg, void (*cb)(nf_config*, ziti_error*), void *ctx);
+
+void ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *cfg, void (*cb)(nf_config*, ziti_error*), void *ctx);
 
 #ifdef __cplusplus
 }

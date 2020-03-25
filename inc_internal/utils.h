@@ -31,6 +31,8 @@ extern "C" {
 extern const char *ziti_get_version(int verbose);
 extern const char *ziti_git_branch();
 extern const char *ziti_git_commit();
+extern void hexDump(char *desc, void *addr, int len);
+
 
 int lt_zero(int v);
 int non_zero(int v);

@@ -213,3 +213,20 @@ TEST_CASE("parse-error", "[model]") {
     ziti_error *err = parse_ziti_error(json, (int)strlen(json));
     REQUIRE_THAT(err->code, Equals("UNAUTHORIZED"));
 }
+
+TEST_CASE("parse-enrollment-jwt", "[model]") {
+    const char *json = "{\n"
+                            "\"em\":\"ott\",\n"
+                            "\"exp\":1573411752,\n"
+                            "\"iss\":\"https://demo.ziti.netfoundry.io:1080\",\n"
+                            "\"jti\":\"f581d770-fffc-11e9-a81a-000d3a1b4b17\",\n"
+                            "\"sub\":\"c17291f4-37fe-4cdb-9f57-3eb757b648f5\"\n"
+                        "}";
+
+    ziti_enrollment_jwt *ej = parse_ziti_enrollment_jwt(json, (int)strlen(json));
+    REQUIRE_THAT(ej->method, Equals("ott"));
+    REQUIRE_THAT(ej->controller, Equals("https://demo.ziti.netfoundry.io:1080"));
+    REQUIRE_THAT(ej->subject, Equals("c17291f4-37fe-4cdb-9f57-3eb757b648f5"));
+    REQUIRE_THAT(ej->token, Equals("f581d770-fffc-11e9-a81a-000d3a1b4b17"));
+}
+

@@ -5,6 +5,10 @@ add_library(ziti STATIC
         ziti.c
         config.c
         errors.c
+        crypto.c
+        ziti_enroll.c
+        ziti_pkcs7.c
+        jwt.c
         ziti_ctrl.c
         model.c
         ziti_model.c
@@ -23,7 +27,7 @@ target_sources(ziti
 target_link_libraries(ziti
     PUBLIC uv_mbed
 )
-        
+
 if (NOT WIN32)
     target_link_libraries(ziti
         PUBLIC m
