@@ -38,6 +38,11 @@ add_library(ziti     STATIC ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
 add_library(ziti_dll SHARED ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
 set_target_properties(ziti_dll PROPERTIES OUTPUT_NAME "ziti")
 
+# disable using the 'lib' prefix when crosscompiling
+if (NOT WIN32)
+set_target_properties(ziti ziti_dll PROPERTIES PREFIX "")
+endif()
+
 # when building on windows an "import library" is generated which is overwriting the
 # static library (ziti.lib) (google/see /IMPLIB (Name Import Library))
 # work around discovered at stack overflow:
