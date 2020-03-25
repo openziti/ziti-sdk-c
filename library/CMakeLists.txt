@@ -8,6 +8,10 @@ SET(ZITI_SRC_FILES
         ziti.c
         config.c
         errors.c
+        crypto.c
+        ziti_enroll.c
+        ziti_pkcs7.c
+        jwt.c
         ziti_ctrl.c
         model.c
         ziti_model.c
