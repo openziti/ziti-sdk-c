@@ -39,7 +39,7 @@ add_library(ziti_dll SHARED ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
 set_target_properties(ziti_dll PROPERTIES OUTPUT_NAME "ziti")
 
 # disable using the 'lib' prefix when crosscompiling
-if (NOT WIN32)
+if (WIN32)
 set_target_properties(ziti ziti_dll PROPERTIES PREFIX "")
 endif()
 
