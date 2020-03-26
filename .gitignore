@@ -19,3 +19,5 @@ windows/packages
 #ide related
 .vscode
 .idea
+
+Testing/
