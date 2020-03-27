@@ -175,7 +175,7 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
     char time_str[32];
     strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
 
-    ZITI_LOG(INFO, "ZitiSDK version %s @%s(%s) starting at (%s.%03d)",
+    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
             ziti_get_version(false), ziti_git_commit(), ziti_git_branch(),
             time_str, start_time.tv_usec/1000);
 
@@ -197,7 +197,7 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
 int
 NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop, nf_init_cb init_cb, void *init_ctx) {
     init_debug();
-    ZITI_LOG(INFO, "ZitiSDK version %s @%s(%s)", ziti_get_version(false), ziti_git_commit(), ziti_git_branch());
+    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s)", ziti_get_version(false), ziti_git_commit(), ziti_git_branch());
 
     if (tls_context == NULL) {
         ZITI_LOG(ERROR, "tls context is required");
