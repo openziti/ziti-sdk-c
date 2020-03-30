@@ -25,6 +25,7 @@ limitations under the License.
 #include <nf/ziti.h>
 #include "buffer.h"
 #include "message.h"
+#include "ziti_enroll.h"
 #include "ziti_ctrl.h"
 
 #include <sodium.h>
@@ -211,6 +212,8 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
 
 int load_config(const char *filename, nf_config **);
 
+int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **, ziti_enrollment_jwt **);
+
 int load_tls(nf_config* cfg, tls_context **tls);
 
 int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, nf_client_cb on_clt_cb);
@@ -226,6 +229,10 @@ int ziti_write(struct nf_write_req *req);
 int ziti_disconnect(struct nf_conn *conn);
 
 void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int status);
+
+int gen_key(mbedtls_pk_context *pk_context);
+
+int gen_csr(enroll_cfg *cfg);
 
 #ifdef __cplusplus
 }

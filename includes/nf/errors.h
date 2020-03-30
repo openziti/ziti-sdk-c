@@ -34,6 +34,24 @@ limitations under the License.
     XX(OK, "OK") \
     /** The provided configuration was not found */ \
     XX(CONFIG_NOT_FOUND, "Configuration not found") \
+    /** The provided JWT was not found */ \
+    XX(JWT_NOT_FOUND, "JWT not found") \
+    /** The provided JWT is not accepted by controller */ \
+    XX(JWT_INVALID, "JWT not accepted by controller") \
+    /** The provided JWT has invalid format */ \
+    XX(JWT_INVALID_FORMAT, "JWT has invalid format") \
+    /** PKCS7/ASN.1 parsing failed */ \
+    XX(PKCS7_ASN1_PARSING_FAILED, "PKCS7/ASN.1 parsing failed") \
+    /** unsupported JWT signing algorithm */ \
+    XX(JWT_SIGNING_ALG_UNSUPPORTED, "unsupported JWT signing algorithm") \
+    /** JWT verification failed */ \
+    XX(JWT_VERIFICATION_FAILED, "JWT verification failed") \
+    /** unsupported enrollment method */ \
+    XX(ENROLLMENT_METHOD_UNSUPPORTED, "unsupported enrollment method") \
+    /** Attempt to generate an ECC key failed */ \
+    XX(KEY_GENERATION_FAILED, "error generating an ECC key") \
+    /** Attempt to generate a CSR failed */ \
+    XX(CSR_GENERATION_FAILED, "error generating a CSR") \
     /** Some or all of the provided configuration is incorrect */ \
     XX(INVALID_CONFIG, "Configuration is invalid") \
     /** Returned when the identity does not have the correct level of access needed.

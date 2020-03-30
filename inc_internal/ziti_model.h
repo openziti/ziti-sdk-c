@@ -65,6 +65,16 @@ XX(name, string, none, name)
 XX(code, string, none, code) \
 XX(message, string, none, message)
 
+#define ZITI_ENROLLMENT_JWT_HEADER_MODEL(XX) \
+XX(alg, string, none, alg) \
+XX(typ, string, none, typ)
+
+#define ZITI_ENROLLMENT_JWT_MODEL(XX) \
+XX(method, string, none, em) \
+XX(controller, string, none, iss) \
+XX(subject, string, none, sub) \
+XX(token, string, none, jti)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -81,6 +91,9 @@ DECLARE_MODEL(ziti_identity, ZITI_IDENTITY_MODEL)
 DECLARE_MODEL(ziti_session, ZITI_SESSION_MODEL)
 
 DECLARE_MODEL(ziti_error, ZITI_ERROR_MODEL)
+
+DECLARE_MODEL(ziti_enrollment_jwt_header, ZITI_ENROLLMENT_JWT_HEADER_MODEL)
+DECLARE_MODEL(ziti_enrollment_jwt, ZITI_ENROLLMENT_JWT_MODEL)
 
 #ifdef __cplusplus
 }

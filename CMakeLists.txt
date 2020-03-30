@@ -1,5 +1,7 @@
 cmake_minimum_required (VERSION 3.12)
 include(git.cmake)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 
 project (ziti-sdk
         VERSION ${ver}
@@ -20,8 +22,7 @@ if (WIN32)
     message("WIN32 build. Creating: ${CMAKE_BINARY_DIR}/cmake_install/ziti-sdk-${PROJECT_VERSION}")
     file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/cmake_install/ziti-sdk-${PROJECT_VERSION})
     set(CMAKE_INSTALL_PREFIX ${CMAKE_BINARY_DIR}/cmake_install/ziti-sdk-${PROJECT_VERSION})
-    # TODO 
-    # add_subdirectory(windows)
+    
 else()
     set(CMAKE_INSTALL_PREFIX /opt/netfoundry/ziti-sdk-${PROJECT_VERSION})
 endif()

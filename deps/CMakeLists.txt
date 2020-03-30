@@ -3,6 +3,7 @@ project(ziti-deps)
 include(ExternalProject)
 
 set(ENABLE_UM_TESTS OFF CACHE BOOL "" FORCE)
+
 add_subdirectory(uv-mbed)
 
 add_library(subcommand INTERFACE)
