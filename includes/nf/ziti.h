@@ -215,10 +215,11 @@ typedef void (*nf_write_cb)(nf_connection conn, ssize_t status, void *write_ctx)
  * @param data identity json data buffer
  * @param length size of identity json or error code as defined in #ZITI_ERRORS
  * @param err_message description of error, or NULL if enrollment succeeded
+ * @param enroll_ctx additional context to be passed into #nf_enroll_cb callback
  *
  * @see NF_enroll(), ZITI_ERRORS
  */
-typedef void (*nf_enroll_cb)(uint8_t *data, int length, char* err_message);
+typedef void (*nf_enroll_cb)(uint8_t *data, int length, char* err_message, void* enroll_ctx);
 
 /**
  * @brief Performs a Ziti enrollment.
@@ -230,10 +231,11 @@ typedef void (*nf_enroll_cb)(uint8_t *data, int length, char* err_message);
  * @param jwt location of JWT file
  * @param loop libuv event loop
  * @param enroll_cb callback to be called when enrollment is complete
- *
+ * @param enroll_ctx additional context to be passed into #nf_enroll_cb callback
+
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
-extern int NF_enroll(const char* jwt, uv_loop_t* loop, nf_enroll_cb enroll_cb);
+extern int NF_enroll(const char* jwt, uv_loop_t* loop, nf_enroll_cb enroll_cb, void* enroll_ctx);
 
 /**
  * @brief Initializes a Ziti Edge identity.

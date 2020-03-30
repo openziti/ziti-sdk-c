@@ -69,7 +69,7 @@ if (COND(ex)(ERR(ex))) { ERFILE(ex) = __FILENAME__; ERLINE(ex) = __LINE__; _##ex
 
 #define CATCH(ex) { ERLBL(ex):\
     if (COND(ex)(ERR(ex))) {\
-        ZITI_LOG(ERROR, "%s:%d - %s => %d(%s)", ERFILE(ex), ERLINE(ex), _##ex##_op, ERR(ex), FMT(ex)(ERR(ex)));\
+        ZITI_LOG(ERROR, "%s:%d - %s => %d (%s)", ERFILE(ex), ERLINE(ex), _##ex##_op, ERR(ex), FMT(ex)(ERR(ex)));\
     }}\
     for (int _##ex##_count = 0;COND(ex)(ERR(ex)) && _##ex##_count == 0; _##ex##_count++)
 
@@ -107,7 +107,7 @@ enum DebugLevel {
 #define ZITI_LOG(level, fmt, ...) do { \
 if (level <= ziti_debug_level) {\
     long elapsed = get_elapsed();\
-    fprintf(ziti_debug_out, "[%9ld.%03ld] " #level "\t%s:%d %s(): " fmt "\n",\
+    fprintf(ziti_debug_out, "[%9ld.%03ld] " #level "\tziti-sdk-c/%s:%d %s(): " fmt "\n",\
         elapsed/1000, elapsed%1000, __FILENAME__, __LINE__, __func__, ##__VA_ARGS__);\
         }\
 } while(0)
