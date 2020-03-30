@@ -57,8 +57,8 @@ set_property(TARGET ziti ziti_dll PROPERTY C_STANDARD 11)
 target_sources(ziti     PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 target_sources(ziti_dll PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 
-target_link_libraries(ziti     PUBLIC uv_mbed)
-target_link_libraries(ziti_dll PUBLIC uv_mbed)
+target_link_libraries(ziti     PUBLIC uv_mbed sodium)
+target_link_libraries(ziti_dll PUBLIC uv_mbed sodium)
 
 if (NOT WIN32)
     target_link_libraries(ziti     PUBLIC m )
