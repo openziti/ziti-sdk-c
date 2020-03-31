@@ -13,7 +13,7 @@ SET(ZITI_SRC_FILES
         ziti_pkcs7.c
         jwt.c
         ziti_ctrl.c
-        model.c
+        old_model.c
         ziti_model.c
         connect.c
         channel.c

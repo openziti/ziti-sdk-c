@@ -18,7 +18,7 @@ limitations under the License.
 #ifndef ZITI_SDK_ZITI_MODEL_H
 #define ZITI_SDK_ZITI_MODEL_H
 
-#include "model.h"
+#include "old_model.h"
 
 #define ZITI_CTRL_VERSION(XX) \
 XX(version, string, none, version) \

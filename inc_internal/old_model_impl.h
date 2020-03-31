@@ -15,8 +15,8 @@ limitations under the License.
 */
 
 
-#ifndef ZITI_SDK_MODEL_IMPL_H
-#define ZITI_SDK_MODEL_IMPL_H
+#ifndef ZITI_SDK_OLD_MODEL_IMPL_H
+#define ZITI_SDK_OLD_MODEL_IMPL_H
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -132,4 +132,4 @@ void free_array(void **arr, free_func f);
 }
 #endif
 
-#endif //ZITI_SDK_MODEL_IMPL_H
+#endif //ZITI_SDK_OLD_MODEL_IMPL_H

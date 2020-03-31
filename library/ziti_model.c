@@ -16,7 +16,7 @@ limitations under the License.
 
 
 #include <ziti_model.h>
-#include <model_impl.h>
+#include <old_model_impl.h>
 
 MODEL_IMPL(ziti_service, ZITI_SERVICE_MODEL)
 MODEL_IMPL(nf_config, ZITI_CONFIG_MODEL)

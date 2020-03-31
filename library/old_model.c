@@ -29,7 +29,7 @@ limitations under the License.
 #include <stdbool.h>
 #include <utils.h>
 
-#include "model.h"
+#include "old_model.h"
 #include <math.h>
 
 typedef int (*dump_func)(void *, int);
