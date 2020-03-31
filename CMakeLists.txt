@@ -2,7 +2,6 @@ cmake_minimum_required (VERSION 3.12)
 include(git.cmake)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-
 project (ziti-sdk
         VERSION ${ver}
         LANGUAGES C CXX
@@ -15,6 +14,13 @@ message("     hash : ${GIT_COMMIT_HASH}")
 message("     date : ${BUILD_DATE}")
 
 if (WIN32)
+    # used with libsodium currently but might be useful elsewhere in the future
+    if (${CMAKE_GENERATOR_PLATFORM} STREQUAL "x64")
+    set (TARGET_ARCH win64)
+    else()
+    set (TARGET_ARCH win32)
+    endif()
+    
     set(CMAKE_INSTALL_LIBDIR lib)
     set(CMAKE_INSTALL_INCLUDEDIR include)
     message("WIN32 build. Creating: ${CMAKE_BINARY_DIR}/cmake_install")

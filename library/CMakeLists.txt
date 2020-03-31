@@ -41,6 +41,10 @@ set_target_properties(ziti_dll PROPERTIES OUTPUT_NAME "ziti")
 # disable using the 'lib' prefix when crosscompiling
 if (WIN32)
 set_target_properties(ziti ziti_dll PROPERTIES PREFIX "")
+#without this libsodioum was complaining:
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SAFESEH:NO")
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /SAFESEH:NO")
+set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /SAFESEH:NO")
 endif()
 
 # when building on windows an "import library" is generated which is overwriting the
