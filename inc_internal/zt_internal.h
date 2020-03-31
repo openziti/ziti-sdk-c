@@ -28,6 +28,8 @@ limitations under the License.
 #include "ziti_enroll.h"
 #include "ziti_ctrl.h"
 
+#include <sodium.h>
+
 //#define SIZEOF(arr) (sizeof(arr) / sizeof((arr)[0]))
 
 #if !defined(UUID_STR_LEN)
@@ -65,12 +67,13 @@ enum header_id {
     HelloListenerHeader = 3,
 
     // Headers in the range 128-255 inclusive will be reflected when creating replies
-            ReflectedHeaderBitMask = 1 << 7,
+    ReflectedHeaderBitMask = 1 << 7,
     MaxReflectedHeader = (1 << 8) - 1,
 
     ConnIdHeader = 1000,
     SeqHeader = 1001,
     SessionTokenHeader = 1002,
+    PublicKeyHeader = 1003,
 };
 
 typedef struct ziti_channel ziti_channel_t;
@@ -149,6 +152,14 @@ struct nf_conn {
     struct nf_conn *parent;
     uint32_t dial_req_seq;
 
+    uint8_t sk[crypto_kx_SECRETKEYBYTES];
+    uint8_t pk[crypto_kx_PUBLICKEYBYTES];
+    uint8_t *rx;
+
+    crypto_secretstream_xchacha20poly1305_state crypt_o;
+    crypto_secretstream_xchacha20poly1305_state crypt_i;
+    bool encrypted;
+
     LIST_ENTRY(nf_conn) next;
 };
 
@@ -208,6 +219,8 @@ int load_tls(nf_config* cfg, tls_context **tls);
 int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, nf_client_cb on_clt_cb);
 
 int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb);
+
+void conn_inbound_data_msg(nf_connection conn, message *msg);
 
 int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb);
 

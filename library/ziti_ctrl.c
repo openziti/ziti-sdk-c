@@ -159,7 +159,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char* b, ssize_t len) {
 
         resp->ctrl_cb(resp_obj, err, resp);
     } else {
-        ZITI_LOG(ERROR, "Unexpeced ERROR: %zd", len);
+        ZITI_LOG(ERROR, "Unexpected ERROR: %zd", len);
     }
 }
 

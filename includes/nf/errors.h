@@ -66,7 +66,7 @@ limitations under the License.
     /** The SDK cannot send data to the Ziti Network because an Edge Router was not available. Common causes are:
     * the identity connecting is not associated with any Edge Routers
     * the Edge Router in use is no longer responding */ \
-    XX(GATEWAY_UNAVAILABLE, "Ziti Gateway is not available") \
+    XX(GATEWAY_UNAVAILABLE, "Ziti Edge Router is not available") \
     /** The SDK cannot send data to the Ziti Network because the requested service was not available. Common causes are:
     * the service does not exist
     * the identity connecting is not associated with the given service
@@ -80,6 +80,8 @@ limitations under the License.
     XX(CONNABORT, "Connection to edge router terminated") \
     /** SDK detected invalid state, most likely caaused by improper use. */ \
     XX(INVALID_STATE, "invalid state") \
+    /** SDK detected invalid cryptographic state of Ziti connection */ \
+    XX(CRYPTO_FAIL, "crypto failure") \
     /** Inspired by the Android SDK: What a Terrible Failure. A condition that should never happen. */ \
     XX(WTF, "WTF: programming error")
 
