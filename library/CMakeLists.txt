@@ -14,6 +14,7 @@ SET(ZITI_SRC_FILES
         jwt.c
         ziti_ctrl.c
         old_model.c
+        model_support.c
         ziti_model.c
         connect.c
         channel.c
