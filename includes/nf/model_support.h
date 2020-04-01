@@ -84,6 +84,7 @@ typedef char *string;
 typedef char **string_array;
 typedef int **int_array;
 typedef bool **bool_array;
+typedef char* json;
 
 enum _field_mod {
     none_mod,
@@ -123,6 +124,7 @@ extern type_meta bool_META;
 extern type_meta int_META;
 extern type_meta string_META;
 extern type_meta timestamp_META;
+extern type_meta json_META;
 
 typedef struct timeval timestamp;
 #if __cplusplus

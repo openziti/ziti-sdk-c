@@ -146,3 +146,27 @@ TEST_CASE("test string escape") {
     REQUIRE(parse_Bar(&bar, json, strlen(json)) == 0);
     REQUIRE_THAT(bar.msg, Equals("\thello\n\"world\"!"));
 }
+
+#define baz_model(XX, ...) \
+XX(bar, json, none, bar, __VA_ARGS__) \
+XX(ok, bool, none, ok, __VA_ARGS__)
+
+DECLARE_MODEL(Baz, baz_model)
+IMPL_MODEL(Baz, baz_model)
+
+TEST_CASE("test raw json") {
+    const char *json = "{"
+                       "\"bar\":" BAR1 ","
+                       "\"ok\": true"
+                       "}";
+    Baz baz;
+    REQUIRE(parse_Baz(&baz, json, strlen(json)) == 0);
+    REQUIRE_THAT(baz.bar, Equals(BAR1));
+    REQUIRE(baz.ok);
+
+    Bar bar;
+    REQUIRE(parse_Bar(&bar, baz.bar, strlen(baz.bar)) == 0);
+    checkBar1(bar);
+    free_Bar(&bar);
+    free_Baz(&baz);
+}

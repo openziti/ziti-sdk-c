@@ -26,6 +26,14 @@ limitations under the License.
 #include <nf/model_support.h>
 #include <utils.h>
 
+#if _WIN32
+#include <time.h>
+#define timegm(v) _mkgmtime(v)
+#else
+#define _GNU_SOURCE //add time.h include after defining _GNU_SOURCE
+#include <time.h>
+#endif
+
 
 static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *meta);
 
@@ -262,6 +270,20 @@ static int _parse_bool(bool *val, const char *json, jsmntok_t *tok) {
     }
     return -1;
 }
+static int _parse_json(char **val, const char *json, jsmntok_t *tok) {
+    int json_len = tok->end - tok->start;
+    *val = calloc(1, json_len + 1);
+    strncpy(*val, json + tok->start, json_len);
+
+    int processed = 0;
+    jsmntok_t *t = tok;
+    while (tok->type != JSMN_UNDEFINED && t->end <= tok->end) {
+        processed++;
+        t++;
+    }
+
+    return processed;
+}
 
 static int _parse_string(char **val, const char *json, jsmntok_t *tok) {
     if (tok->type == JSMN_STRING) {
@@ -358,4 +380,10 @@ type_meta timestamp_META = {
         .size = sizeof(struct timeval),
         .parser = (_parse_f) _parse_timeval,
         .destroyer = (_free_f) _free_noop,
+};
+
+type_meta json_META = {
+        .size = sizeof(char *),
+        .parser = (_parse_f) _parse_json,
+        .destroyer = (_free_f) _free_string,
 };
