@@ -18,7 +18,7 @@ limitations under the License.
 #include <zt_internal.h>
 #include <mjson.h>
 #include <utils.h>
-#include "ziti_model.h"
+#include "internal_model.h"
 #include "ziti_enroll.h"
 
 
@@ -170,11 +170,21 @@ int load_jwt_file(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollme
 
     int rc2 = mjson_base64_dec(header64, header64len, head, head_len);
 
-    *zejh = parse_ziti_enrollment_jwt_header(head, rc2);
+    *zejh = calloc(1, sizeof(ziti_enrollment_jwt_header));
+    if (parse_ziti_enrollment_jwt_header(*zejh, head, rc2) != 0) {
+        free_ziti_enrollment_jwt_header(*zejh);
+        FREE(*zejh);
+        return ZITI_JWT_INVALID_FORMAT;
+    }
 
     rc2 = mjson_base64_dec(body64, body64len, body, sizeof(body));
 
-    *zej = parse_ziti_enrollment_jwt(body, rc2);
+    *zej = calloc(1, sizeof(ziti_enrollment_jwt));
+    if (parse_ziti_enrollment_jwt(*zej, body, rc2) != 0) {
+        free_ziti_enrollment_jwt(*zej);
+        FREE(*zej);
+        return ZITI_JWT_INVALID_FORMAT;
+    }
 
     free(head);
 

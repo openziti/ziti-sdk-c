@@ -26,7 +26,7 @@ limitations under the License.
 #include <time.h>
 #endif
 
-#include "ziti_model.h"
+#include "internal_model.h"
 
 using Catch::Matchers::Equals;
 
@@ -58,7 +58,8 @@ TEST_CASE("multi-edge-router session", "[model]") {
                      "    \"token\": \"caaf0f67-5394-4ddd-b718-bfdc8fcfb367\"\n"
                      "}";
 
-    ziti_net_session *s = parse_ziti_net_session(ns, (int)strlen(ns));
+    ziti_net_session *s;
+    int rc = parse_ziti_net_session_ptr(&s, ns, (int) strlen(ns));
 
     dump_ziti_net_session(s, 0);
 
@@ -66,9 +67,11 @@ TEST_CASE("multi-edge-router session", "[model]") {
     REQUIRE(s->edge_routers[1] != nullptr);
     REQUIRE(s->edge_routers[2] == nullptr);
 
-    REQUIRE(strcmp(s->edge_routers[1]->url_tls, "tls://ec2-18-188-224-88.us-east-2.compute.amazonaws.com:3022") == 0);
+    REQUIRE(strcmp(s->edge_routers[1]->ingress.tls, "tls://ec2-18-188-224-88.us-east-2.compute.amazonaws.com:3022") ==
+            0);
 
     free_ziti_net_session(s);
+    free(s);
 }
 
 TEST_CASE("parse-services-array", "[model]") {
@@ -119,10 +122,6 @@ TEST_CASE("parse-services-array", "[model]") {
                        "    },\n"
                        "    \"tags\": {},\n"
                        "    \"name\": \"httpbin\",\n"
-                       "    \"dns\": {\n"
-                       "      \"hostname\": \"httpbin.org\",\n"
-                       "      \"port\": 80\n"
-                       "    },\n"
                        "    \"endpointAddress\": \"tcp:httpbin.org:80\",\n"
                        "    \"egressRouter\": \"1bcefeb5-6385-42e4-bd92-be1085825b58\",\n"
                        "    \"edgeRouterRoles\": null,\n"
@@ -133,26 +132,26 @@ TEST_CASE("parse-services-array", "[model]") {
                        "  }"
                        "]";
 
-    ziti_service** services = parse_ziti_service_array(json, (int)strlen(json));
+    ziti_service **services;
+    int rc = parse_ziti_service_array(&services, json, (int) strlen(json));
+    REQUIRE(rc == 0);
     ziti_service **s;
     int idx;
 
     for (idx = 0, s = services; *s != nullptr; s++, idx++) {
-        printf ("service #%d: %s\n", idx, (*s)->name);
+        printf("service #%d: %s\n", idx, (*s)->name);
         dump_ziti_service(services[idx], 2);
     }
     REQUIRE(idx == 2);
     REQUIRE(services[idx] == nullptr);
 
     REQUIRE_THAT(services[0]->name, Equals("hosting"));
-    REQUIRE(services[0]->dns_port == 80);
     REQUIRE_THAT(services[0]->permissions[0], Equals("Bind"));
 
     REQUIRE(strcmp(services[1]->name, "httpbin") == 0);
-    REQUIRE(services[1]->dns_port == 80);
     REQUIRE_THAT(services[1]->permissions[0], Equals("Dial"));
 
-    free_ziti_service_array(services);
+    free_ziti_service_array(&services);
 }
 
 TEST_CASE("parse-session", "[model]") {
@@ -181,7 +180,9 @@ TEST_CASE("parse-session", "[model]") {
                        "        \"updatedAt\": \"2019-10-14T14:49:48.340512Z\"\n"
                        "    }";
 
-    ziti_session *session = parse_ziti_session(json, (int)strlen(json));
+    ziti_session *session;
+    int rc = parse_ziti_session_ptr(&session, json, (int) strlen(json));
+    REQUIRE(rc == 0);
 
     REQUIRE_THAT(session->id, Equals("f0bd2587-1510-455a-96ca-6f1aea1c04f3"));
     REQUIRE_THAT(session->token, Equals("6fb97fe8-3507-4811-a83a-1d660b1022a3"));
@@ -196,6 +197,7 @@ TEST_CASE("parse-session", "[model]") {
     REQUIRE_THAT(session->identity->name, Equals("Default Admin"));
 
     free_ziti_session(session);
+    free(session);
 }
 
 TEST_CASE("parse-error", "[model]") {
@@ -210,23 +212,72 @@ TEST_CASE("parse-error", "[model]") {
                        "        \"requestId\": \"e6123851-2e6d-43cb-8bd5-0d363dd66636\"\n"
                        "    }";
 
-    ziti_error *err = parse_ziti_error(json, (int)strlen(json));
-    REQUIRE_THAT(err->code, Equals("UNAUTHORIZED"));
+    ziti_error err;
+    int rc = parse_ziti_error(&err, json, (int) strlen(json));
+    REQUIRE(rc == 0);
+    REQUIRE_THAT(err.code, Equals("UNAUTHORIZED"));
+    free_ziti_error(&err);
 }
 
 TEST_CASE("parse-enrollment-jwt", "[model]") {
     const char *json = "{\n"
-                            "\"em\":\"ott\",\n"
-                            "\"exp\":1573411752,\n"
-                            "\"iss\":\"https://demo.ziti.netfoundry.io:1080\",\n"
-                            "\"jti\":\"f581d770-fffc-11e9-a81a-000d3a1b4b17\",\n"
-                            "\"sub\":\"c17291f4-37fe-4cdb-9f57-3eb757b648f5\"\n"
-                        "}";
+                       "\"em\":\"ott\",\n"
+                       "\"exp\":1573411752,\n"
+                       "\"iss\":\"https://demo.ziti.netfoundry.io:1080\",\n"
+                       "\"jti\":\"f581d770-fffc-11e9-a81a-000d3a1b4b17\",\n"
+                       "\"sub\":\"c17291f4-37fe-4cdb-9f57-3eb757b648f5\"\n"
+                       "}";
 
-    ziti_enrollment_jwt *ej = parse_ziti_enrollment_jwt(json, (int)strlen(json));
-    REQUIRE_THAT(ej->method, Equals("ott"));
-    REQUIRE_THAT(ej->controller, Equals("https://demo.ziti.netfoundry.io:1080"));
-    REQUIRE_THAT(ej->subject, Equals("c17291f4-37fe-4cdb-9f57-3eb757b648f5"));
-    REQUIRE_THAT(ej->token, Equals("f581d770-fffc-11e9-a81a-000d3a1b4b17"));
+    ziti_enrollment_jwt ej;
+    int rc = parse_ziti_enrollment_jwt(&ej, json, (int) strlen(json));
+    REQUIRE_THAT(ej.method, Equals("ott"));
+    REQUIRE_THAT(ej.controller, Equals("https://demo.ziti.netfoundry.io:1080"));
+    REQUIRE_THAT(ej.subject, Equals("c17291f4-37fe-4cdb-9f57-3eb757b648f5"));
+    REQUIRE_THAT(ej.token, Equals("f581d770-fffc-11e9-a81a-000d3a1b4b17"));
+    free_ziti_enrollment_jwt(&ej);
+}
+
+TEST_CASE("test service array", "[model]") {
+    const char *json = R"([
+  {
+    "id": "724b06a4-0ebb-4954-b62b-7525bf743a0d",
+    "createdAt": "2020-04-01T20:11:53.609058348Z",
+    "updatedAt": "2020-04-01T20:11:53.609058348Z",
+    "_links": {
+      "configs": {
+        "href": "./services/724b06a4-0ebb-4954-b62b-7525bf743a0d/configs"
+      },
+      "self": {
+        "href": "./services/724b06a4-0ebb-4954-b62b-7525bf743a0d"
+      },
+      "service-edge-router-policies": {
+        "href": "./services/724b06a4-0ebb-4954-b62b-7525bf743a0d/service-edge-router-policies"
+      },
+      "service-policies": {
+        "href": "./services/724b06a4-0ebb-4954-b62b-7525bf743a0d/service-policies"
+      },
+      "terminators": {
+        "href": "./services/724b06a4-0ebb-4954-b62b-7525bf743a0d/terminators"
+      }
+    },
+    "tags": {},
+    "name": "httpbin",
+    "terminatorStrategy": "",
+    "roleAttributes": null,
+    "permissions": [
+      "Dial"
+    ],
+    "configs": null,
+    "config": {}
+  }
+])";
+
+    ziti_service_array arr;
+    REQUIRE(parse_ziti_service_array(&arr, json, strlen(json)) == 0);
+    REQUIRE(arr != nullptr);
+    CHECK(arr[1] == nullptr);
+    CHECK_THAT(arr[0]->name, Equals("httpbin"));
+
+    free_ziti_service_array(&arr);
 }
 

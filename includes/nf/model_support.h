@@ -19,11 +19,12 @@ limitations under the License.
 #define ZITI_SDK_MODEL_SUPPORT_H
 
 #ifndef __cplusplus
-
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdlib.h>
-
 #endif
+
+#include <uv_mbed/queue.h>
 
 
 #define none(t) t
@@ -35,15 +36,21 @@ limitations under the License.
 #define DECLARE_MODEL(type, model) \
 typedef struct type##_s {\
 model(FIELD_DECL, type) \
+LIST_ENTRY(type##_s) _next; \
 } type;\
 typedef type ** type##_array; \
+typedef LIST_HEAD(type##_l, type##_s) type##_list;\
 ptr(type) alloc_##type();\
 void free_##type(type *v); \
-int parse_##type(ptr(type) v, const char* json, int len);
+void free_##type##_array(array(type) *ap);\
+int parse_##type(ptr(type) v, const char* json, int len);\
+int parse_##type##_ptr(ptr(type) *p, const char* json, int len);\
+int parse_##type##_array(array(type) *a, const char* json, int len);\
+void dump_##type(type *v, int);
 
 #define gen_field_meta(n, memtype, modifier, p, partype) {\
 .name = #n, \
-.path = p, \
+.path = #p, \
 .offset = offsetof(partype,n), \
 .mod = modifier##_mod, \
 .meta = &memtype##_META, \
@@ -53,15 +60,22 @@ int parse_##type(ptr(type) v, const char* json, int len);
 static field_meta type##_FIELDS[] =  {\
     model(gen_field_meta, type) \
     }; \
-static type_meta type##_META { \
+static type_meta type##_META = { \
 .name = #type, \
 .size = sizeof(type),\
 .field_count = sizeof(type##_FIELDS) / sizeof(field_meta),\
 .fields = type##_FIELDS,\
 };\
 int parse_##type(ptr(type) v, const char* json, int len) { return model_parse(v, json, len, &type##_META); } \
+int parse_##type##_ptr(ptr(type) *p, const char* json, int len) {\
+*p = (type *)calloc(1, type##_META.size); \
+return parse_##type(*p, json, len); \
+}\
+int parse_##type##_array(array(type) *a, const char *json, int len) { return model_parse_array((void***)a, json, len, &type##_META); }\
 ptr(type) alloc_##type() { return (ptr(type))calloc(1, sizeof(type)); } \
-void free_##type(type *v) { model_free(v, &type##_META); }
+void free_##type(type *v) { model_free(v, &type##_META); } \
+void free_##type##_array(array(type) *ap) { model_free_array((void***)ap, &type##_META); }\
+void dump_##type(type *v, int off) { model_dump(v, off, &type##_META);}
 
 #ifdef __cplusplus
 extern "C" {
@@ -99,18 +113,18 @@ typedef struct type_meta {
 } type_meta;
 
 void model_free(void *obj, type_meta *meta);
+void model_free_array(void ***ap, type_meta *meta);
+void model_dump(void *obj, int off, type_meta *meta);
 
 int model_parse(void *obj, const char *json, size_t len, type_meta *meta);
-
-/*
-extern void free_int(int *);
-extern void free_bool(bool *);
-extern void free_string(char **s);
-*/
+int model_parse_array(void ***arp, const char *json, size_t len, type_meta *meta);
 
 extern type_meta bool_META;
 extern type_meta int_META;
 extern type_meta string_META;
+extern type_meta timestamp_META;
+
+typedef struct timeval timestamp;
 #if __cplusplus
 }
 #endif

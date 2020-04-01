@@ -19,7 +19,8 @@ limitations under the License.
 #define ZITI_SDK_CONTROLLER_H
 
 #include <uv_mbed/um_http.h>
-#include "ziti_model.h"
+#include "internal_model.h"
+#include "nf/ziti_model.h"
 #include "zt_internal.h"
 
 #ifdef __cplusplus

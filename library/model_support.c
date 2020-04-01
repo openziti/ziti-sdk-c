@@ -24,17 +24,64 @@ limitations under the License.
 #include <jsmn.h>
 
 #include <nf/model_support.h>
+#include <utils.h>
 
 
 static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *meta);
+
+void model_dump(void *obj, int off, type_meta *meta) {
+    // TODO
+}
+
+int model_parse_array(void ***arrp, const char *json, size_t len, type_meta *meta) {
+    jsmn_parser parser;
+    jsmn_init(&parser);
+    jsmntok_t toks[1024];
+    memset(toks, 0, sizeof(toks));
+    jsmntok_t *tok = toks;
+    jsmn_parse(&parser, json, len, toks, 1024);
+    if (tok->type != JSMN_ARRAY) {
+        return -1;
+    }
+
+    int children = tok->size;
+    void **arr = calloc(toks[0].size + 1, sizeof(void *));
+    tok++;
+    for (int i = 0; i < children; i++) {
+        void *el = calloc(1, meta->size);
+        int rc = parse_obj(el, json, tok, meta);
+        if (rc < 0) {
+            model_free(el, meta);
+            FREE(el);
+            return rc;
+        }
+        arr[i] = el;
+        tok += rc;
+    }
+    *arrp = arr;
+    return 0;
+}
 
 int model_parse(void *obj, const char *json, size_t len, type_meta *meta) {
     jsmn_parser parser;
     jsmn_init(&parser);
     jsmntok_t toks[1024];
-    jsmn_parse(&parser, json, len, toks, 1024); \
+    memset(toks, 0, sizeof(toks));
+    jsmn_parse(&parser, json, len, toks, 1024);
     int res = parse_obj(obj, json, toks, meta);
     return res > 0 ? 0 : res;
+}
+
+void model_free_array(void ***ap, type_meta *meta) {
+    if (ap == NULL || *ap == NULL) { return; }
+
+    void **el = *ap;
+    while (*el != NULL) {
+        model_free(*el, meta);
+        free(*el);
+        el++;
+    }
+    FREE(*ap);
 }
 
 void model_free(void *obj, type_meta *meta) {
@@ -173,10 +220,10 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
         }
         else {
             // skip
-            fprintf(stderr, "skipping unmapped field %.*s", tok->end - tok->start, json + tok->start);
+            fprintf(stderr, "skipping unmapped field %.*s\n", tok->end - tok->start, json + tok->start);
             tok++;
             int end = tok->end;
-            while (tok->start < end && tok->type != JSMN_UNDEFINED) {
+            while (tok->type != JSMN_UNDEFINED && tok->start <= end) {
                 tok++;
                 tokens_processed++;
             }
@@ -220,11 +267,64 @@ static int _parse_string(char **val, const char *json, jsmntok_t *tok) {
     if (tok->type == JSMN_STRING) {
         *val = (char *) calloc(1, tok->end - tok->start + 1);
 
-        // TODO unescape
-        strncpy(*val, json + tok->start, tok->end - tok->start);
+        const char *endp = json + tok->end;
+        char *out = *val;
+        const char *in = json + tok->start;
+        while (in < endp) {
+            if (*in == '\\') {
+                switch (*++in) {
+                    case 'b':
+                        *out++ = '\b';
+                        break;
+                    case 'r':
+                        *out++ = '\r';
+                        break;
+                    case 't':
+                        *out++ = '\t';
+                        break;
+                    case 'n':
+                        *out++ = '\n';
+                        break;
+                    case '\\':
+                        *out++ = '\\';
+                        break;
+                    case '"':
+                        *out++ = '"';
+                        break;
+                    default:
+                        *out++ = *in;
+                        fprintf(stderr, "unhandled escape seq '\\%c'", *in);
+                }
+                in++;
+            }
+            else {
+                *out++ = *in++;
+            }
+        }
         return 1;
     }
     return -1;
+}
+
+static int _parse_timeval(timestamp *t, const char *json, jsmntok_t *tok) {
+
+    char *date_str = NULL;
+    int rc = _parse_string(&date_str, json, tok);
+
+    if (rc < 0) { return rc; }
+
+    struct tm t2 = {0};
+    // "2019-08-05T14:02:52.337619Z"
+    rc = sscanf(date_str, "%d-%d-%dT%d:%d:%d.%ldZ",
+                &t2.tm_year, &t2.tm_mon, &t2.tm_mday,
+                &t2.tm_hour, &t2.tm_min, &t2.tm_sec, &t->tv_usec);
+    t2.tm_year -= 1900;
+    t2.tm_mon -= 1;
+
+    t->tv_sec = timegm(&t2);
+
+    free(date_str);
+    return 1;
 }
 
 static void _free_noop(void *v) {}
@@ -252,4 +352,10 @@ type_meta string_META = {
         .size = sizeof(char *),
         .parser = (_parse_f) _parse_string,
         .destroyer = (_free_f) _free_string,
+};
+
+type_meta timestamp_META = {
+        .size = sizeof(struct timeval),
+        .parser = (_parse_f) _parse_timeval,
+        .destroyer = (_free_f) _free_noop,
 };

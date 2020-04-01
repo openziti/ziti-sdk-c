@@ -20,21 +20,21 @@ limitations under the License.
 #include <nf/model_support.h>
 
 #define BAR_MODEL(xx, ...)\
-xx(num, int, none, "num", __VA_ARGS__)\
-xx(nump, int, ptr, "nump", __VA_ARGS__) \
-xx(isOK, bool, none, "ok", __VA_ARGS__)\
-xx(msg, string, none, "msg", __VA_ARGS__)\
-xx(errors, string, array, "errors", __VA_ARGS__)\
-xx(codes, int, array, "codes", __VA_ARGS__)
+xx(num, int, none, num, __VA_ARGS__)\
+xx(nump, int, ptr, nump, __VA_ARGS__) \
+xx(isOK, bool, none, ok, __VA_ARGS__)\
+xx(msg, string, none, msg, __VA_ARGS__)\
+xx(errors, string, array, errors, __VA_ARGS__)\
+xx(codes, int, array, codes, __VA_ARGS__)
 
 DECLARE_MODEL(Bar, BAR_MODEL)
 
 IMPL_MODEL(Bar, BAR_MODEL)
 
 #define FOO_MODEL(xx, ...) \
-xx(bar, Bar, none, "bar", __VA_ARGS__) \
-xx(barp, Bar, ptr, "barp", __VA_ARGS__) \
-xx(bar_arr, Bar, array, "bara", __VA_ARGS__)
+xx(bar, Bar, none, bar, __VA_ARGS__) \
+xx(barp, Bar, ptr, barp, __VA_ARGS__) \
+xx(bar_arr, Bar, array, bara, __VA_ARGS__)
 
 DECLARE_MODEL(Foo, FOO_MODEL)
 
@@ -135,4 +135,14 @@ TEST_CASE("test skipped fields") {
     REQUIRE(foo.barp->isOK);
     REQUIRE_THAT(foo.barp->msg, Catch::Matchers::Equals("hello world!"));
     free_Foo(&foo);
+}
+
+TEST_CASE("test string escape") {
+    const char *json = R"({
+        "msg":"\thello\n\"world\"!"
+    })";
+
+    Bar bar;
+    REQUIRE(parse_Bar(&bar, json, strlen(json)) == 0);
+    REQUIRE_THAT(bar.msg, Equals("\thello\n\"world\"!"));
 }

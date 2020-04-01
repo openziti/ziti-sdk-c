@@ -95,7 +95,7 @@ static size_t parse_ref(const char *val, const char **res) {
 }
 
 static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout) {
-    int optlen = strlen(opt);
+    size_t optlen = strlen(opt);
     do {
         // found it
         if (strncasecmp(q, opt, optlen) == 0 && (q[optlen] == '=' || q[optlen] == 0)) {
@@ -124,21 +124,21 @@ static void async_connects(uv_async_t *ar) {
 }
 
 int load_tls(nf_config *cfg, tls_context **ctx) {
-     PREP(ziti);
+    PREP(ziti);
 
     // load ca from nf config if present
     const char *ca, *cert;
-    size_t ca_len = parse_ref(cfg->ca, &ca);
-    size_t cert_len = parse_ref(cfg->cert, &cert);
+    size_t ca_len = parse_ref(cfg->id.ca, &ca);
+    size_t cert_len = parse_ref(cfg->id.cert, &cert);
     tls_context *tls = default_tls_context(ca, ca_len);
 
-    if (strncmp(cfg->key, "pkcs11://", strlen("pkcs11://")) == 0) {
+    if (strncmp(cfg->id.key, "pkcs11://", strlen("pkcs11://")) == 0) {
         char path[MAXPATHLEN] = {0};
         char pin[32] = {0};
         char slot[32] = {0};
         char id[32] = {0};
 
-        char *p = cfg->key + strlen("pkcs11://");
+        char *p = cfg->id.key + strlen("pkcs11://");
         char *endp = strchr(p, '?');
         char *q = endp + 1;
         if (endp == NULL) {
@@ -153,7 +153,7 @@ int load_tls(nf_config *cfg, tls_context **ctx) {
         tls->api->set_own_cert_pkcs11(tls->ctx, cert, cert_len, path, pin, slot, id);
     } else {
         const char *key;
-        size_t key_len = parse_ref(cfg->key, &key);
+        size_t key_len = parse_ref(cfg->id.key, &key);
         tls->api->set_own_cert(tls->ctx, cert, cert_len, key, key_len);
     }
 

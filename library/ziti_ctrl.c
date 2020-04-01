@@ -57,12 +57,15 @@ struct ctrl_resp {
     bool resp_chunked;
     bool resp_text_plain;
 
-    void* (*body_parse_func)(const char*, int);
-    void (*resp_cb)(void*, ziti_error*, void*);
+    int (*body_parse_func)(void *, const char *, int);
+
+    void (*resp_cb)(void *, ziti_error *, void *);
+
     void *ctx;
 
     ziti_controller *ctrl;
-    void (*ctrl_cb)(void*, ziti_error*, struct ctrl_resp*);
+
+    void (*ctrl_cb)(void *, ziti_error *, struct ctrl_resp *);
 };
 
 static void ctrl_default_cb (void *s, ziti_error *e, struct ctrl_resp *resp);
@@ -125,7 +128,7 @@ static void ctrl_service_cb(ziti_service **services, ziti_error *e, struct ctrl_
     free(services);
 }
 
-static void free_body_cb(um_http_req_t *req, const char *body, ssize_t len) {
+static void free_body_cb(um_http_req_t *req, char *body, ssize_t len) {
     free(body);
 }
 
@@ -146,13 +149,17 @@ static void ctrl_body_cb(um_http_req_t *req, const char* b, ssize_t len) {
 
         if (resp->status > 299) {
             mjson_find(resp->body, resp->received, "$.error", (const char **) &data, &data_len);
-            err = parse_ziti_error(data, data_len);
+            parse_ziti_error_ptr(&err, data, data_len);
         } else if (resp->resp_text_plain) {
             resp_obj = calloc(1, resp->received + 1);
             memcpy(resp_obj, resp->body, resp->received);
         } else {
             mjson_find(resp->body, resp->received, "$.data", (const char **) &data, &data_len);
-            resp_obj = resp->body_parse_func ? resp->body_parse_func(data, data_len) : NULL;
+            if (resp->body_parse_func) {
+                if (resp->body_parse_func(&resp_obj, data, data_len) != 0) {
+                    ZITI_LOG(ERROR, "error parsing result of req[%s]", req->path);
+                }
+            }
         }
         free(resp->body);
         resp->body = NULL;
@@ -186,8 +193,8 @@ void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ctrl_version *, ziti
     req->body_cb = ctrl_body_cb;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (void *(*)(const char *, int)) parse_ctrl_version;
-    resp->resp_cb = (void (*)(void *, ziti_error*, void *)) cb;
+    resp->body_parse_func = (int (*)(void *, const char *, int)) parse_ctrl_version_ptr;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
@@ -210,21 +217,21 @@ void ziti_ctrl_login(ziti_controller *ctrl, void(*cb)(ziti_session*, ziti_error*
             "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q}, "
             "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q}"
             "}",
-            "sdkInfo",
-            "type", "ziti-sdk-c",
-            "version", ziti_get_version(0),
-            "revision", ziti_git_commit(),
-            "branch", ziti_git_branch(),
-            "envInfo",
-            "os", osInfo.sysname,
-            "osRelease", osInfo.release,
-            "osVersion", osInfo.version,
-            "arch", osInfo.machine);
+                                "sdkInfo",
+                                "type", "ziti-sdk-c",
+                                "version", ziti_get_version(0),
+                                "revision", ziti_git_commit(),
+                                "branch", ziti_git_branch(),
+                                "envInfo",
+                                "os", osInfo.sysname,
+                                "osRelease", osInfo.release,
+                                "osVersion", osInfo.version,
+                                "arch", osInfo.machine);
     um_http_req_data(req, body, body_len, free_body_cb);
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (void *(*)(const char *, int)) parse_ziti_session;
-    resp->resp_cb = (void (*)(void *, ziti_error*, void *)) cb;
+    resp->body_parse_func = (int (*)(void *, const char *, int)) parse_ziti_session_ptr;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_login_cb;
@@ -238,8 +245,8 @@ void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session
     req->body_cb = ctrl_body_cb;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (void *(*)(const char *, int)) parse_ziti_session;
-    resp->resp_cb = (void (*)(void *, ziti_error*, void *)) cb;
+    resp->body_parse_func = (int (*)(void *, const char *, int)) parse_ziti_session_ptr;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_login_cb;
@@ -269,8 +276,8 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service *, zi
     req->body_cb = ctrl_body_cb;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (void *(*)(const char *, int)) parse_ziti_service_array;
-    resp->resp_cb = (void (*)(void *, ziti_error*, void *)) cb;
+    resp->body_parse_func = (int (*)(void *, const char *, int)) parse_ziti_service_array;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_service_cb;
@@ -287,8 +294,8 @@ void ziti_ctrl_get_service(ziti_controller *ctrl, const char* service_name, void
     req->body_cb = ctrl_body_cb;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (void *(*)(const char *, int)) parse_ziti_service_array;
-    resp->resp_cb = (void (*)(void *, ziti_error*, void *)) cb;
+    resp->body_parse_func = (int (*)(void *, const char *, int)) parse_ziti_service_array;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_service_cb;
@@ -302,9 +309,9 @@ void ziti_ctrl_get_net_session(
 
     char *content = NULL;
     size_t len = mjson_printf(&mjson_print_dynamic_buf, &content,
-            "{%Q: %Q, %Q: %Q}",
-            "serviceId", service->id,
-            "type", type);
+                              "{%Q: %Q, %Q: %Q}",
+                              "serviceId", service->id,
+                              "type", type);
 
     um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/sessions");
     req->resp_cb = ctrl_resp_cb;
@@ -313,8 +320,8 @@ void ziti_ctrl_get_net_session(
     um_http_req_data(req, content, len, free_body_cb);
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (void *(*)(const char *, int)) parse_ziti_net_session;
-    resp->resp_cb = (void (*)(void *, ziti_error*, void *)) cb;
+    resp->body_parse_func = (int (*)(void *, const char *, int)) parse_ziti_net_session_ptr;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
