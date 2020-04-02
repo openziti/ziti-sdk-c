@@ -180,7 +180,7 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
     tok++;
     while (children != 0) {
         if (tok->type != JSMN_STRING) {
-            fprintf(stderr, "unexpected token\n");
+            ZITI_LOG(ERROR, "parsing[%s] error: unexpected token starting at `%.*s'\n", meta->name, 20, json + tok->start);
             return -1;
         }
         field_meta *fm = NULL;
@@ -227,8 +227,7 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
             tokens_processed += rc;
         }
         else {
-            // skip
-            fprintf(stderr, "skipping unmapped field %.*s\n", tok->end - tok->start, json + tok->start);
+            ZITI_LOG(TRACE, "skipping unmapped field[%.*s] while parsing %s", tok->end - tok->start, json + tok->start, meta->name);
             tok++;
             int end = tok->end;
             while (tok->type != JSMN_UNDEFINED && tok->start <= end) {
