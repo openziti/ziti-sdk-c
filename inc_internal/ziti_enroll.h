@@ -29,7 +29,7 @@ limitations under the License.
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/x509_csr.h>
-#include "ziti_model.h"
+#include "internal_model.h"
 
 
 #ifdef __cplusplus

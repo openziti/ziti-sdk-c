@@ -69,8 +69,8 @@ int verify_rs256(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     unsigned char hash[ZITI_MD_MAX_SIZE_256];
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
-    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
-    if( ( ret = mbedtls_pk_verify( ctx, MBEDTLS_MD_SHA256, hash, 0, ecfg->jwt_sig, ecfg->jwt_sig_len ) ) != 0 ) {
+    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %zd", ecfg->jwt_sig_len);
+    if ((ret = mbedtls_pk_verify(ctx, MBEDTLS_MD_SHA256, hash, 0, ecfg->jwt_sig, ecfg->jwt_sig_len)) != 0) {
         ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
         return ZITI_JWT_VERIFICATION_FAILED;
     }
@@ -117,9 +117,9 @@ int verify_es256(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     unsigned char hash[ZITI_MD_MAX_SIZE_256];
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
-    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
-    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec( *ctx );
-    if( ( ret = psa_ecdsa_verify( ecp, hash, ZITI_MD_MAX_SIZE_256, ecfg->jwt_sig, ecfg->jwt_sig_len) ) != 0 ) {
+    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %zd", ecfg->jwt_sig_len);
+    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec(*ctx);
+    if ((ret = psa_ecdsa_verify(ecp, hash, ZITI_MD_MAX_SIZE_256, ecfg->jwt_sig, ecfg->jwt_sig_len)) != 0) {
         ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
         return ZITI_JWT_VERIFICATION_FAILED;
     }
@@ -132,9 +132,9 @@ int verify_es384(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     unsigned char hash[ZITI_MD_MAX_SIZE_512];
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);
     mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
-    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
-    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec( *ctx );
-    if( ( ret = psa_ecdsa_verify( ecp, hash, ZITI_MD_MAX_SIZE_512, ecfg->jwt_sig, ecfg->jwt_sig_len) ) != 0 ) {
+    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %zd", ecfg->jwt_sig_len);
+    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec(*ctx);
+    if ((ret = psa_ecdsa_verify(ecp, hash, ZITI_MD_MAX_SIZE_512, ecfg->jwt_sig, ecfg->jwt_sig_len)) != 0) {
         ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
         return ZITI_JWT_VERIFICATION_FAILED;
     }
@@ -146,9 +146,9 @@ int verify_es512(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     unsigned char hash[ZITI_MD_MAX_SIZE_512];
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
     mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
-    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
-    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec( *ctx );
-    if( ( ret = psa_ecdsa_verify( ecp, hash, ZITI_MD_MAX_SIZE_512, ecfg->jwt_sig, ecfg->jwt_sig_len) ) != 0 ) {
+    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %zd", ecfg->jwt_sig_len);
+    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec(*ctx);
+    if ((ret = psa_ecdsa_verify(ecp, hash, ZITI_MD_MAX_SIZE_512, ecfg->jwt_sig, ecfg->jwt_sig_len)) != 0) {
         ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
         return ZITI_JWT_VERIFICATION_FAILED;
     }
@@ -163,7 +163,7 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     uv_timeval64_t start_time;
     uv_gettimeofday(&start_time);
 
-    struct tm *start_tm = gmtime((const time_t)&start_time.tv_sec);
+    struct tm *start_tm = gmtime((const time_t *) &start_time.tv_sec);
     char time_str[32];
     strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
 
@@ -440,10 +440,10 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
 
     tls_context *tls = NULL;
 
-    tls = default_tls_context(ca, (strlen(ca) + 1 ));
-    
+    tls = default_tls_context(ca, (strlen(ca) + 1));
+
     ZITI_LOG(DEBUG, "CA: \n%s\n", ca);
-    ZITI_LOG(DEBUG, "CA len: %d", strlen(ca));
+    ZITI_LOG(DEBUG, "CA len: %zd", strlen(ca));
 
     enroll_req->ecfg->CA = ca;
 

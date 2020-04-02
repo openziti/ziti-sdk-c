@@ -161,8 +161,8 @@ static int ziti_connect(struct nf_ctx *ctx, const ziti_net_session *session, str
 
     ziti_edge_router **er;
     for (er = session->edge_routers; *er != NULL; er++) {
-        ZITI_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, (*er)->url_tls, conn->token);
-        ziti_channel_connect(ctx, (*er)->url_tls, on_channel_connected, req);
+        ZITI_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, (*er)->ingress.tls, conn->token);
+        ziti_channel_connect(ctx, (*er)->ingress.tls, on_channel_connected, req);
     }
 
     return 0;
