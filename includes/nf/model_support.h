@@ -19,13 +19,18 @@ limitations under the License.
 #define ZITI_SDK_MODEL_SUPPORT_H
 
 #ifndef __cplusplus
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
+
 #endif
+
+#include "externs.h"
 
 #include <uv_mbed/queue.h>
 
+#define MODEL_API
 
 #define none(t) t
 #define ptr(t)  t*
@@ -40,20 +45,21 @@ LIST_ENTRY(type##_s) _next; \
 } type;\
 typedef type ** type##_array; \
 typedef LIST_HEAD(type##_l, type##_s) type##_list;\
-ptr(type) alloc_##type();\
-void free_##type(type *v); \
-void free_##type##_array(array(type) *ap);\
-int parse_##type(ptr(type) v, const char* json, int len);\
-int parse_##type##_ptr(ptr(type) *p, const char* json, int len);\
-int parse_##type##_array(array(type) *a, const char* json, int len);\
-void dump_##type(type *v, int);
+MODEL_API type_meta* get_##type##_meta();\
+MODEL_API ptr(type) alloc_##type();\
+MODEL_API void free_##type(type *v); \
+MODEL_API void free_##type##_array(array(type) *ap);\
+MODEL_API int parse_##type(ptr(type) v, const char* json, size_t len);\
+MODEL_API int parse_##type##_ptr(ptr(type) *p, const char* json, size_t len);\
+MODEL_API int parse_##type##_array(array(type) *a, const char* json, size_t len);\
+MODEL_API void dump_##type(type *v, int);
 
 #define gen_field_meta(n, memtype, modifier, p, partype) {\
 .name = #n, \
 .path = #p, \
 .offset = offsetof(partype,n), \
 .mod = modifier##_mod, \
-.meta = &memtype##_META, \
+.meta = get_##memtype##_meta, \
 },
 
 #define IMPL_MODEL(type, model) \
@@ -66,12 +72,15 @@ static type_meta type##_META = { \
 .field_count = sizeof(type##_FIELDS) / sizeof(field_meta),\
 .fields = type##_FIELDS,\
 };\
-int parse_##type(ptr(type) v, const char* json, int len) { return model_parse(v, json, len, &type##_META); } \
-int parse_##type##_ptr(ptr(type) *p, const char* json, int len) {\
+type_meta* get_##type##_meta() { return &type##_META; }\
+int parse_##type(ptr(type) v, const char* json, size_t len) { return model_parse(v, json, len, &type##_META); } \
+int parse_##type##_ptr(ptr(type) *p, const char* json, size_t len) {\
 *p = (type *)calloc(1, type##_META.size); \
-return parse_##type(*p, json, len); \
+int rc = parse_##type(*p, json, len); \
+if (rc < 0) { free_##type(*p); free(*p); *p = NULL; } \
+return rc;\
 }\
-int parse_##type##_array(array(type) *a, const char *json, int len) { return model_parse_array((void***)a, json, len, &type##_META); }\
+int parse_##type##_array(array(type) *a, const char *json, size_t len) { return model_parse_array((void***)a, json, len, &type##_META); }\
 ptr(type) alloc_##type() { return (ptr(type))calloc(1, sizeof(type)); } \
 void free_##type(type *v) { model_free(v, &type##_META); } \
 void free_##type##_array(array(type) *ap) { model_free_array((void***)ap, &type##_META); }\
@@ -97,7 +106,8 @@ typedef struct field_meta {
     const char *path;
     size_t offset;
     enum _field_mod mod;
-    struct type_meta *meta;
+
+    struct type_meta *(*meta)();
 } field_meta;
 
 typedef int (*_parse_f)(void *obj, const char *json, void *tok);
@@ -113,18 +123,25 @@ typedef struct type_meta {
     _free_f destroyer;
 } type_meta;
 
-void model_free(void *obj, type_meta *meta);
-void model_free_array(void ***ap, type_meta *meta);
-void model_dump(void *obj, int off, type_meta *meta);
+ZITI_FUNC void model_free(void *obj, type_meta *meta);
 
-int model_parse(void *obj, const char *json, size_t len, type_meta *meta);
-int model_parse_array(void ***arp, const char *json, size_t len, type_meta *meta);
+ZITI_FUNC void model_free_array(void ***ap, type_meta *meta);
 
-extern type_meta bool_META;
-extern type_meta int_META;
-extern type_meta string_META;
-extern type_meta timestamp_META;
-extern type_meta json_META;
+ZITI_FUNC void model_dump(void *obj, int off, type_meta *meta);
+
+ZITI_FUNC int model_parse(void *obj, const char *json, size_t len, type_meta *meta);
+
+ZITI_FUNC int model_parse_array(void ***arp, const char *json, size_t len, type_meta *meta);
+
+ZITI_FUNC extern type_meta *get_bool_meta();
+
+ZITI_FUNC extern type_meta *get_int_meta();
+
+ZITI_FUNC extern type_meta *get_string_meta();
+
+ZITI_FUNC extern type_meta *get_timestamp_meta();
+
+ZITI_FUNC extern type_meta *get_json_meta();
 
 typedef struct timeval timestamp;
 #if __cplusplus

@@ -105,12 +105,12 @@ void model_free(void *obj, type_meta *meta) {
         void *f_ptr = NULL;
         if (fm->mod == none_mod) {
             f_ptr = f_addr;
-            model_free(f_ptr, fm->meta);
+            model_free(f_ptr, fm->meta());
         }
         else if (fm->mod == ptr_mod) {
             f_ptr = (void *) (*f_addr);
             if (f_ptr != NULL) {
-                model_free(f_ptr, fm->meta);
+                model_free(f_ptr, fm->meta());
                 free(f_ptr);
             }
         }
@@ -119,12 +119,12 @@ void model_free(void *obj, type_meta *meta) {
             if (arr != NULL) {
                 for (int idx = 0; arr[idx] != NULL; idx++) {
                     f_ptr = arr + idx;
-                    if (fm->meta == &string_META) {
-                        model_free(f_ptr, fm->meta);
+                    if (fm->meta == get_string_meta) {
+                        model_free(f_ptr, fm->meta());
                     }
                     else {
                         void *mem_ptr = (void *) (*(void **) f_ptr);
-                        model_free(mem_ptr, fm->meta);
+                        model_free(mem_ptr, fm->meta());
                         free(mem_ptr);
                     }
                 }
@@ -148,7 +148,7 @@ static int parse_array(void **arr, const char *json, jsmntok_t *tok, type_meta *
     tok++;
     for (idx = 0; idx < children; idx++) {
         void *el;
-        if (el_meta != &string_META) {
+        if (el_meta != get_string_meta()) {
             el = calloc(1, el_meta->size);
             elems[idx] = el;
         }
@@ -197,7 +197,7 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
             tok++;
             void *field = (char *) obj + fm->offset;
             if (fm->mod == array_mod) {
-                rc = parse_array(field, json, tok, fm->meta);
+                rc = parse_array(field, json, tok, fm->meta());
             }
             else {
                 char *memobj = NULL;
@@ -205,7 +205,7 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
                     memobj = (char *) (field);
                 }
                 else if (fm->mod == ptr_mod) {
-                    memobj = (char *) calloc(1, fm->meta->size);
+                    memobj = (char *) calloc(1, fm->meta()->size);
                     *(char **) field = memobj;
                 }
                 if (memobj == NULL) {
@@ -213,11 +213,11 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
                     return -1;
                 }
 
-                if (fm->meta->parser != NULL) {
-                    rc = fm->meta->parser(memobj, json, tok);
+                if (fm->meta()->parser != NULL) {
+                    rc = fm->meta()->parser(memobj, json, tok);
                 }
                 else {
-                    rc = parse_obj(memobj, json, tok, fm->meta);
+                    rc = parse_obj(memobj, json, tok, fm->meta());
                 }
             }
             if (rc < 0) {
@@ -358,32 +358,42 @@ static void _free_string(char **s) {
     }
 }
 
-type_meta bool_META = {
+static type_meta bool_META = {
         .size = sizeof(bool),
         .parser = (_parse_f) (_parse_bool),
         .destroyer = _free_noop,
 };
 
-type_meta int_META = {
+static type_meta int_META = {
         .size = sizeof(int),
         .parser = (_parse_f) _parse_int,
         .destroyer = _free_noop,
 };
 
-type_meta string_META = {
+static type_meta string_META = {
         .size = sizeof(char *),
         .parser = (_parse_f) _parse_string,
         .destroyer = (_free_f) _free_string,
 };
 
-type_meta timestamp_META = {
+static type_meta timestamp_META = {
         .size = sizeof(struct timeval),
         .parser = (_parse_f) _parse_timeval,
         .destroyer = (_free_f) _free_noop,
 };
 
-type_meta json_META = {
+static type_meta json_META = {
         .size = sizeof(char *),
         .parser = (_parse_f) _parse_json,
         .destroyer = (_free_f) _free_string,
 };
+
+type_meta *get_bool_meta() { return &bool_META; }
+
+type_meta *get_int_meta() { return &int_META; }
+
+type_meta *get_string_meta() { return &string_META; }
+
+type_meta *get_timestamp_meta() { return &timestamp_META; }
+
+type_meta *get_json_meta() { return &json_META; }

@@ -15,30 +15,29 @@ limitations under the License.
 */
 
 
-#ifndef ZITI_SDK_ZITI_MODEL_H
-#define ZITI_SDK_ZITI_MODEL_H
+#ifndef ZITI_SDK_EXTERNS_H
+#define ZITI_SDK_EXTERNS_H
 
-#include "model_support.h"
-
-#define ZITI_CTRL_VERSION(XX, ...) \
-XX(version, string, none, version, __VA_ARGS__) \
-XX(revision, string, none, revision, __VA_ARGS__) \
-XX(build_date, string, none, buildDate, __VA_ARGS__)
-
-#ifdef __cplusplus
-extern "C" {
+#if defined(BUILDING_ZITI_SHARED) && defined(USING_ZITI_SHARED)
+#error "Define either BUILDING_ZITI_SHARED or USING_ZITI_SHARED, not both."
 #endif
 
-// make sure ziti model functions are properly exported
-#ifdef MODEL_API
-#undef MODEL_API
+#ifndef ZITI_FUNC
+
+#ifdef _WIN32
+# if defined(BUILDING_ZITI_SHARED)
+#   define ZITI_FUNC __declspec(dllexport)
+# elif defined(USING_ZITI_SHARED)
+#   define ZITI_FUNC __declspec(dllimport)
+# else
+#   define ZITI_FUNC /* nothing */
+# endif
+#elif __GNUC__ >= 4
+# define ZITI_FUNC __attribute__((visibility("default")))
+#else
+# define ZITI_FUNC /* nothing */
 #endif
-#define MODEL_API ZITI_FUNC
 
-DECLARE_MODEL(ctrl_version, ZITI_CTRL_VERSION)
-
-#ifdef __cplusplus
-}
 #endif
 
-#endif //ZITI_SDK_ZITI_MODEL_H
+#endif //ZITI_SDK_EXTERNS_H

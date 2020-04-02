@@ -27,27 +27,7 @@ limitations under the License.
 #include <uv_mbed/tls_engine.h>
 #include "errors.h"
 
-#if defined(BUILDING_ZITI_SHARED) && defined(USING_ZITI_SHARED)
-#error "Define either BUILDING_ZITI_SHARED or USING_ZITI_SHARED, not both."
-#endif
-
-#ifndef ZITI_FUNC
-
-#ifdef _WIN32
-# if defined(BUILDING_ZITI_SHARED)
-#   define ZITI_FUNC __declspec(dllexport)
-# elif defined(USING_ZITI_SHARED)
-#   define ZITI_FUNC __declspec(dllimport)
-# else
-#   define ZITI_FUNC /* nothing */
-# endif
-#elif __GNUC__ >= 4
-# define ZITI_FUNC __attribute__((visibility("default")))
-#else
-# define ZITI_FUNC /* nothing */
-#endif
-
-#endif
+#include "externs.h"
 
 
 #ifdef __cplusplus

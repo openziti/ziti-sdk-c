@@ -187,9 +187,10 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
     TRY(ziti, load_tls(cfg, &tls));
     TRY(ziti, NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx));
 
-    CATCH(ziti);
+    CATCH(ziti) {}
 
     free_nf_config(cfg);
+    FREE(cfg);
 
     return ERR(ziti);
 }
@@ -438,10 +439,12 @@ static void version_cb(ctrl_version *v, ziti_error *err, void *ctx) {
         ZITI_LOG(ERROR, "failed to get controller version from %s:%s %s(%s)",
                  ctrl->client.host, ctrl->client.port, err->code, err->message);
         free_ziti_error(err);
+        FREE(err);
     }
     else {
         ZITI_LOG(INFO, "connected to controller %s:%s version %s(%s %s)",
                  ctrl->client.host, ctrl->client.port, v->version, v->revision, v->build_date);
         free_ctrl_version(v);
+        FREE(v);
     }
 }
