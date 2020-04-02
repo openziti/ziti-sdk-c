@@ -165,7 +165,75 @@ int load_tls(nf_config *cfg, tls_context **ctx) {
     return ZITI_OK;
 }
 
+int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
+    init_debug();
+
+    uv_timeval64_t start_time;
+    uv_gettimeofday(&start_time);
+
+    struct tm *start_tm = gmtime(&start_time.tv_sec);
+    char time_str[32];
+    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
+
+    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
+            ziti_get_version(false), ziti_git_commit(), ziti_git_branch(),
+            time_str, start_time.tv_usec/1000);
+
+    PREP(ziti);
+
+    if (opts->config == NULL && (opts->controller == NULL || opts->tls == NULL)) {
+        ZITI_LOG(ERROR, "config or controller/tls has to be set");
+        return ZITI_INVALID_CONFIG;
+    }
+
+    nf_config *cfg = NULL;
+    if (opts->config != NULL) {
+        TRY(ziti, load_config(opts->config, &cfg));
+    }
+    if (opts->controller == NULL) {
+        opts->controller = strdup(cfg->controller_url);
+    }
+    if (opts->tls == NULL) {
+        TRY(ziti, load_tls(cfg, &opts->tls));
+    }
+
+    NEWP(ctx, struct nf_ctx);
+    ctx->tlsCtx = opts->tls;
+    ctx->loop = loop;
+    ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
+    LIST_INIT(&ctx->connect_requests);
+
+    uv_async_init(loop, &ctx->connect_async, async_connects);
+    uv_unref((uv_handle_t *) &ctx->connect_async);
+
+    ziti_ctrl_init(loop, &ctx->controller, opts->controller, ctx->tlsCtx);
+    ziti_ctrl_get_version(&ctx->controller, version_cb, &ctx->controller);
+
+    uv_timer_init(loop, &ctx->session_timer);
+    uv_unref((uv_handle_t *) &ctx->session_timer);
+    ctx->session_timer.data = ctx;
+
+    NEWP(init_req, struct nf_init_req);
+    init_req->init_cb = opts->init_cb;
+    init_req->init_ctx = init_ctx;
+    init_req->nf = ctx;
+    ziti_ctrl_login(&ctx->controller, session_cb, init_req);
+
+    CATCH(ziti) {
+        return ERR(ziti);
+    }
+
+    return ZITI_OK;
+}
+
 int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx) {
+
+    NEWP(opts, nf_options);
+    opts->config = config;
+    opts->init_cb = init_cb;
+
+    return NF_init_opts(opts, loop, init_ctx);
+#if 0
     init_debug();
 
     uv_timeval64_t start_time;
@@ -193,6 +261,7 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
     FREE(cfg);
 
     return ERR(ziti);
+#endif
 }
 
 int

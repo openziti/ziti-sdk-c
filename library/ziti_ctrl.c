@@ -79,7 +79,7 @@ struct ctrl_resp {
     void (*ctrl_cb)(void *, ziti_error *, struct ctrl_resp *);
 };
 
-static void ctrl_default_cb (void *s, ziti_error *e, struct ctrl_resp *resp);
+static void ctrl_default_cb(void *s, ziti_error *e, struct ctrl_resp *resp);
 
 static void ctrl_resp_cb(um_http_req_t *req, int code, um_header_list *headers) {
     struct ctrl_resp *resp = req->data;
@@ -89,7 +89,8 @@ static void ctrl_resp_cb(um_http_req_t *req, int code, um_header_list *headers) 
         err->code = strdup("CONTROLLER_UNAVAILABLE");
         err->message = strdup(uv_strerror(code));
         ctrl_default_cb(NULL, err, resp);
-    } else {
+    }
+    else {
         um_http_hdr *h;
         LIST_FOREACH(h, headers, _next) {
             if (strcasecmp(h->name, "Content-Length") == 0) {
@@ -104,7 +105,7 @@ static void ctrl_resp_cb(um_http_req_t *req, int code, um_header_list *headers) 
     }
 }
 
-static void ctrl_default_cb (void *s, ziti_error *e, struct ctrl_resp *resp) {
+static void ctrl_default_cb(void *s, ziti_error *e, struct ctrl_resp *resp) {
     if (resp->resp_cb) {
         resp->resp_cb(s, e, resp->ctx);
     }
@@ -143,7 +144,7 @@ static void free_body_cb(um_http_req_t *req, const char *body, ssize_t len) {
     free((char *) body);
 }
 
-static void ctrl_body_cb(um_http_req_t *req, const char* b, ssize_t len) {
+static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
     struct ctrl_resp *resp = req->data;
 
     if (len > 0) {
@@ -152,7 +153,8 @@ static void ctrl_body_cb(um_http_req_t *req, const char* b, ssize_t len) {
         }
         memcpy(resp->body + resp->received, b, len);
         resp->received += len;
-    } else if (len == UV_EOF) {
+    }
+    else if (len == UV_EOF) {
         const char *data = NULL;
         int data_len;
         void *resp_obj = NULL;
@@ -176,7 +178,8 @@ static void ctrl_body_cb(um_http_req_t *req, const char* b, ssize_t len) {
         FREE(resp->body);
 
         resp->ctrl_cb(resp_obj, cr.error, resp);
-    } else {
+    }
+    else {
         ZITI_LOG(ERROR, "Unexpected ERROR: %zd", len);
     }
 }
@@ -198,7 +201,7 @@ int ziti_ctrl_close(ziti_controller *ctrl) {
     return ZITI_OK;
 }
 
-void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ctrl_version *, ziti_error *err, void* ctx), void *ctx) {
+void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ctrl_version *, ziti_error *err, void *ctx), void *ctx) {
     um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/version");
     req->resp_cb = ctrl_resp_cb;
     req->body_cb = ctrl_body_cb;
@@ -213,7 +216,7 @@ void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ctrl_version *, ziti
     req->data = resp;
 }
 
-void ziti_ctrl_login(ziti_controller *ctrl, void(*cb)(ziti_session*, ziti_error*, void*), void *ctx) {
+void ziti_ctrl_login(ziti_controller *ctrl, void(*cb)(ziti_session *, ziti_error *, void *), void *ctx) {
     um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/authenticate?method=cert");
     um_http_req_header(req, "Content-Type", "application/json");
     req->resp_cb = ctrl_resp_cb;
@@ -224,10 +227,10 @@ void ziti_ctrl_login(ziti_controller *ctrl, void(*cb)(ziti_session*, ziti_error*
 
     const char *body = NULL;
     int body_len = mjson_printf(&mjson_print_dynamic_buf, &body,
-            "{"
-            "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q}, "
-            "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q}"
-            "}",
+                                "{"
+                                "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q}, "
+                                "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q}"
+                                "}",
                                 "sdkInfo",
                                 "type", "ziti-sdk-c",
                                 "version", ziti_get_version(0),
@@ -250,7 +253,7 @@ void ziti_ctrl_login(ziti_controller *ctrl, void(*cb)(ziti_session*, ziti_error*
     req->data = resp;
 }
 
-void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session*, ziti_error*, void*), void *ctx) {
+void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session *, ziti_error *, void *), void *ctx) {
     um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/current-api-session");
     req->resp_cb = ctrl_resp_cb;
     req->body_cb = ctrl_body_cb;
@@ -265,14 +268,14 @@ void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session
     req->data = resp;
 }
 
-void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void*, ziti_error*, void*), void *ctx) {
+void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, ziti_error *, void *), void *ctx) {
     um_http_req_t *req = um_http_req(&ctrl->client, "DELETE", "/current-api-session");
     req->resp_cb = ctrl_resp_cb;
     req->body_cb = ctrl_body_cb;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL; /* no body */
-    resp->resp_cb = (void (*)(void *, ziti_error*, void *)) cb;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_logout_cb;
@@ -280,7 +283,7 @@ void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void*, ziti_error*, void*
     req->data = resp;
 }
 
-void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service *, ziti_error*, void*), void* ctx) {
+void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service *, ziti_error *, void *), void *ctx) {
 
     um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/services");
     req->resp_cb = ctrl_resp_cb;
@@ -296,7 +299,9 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service *, zi
     req->data = resp;
 }
 
-void ziti_ctrl_get_service(ziti_controller *ctrl, const char* service_name, void (*cb)(ziti_service *, ziti_error*, void*), void* ctx) {
+void
+ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb)(ziti_service *, ziti_error *, void *),
+                      void *ctx) {
     char path[1024];
     snprintf(path, sizeof(path), "/services?filter=name=\"%s\"", service_name);
 
@@ -315,8 +320,8 @@ void ziti_ctrl_get_service(ziti_controller *ctrl, const char* service_name, void
 }
 
 void ziti_ctrl_get_net_session(
-        ziti_controller *ctrl, ziti_service *service, const char* type,
-        void (*cb)(ziti_net_session *, ziti_error*, void*), void* ctx) {
+        ziti_controller *ctrl, ziti_service *service, const char *type,
+        void (*cb)(ziti_net_session *, ziti_error *, void *), void *ctx) {
 
     char *content = NULL;
     size_t len = mjson_printf(&mjson_print_dynamic_buf, &content,
@@ -341,7 +346,7 @@ void ziti_ctrl_get_net_session(
 }
 
 void ziti_ctrl_get_net_sessions(
-        ziti_controller *ctrl, void (*cb)(ziti_net_session **, ziti_error*, void*), void* ctx) {
+        ziti_controller *ctrl, void (*cb)(ziti_net_session **, ziti_error *, void *), void *ctx) {
 
     um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/sessions");
     req->resp_cb = ctrl_resp_cb;

@@ -165,6 +165,7 @@ struct nf_conn {
 
 
 struct nf_ctx {
+    nf_options *opts;
     ziti_controller controller;
 
     tls_context *tlsCtx;

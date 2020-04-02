@@ -137,7 +137,7 @@ TEST_CASE("test skipped fields") {
     free_Foo(&foo);
 }
 
-TEST_CASE("test string escape") {
+TEST_CASE("test string escape", "[model]") {
     const char *json = R"({
         "msg":"\thello\n\"world\"!"
     })";
@@ -155,7 +155,7 @@ XX(ok, bool, none, ok, __VA_ARGS__)
 DECLARE_MODEL(Baz, baz_model)
 IMPL_MODEL(Baz, baz_model)
 
-TEST_CASE("test raw json") {
+TEST_CASE("test raw json", "[model]") {
     const char *json = "{"
                        "\"bar\":" BAR1 ","
                        "\"ok\": true"
@@ -170,4 +170,26 @@ TEST_CASE("test raw json") {
     checkBar1(bar);
     free_Bar(&bar);
     free_Baz(&baz);
+}
+
+#define map_model(XX, ...) \
+XX(map, model_map, none, map, __VA_ARGS__) \
+XX(ok, bool, none, ok, __VA_ARGS__)
+
+DECLARE_MODEL(ObjMap, map_model)
+IMPL_MODEL(ObjMap, map_model)
+
+TEST_CASE("model map test", "[model]") {
+    const char *json = "{"
+                       "\"map\":" BAR1 ","
+                       "\"ok\": true"
+                       "}";
+
+    ObjMap o;
+    REQUIRE(parse_ObjMap(&o, json, strlen(json)) == 0);
+    CHECK(o.ok);
+    CHECK_THAT((const char*)model_map_get(&o.map, "num"), Equals("42"));
+    CHECK_THAT((const char*)model_map_get(&o.map, "errors"), Equals(R"(["error1", "error2"])"));
+
+    model_map_clear(&o.map, nullptr);
 }

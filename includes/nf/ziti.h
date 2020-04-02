@@ -110,6 +110,18 @@ typedef void (*nf_init_cb)(nf_context nf_ctx, int status, void* init_ctx);
  */
 typedef void (*nf_service_cb)(nf_context nf_ctx, const char* service_name, int status, unsigned int flags, void *data);
 
+typedef struct nf_options_s {
+    const char* config;
+    const char* controller;
+    tls_context *tls;
+
+    const char** config_types;
+    nf_init_cb init_cb;
+    nf_service_cb service_cb;
+
+    int refresh_interval;
+} nf_options;
+
 /**
  * @brief Data callback.
  *
@@ -239,6 +251,7 @@ extern int NF_enroll(const char* jwt, uv_loop_t* loop, nf_enroll_cb enroll_cb, v
 ZITI_FUNC
 extern int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx);
 
+
 /**
  * @brief Initialize Ziti Edge identity context with the provided TLS context.
  *
@@ -259,6 +272,8 @@ ZITI_FUNC
 extern int
 NF_init_with_tls(const char* ctrl_url, tls_context* tls_context, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx);
 
+ZITI_FUNC
+extern int NF_init_opts(nf_options *options, uv_loop_t *loop, void *init_ctx);
 /**
  * @brief Sets connect and write timeouts(in millis).
  *

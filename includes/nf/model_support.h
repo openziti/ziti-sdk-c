@@ -165,7 +165,25 @@ ZITI_FUNC extern type_meta *get_timestamp_meta();
 
 ZITI_FUNC extern type_meta *get_json_meta();
 
+ZITI_FUNC extern type_meta *get_model_map_meta();
+
 typedef struct timeval timestamp;
+
+struct model_map_entry {
+    char *key;
+    void *value;
+    LIST_ENTRY(model_map_entry) _next;
+};
+
+typedef struct model_map {
+    LIST_HEAD(en, model_map_entry) entries;
+} model_map;
+
+ZITI_FUNC void model_map_set(model_map *map, const char* key, void * val);
+ZITI_FUNC void* model_map_get(model_map *map, const char* key);
+ZITI_FUNC void model_map_clear(model_map *map, _free_f val_free_func);
+
+
 #if __cplusplus
 }
 #endif
