@@ -79,6 +79,8 @@ struct ctrl_resp {
     void (*ctrl_cb)(void *, ziti_error *, struct ctrl_resp *);
 };
 
+static char *str_array_to_json(const char **arr);
+
 static void ctrl_default_cb(void *s, ziti_error *e, struct ctrl_resp *resp);
 
 static void ctrl_resp_cb(um_http_req_t *req, int code, um_header_list *headers) {
@@ -216,7 +218,11 @@ void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ctrl_version *, ziti
     req->data = resp;
 }
 
-void ziti_ctrl_login(ziti_controller *ctrl, void(*cb)(ziti_session *, ziti_error *, void *), void *ctx) {
+void ziti_ctrl_login(
+        ziti_controller *ctrl,
+        const char **cfg_types,
+        void(*cb)(ziti_session *, ziti_error *, void *),
+        void *ctx) {
     um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/authenticate?method=cert");
     um_http_req_header(req, "Content-Type", "application/json");
     req->resp_cb = ctrl_resp_cb;
@@ -226,10 +232,12 @@ void ziti_ctrl_login(ziti_controller *ctrl, void(*cb)(ziti_session *, ziti_error
     uv_os_uname(&osInfo);
 
     const char *body = NULL;
+    char *cfg_type_json = str_array_to_json(cfg_types);
     int body_len = mjson_printf(&mjson_print_dynamic_buf, &body,
                                 "{"
                                 "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q}, "
-                                "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q}"
+                                "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q},"
+                                "%Q:%s"
                                 "}",
                                 "sdkInfo",
                                 "type", "ziti-sdk-c",
@@ -240,7 +248,8 @@ void ziti_ctrl_login(ziti_controller *ctrl, void(*cb)(ziti_session *, ziti_error
                                 "os", osInfo.sysname,
                                 "osRelease", osInfo.release,
                                 "osVersion", osInfo.version,
-                                "arch", osInfo.machine);
+                                "arch", osInfo.machine,
+                                "configTypes", cfg_type_json);
     um_http_req_data(req, body, body_len, free_body_cb);
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
@@ -420,4 +429,34 @@ void ziti_ctrl_get_public_cert(ziti_controller *ctrl, enroll_cfg *ecfg, void (*c
     resp->ctrl_cb = ctrl_default_cb;
 
     req->data = resp;
+}
+
+static char *str_array_to_json(const char **arr) {
+    if (arr == NULL) {
+        return strdup("null");
+    }
+
+    size_t json_len = 3; //"[]"
+    const char **p = arr;
+    while (*p != NULL) {
+        json_len += strlen(*p) + 3;
+        p++;
+    }
+
+    p = arr;
+    char *json = malloc(json_len);
+    char *outp = json;
+    *outp++ = '[';
+    while (*p != NULL) {
+        *outp++ = '"';
+        strcpy(outp, *p);
+        outp += strlen(*p);
+        *outp++ = '"';
+        if (*(++p) != NULL) {
+            *outp++ = ',';
+        }
+    }
+    *outp++ = ']';
+    *outp = '\0';
+    return json;
 }

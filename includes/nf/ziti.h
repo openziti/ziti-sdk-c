@@ -110,6 +110,11 @@ typedef void (*nf_init_cb)(nf_context nf_ctx, int status, void* init_ctx);
  */
 typedef void (*nf_service_cb)(nf_context nf_ctx, const char* service_name, int status, unsigned int flags, void *data);
 
+/**
+ * @brief nf_context initialization options
+ *
+ * @see NF_init_opts()
+ */
 typedef struct nf_options_s {
     const char* config;
     const char* controller;

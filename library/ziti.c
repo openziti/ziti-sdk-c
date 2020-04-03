@@ -43,6 +43,10 @@ limitations under the License.
 #define strncasecmp _strnicmp
 #endif
 
+static const char *ALL_CONFIG_TYPES[] = {
+        "all",
+        NULL
+};
 
 struct nf_init_req {
     nf_context nf;
@@ -198,6 +202,7 @@ int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
     }
 
     NEWP(ctx, struct nf_ctx);
+    ctx->opts = opts;
     ctx->tlsCtx = opts->tls;
     ctx->loop = loop;
     ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
@@ -217,7 +222,7 @@ int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
     init_req->init_cb = opts->init_cb;
     init_req->init_ctx = init_ctx;
     init_req->nf = ctx;
-    ziti_ctrl_login(&ctx->controller, session_cb, init_req);
+    ziti_ctrl_login(&ctx->controller, ctx->opts->config_types, session_cb, init_req);
 
     CATCH(ziti) {
         return ERR(ziti);
@@ -231,37 +236,9 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
     NEWP(opts, nf_options);
     opts->config = config;
     opts->init_cb = init_cb;
+    opts->config_types = ALL_CONFIG_TYPES;
 
     return NF_init_opts(opts, loop, init_ctx);
-#if 0
-    init_debug();
-
-    uv_timeval64_t start_time;
-    uv_gettimeofday(&start_time);
-
-    struct tm *start_tm = gmtime(&start_time.tv_sec);
-    char time_str[32];
-    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
-
-    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
-            ziti_get_version(false), ziti_git_commit(), ziti_git_branch(),
-            time_str, start_time.tv_usec/1000);
-
-    PREP(ziti);
-    nf_config *cfg = NULL;
-    tls_context *tls = NULL;
-
-    TRY(ziti, load_config(config, &cfg));
-    TRY(ziti, load_tls(cfg, &tls));
-    TRY(ziti, NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx));
-
-    CATCH(ziti) {}
-
-    free_nf_config(cfg);
-    FREE(cfg);
-
-    return ERR(ziti);
-#endif
 }
 
 int
@@ -294,7 +271,7 @@ NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop
     init_req->init_cb = init_cb;
     init_req->init_ctx = init_ctx;
     init_req->nf = ctx;
-    ziti_ctrl_login(&ctx->controller, session_cb, init_req);
+    ziti_ctrl_login(&ctx->controller, NULL, session_cb, init_req);
 
     return ZITI_OK;
 }

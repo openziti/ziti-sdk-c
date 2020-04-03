@@ -164,7 +164,7 @@ TEST_CASE("controller_test","[integ]") {
             ziti_ctrl_logout(re->c, logout_cb, &re->logout);
 
         };
-        ziti_ctrl_login(&ctrl, resp_cb, &r.session);
+        ziti_ctrl_login(&ctrl, NULL, resp_cb, &r.session);
         ziti_ctrl_get_service(&ctrl, "wttr.in", serv_cb, &r);
 
         int rc = uv_run(loop, UV_RUN_DEFAULT);
