@@ -23,6 +23,9 @@ if(NOT libsodium_POPULATED)
         endif ()
 
         if (NOT EXISTS ${libsodium_BINARY_DIR}/config.status)
+            # first build on macos fails because CMake picks up xcode
+            unset(ENV{CC})
+            unset(ENV{CXX})
             execute_process(
                     COMMAND "${libsodium_SOURCE_DIR}/configure" "--prefix=${libsodium_BINARY_DIR}" --enable-debug --with-pic --host=${triple}
                     WORKING_DIRECTORY ${libsodium_BINARY_DIR}
