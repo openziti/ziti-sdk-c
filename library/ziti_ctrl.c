@@ -260,6 +260,8 @@ void ziti_ctrl_login(
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_login_cb;
 
     req->data = resp;
+
+    free(cfg_type_json);
 }
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session *, ziti_error *, void *), void *ctx) {

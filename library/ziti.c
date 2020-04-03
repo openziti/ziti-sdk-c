@@ -409,7 +409,7 @@ static void service_cb (ziti_service *s, ziti_error *err, void *ctx) {
         rc = ZITI_OK;
     }
 
-    req->cb(req->nf, req->service, rc, s ? s->perm_flags : 0, req->cb_ctx);
+    req->cb(req->nf, s, rc, req->cb_ctx);
     FREE(req->service);
     free(req);
 }
@@ -418,7 +418,7 @@ int NF_service_available(nf_context nf, const char *service, nf_service_cb cb, v
     ziti_service *s;
     LIST_FOREACH (s, &nf->services, _next) {
         if (strcmp(service, s->name) == 0) {
-            cb(nf, service, ZITI_OK, s->perm_flags, ctx);
+            cb(nf, s, ZITI_OK, ctx);
         }
     }
 

@@ -18,12 +18,16 @@ FetchContent_GetProperties(libsodium)
 if(NOT libsodium_POPULATED)
     FetchContent_Populate(libsodium)
     if (NOT WIN32)
-        if(NOT EXISTS ${libsodium_BINARY_DIR}/config.status)
+        if (NOT EXISTS ${libsodium_BINARY_DIR})
+            file(MAKE_DIRECTORY ${libsodium_BINARY_DIR})
+        endif ()
+
+        if (NOT EXISTS ${libsodium_BINARY_DIR}/config.status)
             execute_process(
                     COMMAND "${libsodium_SOURCE_DIR}/configure" "--prefix=${libsodium_BINARY_DIR}" --enable-debug --with-pic --host=${triple}
                     WORKING_DIRECTORY ${libsodium_BINARY_DIR}
             )
-        endif()
+        endif ()
         execute_process(
                 COMMAND make
                 WORKING_DIRECTORY ${libsodium_BINARY_DIR}

@@ -28,6 +28,7 @@ limitations under the License.
 #include "errors.h"
 
 #include "externs.h"
+#include "ziti_model.h"
 
 
 #ifdef __cplusplus
@@ -108,7 +109,7 @@ typedef void (*nf_init_cb)(nf_context nf_ctx, int status, void* init_ctx);
  *
  * @see NF_service_available(), ZITI_ERRORS
  */
-typedef void (*nf_service_cb)(nf_context nf_ctx, const char* service_name, int status, unsigned int flags, void *data);
+typedef void (*nf_service_cb)(nf_context nf_ctx, ziti_service *, int status, void *data);
 
 /**
  * @brief nf_context initialization options
