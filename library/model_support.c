@@ -357,6 +357,67 @@ static void _free_string(char **s) {
     }
 }
 
+void* model_map_get(model_map *m, const char* key) {
+    struct model_map_entry *el;
+    LIST_FOREACH(el, &m->entries, _next) {
+        if (strcmp(key, el->key) == 0) {
+            return el->value;
+        }
+    }
+    return NULL;
+}
+
+void model_map_clear(model_map *map, _free_f free_func) {
+    while (!LIST_EMPTY(&map->entries)) {
+        struct model_map_entry *el = LIST_FIRST(&map->entries);
+        LIST_REMOVE(el, _next);
+        FREE(el->key);
+        if (free_func)
+            free_func(el->value);
+        FREE(el->value);
+        FREE(el);
+    }
+}
+
+static int _parse_map(model_map *m, const char *json, jsmntok_t *tok) {
+    if (tok->type != JSMN_OBJECT) {
+        ZITI_LOG(ERROR, "unexspected JSON token near '%.*s', expecting object", 20, json + tok->start);
+        return -1;
+    }
+
+    int tokens_processed = 1;
+    int children = tok->size;
+    tok++;
+    for (int i = 0; i < children; i++) {
+        if (tok->type != JSMN_STRING) {
+            ZITI_LOG(ERROR, "parsing[map] error: unexpected token starting at `%.*s'\n", 20, json + tok->start);
+            return -1;
+        }
+        const char *key = json + tok->start;
+        size_t keylen = tok->end - tok->start;
+
+        tok++;
+        tokens_processed++;
+        char *value = NULL;
+        int rc = _parse_json(&value, json , tok);
+        if (rc < 0) {
+            return rc;
+        }
+        tok += rc;
+        tokens_processed += rc;
+        NEWP(el, struct model_map_entry);
+        el->key = calloc(1, keylen + 1);
+        strncpy(el->key, key, keylen);
+        el->value = value;
+        LIST_INSERT_HEAD(&m->entries, el, _next);
+    }
+    return tokens_processed;
+}
+
+static void _free_map(model_map *m) {
+    model_map_clear(m, NULL);
+}
+
 static type_meta bool_META = {
         .size = sizeof(bool),
         .parser = (_parse_f) (_parse_bool),
@@ -387,6 +448,12 @@ static type_meta json_META = {
         .destroyer = (_free_f) _free_string,
 };
 
+static type_meta map_META = {
+        .size = sizeof(model_map),
+        .parser = (_parse_f) _parse_map,
+        .destroyer = (_free_f) _free_map,
+};
+
 type_meta *get_bool_meta() { return &bool_META; }
 
 type_meta *get_int_meta() { return &int_META; }
@@ -396,3 +463,5 @@ type_meta *get_string_meta() { return &string_META; }
 type_meta *get_timestamp_meta() { return &timestamp_META; }
 
 type_meta *get_json_meta() { return &json_META; }
+
+type_meta *get_model_map_meta() { return &map_META; }

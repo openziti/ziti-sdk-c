@@ -43,6 +43,10 @@ limitations under the License.
 #define strncasecmp _strnicmp
 #endif
 
+static const char *ALL_CONFIG_TYPES[] = {
+        "all",
+        NULL
+};
 
 struct nf_init_req {
     nf_context nf;
@@ -165,7 +169,7 @@ int load_tls(nf_config *cfg, tls_context **ctx) {
     return ZITI_OK;
 }
 
-int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx) {
+int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
     init_debug();
 
     uv_timeval64_t start_time;
@@ -180,19 +184,61 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
             time_str, start_time.tv_usec/1000);
 
     PREP(ziti);
+
+    if (opts->config == NULL && (opts->controller == NULL || opts->tls == NULL)) {
+        ZITI_LOG(ERROR, "config or controller/tls has to be set");
+        return ZITI_INVALID_CONFIG;
+    }
+
     nf_config *cfg = NULL;
-    tls_context *tls = NULL;
+    if (opts->config != NULL) {
+        TRY(ziti, load_config(opts->config, &cfg));
+    }
+    if (opts->controller == NULL) {
+        opts->controller = strdup(cfg->controller_url);
+    }
+    if (opts->tls == NULL) {
+        TRY(ziti, load_tls(cfg, &opts->tls));
+    }
 
-    TRY(ziti, load_config(config, &cfg));
-    TRY(ziti, load_tls(cfg, &tls));
-    TRY(ziti, NF_init_with_tls(cfg->controller_url, tls, loop, init_cb, init_ctx));
+    NEWP(ctx, struct nf_ctx);
+    ctx->opts = opts;
+    ctx->tlsCtx = opts->tls;
+    ctx->loop = loop;
+    ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
+    LIST_INIT(&ctx->connect_requests);
 
-    CATCH(ziti) {}
+    uv_async_init(loop, &ctx->connect_async, async_connects);
+    uv_unref((uv_handle_t *) &ctx->connect_async);
 
-    free_nf_config(cfg);
-    FREE(cfg);
+    ziti_ctrl_init(loop, &ctx->controller, opts->controller, ctx->tlsCtx);
+    ziti_ctrl_get_version(&ctx->controller, version_cb, &ctx->controller);
 
-    return ERR(ziti);
+    uv_timer_init(loop, &ctx->session_timer);
+    uv_unref((uv_handle_t *) &ctx->session_timer);
+    ctx->session_timer.data = ctx;
+
+    NEWP(init_req, struct nf_init_req);
+    init_req->init_cb = opts->init_cb;
+    init_req->init_ctx = init_ctx;
+    init_req->nf = ctx;
+    ziti_ctrl_login(&ctx->controller, ctx->opts->config_types, session_cb, init_req);
+
+    CATCH(ziti) {
+        return ERR(ziti);
+    }
+
+    return ZITI_OK;
+}
+
+int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx) {
+
+    NEWP(opts, nf_options);
+    opts->config = config;
+    opts->init_cb = init_cb;
+    opts->config_types = ALL_CONFIG_TYPES;
+
+    return NF_init_opts(opts, loop, init_ctx);
 }
 
 int
@@ -225,7 +271,7 @@ NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop
     init_req->init_cb = init_cb;
     init_req->init_ctx = init_ctx;
     init_req->nf = ctx;
-    ziti_ctrl_login(&ctx->controller, session_cb, init_req);
+    ziti_ctrl_login(&ctx->controller, NULL, session_cb, init_req);
 
     return ZITI_OK;
 }
@@ -363,7 +409,7 @@ static void service_cb (ziti_service *s, ziti_error *err, void *ctx) {
         rc = ZITI_OK;
     }
 
-    req->cb(req->nf, req->service, rc, s ? s->perm_flags : 0, req->cb_ctx);
+    req->cb(req->nf, s, rc, req->cb_ctx);
     FREE(req->service);
     free(req);
 }
@@ -372,7 +418,7 @@ int NF_service_available(nf_context nf, const char *service, nf_service_cb cb, v
     ziti_service *s;
     LIST_FOREACH (s, &nf->services, _next) {
         if (strcmp(service, s->name) == 0) {
-            cb(nf, service, ZITI_OK, s->perm_flags, ctx);
+            cb(nf, s, ZITI_OK, ctx);
         }
     }
 

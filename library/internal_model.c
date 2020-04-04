@@ -17,8 +17,13 @@ limitations under the License.
 
 #include <internal_model.h>
 #include <nf/ziti_model.h>
+#include <nf/errors.h>
+
+#include <string.h>
 
 IMPL_MODEL(ziti_service, ZITI_SERVICE_MODEL)
+
+IMPL_MODEL(ziti_intercept, ZITI_INTERCEPT_MODEL)
 
 IMPL_MODEL(nf_id_cfg, ZITI_ID_CFG_MODEL)
 
@@ -41,3 +46,21 @@ IMPL_MODEL(ziti_error, ZITI_ERROR_MODEL)
 IMPL_MODEL(ziti_enrollment_jwt_header, ZITI_ENROLLMENT_JWT_HEADER_MODEL)
 
 IMPL_MODEL(ziti_enrollment_jwt, ZITI_ENROLLMENT_JWT_MODEL)
+
+const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type) {
+    return (const char *) model_map_get(&service->config, cfg_type);
+}
+
+int ziti_service_get_config(ziti_service *service, const char *cfg_type, void *cfg,
+                            int (*parser)(void *, const char *, size_t)) {
+    const char *cfg_json = ziti_service_get_raw_config(service, cfg_type);
+    if (cfg_json == NULL) {
+        return ZITI_CONFIG_NOT_FOUND;
+    }
+
+    if (parser(cfg, cfg_json, strlen(cfg_json)) != 0) {
+        return ZITI_INVALID_CONFIG;
+    };
+
+    return ZITI_OK;
+}

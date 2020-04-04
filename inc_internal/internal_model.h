@@ -19,12 +19,7 @@ limitations under the License.
 #define ZITI_SDK_INTERNAL_MODEL_H
 
 #include "nf/model_support.h"
-
-#define ZITI_SERVICE_MODEL(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__) \
-XX(name, string, none, name, __VA_ARGS__) \
-XX(permissions, string, array, permissions, __VA_ARGS__) \
-XX(perm_flags, int, none, NULL, __VA_ARGS__)
+#include "nf/ziti_model.h"
 
 #define ZITI_ID_CFG_MODEL(XX, ...) \
 XX(cert, string, none, cert, __VA_ARGS__) \
@@ -50,10 +45,6 @@ XX(session_type, string, none, type, __VA_ARGS__) \
 XX(edge_routers, ziti_edge_router, array, edgeRouters, __VA_ARGS__) \
 XX(service_id, string, none, NULL, __VA_ARGS__)
 
-#define ZITI_IDENTITY_MODEL(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__) \
-XX(name, string, none, name, __VA_ARGS__)
-
 #define ZITI_SESSION_MODEL(XX, ...)\
 XX(id, string, none, id, __VA_ARGS__) \
 XX(token, string, none, token, __VA_ARGS__) \
@@ -78,11 +69,10 @@ XX(token, string, none, jti, __VA_ARGS__)
 extern "C" {
 #endif
 
-DECLARE_MODEL(ziti_identity, ZITI_IDENTITY_MODEL)
 
 DECLARE_MODEL(nf_id_cfg, ZITI_ID_CFG_MODEL)
 DECLARE_MODEL(nf_config, ZITI_CONFIG_MODEL)
-DECLARE_MODEL(ziti_service, ZITI_SERVICE_MODEL)
+
 
 DECLARE_MODEL(ziti_ingress, ZITI_INGRESS_MODEL)
 DECLARE_MODEL(ziti_edge_router, ZITI_EDGE_ROUTER_MODEL)

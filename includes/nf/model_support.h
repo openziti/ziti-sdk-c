@@ -30,6 +30,28 @@ limitations under the License.
 
 #include <uv_mbed/queue.h>
 
+/**
+ * set of macros to help generate struct and function for our model;
+ *
+ * - DECLARE_MODEL(type, model_def) :
+ *    `type` name of the struct,
+ *    `model_def` - marco defining fields for the model
+ *
+ *    NOTE: matching IMPL_MODEL macro in model.c is used to generate function implementations
+ *
+ * Fields are defined with name, type, type modifier, and path (for JSON mapping)
+ *   type could be primitives (bool, int, string, timestamp - string in ISO8601 format) or other model types
+ *   type modifier: none, ptr, array
+ *
+ * The following functions are generated:
+ * - int parse_TYPE(TYPE*, json, len) -- parses json into an allocated struct, returns 0 if successful, -1 otherwise
+ *
+ * - void free_TYPE(TYPE *obj)   -- frees struct
+ *
+ * - int dump_TYPE(TYPE *obj, int indent) -- prints the struct to `stdout`,
+ *              `indent` is used for printing nested model objects
+ */
+
 #define MODEL_API
 
 #define none(t) t
@@ -143,7 +165,25 @@ ZITI_FUNC extern type_meta *get_timestamp_meta();
 
 ZITI_FUNC extern type_meta *get_json_meta();
 
+ZITI_FUNC extern type_meta *get_model_map_meta();
+
 typedef struct timeval timestamp;
+
+struct model_map_entry {
+    char *key;
+    void *value;
+    LIST_ENTRY(model_map_entry) _next;
+};
+
+typedef struct model_map {
+    LIST_HEAD(en, model_map_entry) entries;
+} model_map;
+
+ZITI_FUNC void model_map_set(model_map *map, const char* key, void * val);
+ZITI_FUNC void* model_map_get(model_map *map, const char* key);
+ZITI_FUNC void model_map_clear(model_map *map, _free_f val_free_func);
+
+
 #if __cplusplus
 }
 #endif
