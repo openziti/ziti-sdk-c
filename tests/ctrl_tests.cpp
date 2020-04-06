@@ -103,7 +103,7 @@ TEST_CASE("controller_test","[integ]") {
     WHEN("get version and login") {
 
         ziti_ctrl_get_version(&ctrl, resp_cb, &version);
-        ziti_ctrl_login(&ctrl, resp_cb, &session);
+        ziti_ctrl_login(&ctrl, NULL, resp_cb, &session);
 
         uv_run(loop, UV_RUN_DEFAULT);
 
@@ -133,7 +133,7 @@ TEST_CASE("controller_test","[integ]") {
     WHEN("try to login and get non-existing service") {
         resp_capture<ziti_service> service2;
 
-        ziti_ctrl_login(&ctrl, resp_cb, &session);
+        ziti_ctrl_login(&ctrl, NULL, resp_cb, &session);
         ziti_ctrl_get_service(&ctrl, "this-service-should-not-exist", resp_cb, &service2);
 
         int rc = uv_run(loop, UV_RUN_DEFAULT);
@@ -164,7 +164,7 @@ TEST_CASE("controller_test","[integ]") {
             ziti_ctrl_logout(re->c, logout_cb, &re->logout);
 
         };
-        ziti_ctrl_login(&ctrl, resp_cb, &r.session);
+        ziti_ctrl_login(&ctrl, NULL, resp_cb, &r.session);
         ziti_ctrl_get_service(&ctrl, "wttr.in", serv_cb, &r);
 
         int rc = uv_run(loop, UV_RUN_DEFAULT);

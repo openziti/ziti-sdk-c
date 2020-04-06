@@ -32,18 +32,24 @@ int load_config_file(const char *filename, nf_config **cfg) {
         return ZITI_CONFIG_NOT_FOUND;
     }
 
-    FILE* file = fopen(filename, "r");
+    FILE *file = fopen(filename, "r");
 
     size_t config_len = (size_t) stats.st_size;
-    char * config = malloc(config_len);
+    char *config = malloc(config_len);
     size_t rc;
     if ((rc = fread(config, 1, config_len, file)) != config_len) {
         ZITI_LOG(WARN, "failed to read config in full [%zd/%zd]: %s(%d)", rc, config_len, strerror(errno), errno);
     }
     fclose(file);
 
-    *cfg = parse_nf_config(config, config_len);
+    nf_config *c;
+    if (parse_nf_config_ptr(&c, config, config_len) != 0) {
+        free_nf_config(c);
+        FREE(c);
+        return ZITI_INVALID_CONFIG;
+    }
 
+    *cfg = c;
     free(config);
 
     return ZITI_OK;

@@ -256,11 +256,11 @@ static void on_client(uv_stream_t *server, int status) {
 
 }
 
-static void service_avail_cb(nf_context nf_ctx, const char* service, int status, unsigned int permissions, void *ctx) {
+static void service_avail_cb(nf_context nf_ctx, ziti_service *service, int status, void *ctx) {
     struct listener *l = ctx;
     PREPF(uv, uv_strerror);
 
-    if (status == ZITI_OK && (permissions & ZITI_CAN_DIAL) ) {
+    if (status == ZITI_OK && (service->perm_flags & ZITI_CAN_DIAL)) {
         ZITI_LOG(INFO, "starting listener for service[%s] on port[%d]", l->service_name, l->port);
 
         NEWP(addr, struct sockaddr_in);
@@ -268,9 +268,20 @@ static void service_avail_cb(nf_context nf_ctx, const char* service, int status,
         TRY(uv, uv_tcp_bind(&l->server, (const struct sockaddr *) addr, 0));
         TRY(uv, uv_listen((uv_stream_t *) &l->server, 5, on_client));
         free(addr);
+
+        // this is for illustration purposes only
+        ziti_intercept intercept;
+        int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept, parse_ziti_intercept);
+        if (rc != 0) {
+            ZITI_LOG(ERROR, "failed to parse client intercept");
+        }
+        else {
+            ZITI_LOG(INFO, "should intercepting %s:%d", intercept.hostname, intercept.port);
+            free_ziti_intercept(&intercept);
+        }
     }
     else {
-        ZITI_LOG(ERROR, "service %s is not available. not starting listener", service);
+        ZITI_LOG(ERROR, "service %s is not available. not starting listener", l->service_name);
     }
 
     CATCH(uv) {

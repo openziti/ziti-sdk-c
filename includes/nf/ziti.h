@@ -27,27 +27,8 @@ limitations under the License.
 #include <uv_mbed/tls_engine.h>
 #include "errors.h"
 
-#if defined(BUILDING_ZITI_SHARED) && defined(USING_ZITI_SHARED)
-#error "Define either BUILDING_ZITI_SHARED or USING_ZITI_SHARED, not both."
-#endif
-
-#ifndef ZITI_FUNC
-
-#ifdef _WIN32
-# if defined(BUILDING_ZITI_SHARED)
-#   define ZITI_FUNC __declspec(dllexport)
-# elif defined(USING_ZITI_SHARED)
-#   define ZITI_FUNC __declspec(dllimport)
-# else
-#   define ZITI_FUNC /* nothing */
-# endif
-#elif __GNUC__ >= 4
-# define ZITI_FUNC __attribute__((visibility("default")))
-#else
-# define ZITI_FUNC /* nothing */
-#endif
-
-#endif
+#include "externs.h"
+#include "ziti_model.h"
 
 
 #ifdef __cplusplus
@@ -128,7 +109,24 @@ typedef void (*nf_init_cb)(nf_context nf_ctx, int status, void* init_ctx);
  *
  * @see NF_service_available(), ZITI_ERRORS
  */
-typedef void (*nf_service_cb)(nf_context nf_ctx, const char* service_name, int status, unsigned int flags, void *data);
+typedef void (*nf_service_cb)(nf_context nf_ctx, ziti_service *, int status, void *data);
+
+/**
+ * @brief nf_context initialization options
+ *
+ * @see NF_init_opts()
+ */
+typedef struct nf_options_s {
+    const char* config;
+    const char* controller;
+    tls_context *tls;
+
+    const char** config_types;
+    nf_init_cb init_cb;
+    nf_service_cb service_cb;
+
+    int refresh_interval;
+} nf_options;
 
 /**
  * @brief Data callback.
@@ -215,10 +213,11 @@ typedef void (*nf_write_cb)(nf_connection conn, ssize_t status, void *write_ctx)
  * @param data identity json data buffer
  * @param length size of identity json or error code as defined in #ZITI_ERRORS
  * @param err_message description of error, or NULL if enrollment succeeded
+ * @param enroll_ctx additional context to be passed into #nf_enroll_cb callback
  *
  * @see NF_enroll(), ZITI_ERRORS
  */
-typedef void (*nf_enroll_cb)(uint8_t *data, int length, char* err_message);
+typedef void (*nf_enroll_cb)(uint8_t *data, int length, char* err_message, void* enroll_ctx);
 
 /**
  * @brief Performs a Ziti enrollment.
@@ -230,10 +229,11 @@ typedef void (*nf_enroll_cb)(uint8_t *data, int length, char* err_message);
  * @param jwt location of JWT file
  * @param loop libuv event loop
  * @param enroll_cb callback to be called when enrollment is complete
- *
+ * @param enroll_ctx additional context to be passed into #nf_enroll_cb callback
+
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
-extern int NF_enroll(const char* jwt, uv_loop_t* loop, nf_enroll_cb enroll_cb);
+extern int NF_enroll(const char* jwt, uv_loop_t* loop, nf_enroll_cb enroll_cb, void* enroll_ctx);
 
 /**
  * @brief Initializes a Ziti Edge identity.
@@ -257,6 +257,7 @@ extern int NF_enroll(const char* jwt, uv_loop_t* loop, nf_enroll_cb enroll_cb);
 ZITI_FUNC
 extern int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx);
 
+
 /**
  * @brief Initialize Ziti Edge identity context with the provided TLS context.
  *
@@ -277,6 +278,8 @@ ZITI_FUNC
 extern int
 NF_init_with_tls(const char* ctrl_url, tls_context* tls_context, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx);
 
+ZITI_FUNC
+extern int NF_init_opts(nf_options *options, uv_loop_t *loop, void *init_ctx);
 /**
  * @brief Sets connect and write timeouts(in millis).
  *

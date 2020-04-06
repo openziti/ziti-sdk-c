@@ -305,7 +305,8 @@ static void process_edge_message(struct nf_conn *conn, message *msg) {
 
         case ContentTypeData:
             assert(conn->state == Connected);
-            conn->data_cb(conn, msg->body, msg->header.body_len);
+
+            conn_inbound_data_msg(conn, msg);
             break;
 
         case ContentTypeDial:

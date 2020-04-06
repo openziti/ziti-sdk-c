@@ -69,8 +69,8 @@ int verify_rs256(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     unsigned char hash[ZITI_MD_MAX_SIZE_256];
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
-    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
-    if( ( ret = mbedtls_pk_verify( ctx, MBEDTLS_MD_SHA256, hash, 0, ecfg->jwt_sig, ecfg->jwt_sig_len ) ) != 0 ) {
+    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %zd", ecfg->jwt_sig_len);
+    if ((ret = mbedtls_pk_verify(ctx, MBEDTLS_MD_SHA256, hash, 0, ecfg->jwt_sig, ecfg->jwt_sig_len)) != 0) {
         ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
         return ZITI_JWT_VERIFICATION_FAILED;
     }
@@ -117,9 +117,9 @@ int verify_es256(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     unsigned char hash[ZITI_MD_MAX_SIZE_256];
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
-    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
-    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec( *ctx );
-    if( ( ret = psa_ecdsa_verify( ecp, hash, ZITI_MD_MAX_SIZE_256, ecfg->jwt_sig, ecfg->jwt_sig_len) ) != 0 ) {
+    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %zd", ecfg->jwt_sig_len);
+    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec(*ctx);
+    if ((ret = psa_ecdsa_verify(ecp, hash, ZITI_MD_MAX_SIZE_256, ecfg->jwt_sig, ecfg->jwt_sig_len)) != 0) {
         ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
         return ZITI_JWT_VERIFICATION_FAILED;
     }
@@ -132,9 +132,9 @@ int verify_es384(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     unsigned char hash[ZITI_MD_MAX_SIZE_512];
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA384);
     mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
-    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
-    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec( *ctx );
-    if( ( ret = psa_ecdsa_verify( ecp, hash, ZITI_MD_MAX_SIZE_512, ecfg->jwt_sig, ecfg->jwt_sig_len) ) != 0 ) {
+    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %zd", ecfg->jwt_sig_len);
+    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec(*ctx);
+    if ((ret = psa_ecdsa_verify(ecp, hash, ZITI_MD_MAX_SIZE_512, ecfg->jwt_sig, ecfg->jwt_sig_len)) != 0) {
         ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
         return ZITI_JWT_VERIFICATION_FAILED;
     }
@@ -146,16 +146,16 @@ int verify_es512(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     unsigned char hash[ZITI_MD_MAX_SIZE_512];
     const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA512);
     mbedtls_md(md_info, ecfg->jwt_signing_input, strlen(ecfg->jwt_signing_input), hash);
-    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %d", ecfg->jwt_sig_len);
-    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec( *ctx );
-    if( ( ret = psa_ecdsa_verify( ecp, hash, ZITI_MD_MAX_SIZE_512, ecfg->jwt_sig, ecfg->jwt_sig_len) ) != 0 ) {
+    ZITI_LOG(DEBUG, "ecfg->jwt_sig_len is: %zd", ecfg->jwt_sig_len);
+    mbedtls_ecp_keypair *ecp = mbedtls_pk_ec(*ctx);
+    if ((ret = psa_ecdsa_verify(ecp, hash, ZITI_MD_MAX_SIZE_512, ecfg->jwt_sig, ecfg->jwt_sig_len)) != 0) {
         ZITI_LOG(ERROR, "mbedtls_pk_verify returned -0x%x\n\n", -ret);
         return ZITI_JWT_VERIFICATION_FAILED;
     }
     return ZITI_OK;
 }
 
-int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enroll_cb) {
+int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enroll_cb, void* external_enroll_ctx) {
     init_debug();
 
     int ret;
@@ -163,11 +163,11 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     uv_timeval64_t start_time;
     uv_gettimeofday(&start_time);
 
-    struct tm *start_tm = gmtime((const time_t)&start_time.tv_sec);
+    struct tm *start_tm = gmtime((const time_t *) &start_time.tv_sec);
     char time_str[32];
     strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
 
-    ZITI_LOG(INFO, "ZitiSDK version %s @%s(%s) starting at (%s.%03d)",
+    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
             ziti_get_version(false), ziti_git_commit(), ziti_git_branch(),
             time_str, start_time.tv_usec/1000);
 
@@ -175,6 +175,7 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     
     ecfg = calloc(1, sizeof(enroll_cfg));
     ecfg->external_enroll_cb = external_enroll_cb;
+    ecfg->external_enroll_ctx = external_enroll_ctx;
 
     TRY(ziti, load_jwt(jwt_file, ecfg, &ecfg->zejh, &ecfg->zej));
     if (DEBUG <= ziti_debug_level) {
@@ -370,6 +371,12 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
 
     CATCH(ziti);
 
+    if (ERR(ziti)) {
+        if (external_enroll_cb) {
+            external_enroll_cb(NULL, ERR(ziti), "enroll failed", external_enroll_ctx);
+        }
+    }
+
     return ERR(ziti);
 }
 
@@ -387,14 +394,14 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
     if ( (NULL == base64_encoded_pkcs7) || (NULL != err)) {
         ZITI_LOG(DEBUG, "err->message is: %s", err->message);
         if (enroll_req->enroll_cb) {
-            enroll_req->enroll_cb(NULL, 0, err->code);
+            enroll_req->enroll_cb(NULL, 0, err->code, enroll_req->external_enroll_ctx);
         }
         return;
     }
 
     if( ( rc = extract_well_known_certs( base64_encoded_pkcs7, req ) ) != 0 ) {
         if (enroll_req->enroll_cb) {
-            enroll_req->enroll_cb(NULL, ZITI_PKCS7_ASN1_PARSING_FAILED, "cannot extract well-known certs");
+            enroll_req->enroll_cb(NULL, ZITI_PKCS7_ASN1_PARSING_FAILED, "cannot extract well-known certs", enroll_req->external_enroll_ctx);
         }
         return;
     }
@@ -433,10 +440,10 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
 
     tls_context *tls = NULL;
 
-    tls = default_tls_context(ca, (strlen(ca) + 1 ));
-    
+    tls = default_tls_context(ca, (strlen(ca) + 1));
+
     ZITI_LOG(DEBUG, "CA: \n%s\n", ca);
-    ZITI_LOG(DEBUG, "CA len: %d", strlen(ca));
+    ZITI_LOG(DEBUG, "CA len: %zd", strlen(ca));
 
     enroll_req->ecfg->CA = ca;
 
@@ -450,10 +457,11 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
 
     NEWP(enroll_req2, struct nf_enroll_req);
     enroll_req2->enroll_cb = enroll_req->ecfg->external_enroll_cb;
+    enroll_req2->external_enroll_ctx = enroll_req->ecfg->external_enroll_ctx;
     enroll_req2->enroll_ctx = enroll_ctx;
     enroll_req2->ecfg = enroll_req->ecfg;
 
-    ziti_ctrl_enroll(&enroll_ctx->controller, enroll_req->ecfg, enroll_cb, enroll_req);
+    ziti_ctrl_enroll(&enroll_ctx->controller, enroll_req2->ecfg, enroll_cb, enroll_req2);
 }
 
 
@@ -467,7 +475,7 @@ static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
                  ctx->controller.client.host, ctx->controller.client.port, err->code, err->message);
 
         if (enroll_req->enroll_cb) {
-            enroll_req->enroll_cb(NULL, ZITI_JWT_INVALID, err->code);
+            enroll_req->enroll_cb(NULL, ZITI_JWT_INVALID, err->code, enroll_req->external_enroll_ctx);
         }
 
         free_ziti_error(err);
@@ -480,7 +488,7 @@ static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
         size_t len = mjson_printf(
             &mjson_print_dynamic_buf,
             &content,
-            "{\n\t\"ztAPI\": %Q, \n\t\"id\": {\n\t\t\"key\": \"pem:%s\", \n\t\t\"cert\": \"pem:%s\", \n\t\t\"ca\": \"pem:-----BEGIN CERTIFICATE-----\n%s\n-----END CERTIFICATE-----\"\n\t}\n}",
+            "{\n\t\"ztAPI\": %Q, \n\t\"id\": {\n\t\t\"key\": \"pem:%s\", \n\t\t\"cert\": \"pem:%s\", \n\t\t\"ca\": \"pem:%s\"\n\t}\n}",
             enroll_req->ecfg->zej->controller,
             enroll_req->ecfg->private_key,
             cert,
@@ -488,7 +496,7 @@ static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
         );
 
         if (enroll_req->enroll_cb) {
-            enroll_req->enroll_cb(content, strlen(content), NULL);
+            enroll_req->enroll_cb(content, strlen(content), NULL, enroll_req->external_enroll_ctx);
         }
 
         FREE(content);

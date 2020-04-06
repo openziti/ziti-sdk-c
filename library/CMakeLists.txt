@@ -1,5 +1,5 @@
-set(ZITI_HEADER_FILES 
-    ${PROJECT_SOURCE_DIR}/includes/nf/errors.h 
+set(ZITI_HEADER_FILES
+    ${PROJECT_SOURCE_DIR}/includes/nf/errors.h
     ${PROJECT_SOURCE_DIR}/includes/nf/ziti.h
 )
 
@@ -13,15 +13,15 @@ SET(ZITI_SRC_FILES
         ziti_pkcs7.c
         jwt.c
         ziti_ctrl.c
-        model.c
-        ziti_model.c
+        model_support.c
+        internal_model.c
         connect.c
         channel.c
         message.c
         buffer.c
 )
 
-SET(ZITI_PRIVATE_SRC_FILES 
+SET(ZITI_PRIVATE_SRC_FILES
     ${PROJECT_SOURCE_DIR}/deps/http-parser/http_parser.c
 )
 
@@ -57,9 +57,9 @@ set_property(TARGET ziti ziti_dll PROPERTY C_STANDARD 11)
 target_sources(ziti     PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 target_sources(ziti_dll PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 
-target_link_libraries(ziti     PUBLIC uv_mbed)
-target_link_libraries(ziti_dll PUBLIC uv_mbed)
-        
+target_link_libraries(ziti     PUBLIC uv_mbed sodium)
+target_link_libraries(ziti_dll PUBLIC uv_mbed sodium)
+
 if (NOT WIN32)
     target_link_libraries(ziti     PUBLIC m )
     target_link_libraries(ziti_dll PUBLIC m )
@@ -91,7 +91,7 @@ if (WIN32)
     # on windows GDI defines ERROR which conflicts with the SDK declaration of DEBUG_LEVELS in utils.h
     target_compile_definitions(ziti     PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
     target_compile_definitions(ziti_dll PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
-    
+
     target_link_libraries(ziti     PUBLIC crypt32)
     target_link_libraries(ziti_dll PUBLIC crypt32)
 endif()
@@ -117,6 +117,10 @@ install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/deps/mbedtls/LICENSE DESTINATION 
 install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/deps/uv_link_t/README.md DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
 install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/deps/mbedtls/crypto/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls/crypto)
 install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_mbed)
+
+if (NOT WIN32) # no license file windows pre-built bundle
+install(FILES ${CMAKE_BINARY_DIR}/_deps/libsodium-src/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/libsodium)
+endif()
 
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ziti.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
