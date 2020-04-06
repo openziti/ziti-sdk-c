@@ -253,34 +253,30 @@ extern int NF_enroll(const char* jwt, uv_loop_t* loop, nf_enroll_cb enroll_cb, v
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  *
- * @see NF_init_with_tls()
+ * @see NF_init_opts()
+ * @deprecated
  */
 ZITI_FUNC
 extern int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx);
 
 
 /**
- * @brief Initialize Ziti Edge identity context with the provided TLS context.
+ * @brief Initialize Ziti Edge identity context with the provided options.
  *
- * This function is very similar to NF_init() with the exception that it allows the tls_context to be
- * specified. This allows for a TLS implementation other than the included mbed.
+ * This function is a more flexible version of NF_init() with the ability to specify tls_context, controller,
+ * and refresh options.
  *
- * @param ctrl_url the url of the Ziti Controller
- * @param tls_context the context to use when establishing new TLS connections
+ * @param options options to initialize with
  * @param loop libuv event loop
- * @param init_cb callback to be called when initialization is complete
- * @param init_ctx additional context to be passed into the #nf_init_cb callback
+ * @param init_ctx additional context to be passed into the #nf_options.nf_init_cb callback
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  *
  * @see NF_init()
  */
 ZITI_FUNC
-extern int
-NF_init_with_tls(const char* ctrl_url, tls_context* tls_context, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx);
-
-ZITI_FUNC
 extern int NF_init_opts(nf_options *options, uv_loop_t *loop, void *init_ctx);
+
 /**
  * @brief Sets connect and write timeouts(in millis).
  *

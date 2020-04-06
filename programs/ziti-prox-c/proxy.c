@@ -257,7 +257,7 @@ static void on_client(uv_stream_t *server, int status) {
 }
 
 static void on_listener_close(uv_handle_t *lh) {
-    uv_tcp_t *l = lh;
+    uv_tcp_t *l = (uv_tcp_t *) lh;
     uv_tcp_init(lh->loop, l);
 }
 
@@ -275,7 +275,8 @@ static void update_listener(ziti_service *service, int status, struct listener *
 
         // this is for illustration purposes only
         ziti_intercept intercept;
-        int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept, parse_ziti_intercept);
+        int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept,
+                                         (int (*)(void *, const char *, size_t)) parse_ziti_intercept);
         if (rc != 0) {
             ZITI_LOG(ERROR, "failed to parse client intercept");
         }

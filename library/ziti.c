@@ -247,41 +247,6 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
     return NF_init_opts(opts, loop, init_ctx);
 }
 
-int
-NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop, nf_init_cb init_cb, void *init_ctx) {
-    init_debug();
-    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s)", ziti_get_version(false), ziti_git_commit(), ziti_git_branch());
-
-    if (tls_context == NULL) {
-        ZITI_LOG(ERROR, "tls context is required");
-        return ZITI_INVALID_CONFIG;
-    }
-
-    NEWP(ctx, struct nf_ctx);
-    ctx->tlsCtx = tls_context;
-    ctx->loop = loop;
-    ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
-    LIST_INIT(&ctx->connect_requests);
-
-    uv_async_init(loop, &ctx->connect_async, async_connects);
-    uv_unref((uv_handle_t *) &ctx->connect_async);
-
-    ziti_ctrl_init(loop, &ctx->controller, ctrl_url, tls_context);
-    ziti_ctrl_get_version(&ctx->controller, version_cb, &ctx->controller);
-
-    uv_timer_init(loop, &ctx->session_timer);
-    uv_unref((uv_handle_t *) &ctx->session_timer);
-    ctx->session_timer.data = ctx;
-
-    NEWP(init_req, struct nf_init_req);
-    init_req->init_cb = init_cb;
-    init_req->init_ctx = init_ctx;
-    init_req->nf = ctx;
-    ziti_ctrl_login(&ctx->controller, NULL, session_cb, init_req);
-
-    return ZITI_OK;
-}
-
 int NF_set_timeout(nf_context ctx, int timeout) {
     if (timeout > 0) {
         ctx->ziti_timeout = timeout;
