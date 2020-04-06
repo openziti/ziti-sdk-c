@@ -126,6 +126,7 @@ typedef struct nf_options_s {
     nf_service_cb service_cb;
 
     int refresh_interval;
+    void *ctx;
 } nf_options;
 
 /**

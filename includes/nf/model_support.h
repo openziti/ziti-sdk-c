@@ -166,23 +166,31 @@ ZITI_FUNC extern type_meta *get_model_map_meta();
 typedef struct timeval timestamp;
 
 
-
-typedef void* model_map_iter;
+typedef void *model_map_iter;
 
 typedef struct model_map {
     void *entries;
 } model_map;
 
-ZITI_FUNC void* model_map_set(model_map *map, const char* key, void * val);
-ZITI_FUNC void* model_map_get(model_map *map, const char* key);
+ZITI_FUNC void *model_map_set(model_map *map, const char *key, void *val);
+
+ZITI_FUNC void *model_map_get(model_map *map, const char *key);
+
+ZITI_FUNC void *model_map_remove(model_map *map, const char *key);
+
 ZITI_FUNC void model_map_clear(model_map *map, _free_f val_free_func);
 
 ZITI_FUNC model_map_iter model_map_iterator(model_map *map);
-ZITI_FUNC const char* model_map_it_key(model_map_iter *it);
-ZITI_FUNC void* model_map_it_value(model_map_iter it);
+
+ZITI_FUNC const char *model_map_it_key(model_map_iter *it);
+
+ZITI_FUNC void *model_map_it_value(model_map_iter it);
+
 ZITI_FUNC model_map_iter model_map_it_next(model_map_iter it);
 
-#define var(x,y) x##y
+ZITI_FUNC model_map_iter model_map_it_remove(model_map_iter it);
+
+#define var(x, y) x##y
 
 #define MODEL_MAP_FOREACH_l(k, v, map, line) \
 model_map_iter var(e, line);\

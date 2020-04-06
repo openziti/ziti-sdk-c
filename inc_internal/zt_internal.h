@@ -170,16 +170,21 @@ struct nf_ctx {
     tls_context *tlsCtx;
 
     ziti_session *session;
+
+    // map<name,ziti_service>
     model_map services;
+    // map<service_id,ziti_net_session>
     model_map sessions;
 
     uv_timer_t session_timer;
+    uv_timer_t refresh_timer;
 
     uv_loop_t *loop;
     uv_thread_t loop_thread;
     uint32_t ch_counter;
 
-    LIST_HEAD(channels, ziti_channel) channels;
+    // map<erUrl,ziti_channel>
+    model_map channels;
 
     LIST_HEAD(conn_reqs, nf_conn_req) connect_requests;
     uv_async_t connect_async;

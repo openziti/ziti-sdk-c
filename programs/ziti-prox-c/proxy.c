@@ -256,8 +256,12 @@ static void on_client(uv_stream_t *server, int status) {
 
 }
 
-static void service_avail_cb(nf_context nf_ctx, ziti_service *service, int status, void *ctx) {
-    struct listener *l = ctx;
+static void on_listener_close(uv_handle_t *lh) {
+    uv_tcp_t *l = lh;
+    uv_tcp_init(lh->loop, l);
+}
+
+static void update_listener(ziti_service *service, int status, struct listener *l) {
     PREPF(uv, uv_strerror);
 
     if (status == ZITI_OK && (service->perm_flags & ZITI_CAN_DIAL)) {
@@ -281,7 +285,8 @@ static void service_avail_cb(nf_context nf_ctx, ziti_service *service, int statu
         }
     }
     else {
-        ZITI_LOG(ERROR, "service %s is not available. not starting listener", l->service_name);
+        ZITI_LOG(WARN, "service %s is not available. stopping listener[%d]", l->service_name, l->port);
+        uv_close((uv_handle_t *) &l->server, on_listener_close);
     }
 
     CATCH(uv) {
@@ -289,7 +294,18 @@ static void service_avail_cb(nf_context nf_ctx, ziti_service *service, int statu
     }
 }
 
-static void on_nf_init(nf_context nf_ctx, int status, void* ctx) {
+static void service_check_cb(nf_context nf_ctx, ziti_service *service, int status, void *ctx) {
+    listener_l *listeners = ctx;
+
+    struct listener *l = NULL;
+    LIST_FOREACH(l, listeners, next) {
+        if (strcmp(l->service_name, service->name) == 0) {
+            update_listener(service, status, l);
+        }
+    }
+}
+
+static void on_nf_init(nf_context nf_ctx, int status, void *ctx) {
     PREPF(ziti, ziti_errorstr);
     TRY(ziti, status);
     CATCH(ziti) {
@@ -297,18 +313,13 @@ static void on_nf_init(nf_context nf_ctx, int status, void* ctx) {
     }
 
     nf = nf_ctx;
-
-    listener_l *listeners = ctx;
-    struct listener *l;
-    LIST_FOREACH(l, listeners, next) {
-        NF_service_available(nf, l->service_name, service_avail_cb, l);
-    }
 }
 
 
 char* pxoxystrndup(const char* s, int n);
 
 void run(int argc, char **argv) {
+
     PREPF(uv, uv_strerror);
 
     NEWP(loop, uv_loop_t);
@@ -331,7 +342,15 @@ void run(int argc, char **argv) {
         LIST_INSERT_HEAD(&listeners, l, next);
     }
 
-    NF_init(config, loop, on_nf_init, &listeners);
+    nf_options opts = {
+            .config = config,
+            .init_cb = on_nf_init,
+            .service_cb = service_check_cb,
+            .refresh_interval = 10,
+            .ctx = &listeners,
+    };
+
+    NF_init_opts(&opts, loop, &listeners);
 
     TRY(uv, uv_signal_init(loop, &sig));
     sig.data = &listeners;
