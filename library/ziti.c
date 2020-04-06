@@ -460,7 +460,12 @@ static void session_refresh(uv_timer_t *t) {
     ziti_ctrl_current_api_session(&nf->controller, session_cb, req);
 }
 
-static void update_services(ziti_service_array services, ziti_error *r, nf_context nf) {
+static void update_services(ziti_service_array services, ziti_error *error, nf_context nf) {
+    if (error) {
+        ZITI_LOG(ERROR, "failed to get service updates err[%s/%s]", error->code, error->message);
+        return;
+    }
+
     ZITI_LOG(VERBOSE, "processing service updates");
 
     model_map updates = {0};
