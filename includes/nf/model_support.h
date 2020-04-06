@@ -28,8 +28,6 @@ limitations under the License.
 
 #include "externs.h"
 
-#include <uv_mbed/queue.h>
-
 /**
  * set of macros to help generate struct and function for our model;
  *
@@ -63,10 +61,8 @@ limitations under the License.
 #define DECLARE_MODEL(type, model) \
 typedef struct type##_s {\
 model(FIELD_DECL, type) \
-LIST_ENTRY(type##_s) _next; \
 } type;\
 typedef type ** type##_array; \
-typedef LIST_HEAD(type##_l, type##_s) type##_list;\
 MODEL_API type_meta* get_##type##_meta();\
 MODEL_API ptr(type) alloc_##type();\
 MODEL_API void free_##type(type *v); \
@@ -169,19 +165,32 @@ ZITI_FUNC extern type_meta *get_model_map_meta();
 
 typedef struct timeval timestamp;
 
-struct model_map_entry {
-    char *key;
-    void *value;
-    LIST_ENTRY(model_map_entry) _next;
-};
+
+
+typedef void* model_map_iter;
 
 typedef struct model_map {
-    LIST_HEAD(en, model_map_entry) entries;
+    void *entries;
 } model_map;
 
-ZITI_FUNC void model_map_set(model_map *map, const char* key, void * val);
+ZITI_FUNC void* model_map_set(model_map *map, const char* key, void * val);
 ZITI_FUNC void* model_map_get(model_map *map, const char* key);
 ZITI_FUNC void model_map_clear(model_map *map, _free_f val_free_func);
+
+ZITI_FUNC model_map_iter model_map_iterator(model_map *map);
+ZITI_FUNC const char* model_map_it_key(model_map_iter *it);
+ZITI_FUNC void* model_map_it_value(model_map_iter it);
+ZITI_FUNC model_map_iter model_map_it_next(model_map_iter it);
+
+#define var(x,y) x##y
+
+#define MODEL_MAP_FOREACH_l(k, v, map, line) \
+model_map_iter var(e, line);\
+for (var(e,line) = model_map_iterator(&map), k = model_map_it_key(var(e,line)), v = model_map_it_value(var(e,line)); \
+     var(e,line) != NULL; \
+     var(e,line) = model_map_it_next(var(e,line)), k = model_map_it_key(var(e,line)), v = model_map_it_value(var(e,line)))
+
+#define MODEL_MAP_FOREACH(k, v, map) MODEL_MAP_FOREACH_l(k, v, map, __LINE__)
 
 
 #if __cplusplus

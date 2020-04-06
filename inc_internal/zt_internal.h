@@ -19,7 +19,6 @@ limitations under the License.
 
 
 #include <stdbool.h>
-#include <uv_mbed/queue.h>
 #include <uv_mbed/uv_mbed.h>
 
 #include <nf/ziti.h>
@@ -171,8 +170,8 @@ struct nf_ctx {
     tls_context *tlsCtx;
 
     ziti_session *session;
-    ziti_service_list services;
-    ziti_net_session_list net_sessions;
+    model_map services;
+    model_map sessions;
 
     uv_timer_t session_timer;
 

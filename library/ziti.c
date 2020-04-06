@@ -318,13 +318,14 @@ void NF_dump(nf_context ctx) {
 
     printf("\n=================\nServices:\n");
     ziti_service *zs;
-    LIST_FOREACH(zs, &ctx->services, _next) {
+    const char *name;
+    MODEL_MAP_FOREACH(name, zs, ctx->services) {
         dump_ziti_service(zs, 0);
     }
 
     printf("\n==================\nNet Sessions:\n");
     ziti_net_session *it;
-    LIST_FOREACH(it, &ctx->net_sessions, _next) {
+    MODEL_MAP_FOREACH(name, it, ctx->sessions) {
         dump_ziti_net_session(it, 0);
     }
 
@@ -405,7 +406,7 @@ static void service_cb (ziti_service *s, ziti_error *err, void *ctx) {
                 s->perm_flags |= ZITI_CAN_BIND;
             }
         }
-        LIST_INSERT_HEAD(&req->nf->services, s, _next);
+        model_map_set(&req->nf->services, s->name, s);
         rc = ZITI_OK;
     }
 
@@ -415,11 +416,10 @@ static void service_cb (ziti_service *s, ziti_error *err, void *ctx) {
 }
 
 int NF_service_available(nf_context nf, const char *service, nf_service_cb cb, void *ctx) {
-    ziti_service *s;
-    LIST_FOREACH (s, &nf->services, _next) {
-        if (strcmp(service, s->name) == 0) {
-            cb(nf, s, ZITI_OK, ctx);
-        }
+    ziti_service *s = model_map_get(&nf->services, service);
+    if (s != NULL) {
+        cb(nf, s, ZITI_OK, ctx);
+        return ZITI_OK;
     }
 
     NEWP(req, struct service_req_s);
