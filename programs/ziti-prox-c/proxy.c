@@ -318,7 +318,9 @@ static void on_nf_init(nf_context nf_ctx, int status, void *ctx) {
 
 
 char* pxoxystrndup(const char* s, int n);
-
+const char *my_configs[] = {
+        "all", NULL
+};
 void run(int argc, char **argv) {
 
     PREPF(uv, uv_strerror);
@@ -349,6 +351,7 @@ void run(int argc, char **argv) {
             .service_cb = service_check_cb,
             .refresh_interval = 10,
             .ctx = &listeners,
+            .config_types = my_configs,
     };
 
     NF_init_opts(&opts, loop, &listeners);
