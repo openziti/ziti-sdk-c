@@ -3,7 +3,7 @@ include(FetchContent)
 if (WIN32)
 FetchContent_Declare (
         libsodium
-        URL https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-stable-mingw.tar.gz
+        URL https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-stable-msvc.zip
     )
 else()
 FetchContent_Declare (
@@ -38,10 +38,11 @@ endif()
 add_library(sodium IMPORTED STATIC GLOBAL)
 
 if (WIN32)
-    target_include_directories(sodium INTERFACE ${libsodium_SOURCE_DIR}/libsodium-${TARGET_ARCH}/include)
+    
+    target_include_directories(sodium INTERFACE ${libsodium_SOURCE_DIR}/include)
     target_compile_definitions(sodium INTERFACE SODIUM_STATIC)
-    target_link_directories(sodium INTERFACE ${libsodium_SOURCE_DIR}/libsodium-${TARGET_ARCH}/lib)
-    set_target_properties(sodium PROPERTIES IMPORTED_LOCATION ${libsodium_SOURCE_DIR}/libsodium-${TARGET_ARCH}/lib/libsodium.a)
+    target_link_directories(sodium INTERFACE ${libsodium_SOURCE_DIR})
+	set_target_properties(sodium PROPERTIES	IMPORTED_LOCATION ${libsodium_SOURCE_DIR}/${CMAKE_VS_PLATFORM_NAME}/Release/v${MSVC_TOOLSET_VERSION}/static/libsodium${CMAKE_STATIC_LIBRARY_SUFFIX})
 else()
     target_include_directories(sodium INTERFACE ${libsodium_BINARY_DIR}/include)
     set_target_properties(sodium PROPERTIES IMPORTED_LOCATION ${libsodium_BINARY_DIR}/lib/libsodium.a)
