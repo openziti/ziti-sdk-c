@@ -2,13 +2,25 @@ include(FetchContent)
 
 if (WIN32)
 
-     if(CMAKE_VS_PLATFORM_TOOLSET)
+    if(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
            FetchContent_Declare (
 		   libsodium
 		   URL	https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-stable-msvc.zip
 		   )
+           if(CMAKE_EXE_LINKER_FLAGS MATCHES "/machine:x64")
+              set(arch "x64")
+           else()
+              set(arch "Win32")
+           endif()
+           if(CMAKE_BUILD_TYPE)
+              set(build_type ${CMAKE_BUILD_TYPE})
+           else()
+              set(build_type "Debug")
+           endif()
+
            set(libsodium_include_path include)
-           set(libsodium_lib_path ${CMAKE_GENERATOR_PLATFORM}/Release/v${MSVC_TOOLSET_VERSION}/static/libsodium${CMAKE_STATIC_LIBRARY_SUFFIX})
+           set(libsodium_lib_path ${arch}/${build_type}/v${MSVC_TOOLSET_VERSION}/static/libsodium${CMAKE_STATIC_LIBRARY_SUFFIX})
+           message("libsodium = ${libsodium_lib_path}")
     else()
            FetchContent_Declare (
 		   libsodium
