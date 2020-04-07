@@ -11,16 +11,12 @@ message("project version: ${PROJECT_VERSION}")
 message("git info:")
 message("   branch : ${GIT_BRANCH}")
 message("     hash : ${GIT_COMMIT_HASH}")
-message("     date : ${BUILD_DATE}")
+message("	  date : ${BUILD_DATE}")
+
+message("")
+message("using ${CMAKE_GENERATOR}")
 
 if (WIN32)
-    # used with libsodium currently but might be useful elsewhere in the future
-    if (${CMAKE_GENERATOR_PLATFORM} STREQUAL "x64")
-    set (TARGET_ARCH win64)
-    else()
-    set (TARGET_ARCH win32)
-    endif()
-    
     set(CMAKE_INSTALL_LIBDIR lib)
     set(CMAKE_INSTALL_INCLUDEDIR include)
     message("WIN32 build. Creating: ${CMAKE_BINARY_DIR}/cmake_install")
