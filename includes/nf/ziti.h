@@ -27,27 +27,8 @@ limitations under the License.
 #include <uv_mbed/tls_engine.h>
 #include "errors.h"
 
-#if defined(BUILDING_ZITI_SHARED) && defined(USING_ZITI_SHARED)
-#error "Define either BUILDING_ZITI_SHARED or USING_ZITI_SHARED, not both."
-#endif
-
-#ifndef ZITI_FUNC
-
-#ifdef _WIN32
-# if defined(BUILDING_ZITI_SHARED)
-#   define ZITI_FUNC __declspec(dllexport)
-# elif defined(USING_ZITI_SHARED)
-#   define ZITI_FUNC __declspec(dllimport)
-# else
-#   define ZITI_FUNC /* nothing */
-# endif
-#elif __GNUC__ >= 4
-# define ZITI_FUNC __attribute__((visibility("default")))
-#else
-# define ZITI_FUNC /* nothing */
-#endif
-
-#endif
+#include "externs.h"
+#include "ziti_model.h"
 
 
 #ifdef __cplusplus
@@ -128,7 +109,25 @@ typedef void (*nf_init_cb)(nf_context nf_ctx, int status, void* init_ctx);
  *
  * @see NF_service_available(), ZITI_ERRORS
  */
-typedef void (*nf_service_cb)(nf_context nf_ctx, const char* service_name, int status, unsigned int flags, void *data);
+typedef void (*nf_service_cb)(nf_context nf_ctx, ziti_service *, int status, void *data);
+
+/**
+ * @brief nf_context initialization options
+ *
+ * @see NF_init_opts()
+ */
+typedef struct nf_options_s {
+    const char* config;
+    const char* controller;
+    tls_context *tls;
+
+    const char** config_types;
+    nf_init_cb init_cb;
+    nf_service_cb service_cb;
+
+    int refresh_interval;
+    void *ctx;
+} nf_options;
 
 /**
  * @brief Data callback.
@@ -254,30 +253,29 @@ extern int NF_enroll(const char* jwt, uv_loop_t* loop, nf_enroll_cb enroll_cb, v
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  *
- * @see NF_init_with_tls()
+ * @see NF_init_opts()
+ * @deprecated
  */
 ZITI_FUNC
 extern int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx);
 
+
 /**
- * @brief Initialize Ziti Edge identity context with the provided TLS context.
+ * @brief Initialize Ziti Edge identity context with the provided options.
  *
- * This function is very similar to NF_init() with the exception that it allows the tls_context to be
- * specified. This allows for a TLS implementation other than the included mbed.
+ * This function is a more flexible version of NF_init() with the ability to specify tls_context, controller,
+ * and refresh options.
  *
- * @param ctrl_url the url of the Ziti Controller
- * @param tls_context the context to use when establishing new TLS connections
+ * @param options options to initialize with
  * @param loop libuv event loop
- * @param init_cb callback to be called when initialization is complete
- * @param init_ctx additional context to be passed into the #nf_init_cb callback
+ * @param init_ctx additional context to be passed into the #nf_options.nf_init_cb callback
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  *
  * @see NF_init()
  */
 ZITI_FUNC
-extern int
-NF_init_with_tls(const char* ctrl_url, tls_context* tls_context, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx);
+extern int NF_init_opts(nf_options *options, uv_loop_t *loop, void *init_ctx);
 
 /**
  * @brief Sets connect and write timeouts(in millis).

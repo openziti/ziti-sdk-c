@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef ZITI_SDK_ENROLL_H
 #define ZITI_SDK_ENROLL_H
 
+#include <uv_mbed/queue.h>
+
 #define MBEDTLS_PLATFORM_C
 #include <mbedtls/platform.h>
 #include <mbedtls/entropy.h>
@@ -29,7 +31,7 @@ limitations under the License.
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/x509_csr.h>
-#include "ziti_model.h"
+#include "internal_model.h"
 
 
 #ifdef __cplusplus

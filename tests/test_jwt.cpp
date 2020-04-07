@@ -20,7 +20,7 @@ limitations under the License.
 #include "../deps/mjson/mjson.h"
 #include <zt_internal.h>
 #include <utils.h>
-#include "ziti_model.h"
+#include "internal_model.h"
 
 static char* url64to64(const char* in, size_t ilen, size_t *olen) {
     size_t size = ((ilen - 1)/4 + 1) * 4;
@@ -78,7 +78,8 @@ TEST_CASE("parse jwt", "[jwt]") {
     rc = mjson_base64_dec(body64, body64len, body, sizeof(body));
     printf("body = %*.*s, rc = %d\n", rc, rc, body, rc);
 
-    ziti_enrollment_jwt *ze = parse_ziti_enrollment_jwt(body, rc);
+    ziti_enrollment_jwt *ze;
+    parse_ziti_enrollment_jwt_ptr(&ze, body, rc);
     dump_ziti_enrollment_jwt(ze, 0);
 
     printf("ze->controller is: %s\n", ze->controller);

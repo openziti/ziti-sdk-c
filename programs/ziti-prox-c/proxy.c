@@ -256,11 +256,15 @@ static void on_client(uv_stream_t *server, int status) {
 
 }
 
-static void service_avail_cb(nf_context nf_ctx, const char* service, int status, unsigned int permissions, void *ctx) {
-    struct listener *l = ctx;
+static void on_listener_close(uv_handle_t *lh) {
+    uv_tcp_t *l = (uv_tcp_t *) lh;
+    uv_tcp_init(lh->loop, l);
+}
+
+static void update_listener(ziti_service *service, int status, struct listener *l) {
     PREPF(uv, uv_strerror);
 
-    if (status == ZITI_OK && (permissions & ZITI_CAN_DIAL) ) {
+    if (status == ZITI_OK && (service->perm_flags & ZITI_CAN_DIAL)) {
         ZITI_LOG(INFO, "starting listener for service[%s] on port[%d]", l->service_name, l->port);
 
         NEWP(addr, struct sockaddr_in);
@@ -268,9 +272,22 @@ static void service_avail_cb(nf_context nf_ctx, const char* service, int status,
         TRY(uv, uv_tcp_bind(&l->server, (const struct sockaddr *) addr, 0));
         TRY(uv, uv_listen((uv_stream_t *) &l->server, 5, on_client));
         free(addr);
+
+        // this is for illustration purposes only
+        ziti_intercept intercept;
+        int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept,
+                                         (int (*)(void *, const char *, size_t)) parse_ziti_intercept);
+        if (rc != 0) {
+            ZITI_LOG(ERROR, "failed to parse client intercept");
+        }
+        else {
+            ZITI_LOG(INFO, "should intercepting %s:%d", intercept.hostname, intercept.port);
+            free_ziti_intercept(&intercept);
+        }
     }
     else {
-        ZITI_LOG(ERROR, "service %s is not available. not starting listener", service);
+        ZITI_LOG(WARN, "service %s is not available. stopping listener[%d]", l->service_name, l->port);
+        uv_close((uv_handle_t *) &l->server, on_listener_close);
     }
 
     CATCH(uv) {
@@ -278,7 +295,18 @@ static void service_avail_cb(nf_context nf_ctx, const char* service, int status,
     }
 }
 
-static void on_nf_init(nf_context nf_ctx, int status, void* ctx) {
+static void service_check_cb(nf_context nf_ctx, ziti_service *service, int status, void *ctx) {
+    listener_l *listeners = ctx;
+
+    struct listener *l = NULL;
+    LIST_FOREACH(l, listeners, next) {
+        if (strcmp(l->service_name, service->name) == 0) {
+            update_listener(service, status, l);
+        }
+    }
+}
+
+static void on_nf_init(nf_context nf_ctx, int status, void *ctx) {
     PREPF(ziti, ziti_errorstr);
     TRY(ziti, status);
     CATCH(ziti) {
@@ -286,18 +314,15 @@ static void on_nf_init(nf_context nf_ctx, int status, void* ctx) {
     }
 
     nf = nf_ctx;
-
-    listener_l *listeners = ctx;
-    struct listener *l;
-    LIST_FOREACH(l, listeners, next) {
-        NF_service_available(nf, l->service_name, service_avail_cb, l);
-    }
 }
 
 
 char* pxoxystrndup(const char* s, int n);
-
+const char *my_configs[] = {
+        "all", NULL
+};
 void run(int argc, char **argv) {
+
     PREPF(uv, uv_strerror);
 
     NEWP(loop, uv_loop_t);
@@ -320,7 +345,16 @@ void run(int argc, char **argv) {
         LIST_INSERT_HEAD(&listeners, l, next);
     }
 
-    NF_init(config, loop, on_nf_init, &listeners);
+    nf_options opts = {
+            .config = config,
+            .init_cb = on_nf_init,
+            .service_cb = service_check_cb,
+            .refresh_interval = 10,
+            .ctx = &listeners,
+            .config_types = my_configs,
+    };
+
+    NF_init_opts(&opts, loop, &listeners);
 
     TRY(uv, uv_signal_init(loop, &sig));
     sig.data = &listeners;
