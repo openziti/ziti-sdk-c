@@ -7,7 +7,7 @@ add_executable(all_tests
         pkcs7_tests.cpp
         model_tests.cpp
         )
-set_property(TARGET all_tests PROPERTY CXX_STANDARD 11)
+set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
 
 target_include_directories(all_tests
         PRIVATE ${CMAKE_SOURCE_DIR}/inc_internal)
