@@ -2,7 +2,6 @@ cmake_minimum_required (VERSION 3.12)
 include(git.cmake)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-
 project (ziti-sdk
         VERSION ${ver}
         LANGUAGES C CXX
@@ -12,7 +11,10 @@ message("project version: ${PROJECT_VERSION}")
 message("git info:")
 message("   branch : ${GIT_BRANCH}")
 message("     hash : ${GIT_COMMIT_HASH}")
-message("     date : ${BUILD_DATE}")
+message("	  date : ${BUILD_DATE}")
+
+message("")
+message("using ${CMAKE_GENERATOR}")
 
 if (WIN32)
     set(CMAKE_INSTALL_LIBDIR lib)
