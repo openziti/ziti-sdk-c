@@ -218,6 +218,12 @@ int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
     uv_unref((uv_handle_t *) &ctx->session_timer);
     ctx->session_timer.data = ctx;
 
+    uv_timer_init(loop, &ctx->refresh_timer);
+    if (ctx->opts->refresh_interval == 0) {
+        uv_unref((uv_handle_t *) &ctx->refresh_timer);
+    }
+    ctx->refresh_timer.data = ctx;
+
     NEWP(init_req, struct nf_init_req);
     init_req->init_cb = opts->init_cb;
     init_req->init_ctx = init_ctx;
@@ -239,41 +245,6 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
     opts->config_types = ALL_CONFIG_TYPES;
 
     return NF_init_opts(opts, loop, init_ctx);
-}
-
-int
-NF_init_with_tls(const char *ctrl_url, tls_context *tls_context, uv_loop_t *loop, nf_init_cb init_cb, void *init_ctx) {
-    init_debug();
-    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s)", ziti_get_version(false), ziti_git_commit(), ziti_git_branch());
-
-    if (tls_context == NULL) {
-        ZITI_LOG(ERROR, "tls context is required");
-        return ZITI_INVALID_CONFIG;
-    }
-
-    NEWP(ctx, struct nf_ctx);
-    ctx->tlsCtx = tls_context;
-    ctx->loop = loop;
-    ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
-    LIST_INIT(&ctx->connect_requests);
-
-    uv_async_init(loop, &ctx->connect_async, async_connects);
-    uv_unref((uv_handle_t *) &ctx->connect_async);
-
-    ziti_ctrl_init(loop, &ctx->controller, ctrl_url, tls_context);
-    ziti_ctrl_get_version(&ctx->controller, version_cb, &ctx->controller);
-
-    uv_timer_init(loop, &ctx->session_timer);
-    uv_unref((uv_handle_t *) &ctx->session_timer);
-    ctx->session_timer.data = ctx;
-
-    NEWP(init_req, struct nf_init_req);
-    init_req->init_cb = init_cb;
-    init_req->init_ctx = init_ctx;
-    init_req->nf = ctx;
-    ziti_ctrl_login(&ctx->controller, NULL, session_cb, init_req);
-
-    return ZITI_OK;
 }
 
 int NF_set_timeout(nf_context ctx, int timeout) {
@@ -318,24 +289,26 @@ void NF_dump(nf_context ctx) {
 
     printf("\n=================\nServices:\n");
     ziti_service *zs;
-    LIST_FOREACH(zs, &ctx->services, _next) {
+    const char *name;
+    MODEL_MAP_FOREACH(name, zs, ctx->services) {
         dump_ziti_service(zs, 0);
     }
 
     printf("\n==================\nNet Sessions:\n");
     ziti_net_session *it;
-    LIST_FOREACH(it, &ctx->net_sessions, _next) {
+    MODEL_MAP_FOREACH(name, it, ctx->sessions) {
         dump_ziti_net_session(it, 0);
     }
 
     printf("\n==================\nChannels:\n");
     ziti_channel_t *ch;
-    LIST_FOREACH(ch, &ctx->channels, next) {
-        printf("ch[%d](%s)\n", ch->id, ch->ingress);
+    const char *url;
+    MODEL_MAP_FOREACH(url, ch, ctx->channels) {
+        printf("ch[%d](%s)\n", ch->id, url);
         nf_connection conn;
         LIST_FOREACH(conn, &ch->connections, next) {
             printf("\tconn[%d]: state[%s] service[%s] session[%s]\n", conn->conn_id, strstate(conn->state),
-                    "TODO", "TODO"); // TODO
+                   "TODO", "TODO"); // TODO
         }
     }
 }
@@ -392,20 +365,24 @@ struct service_req_s {
     void *cb_ctx;
 };
 
-static void service_cb (ziti_service *s, ziti_error *err, void *ctx) {
+static void set_service_flags(ziti_service *s) {
+    for (int i = 0; s->permissions[i] != NULL; i++) {
+        if (strcmp(s->permissions[i], "Dial") == 0) {
+            s->perm_flags |= ZITI_CAN_DIAL;
+        }
+        if (strcmp(s->permissions[i], "Bind") == 0) {
+            s->perm_flags |= ZITI_CAN_BIND;
+        }
+    }
+}
+
+static void service_cb(ziti_service *s, ziti_error *err, void *ctx) {
     struct service_req_s *req = ctx;
     int rc = ZITI_SERVICE_UNAVAILABLE;
 
     if (s != NULL) {
-        for (int i = 0; s->permissions[i] != NULL; i++) {
-            if (strcmp(s->permissions[i], "Dial") == 0) {
-                 s->perm_flags |= ZITI_CAN_DIAL;
-            }
-            if (strcmp(s->permissions[i], "Bind") == 0) {
-                s->perm_flags |= ZITI_CAN_BIND;
-            }
-        }
-        LIST_INSERT_HEAD(&req->nf->services, s, _next);
+        set_service_flags(s);
+        model_map_set(&req->nf->services, s->name, s);
         rc = ZITI_OK;
     }
 
@@ -415,11 +392,10 @@ static void service_cb (ziti_service *s, ziti_error *err, void *ctx) {
 }
 
 int NF_service_available(nf_context nf, const char *service, nf_service_cb cb, void *ctx) {
-    ziti_service *s;
-    LIST_FOREACH (s, &nf->services, _next) {
-        if (strcmp(service, s->name) == 0) {
-            cb(nf, s, ZITI_OK, ctx);
-        }
+    ziti_service *s = model_map_get(&nf->services, service);
+    if (s != NULL) {
+        cb(nf, s, ZITI_OK, ctx);
+        return ZITI_OK;
     }
 
     NEWP(req, struct service_req_s);
@@ -449,6 +425,72 @@ static void session_refresh(uv_timer_t *t) {
     ziti_ctrl_current_api_session(&nf->controller, session_cb, req);
 }
 
+static void update_services(ziti_service_array services, ziti_error *error, nf_context nf) {
+    if (error) {
+        ZITI_LOG(ERROR, "failed to get service updates err[%s/%s]", error->code, error->message);
+        return;
+    }
+
+    ZITI_LOG(VERBOSE, "processing service updates");
+
+    model_map updates = {0};
+    model_map removed = {0};
+
+    for (int idx = 0; services[idx] != NULL; idx++) {
+        set_service_flags(services[idx]);
+        model_map_set(&updates, services[idx]->name, services[idx]);
+    }
+    free(services);
+
+    const char *name;
+    ziti_service *s;
+    model_map_iter it = model_map_iterator(&nf->services);
+    while (it != NULL) {
+        ziti_service *updt = model_map_remove(&updates, model_map_it_key(it));
+
+        if (updt != NULL) {
+            // do we want to process service updates possibly?
+            free_ziti_service(updt);
+            free(updt);
+
+            it = model_map_it_next(it);
+        }
+        else {
+            // service was removed
+            ZITI_LOG(DEBUG, "service[%s] is not longer available", model_map_it_key(it));
+            s = model_map_it_value(it);
+            if (nf->opts->service_cb != NULL) {
+                nf->opts->service_cb(nf, s, ZITI_SERVICE_UNAVAILABLE, nf->opts->ctx);
+            }
+            ziti_net_session *session = model_map_remove(&nf->sessions, s->id);
+            if (session) {
+                free_ziti_net_session(session);
+                free(session);
+            }
+            it = model_map_it_remove(it);
+            free_ziti_service(s);
+            free(s);
+        }
+    }
+
+    // what's left are new services
+    it = model_map_iterator(&updates);
+    while (it != NULL) {
+        s = model_map_it_value(it);
+        name = model_map_it_key(it);
+        model_map_set(&nf->services, name, s);
+        if (nf->opts->service_cb != NULL) {
+            nf->opts->service_cb(nf, s, ZITI_OK, nf->opts->ctx);
+        }
+        it = model_map_it_remove(it);
+    }
+}
+
+static void services_refresh(uv_timer_t *t) {
+    nf_context nf = t->data;
+    ziti_ctrl_get_services(&nf->controller, update_services, nf);
+}
+
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     struct nf_init_req *init_req = ctx;
     nf_context nf = init_req->nf;
@@ -463,10 +505,15 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         if (session->expires) {
             uv_timeval64_t now;
             uv_gettimeofday(&now);
-            ZITI_LOG(DEBUG, "ziti API session expires in %ld seconds", (long)(session->expires->tv_sec - now.tv_sec));
+            ZITI_LOG(DEBUG, "ziti API session expires in %ld seconds", (long) (session->expires->tv_sec - now.tv_sec));
             long delay = (session->expires->tv_sec - now.tv_sec) * 3 / 4;
             uv_timer_start(&nf->session_timer, session_refresh, delay * 1000, 0);
         }
+
+        if (nf->opts->refresh_interval > 0) {
+            uv_timer_start(&nf->refresh_timer, services_refresh, 0, nf->opts->refresh_interval * 1000);
+        }
+
     } else {
         ZITI_LOG(ERROR, "failed to login: %s[%d](%s)", err->code, errCode, err->message);
     }

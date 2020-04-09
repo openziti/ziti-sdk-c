@@ -87,7 +87,8 @@ void ziti_channel_free(ziti_channel_t* ch) {
 
 int ziti_close_channels(struct nf_ctx *ziti) {
     ziti_channel_t *ch;
-    LIST_FOREACH(ch, &ziti->channels, next) {
+    const char *url;
+    MODEL_MAP_FOREACH(url, ch, ziti->channels) {
         ziti_channel_close(ch);
     }
     return ZITI_OK;
@@ -112,12 +113,7 @@ int ziti_channel_close(ziti_channel_t *ch) {
 }
 
 int ziti_channel_connect(nf_context ziti, const char *url, ch_connect_cb cb, void *cb_ctx) {
-    ziti_channel_t *ch = NULL;
-    LIST_FOREACH(ch, &ziti->channels, next) {
-        if (strcmp(url, ch->ingress) == 0) {
-            break;
-        }
-    }
+    ziti_channel_t *ch = model_map_get(&ziti->channels, url);
 
     if (ch != NULL) {
         ZITI_LOG(DEBUG, "existing channel found for ingress[%s]", url);
@@ -168,8 +164,8 @@ int ziti_channel_connect(nf_context ziti, const char *url, ch_connect_cb cb, voi
 
     ch->state = Connecting;
 
-    LIST_INSERT_HEAD(&ch->ctx->channels, ch, next);
-    
+    model_map_set(&ch->ctx->channels, ch->ingress, ch);
+
     uv_mbed_connect(req, &ch->connection, host, ingress.port, on_channel_connect_internal);
     return ZITI_OK;
 }
@@ -509,9 +505,7 @@ static void async_write(uv_async_t* ar) {
 
 static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
     nf_context nf = ch->ctx;
-    if (!LIST_EMPTY(&nf->channels)) {
-        LIST_REMOVE(ch, next);
-    }
+    model_map_remove(&nf->channels, ch->ingress);
 
     nf_connection con;
     LIST_FOREACH(con, &ch->connections, next) {

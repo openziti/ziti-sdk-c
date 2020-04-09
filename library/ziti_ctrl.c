@@ -142,6 +142,10 @@ static void ctrl_service_cb(ziti_service **services, ziti_error *e, struct ctrl_
     free(services);
 }
 
+static void ctrl_services_cb(ziti_service **services, ziti_error *e, struct ctrl_resp *resp) {
+    ctrl_default_cb(services, e, resp);
+}
+
 static void free_body_cb(um_http_req_t *req, const char *body, ssize_t len) {
     free((char *) body);
 }
@@ -294,9 +298,9 @@ void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, ziti_error *, voi
     req->data = resp;
 }
 
-void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service *, ziti_error *, void *), void *ctx) {
+void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service_array, ziti_error *, void *), void *ctx) {
 
-    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/services");
+    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/services?limit=1000");
     req->resp_cb = ctrl_resp_cb;
     req->body_cb = ctrl_body_cb;
 
@@ -305,7 +309,7 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service *, zi
     resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
-    resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_service_cb;
+    resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_services_cb;
 
     req->data = resp;
 }

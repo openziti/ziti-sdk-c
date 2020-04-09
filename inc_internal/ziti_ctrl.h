@@ -46,7 +46,7 @@ void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session
 
 void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void*, ziti_error*, void*), void *ctx);
 
-void ziti_ctrl_get_services(ziti_controller *ctrl, void (*srv_cb)(ziti_service *, ziti_error*, void*), void* ctx);
+void ziti_ctrl_get_services(ziti_controller *ctrl, void (*srv_cb)(ziti_service_array, ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_get_service(ziti_controller *ctrl, const char* service_name, void (*srv_cb)(ziti_service *, ziti_error*, void*), void* ctx);
 

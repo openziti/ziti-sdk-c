@@ -189,7 +189,8 @@ static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) 
                 s->perm_flags |= ZITI_CAN_BIND;
             }
         }
-        LIST_INSERT_HEAD(&nf_ctx->services, s, _next);
+
+        model_map_set(&nf_ctx->services, s->name, s);
         req->service = s;
         ziti_connect_async(ar);
     }
@@ -211,7 +212,7 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
     } else {
         ZITI_LOG(INFO, "got session[%s] for service[%s]", s->id, req->service->name);
         s->service_id = strdup(req->service->id);
-        LIST_INSERT_HEAD(&nf_ctx->net_sessions, s, _next);
+        model_map_set(&nf_ctx->sessions, s->service_id, s);
         ziti_connect_async(ar);
     }
 
@@ -224,34 +225,19 @@ static void ziti_connect_async(uv_async_t *ar) {
     uv_loop_t *loop = ar->loop;
 
     const ziti_net_session *net_session = NULL;
-    const char *service_id = NULL;
 
     // find service
     if (req->service == NULL) {
-        ziti_service *s;
-        LIST_FOREACH (s, &ctx->services, _next) {
-            if (strcmp(req->service_name, s->name) == 0) {
-                service_id = s->id;
-                req->service = s;
-                break;
-            }
-        }
+        req->service = model_map_get(&ctx->services, req->service_name);
 
-        if (service_id == NULL) {
+        if (req->service == NULL) {
             ZITI_LOG(DEBUG, "service[%s] not loaded yet, requesting it", req->service_name);
             ziti_ctrl_get_service(&ctx->controller, req->service_name, connect_get_service_cb, ar);
             return;
         }
     }
 
-    ziti_net_session *it = NULL;
-    LIST_FOREACH(it, &ctx->net_sessions, _next) {
-        if (strcmp(req->service->id, it->service_id) == 0 && strcmp(req->session_type, it->session_type) == 0 ) {
-            net_session = it;
-            break;
-        }
-    }
-
+    net_session = model_map_get(&ctx->sessions, req->service->id);
     if (net_session == NULL) {
         ZITI_LOG(DEBUG, "requesting session for service[%s]", req->service_name);
         ziti_ctrl_get_net_session(&ctx->controller, req->service, req->session_type, connect_get_net_session_cb, ar);

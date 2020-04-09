@@ -357,9 +357,42 @@ static void _free_string(char **s) {
     }
 }
 
-void* model_map_get(model_map *m, const char* key) {
+struct model_map_entry {
+    char *key;
+    void *value;
+    LIST_ENTRY(model_map_entry) _next;
+};
+typedef LIST_HEAD(mm_e, model_map_entry) entries_t;
+void* model_map_set(model_map *m, const char *key, void *val) {
+    if (m->entries == NULL) {
+        m->entries = calloc(1, sizeof(entries_t));
+    }
+
     struct model_map_entry *el;
-    LIST_FOREACH(el, &m->entries, _next) {
+    void *old_val = NULL;
+    /* replace old value */
+    LIST_FOREACH(el, (entries_t*)m->entries, _next) {
+        if (strcmp(key, el->key) == 0) {
+            old_val = el->value;
+            el->value = val;
+            return old_val;
+        }
+    }
+
+    el = malloc(sizeof(struct model_map_entry));
+    el->value = val;
+    el->key = strdup(key);
+    LIST_INSERT_HEAD((entries_t *)m->entries, el, _next);
+
+    return NULL;
+}
+
+void* model_map_get(model_map *m, const char* key) {
+    if (m->entries == NULL)
+        return NULL;
+
+    struct model_map_entry *el;
+    LIST_FOREACH(el, (entries_t *) m->entries, _next) {
         if (strcmp(key, el->key) == 0) {
             return el->value;
         }
@@ -367,16 +400,69 @@ void* model_map_get(model_map *m, const char* key) {
     return NULL;
 }
 
+void *model_map_remove(model_map *m, const char *key) {
+    if (m->entries == NULL) {
+        return NULL;
+    }
+
+    void *val = NULL;
+    struct model_map_entry *el;
+    LIST_FOREACH(el, (entries_t *) m->entries, _next) {
+        if (strcmp(key, el->key) == 0) {
+            break;
+        }
+    }
+    if (el != NULL) {
+        val = el->value;
+        LIST_REMOVE(el, _next);
+        free(el->key);
+        free(el);
+    }
+    return val;
+}
+
 void model_map_clear(model_map *map, _free_f free_func) {
-    while (!LIST_EMPTY(&map->entries)) {
-        struct model_map_entry *el = LIST_FIRST(&map->entries);
+    if (map->entries == NULL) { return; }
+
+    while (!LIST_EMPTY((entries_t *) map->entries)) {
+        struct model_map_entry *el = LIST_FIRST((entries_t *) map->entries);
         LIST_REMOVE(el, _next);
         FREE(el->key);
-        if (free_func)
+        if (free_func) {
             free_func(el->value);
+        }
         FREE(el->value);
         FREE(el);
     }
+    free(map->entries);
+}
+
+model_map_iter model_map_iterator(model_map *m) {
+    if (m->entries == NULL) return NULL;
+    return LIST_FIRST((entries_t*)m->entries);
+}
+
+const char *model_map_it_key(model_map_iter *it) {
+    return it != NULL ? ((struct model_map_entry *) it)->key : NULL;
+}
+
+void *model_map_it_value(model_map_iter it) {
+    return it != NULL ? ((struct model_map_entry *) it)->value : NULL;
+}
+
+model_map_iter model_map_it_next(model_map_iter it) {
+    return it != NULL ? LIST_NEXT((struct model_map_entry *) it, _next) : NULL;
+}
+
+model_map_iter model_map_it_remove(model_map_iter it) {
+    model_map_iter next = model_map_it_next(it);
+    if (it != NULL) {
+        struct model_map_entry *e = (struct model_map_entry *) it;
+        LIST_REMOVE(e, _next);
+        free(e->key);
+        free(e);
+    }
+    return next;
 }
 
 static int _parse_map(model_map *m, const char *json, jsmntok_t *tok) {
@@ -405,11 +491,10 @@ static int _parse_map(model_map *m, const char *json, jsmntok_t *tok) {
         }
         tok += rc;
         tokens_processed += rc;
-        NEWP(el, struct model_map_entry);
-        el->key = calloc(1, keylen + 1);
-        strncpy(el->key, key, keylen);
-        el->value = value;
-        LIST_INSERT_HEAD(&m->entries, el, _next);
+        char *k = calloc(1, keylen + 1);
+        strncpy(k, key, keylen);
+        model_map_set(m, k, value);
+        free(k);
     }
     return tokens_processed;
 }
