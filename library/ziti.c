@@ -434,7 +434,6 @@ static void update_services(ziti_service_array services, ziti_error *error, nf_c
     ZITI_LOG(VERBOSE, "processing service updates");
 
     model_map updates = {0};
-    model_map removed = {0};
 
     for (int idx = 0; services[idx] != NULL; idx++) {
         set_service_flags(services[idx]);
@@ -484,6 +483,8 @@ static void update_services(ziti_service_array services, ziti_error *error, nf_c
         }
         it = model_map_it_remove(it);
     }
+
+    model_map_clear(&updates, NULL);
 }
 
 static void services_refresh(uv_timer_t *t) {
