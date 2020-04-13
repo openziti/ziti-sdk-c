@@ -117,6 +117,19 @@ static void ctrl_default_cb(void *s, ziti_error *e, struct ctrl_resp *resp) {
     free(resp);
 }
 
+static void ctrl_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *resp) {
+    if (e) {
+        ZITI_LOG(ERROR, "%s(%s)", e->code, e->message);
+    }
+
+    if (v) {
+        resp->ctrl->version.version = strdup(v->version);
+        resp->ctrl->version.revision = strdup(v->revision);
+        resp->ctrl->version.build_date = strdup(v->build_date);
+    }
+    ctrl_default_cb(v, e, resp);
+}
+
 static void ctrl_login_cb(ziti_session *s, ziti_error *e, struct ctrl_resp *resp) {
     if (e) {
         ZITI_LOG(ERROR, "%s(%s)", e->code, e->message);
@@ -209,15 +222,15 @@ int ziti_ctrl_close(ziti_controller *ctrl) {
     return ZITI_OK;
 }
 
-void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ctrl_version *, ziti_error *err, void *ctx), void *ctx) {
+void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ziti_version *, ziti_error *err, void *ctx), void *ctx) {
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ctrl_version_ptr;
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_version_ptr;
     resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
+    resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_version_cb;
 
-    um_http_req_t* req = um_http_req(&ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
+    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_login(

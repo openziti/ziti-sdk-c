@@ -277,6 +277,17 @@ extern int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void
 ZITI_FUNC
 extern int NF_init_opts(nf_options *options, uv_loop_t *loop, void *init_ctx);
 
+ZITI_FUNC
+extern const ziti_version *NF_get_version();
+
+ZITI_FUNC
+extern const ziti_version *NF_get_controller_version(nf_context nf);
+
+ZITI_FUNC
+extern const char *NF_get_controller(nf_context nf);
+
+ZITI_FUNC
+extern const ziti_identity *NF_get_identity(nf_context nf);
 /**
  * @brief Sets connect and write timeouts(in millis).
  *
