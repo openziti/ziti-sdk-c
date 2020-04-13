@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "model_support.h"
 
-#define ZITI_CTRL_VERSION(XX, ...) \
+#define ZITI_VERSION_MODEL(XX, ...) \
 XX(version, string, none, version, __VA_ARGS__) \
 XX(revision, string, none, revision, __VA_ARGS__) \
 XX(build_date, string, none, buildDate, __VA_ARGS__)
@@ -50,7 +50,7 @@ extern "C" {
 #endif
 #define MODEL_API ZITI_FUNC
 
-DECLARE_MODEL(ctrl_version, ZITI_CTRL_VERSION)
+DECLARE_MODEL(ziti_version, ZITI_VERSION_MODEL)
 
 DECLARE_MODEL(ziti_identity, ZITI_IDENTITY_MODEL)
 

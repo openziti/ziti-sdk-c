@@ -56,7 +56,9 @@ struct nf_init_req {
 };
 
 int code_to_error(const char *code);
-static void version_cb(ctrl_version* v, ziti_error* err, void* ctx);
+
+static void version_cb(ziti_version *v, ziti_error *err, void *ctx);
+
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx);
 
 #define CONN_STATES(XX) \
@@ -237,7 +239,7 @@ int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
     return ZITI_OK;
 }
 
-int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx) {
+int NF_init(const char *config, uv_loop_t *loop, nf_init_cb init_cb, void *init_ctx) {
 
     NEWP(opts, nf_options);
     opts->config = config;
@@ -245,6 +247,18 @@ int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_
     opts->config_types = ALL_CONFIG_TYPES;
 
     return NF_init_opts(opts, loop, init_ctx);
+}
+
+const char *NF_get_controller(nf_context nf) {
+    return nf->opts->controller;
+}
+
+const ziti_version *NF_get_controller_version(nf_context nf) {
+    return &nf->controller.version;
+}
+
+const ziti_identity *NF_get_identity(nf_context nf) {
+    return nf->session ? nf->session->identity : NULL;
 }
 
 int NF_set_timeout(nf_context ctx, int timeout) {
@@ -501,6 +515,8 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     if (session) {
         ZITI_LOG(DEBUG, "%s successfully => api_session[%s]", nf->session ? "refreshed" : "logged in", session->id);
         free_ziti_session(nf->session);
+        FREE(nf->session);
+
         nf->session = session;
 
         if (session->expires) {
@@ -527,7 +543,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     FREE(init_req);
 }
 
-static void version_cb(ctrl_version *v, ziti_error *err, void *ctx) {
+static void version_cb(ziti_version *v, ziti_error *err, void *ctx) {
     ziti_controller *ctrl = ctx;
     if (err != NULL) {
         ZITI_LOG(ERROR, "failed to get controller version from %s:%s %s(%s)",
@@ -538,7 +554,7 @@ static void version_cb(ctrl_version *v, ziti_error *err, void *ctx) {
     else {
         ZITI_LOG(INFO, "connected to controller %s:%s version %s(%s %s)",
                  ctrl->client.host, ctrl->client.port, v->version, v->revision, v->build_date);
-        free_ctrl_version(v);
+        free_ziti_version(v);
         FREE(v);
     }
 }

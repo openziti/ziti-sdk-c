@@ -278,6 +278,37 @@ ZITI_FUNC
 extern int NF_init_opts(nf_options *options, uv_loop_t *loop, void *init_ctx);
 
 /**
+ * @brief return SDK version
+ * @return SDK version
+ */
+ZITI_FUNC
+extern const ziti_version *NF_get_version();
+
+/**
+ * @brief return Ziti controller version for given context
+ * @param nf ziti context
+ * @return controller version
+ */
+ZITI_FUNC
+extern const ziti_version *NF_get_controller_version(nf_context nf);
+
+/**
+ * @brief controller URL of the given context
+ * @param nf ziti context
+ * @return controller URL
+ */
+ZITI_FUNC
+extern const char *NF_get_controller(nf_context nf);
+
+/**
+ * @brief Ziti identity of the given context.
+ * @param nf ziti context
+ * @return ziti identity
+ */
+ZITI_FUNC
+extern const ziti_identity *NF_get_identity(nf_context nf);
+
+/**
  * @brief Sets connect and write timeouts(in millis).
  *
  * The #NF_DEFAULT_TIMEOUT is used if this function is not invoked prior to initializing connections. This value is only

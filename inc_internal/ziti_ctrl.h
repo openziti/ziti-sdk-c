@@ -29,6 +29,7 @@ extern "C" {
 
 typedef struct ziti_controller_s {
     um_http_t client;
+    ziti_version version;
     char *session;
 
 } ziti_controller;
@@ -36,7 +37,7 @@ typedef struct ziti_controller_s {
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctlr, const char *url, tls_context *tls);
 int ziti_ctrl_close(ziti_controller *ctrl);
 
-void ziti_ctrl_get_version(ziti_controller *ctrl, void (*ver_cb)(ctrl_version*, ziti_error*, void*), void *ctx);
+void ziti_ctrl_get_version(ziti_controller *ctrl, void (*ver_cb)(ziti_version *, ziti_error *, void *), void *ctx);
 
 void
 ziti_ctrl_login(ziti_controller *ctrl, const char **cfg_types, void (*login_cb)(ziti_session *, ziti_error *, void *),
