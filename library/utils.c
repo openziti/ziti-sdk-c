@@ -18,6 +18,7 @@ limitations under the License.
 // #include <mjson.h>
 #include <uv.h>
 #include <uv_mbed/uv_mbed.h>
+#include <nf/ziti_model.h>
 #include "utils.h"
 
 
@@ -67,7 +68,17 @@ limitations under the License.
 #define ZITI_ARCH UKNOWN
 #endif
 
-const char* ziti_get_version(int verbose) {
+static const ziti_version sdk_version = {
+        .version = to_str(ZITI_VERSION),
+        .revision = to_str(ZITI_COMMIT),
+        .build_date = to_str(BUILD_DATE)
+};
+
+const ziti_version *NF_get_version() {
+    return &sdk_version;
+}
+
+const char *ziti_get_version(int verbose) {
     if (verbose) {
         return "\n\tVersion:\t" to_str(ZITI_VERSION)
                "\n\tBuild Date:\t" to_str(BUILD_DATE)

@@ -312,6 +312,10 @@ static void on_nf_init(nf_context nf_ctx, int status, void *ctx) {
     CATCH(ziti) {
         exit(status);
     }
+    const ziti_version *ctrl_ver = NF_get_controller_version(nf_ctx);
+    const ziti_identity *proxy_id = NF_get_identity(nf_ctx);
+    ZITI_LOG(INFO, "controller version = %s(%s)[%s]", ctrl_ver->version, ctrl_ver->revision, ctrl_ver->build_date);
+    ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, NF_get_controller(nf_ctx));
 
     nf = nf_ctx;
 }
@@ -363,6 +367,9 @@ void run(int argc, char **argv) {
     TRY(uv, uv_signal_start(&sig, signal_cb, SIGUSR1));
 
     uv_unref((uv_handle_t *) &sig);
+
+    const ziti_version *ver = NF_get_version();
+    ZITI_LOG(INFO, "built with SDK version %s(%s)[%s]", ver->version, ver->revision, ver->build_date);
 
     ZITI_LOG(INFO, "starting event loop");
     uv_run(loop, UV_RUN_DEFAULT);
