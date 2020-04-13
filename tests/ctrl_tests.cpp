@@ -53,7 +53,7 @@ auto logout_cb = [](void*, ziti_error* err, void* ctx) {
 TEST_CASE("invalid_controller", "[controller][GH-44]") {
     ziti_controller ctrl;
     uv_loop_t *loop = uv_default_loop();
-    resp_capture<ctrl_version> version;
+    resp_capture<ziti_version> version;
 
     PREP(ziti);
     TRY(ziti, ziti_ctrl_init(loop, &ctrl, "https://not.a.ziti.controll.er", nullptr));
@@ -90,7 +90,7 @@ TEST_CASE("controller_test","[integ]") {
     ziti_controller ctrl;
     uv_loop_t *loop = uv_default_loop();
 
-    resp_capture<ctrl_version> version;
+    resp_capture<ziti_version> version;
     resp_capture<ziti_session> session;
     resp_capture<ziti_service> service;
 
@@ -193,7 +193,7 @@ TEST_CASE("controller_test","[integ]") {
     }
 
 
-    free_ctrl_version(version.resp);
+    free_ziti_version(version.resp);
     free_ziti_session(session.resp);
 
     ziti_ctrl_close(&ctrl);
