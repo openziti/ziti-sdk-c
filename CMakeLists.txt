@@ -100,7 +100,6 @@ if (CMAKE_GENERATOR STREQUAL "Ninja" AND CMAKE_BINARY_DIR MATCHES "${CMAKE_SOURC
     # so we just trim the first "../" here, this is not always correct but will show proper file
     add_definitions("-DSOURCE_PATH_SIZE=3")
 else()
-    message("binary dir = ${CMAKE_BINARY_DIR}")
     string(LENGTH "${CMAKE_SOURCE_DIR}/" SOURCE_PATH_SIZE)
     add_definitions("-DSOURCE_PATH_SIZE=${SOURCE_PATH_SIZE}")
 endif()
