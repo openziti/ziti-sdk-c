@@ -68,15 +68,6 @@ limitations under the License.
 #define ZITI_ARCH UKNOWN
 #endif
 
-static const ziti_version sdk_version = {
-        .version = to_str(ZITI_VERSION),
-        .revision = to_str(ZITI_COMMIT),
-        .build_date = to_str(BUILD_DATE)
-};
-
-const ziti_version *NF_get_version() {
-    return &sdk_version;
-}
 
 const char *ziti_get_version(int verbose) {
     if (verbose) {
