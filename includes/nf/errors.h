@@ -25,6 +25,7 @@ limitations under the License.
 #define ZT_SDK_ERRORS_H
 // @endcond
 
+#include "externs.h"
  /**
   * A macro defining the various errors conditions expected to be seen
   * when using the C SDK
@@ -93,13 +94,14 @@ extern "C" {
 /**
  * A helper macro to make declaring expected error conditions easier which is undef'ed immidately
  */
-#define ERR_ID(e, _) extern const int ZITI_##e;
+#define ERR_ID(e, _) ZITI_FUNC extern const int ZITI_##e;
 ZITI_ERRORS(ERR_ID)
 #undef ERR_ID
 
 /**
 * Returns a human-readable description for the provided code.
 */
+ZITI_FUNC
 extern const char *ziti_errorstr(int err);
 
 #ifdef __cplusplus

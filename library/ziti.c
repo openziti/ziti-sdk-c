@@ -558,3 +558,15 @@ static void version_cb(ziti_version *v, ziti_error *err, void *ctx) {
         FREE(v);
     }
 }
+
+#define to_str(x) str(x)
+#define str(x) #x
+static const ziti_version sdk_version = {
+        .version = to_str(ZITI_VERSION),
+        .revision = to_str(ZITI_COMMIT),
+        .build_date = to_str(BUILD_DATE)
+};
+
+const ziti_version *NF_get_version() {
+    return &sdk_version;
+}
