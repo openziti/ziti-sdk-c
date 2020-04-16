@@ -143,7 +143,7 @@ typedef struct nf_options_s {
  *
  * @see NF_dial(), NF_accept(), ZITI_ERRORS
  */
-typedef void (*nf_data_cb)(nf_connection conn, uint8_t *data, int length);
+typedef void (*nf_data_cb)(nf_connection conn, uint8_t *data, ssize_t length);
 
 /**
  * @brief Connection callback.
