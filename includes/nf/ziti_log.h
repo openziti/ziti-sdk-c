@@ -13,6 +13,12 @@
 #define __FILENAME__ __FILE__
 #endif
 
+#ifndef ZITI_LOG_PREFIX
+#define ZITI_LOG_PREFIX
+#endif
+
+#define _to_str(x) #x
+#define to_str(x) _to_str(x)
 // for windows compilation NOGDI needs to be set:
 // right click ziti -> properties -> C/C++ -> Preprocessor - ensure NOGDI is in the list of preprocessor definitions
 // if it's not present check the CMakeLists.txt file
@@ -34,7 +40,7 @@ enum DebugLevel {
 #define ZITI_LOG(level, fmt, ...) do { \
 if (level <= ziti_debug_level) {\
     long elapsed = get_elapsed();\
-    fprintf(ziti_debug_out, "[%9ld.%03ld] " #level "\tziti-sdk-c:%s:%d %s(): " fmt "\n",\
+    fprintf(ziti_debug_out, "[%9ld.%03ld] " #level "\t" to_str(ZITI_LOG_PREFIX) ":%s:%d %s(): " fmt "\n",\
         elapsed/1000, elapsed%1000, __FILENAME__, __LINE__, __func__, ##__VA_ARGS__);\
         }\
 } while(0)
