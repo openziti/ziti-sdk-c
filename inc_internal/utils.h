@@ -73,24 +73,6 @@ if (COND(ex)(ERR(ex))) { ERFILE(ex) = __FILENAME__; ERLINE(ex) = __LINE__; _##ex
 #define FOR(idx, arr) for (int (idx) = 0; (idx) < SIZEOF(arr) && (arr)[(idx)] != NULL; (idx)++)
 
 
-// for windows compilation NOGDI needs to be set:
-// right click ziti -> properties -> C/C++ -> Preprocessor - ensure NOGDI is in the list of preprocessor definitions
-// if it's not present check the CMakeLists.txt file
-#define DEBUG_LEVELS(XX) \
-    XX(NONE) \
-    XX(ERROR) /*WINDOWS - see comment above wrt NOGDI*/ \
-    XX(WARN) \
-    XX(INFO) \
-    XX(DEBUG) \
-    XX(VERBOSE) \
-    XX(TRACE)
-
-
-enum DebugLevel {
-#define _level(n) n,
-    DEBUG_LEVELS(_level)
-#undef _level
-};
 
 #define container_of(ptr, type, member) ((type *) ((ptr) - offsetof(type, member)))
 

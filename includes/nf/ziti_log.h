@@ -13,6 +13,23 @@
 #define __FILENAME__ __FILE__
 #endif
 
+// for windows compilation NOGDI needs to be set:
+// right click ziti -> properties -> C/C++ -> Preprocessor - ensure NOGDI is in the list of preprocessor definitions
+// if it's not present check the CMakeLists.txt file
+#define DEBUG_LEVELS(XX) \
+    XX(NONE) \
+    XX(ERROR) /*WINDOWS - see comment above wrt NOGDI*/ \
+    XX(WARN) \
+    XX(INFO) \
+    XX(DEBUG) \
+    XX(VERBOSE) \
+    XX(TRACE)
+
+enum DebugLevel {
+#define _level(n) n,
+    DEBUG_LEVELS(_level)
+#undef _level
+};
 
 #define ZITI_LOG(level, fmt, ...) do { \
 if (level <= ziti_debug_level) {\
