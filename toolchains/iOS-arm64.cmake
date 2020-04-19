@@ -6,10 +6,12 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -arch arm64")
 
 # for libsodium
 set(triple arm-apple-darwin10)
-execute_process(COMMAND xcode-select -p OUTPUT_VARIABLE XCODEDIR OUTPUT_STRIP_TRAILING_WHITESPACE)
-set(MYSYSROOT "${XCODEDIR}/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk")
-set(ENV{CFLAGS} "-arch arm64 -isysroot ${MYSYSROOT}")
-set(ENV{LDFLAGS} "-arch arm64 -isysroot ${MYSYSROOT}")
+execute_process(COMMAND /usr/bin/xcrun -sdk iphoneos --show-sdk-path
+                OUTPUT_VARIABLE CMAKE_OSX_SYSROOT
+                OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+set(ENV{CFLAGS} "-arch arm64 -isysroot ${CMAKE_OSX_SYSROOT}")
+set(ENV{LDFLAGS} "-arch arm64 -isysroot ${CMAKE_OSX_SYSROOT}")
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
