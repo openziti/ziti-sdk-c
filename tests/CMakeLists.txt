@@ -10,7 +10,7 @@ add_executable(all_tests
 set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
 
 target_include_directories(all_tests
-        PRIVATE ${CMAKE_SOURCE_DIR}/inc_internal)
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../inc_internal)
 
 target_link_libraries(all_tests
         PRIVATE ziti)

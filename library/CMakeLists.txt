@@ -113,15 +113,16 @@ install(TARGETS ziti ziti_dll
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )
 
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/includes/
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../includes/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-install(FILES ${CMAKE_SOURCE_DIR}/deps/http-parser/LICENSE-MIT DESTINATION ${CMAKE_INSTALL_DOCDIR}/http-parser)
-install(FILES ${CMAKE_SOURCE_DIR}/deps/mjson/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mjson)
-install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/deps/mbedtls/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls)
-install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/deps/uv_link_t/README.md DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
-install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/deps/mbedtls/crypto/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls/crypto)
-install(FILES ${CMAKE_SOURCE_DIR}/deps/uv-mbed/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_mbed)
+set(ziti_DEPS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../deps)
+install(FILES ${ziti_DEPS_DIR}/http-parser/LICENSE-MIT DESTINATION ${CMAKE_INSTALL_DOCDIR}/http-parser)
+install(FILES ${ziti_DEPS_DIR}/mjson/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mjson)
+install(FILES ${ziti_DEPS_DIR}/uv-mbed/deps/mbedtls/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls)
+install(FILES ${ziti_DEPS_DIR}/uv-mbed/deps/uv_link_t/README.md DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
+install(FILES ${ziti_DEPS_DIR}/uv-mbed/deps/mbedtls/crypto/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls/crypto)
+install(FILES ${ziti_DEPS_DIR}/uv-mbed/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_mbed)
 
 if (NOT WIN32) # no license file windows pre-built bundle
 install(FILES ${CMAKE_BINARY_DIR}/_deps/libsodium-src/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/libsodium)
