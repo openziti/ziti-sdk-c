@@ -431,7 +431,7 @@ void conn_inbound_data_msg(nf_connection conn, message *msg) {
 
             TRY(crypto, crypto_secretstream_xchacha20poly1305_pull(&conn->crypt_i, plain_text, &plain_len, &tag, msg->body, msg->header.body_len, NULL, 0));
 
-            conn->data_cb(conn, plain_text, (int)plain_len);
+            conn->data_cb(conn, plain_text, (ssize_t)plain_len);
         }
 
         CATCH(crypto) {
@@ -442,7 +442,7 @@ void conn_inbound_data_msg(nf_connection conn, message *msg) {
         }
         FREE(plain_text);
     } else {
-        conn->data_cb(conn, msg->body, (int)msg->header.body_len);
+        conn->data_cb(conn, msg->body, (ssize_t)msg->header.body_len);
     }
 }
 
