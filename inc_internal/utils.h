@@ -23,6 +23,7 @@ limitations under the License.
 #include <http_parser.h>
 #include <stdlib.h>
 #include <uv_mbed/queue.h>
+#include <nf/ziti_log.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,11 +44,6 @@ typedef int *(*cond_error_t)(int);
 #define NEWP(var, type) type *var = calloc(1, sizeof(type))
 #define VAL_OR_ELSE(v, def) ((v) != NULL ? (v) : (def))
 #define FREE(v) if ((v) != NULL) { free(v); (v) = NULL; }
-
-#define __FILENAME__ (&__FILE__[SOURCE_PATH_SIZE])
-
-
-char *fmt_mbederr(int err);
 
 #define FMT(ex) _##ex##_fmt
 #define COND(ex) _##ex##_cond
@@ -76,43 +72,9 @@ if (COND(ex)(ERR(ex))) { ERFILE(ex) = __FILENAME__; ERLINE(ex) = __LINE__; _##ex
 
 #define FOR(idx, arr) for (int (idx) = 0; (idx) < SIZEOF(arr) && (arr)[(idx)] != NULL; (idx)++)
 
-extern void init_debug();
 
-extern int ziti_debug_level;
-extern FILE *ziti_debug_out;
-
-
-// for windows compilation NOGDI needs to be set:
-// right click ziti -> properties -> C/C++ -> Preprocessor - ensure NOGDI is in the list of preprocessor definitions
-// if it's not present check the CMakeLists.txt file
-#define DEBUG_LEVELS(XX) \
-    XX(NONE) \
-    XX(ERROR) /*WINDOWS - see comment above wrt NOGDI*/ \
-    XX(WARN) \
-    XX(INFO) \
-    XX(DEBUG) \
-    XX(VERBOSE) \
-    XX(TRACE)
-
-
-enum DebugLevel {
-#define _level(n) n,
-    DEBUG_LEVELS(_level)
-#undef _level
-};
 
 #define container_of(ptr, type, member) ((type *) ((ptr) - offsetof(type, member)))
-
-
-#define ZITI_LOG(level, fmt, ...) do { \
-if (level <= ziti_debug_level) {\
-    long elapsed = get_elapsed();\
-    fprintf(ziti_debug_out, "[%9ld.%03ld] " #level "\tziti-sdk-c:%s:%d %s(): " fmt "\n",\
-        elapsed/1000, elapsed%1000, __FILENAME__, __LINE__, __func__, ##__VA_ARGS__);\
-        }\
-} while(0)
-
-long get_elapsed();
 
 void ziti_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf);
 

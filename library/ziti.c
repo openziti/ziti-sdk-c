@@ -353,7 +353,9 @@ int NF_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data
 int NF_close(nf_connection *conn) {
     struct nf_conn *c = *conn;
 
-    ziti_disconnect(c);
+    if (c != NULL) {
+        ziti_disconnect(c);
+    }
 
     *conn = NULL;
 

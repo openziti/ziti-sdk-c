@@ -76,6 +76,8 @@ target_compile_definitions(ziti PUBLIC
         ZITI_VERSION=${PROJECT_VERSION}
         ZITI_BRANCH=${GIT_BRANCH}
         ZITI_COMMIT=${GIT_COMMIT_HASH}
+        SOURCE_PATH_SIZE=${SOURCE_PATH_SIZE}
+        PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
 )
 
 target_compile_definitions(ziti_dll PUBLIC
@@ -84,8 +86,10 @@ target_compile_definitions(ziti_dll PUBLIC
         ZITI_VERSION=${PROJECT_VERSION}
         ZITI_BRANCH=${GIT_BRANCH}
         ZITI_COMMIT=${GIT_COMMIT_HASH}
+        SOURCE_PATH_SIZE=${SOURCE_PATH_SIZE}
         INTERFACE USING_ZITI_SHARED=1
         PRIVATE BUILDING_ZITI_SHARED=1
+        PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
 )
 
 if (WIN32)
