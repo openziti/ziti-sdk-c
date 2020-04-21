@@ -135,12 +135,15 @@ typedef struct nf_options_s {
  * This callback is invoked when data arrives at the Ziti C SDK. Data arrives in the Ziti C SDK
  * either as a response to a Ziti connection from an NF_dial() or as an incoming request via
  * NF_accept.
+ * Return value should indicate how much data was consumed by the application. This callback will
+ * be called again at some later time and as many times as needed for application to accept the rest.
  *
  * @param conn The Ziti connection which received the data
  * @param data incoming data buffer
  * @param length size of data or error code as defined in #ZITI_ERRORS (will receive #ZITI_EOF
  *               when connection is closed)
  *
+ * @return indicate how much data was consumed
  * @see NF_dial(), NF_accept(), ZITI_ERRORS
  */
 typedef ssize_t (*nf_data_cb)(nf_connection conn, uint8_t *data, ssize_t length);
