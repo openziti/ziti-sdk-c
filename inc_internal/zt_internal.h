@@ -144,6 +144,8 @@ struct nf_conn {
     enum conn_state state;
     int timeout;
 
+    buffer *inbound;
+    uv_async_t flusher;
     int write_reqs;
 
     void *data;

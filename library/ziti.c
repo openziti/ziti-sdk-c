@@ -337,13 +337,14 @@ int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data) {
     c->timeout = ctx->ziti_timeout;
     c->edge_msg_seq = 1;
     c->conn_id = nf_ctx->conn_seq++;
+    c->inbound = new_buffer();
 
     *conn = c;
     return ZITI_OK;
 }
 
 void *NF_conn_data(nf_connection conn) {
-    return conn->data;
+    return conn != NULL ? conn->data : NULL;
 }
 
 int NF_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb) {
@@ -561,8 +562,6 @@ static void version_cb(ziti_version *v, ziti_error *err, void *ctx) {
     }
 }
 
-#define to_str(x) str(x)
-#define str(x) #x
 static const ziti_version sdk_version = {
         .version = to_str(ZITI_VERSION),
         .revision = to_str(ZITI_COMMIT),

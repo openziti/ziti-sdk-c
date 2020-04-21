@@ -39,6 +39,7 @@ struct nf_conn_req {
     int ref_count;
 };
 
+static void flush_to_client(uv_async_t *fl);
 static void ziti_connect_async(uv_async_t *ar);
 int ziti_channel_start_connection(struct nf_conn_req *req);
 
@@ -285,6 +286,10 @@ int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_da
     NEWP(async_cr, uv_async_t);
     uv_async_init(conn->nf_ctx->loop, async_cr, ziti_connect_async);
 
+    uv_async_init(conn->nf_ctx->loop, &conn->flusher, flush_to_client);
+    conn->flusher.data = conn;
+    uv_unref((uv_handle_t *) &conn->flusher);
+
     async_cr->data = req;
 
     return uv_async_send(async_cr);
@@ -414,10 +419,30 @@ static int establish_crypto (nf_connection conn, message *msg) {
     return ZITI_OK;
 }
 
+static void flush_to_client(uv_async_t *fl) {
+    nf_connection conn = fl->data;
+    ZITI_LOG(TRACE, "flushing %zd bytes to client", buffer_available(conn->inbound));
+
+    while (buffer_available(conn->inbound) > 0) {
+        uint8_t *chunk;
+        ssize_t chunk_len = buffer_get_next(conn->inbound, 16 * 1024, &chunk);
+        ssize_t consumed = conn->data_cb(conn, chunk, chunk_len);
+        if (consumed < chunk_len) {
+            buffer_push_back(conn->inbound, (chunk_len - consumed));
+            ZITI_LOG(WARN, "client stalled %zd bytes buffered", buffer_available(conn->inbound));
+            // client indicated that it cannot accept any more data
+            // schedule retry
+            uv_async_send(fl);
+            return;
+        }
+    }
+}
+
 void conn_inbound_data_msg(nf_connection conn, message *msg) {
     int rc = 0;
+    uint8_t *plain_text = NULL;
+    plain_text = malloc(msg->header.body_len);
     if (conn->encrypted) {
-        uint8_t *plain_text = NULL;
         PREP(crypto);
         // first message is expected to be peer crypto header
         if (conn->rx != NULL) {
@@ -427,23 +452,26 @@ void conn_inbound_data_msg(nf_connection conn, message *msg) {
         } else {
             unsigned long long plain_len;
             unsigned char tag;
-            plain_text = malloc(msg->header.body_len);
 
             TRY(crypto, crypto_secretstream_xchacha20poly1305_pull(&conn->crypt_i, plain_text, &plain_len, &tag, msg->body, msg->header.body_len, NULL, 0));
-
-            conn->data_cb(conn, plain_text, (ssize_t)plain_len);
+            buffer_append(conn->inbound, plain_text, plain_len);
         }
 
         CATCH(crypto) {
             conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
             LIST_REMOVE(conn, next);
             FREE(conn->rx);
+            buffer_cleanup(conn->inbound);
             FREE(conn);
+
+            return;
         }
-        FREE(plain_text);
     } else {
-        conn->data_cb(conn, msg->body, (ssize_t)msg->header.body_len);
+        memcpy(plain_text, msg->body, msg->header.body_len);
+        buffer_append(conn->inbound, plain_text, msg->header.body_len);
     }
+
+    flush_to_client(&conn->flusher);
 }
 
 void connect_reply_cb(void *ctx, message *msg) {
@@ -581,6 +609,10 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb) {
 
     conn->channel = ch;
     conn->data_cb = data_cb;
+
+    uv_async_init(conn->nf_ctx->loop, &conn->flusher, flush_to_client);
+    conn->flusher.data = conn;
+    uv_unref((uv_handle_t *) &conn->flusher);
 
     LIST_INSERT_HEAD(&ch->connections, conn, next);
 

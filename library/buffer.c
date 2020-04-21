@@ -69,7 +69,12 @@ void buffer_cleanup(buffer *b) {
     }
 }
 
-int buffer_get_next(buffer* b, uint32_t want, uint8_t** ptr) {
+void buffer_push_back(buffer* b, size_t count) {
+    b->available += count;
+    b->head_offset -= count;
+}
+
+ssize_t buffer_get_next(buffer* b, size_t want, uint8_t** ptr) {
     if (STAILQ_EMPTY(&b->chunks)) {
         return -1;
     }
@@ -95,7 +100,7 @@ int buffer_get_next(buffer* b, uint32_t want, uint8_t** ptr) {
     return len;
 }
 
-void buffer_append(buffer* b, uint8_t *buf, uint32_t len) {
+void buffer_append(buffer* b, uint8_t *buf, size_t len) {
     chunk_t *e = malloc(sizeof(chunk_t));
     e->buf = buf;
     e->len = len;
