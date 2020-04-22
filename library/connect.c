@@ -57,6 +57,7 @@ static void free_conn_req(struct nf_conn_req *r) {
 
 int close_conn_internal(struct nf_conn *conn) {
     if (conn->state == Closed && conn->write_reqs == 0) {
+        ZITI_LOG(VERBOSE, "removing connection[%d]", conn->conn_id);
         LIST_REMOVE(conn, next);
         FREE(conn->rx);
         conn->flusher->data = NULL;
