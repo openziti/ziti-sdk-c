@@ -55,6 +55,20 @@ static void free_conn_req(struct nf_conn_req *r) {
     free(r);
 };
 
+int close_conn_internal(struct nf_conn *conn) {
+    if (conn->state == Closed && conn->write_reqs == 0) {
+        LIST_REMOVE(conn, next);
+        FREE(conn->rx);
+        conn->flusher->data = NULL;
+        uv_close((uv_handle_t *) conn->flusher, free_handle);
+        buffer_cleanup(conn->inbound);
+        free_buffer(conn->inbound);
+        FREE(conn);
+        return 1;
+    }
+    return 0;
+}
+
 void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int status) {
     if (req->conn == NULL) {
         ZITI_LOG(DEBUG, "write completed for timed out or closed connection");
@@ -80,10 +94,6 @@ void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int stat
         req->cb(conn, status, req->ctx);
     }
 
-    if (conn->state == Closed && conn->write_reqs == 0) {
-        LIST_REMOVE(conn, next);
-        free(conn);
-    }
     free(req);
 }
 
@@ -286,9 +296,10 @@ int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_da
     NEWP(async_cr, uv_async_t);
     uv_async_init(conn->nf_ctx->loop, async_cr, ziti_connect_async);
 
-    uv_async_init(conn->nf_ctx->loop, &conn->flusher, flush_to_client);
-    conn->flusher.data = conn;
-    uv_unref((uv_handle_t *) &conn->flusher);
+    conn->flusher = calloc(1, sizeof(uv_async_t));
+    uv_async_init(conn->nf_ctx->loop, conn->flusher, flush_to_client);
+    conn->flusher->data = conn;
+    uv_unref((uv_handle_t *) conn->flusher);
 
     async_cr->data = req;
 
@@ -307,11 +318,6 @@ static void ziti_write_timeout(uv_timer_t *t) {
     if (conn->state != Closed) {
         conn->state = Closed;
         req->cb(conn, ZITI_TIMEOUT, req->ctx);
-        LIST_REMOVE(conn, next);
-    }
-
-    if (conn->write_reqs == 0) {
-        free(conn);
     }
 
     uv_close((uv_handle_t *) t, free_handle);
@@ -375,8 +381,8 @@ int ziti_disconnect(struct nf_conn *conn) {
 static void crypto_wr_cb(nf_connection conn, ssize_t status, void* ctx) {
     if (status < 0) {
         ZITI_LOG(ERROR, "crypto header write failed with status[%zd]", status);
+        conn->state = Closed;
         conn->data_cb(conn, NULL, status);
-        LIST_REMOVE(conn, next);
     }
 }
 
@@ -421,6 +427,10 @@ static int establish_crypto (nf_connection conn, message *msg) {
 
 static void flush_to_client(uv_async_t *fl) {
     nf_connection conn = fl->data;
+    if (conn == NULL || conn->state == Closed) {
+        return;
+    }
+
     ZITI_LOG(TRACE, "flushing %zd bytes to client", buffer_available(conn->inbound));
 
     while (buffer_available(conn->inbound) > 0) {
@@ -441,6 +451,9 @@ static void flush_to_client(uv_async_t *fl) {
 void conn_inbound_data_msg(nf_connection conn, message *msg) {
     int rc = 0;
     uint8_t *plain_text = NULL;
+    if (conn->state == Closed) {
+        ZITI_LOG(VERBOSE, "inbound data on closed connection");
+    }
     plain_text = malloc(msg->header.body_len);
     if (conn->encrypted) {
         PREP(crypto);
@@ -458,12 +471,9 @@ void conn_inbound_data_msg(nf_connection conn, message *msg) {
         }
 
         CATCH(crypto) {
+            FREE(plain_text);
+            conn->state = Closed;
             conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
-            LIST_REMOVE(conn, next);
-            FREE(conn->rx);
-            buffer_cleanup(conn->inbound);
-            FREE(conn);
-
             return;
         }
     } else {
@@ -471,7 +481,7 @@ void conn_inbound_data_msg(nf_connection conn, message *msg) {
         buffer_append(conn->inbound, plain_text, msg->header.body_len);
     }
 
-    flush_to_client(&conn->flusher);
+    flush_to_client(conn->flusher);
 }
 
 void connect_reply_cb(void *ctx, message *msg) {
@@ -490,7 +500,6 @@ void connect_reply_cb(void *ctx, message *msg) {
                      msg->header.body_len, msg->header.body_len, msg->body);
             conn->state = Closed;
             req->cb(conn, ZITI_EOF);
-            LIST_REMOVE(conn, next);
             break;
 
         case ContentTypeStateConnected:
@@ -514,16 +523,13 @@ void connect_reply_cb(void *ctx, message *msg) {
             else if (conn->state == Closed) {
                 ZITI_LOG(WARN, "received connect reply for closed/timedout connection[%d]", conn->conn_id);
                 ziti_disconnect(conn);
-                LIST_REMOVE(conn, next);
             }
             break;
 
         default:
             ZITI_LOG(WARN, "unexpected content_type[%d] conn_id[%d]", msg->header.content, conn->conn_id);
             ziti_disconnect(conn);
-            LIST_REMOVE(conn, next);
     }
-    LIST_REMOVE(req, _next);
     free_conn_req(req);
 }
 
@@ -610,8 +616,9 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb) {
     conn->channel = ch;
     conn->data_cb = data_cb;
 
-    uv_async_init(conn->nf_ctx->loop, &conn->flusher, flush_to_client);
-    conn->flusher.data = conn;
+    conn->flusher = calloc(1, sizeof(uv_async_t));
+    uv_async_init(conn->nf_ctx->loop, conn->flusher, flush_to_client);
+    conn->flusher->data= conn;
     uv_unref((uv_handle_t *) &conn->flusher);
 
     LIST_INSERT_HEAD(&ch->connections, conn, next);

@@ -145,7 +145,7 @@ struct nf_conn {
     int timeout;
 
     buffer *inbound;
-    uv_async_t flusher;
+    uv_async_t *flusher;
     int write_reqs;
 
     void *data;
@@ -180,6 +180,7 @@ struct nf_ctx {
 
     uv_timer_t session_timer;
     uv_timer_t refresh_timer;
+    uv_prepare_t reaper;
 
     uv_loop_t *loop;
     uv_thread_t loop_thread;
@@ -240,6 +241,8 @@ void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int stat
 int gen_key(mbedtls_pk_context *pk_context);
 
 int gen_csr(enroll_cfg *cfg);
+
+int close_conn_internal(struct nf_conn *conn);
 
 #ifdef __cplusplus
 }
