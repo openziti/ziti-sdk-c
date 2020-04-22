@@ -61,6 +61,8 @@ static void version_cb(ziti_version *v, ziti_error *err, void *ctx);
 
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx);
 
+static void grim_reaper(uv_prepare_t *p);
+
 #define CONN_STATES(XX) \
 XX(Initial)\
     XX(Connecting)\
@@ -225,6 +227,11 @@ int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
         uv_unref((uv_handle_t *) &ctx->refresh_timer);
     }
     ctx->refresh_timer.data = ctx;
+
+    uv_prepare_init(loop, &ctx->reaper);
+    ctx->reaper.data = ctx;
+    uv_unref((uv_handle_t *) &ctx->reaper);
+    uv_prepare_start(&ctx->reaper, grim_reaper);
 
     NEWP(init_req, struct nf_init_req);
     init_req->init_cb = opts->init_cb;
@@ -570,4 +577,23 @@ static const ziti_version sdk_version = {
 
 const ziti_version *NF_get_version() {
     return &sdk_version;
+}
+
+static void grim_reaper(uv_prepare_t *p) {
+    nf_context nf = p->data;
+
+    int count = 0;
+    const char *url;
+    ziti_channel_t *ch;
+    MODEL_MAP_FOREACH(url, ch, nf->channels) {
+        nf_connection conn = LIST_FIRST(&ch->connections);
+        while(conn != NULL) {
+            nf_connection try_close = conn;
+            conn = LIST_NEXT(conn, next);
+            count += close_conn_internal(try_close);
+        }
+    }
+    if (count > 0) {
+        ZITI_LOG(INFO, "reaped %d closed connections", count);
+    }
 }

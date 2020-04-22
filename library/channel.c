@@ -296,7 +296,6 @@ static void process_edge_message(struct nf_conn *conn, message *msg) {
                 conn->data_cb(conn, NULL, ZITI_EOF);
             }
             conn->state = Closed;
-            LIST_REMOVE(conn, next);
             break;
 
         case ContentTypeData:

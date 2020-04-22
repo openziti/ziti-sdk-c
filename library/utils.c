@@ -121,7 +121,9 @@ void init_debug() {
 long get_elapsed() {
 #if _WIN32
 	QueryPerformanceCounter(&end);
-	return end.QuadPart - start.QuadPart;
+	LARGE_INTEGER elapsed; // microseconds
+	elapsed.QuadPart = ( end.QuadPart - start.QuadPart ) * 1000;
+	return ( elapsed.QuadPart /= frequency.QuadPart ) ;
 #else
 	struct timespec cur;
 	clock_gettime(CLOCK_MONOTONIC, &cur);
@@ -134,7 +136,7 @@ static char errbuf[1024];
 void ziti_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
     buf->base = (char *) malloc(suggested_size);
     if (buf->base == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate %ld bytes. Prepare for crash", suggested_size);
+        ZITI_LOG(ERROR, "failed to allocate %zd bytes. Prepare for crash", suggested_size);
         buf->len = 0;
     }
     else {

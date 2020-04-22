@@ -17,6 +17,7 @@ limitations under the License.
 #include <stdint.h>
 #include <stdlib.h>
 #if _WIN32
+#include <crtdefs.h>
 #define MIN(a,b) ((a)<(b) ? (a) : (b))
 #else
 #include <sys/param.h>
