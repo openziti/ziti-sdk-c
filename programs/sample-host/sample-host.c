@@ -34,19 +34,20 @@ static void on_client_write(nf_connection clt, ssize_t status, void *ctx) {
     free(ctx);
 }
 
-static void on_client_data(nf_connection clt, uint8_t *data, int len) {
+static ssize_t on_client_data(nf_connection clt, uint8_t *data, ssize_t len) {
     if (len > 0) {
-        printf("client sent:\n%*.*s", len, len, data);
+        printf("client sent:\n%.*s", (int)len, data);
         char *reply = malloc(128);
-        size_t l = sprintf(reply, "%d\n", len);
+        size_t l = sprintf(reply, "%zd\n", len);
         NF_write(clt, reply, l, on_client_write, reply);
     }
     else if (len == ZITI_EOF) {
         printf("client disconnected\n");
     }
     else {
-        fprintf(stderr, "error: %d(%s)", len, ziti_errorstr(len));
+        fprintf(stderr, "error: %zd(%s)", len, ziti_errorstr(len));
     }
+    return len;
 }
 
 static void on_client_connect(nf_connection clt, int status) {
@@ -88,7 +89,7 @@ void on_connect(nf_connection conn, int status) {
 }
 
 static size_t total;
-void on_data(nf_connection c, uint8_t* buf, int len) {
+ssize_t on_data(nf_connection c, uint8_t* buf, ssize_t len) {
     if (len == ZITI_EOF) {
 
         printf("request completed: %s\n", ziti_errorstr(len));
@@ -103,9 +104,9 @@ void on_data(nf_connection c, uint8_t* buf, int len) {
     }
     else {
         total += len;
-        printf("%*.*s", len, len, buf);
+        printf("%.*s", (int)len, buf);
     }
-
+    return len;
 }
 
 static void on_nf_init(nf_context nf_ctx, int status, void* init_ctx) {

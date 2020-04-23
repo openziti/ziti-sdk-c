@@ -31,7 +31,7 @@ exit(code);\
 static size_t total;
 static nf_context nf;
 
-void on_data(nf_connection c, uint8_t *buf, int len) {
+ssize_t on_data(nf_connection c, uint8_t *buf, ssize_t len) {
     if (len == ZITI_EOF) {
 
         printf("request completed: %s\n", ziti_errorstr(len));
@@ -46,9 +46,9 @@ void on_data(nf_connection c, uint8_t *buf, int len) {
     }
     else {
         total += len;
-        printf("%*.*s", len, len, buf);
+        printf("%.*s",  (int)len, buf);
     }
-
+    return len;
 }
 
 static void on_write(nf_connection conn, ssize_t status, void *ctx) {
