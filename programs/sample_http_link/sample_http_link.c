@@ -48,12 +48,10 @@ void resp_cb(um_http_resp_t *resp, void *data) {
 void body_cb(um_http_req_t *req, const char *body, ssize_t len) {
     if (len == UV_EOF) {
         printf("\n\n====================\nRequest completed\n");
-    }
-    else if (len < 0) {
+    } else if (len < 0) {
         fprintf(stderr, "error(%zd) %s", len, uv_strerror(len));
         exit(-1);
-    }
-    else {
+    } else {
         printf("%*.*s", (int) len, (int) len, body);
     }
 }
@@ -67,11 +65,10 @@ void on_nf_init(nf_context _nf, int status, void* ctx) {
 
     nf = _nf;
     um_http_init(loop, &clt, "http://httpbin.org");
+    ziti_link_init(&zl, &clt, "httpbin", nf, close_cb);
 
     um_http_req_t *r = um_http_req(&clt, "GET", "/json", resp_cb, NULL);
     r->resp.body_cb = body_cb;
-
-    DIE(ziti_link_init(&zl, &clt, "httpbin", nf, close_cb));
 }
 
 int main(int argc, char** argv) {
