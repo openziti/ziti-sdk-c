@@ -87,6 +87,4 @@ int main(int argc, char** argv) {
     uv_run(loop, UV_RUN_DEFAULT);
 
     printf("========================\n");
-
-    NF_shutdown(nf);
 }
