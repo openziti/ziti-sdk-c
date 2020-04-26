@@ -57,7 +57,8 @@ void body_cb(um_http_req_t *req, const char *body, ssize_t len) {
 }
 
 void close_cb(ziti_link_t *zl) {
-    printf("ziti link closed");
+    printf("ziti link closed: %s\n", zl->service);
+    NF_shutdown(nf);
 }
 
 void on_nf_init(nf_context _nf, int status, void* ctx) {
@@ -79,6 +80,8 @@ int main(int argc, char** argv) {
     
     loop = uv_default_loop();
     DIE(NF_init(argv[1], loop, on_nf_init, NULL));
+
+    uv_mbed_set_debug(5, stdout);
 
     // loop will finish after the request is complete and NF_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
