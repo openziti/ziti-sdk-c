@@ -42,6 +42,7 @@ typedef struct ziti_link_s {
     UV_LINK_FIELDS
     um_http_t *clt;
     nf_connection conn;
+    nf_context nfc;
     char *service;
     um_http_custom_connect_cb connect_cb;
     ziti_link_close_cb close_cb;

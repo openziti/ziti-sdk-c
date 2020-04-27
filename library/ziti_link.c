@@ -48,7 +48,7 @@ static const uv_link_methods_t ziti_link_methods = {
 int ziti_link_init(ziti_link_t *zl, um_http_t *clt, const char *svc, nf_context nfc, ziti_link_close_cb close_cb) {
     zl->service = strdup(svc);
     zl->close_cb = close_cb;
-    NF_conn_init(nfc, &zl->conn, zl); 
+    zl->nfc = nfc;
     uv_link_init((uv_link_t *)zl, &ziti_link_methods);
     um_http_set_link_source(clt, (uv_link_t *)zl, ziti_link_connect);
     return 0; 
@@ -59,6 +59,12 @@ static int ziti_link_connect(um_http_t *c, um_http_custom_connect_cb cb) {
     ZITI_LOG(TRACE, "service %s", zl->service);
     zl->clt = c;
     zl->connect_cb = cb;
+
+    int status = NF_conn_init(zl->nfc, &zl->conn, zl);
+    if (status != ZITI_OK) {
+        ZITI_LOG(ERROR, "%d", status);
+        return status;
+    }
     return NF_dial(zl->conn, zl->service, zl_conn_cb, zl_data_cb);
 }
 
@@ -109,11 +115,9 @@ static int zl_write(uv_link_t *link, uv_link_t *source,
 void zl_close(uv_link_t* link, uv_link_t* source, uv_link_close_cb link_close_cb) {
     ziti_link_t *zl = (ziti_link_t *)link;
 
-    ZITI_LOG(TRACE, "%s", zl->service);
+    ZITI_LOG(INFO, "%s", zl->service);
     zl->close_cb(zl);
-    
     NF_close(&zl->conn);
-    free(zl->service);
 }
 
 const char* zl_strerror(uv_link_t* link, int err) {
