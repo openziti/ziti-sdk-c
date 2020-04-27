@@ -31,12 +31,12 @@ struct nf_conn_req {
     const char *session_type;
     ziti_service *service;
     ziti_channel_t *channel;
+    int chan_tries;
     nf_conn_cb cb;
 
     uv_timer_t *conn_timeout;
+    bool failed;
 
-    LIST_ENTRY(nf_conn_req) _next;
-    int ref_count;
 };
 
 static void flush_to_client(uv_async_t *fl);
@@ -119,34 +119,38 @@ static int send_message(struct nf_conn *conn, uint32_t content, uint8_t *body, u
 }
 
 static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
-    nf_context nf = ch->ctx;
+    struct nf_conn_req *req = ctx;
+    req->chan_tries--;
 
-    struct nf_conn_req *req;
-
-    LIST_FOREACH(req, &nf->connect_requests, _next) {
-        if (req == ctx)
-            break;
-    }
-    if (req == NULL) {
-        ZITI_LOG(DEBUG, "req was removed");
-        return;
-    }
-
-    if (status < 0) {
-        ZITI_LOG(ERROR, "ch[%d] failed to connect status[%d](%s)", ch->id, status, uv_strerror(status));
-        req->cb(req->conn, ZITI_GATEWAY_UNAVAILABLE);
-    }
-    else if (req->conn->channel == NULL) { // first channel to connect
-        ZITI_LOG(TRACE, "channel connected status[%d]", status);
-
-        req->channel = ch;
-        req->conn->channel = ch;
-        ziti_channel_start_connection(req);
-    }
-    else {
+    // if channel was already selected
+    if (req->channel != NULL) {
         ZITI_LOG(TRACE, "conn[%d] is already using another channel", req->conn->conn_id);
     }
+    else {
+        if (status < 0) {
+            ZITI_LOG(ERROR, "ch[%d] failed to connect status[%d](%s)", ch->id, status, uv_strerror(status));
+        }
+        else if (req->failed) {
+            ZITI_LOG(DEBUG, "request already timed out or closed");
+        }
+        else { // first channel to connect
+            ZITI_LOG(TRACE, "channel connected status[%d]", status);
 
+            req->channel = ch;
+            req->conn->channel = ch;
+            req->chan_tries++;
+            ziti_channel_start_connection(req);
+        }
+    }
+
+    if (req->chan_tries == 0) {
+        // callback was already called with timeout
+        if (!req->failed && req->channel == NULL) { // no more outstanding channel tries
+            req->conn->state = Closed;
+            req->cb(req->conn, ZITI_GATEWAY_UNAVAILABLE);
+        }
+        free_conn_req(req);
+    }
 }
 
 static void connect_timeout(uv_timer_t *timer) {
@@ -155,16 +159,15 @@ static void connect_timeout(uv_timer_t *timer) {
 
     if (conn->state == Connecting) {
         ZITI_LOG(WARN, "ziti connection timed out");
-        conn->state = Closed;
+        conn->state = Timedout;
+        req->failed = true;
         req->cb(conn, ZITI_TIMEOUT);
-
-        LIST_REMOVE(req, _next);
-    } else {
+    }
+    else {
         ZITI_LOG(ERROR, "timeout for connection[%d] in unexpected state[%d]", conn->conn_id, conn->state);
     }
-
-    uv_timer_stop(timer);
-    free_conn_req(req);
+    uv_close((uv_handle_t *) timer, free_handle);
+    req->conn_timeout = NULL;
 }
 
 static int ziti_connect(struct nf_ctx *ctx, const ziti_net_session *session, struct nf_conn_req *req) {
@@ -173,6 +176,7 @@ static int ziti_connect(struct nf_ctx *ctx, const ziti_net_session *session, str
 
     ziti_edge_router **er;
     for (er = session->edge_routers; *er != NULL; er++) {
+        req->chan_tries++;
         ZITI_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, (*er)->ingress.tls, conn->token);
         ziti_channel_connect(ctx, (*er)->ingress.tls, on_channel_connected, req);
     }
@@ -287,8 +291,6 @@ int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_da
 
     conn->data_cb = data_cb;
     conn->state = Connecting;
-
-    LIST_INSERT_HEAD(&nf->connect_requests, req, _next);
 
     CATCH(ziti) {
         return ERR(ziti);
@@ -486,11 +488,12 @@ void conn_inbound_data_msg(nf_connection conn, message *msg) {
 }
 
 void connect_reply_cb(void *ctx, message *msg) {
-    struct nf_conn_req* req = ctx;
+    struct nf_conn_req *req = ctx;
     struct nf_conn *conn = req->conn;
 
+    req->chan_tries--;
+
     if (req->conn_timeout != NULL) {
-        req->ref_count--;
         uv_timer_stop(req->conn_timeout);
     }
 
@@ -501,6 +504,7 @@ void connect_reply_cb(void *ctx, message *msg) {
                      msg->header.body_len, msg->header.body_len, msg->body);
             conn->state = Closed;
             req->cb(conn, ZITI_EOF);
+            req->failed = true;
             break;
 
         case ContentTypeStateConnected:
@@ -521,7 +525,7 @@ void connect_reply_cb(void *ctx, message *msg) {
                 conn->state = Connected;
                 req->cb(conn, ZITI_OK);
             }
-            else if (conn->state == Closed) {
+            else if (conn->state == Closed || conn->state == Timedout) {
                 ZITI_LOG(WARN, "received connect reply for closed/timedout connection[%d]", conn->conn_id);
                 ziti_disconnect(conn);
             }
@@ -531,7 +535,10 @@ void connect_reply_cb(void *ctx, message *msg) {
             ZITI_LOG(WARN, "unexpected content_type[%d] conn_id[%d]", msg->header.content, conn->conn_id);
             ziti_disconnect(conn);
     }
-    free_conn_req(req);
+
+    if (req->chan_tries == 0) {
+        free_conn_req(req);
+    }
 }
 
 int ziti_channel_start_connection(struct nf_conn_req *req) {
@@ -581,7 +588,6 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
                     .value = req->conn->pk,
             }
     };
-    req->ref_count++;
     ziti_channel_send_for_reply(ch, content_type, headers, 3, req->conn->token, strlen(req->conn->token),
                                 connect_reply_cb, req);
 
@@ -600,8 +606,6 @@ int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, n
 
     conn->client_cb = on_clt_cb;
     conn->state = Binding;
-
-    LIST_INSERT_HEAD(&nf->connect_requests, req, _next);
 
     NEWP(async_cr, uv_async_t);
     uv_async_init(conn->nf_ctx->loop, async_cr, ziti_connect_async);
@@ -654,7 +658,6 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb) {
     req->channel = conn->channel;
     req->conn = conn;
     req->cb = cb;
-    LIST_INSERT_HEAD(&conn->nf_ctx->connect_requests, req, _next);
 
     ziti_channel_send_for_reply(ch, content_type, headers, 3, (const uint8_t *) &clt_conn_id, sizeof(clt_conn_id),
                                 connect_reply_cb, req);

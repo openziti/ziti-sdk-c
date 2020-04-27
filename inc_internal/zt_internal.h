@@ -90,6 +90,7 @@ enum conn_state {
     Binding,
     Bound,
     Accepting,
+    Timedout,
     Closed
 };
 
@@ -189,7 +190,6 @@ struct nf_ctx {
     // map<erUrl,ziti_channel>
     model_map channels;
 
-    LIST_HEAD(conn_reqs, nf_conn_req) connect_requests;
     uv_async_t connect_async;
     uint32_t conn_seq;
 

@@ -337,7 +337,6 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
         fetch_cert_ctx->tlsCtx = tls;
         fetch_cert_ctx->loop = loop;
         fetch_cert_ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
-        LIST_INIT(&fetch_cert_ctx->connect_requests);
 
         uv_async_init(loop, &fetch_cert_ctx->connect_async, async_connects);
         uv_unref((uv_handle_t *) &fetch_cert_ctx->connect_async);
@@ -451,7 +450,6 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
     enroll_ctx->tlsCtx = tls;
     enroll_ctx->loop = enroll_req->enroll_ctx->loop;
     enroll_ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
-    LIST_INIT(&enroll_ctx->connect_requests);
 
     ziti_ctrl_init(enroll_ctx->loop, &enroll_ctx->controller, enroll_req->ecfg->zej->controller, tls);
 

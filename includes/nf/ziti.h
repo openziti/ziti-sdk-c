@@ -48,7 +48,7 @@ extern "C" {
 /**
  * The default timeout in milliseconds for connections and write operations to succeed.
  */
-#define NF_DEFAULT_TIMEOUT 5000
+#define NF_DEFAULT_TIMEOUT 10000
 
 /**
  * @brief Represents the Ziti Edge identity context.
