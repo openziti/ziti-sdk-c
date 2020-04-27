@@ -355,7 +355,7 @@ void run(int argc, char **argv) {
             .config = config,
             .init_cb = on_nf_init,
             .service_cb = service_check_cb,
-            .refresh_interval = 10,
+            .refresh_interval = 600,
             .ctx = &listeners,
             .config_types = my_configs,
     };

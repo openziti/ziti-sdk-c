@@ -205,12 +205,14 @@ int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
         TRY(ziti, load_tls(cfg, &opts->tls));
     }
 
+    free_nf_config(cfg);
+    free(cfg);
+
     NEWP(ctx, struct nf_ctx);
     ctx->opts = opts;
     ctx->tlsCtx = opts->tls;
     ctx->loop = loop;
     ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
-    LIST_INIT(&ctx->connect_requests);
 
     uv_async_init(loop, &ctx->connect_async, async_connects);
     uv_unref((uv_handle_t *) &ctx->connect_async);
