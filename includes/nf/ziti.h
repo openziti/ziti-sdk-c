@@ -380,6 +380,9 @@ extern int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data);
 ZITI_FUNC
 extern void *NF_conn_data(nf_connection conn);
 
+ZITI_FUNC
+extern void NF_conn_set_data(nf_connection conn, void *data);
+
 /**
  * @brief Checks availability of the service for the given edge context.
  *
