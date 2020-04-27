@@ -58,7 +58,7 @@ void body_cb(um_http_req_t *req, const char *body, ssize_t len) {
 
 void close_cb(ziti_link_t *zl) {
     printf("ziti link closed: %s\n", zl->service);
-    NF_shutdown(nf);
+    //NF_shutdown(nf);
 }
 
 void on_nf_init(nf_context _nf, int status, void* ctx) {
