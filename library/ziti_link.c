@@ -47,9 +47,8 @@ static const uv_link_methods_t ziti_link_methods = {
 
 static void ziti_link_release();
 
-int ziti_link_init(ziti_link_t *zl, um_http_t *clt, const char *svc, nf_context nfc, ziti_link_close_cb close_cb) {
+int ziti_link_init(ziti_link_t *zl, um_http_t *clt, const char *svc, nf_context nfc) {
     zl->service = strdup(svc);
-    zl->close_cb = close_cb;
     zl->nfc = nfc;
     uv_link_init((uv_link_t *)zl, &ziti_link_methods);
     um_http_set_link_source(clt, (uv_link_t *)zl, ziti_link_connect, ziti_link_release);
@@ -118,7 +117,6 @@ void zl_close(uv_link_t* link, uv_link_t* source, uv_link_close_cb link_close_cb
     ziti_link_t *zl = (ziti_link_t *)link;
 
     ZITI_LOG(TRACE, "%s", zl->service);
-    zl->close_cb(zl);
     NF_close(&zl->conn);
 }
 

@@ -45,7 +45,6 @@ typedef struct ziti_link_s {
     nf_context nfc;
     char *service;
     um_http_custom_connect_cb connect_cb;
-    ziti_link_close_cb close_cb;
 } ziti_link_t;
 
 /**
@@ -56,7 +55,7 @@ typedef struct ziti_link_s {
  * @param svc the name of the service to be dialed
  * @param nfc the initialized nf_context
  */
-int ziti_link_init(ziti_link_t *zl, um_http_t *clt, const char *svc, nf_context nfc, ziti_link_close_cb close_cb);
+int ziti_link_init(ziti_link_t *zl, um_http_t *clt, const char *svc, nf_context nfc);
 
 #ifdef __cplusplus
 }
