@@ -380,7 +380,17 @@ extern int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data);
 ZITI_FUNC
 extern void *NF_conn_data(nf_connection conn);
 
-ZITI_FUNC
+/**
+ * @brief Set or clear custom data associated with the given #nf_connection.
+ *
+ * This function associates the custom data to the #nf_connection. Pass NULL to clear associated data.
+ *
+ * @param conn the #nf_connection to set the context to
+ * @param data custom data
+ *
+ * @see NF_conn_data(), NF_conn_init()
+ */
+ ZITI_FUNC
 extern void NF_conn_set_data(nf_connection conn, void *data);
 
 /**
