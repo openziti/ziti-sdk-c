@@ -29,7 +29,6 @@ limitations under the License.
 #if _WIN32
 #include <time.h>
 #define timegm(v) _mkgmtime(v)
-#define reallocarray(p, n, s) realloc(p, (n) * (s))
 #else
 #define _GNU_SOURCE //add time.h include after defining _GNU_SOURCE
 #include <time.h>
@@ -50,7 +49,7 @@ jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_
 
     int rc = jsmn_parse(parser, json, len, toks, tok_cap);
     while (rc == JSMN_ERROR_NOMEM) {
-        toks = reallocarray(toks,(tok_cap *= 2), sizeof(jsmntok_t));
+        toks = realloc(toks,(tok_cap *= 2) * sizeof(jsmntok_t));
         ZITI_LOG(VERBOSE, "reallocating token array, new size = %zd", tok_cap);
         rc = jsmn_parse(parser, json, len, toks, tok_cap);
     }
@@ -64,7 +63,7 @@ jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_
         *ntok = rc;
     }
     if (*ntok == tok_cap) {
-        toks = reallocarray(toks, tok_cap + 1, sizeof(jsmntok_t));
+        toks = realloc(toks, (tok_cap + 1) * sizeof(jsmntok_t));
     }
     toks[*ntok].type = JSMN_UNDEFINED;
 
