@@ -274,8 +274,6 @@ static void ziti_connect_async(uv_async_t *ar) {
 
 int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb) {
 
-    nf_context nf = conn->nf_ctx;
-
     PREPF(ziti, ziti_errorstr);
     if (conn->state != Initial) {
         TRY(ziti, ZITI_INVALID_STATE);
@@ -312,7 +310,6 @@ int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_da
 static void ziti_write_timeout(uv_timer_t *t) {
     struct nf_write_req *req = t->data;
     struct nf_conn *conn = req->conn;
-    struct ziti_channel *ch = conn->channel;
 
     conn->write_reqs--;
     req->timeout = NULL;
@@ -470,7 +467,6 @@ static void flush_to_client(uv_async_t *fl) {
 }
 
 void conn_inbound_data_msg(nf_connection conn, message *msg) {
-    int rc = 0;
     uint8_t *plain_text = NULL;
     if (conn->state == Closed) {
         ZITI_LOG(VERBOSE, "inbound data on closed connection");

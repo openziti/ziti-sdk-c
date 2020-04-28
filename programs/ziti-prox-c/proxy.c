@@ -210,7 +210,12 @@ ssize_t on_ziti_data(nf_connection conn, uint8_t *data, ssize_t len) {
     uv_tcp_t *clt = NF_conn_data(conn);
     struct client *c = clt ? clt->data : NULL;
 
-    if (len > 0) {
+    if (clt == NULL) {
+        // nf_conn is still in process of disconnecting just drop data on the floor
+        ZITI_LOG(DEBUG, "received data[%zd] for disconnected client", len);
+        return len;
+    }
+    else if (len > 0) {
         NEWP(req, uv_write_t);
         char *copy = malloc(len);
         memcpy(copy, data, len);
@@ -233,6 +238,7 @@ ssize_t on_ziti_data(nf_connection conn, uint8_t *data, ssize_t len) {
 
         return 0;
     }
+    return 0;
 }
 
 static void on_client(uv_stream_t *server, int status) {
