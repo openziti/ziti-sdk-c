@@ -29,6 +29,7 @@ limitations under the License.
 #if _WIN32
 #include <time.h>
 #define timegm(v) _mkgmtime(v)
+#define reallocarray(p, n, s) realloc(p, (n) * (s))
 #else
 #define _GNU_SOURCE //add time.h include after defining _GNU_SOURCE
 #include <time.h>
