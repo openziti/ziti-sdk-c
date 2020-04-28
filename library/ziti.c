@@ -356,6 +356,12 @@ void *NF_conn_data(nf_connection conn) {
     return conn != NULL ? conn->data : NULL;
 }
 
+void NF_conn_set_data(nf_connection conn, void *data) {
+    if (conn != NULL) {
+        conn->data = data;
+    }
+}
+
 int NF_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb) {
     return ziti_dial(conn, service, conn_cb, data_cb);
 }
@@ -521,6 +527,7 @@ static void services_refresh(uv_timer_t *t) {
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     struct nf_init_req *init_req = ctx;
     nf_context nf = init_req->nf;
+    nf->loop_thread = uv_thread_self();
 
     int errCode = err ? code_to_error(err->code) : ZITI_OK;
 
@@ -584,6 +591,7 @@ const ziti_version *NF_get_version() {
 static void grim_reaper(uv_prepare_t *p) {
     nf_context nf = p->data;
 
+    int total = 0;
     int count = 0;
     const char *url;
     ziti_channel_t *ch;
@@ -591,11 +599,12 @@ static void grim_reaper(uv_prepare_t *p) {
         nf_connection conn = LIST_FIRST(&ch->connections);
         while(conn != NULL) {
             nf_connection try_close = conn;
+            total++;
             conn = LIST_NEXT(conn, next);
             count += close_conn_internal(try_close);
         }
     }
     if (count > 0) {
-        ZITI_LOG(INFO, "reaped %d closed connections", count);
+        ZITI_LOG(INFO, "reaped %d closed (out of %d total) connections", count, total);
     }
 }

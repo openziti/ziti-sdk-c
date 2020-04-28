@@ -381,6 +381,19 @@ ZITI_FUNC
 extern void *NF_conn_data(nf_connection conn);
 
 /**
+ * @brief Set or clear custom data associated with the given #nf_connection.
+ *
+ * This function associates the custom data to the #nf_connection. Pass NULL to clear associated data.
+ *
+ * @param conn the #nf_connection to set the context to
+ * @param data custom data
+ *
+ * @see NF_conn_data(), NF_conn_init()
+ */
+ ZITI_FUNC
+extern void NF_conn_set_data(nf_connection conn, void *data);
+
+/**
  * @brief Checks availability of the service for the given edge context.
  *
  * Checks to see if a given #nf_context has a service available by the name supplied. The supplied name

@@ -114,7 +114,6 @@ static int send_message(struct nf_conn *conn, uint32_t content, uint8_t *body, u
                     .value = (uint8_t *) &msg_seq
             }
     };
-    conn->write_reqs++;
     return ziti_channel_send(ch, content, headers, 2, body, body_len, wr);
 }
 
@@ -129,6 +128,7 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
     else {
         if (status < 0) {
             ZITI_LOG(ERROR, "ch[%d] failed to connect status[%d](%s)", ch->id, status, uv_strerror(status));
+            model_map_remove(&ch->ctx->channels, ch->ingress);
         }
         else if (req->failed) {
             ZITI_LOG(DEBUG, "request already timed out or closed");
@@ -330,30 +330,46 @@ static void ziti_write_async(uv_async_t *ar) {
     struct nf_write_req *req = ar->data;
     struct nf_conn *conn = req->conn;
 
-    if (req->cb) {
-        req->timeout = calloc(1, sizeof(uv_timer_t));
-        uv_timer_init(ar->loop, req->timeout);
-        req->timeout->data = req;
-        uv_timer_start(req->timeout, ziti_write_timeout, conn->timeout, 0);
-    }
+    if (conn->state == Closed) {
+        ZITI_LOG(WARN, "got write req for closed conn[%d]", conn->conn_id);
+        conn->write_reqs--;
 
-    if (conn->encrypted) {
-        uint32_t crypto_len = req->len + crypto_secretstream_xchacha20poly1305_abytes();
-        unsigned char *cipher_text = malloc(crypto_len);
-        crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, cipher_text, NULL, req->buf, req->len, NULL, 0, 0);
-        send_message(conn, ContentTypeData, cipher_text, crypto_len, req);
-        free(cipher_text);
-    } else {
-        send_message(conn, ContentTypeData, req->buf, req->len, req);
+        req->cb(conn, ZITI_EOF, req->ctx);
+        free(req);
     }
+    else {
+        if (req->cb) {
+            req->timeout = calloc(1, sizeof(uv_timer_t));
+            uv_timer_init(ar->loop, req->timeout);
+            req->timeout->data = req;
+            uv_timer_start(req->timeout, ziti_write_timeout, conn->timeout, 0);
+        }
 
+        if (conn->encrypted) {
+            uint32_t crypto_len = req->len + crypto_secretstream_xchacha20poly1305_abytes();
+            unsigned char *cipher_text = malloc(crypto_len);
+            crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, cipher_text, NULL, req->buf, req->len, NULL, 0,
+                                                       0);
+            send_message(conn, ContentTypeData, cipher_text, crypto_len, req);
+            free(cipher_text);
+        }
+        else {
+            send_message(conn, ContentTypeData, req->buf, req->len, req);
+        }
+    }
     uv_close((uv_handle_t *) ar, free_handle);
 }
 
 int ziti_write(struct nf_write_req *req) {
     NEWP(ar, uv_async_t);
     uv_async_init(req->conn->nf_ctx->loop, ar, ziti_write_async);
+    req->conn->write_reqs++;
     ar->data = req;
+
+    if (uv_thread_self() == req->conn->nf_ctx->loop_thread) {
+        ziti_write_async(ar);
+        return 0;
+    }
     return uv_async_send(ar);
 }
 
@@ -370,6 +386,7 @@ static void ziti_disconnect_async(uv_async_t *ar) {
         NEWP(wr, struct nf_write_req);
         wr->conn = conn;
         wr->cb = ziti_disconnect_cb;
+        conn->write_reqs++;
         send_message(conn, ContentTypeStateClosed, NULL, 0, wr);
     }
 }
@@ -423,6 +440,7 @@ static int establish_crypto (nf_connection conn, message *msg) {
     wr->cb = crypto_wr_cb;
 
     crypto_secretstream_xchacha20poly1305_init_push(&conn->crypt_o, header, tx);
+    conn->write_reqs++;
     send_message(conn, ContentTypeData, header, crypto_secretstream_xchacha20poly1305_headerbytes(), wr);
     free(header);
     return ZITI_OK;

@@ -113,11 +113,8 @@ static void signal_cb(uv_signal_t *s, int signum) {
 static void close_cb(uv_handle_t *h) {
     struct client *clt = h->data;
     ZITI_LOG(DEBUG, "client connection closed for %s", clt->addr_s);
-    clt->closed = 1;
-    if (clt->inb_reqs == 0) {
-        free(clt);
-        free(h);
-    }
+    free(clt);
+    free(h);
 }
 
 static void on_client_write(uv_write_t *req, int status) {
@@ -153,16 +150,17 @@ static void alloc_cb(uv_handle_t *h, size_t suggested_size, uv_buf_t *buf) {
 
 static void on_nf_write(nf_connection conn, ssize_t status, void *ctx) {
     uv_stream_t *stream = NF_conn_data(conn);
-    struct client *clt = stream->data;
-    if (status < 0) {
-        ZITI_LOG(ERROR, "nf_write failed status[%zd] %s", status, ziti_errorstr(status));
-        uv_close((uv_handle_t *) stream, close_cb);
-    }
-    else {
-        clt->inb_reqs--;
-        if (clt->inb_reqs == 0 && clt->closed) {
-            free(clt);
-            free(stream);
+    if (stream != NULL) {
+        struct client *clt = stream->data;
+        if (status < 0) {
+            ZITI_LOG(ERROR, "nf_write failed status[%zd] %s", status, ziti_errorstr(status));
+            if (!clt->closed) {
+                uv_close((uv_handle_t *) stream, close_cb);
+                clt->closed = true;
+            }
+        }
+        else {
+            clt->inb_reqs--;
         }
     }
     free(ctx);
@@ -175,13 +173,18 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         ZITI_LOG(WARN, "client[%s] is throttled", clt->addr_s);
     }
     else if (nread < 0) {
-        ZITI_LOG(DEBUG,  "connection closed %s [%zd/%s](%s)",
+        ZITI_LOG(DEBUG, "connection closed %s [%zd/%s](%s)",
                  clt->addr_s, nread, uv_err_name(nread), uv_strerror(nread));
 
-        NF_close((nf_connection *) &clt->nf_conn);
+        NF_conn_set_data(clt->nf_conn, NULL);
+        NF_close(&clt->nf_conn);
 
         uv_read_stop(stream);
         uv_close((uv_handle_t *) stream, close_cb);
+        clt->closed = true;
+        free(buf->base);
+    }
+    else if (clt->closed) {
         free(buf->base);
     }
     else {
@@ -205,7 +208,7 @@ void on_ziti_connect(nf_connection conn, int status) {
 
 ssize_t on_ziti_data(nf_connection conn, uint8_t *data, ssize_t len) {
     uv_tcp_t *clt = NF_conn_data(conn);
-    struct client *c = clt->data;
+    struct client *c = clt ? clt->data : NULL;
 
     if (len > 0) {
         NEWP(req, uv_write_t);
@@ -218,8 +221,16 @@ ssize_t on_ziti_data(nf_connection conn, uint8_t *data, ssize_t len) {
         return len;
     }
     else if (len < 0) {
-        ZITI_LOG(DEBUG, "ziti connection closed with [%d](%s)", len, ziti_errorstr(len));
-        uv_close((uv_handle_t *) clt, close_cb);
+        if (clt != NULL) {
+            ZITI_LOG(DEBUG, "ziti connection closed with [%zd](%s)", len, ziti_errorstr(len));
+            NF_conn_set_data(conn, NULL);
+            c->nf_conn = NULL;
+            if (!c->closed) {
+                c->closed = true;
+                uv_close((uv_handle_t *) clt, close_cb);
+            }
+        }
+
         return 0;
     }
 }
