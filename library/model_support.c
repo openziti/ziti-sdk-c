@@ -41,19 +41,51 @@ void model_dump(void *obj, int off, type_meta *meta) {
     // TODO
 }
 
+jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_t *ntok) {
+    size_t tok_cap = 256;
+    jsmn_init(parser);
+
+    jsmntok_t *toks = calloc(tok_cap, sizeof(jsmntok_t));
+
+    int rc = jsmn_parse(parser, json, len, toks, tok_cap);
+    while (rc == JSMN_ERROR_NOMEM) {
+        toks = reallocarray(toks,(tok_cap *= 2), sizeof(jsmntok_t));
+        ZITI_LOG(VERBOSE, "reallocating token array, new size = %zd", tok_cap);
+        rc = jsmn_parse(parser, json, len, toks, tok_cap);
+    }
+
+    if (rc < 0) {
+        ZITI_LOG(ERROR, "jsmn_parse() failed: %d", rc);
+        free(toks);
+        toks = NULL;
+        *ntok = 0;
+    } else {
+        *ntok = rc;
+    }
+    if (*ntok == tok_cap) {
+        toks = reallocarray(toks, tok_cap + 1, sizeof(jsmntok_t));
+    }
+    toks[*ntok].type = JSMN_UNDEFINED;
+
+    return toks;
+}
+
 int model_parse_array(void ***arrp, const char *json, size_t len, type_meta *meta) {
     jsmn_parser parser;
-    jsmn_init(&parser);
-    jsmntok_t toks[1024];
-    memset(toks, 0, sizeof(toks));
-    jsmntok_t *tok = toks;
-    jsmn_parse(&parser, json, len, toks, 1024);
+    size_t ntoks;
+    jsmntok_t *tokens = parse_tokens(&parser, json, len, &ntoks);
+    if (tokens == NULL) {
+        return -1;
+    }
+
+    jsmntok_t *tok = tokens;
     if (tok->type != JSMN_ARRAY) {
+        FREE(tokens);
         return -1;
     }
 
     int children = tok->size;
-    void **arr = calloc(toks[0].size + 1, sizeof(void *));
+    void **arr = calloc(tokens[0].size + 1, sizeof(void *));
     tok++;
     for (int i = 0; i < children; i++) {
         void *el = calloc(1, meta->size);
@@ -61,22 +93,23 @@ int model_parse_array(void ***arrp, const char *json, size_t len, type_meta *met
         if (rc < 0) {
             model_free(el, meta);
             FREE(el);
+            FREE(tokens);
             return rc;
         }
         arr[i] = el;
         tok += rc;
     }
     *arrp = arr;
+    FREE(tokens);
     return 0;
 }
 
 int model_parse(void *obj, const char *json, size_t len, type_meta *meta) {
     jsmn_parser parser;
-    jsmn_init(&parser);
-    jsmntok_t toks[1024];
-    memset(toks, 0, sizeof(toks));
-    jsmn_parse(&parser, json, len, toks, 1024);
-    int res = parse_obj(obj, json, toks, meta);
+    size_t ntoks;
+    jsmntok_t *tokens = parse_tokens(&parser, json, len, &ntoks);
+    int res = tokens != NULL ? parse_obj(obj, json, tokens, meta) : -1;
+    FREE(tokens);
     return res > 0 ? 0 : res;
 }
 
@@ -276,7 +309,7 @@ static int _parse_json(char **val, const char *json, jsmntok_t *tok) {
 
     int processed = 0;
     jsmntok_t *t = tok;
-    while (tok->type != JSMN_UNDEFINED && t->end <= tok->end) {
+    while (t->type != JSMN_UNDEFINED && t->end <= tok->end) {
         processed++;
         t++;
     }
