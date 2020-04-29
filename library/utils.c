@@ -93,6 +93,7 @@ const char* ziti_git_commit() {
 
 int ziti_debug_level = INFO;
 FILE *ziti_debug_out;
+static bool log_initialized = false;
 
 #if _WIN32
 LARGE_INTEGER frequency;
@@ -103,6 +104,10 @@ struct timespec starttime;
 #endif
 
 void init_debug() {
+    if (log_initialized) {
+        return;
+    }
+    log_initialized = true;
     char *level = getenv("ZITI_LOG");
     if (level != NULL) {
         ziti_debug_level = (int) strtol(level, NULL, 10);
