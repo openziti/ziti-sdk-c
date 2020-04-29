@@ -35,9 +35,6 @@ limitations under the License.
 #define ZITI_COMMIT "<sha>"
 #endif
 
-#define to_str(x) str(x)
-#define str(x) #x
-
 /*
  * https://sourceforge.net/p/predef/wiki/OperatingSystems/
  */
@@ -102,6 +99,12 @@ LARGE_INTEGER end;
 #else
 struct timespec starttime;
 #endif
+
+void ziti_set_log(FILE *log) {
+    init_debug();
+    ziti_debug_out = log;
+    uv_mbed_set_debug(ziti_debug_level, log);
+}
 
 void init_debug() {
     if (log_initialized) {
