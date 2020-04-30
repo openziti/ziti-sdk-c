@@ -17,8 +17,19 @@ limitations under the License.
 #include "metrics.h"
 
 #define _USE_MATH_DEFINES
+
 #include <math.h>
+#include <string.h>
 #include <uv.h>
+
+#if defined(__unix__)
+
+#include <stdatomic.h>
+
+#define InterlockedAdd64(p, v) atomic_fetch_add(p,v)
+#define InterlockedExchange64(p, v) atomic_store(p,v)
+#define InterlockedExchange(p, v) atomic_store(p,v)
+#endif
 
 #define NANOS(s) ((s) * 1e9)
 #define MILLIS(s) ((s) * 1000)
@@ -84,7 +95,8 @@ extern void metrics_rate_init(rate_t *r, enum rate_type type) {
 }
 
 extern void metrics_rate_update(rate_t *r, long delta) {
-    InterlockedAdd64(&r->delta, delta);
+    atomic_fetch_add(&r->delta, delta);
+    // InterlockedAdd64(&r->delta, delta);
 }
 
 extern double metrics_rate_get(rate_t *r) {
@@ -115,7 +127,7 @@ static double instant_rate(rate_t *r) {
 static void tick_cma(rate_t *cma) {
     double r = instant_rate(cma);
     double current_rate = *(double*)&cma->rate;
-    current_rate = (r + current_rate * cma->param) / (cma->param + 1);
+    current_rate = (r + current_rate * cma->param) / ((double) cma->param + 1);
 
     InterlockedExchange64(&cma->rate, *(int64_t *) (&current_rate));
     InterlockedExchange64(&cma->param, cma->param + 1);
