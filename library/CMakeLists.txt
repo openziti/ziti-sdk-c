@@ -19,7 +19,8 @@ SET(ZITI_SRC_FILES
         channel.c
         message.c
         buffer.c
-)
+        metrics.c
+        )
 
 SET(ZITI_PRIVATE_SRC_FILES
     ${PROJECT_SOURCE_DIR}/deps/http-parser/http_parser.c
