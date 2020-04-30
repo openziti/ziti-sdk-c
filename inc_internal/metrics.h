@@ -18,10 +18,16 @@ limitations under the License.
 #define ZITI_SDK_METRICS_H
 
 #include <stdint.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <uv_mbed/queue.h>
 #include <uv.h>
+
+#ifdef __cplusplus
+#include <atomic>
+using namespace std;
+#else
+#include <stdatomic.h>
+#endif
 
 struct rate_s {
     atomic_llong delta;
@@ -29,7 +35,7 @@ struct rate_s {
     atomic_llong param;
 
     void (*tick_fn)(struct rate_s *);
-    long init;
+    atomic_bool init;
     LIST_ENTRY(rate_s) _next;
 
 };
