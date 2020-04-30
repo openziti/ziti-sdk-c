@@ -95,8 +95,7 @@ extern void metrics_rate_init(rate_t *r, enum rate_type type) {
 }
 
 extern void metrics_rate_update(rate_t *r, long delta) {
-    atomic_fetch_add(&r->delta, delta);
-    // InterlockedAdd64(&r->delta, delta);
+    InterlockedAdd64(&r->delta, delta);
 }
 
 extern double metrics_rate_get(rate_t *r) {
