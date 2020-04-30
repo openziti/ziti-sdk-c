@@ -26,6 +26,7 @@ limitations under the License.
 #include "message.h"
 #include "ziti_enroll.h"
 #include "ziti_ctrl.h"
+#include "metrics.h"
 
 #include <sodium.h>
 
@@ -195,6 +196,12 @@ struct nf_ctx {
 
     /* options */
     int ziti_timeout;
+
+    /* context wide metrics */
+    rate_t up_rate;
+    rate_t down_rate;
+
+
 };
 
 #ifdef __cplusplus

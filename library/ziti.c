@@ -175,6 +175,7 @@ int load_tls(nf_config *cfg, tls_context **ctx) {
 
 int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
     init_debug();
+    metrics_init(loop, 5);
 
     uv_timeval64_t start_time;
     uv_gettimeofday(&start_time);
@@ -268,6 +269,11 @@ const ziti_version *NF_get_controller_version(nf_context nf) {
 
 const ziti_identity *NF_get_identity(nf_context nf) {
     return nf->session ? nf->session->identity : NULL;
+}
+
+void NF_get_transfer_rates(nf_context nf, double *up, double *down) {
+    *up = metrics_rate_get(&nf->up_rate);
+    *down = metrics_rate_get(&nf->down_rate);
 }
 
 int NF_set_timeout(nf_context ctx, int timeout) {
@@ -386,6 +392,8 @@ int NF_write(nf_connection conn, uint8_t* data, size_t length, nf_write_cb write
     req->len = length;
     req->cb = write_cb;
     req->ctx = write_ctx;
+
+    metrics_rate_update(&conn->nf_ctx->up_rate, length);
 
     return ziti_write(req);
 }
@@ -549,6 +557,9 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         if (nf->opts->refresh_interval > 0) {
             uv_timer_start(&nf->refresh_timer, services_refresh, 0, nf->opts->refresh_interval * 1000);
         }
+
+        metrics_rate_init(&nf->up_rate, EWMA_1m);
+        metrics_rate_init(&nf->down_rate, EWMA_1m);
 
     } else {
         ZITI_LOG(ERROR, "failed to login: %s[%d](%s)", err->code, errCode, err->message);

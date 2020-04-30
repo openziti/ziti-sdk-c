@@ -33,6 +33,8 @@ limitations under the License.
 #define MAX_WRITES 4
 
 static char *config = NULL;
+static int report_metrics = -1;
+static uv_timer_t report_timer;
 static nf_context nf;
 static uv_signal_t sig;
 
@@ -92,6 +94,12 @@ static void debug_dump(listener_l *listeners) {
     NF_dump(nf);
 }
 
+static void reporter_cb(uv_timer_t *t) {
+    double up, down;
+    NF_get_transfer_rates(nf, &up, &down);
+    ZITI_LOG(INFO, "transfer rates: up=%lf down=%lf", up, down);
+}
+
 static void signal_cb(uv_signal_t *s, int signum) {
     ZITI_LOG(INFO, "signal[%d/%s] received", signum, strsignal(signum));
 
@@ -103,6 +111,7 @@ static void signal_cb(uv_signal_t *s, int signum) {
 
         case SIGUSR1:
             debug_dump(s->data);
+            reporter_cb(&report_timer);
             break;
 
         default:
@@ -344,6 +353,7 @@ char* pxoxystrndup(const char* s, int n);
 const char *my_configs[] = {
         "all", NULL
 };
+
 void run(int argc, char **argv) {
 
     PREPF(uv, uv_strerror);
@@ -390,6 +400,11 @@ void run(int argc, char **argv) {
     const ziti_version *ver = NF_get_version();
     ZITI_LOG(INFO, "built with SDK version %s(%s)[%s]", ver->version, ver->revision, ver->build_date);
 
+    if (report_metrics > 0) {
+        uv_timer_init(loop, &report_timer);
+        uv_timer_start(&report_timer, reporter_cb, report_metrics * 1000, report_metrics * 1000);
+        uv_unref((uv_handle_t*)&report_timer);
+    }
     ZITI_LOG(INFO, "starting event loop");
     uv_run(loop, UV_RUN_DEFAULT);
 
@@ -416,6 +431,7 @@ int run_opts(int argc, char **argv) {
     static struct option long_options[] = {
             {"debug",  optional_argument, NULL, 'd'},
             {"config", required_argument, NULL, 'c'},
+            {"metrics", optional_argument, NULL, 'm'},
             {NULL, 0,                     NULL, 0}
     };
 
@@ -425,7 +441,7 @@ int run_opts(int argc, char **argv) {
 
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "dc:",
+    while ((c = getopt_long(argc, argv, "dc:m:",
                             long_options, &option_index)) != -1) {
         switch (c) {
             case 'd':
@@ -440,6 +456,13 @@ int run_opts(int argc, char **argv) {
 
             case 'c':
                 config = strdup(optarg);
+                break;
+
+            case 'm':
+                report_metrics = 10;
+                if (optarg) {
+                    report_metrics = (int) strtol(optarg, NULL, 10);
+                }
                 break;
 
             default: {
