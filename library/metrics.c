@@ -22,7 +22,7 @@ limitations under the License.
 #include <string.h>
 #include <uv.h>
 
-#if defined(__unix__)
+#if defined(__unix__) || defined(__APPLE__)
 
 #include <stdatomic.h>
 
