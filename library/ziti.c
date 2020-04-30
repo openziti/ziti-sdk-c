@@ -297,6 +297,8 @@ int NF_shutdown(nf_context ctx) {
     ziti_close_channels(ctx);
 
     ziti_ctrl_logout(&ctx->controller, NULL, NULL);
+    metrics_rate_close(&ctx->up_rate);
+    metrics_rate_close(&ctx->down_rate);
 
     return ZITI_OK;
 }
