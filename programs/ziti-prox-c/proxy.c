@@ -33,6 +33,8 @@ limitations under the License.
 #define MAX_WRITES 4
 
 static char *config = NULL;
+static int report_metrics = -1;
+static uv_timer_t report_timer;
 static nf_context nf;
 static uv_signal_t sig;
 
@@ -92,6 +94,12 @@ static void debug_dump(listener_l *listeners) {
     NF_dump(nf);
 }
 
+static void reporter_cb(uv_timer_t *t) {
+    double up, down;
+    NF_get_transfer_rates(nf, &up, &down);
+    ZITI_LOG(INFO, "transfer rates: up=%lf down=%lf", up, down);
+}
+
 static void signal_cb(uv_signal_t *s, int signum) {
     ZITI_LOG(INFO, "signal[%d/%s] received", signum, strsignal(signum));
 
@@ -103,6 +111,7 @@ static void signal_cb(uv_signal_t *s, int signum) {
 
         case SIGUSR1:
             debug_dump(s->data);
+            reporter_cb(&report_timer);
             break;
 
         default:
@@ -113,11 +122,8 @@ static void signal_cb(uv_signal_t *s, int signum) {
 static void close_cb(uv_handle_t *h) {
     struct client *clt = h->data;
     ZITI_LOG(DEBUG, "client connection closed for %s", clt->addr_s);
-    clt->closed = 1;
-    if (clt->inb_reqs == 0) {
-        free(clt);
-        free(h);
-    }
+    free(clt);
+    free(h);
 }
 
 static void on_client_write(uv_write_t *req, int status) {
@@ -153,16 +159,17 @@ static void alloc_cb(uv_handle_t *h, size_t suggested_size, uv_buf_t *buf) {
 
 static void on_nf_write(nf_connection conn, ssize_t status, void *ctx) {
     uv_stream_t *stream = NF_conn_data(conn);
-    struct client *clt = stream->data;
-    if (status < 0) {
-        ZITI_LOG(ERROR, "nf_write failed status[%zd] %s", status, ziti_errorstr(status));
-        uv_close((uv_handle_t *) stream, close_cb);
-    }
-    else {
-        clt->inb_reqs--;
-        if (clt->inb_reqs == 0 && clt->closed) {
-            free(clt);
-            free(stream);
+    if (stream != NULL) {
+        struct client *clt = stream->data;
+        if (status < 0) {
+            ZITI_LOG(ERROR, "nf_write failed status[%zd] %s", status, ziti_errorstr(status));
+            if (!clt->closed) {
+                uv_close((uv_handle_t *) stream, close_cb);
+                clt->closed = true;
+            }
+        }
+        else {
+            clt->inb_reqs--;
         }
     }
     free(ctx);
@@ -175,13 +182,18 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         ZITI_LOG(WARN, "client[%s] is throttled", clt->addr_s);
     }
     else if (nread < 0) {
-        ZITI_LOG(DEBUG,  "connection closed %s [%zd/%s](%s)",
+        ZITI_LOG(DEBUG, "connection closed %s [%zd/%s](%s)",
                  clt->addr_s, nread, uv_err_name(nread), uv_strerror(nread));
 
-        NF_close((nf_connection *) &clt->nf_conn);
+        NF_conn_set_data(clt->nf_conn, NULL);
+        NF_close(&clt->nf_conn);
 
         uv_read_stop(stream);
         uv_close((uv_handle_t *) stream, close_cb);
+        clt->closed = true;
+        free(buf->base);
+    }
+    else if (clt->closed) {
         free(buf->base);
     }
     else {
@@ -205,9 +217,14 @@ void on_ziti_connect(nf_connection conn, int status) {
 
 ssize_t on_ziti_data(nf_connection conn, uint8_t *data, ssize_t len) {
     uv_tcp_t *clt = NF_conn_data(conn);
-    struct client *c = clt->data;
+    struct client *c = clt ? clt->data : NULL;
 
-    if (len > 0) {
+    if (clt == NULL) {
+        // nf_conn is still in process of disconnecting just drop data on the floor
+        ZITI_LOG(DEBUG, "received data[%zd] for disconnected client", len);
+        return len;
+    }
+    else if (len > 0) {
         NEWP(req, uv_write_t);
         char *copy = malloc(len);
         memcpy(copy, data, len);
@@ -218,10 +235,19 @@ ssize_t on_ziti_data(nf_connection conn, uint8_t *data, ssize_t len) {
         return len;
     }
     else if (len < 0) {
-        ZITI_LOG(DEBUG, "ziti connection closed with [%d](%s)", len, ziti_errorstr(len));
-        uv_close((uv_handle_t *) clt, close_cb);
+        if (clt != NULL) {
+            ZITI_LOG(DEBUG, "ziti connection closed with [%zd](%s)", len, ziti_errorstr(len));
+            NF_conn_set_data(conn, NULL);
+            c->nf_conn = NULL;
+            if (!c->closed) {
+                c->closed = true;
+                uv_close((uv_handle_t *) clt, close_cb);
+            }
+        }
+
         return 0;
     }
+    return 0;
 }
 
 static void on_client(uv_stream_t *server, int status) {
@@ -327,6 +353,7 @@ char* pxoxystrndup(const char* s, int n);
 const char *my_configs[] = {
         "all", NULL
 };
+
 void run(int argc, char **argv) {
 
     PREPF(uv, uv_strerror);
@@ -373,6 +400,11 @@ void run(int argc, char **argv) {
     const ziti_version *ver = NF_get_version();
     ZITI_LOG(INFO, "built with SDK version %s(%s)[%s]", ver->version, ver->revision, ver->build_date);
 
+    if (report_metrics > 0) {
+        uv_timer_init(loop, &report_timer);
+        uv_timer_start(&report_timer, reporter_cb, report_metrics * 1000, report_metrics * 1000);
+        uv_unref((uv_handle_t*)&report_timer);
+    }
     ZITI_LOG(INFO, "starting event loop");
     uv_run(loop, UV_RUN_DEFAULT);
 
@@ -399,6 +431,7 @@ int run_opts(int argc, char **argv) {
     static struct option long_options[] = {
             {"debug",  optional_argument, NULL, 'd'},
             {"config", required_argument, NULL, 'c'},
+            {"metrics", optional_argument, NULL, 'm'},
             {NULL, 0,                     NULL, 0}
     };
 
@@ -408,7 +441,7 @@ int run_opts(int argc, char **argv) {
 
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "dc:",
+    while ((c = getopt_long(argc, argv, "dc:m:",
                             long_options, &option_index)) != -1) {
         switch (c) {
             case 'd':
@@ -423,6 +456,13 @@ int run_opts(int argc, char **argv) {
 
             case 'c':
                 config = strdup(optarg);
+                break;
+
+            case 'm':
+                report_metrics = 10;
+                if (optarg) {
+                    report_metrics = (int) strtol(optarg, NULL, 10);
+                }
                 break;
 
             default: {

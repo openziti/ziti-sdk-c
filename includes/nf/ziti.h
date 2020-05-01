@@ -125,7 +125,7 @@ typedef struct nf_options_s {
     nf_init_cb init_cb;
     nf_service_cb service_cb;
 
-    int refresh_interval;
+    long refresh_interval;
     void *ctx;
 } nf_options;
 
@@ -312,6 +312,17 @@ ZITI_FUNC
 extern const ziti_identity *NF_get_identity(nf_context nf);
 
 /**
+ * @brief Retrieve current transfer rates. Rates are in bytes/second.
+ *
+ * Calculation is using 1 minute EWMA.
+ * @param nf ziti context
+ * @param up rate of bytes going up
+ * @param down rate of bytes going down
+ */
+ZITI_FUNC
+extern void NF_get_transfer_rates(nf_context nf, double* up, double* down);
+
+/**
  * @brief Sets connect and write timeouts(in millis).
  *
  * The #NF_DEFAULT_TIMEOUT is used if this function is not invoked prior to initializing connections. This value is only
@@ -379,6 +390,19 @@ extern int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data);
  */
 ZITI_FUNC
 extern void *NF_conn_data(nf_connection conn);
+
+/**
+ * @brief Set or clear custom data associated with the given #nf_connection.
+ *
+ * This function associates the custom data to the #nf_connection. Pass NULL to clear associated data.
+ *
+ * @param conn the #nf_connection to set the context to
+ * @param data custom data
+ *
+ * @see NF_conn_data(), NF_conn_init()
+ */
+ ZITI_FUNC
+extern void NF_conn_set_data(nf_connection conn, void *data);
 
 /**
  * @brief Checks availability of the service for the given edge context.

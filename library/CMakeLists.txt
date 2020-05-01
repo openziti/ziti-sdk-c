@@ -21,6 +21,7 @@ SET(ZITI_SRC_FILES
         message.c
         buffer.c
         ziti_src.c
+        metrics.c
 )
 
 SET(ZITI_PRIVATE_SRC_FILES

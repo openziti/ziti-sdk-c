@@ -51,6 +51,7 @@ extern "C" {
 
 ZITI_FUNC long get_elapsed();
 ZITI_FUNC extern void init_debug();
+ZITI_FUNC extern void ziti_set_log(FILE *log);
 ZITI_FUNC extern int ziti_debug_level;
 ZITI_FUNC extern FILE *ziti_debug_out;
 

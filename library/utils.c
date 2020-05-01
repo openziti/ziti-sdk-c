@@ -35,9 +35,6 @@ limitations under the License.
 #define ZITI_COMMIT "<sha>"
 #endif
 
-#define to_str(x) str(x)
-#define str(x) #x
-
 /*
  * https://sourceforge.net/p/predef/wiki/OperatingSystems/
  */
@@ -93,6 +90,7 @@ const char* ziti_git_commit() {
 
 int ziti_debug_level = INFO;
 FILE *ziti_debug_out;
+static bool log_initialized = false;
 
 #if _WIN32
 LARGE_INTEGER frequency;
@@ -102,7 +100,17 @@ LARGE_INTEGER end;
 struct timespec starttime;
 #endif
 
+void ziti_set_log(FILE *log) {
+    init_debug();
+    ziti_debug_out = log;
+    uv_mbed_set_debug(ziti_debug_level, log);
+}
+
 void init_debug() {
+    if (log_initialized) {
+        return;
+    }
+    log_initialized = true;
     char *level = getenv("ZITI_LOG");
     if (level != NULL) {
         ziti_debug_level = (int) strtol(level, NULL, 10);
