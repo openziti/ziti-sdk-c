@@ -6,6 +6,7 @@ add_executable(all_tests
         test_jwt.cpp
         pkcs7_tests.cpp
         model_tests.cpp
+        test_metrics.cpp
         )
 set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
 

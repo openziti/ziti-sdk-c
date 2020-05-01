@@ -485,6 +485,7 @@ void conn_inbound_data_msg(nf_connection conn, message *msg) {
 
             TRY(crypto, crypto_secretstream_xchacha20poly1305_pull(&conn->crypt_i, plain_text, &plain_len, &tag, msg->body, msg->header.body_len, NULL, 0));
             buffer_append(conn->inbound, plain_text, plain_len);
+            metrics_rate_update(&conn->nf_ctx->down_rate, (int64_t)plain_len);
         }
 
         CATCH(crypto) {
@@ -496,6 +497,7 @@ void conn_inbound_data_msg(nf_connection conn, message *msg) {
     } else {
         memcpy(plain_text, msg->body, msg->header.body_len);
         buffer_append(conn->inbound, plain_text, msg->header.body_len);
+        metrics_rate_update(&conn->nf_ctx->down_rate, msg->header.body_len);
     }
 
     flush_to_client(conn->flusher);

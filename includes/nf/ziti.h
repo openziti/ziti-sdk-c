@@ -125,7 +125,7 @@ typedef struct nf_options_s {
     nf_init_cb init_cb;
     nf_service_cb service_cb;
 
-    int refresh_interval;
+    long refresh_interval;
     void *ctx;
 } nf_options;
 
@@ -310,6 +310,17 @@ extern const char *NF_get_controller(nf_context nf);
  */
 ZITI_FUNC
 extern const ziti_identity *NF_get_identity(nf_context nf);
+
+/**
+ * @brief Retrieve current transfer rates. Rates are in bytes/second.
+ *
+ * Calculation is using 1 minute EWMA.
+ * @param nf ziti context
+ * @param up rate of bytes going up
+ * @param down rate of bytes going down
+ */
+ZITI_FUNC
+extern void NF_get_transfer_rates(nf_context nf, double* up, double* down);
 
 /**
  * @brief Sets connect and write timeouts(in millis).
