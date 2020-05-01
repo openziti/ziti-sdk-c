@@ -620,4 +620,7 @@ static void grim_reaper(uv_prepare_t *p) {
     if (count > 0) {
         ZITI_LOG(INFO, "reaped %d closed (out of %d total) connections", count, total);
     }
+
+    // flush ZITI_LOG once per loop iteration
+    fflush(ziti_debug_out);
 }
