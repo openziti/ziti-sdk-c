@@ -20,6 +20,7 @@ limitations under the License.
 extern "C" {
     extern void tick_all();
 }
+
 TEST_CASE("test-metrics") {
     rate_t exp;
     rate_t cma;

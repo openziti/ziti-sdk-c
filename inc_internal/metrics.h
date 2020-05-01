@@ -26,7 +26,12 @@ limitations under the License.
 #include <atomic>
 using namespace std;
 #else
+#if defined(__linux) || defined(__APPLE__)
 #include <stdatomic.h>
+#elif _WIN32
+typedef long long atomic_llong;
+typedef long atomic_long;
+#endif
 #endif
 
 struct rate_s {
@@ -35,7 +40,7 @@ struct rate_s {
     atomic_llong param;
 
     void (*tick_fn)(struct rate_s *);
-    atomic_bool init;
+    atomic_long init;
     LIST_ENTRY(rate_s) _next;
 
 };
