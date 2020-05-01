@@ -1,6 +1,7 @@
 set(ZITI_HEADER_FILES
     ${PROJECT_SOURCE_DIR}/includes/nf/errors.h
     ${PROJECT_SOURCE_DIR}/includes/nf/ziti.h
+    ${PROJECT_SOURCE_DIR}/includes/nf/ziti_src.h
 )
 
 SET(ZITI_SRC_FILES
@@ -19,8 +20,9 @@ SET(ZITI_SRC_FILES
         channel.c
         message.c
         buffer.c
+        ziti_src.c
         metrics.c
-        )
+)
 
 SET(ZITI_PRIVATE_SRC_FILES
     ${PROJECT_SOURCE_DIR}/deps/http-parser/http_parser.c
