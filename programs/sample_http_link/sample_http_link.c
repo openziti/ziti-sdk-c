@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 #include <nf/ziti.h>
-#include <nf/ziti_link.h>
+#include <nf/ziti_src.h>
 #include <uv_mbed/uv_mbed.h>
 #include <uv_mbed/um_http.h>
 #include <string.h>
@@ -23,7 +23,7 @@ limitations under the License.
 static uv_loop_t *loop;
 static nf_context nf;
 static um_http_t clt;
-static ziti_link_t zl;
+static um_http_src_t zs;
 
 #define DIE(v) do { \
 int code = (v);\
@@ -61,8 +61,8 @@ void on_nf_init(nf_context _nf, int status, void* ctx) {
     DIE(status);
 
     nf = _nf;
-    um_http_init(loop, &clt, "http://httpbin.org");
-    ziti_link_init(&zl, &clt, "httpbin", nf);
+    ziti_src_init(loop, &zs, "httpbin", nf);
+    um_http_init_with_src(loop, &clt, "http://httpbin.org", (um_http_src_t *)&zs);
 
     um_http_req_t *r = um_http_req(&clt, "GET", "/json", resp_cb, NULL);
     r->resp.body_cb = body_cb;
