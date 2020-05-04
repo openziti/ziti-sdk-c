@@ -556,18 +556,20 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
             uv_timer_start(&nf->session_timer, session_refresh, delay * 1000, 0);
         }
 
-        if (nf->opts->refresh_interval > 0) {
+        if (nf->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &nf->refresh_timer)) {
             uv_timer_start(&nf->refresh_timer, services_refresh, 0, nf->opts->refresh_interval * 1000);
         }
-
-        metrics_rate_init(&nf->up_rate, EWMA_1m);
-        metrics_rate_init(&nf->down_rate, EWMA_1m);
 
     } else {
         ZITI_LOG(ERROR, "failed to login: %s[%d](%s)", err->code, errCode, err->message);
     }
 
     if (init_req->init_cb) {
+        if (errCode == ZITI_OK) {
+            metrics_rate_init(&nf->up_rate, EWMA_1m);
+            metrics_rate_init(&nf->down_rate, EWMA_1m);
+        }
+
         init_req->init_cb(nf, errCode, init_req->init_ctx);
     }
 
