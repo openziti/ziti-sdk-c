@@ -97,13 +97,22 @@ static void zlnf_conn_cb(nf_connection conn, int status) {
     src->connect_cb(src, status);
 }
 
+//static void link_close_cb(uv_link_t *l) {}
 static ssize_t zlnf_data_cb(nf_connection conn, uint8_t *data, ssize_t length) {
     um_http_src_t *src = (um_http_src_t *)NF_conn_data(conn);
-
     uv_buf_t read_buf;
-    uv_link_propagate_alloc_cb(src->link, length, &read_buf);
-    memcpy(read_buf.base, data, length);
-    uv_link_propagate_read_cb(src->link, length, &read_buf);
+
+    if (length == ZITI_EOF) {
+        ZITI_LOG(TRACE, "ZITI_EOF");
+        uv_link_propagate_read_cb(src->link, UV_EOF, NULL);
+    } else if (length < 0) {
+        ZITI_LOG(ERROR, "unexpected error: %s", ziti_errorstr(length));
+        uv_link_propagate_read_cb(src->link, length, NULL);
+    } else {
+        uv_link_propagate_alloc_cb(src->link, length, &read_buf);
+        memcpy(read_buf.base, data, length);
+        uv_link_propagate_read_cb(src->link, length, &read_buf);
+    }
 
     return length;
 }
@@ -137,6 +146,7 @@ void zl_close(uv_link_t* link, uv_link_t* source, uv_link_close_cb link_close_cb
 
     ZITI_LOG(TRACE, "%s", zl->service);
     NF_close(&zl->conn);
+    link_close_cb((uv_link_t *)zl);
 }
 
 const char* zl_strerror(uv_link_t* link, int err) {
