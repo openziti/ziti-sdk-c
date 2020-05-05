@@ -1,12 +1,8 @@
-<!--\page building-->
 # Building the Project
 
 The following steps should get your C SDK for Ziti building. C development is specific to your operating system and 
 tool chain used. These steps should work properly for you but if your OS has variations you may need to adapt these steps accordingly.
 
-<!--[TOC]-->
-
-<!-- \section -->
 ## Prerequisites
 
 This repository expects the user to have at least a basic understanding of what a Ziti Network
@@ -14,13 +10,11 @@ is. To use this library it is also required to have a functioning Ziti Network a
 To learn more about what Ziti is or how to learn how to setup a Ziti Network head over to [the official documentation
 site](https://netfoundry.github.io/ziti-doc/ziti/overview.html).
 
-<!-- \subsection prereqs -->
 ## Building Requirements
 
 * [Cmake (3.12+)](https://cmake.org/install/)
 * make sure cmake is on your path or replace the following `cmake` commands with the fully qualified path to the binary
 
-<!-- \subsection initialization -->
 ## Project Initialization
 
 The C SDK requires additional dependencies to be retreived. This is accomplished via the `git submodule` command. Fetch
@@ -31,9 +25,8 @@ initialize submodules:
 $ git submodule update --init --recursive
 ```
 
-<!-- \section building -->
 ## Building
-<!-- \subsection linux_mac -->
+
 ### Linux/MacOS
 
 Building the SDK on linux/mac can be accomplished with:
@@ -46,7 +39,6 @@ $ cmake .. && make
 
 If you are cross compiling, you _must_ name the build directory as `build-$(uname -s)-$(uname -m)`
 
-<!-- \subsection win -->
 ### Windows
 
 The easiest method to build on windows is to open a "Developer Command Prompt for VS 2019" then locate the bat file at
