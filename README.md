@@ -1,4 +1,4 @@
-[TOC]
+<!--[TOC]-->
 
 ## Ziti C SDK
 
