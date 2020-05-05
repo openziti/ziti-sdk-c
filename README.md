@@ -10,6 +10,7 @@ reinvent neworking by providing secure, scalable connectivity as a network overl
 existing underlay networks.
 
 <h2>Status</h2>
+
 [![Build Status](https://travis-ci.org/netfoundry/ziti-sdk-c.svg?branch=master)](https://travis-ci.org/netfoundry/ziti-sdk-c)
 
 <h2>Building</h2>
