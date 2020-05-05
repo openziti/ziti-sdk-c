@@ -1,24 +1,22 @@
-<!--[TOC]-->
-
-## Ziti C SDK
+# Ziti C SDK
 
 The Ziti C SDK delivers a set of functionality allowing developers to create applications utilizing a Ziti Network
 quickly and easily.
 
-### What Is Ziti
+<h2 What Is Ziti/>
 
 Ziti is the name of NetFoundry's open source network overlay. The goal of Ziti is to
 reinvent neworking by providing secure, scalable connectivity as a network overlay over
 existing underlay networks.
 
-## Status
+<h2 Status/>
 [![Build Status](https://travis-ci.org/netfoundry/ziti-sdk-c.svg?branch=master)](https://travis-ci.org/netfoundry/ziti-sdk-c)
 
-## Builing
+<h2 Building/>
 
 See the [building.md](./building.md) for information on how to build the project.
 
-## Getting Help
+<h2 Getting Help/>
 
 ------------
 Please use these community resources for getting help. We use GitHub [issues](https://github.com/NetFoundry/ziti-sdk-c/issues) 
