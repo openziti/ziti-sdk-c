@@ -240,6 +240,21 @@ typedef void (*nf_enroll_cb)(uint8_t *data, int length, char* err_message, void*
 extern int NF_enroll(const char* jwt, uv_loop_t* loop, nf_enroll_cb enroll_cb, void* enroll_ctx);
 
 /**
+ * @brief Performs a Ziti enrollment.
+ * 
+ * This function is used to enroll a Ziti Edge identity with a user supplied private key.
+ *
+ * @param jwt location of JWT file
+ * @param pk_pem string containing PEM formatted private key
+ * @param loop libuv event loop
+ * @param enroll_cb callback to be called when enrollment is complete
+ * @param enroll_ctx additional context to be passed into #nf_enroll_cb callback
+
+ * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ */
+extern int NF_enroll_with_key(const char* jwt, const char* pk_pem, uv_loop_t* loop, nf_enroll_cb enroll_cb, void* ctx);
+
+/**
  * @brief Initializes a Ziti Edge identity.
  * 
  * This function is used to initialize a Ziti Edge identity. The Ziti C SDK is based around the [libuv](http://libuv.org/)

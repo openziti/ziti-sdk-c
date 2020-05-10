@@ -156,6 +156,10 @@ int verify_es512(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
 }
 
 int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enroll_cb, void* external_enroll_ctx) {
+    return NF_enroll_with_key(jwt_file, NULL, loop, external_enroll_cb, external_enroll_ctx);
+}
+
+int NF_enroll_with_key(const char* jwt_file, const char* pk_pem, uv_loop_t* loop, nf_enroll_cb external_enroll_cb, void* external_enroll_ctx) {
     init_debug();
 
     int ret;
@@ -311,9 +315,22 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     // JWT validation end
 
 
+    // generate key if one not supplied, otherwise parse it
+    if (pk_pem == NULL) {
+        TRY(ziti, gen_key(&ecfg->pk_context));
+    } else {
+        mbedtls_pk_init(&ecfg->pk_context);
+        
+        const char *key = pk_pem;
+        size_t key_len = strlen(pk_pem) +1;
 
-
-    TRY(ziti, gen_key(&ecfg->pk_context));
+        int rc = mbedtls_pk_parse_key(&ecfg->pk_context, (const unsigned char *)key, key_len, NULL, 0);
+        if (rc < 0) {
+            ZITI_LOG(ERROR, "Unable to parse supplied private key");
+            mbedtls_pk_free(&ecfg->pk_context);
+            return ZITI_INVALID_CONFIG;
+        }
+    }
 
     ecfg->private_key = calloc(1, 16000);
     if( ( ret = mbedtls_pk_write_key_pem( &ecfg->pk_context, ecfg->private_key, 16000 ) ) != 0 ) {
@@ -461,7 +478,6 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
 
     ziti_ctrl_enroll(&enroll_ctx->controller, enroll_req2->ecfg, enroll_cb, enroll_req2);
 }
-
 
 static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
 
