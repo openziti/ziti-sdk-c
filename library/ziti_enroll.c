@@ -318,6 +318,12 @@ int NF_enroll_with_key(const char* jwt_file, const char* pk_pem, uv_loop_t* loop
     // generate key if one not supplied, otherwise parse it
     if (pk_pem == NULL) {
         TRY(ziti, gen_key(&ecfg->pk_context));
+
+        ecfg->private_key = calloc(1, 16000);
+        if( ( ret = mbedtls_pk_write_key_pem( &ecfg->pk_context, ecfg->private_key, 16000 ) ) != 0 ) {
+            ZITI_LOG(ERROR, "mbedtls_pk_write_key_pem returned -0x%04x", -ret);
+            return ZITI_KEY_GENERATION_FAILED;
+        }
     } else {
         mbedtls_pk_init(&ecfg->pk_context);
         
@@ -330,12 +336,7 @@ int NF_enroll_with_key(const char* jwt_file, const char* pk_pem, uv_loop_t* loop
             mbedtls_pk_free(&ecfg->pk_context);
             return ZITI_INVALID_CONFIG;
         }
-    }
-
-    ecfg->private_key = calloc(1, 16000);
-    if( ( ret = mbedtls_pk_write_key_pem( &ecfg->pk_context, ecfg->private_key, 16000 ) ) != 0 ) {
-        ZITI_LOG(ERROR, "mbedtls_pk_write_key_pem returned -0x%04x", -ret);
-        return ZITI_KEY_GENERATION_FAILED;
+        ecfg->private_key = NULL;
     }
 
     gen_csr(ecfg);
@@ -499,18 +500,19 @@ static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
                  ctx->controller.client.host, ctx->controller.client.port);
 
         char *content = NULL;
-        size_t len = mjson_printf(
-            &mjson_print_dynamic_buf,
-            &content,
-            "{\n\t\"ztAPI\": %Q, \n\t\"id\": {\n\t\t\"key\": \"pem:%s\", \n\t\t\"cert\": \"pem:%s\", \n\t\t\"ca\": \"pem:%s\"\n\t}\n}",
-            enroll_req->ecfg->zej->controller,
-            enroll_req->ecfg->private_key,
-            cert,
-            enroll_req->ecfg->CA
-        );
+        if (enroll_req->ecfg->private_key != NULL) {
+            mjson_printf(&mjson_print_dynamic_buf, &content,
+                "{\n\t\"ztAPI\": %Q, \n\t\"id\": {\n\t\t\"key\": \"pem:%s\", \n\t\t\"cert\": \"pem:%s\", \n\t\t\"ca\": \"pem:%s\"\n\t}\n}",
+                enroll_req->ecfg->zej->controller, enroll_req->ecfg->private_key, cert, enroll_req->ecfg->CA);
+        }
+        else {
+            mjson_printf(&mjson_print_dynamic_buf, &content, 
+                "{\"ztAPI\": %Q, \"id\": {\"cert\": \"pem:%s\", \"ca\": \"pem:%s\"}}",
+                enroll_req->ecfg->zej->controller, cert, enroll_req->ecfg->CA);
+        }
 
         if (enroll_req->enroll_cb) {
-            enroll_req->enroll_cb(content, strlen(content), NULL, enroll_req->external_enroll_ctx);
+            enroll_req->enroll_cb((uint8_t *)content, strlen(content), NULL, enroll_req->external_enroll_ctx);
         }
 
         FREE(content);
