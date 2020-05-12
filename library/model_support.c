@@ -34,6 +34,10 @@ limitations under the License.
 #include <time.h>
 #endif
 
+#define null_checks(lh, rh) \
+    if (lh == rh) { return 0; } \
+    if (lh == NULL) { return -1; } \
+    if (rh == NULL) { return 1; }
 
 static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *meta);
 
@@ -71,9 +75,7 @@ jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_
 }
 
 int model_cmp(void *lh, void *rh, type_meta *meta) {
-    if (lh == rh) { return 0; }
-    if (lh == NULL) { return -1; }
-    if (rh == NULL) { return 1; }
+    null_checks(lh, rh)
 
     int rc = 0;
     for (int i = 0; rc == 0 && i < meta->field_count; i++) {
@@ -439,35 +441,26 @@ static int _parse_timeval(timestamp *t, const char *json, jsmntok_t *tok) {
     return 1;
 }
 
+
 static int _cmp_bool(bool *lh, bool *rh) {
-    if (lh == rh) { return 0; }
-    if (lh == NULL) { return -1; }
-    if (rh == NULL) { return 1; }
+    null_checks(lh, rh)
     if (*lh == *rh) { return 0; }
     if (!*lh) { return -1; }
     return 1;
 }
 
 static int _cmp_int(int *lh, int *rh) {
-    if (lh == rh) { return 0; }
-    if (lh == NULL) { return -1; }
-    if (rh == NULL) { return 1; }
-
+    null_checks(lh, rh)
     return (*lh - *rh);
 }
 
 static int _cmp_string(char **lh, char **rh) {
-    if (lh == rh) { return 0; }
-    if (lh == NULL) { return -1; }
-    if (rh == NULL) { return 1; }
-
+    null_checks(lh, rh)
     return strcmp(*lh, *rh);
 }
 
 static int _cmp_map(model_map *lh, model_map *rh) {
-    if (lh == rh) { return 0; }
-    if (lh == NULL) { return -1; }
-    if (rh == NULL) { return 1; }
+    null_checks(lh, rh)
 
     int rc = 0;
     for (model_map_iter lit = model_map_iterator(lh), rit = model_map_iterator(rh);

@@ -220,8 +220,8 @@ TEST_CASE("model compare", "[model]") {
 
 TEST_CASE("model compare with map", "[model]") {
 
-    ObjMap o1 = {.ok = true};
-    ObjMap o2 = {.ok = true};
+    ObjMap o1 = {.map = {0}, .ok = true};
+    ObjMap o2 = {.map = {0}, .ok = true};
 
     CHECK(cmp_ObjMap(&o1, &o2) == 0);
 
