@@ -195,18 +195,17 @@ TEST_CASE("model map test", "[model]") {
 }
 
 TEST_CASE("model compare", "[model]") {
-    Bar b1 = {
-            .num = 45,
-            .isOK = false,
-            .msg = "this is bar1"
-    };
+    Bar b1;
+    memset(&b1, 0, sizeof(Bar));
+    b1.num = 45;
+    b1.isOK = false;
+    b1.msg = "this is bar1";
 
-    Bar b2 = {
-            .num = 42,
-            .isOK = true,
-            .msg = "this is bar2"
-
-    };
+    Bar b2;
+    memset(&b2, 0, sizeof(Bar));
+    b2.num = 42;
+    b2.isOK = true;
+    b2.msg = "this is bar2";
 
     CHECK(model_cmp(&b1, &b2, &Bar_META) != 0);
 
