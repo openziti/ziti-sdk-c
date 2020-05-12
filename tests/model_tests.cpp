@@ -188,8 +188,51 @@ TEST_CASE("model map test", "[model]") {
     ObjMap o;
     REQUIRE(parse_ObjMap(&o, json, strlen(json)) == 0);
     CHECK(o.ok);
-    CHECK_THAT((const char*)model_map_get(&o.map, "num"), Equals("42"));
-    CHECK_THAT((const char*)model_map_get(&o.map, "errors"), Equals(R"(["error1", "error2"])"));
+    CHECK_THAT((const char *) model_map_get(&o.map, "num"), Equals("42"));
+    CHECK_THAT((const char *) model_map_get(&o.map, "errors"), Equals(R"(["error1", "error2"])"));
 
     model_map_clear(&o.map, nullptr);
+}
+
+TEST_CASE("model compare", "[model]") {
+    Bar b1 = {
+            .num = 45,
+            .isOK = false,
+            .msg = "this is bar1"
+    };
+
+    Bar b2 = {
+            .num = 42,
+            .isOK = true,
+            .msg = "this is bar2"
+
+    };
+
+    CHECK(model_cmp(&b1, &b2, &Bar_META) != 0);
+
+    b1.isOK = true;
+    CHECK(model_cmp(&b1, &b2, &Bar_META) != 0);
+
+    b2.num = 45;
+    b2.msg = "this is bar1";
+    CHECK(model_cmp(&b1, &b2, &Bar_META) == 0);
+}
+
+TEST_CASE("model compare with map", "[model]") {
+
+    ObjMap o1 = {.ok = true};
+    ObjMap o2 = {.ok = true};
+
+    CHECK(cmp_ObjMap(&o1, &o2) == 0);
+
+    model_map_set(&o1.map, "key1", (void *) "one");
+    CHECK(cmp_ObjMap(&o1, &o2) != 0);
+
+    model_map_set(&o2.map, "key2", (void *) "two");
+    CHECK(cmp_ObjMap(&o1, &o2) != 0);
+
+    model_map_set(&o2.map, "key1", (void *) "one");
+    model_map_set(&o1.map, "key2", (void *) "two");
+    CHECK(cmp_ObjMap(&o1, &o2) == 0);
+
 }

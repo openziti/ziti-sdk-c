@@ -70,6 +70,64 @@ jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_
     return toks;
 }
 
+int model_cmp(void *lh, void *rh, type_meta *meta) {
+    if (lh == rh) { return 0; }
+    if (lh == NULL) { return -1; }
+    if (rh == NULL) { return 1; }
+
+    int rc = 0;
+    for (int i = 0; rc == 0 && i < meta->field_count; i++) {
+        field_meta *fm = meta->fields + i;
+        type_meta *ftm = fm->meta();
+
+        void **lf_addr = (void **) ((char *) lh + fm->offset);
+        void **rf_addr = (void **) ((char *) rh + fm->offset);
+        void *lf_ptr, *rf_ptr;
+
+        if (fm->mod != array_mod) {
+            if (fm->mod == none_mod) {
+                lf_ptr = lf_addr;
+                rf_ptr = rf_addr;
+            }
+            else if (fm->mod == ptr_mod) {
+                lf_ptr = (void *) (*lf_addr);
+                rf_ptr = (void *) (*rf_addr);
+            }
+
+            if (ftm->comparer) {
+                rc = ftm->comparer(lf_ptr, rf_ptr);
+            }
+            else {
+                rc = model_cmp(lf_ptr, rf_ptr, ftm);
+            }
+        }
+        else {
+            void **larr = (void **) (*lf_addr);
+            void **rarr = (void **) (*rf_addr);
+
+            if (larr == rarr) {}
+            else if (larr == NULL) { rc = -1; }
+            else if (rarr == NULL) { rc = 1; }
+            else {
+                for (int idx = 0; rc == 0; idx++) {
+                    lf_ptr = larr + idx;
+                    rf_ptr = rarr + idx;
+
+                    if (ftm->comparer) {
+                        rc = ftm->comparer(lf_ptr, rf_ptr);
+                    }
+                    else {
+                        rc = model_cmp(lf_ptr, rf_ptr, ftm);
+                    }
+                    if (rf_ptr == NULL && lf_ptr == NULL) { break; }
+                }
+            }
+        }
+    }
+
+    return rc;
+}
+
 int model_parse_array(void ***arrp, const char *json, size_t len, type_meta *meta) {
     jsmn_parser parser;
     size_t ntoks;
@@ -381,6 +439,66 @@ static int _parse_timeval(timestamp *t, const char *json, jsmntok_t *tok) {
     return 1;
 }
 
+static int _cmp_bool(bool *lh, bool *rh) {
+    if (lh == rh) { return 0; }
+    if (lh == NULL) { return -1; }
+    if (rh == NULL) { return 1; }
+    if (*lh == *rh) { return 0; }
+    if (!*lh) { return -1; }
+    return 1;
+}
+
+static int _cmp_int(int *lh, int *rh) {
+    if (lh == rh) { return 0; }
+    if (lh == NULL) { return -1; }
+    if (rh == NULL) { return 1; }
+
+    return (*lh - *rh);
+}
+
+static int _cmp_string(char **lh, char **rh) {
+    if (lh == rh) { return 0; }
+    if (lh == NULL) { return -1; }
+    if (rh == NULL) { return 1; }
+
+    return strcmp(*lh, *rh);
+}
+
+static int _cmp_map(model_map *lh, model_map *rh) {
+    if (lh == rh) { return 0; }
+    if (lh == NULL) { return -1; }
+    if (rh == NULL) { return 1; }
+
+    int rc = 0;
+    for (model_map_iter lit = model_map_iterator(lh), rit = model_map_iterator(rh);
+         lit != NULL && rit != NULL;
+         lit = model_map_it_next(lit), rit = model_map_it_next(rit)) {
+
+        if (lit == NULL) { rc -= 1; }
+        if (rit == NULL) { rc += 1; }
+    }
+
+    //
+    if (rc == 0) {
+        model_map_iter it = model_map_iterator(lh);
+        while (it != NULL && rc == 0) {
+            char *lhv = model_map_it_value(it);
+            char *rhv = model_map_get(rh, model_map_it_key(it));
+            if (rhv == NULL) {
+                rc = 1;
+
+            }
+            else {
+                rc = strcmp(lhv, rhv);
+            }
+
+            it = model_map_it_next(it);
+        }
+    }
+
+    return rc;
+}
+
 static void _free_noop(void *v) {}
 
 static void _free_string(char **s) {
@@ -538,18 +656,21 @@ static void _free_map(model_map *m) {
 
 static type_meta bool_META = {
         .size = sizeof(bool),
+        .comparer = (_cmp_f) _cmp_bool,
         .parser = (_parse_f) (_parse_bool),
         .destroyer = _free_noop,
 };
 
 static type_meta int_META = {
         .size = sizeof(int),
+        .comparer = (_cmp_f) _cmp_int,
         .parser = (_parse_f) _parse_int,
         .destroyer = _free_noop,
 };
 
 static type_meta string_META = {
         .size = sizeof(char *),
+        .comparer = (_cmp_f) _cmp_string,
         .parser = (_parse_f) _parse_string,
         .destroyer = (_free_f) _free_string,
 };
@@ -562,12 +683,14 @@ static type_meta timestamp_META = {
 
 static type_meta json_META = {
         .size = sizeof(char *),
+        .comparer = (_cmp_f) _cmp_string,
         .parser = (_parse_f) _parse_json,
         .destroyer = (_free_f) _free_string,
 };
 
 static type_meta map_META = {
         .size = sizeof(model_map),
+        .comparer = (_cmp_f) _cmp_map,
         .parser = (_parse_f) _parse_map,
         .destroyer = (_free_f) _free_map,
 };
