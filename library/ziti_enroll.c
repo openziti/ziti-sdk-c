@@ -156,6 +156,23 @@ int verify_es512(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
 }
 
 int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enroll_cb, void* external_enroll_ctx) {
+    mbedtls_pk_context pkc;
+    mbedtls_pk_init(&pkc);
+
+    if (gen_key(&pkc) != 0) {
+        ZITI_LOG(ERROR, "unable to generate key");
+        return ZITI_KEY_GENERATION_FAILED; 
+    }
+    
+    unsigned char *pk_pem = calloc(1, 16000);
+    if (mbedtls_pk_write_key_pem(&pkc, pk_pem, 16000) != 0) {
+        ZITI_LOG(ERROR, "unable to covert key to pem");
+        return ZITI_KEY_GENERATION_FAILED;
+    }
+    return NF_enroll_with_key(jwt_file, pk_pem, loop, external_enroll_cb, external_enroll_ctx);
+}
+
+int NF_enroll_with_key(const char* jwt_file, const char* pk_pem, uv_loop_t* loop, nf_enroll_cb external_enroll_cb, void* external_enroll_ctx) {
     init_debug();
 
     int ret;
@@ -310,17 +327,17 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
 
     // JWT validation end
 
-
-
-
-    TRY(ziti, gen_key(&ecfg->pk_context));
-
-    ecfg->private_key = calloc(1, 16000);
-    if( ( ret = mbedtls_pk_write_key_pem( &ecfg->pk_context, ecfg->private_key, 16000 ) ) != 0 ) {
-        ZITI_LOG(ERROR, "mbedtls_pk_write_key_pem returned -0x%04x", -ret);
-        return ZITI_KEY_GENERATION_FAILED;
+    // parse private key
+    mbedtls_pk_init(&ecfg->pk_context);
+    int rc = mbedtls_pk_parse_key(&ecfg->pk_context, (const unsigned char *)pk_pem, strlen(pk_pem)+1, NULL, 0);
+    if (rc < 0) {
+        ZITI_LOG(ERROR, "Unable to parse supplied private key");
+        mbedtls_pk_free(&ecfg->pk_context);
+        return ZITI_INVALID_CONFIG;
     }
+    ecfg->private_key = strdup(pk_pem);
 
+    // gen CSR
     gen_csr(ecfg);
 
     if (strcmp(ecfg->zej->method, "ott") == 0)
@@ -462,7 +479,6 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
     ziti_ctrl_enroll(&enroll_ctx->controller, enroll_req2->ecfg, enroll_cb, enroll_req2);
 }
 
-
 static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
 
     struct nf_enroll_req *enroll_req = enroll_ctx;
@@ -483,18 +499,19 @@ static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
                  ctx->controller.client.host, ctx->controller.client.port);
 
         char *content = NULL;
-        size_t len = mjson_printf(
-            &mjson_print_dynamic_buf,
-            &content,
-            "{\n\t\"ztAPI\": %Q, \n\t\"id\": {\n\t\t\"key\": \"pem:%s\", \n\t\t\"cert\": \"pem:%s\", \n\t\t\"ca\": \"pem:%s\"\n\t}\n}",
-            enroll_req->ecfg->zej->controller,
-            enroll_req->ecfg->private_key,
-            cert,
-            enroll_req->ecfg->CA
-        );
+        if (enroll_req->ecfg->private_key != NULL) {
+            mjson_printf(&mjson_print_dynamic_buf, &content,
+                "{\n\t\"ztAPI\": %Q, \n\t\"id\": {\n\t\t\"key\": \"pem:%s\", \n\t\t\"cert\": \"pem:%s\", \n\t\t\"ca\": \"pem:%s\"\n\t}\n}",
+                enroll_req->ecfg->zej->controller, enroll_req->ecfg->private_key, cert, enroll_req->ecfg->CA);
+        }
+        else {
+            mjson_printf(&mjson_print_dynamic_buf, &content, 
+                "{\"ztAPI\": %Q, \"id\": {\"cert\": \"pem:%s\", \"ca\": \"pem:%s\"}}",
+                enroll_req->ecfg->zej->controller, cert, enroll_req->ecfg->CA);
+        }
 
         if (enroll_req->enroll_cb) {
-            enroll_req->enroll_cb(content, strlen(content), NULL, enroll_req->external_enroll_ctx);
+            enroll_req->enroll_cb((uint8_t *)content, strlen(content), NULL, enroll_req->external_enroll_ctx);
         }
 
         FREE(content);
