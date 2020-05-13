@@ -409,7 +409,7 @@ static int establish_crypto (nf_connection conn, message *msg) {
     uint8_t *peer_key;
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
     if (!peer_key_sent) {
-        ZITI_LOG(DEBUG, "did not recieve peer key. connection[%d] will not be encrypted", conn->conn_id);
+        ZITI_LOG(DEBUG, "did not receive peer key. connection[%d] will not be encrypted", conn->conn_id);
         conn->encrypted = false;
         return ZITI_OK;
     }

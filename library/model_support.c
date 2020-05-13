@@ -112,16 +112,21 @@ int model_cmp(void *lh, void *rh, type_meta *meta) {
             else if (rarr == NULL) { rc = 1; }
             else {
                 for (int idx = 0; rc == 0; idx++) {
-                    lf_ptr = larr + idx;
-                    rf_ptr = rarr + idx;
+                    lf_ptr = larr[idx];
+                    rf_ptr = rarr[idx];
+                    if (rf_ptr == NULL && lf_ptr == NULL) { break; }
 
                     if (ftm->comparer) {
-                        rc = ftm->comparer(lf_ptr, rf_ptr);
+                        if (fm->meta == get_string_meta) {
+                            rc = ftm->comparer(&lf_ptr, &rf_ptr);
+                        }
+                        else {
+                            rc = ftm->comparer(lf_ptr, rf_ptr);
+                        }
                     }
                     else {
                         rc = model_cmp(lf_ptr, rf_ptr, ftm);
                     }
-                    if (rf_ptr == NULL && lf_ptr == NULL) { break; }
                 }
             }
         }
@@ -454,8 +459,15 @@ static int _cmp_int(int *lh, int *rh) {
     return (*lh - *rh);
 }
 
+static int _cmp_timeval(timestamp *lh, timestamp *rh) {
+    null_checks(lh, rh)
+    return (int) (lh->tv_sec == rh->tv_sec ? (lh->tv_usec - rh->tv_usec) : (lh->tv_sec - rh->tv_sec));
+}
+
 static int _cmp_string(char **lh, char **rh) {
     null_checks(lh, rh)
+    if (*lh == *rh) { return 0; } // same ptr or both NULL
+
     return strcmp(*lh, *rh);
 }
 
@@ -670,6 +682,7 @@ static type_meta string_META = {
 
 static type_meta timestamp_META = {
         .size = sizeof(struct timeval),
+        .comparer = (_cmp_f) _cmp_timeval,
         .parser = (_parse_f) _parse_timeval,
         .destroyer = (_free_f) _free_noop,
 };
