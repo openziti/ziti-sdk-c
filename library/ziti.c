@@ -476,6 +476,7 @@ static void update_services(ziti_service_array services, ziti_error *error, nf_c
     ZITI_LOG(VERBOSE, "processing service updates");
 
     model_map updates = {0};
+    model_map changes = {0};
 
     for (int idx = 0; services[idx] != NULL; idx++) {
         set_service_flags(services[idx]);
@@ -490,9 +491,14 @@ static void update_services(ziti_service_array services, ziti_error *error, nf_c
         ziti_service *updt = model_map_remove(&updates, model_map_it_key(it));
 
         if (updt != NULL) {
-            // do we want to process service updates possibly?
-            free_ziti_service(updt);
-            free(updt);
+            if (cmp_ziti_service(updt, model_map_it_value(it)) != 0) {
+                model_map_set(&changes, model_map_it_key(it), updt);
+            }
+            else {
+                // no changes detected, just discard it
+                free_ziti_service(updt);
+                free(updt);
+            }
 
             it = model_map_it_next(it);
         }
@@ -525,6 +531,23 @@ static void update_services(ziti_service_array services, ziti_error *error, nf_c
         }
         it = model_map_it_remove(it);
     }
+
+    // process updates
+    it = model_map_iterator(&changes);
+    while (it != NULL) {
+        s = model_map_it_value(it);
+        name = model_map_it_key(it);
+
+        ziti_service *old = model_map_set(&nf->services, name, s);
+        if (nf->opts->service_cb != NULL) {
+            nf->opts->service_cb(nf, s, ZITI_OK, nf->opts->ctx);
+        }
+
+        free_ziti_service(old);
+        FREE(old);
+        it = model_map_it_remove(it);
+    }
+
 
     model_map_clear(&updates, NULL);
 }
