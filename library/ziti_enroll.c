@@ -156,7 +156,20 @@ int verify_es512(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
 }
 
 int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enroll_cb, void* external_enroll_ctx) {
-    return NF_enroll_with_key(jwt_file, NULL, loop, external_enroll_cb, external_enroll_ctx);
+    mbedtls_pk_context pkc;
+    mbedtls_pk_init(&pkc);
+
+    if (gen_key(&pkc) != 0) {
+        ZITI_LOG(ERROR, "unable to generate key");
+        return ZITI_KEY_GENERATION_FAILED; 
+    }
+    
+    unsigned char *pk_pem = calloc(1, 16000);
+    if (mbedtls_pk_write_key_pem(&pkc, pk_pem, 16000) != 0) {
+        ZITI_LOG(ERROR, "unable to covert key to pem");
+        return ZITI_KEY_GENERATION_FAILED;
+    }
+    return NF_enroll_with_key(jwt_file, pk_pem, loop, external_enroll_cb, external_enroll_ctx);
 }
 
 int NF_enroll_with_key(const char* jwt_file, const char* pk_pem, uv_loop_t* loop, nf_enroll_cb external_enroll_cb, void* external_enroll_ctx) {
@@ -314,31 +327,17 @@ int NF_enroll_with_key(const char* jwt_file, const char* pk_pem, uv_loop_t* loop
 
     // JWT validation end
 
-
-    // generate key if one not supplied, otherwise parse it
-    if (pk_pem == NULL) {
-        TRY(ziti, gen_key(&ecfg->pk_context));
-
-        ecfg->private_key = calloc(1, 16000);
-        if( ( ret = mbedtls_pk_write_key_pem( &ecfg->pk_context, ecfg->private_key, 16000 ) ) != 0 ) {
-            ZITI_LOG(ERROR, "mbedtls_pk_write_key_pem returned -0x%04x", -ret);
-            return ZITI_KEY_GENERATION_FAILED;
-        }
-    } else {
-        mbedtls_pk_init(&ecfg->pk_context);
-        
-        const char *key = pk_pem;
-        size_t key_len = strlen(pk_pem) +1;
-
-        int rc = mbedtls_pk_parse_key(&ecfg->pk_context, (const unsigned char *)key, key_len, NULL, 0);
-        if (rc < 0) {
-            ZITI_LOG(ERROR, "Unable to parse supplied private key");
-            mbedtls_pk_free(&ecfg->pk_context);
-            return ZITI_INVALID_CONFIG;
-        }
-        ecfg->private_key = NULL;
+    // parse private key
+    mbedtls_pk_init(&ecfg->pk_context);
+    int rc = mbedtls_pk_parse_key(&ecfg->pk_context, (const unsigned char *)pk_pem, strlen(pk_pem)+1, NULL, 0);
+    if (rc < 0) {
+        ZITI_LOG(ERROR, "Unable to parse supplied private key");
+        mbedtls_pk_free(&ecfg->pk_context);
+        return ZITI_INVALID_CONFIG;
     }
+    ecfg->private_key = strdup(pk_pem);
 
+    // gen CSR
     gen_csr(ecfg);
 
     if (strcmp(ecfg->zej->method, "ott") == 0)
