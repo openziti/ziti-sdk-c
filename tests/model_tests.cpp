@@ -238,5 +238,20 @@ TEST_CASE("model compare with map", "[model]") {
     model_map_set(&o2.map, "key1", (void *) "one");
     model_map_set(&o1.map, "key2", (void *) "two");
     CHECK(cmp_ObjMap(&o1, &o2) == 0);
+}
 
+TEST_CASE("model compare with array", "[model]") {
+    const char *bar_json = BAR1;
+    Bar bar1, bar2;
+
+    REQUIRE(parse_Bar(&bar1, bar_json, strlen(bar_json)) == 0);
+    REQUIRE(parse_Bar(&bar2, bar_json, strlen(bar_json)) == 0);
+
+    CHECK(cmp_Bar(&bar1, &bar2) == 0);
+
+    bar1.errors[0] = strdup("changed error");
+    CHECK(cmp_Bar(&bar1, &bar2) != 0);
+
+    free_Bar(&bar1);
+    free_Bar(&bar2);
 }
