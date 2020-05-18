@@ -21,7 +21,7 @@ limitations under the License.
 #include <stdbool.h>
 #include <uv_mbed/uv_mbed.h>
 
-#include <nf/ziti.h>
+#include <ziti/ziti.h>
 #include "buffer.h"
 #include "message.h"
 #include "ziti_enroll.h"

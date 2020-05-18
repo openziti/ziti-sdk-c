@@ -16,8 +16,8 @@ limitations under the License.
 
 
 #include <internal_model.h>
-#include <nf/ziti_model.h>
-#include <nf/errors.h>
+#include <ziti/ziti_model.h>
+#include <ziti/errors.h>
 
 #include <string.h>
 

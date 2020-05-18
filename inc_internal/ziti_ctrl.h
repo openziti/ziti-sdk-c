@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <uv_mbed/um_http.h>
 #include "internal_model.h"
-#include "nf/ziti_model.h"
+#include "ziti/ziti_model.h"
 #include "zt_internal.h"
 
 #ifdef __cplusplus

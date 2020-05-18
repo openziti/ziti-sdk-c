@@ -18,7 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-#include <nf/ziti.h>
+#include <ziti/ziti.h>
 #include <uv.h>
 #include "utils.h"
 #include "zt_internal.h"

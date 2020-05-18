@@ -25,7 +25,7 @@ limitations under the License.
 #define NF_ZITI_SRC_H
 
 #include <uv_mbed/um_http.h>
-#include <nf/ziti.h>
+#include <ziti/ziti.h>
 
 #ifdef __cplusplus
 extern "C" {

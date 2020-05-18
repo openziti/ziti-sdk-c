@@ -17,7 +17,7 @@ limitations under the License.
 #include <cstring>
 #include "catch2/catch.hpp"
 
-#include <nf/model_support.h>
+#include <ziti/model_support.h>
 
 #define BAR_MODEL(xx, ...)\
 xx(num, int, none, num, __VA_ARGS__)\

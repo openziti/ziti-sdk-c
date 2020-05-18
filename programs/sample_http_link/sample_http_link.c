@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <nf/ziti.h>
-#include <nf/ziti_src.h>
+#include <ziti/ziti.h>
+#include <ziti/ziti_src.h>
 #include <uv_mbed/uv_mbed.h>
 #include <uv_mbed/um_http.h>
 #include <string.h>

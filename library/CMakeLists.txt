@@ -1,7 +1,7 @@
 set(ZITI_HEADER_FILES
-    ${PROJECT_SOURCE_DIR}/includes/nf/errors.h
-    ${PROJECT_SOURCE_DIR}/includes/nf/ziti.h
-    ${PROJECT_SOURCE_DIR}/includes/nf/ziti_src.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/errors.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/ziti.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_src.h
 )
 
 SET(ZITI_SRC_FILES

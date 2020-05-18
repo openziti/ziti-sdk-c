@@ -20,7 +20,7 @@ limitations under the License.
 #include <string.h>
 
 #include <utils.h>
-#include <nf/ziti.h>
+#include <ziti/ziti.h>
 
 #if(WIN32)
 #define strsignal(s) "_windows_unimplemented_"

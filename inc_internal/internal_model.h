@@ -18,8 +18,8 @@ limitations under the License.
 #ifndef ZITI_SDK_INTERNAL_MODEL_H
 #define ZITI_SDK_INTERNAL_MODEL_H
 
-#include "nf/model_support.h"
-#include "nf/ziti_model.h"
+#include "ziti/model_support.h"
+#include "ziti/ziti_model.h"
 
 #define ZITI_ID_CFG_MODEL(XX, ...) \
 XX(cert, string, none, cert, __VA_ARGS__) \

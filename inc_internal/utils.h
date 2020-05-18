@@ -23,7 +23,7 @@ limitations under the License.
 #include <http_parser.h>
 #include <stdlib.h>
 #include <uv_mbed/queue.h>
-#include <nf/ziti_log.h>
+#include <ziti/ziti_log.h>
 
 #ifdef __cplusplus
 extern "C" {

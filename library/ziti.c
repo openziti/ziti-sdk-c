@@ -18,7 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-#include <nf/ziti.h>
+#include <ziti/ziti.h>
 #include <uv.h>
 #include "utils.h"
 #include "zt_internal.h"
@@ -134,7 +134,7 @@ static void async_connects(uv_async_t *ar) {
 int load_tls(nf_config *cfg, tls_context **ctx) {
     PREP(ziti);
 
-    // load ca from nf config if present
+    // load ca from ziti config if present
     const char *ca, *cert;
     size_t ca_len = parse_ref(cfg->id.ca, &ca);
     size_t cert_len = parse_ref(cfg->id.cert, &cert);

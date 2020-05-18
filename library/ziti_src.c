@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <nf/ziti_src.h>
-#include <nf/ziti_log.h>
+#include <ziti/ziti_src.h>
+#include <ziti/ziti_log.h>
 
 /**
  * Inherits from uv_lint_t and used to register as source link for `um_http`,

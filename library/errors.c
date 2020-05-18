@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "nf/errors.h"
+#include "ziti/errors.h"
 
 enum _zt_err {
 #define _err_enum(e,_) _ziti_##e,
