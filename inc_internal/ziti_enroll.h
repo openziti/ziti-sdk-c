@@ -72,7 +72,7 @@ typedef struct enroll_cfg_s {
 } enroll_cfg;
 
 
-struct nf_enroll_req {
+struct ziti_enroll_req {
     ziti_enroll_cb enroll_cb;
     void *external_enroll_ctx;
     struct ziti_ctx *enroll_ctx;

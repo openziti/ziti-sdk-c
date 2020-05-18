@@ -24,7 +24,7 @@ limitations under the License.
  */
 typedef struct ziti_link_s {
     UV_LINK_FIELDS
-    ziti_context nfc;
+    ziti_context ztx;
     ziti_connection conn;
     char *service;
 } ziti_link_t;
@@ -75,7 +75,7 @@ int ziti_src_init(uv_loop_t *l, um_http_src_t *st, const char *svc, ziti_context
 
     ziti_link_t *zl = (ziti_link_t *) st->link;
     zl->service = strdup(svc);
-    zl->nfc = ztx;
+    zl->ztx = ztx;
     
     return 0; 
 }
@@ -86,7 +86,7 @@ static int ziti_src_connect(um_http_src_t *src, um_http_src_connect_cb cb) {
     ZITI_LOG(TRACE, "service %s", zl->service);
     src->connect_cb = cb;
 
-    int status = ziti_conn_init(zl->nfc, &zl->conn, src);
+    int status = ziti_conn_init(zl->ztx, &zl->conn, src);
     if (status != ZITI_OK) {
         return status;
     }

@@ -121,7 +121,7 @@ typedef struct ziti_channel {
     LIST_ENTRY(ziti_channel) next;
 } ziti_channel_t;
 
-struct nf_write_req {
+struct ziti_write_req_s {
     struct ziti_conn *conn;
     uint8_t *buf;
     size_t len;
@@ -139,7 +139,7 @@ struct ziti_conn {
     uint32_t edge_msg_seq;
     uint32_t conn_id;
 
-    struct ziti_ctx *nf_ctx;
+    struct ziti_ctx *ziti_ctx;
     ziti_channel_t *channel;
     ziti_data_cb data_cb;
     ziti_client_cb client_cb;
@@ -208,17 +208,17 @@ struct ziti_ctx {
 extern "C" {
 #endif
 
-int ziti_process_connect_reqs(ziti_context nf);
+int ziti_process_connect_reqs(ziti_context ztx);
 
-int ziti_close_channels(ziti_context);
+int ziti_close_channels(ziti_context ztx);
 
-int ziti_channel_connect(ziti_context nf, const char *url, ch_connect_cb, void *ctx);
+int ziti_channel_connect(ziti_context ztx, const char *url, ch_connect_cb, void *ctx);
 
 int ziti_channel_close(ziti_channel_t *ch);
 
 int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
                       uint32_t body_len,
-                      struct nf_write_req *wr);
+                      struct ziti_write_req_s *ziti_write);
 
 int
 ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *headers, int nhdrs, const uint8_t *body,
@@ -235,11 +235,11 @@ int ziti_bind(ziti_connection conn, const char *service, ziti_listen_cb listen_c
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg);
 
-int ziti_write_req(struct nf_write_req *req);
+int ziti_write_req(struct ziti_write_req_s *req);
 
 int ziti_disconnect(struct ziti_conn *conn);
 
-void on_write_completed(struct ziti_conn *conn, struct nf_write_req *req, int status);
+void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, int status);
 
 int gen_key(mbedtls_pk_context *pk_context);
 

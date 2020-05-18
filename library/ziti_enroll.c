@@ -60,8 +60,8 @@ static void enroll_cb(char *cert, ziti_error *err, void *ctx);
 int extract_well_known_certs(char *base64_encoded_pkcs7, void *req);
 
 static void async_connects(uv_async_t *ar) {
-    ziti_context nf = ar->data;
-    ziti_process_connect_reqs(nf);
+    ziti_context ztx = ar->data;
+    ziti_process_connect_reqs(ztx);
 }
 
 int verify_rs256(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
@@ -360,7 +360,7 @@ int ziti_enroll_with_key(const char *jwt, const char *pk_pem, uv_loop_t *loop, z
 
         ziti_ctrl_init(loop, &fetch_cert_ctx->controller, ecfg->zej->controller, tls);
 
-        NEWP(enroll_req, struct nf_enroll_req);
+        NEWP(enroll_req, struct ziti_enroll_req);
         enroll_req->enroll_cb = enroll_cb;
         enroll_req->enroll_ctx = fetch_cert_ctx;
         enroll_req->ecfg = ecfg;
@@ -404,7 +404,7 @@ int ziti_enroll_with_key(const char *jwt, const char *pk_pem, uv_loop_t *loop, z
 static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, void *req) {
     ZITI_LOG(DEBUG, "base64_encoded_pkcs7 is: %s", base64_encoded_pkcs7);
 
-    struct nf_enroll_req *enroll_req = req;
+    struct ziti_enroll_req *enroll_req = req;
     int rc;
 
     if ( (NULL == base64_encoded_pkcs7) || (NULL != err)) {
@@ -470,7 +470,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
 
     ziti_ctrl_init(enroll_ctx->loop, &enroll_ctx->controller, enroll_req->ecfg->zej->controller, tls);
 
-    NEWP(enroll_req2, struct nf_enroll_req);
+    NEWP(enroll_req2, struct ziti_enroll_req);
     enroll_req2->enroll_cb = enroll_req->ecfg->external_enroll_cb;
     enroll_req2->external_enroll_ctx = enroll_req->ecfg->external_enroll_ctx;
     enroll_req2->enroll_ctx = enroll_ctx;
@@ -481,7 +481,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
 
 static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
 
-    struct nf_enroll_req *enroll_req = enroll_ctx;
+    struct ziti_enroll_req *enroll_req = enroll_ctx;
     struct ziti_ctx *ctx = enroll_req->enroll_ctx;
 
     if (err != NULL) {
