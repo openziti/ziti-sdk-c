@@ -30,13 +30,13 @@ static ziti_context nf;
 static int server = 0;
 static const char *service;
 
-static void on_client_write(nf_connection clt, ssize_t status, void *ctx) {
+static void on_client_write(ziti_connection clt, ssize_t status, void *ctx) {
     free(ctx);
 }
 
-static ssize_t on_client_data(nf_connection clt, uint8_t *data, ssize_t len) {
+static ssize_t on_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
     if (len > 0) {
-        printf("client sent:\n%.*s", (int)len, data);
+        printf("client sent:\n%.*s", (int) len, data);
         char *reply = malloc(128);
         size_t l = sprintf(reply, "%zd\n", len);
         NF_write(clt, reply, l, on_client_write, reply);
@@ -50,18 +50,18 @@ static ssize_t on_client_data(nf_connection clt, uint8_t *data, ssize_t len) {
     return len;
 }
 
-static void on_client_connect(nf_connection clt, int status) {
+static void on_client_connect(ziti_connection clt, int status) {
     if (status == ZITI_OK) {
         uint8_t *msg = "Hello from byte counter!\n";
         NF_write(clt, msg, strlen(msg), on_client_write, NULL);
     }
 }
 
-static void on_client(nf_connection serv, nf_connection client, int status) {
+static void on_client(ziti_connection serv, ziti_connection client, int status) {
     NF_accept(client, on_client_connect, on_client_data);
 }
 
-static void listen_cb(nf_connection serv, int status) {
+static void listen_cb(ziti_connection serv, int status) {
     if (status == ZITI_OK) {
         printf("Byte Counter is ready! %d(%s)\n", status, ziti_errorstr(status));
     }
@@ -71,25 +71,26 @@ static void listen_cb(nf_connection serv, int status) {
     }
 }
 
-static void on_write(nf_connection conn, ssize_t status, void* ctx) {
+static void on_write(ziti_connection conn, ssize_t status, void *ctx) {
     if (status < 0) {
-        fprintf(stderr, "request failed to submit status[%zd]: %s\n", status, ziti_errorstr((int)status));
+        fprintf(stderr, "request failed to submit status[%zd]: %s\n", status, ziti_errorstr((int) status));
     }
     else {
         printf("request success: %zd bytes sent\n", status);
     }
 }
 
-void on_connect(nf_connection conn, int status) {
+void on_connect(ziti_connection conn, int status) {
     DIE(status);
 
-    uint8_t* req = "hello";
+    uint8_t *req = "hello";
 
     DIE(NF_write(conn, req, strlen(req), on_write, NULL));
 }
 
 static size_t total;
-ssize_t on_data(nf_connection c, uint8_t* buf, ssize_t len) {
+
+ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
     if (len == ZITI_EOF) {
 
         printf("request completed: %s\n", ziti_errorstr(len));
@@ -111,7 +112,7 @@ ssize_t on_data(nf_connection c, uint8_t* buf, ssize_t len) {
 
 static void on_nf_init(ziti_context nf_ctx, int status, void *init_ctx) {
     nf = nf_ctx;
-    nf_connection conn;
+    ziti_connection conn;
     NF_conn_init(nf, &conn, NULL);
     if (server) {
         NF_listen(conn, service, listen_cb, on_client);

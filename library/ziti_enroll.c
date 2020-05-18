@@ -155,15 +155,15 @@ int verify_es512(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     return ZITI_OK;
 }
 
-int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enroll_cb, void* external_enroll_ctx) {
+int NF_enroll(const char *jwt_file, uv_loop_t *loop, ziti_enroll_cb external_enroll_cb, void *external_enroll_ctx) {
     mbedtls_pk_context pkc;
     mbedtls_pk_init(&pkc);
 
     if (gen_key(&pkc) != 0) {
         ZITI_LOG(ERROR, "unable to generate key");
-        return ZITI_KEY_GENERATION_FAILED; 
+        return ZITI_KEY_GENERATION_FAILED;
     }
-    
+
     unsigned char *pk_pem = calloc(1, 16000);
     if (mbedtls_pk_write_key_pem(&pkc, pk_pem, 16000) != 0) {
         ZITI_LOG(ERROR, "unable to covert key to pem");
@@ -172,7 +172,8 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     return NF_enroll_with_key(jwt_file, pk_pem, loop, external_enroll_cb, external_enroll_ctx);
 }
 
-int NF_enroll_with_key(const char* jwt_file, const char* pk_pem, uv_loop_t* loop, nf_enroll_cb external_enroll_cb, void* external_enroll_ctx) {
+int NF_enroll_with_key(const char *jwt_file, const char *pk_pem, uv_loop_t *loop, ziti_enroll_cb external_enroll_cb,
+                       void *external_enroll_ctx) {
     init_debug();
 
     int ret;

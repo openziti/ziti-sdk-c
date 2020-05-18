@@ -50,7 +50,7 @@ typedef LIST_HEAD(listeners, listener) listener_l;
 struct client {
     struct sockaddr_in addr;
     char addr_s[32];
-    nf_connection nf_conn;
+    ziti_connection nf_conn;
     int closed;
     size_t inb_reqs;
 };
@@ -157,7 +157,7 @@ static void alloc_cb(uv_handle_t *h, size_t suggested_size, uv_buf_t *buf) {
     }
 }
 
-static void on_nf_write(nf_connection conn, ssize_t status, void *ctx) {
+static void on_nf_write(ziti_connection conn, ssize_t status, void *ctx) {
     uv_stream_t *stream = NF_conn_data(conn);
     if (stream != NULL) {
         struct client *clt = stream->data;
@@ -203,7 +203,7 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
 }
 
 
-void on_ziti_connect(nf_connection conn, int status) {
+void on_ziti_connect(ziti_connection conn, int status) {
     uv_stream_t *clt = NF_conn_data(conn);
 
     if (status == ZITI_OK) {
@@ -215,12 +215,12 @@ void on_ziti_connect(nf_connection conn, int status) {
     }
 }
 
-ssize_t on_ziti_data(nf_connection conn, uint8_t *data, ssize_t len) {
+ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
     uv_tcp_t *clt = NF_conn_data(conn);
     struct client *c = clt ? clt->data : NULL;
 
     if (clt == NULL) {
-        // nf_conn is still in process of disconnecting just drop data on the floor
+        // ziti_conn is still in process of disconnecting just drop data on the floor
         ZITI_LOG(DEBUG, "received data[%zd] for disconnected client", len);
         return len;
     }

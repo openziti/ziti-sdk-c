@@ -115,34 +115,34 @@ typedef struct ziti_channel {
     message *in_next;
     int in_body_offset;
 
-    LIST_HEAD(con_list, nf_conn) connections;
+    LIST_HEAD(con_list, ziti_conn) connections;
     LIST_HEAD(waiter, waiter_s) waiters;
 
     LIST_ENTRY(ziti_channel) next;
 } ziti_channel_t;
 
 struct nf_write_req {
-    struct nf_conn *conn;
+    struct ziti_conn *conn;
     uint8_t *buf;
     size_t len;
 
     uint8_t *payload; // internal buffer
-    nf_write_cb cb;
+    ziti_write_cb cb;
     uv_timer_t *timeout;
 
     void *ctx;
 };
 
-struct nf_conn {
-    char* token;
+struct ziti_conn {
+    char *token;
 
     uint32_t edge_msg_seq;
     uint32_t conn_id;
 
     struct ziti_ctx *nf_ctx;
     ziti_channel_t *channel;
-    nf_data_cb data_cb;
-    nf_client_cb client_cb;
+    ziti_data_cb data_cb;
+    ziti_client_cb client_cb;
     enum conn_state state;
     int timeout;
 
@@ -152,7 +152,7 @@ struct nf_conn {
 
     void *data;
 
-    struct nf_conn *parent;
+    struct ziti_conn *parent;
     uint32_t dial_req_seq;
 
     uint8_t sk[crypto_kx_SECRETKEYBYTES];
@@ -163,7 +163,7 @@ struct nf_conn {
     crypto_secretstream_xchacha20poly1305_state crypt_i;
     bool encrypted;
 
-    LIST_ENTRY(nf_conn) next;
+    LIST_ENTRY(ziti_conn) next;
 };
 
 
@@ -231,25 +231,25 @@ int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jw
 
 int load_tls(nf_config* cfg, tls_context **tls);
 
-int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, nf_client_cb on_clt_cb);
+int ziti_bind(ziti_connection conn, const char *service, ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb);
 
-int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb);
+int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb);
 
-void conn_inbound_data_msg(nf_connection conn, message *msg);
+void conn_inbound_data_msg(ziti_connection conn, message *msg);
 
-int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb);
+int ziti_dial(ziti_connection conn, const char *service, ziti_conn_cb conn_cb, ziti_data_cb data_cb);
 
 int ziti_write(struct nf_write_req *req);
 
-int ziti_disconnect(struct nf_conn *conn);
+int ziti_disconnect(struct ziti_conn *conn);
 
-void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int status);
+void on_write_completed(struct ziti_conn *conn, struct nf_write_req *req, int status);
 
 int gen_key(mbedtls_pk_context *pk_context);
 
 int gen_csr(enroll_cfg *cfg);
 
-int close_conn_internal(struct nf_conn *conn);
+int close_conn_internal(struct ziti_conn *conn);
 
 #ifdef __cplusplus
 }

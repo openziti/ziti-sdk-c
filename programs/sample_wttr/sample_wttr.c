@@ -31,7 +31,7 @@ exit(code);\
 static size_t total;
 static ziti_context nf;
 
-ssize_t on_data(nf_connection c, uint8_t *buf, ssize_t len) {
+ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
     if (len == ZITI_EOF) {
 
         printf("request completed: %s\n", ziti_errorstr(len));
@@ -51,20 +51,20 @@ ssize_t on_data(nf_connection c, uint8_t *buf, ssize_t len) {
     return len;
 }
 
-static void on_write(nf_connection conn, ssize_t status, void *ctx) {
+static void on_write(ziti_connection conn, ssize_t status, void *ctx) {
     if (status < 0) {
-        fprintf(stderr, "request failed to submit status[%zd]: %s\n", status, ziti_errorstr((int)status));
+        fprintf(stderr, "request failed to submit status[%zd]: %s\n", status, ziti_errorstr((int) status));
     }
     else {
         printf("request success: %zd bytes sent\n", status);
     }
 }
 
-void on_connect(nf_connection conn, int status) {
+void on_connect(ziti_connection conn, int status) {
     DIE(status);
 
     printf("sending HTTP request\n");
-    
+
     uint8_t *req = "GET /Rochester HTTP/1.0\r\n"
                    "Accept: */*\r\n"
                    "Connection: close\r\n"
@@ -79,7 +79,7 @@ void on_nf_init(ziti_context _nf, int status, void *ctx) {
     DIE(status);
     nf = _nf;
 
-    nf_connection conn;
+    ziti_connection conn;
     DIE(NF_conn_init(nf, &conn, NULL));
     DIE(NF_dial(conn, "demo-weather", on_connect, on_data));
 }

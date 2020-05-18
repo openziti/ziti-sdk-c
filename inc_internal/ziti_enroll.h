@@ -49,7 +49,7 @@ typedef struct wellknown_cert {
 
 typedef struct enroll_cfg_s {
 
-    nf_enroll_cb external_enroll_cb;
+    ziti_enroll_cb external_enroll_cb;
     void *external_enroll_ctx;
 
     ziti_enrollment_jwt_header *zejh;
@@ -73,7 +73,7 @@ typedef struct enroll_cfg_s {
 
 
 struct nf_enroll_req {
-    nf_enroll_cb enroll_cb;
+    ziti_enroll_cb enroll_cb;
     void *external_enroll_ctx;
     struct ziti_ctx *enroll_ctx;
     enroll_cfg *ecfg;

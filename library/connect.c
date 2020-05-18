@@ -26,13 +26,13 @@ static const char *TYPE_DIAL = "Dial";
 #define crypto(func) crypto_secretstream_xchacha20poly1305_##func
 
 struct nf_conn_req {
-    struct nf_conn *conn;
+    struct ziti_conn *conn;
     char *service_name;
     const char *session_type;
     ziti_service *service;
     ziti_channel_t *channel;
     int chan_tries;
-    nf_conn_cb cb;
+    ziti_conn_cb cb;
 
     uv_timer_t *conn_timeout;
     bool failed;
@@ -55,7 +55,7 @@ static void free_conn_req(struct nf_conn_req *r) {
     free(r);
 };
 
-int close_conn_internal(struct nf_conn *conn) {
+int close_conn_internal(struct ziti_conn *conn) {
     if (conn->state == Closed && conn->write_reqs == 0) {
         ZITI_LOG(VERBOSE, "removing connection[%d]", conn->conn_id);
         LIST_REMOVE(conn, next);
@@ -70,7 +70,7 @@ int close_conn_internal(struct nf_conn *conn) {
     return 0;
 }
 
-void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int status) {
+void on_write_completed(struct ziti_conn *conn, struct nf_write_req *req, int status) {
     if (req->conn == NULL) {
         ZITI_LOG(DEBUG, "write completed for timed out or closed connection");
         free(req);
@@ -98,7 +98,8 @@ void on_write_completed(struct nf_conn *conn, struct nf_write_req *req, int stat
     free(req);
 }
 
-static int send_message(struct nf_conn *conn, uint32_t content, uint8_t *body, uint32_t body_len, struct nf_write_req *wr) {
+static int
+send_message(struct ziti_conn *conn, uint32_t content, uint8_t *body, uint32_t body_len, struct nf_write_req *wr) {
     ziti_channel_t *ch = conn->channel;
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(conn->edge_msg_seq++);
@@ -155,7 +156,7 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
 
 static void connect_timeout(uv_timer_t *timer) {
     struct nf_conn_req *req = timer->data;
-    struct nf_conn *conn = req->conn;
+    struct ziti_conn *conn = req->conn;
 
     if (conn->state == Connecting) {
         ZITI_LOG(WARN, "ziti connection timed out");
@@ -171,7 +172,7 @@ static void connect_timeout(uv_timer_t *timer) {
 }
 
 static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, struct nf_conn_req *req) {
-    struct nf_conn *conn = req->conn;
+    struct ziti_conn *conn = req->conn;
     conn->token = session->token;
 
     ziti_edge_router **er;
@@ -272,7 +273,7 @@ static void ziti_connect_async(uv_async_t *ar) {
     uv_close((uv_handle_t *) ar, free_handle);
 }
 
-int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb) {
+int ziti_dial(ziti_connection conn, const char *service, ziti_conn_cb conn_cb, ziti_data_cb data_cb) {
 
     PREPF(ziti, ziti_errorstr);
     if (conn->state != Initial) {
@@ -309,7 +310,7 @@ int ziti_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_da
 
 static void ziti_write_timeout(uv_timer_t *t) {
     struct nf_write_req *req = t->data;
-    struct nf_conn *conn = req->conn;
+    struct ziti_conn *conn = req->conn;
 
     conn->write_reqs--;
     req->timeout = NULL;
@@ -325,7 +326,7 @@ static void ziti_write_timeout(uv_timer_t *t) {
 
 static void ziti_write_async(uv_async_t *ar) {
     struct nf_write_req *req = ar->data;
-    struct nf_conn *conn = req->conn;
+    struct ziti_conn *conn = req->conn;
 
     if (conn->state == Closed) {
         ZITI_LOG(WARN, "got write req for closed conn[%d]", conn->conn_id);
@@ -370,12 +371,12 @@ int ziti_write(struct nf_write_req *req) {
     return uv_async_send(ar);
 }
 
-static void ziti_disconnect_cb(nf_connection conn, ssize_t status, void *ctx) {
+static void ziti_disconnect_cb(ziti_connection conn, ssize_t status, void *ctx) {
     conn->state = Closed;
 }
 
 static void ziti_disconnect_async(uv_async_t *ar) {
-    struct nf_conn *conn = ar->data;
+    struct ziti_conn *conn = ar->data;
 
     uv_close((uv_handle_t *) ar, free_handle);
 
@@ -388,14 +389,14 @@ static void ziti_disconnect_async(uv_async_t *ar) {
     }
 }
 
-int ziti_disconnect(struct nf_conn *conn) {
+int ziti_disconnect(struct ziti_conn *conn) {
     NEWP(ar, uv_async_t);
     uv_async_init(conn->channel->ctx->loop, ar, ziti_disconnect_async);
     ar->data = conn;
     return uv_async_send(ar);
 }
 
-static void crypto_wr_cb(nf_connection conn, ssize_t status, void* ctx) {
+static void crypto_wr_cb(ziti_connection conn, ssize_t status, void *ctx) {
     if (status < 0) {
         ZITI_LOG(ERROR, "crypto header write failed with status[%zd]", status);
         conn->state = Closed;
@@ -403,7 +404,7 @@ static void crypto_wr_cb(nf_connection conn, ssize_t status, void* ctx) {
     }
 }
 
-static int establish_crypto (nf_connection conn, message *msg) {
+static int establish_crypto(ziti_connection conn, message *msg) {
 
     size_t peer_key_len;
     uint8_t *peer_key;
@@ -444,7 +445,7 @@ static int establish_crypto (nf_connection conn, message *msg) {
 }
 
 static void flush_to_client(uv_async_t *fl) {
-    nf_connection conn = fl->data;
+    ziti_connection conn = fl->data;
     if (conn == NULL || conn->state == Closed) {
         return;
     }
@@ -466,7 +467,7 @@ static void flush_to_client(uv_async_t *fl) {
     }
 }
 
-void conn_inbound_data_msg(nf_connection conn, message *msg) {
+void conn_inbound_data_msg(ziti_connection conn, message *msg) {
     uint8_t *plain_text = NULL;
     if (conn->state == Closed) {
         ZITI_LOG(VERBOSE, "inbound data on closed connection");
@@ -505,7 +506,7 @@ void conn_inbound_data_msg(nf_connection conn, message *msg) {
 
 void connect_reply_cb(void *ctx, message *msg) {
     struct nf_conn_req *req = ctx;
-    struct nf_conn *conn = req->conn;
+    struct ziti_conn *conn = req->conn;
 
     req->chan_tries--;
 
@@ -610,7 +611,7 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
     return ZITI_OK;
 }
 
-int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, nf_client_cb on_clt_cb) {
+int ziti_bind(ziti_connection conn, const char *service, ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb) {
     ziti_context nf = conn->nf_ctx;
 
     NEWP(req, struct nf_conn_req);
@@ -630,7 +631,7 @@ int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, n
 
 }
 
-int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb) {
+int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
 
     ziti_channel_t *ch = conn->parent->channel;
 
@@ -639,7 +640,7 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb) {
 
     conn->flusher = calloc(1, sizeof(uv_async_t));
     uv_async_init(conn->nf_ctx->loop, conn->flusher, flush_to_client);
-    conn->flusher->data= conn;
+    conn->flusher->data = conn;
     uv_unref((uv_handle_t *) &conn->flusher);
 
     LIST_INSERT_HEAD(&ch->connections, conn, next);

@@ -335,7 +335,7 @@ void NF_dump(ziti_context ctx) {
     const char *url;
     MODEL_MAP_FOREACH(url, ch, ctx->channels) {
         printf("ch[%d](%s)\n", ch->id, url);
-        nf_connection conn;
+        ziti_connection conn;
         LIST_FOREACH(conn, &ch->connections, next) {
             printf("\tconn[%d]: state[%s] service[%s] session[%s]\n", conn->conn_id, strstate(conn->state),
                    "TODO", "TODO"); // TODO
@@ -343,9 +343,9 @@ void NF_dump(ziti_context ctx) {
     }
 }
 
-int NF_conn_init(ziti_context nf_ctx, nf_connection *conn, void *data) {
+int NF_conn_init(ziti_context nf_ctx, ziti_connection *conn, void *data) {
     struct ziti_ctx *ctx = nf_ctx;
-    NEWP(c, struct nf_conn);
+    NEWP(c, struct ziti_conn);
     c->nf_ctx = nf_ctx;
     c->data = data;
     c->channel = NULL;
@@ -359,22 +359,22 @@ int NF_conn_init(ziti_context nf_ctx, nf_connection *conn, void *data) {
     return ZITI_OK;
 }
 
-void *NF_conn_data(nf_connection conn) {
+void *NF_conn_data(ziti_connection conn) {
     return conn != NULL ? conn->data : NULL;
 }
 
-void NF_conn_set_data(nf_connection conn, void *data) {
+void NF_conn_set_data(ziti_connection conn, void *data) {
     if (conn != NULL) {
         conn->data = data;
     }
 }
 
-int NF_dial(nf_connection conn, const char *service, nf_conn_cb conn_cb, nf_data_cb data_cb) {
+int NF_dial(ziti_connection conn, const char *service, ziti_conn_cb conn_cb, ziti_data_cb data_cb) {
     return ziti_dial(conn, service, conn_cb, data_cb);
 }
 
-int NF_close(nf_connection *conn) {
-    struct nf_conn *c = *conn;
+int NF_close(ziti_connection *conn) {
+    struct ziti_conn *c = *conn;
 
     if (c != NULL) {
         ziti_disconnect(c);
@@ -385,7 +385,7 @@ int NF_close(nf_connection *conn) {
     return ZITI_OK;
 }
 
-int NF_write(nf_connection conn, uint8_t* data, size_t length, nf_write_cb write_cb, void* write_ctx) {
+int NF_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx) {
 
     NEWP(req, struct nf_write_req);
     req->conn = conn;
@@ -402,7 +402,7 @@ int NF_write(nf_connection conn, uint8_t* data, size_t length, nf_write_cb write
 struct service_req_s {
     struct ziti_ctx *nf;
     char *service;
-    nf_service_cb cb;
+    ziti_service_cb cb;
     void *cb_ctx;
 };
 
@@ -432,28 +432,28 @@ static void service_cb(ziti_service *s, ziti_error *err, void *ctx) {
     free(req);
 }
 
-int NF_service_available(ziti_context nf, const char *service, nf_service_cb cb, void *ctx) {
-    ziti_service *s = model_map_get(&nf->services, service);
+int ziti_service_available(ziti_context nf_ctx, const char *service, ziti_service_cb cb, void *ctx) {
+    ziti_service *s = model_map_get(&nf_ctx->services, service);
     if (s != NULL) {
-        cb(nf, s, ZITI_OK, ctx);
+        cb(nf_ctx, s, ZITI_OK, ctx);
         return ZITI_OK;
     }
 
     NEWP(req, struct service_req_s);
-    req->nf = nf;
+    req->nf = nf_ctx;
     req->service = strdup(service);
     req->cb = cb;
     req->cb_ctx = ctx;
 
-    ziti_ctrl_get_service(&nf->controller, service, service_cb, req);
+    ziti_ctrl_get_service(&nf_ctx->controller, service, service_cb, req);
     return ZITI_OK;
 }
 
-extern int NF_listen(nf_connection serv_conn, const char *service, nf_listen_cb lcb, nf_client_cb cb) {
+extern int NF_listen(ziti_connection serv_conn, const char *service, ziti_listen_cb lcb, ziti_client_cb cb) {
     return ziti_bind(serv_conn, service, lcb, cb);
 }
 
-extern int NF_accept(nf_connection clt, nf_conn_cb cb, nf_data_cb data_cb) {
+extern int NF_accept(ziti_connection clt, ziti_conn_cb cb, ziti_data_cb data_cb) {
     return ziti_accept(clt, cb, data_cb);
 }
 
@@ -633,9 +633,9 @@ static void grim_reaper(uv_prepare_t *p) {
     const char *url;
     ziti_channel_t *ch;
     MODEL_MAP_FOREACH(url, ch, nf->channels) {
-        nf_connection conn = LIST_FIRST(&ch->connections);
+        ziti_connection conn = LIST_FIRST(&ch->connections);
         while(conn != NULL) {
-            nf_connection try_close = conn;
+            ziti_connection try_close = conn;
             total++;
             conn = LIST_NEXT(conn, next);
             count += close_conn_internal(try_close);

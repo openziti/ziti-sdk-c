@@ -270,8 +270,8 @@ int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_
     return 0;
 }
 
-static struct nf_conn *find_conn(ziti_channel_t *ch, uint32_t conn_id) {
-    struct nf_conn *c;
+static struct ziti_conn *find_conn(ziti_channel_t *ch, uint32_t conn_id) {
+    struct ziti_conn *c;
     LIST_FOREACH(c, &ch->connections, next) {
         if (c->conn_id == conn_id) {
             return c;
@@ -280,7 +280,7 @@ static struct nf_conn *find_conn(ziti_channel_t *ch, uint32_t conn_id) {
     return NULL;
 }
 
-static void process_edge_message(struct nf_conn *conn, message *msg) {
+static void process_edge_message(struct ziti_conn *conn, message *msg) {
     int32_t seq;
     int32_t conn_id;
     bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
@@ -306,7 +306,7 @@ static void process_edge_message(struct nf_conn *conn, message *msg) {
 
         case ContentTypeDial:
             assert(conn->state == Bound);
-            nf_connection clt;
+            ziti_connection clt;
             NF_conn_init(conn->nf_ctx, &clt, NULL);
             clt->state = Accepting;
             clt->parent = conn;
@@ -368,7 +368,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
             ZITI_LOG(ERROR, "ch[%d] received message without conn_id ct[%d]", ch->id, m->header.content);
         }
         else {
-            struct nf_conn *conn = find_conn(ch, conn_id);
+            struct ziti_conn *conn = find_conn(ch, conn_id);
             if (conn == NULL) {
                 ZITI_LOG(ERROR, "ch[%d] received message for unknown connection conn_id[%d] ct[%d]",
                          ch->id, conn_id, m->header.content);
@@ -506,7 +506,7 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
     ziti_context nf = ch->ctx;
     model_map_remove(&nf->channels, ch->ingress);
 
-    nf_connection con;
+    ziti_connection con;
     LIST_FOREACH(con, &ch->connections, next) {
         if (con->state == Connected) {
             con->state = Closed;

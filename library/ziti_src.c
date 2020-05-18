@@ -24,24 +24,30 @@ limitations under the License.
 typedef struct ziti_link_s {
     UV_LINK_FIELDS
     ziti_context nfc;
-    nf_connection conn;
+    ziti_connection conn;
     char *service;
 } ziti_link_t;
 
 // connect and release method for um_http custom source link
 static int ziti_src_connect(um_http_src_t *sl, um_http_src_connect_cb cb);
+
 static void ziti_src_release(um_http_src_t *sl);
 
 // uv_link methods
 static int zl_read_start(uv_link_t *l);
-static int zl_write(uv_link_t *link, uv_link_t *source, const uv_buf_t bufs[],
-                     unsigned int nbufs, uv_stream_t *send_handle, uv_link_write_cb cb, void *arg);
-void zl_close(uv_link_t* link, uv_link_t* source, uv_link_close_cb cb);
-const char* zl_strerror(uv_link_t* link, int err);
 
-static void zlnf_conn_cb(nf_connection conn, int status);
-static ssize_t zlnf_data_cb(nf_connection conn, uint8_t *data, ssize_t length);
-static void zlnf_write_cb(nf_connection conn, ssize_t status, void *ctx);
+static int zl_write(uv_link_t *link, uv_link_t *source, const uv_buf_t bufs[],
+                    unsigned int nbufs, uv_stream_t *send_handle, uv_link_write_cb cb, void *arg);
+
+void zl_close(uv_link_t *link, uv_link_t *source, uv_link_close_cb cb);
+
+const char *zl_strerror(uv_link_t *link, int err);
+
+static void zlnf_conn_cb(ziti_connection conn, int status);
+
+static ssize_t zlnf_data_cb(ziti_connection conn, uint8_t *data, ssize_t length);
+
+static void zlnf_write_cb(ziti_connection conn, ssize_t status, void *ctx);
 
 struct zl_write_req_s {
     ziti_link_t *zl;
@@ -92,23 +98,25 @@ static void ziti_src_release(um_http_src_t *src) {
     free(src->link);
 }
 
-static void zlnf_conn_cb(nf_connection conn, int status) {
-    um_http_src_t *src = (um_http_src_t *)NF_conn_data(conn);
+static void zlnf_conn_cb(ziti_connection conn, int status) {
+    um_http_src_t *src = (um_http_src_t *) NF_conn_data(conn);
     src->connect_cb(src, status);
 }
 
 //static void link_close_cb(uv_link_t *l) {}
-static ssize_t zlnf_data_cb(nf_connection conn, uint8_t *data, ssize_t length) {
-    um_http_src_t *src = (um_http_src_t *)NF_conn_data(conn);
+static ssize_t zlnf_data_cb(ziti_connection conn, uint8_t *data, ssize_t length) {
+    um_http_src_t *src = (um_http_src_t *) NF_conn_data(conn);
     uv_buf_t read_buf;
 
     if (length == ZITI_EOF) {
         ZITI_LOG(TRACE, "ZITI_EOF");
         uv_link_propagate_read_cb(src->link, UV_EOF, NULL);
-    } else if (length < 0) {
+    }
+    else if (length < 0) {
         ZITI_LOG(ERROR, "unexpected error: %s", ziti_errorstr(length));
         uv_link_propagate_read_cb(src->link, length, NULL);
-    } else {
+    }
+    else {
         uv_link_propagate_alloc_cb(src->link, length, &read_buf);
         memcpy(read_buf.base, data, length);
         uv_link_propagate_read_cb(src->link, length, &read_buf);
@@ -117,9 +125,9 @@ static ssize_t zlnf_data_cb(nf_connection conn, uint8_t *data, ssize_t length) {
     return length;
 }
 
-static void zlnf_write_cb(nf_connection conn, ssize_t status, void *ctx) {
+static void zlnf_write_cb(ziti_connection conn, ssize_t status, void *ctx) {
     struct zl_write_req_s *req = ctx;
-    req->cb((uv_link_t *)req->zl, status, req->arg); 
+    req->cb((uv_link_t *) req->zl, status, req->arg);
     free(req);
 }
 
