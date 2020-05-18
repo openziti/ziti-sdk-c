@@ -158,6 +158,7 @@ struct ziti_conn {
     uint8_t sk[crypto_kx_SECRETKEYBYTES];
     uint8_t pk[crypto_kx_PUBLICKEYBYTES];
     uint8_t *rx;
+    uint8_t *tx;
 
     crypto_secretstream_xchacha20poly1305_state crypt_o;
     crypto_secretstream_xchacha20poly1305_state crypt_i;
@@ -246,6 +247,8 @@ int gen_key(mbedtls_pk_context *pk_context);
 int gen_csr(enroll_cfg *cfg);
 
 int close_conn_internal(struct ziti_conn *conn);
+
+int establish_crypto(ziti_connection conn, message *msg);
 
 #ifdef __cplusplus
 }

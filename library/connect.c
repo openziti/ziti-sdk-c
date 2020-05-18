@@ -408,7 +408,7 @@ static void crypto_wr_cb(ziti_connection conn, ssize_t status, void *ctx) {
     }
 }
 
-static int establish_crypto(ziti_connection conn, message *msg) {
+int establish_crypto(ziti_connection conn, message *msg) {
 
     size_t peer_key_len;
     uint8_t *peer_key;
@@ -420,14 +420,14 @@ static int establish_crypto(ziti_connection conn, message *msg) {
     }
 
     conn->encrypted = true;
-    uint8_t tx[crypto_secretstream_xchacha20poly1305_KEYBYTES];
+    conn->tx = calloc(1, crypto_secretstream_xchacha20poly1305_KEYBYTES);
     conn->rx = calloc(1, crypto_secretstream_xchacha20poly1305_KEYBYTES);
     int rc;
     if (conn->state == Connecting) {
-        rc = crypto_kx_client_session_keys(conn->rx, tx, conn->pk, conn->sk, peer_key);
+        rc = crypto_kx_client_session_keys(conn->rx, conn->tx, conn->pk, conn->sk, peer_key);
     }
     else if (conn->state == Accepting) {
-        rc = crypto_kx_server_session_keys(conn->rx, tx, conn->parent->pk, conn->parent->sk, peer_key);
+        rc = crypto_kx_server_session_keys(conn->rx, conn->tx, conn->parent->pk, conn->parent->sk, peer_key);
     }
     else {
         ZITI_LOG(ERROR, "cannot establish crypto in %d state", conn->state);
@@ -436,17 +436,24 @@ static int establish_crypto(ziti_connection conn, message *msg) {
     if (rc != 0) {
         return ZITI_CRYPTO_FAIL;
     }
+    return ZITI_OK;
+}
 
-    NEWP(wr, struct ziti_write_req_s);
-    wr->conn = conn;
-    uint8_t *header = calloc(1, crypto_secretstream_xchacha20poly1305_headerbytes());
-    wr->buf = header;
-    wr->cb = crypto_wr_cb;
+static int send_crypto_header(ziti_connection conn) {
+    if (conn->encrypted) {
+        NEWP(wr, struct ziti_write_req_s);
+        wr->conn = conn;
+        uint8_t *header = calloc(1, crypto_secretstream_xchacha20poly1305_headerbytes());
+        wr->buf = header;
+        wr->cb = crypto_wr_cb;
 
-    crypto_secretstream_xchacha20poly1305_init_push(&conn->crypt_o, header, tx);
-    conn->write_reqs++;
-    send_message(conn, ContentTypeData, header, crypto_secretstream_xchacha20poly1305_headerbytes(), wr);
-    free(header);
+        crypto_secretstream_xchacha20poly1305_init_push(&conn->crypt_o, header, conn->tx);
+        conn->write_reqs++;
+        send_message(conn, ContentTypeData, header, crypto_secretstream_xchacha20poly1305_headerbytes(), wr);
+        free(header);
+        memset(conn->tx, 0, crypto_secretstream_xchacha20poly1305_KEYBYTES);
+        FREE(conn->tx);
+    }
     return ZITI_OK;
 }
 
@@ -534,6 +541,7 @@ void connect_reply_cb(void *ctx, message *msg) {
             if (conn->state == Connecting) {
                 ZITI_LOG(TRACE, "edge conn_id[%d]: connected.", conn->conn_id);
                 establish_crypto(conn, msg);
+                send_crypto_header(conn);
                 conn->state = Connected;
                 req->cb(conn, ZITI_OK);
             }
@@ -544,7 +552,7 @@ void connect_reply_cb(void *ctx, message *msg) {
             }
             else if (conn->state == Accepting) {
                 ZITI_LOG(TRACE, "edge conn_id[%d]: accepted.", conn->conn_id);
-                establish_crypto(conn, msg);
+                send_crypto_header(conn);
                 conn->state = Connected;
                 req->cb(conn, ZITI_OK);
             }
