@@ -21,7 +21,7 @@ limitations under the License.
 #include <string.h>
 
 static uv_loop_t *loop;
-static ziti_context nf;
+static ziti_context ziti;
 static um_http_t clt;
 static um_http_src_t zs;
 
@@ -48,7 +48,7 @@ void resp_cb(um_http_resp_t *resp, void *data) {
 void body_cb(um_http_req_t *req, const char *body, ssize_t len) {
     if (len == UV_EOF) {
         printf("\n\n====================\nRequest completed\n");
-        ziti_shutdown(nf);
+        ziti_shutdown(ziti);
     } else if (len < 0) {
         fprintf(stderr, "error(%zd) %s", len, uv_strerror(len));
         exit(-1);
@@ -57,11 +57,11 @@ void body_cb(um_http_req_t *req, const char *body, ssize_t len) {
     }
 }
 
-void on_nf_init(ziti_context _nf, int status, void *ctx) {
+void on_ziti_init(ziti_context ztx, int status, void *ctx) {
     DIE(status);
 
-    nf = _nf;
-    ziti_src_init(loop, &zs, "httpbin", nf);
+    ziti = ztx;
+    ziti_src_init(loop, &zs, "httpbin", ziti);
     um_http_init_with_src(loop, &clt, "http://httpbin.org", (um_http_src_t *) &zs);
 
     um_http_req_t *r = um_http_req(&clt, "GET", "/json", resp_cb, NULL);
@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
 #endif
 
     loop = uv_default_loop();
-    DIE(ziti_init(argv[1], loop, on_nf_init, NULL));
+    DIE(ziti_init(argv[1], loop, on_ziti_init, NULL));
 
     uv_mbed_set_debug(5, stdout);
 

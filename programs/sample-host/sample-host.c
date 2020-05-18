@@ -26,7 +26,7 @@ exit(code);\
 }} while(0)
 
 
-static ziti_context nf;
+static ziti_context ziti;
 static int server = 0;
 static const char *service;
 
@@ -95,13 +95,13 @@ ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
 
         printf("request completed: %s\n", ziti_errorstr(len));
         ziti_close(&c);
-        ziti_shutdown(nf);
+        ziti_shutdown(ziti);
 
     }
     else if (len < 0) {
         fprintf(stderr, "unexpected error: %s\n", ziti_errorstr(len));
         ziti_close(&c);
-        ziti_shutdown(nf);
+        ziti_shutdown(ziti);
     }
     else {
         total += len;
@@ -110,10 +110,10 @@ ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
     return len;
 }
 
-static void on_nf_init(ziti_context nf_ctx, int status, void *init_ctx) {
-    nf = nf_ctx;
+static void on_ziti_init(ziti_context ztx, int status, void *ctx) {
+    ziti = ztx;
     ziti_connection conn;
-    ziti_conn_init(nf, &conn, NULL);
+    ziti_conn_init(ziti, &conn, NULL);
     if (server) {
         ziti_listen(conn, service, listen_cb, on_client);
     }
@@ -144,7 +144,7 @@ int main(int argc, char **argv) {
 
     service = argv[3];
 
-    DIE(ziti_init(argv[2], loop, on_nf_init, NULL));
+    DIE(ziti_init(argv[2], loop, on_ziti_init, NULL));
 
     // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
@@ -152,6 +152,6 @@ int main(int argc, char **argv) {
     printf("========================\n"
            "uv loop is done\n");
 
-    ziti_shutdown(nf);
+    ziti_shutdown(ziti);
 }
 

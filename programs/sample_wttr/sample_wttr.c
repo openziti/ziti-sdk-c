@@ -29,20 +29,20 @@ exit(code);\
 }} while(0)
 
 static size_t total;
-static ziti_context nf;
+static ziti_context ziti;
 
 ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
     if (len == ZITI_EOF) {
 
         printf("request completed: %s\n", ziti_errorstr(len));
         ziti_close(&c);
-        ziti_shutdown(nf);
+        ziti_shutdown(ziti);
 
     }
     else if (len < 0) {
         fprintf(stderr, "unexpected error: %s\n", ziti_errorstr(len));
         ziti_close(&c);
-        ziti_shutdown(nf);
+        ziti_shutdown(ziti);
     }
     else {
         total += len;
@@ -75,12 +75,12 @@ void on_connect(ziti_connection conn, int status) {
     DIE(ziti_write(conn, req, strlen(req), on_write, NULL));
 }
 
-void on_nf_init(ziti_context _nf, int status, void *ctx) {
+void on_ziti_init(ziti_context ztx, int status, void *ctx) {
     DIE(status);
-    nf = _nf;
+    ziti = ztx;
 
     ziti_connection conn;
-    DIE(ziti_conn_init(nf, &conn, NULL));
+    DIE(ziti_conn_init(ziti, &conn, NULL));
     DIE(ziti_dial(conn, "demo-weather", on_connect, on_data));
 }
 
@@ -91,12 +91,12 @@ int main(int argc, char** argv) {
 #endif
     uv_loop_t *loop = uv_default_loop();
 
-    DIE(ziti_init(argv[1], loop, on_nf_init, NULL));
+    DIE(ziti_init(argv[1], loop, on_ziti_init, NULL));
 
     // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
 
     printf("========================\n");
 
-    ziti_shutdown(nf);
+    ziti_shutdown(ziti);
 }

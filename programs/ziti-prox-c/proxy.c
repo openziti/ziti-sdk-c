@@ -50,7 +50,7 @@ typedef LIST_HEAD(listeners, listener) listener_l;
 struct client {
     struct sockaddr_in addr;
     char addr_s[32];
-    ziti_connection nf_conn;
+    ziti_connection ziti_conn;
     int closed;
     size_t inb_reqs;
 };
@@ -157,12 +157,12 @@ static void alloc_cb(uv_handle_t *h, size_t suggested_size, uv_buf_t *buf) {
     }
 }
 
-static void on_nf_write(ziti_connection conn, ssize_t status, void *ctx) {
+static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
     uv_stream_t *stream = ziti_conn_data(conn);
     if (stream != NULL) {
         struct client *clt = stream->data;
         if (status < 0) {
-            ZITI_LOG(ERROR, "nf_write failed status[%zd] %s", status, ziti_errorstr(status));
+            ZITI_LOG(ERROR, "ziti_write failed status[%zd] %s", status, ziti_errorstr(status));
             if (!clt->closed) {
                 uv_close((uv_handle_t *) stream, close_cb);
                 clt->closed = true;
@@ -185,8 +185,8 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         ZITI_LOG(DEBUG, "connection closed %s [%zd/%s](%s)",
                  clt->addr_s, nread, uv_err_name(nread), uv_strerror(nread));
 
-        ziti_conn_set_data(clt->nf_conn, NULL);
-        ziti_close(&clt->nf_conn);
+        ziti_conn_set_data(clt->ziti_conn, NULL);
+        ziti_close(&clt->ziti_conn);
 
         uv_read_stop(stream);
         uv_close((uv_handle_t *) stream, close_cb);
@@ -198,7 +198,7 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
     }
     else {
         clt->inb_reqs += 1;
-        ziti_write(clt->nf_conn, buf->base, nread, on_nf_write, buf->base);
+        ziti_write(clt->ziti_conn, buf->base, nread, on_ziti_write, buf->base);
     }
 }
 
@@ -238,7 +238,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         if (clt != NULL) {
             ZITI_LOG(DEBUG, "ziti connection closed with [%zd](%s)", len, ziti_errorstr(len));
             ziti_conn_set_data(conn, NULL);
-            c->nf_conn = NULL;
+            c->ziti_conn = NULL;
             if (!c->closed) {
                 c->closed = true;
                 uv_close((uv_handle_t *) clt, close_cb);
@@ -272,8 +272,8 @@ static void on_client(uv_stream_t *server, int status) {
              clt->addr_s, l->service_name, l->port);
 
     PREPF(ziti, ziti_errorstr);
-    TRY(ziti, ziti_conn_init(ziti, &clt->nf_conn, c));
-    TRY(ziti, ziti_dial(clt->nf_conn, l->service_name, on_ziti_connect, on_ziti_data));
+    TRY(ziti, ziti_conn_init(ziti, &clt->ziti_conn, c));
+    TRY(ziti, ziti_dial(clt->ziti_conn, l->service_name, on_ziti_connect, on_ziti_data));
     c->data = clt;
 
     CATCH(ziti) {
@@ -334,7 +334,7 @@ static void service_check_cb(ziti_context ztx, ziti_service *service, int status
     }
 }
 
-static void on_nf_init(ziti_context ztx, int status, void *ctx) {
+static void on_ziti_init(ziti_context ztx, int status, void *ctx) {
     PREPF(ziti, ziti_errorstr);
     TRY(ziti, status);
     CATCH(ziti) {
@@ -380,7 +380,7 @@ void run(int argc, char **argv) {
 
     ziti_options opts = {
             .config = config,
-            .init_cb = on_nf_init,
+            .init_cb = on_ziti_init,
             .service_cb = service_check_cb,
             .refresh_interval = 600,
             .ctx = &listeners,
