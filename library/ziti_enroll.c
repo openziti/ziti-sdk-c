@@ -60,7 +60,7 @@ static void enroll_cb(char *cert, ziti_error *err, void *ctx);
 int extract_well_known_certs(char *base64_encoded_pkcs7, void *req);
 
 static void async_connects(uv_async_t *ar) {
-    nf_context nf = ar->data;
+    ziti_context nf = ar->data;
     ziti_process_connect_reqs(nf);
 }
 
@@ -340,20 +340,19 @@ int NF_enroll_with_key(const char* jwt_file, const char* pk_pem, uv_loop_t* loop
     // gen CSR
     gen_csr(ecfg);
 
-    if (strcmp(ecfg->zej->method, "ott") == 0)
-    { 
+    if (strcmp(ecfg->zej->method, "ott") == 0) {
         // Set up an empty tls context, and here's the important part... also turn off SSL verification.
         // Otherwise we'll get an SSL handshake error.
         //
         // We'll be doing an "insecure" call to the controller to fetch its well-known certs.
         // We'll use the received CA chain later, during the call to do enrollment.
         tls_context *tls = default_tls_context(NULL, 0);
-        mbedtls_ssl_conf_authmode( tls->ctx, MBEDTLS_SSL_VERIFY_NONE ); // <-- a.k.a. "insecure"
+        mbedtls_ssl_conf_authmode(tls->ctx, MBEDTLS_SSL_VERIFY_NONE); // <-- a.k.a. "insecure"
 
-        NEWP(fetch_cert_ctx, struct nf_ctx);
+        NEWP(fetch_cert_ctx, struct ziti_ctx);
         fetch_cert_ctx->tlsCtx = tls;
         fetch_cert_ctx->loop = loop;
-        fetch_cert_ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
+        fetch_cert_ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
 
         uv_async_init(loop, &fetch_cert_ctx->connect_async, async_connects);
         uv_unref((uv_handle_t *) &fetch_cert_ctx->connect_async);
@@ -463,10 +462,10 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
 
     enroll_req->ecfg->CA = ca;
 
-    NEWP(enroll_ctx, struct nf_ctx);
+    NEWP(enroll_ctx, struct ziti_ctx);
     enroll_ctx->tlsCtx = tls;
     enroll_ctx->loop = enroll_req->enroll_ctx->loop;
-    enroll_ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
+    enroll_ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
 
     ziti_ctrl_init(enroll_ctx->loop, &enroll_ctx->controller, enroll_req->ecfg->zej->controller, tls);
 
@@ -482,7 +481,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
 static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
 
     struct nf_enroll_req *enroll_req = enroll_ctx;
-    struct nf_ctx *ctx = enroll_req->enroll_ctx;
+    struct ziti_ctx *ctx = enroll_req->enroll_ctx;
 
     if (err != NULL) {
         ZITI_LOG(ERROR, "failed to enroll with controller: %s:%s %s (%s)",

@@ -19,8 +19,8 @@ limitations under the License.
  * @brief Defines the macros, functions, typedefs and constants required to interface with a Ziti Network.
  */
 
-#ifndef NF_ZT_H
-#define NF_ZT_H
+#ifndef ZITI_ZITI_H
+#define ZITI_ZITI_H
 
 #include <stdint.h>
 #include <uv.h>
@@ -48,22 +48,22 @@ extern "C" {
 /**
  * The default timeout in milliseconds for connections and write operations to succeed.
  */
-#define NF_DEFAULT_TIMEOUT 10000
+#define ZITI_DEFAULT_TIMEOUT 10000
 
 /**
  * @brief Represents the Ziti Edge identity context.
  *
  * The Ziti C SDK will use this pointer to initialize and track the memory needed during
  * normal usage. This structure is opaque to the API user but is necessary for normal Ziti
- * SDK operation. After a successful initialization via NF_init() the pointer will be
+ * SDK operation. After a successful initialization via ziti_init() the pointer will be
  * initialized. The context is necessary for many of the C SDK functions and is passed
  * as a parameter in many of the callbacks. NF_shutdown() should be invoked when the Ziti
  * connections are no longer needed. The Ziti C SDK will reclaim any allocated memory at this
  * time.
  *
- * @see NF_init(), NF_shutdown()
+ * @see ziti_init(), NF_shutdown()
  */
-typedef struct nf_ctx *nf_context;
+typedef struct ziti_ctx *ziti_context;
 
 /**
  * @brief Represents a Ziti connection.
@@ -83,8 +83,8 @@ typedef struct nf_conn *nf_connection;
 /**
  * @brief Ziti Edge identity context init callback.
  *
- * This callback is invoked on the conclusion of the NF_init() function. The result of the
- * NF_init() function may be an error condition so it is important to verify the provided
+ * This callback is invoked on the conclusion of the ziti_init() function. The result of the
+ * ziti_init() function may be an error condition so it is important to verify the provided
  * status code in this callback.
  *
  * This callback also has the Ziti Edge identity context supplied. This context should be
@@ -93,11 +93,11 @@ typedef struct nf_conn *nf_connection;
  *
  * @param nf_ctx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
  * @param status #ZITI_OK or an error code
- * @param init_ctx custom data passed via NF_init()
+ * @param init_ctx custom data passed via ziti_init()
  *
- * @see NF_init(), ZITI_ERRORS
+ * @see ziti_init(), ZITI_ERRORS
  */
-typedef void (*nf_init_cb)(nf_context nf_ctx, int status, void* init_ctx);
+typedef void (*ziti_init_cb)(ziti_context nf_ctx, int status, void *init_ctx);
 
 /**
  * @brief Service status callback.
@@ -109,25 +109,25 @@ typedef void (*nf_init_cb)(nf_context nf_ctx, int status, void* init_ctx);
  *
  * @see NF_service_available(), ZITI_ERRORS
  */
-typedef void (*nf_service_cb)(nf_context nf_ctx, ziti_service *, int status, void *data);
+typedef void (*nf_service_cb)(ziti_context nf_ctx, ziti_service *, int status, void *data);
 
 /**
- * @brief nf_context initialization options
+ * @brief ziti_context initialization options
  *
- * @see NF_init_opts()
+ * @see ziti_init_opts()
  */
-typedef struct nf_options_s {
-    const char* config;
-    const char* controller;
+typedef struct ziti_options_s {
+    const char *config;
+    const char *controller;
     tls_context *tls;
 
-    const char** config_types;
-    nf_init_cb init_cb;
+    const char **config_types;
+    ziti_init_cb init_cb;
     nf_service_cb service_cb;
 
     long refresh_interval;
     void *ctx;
-} nf_options;
+} ziti_options;
 
 /**
  * @brief Data callback.
@@ -212,7 +212,7 @@ typedef void (*nf_write_cb)(nf_connection conn, ssize_t status, void *write_ctx)
  * status code in this callback.
  *
  * This callback also receives a Ziti identity json salvo if the enrollment was successful. 
- * This identity should be persisted into a file, and used in subsequent calls to NF_init().
+ * This identity should be persisted into a file, and used in subsequent calls to ziti_init().
  *
  * @param data identity json data buffer
  * @param length size of identity json or error code as defined in #ZITI_ERRORS
@@ -267,33 +267,33 @@ extern int NF_enroll_with_key(const char* jwt, const char* pk_pem, uv_loop_t* lo
  * @param config location of identity configuration
  * @param loop libuv event loop
  * @param init_cb callback to be called when initialization is complete
- * @param init_ctx additional context to be passed into #nf_init_cb callback
+ * @param init_ctx additional context to be passed into #ziti_init_cb callback
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  *
- * @see NF_init_opts()
+ * @see ziti_init_opts()
  * @deprecated
  */
 ZITI_FUNC
-extern int NF_init(const char* config, uv_loop_t* loop, nf_init_cb init_cb, void* init_ctx);
+extern int ziti_init(const char *config, uv_loop_t *loop, ziti_init_cb init_cb, void *init_ctx);
 
 
 /**
  * @brief Initialize Ziti Edge identity context with the provided options.
  *
- * This function is a more flexible version of NF_init() with the ability to specify tls_context, controller,
+ * This function is a more flexible version of ziti_init() with the ability to specify tls_context, controller,
  * and refresh options.
  *
  * @param options options to initialize with
  * @param loop libuv event loop
- * @param init_ctx additional context to be passed into the #nf_options.nf_init_cb callback
+ * @param init_ctx additional context to be passed into the #ziti_options.ziti_init_cb callback
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  *
- * @see NF_init()
+ * @see ziti_init()
  */
 ZITI_FUNC
-extern int NF_init_opts(nf_options *options, uv_loop_t *loop, void *init_ctx);
+extern int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx);
 
 /**
  * @brief return SDK version
@@ -308,7 +308,7 @@ extern const ziti_version *NF_get_version();
  * @return controller version
  */
 ZITI_FUNC
-extern const ziti_version *NF_get_controller_version(nf_context nf);
+extern const ziti_version *NF_get_controller_version(ziti_context nf);
 
 /**
  * @brief controller URL of the given context
@@ -316,7 +316,7 @@ extern const ziti_version *NF_get_controller_version(nf_context nf);
  * @return controller URL
  */
 ZITI_FUNC
-extern const char *NF_get_controller(nf_context nf);
+extern const char *NF_get_controller(ziti_context nf);
 
 /**
  * @brief Ziti identity of the given context.
@@ -324,7 +324,7 @@ extern const char *NF_get_controller(nf_context nf);
  * @return ziti identity
  */
 ZITI_FUNC
-extern const ziti_identity *NF_get_identity(nf_context nf);
+extern const ziti_identity *NF_get_identity(ziti_context nf);
 
 /**
  * @brief Retrieve current transfer rates. Rates are in bytes/second.
@@ -335,12 +335,12 @@ extern const ziti_identity *NF_get_identity(nf_context nf);
  * @param down rate of bytes going down
  */
 ZITI_FUNC
-extern void NF_get_transfer_rates(nf_context nf, double* up, double* down);
+extern void NF_get_transfer_rates(ziti_context nf, double *up, double *down);
 
 /**
  * @brief Sets connect and write timeouts(in millis).
  *
- * The #NF_DEFAULT_TIMEOUT is used if this function is not invoked prior to initializing connections. This value is only
+ * The #ZITI_DEFAULT_TIMEOUT is used if this function is not invoked prior to initializing connections. This value is only
  * referenced when initializing new connections via NF_conn_init(). Any connection initialized before this function will
  * have the whatever timeout was set at the time of initialization.
  *
@@ -353,20 +353,20 @@ extern void NF_get_transfer_rates(nf_context nf, double* up, double* down);
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
 ZITI_FUNC
-extern int NF_set_timeout(nf_context nf_ctx, int timeout);
+extern int NF_set_timeout(ziti_context nf_ctx, int timeout);
 
 /**
- * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #nf_context.
+ * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #ziti_context.
  * 
  * @param nf_ctx the Ziti Edge identity context to be shut down
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
 ZITI_FUNC
-extern int NF_shutdown(nf_context nf_ctx);
+extern int NF_shutdown(ziti_context nf_ctx);
 
 /**
- * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #nf_context.
+ * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #ziti_context.
  *
  * This function will output debugging information to standard out. The output from this command may
  * be useful when submitting issues.
@@ -374,7 +374,7 @@ extern int NF_shutdown(nf_context nf_ctx);
  * @param nf_ctx the Ziti Edge identity context to print debug information for
 */
 ZITI_FUNC
-extern void NF_dump(nf_context nf_ctx);
+extern void NF_dump(ziti_context nf_ctx);
 
 /**
  * @brief Initializes a connection.
@@ -391,7 +391,7 @@ extern void NF_dump(nf_context nf_ctx);
  * @see NF_dial(), NF_listen(), ZITI_ERRORS
  */
 ZITI_FUNC
-extern int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data);
+extern int NF_conn_init(ziti_context nf_ctx, nf_connection *conn, void *data);
 
 /**
  * @brief Retrieves any custom data associated with the given #nf_connection.
@@ -422,7 +422,7 @@ extern void NF_conn_set_data(nf_connection conn, void *data);
 /**
  * @brief Checks availability of the service for the given edge context.
  *
- * Checks to see if a given #nf_context has a service available by the name supplied. The supplied name
+ * Checks to see if a given #ziti_context has a service available by the name supplied. The supplied name
  * is case sensitive. This function is not synchronous - the #nf_service_cb specified is invoked at the
  * end of the function invocation with the result.
  *
@@ -434,7 +434,7 @@ extern void NF_conn_set_data(nf_connection conn, void *data);
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
 ZITI_FUNC
-extern int NF_service_available(nf_context nf_ctx, const char *service, nf_service_cb cb, void *ctx);
+extern int NF_service_available(ziti_context nf_ctx, const char *service, nf_service_cb cb, void *ctx);
 
 /**
  * @brief Establishes connection to a Ziti service.
@@ -544,4 +544,4 @@ extern int NF_write(nf_connection conn, uint8_t *data, size_t length, nf_write_c
 }
 #endif
 
-#endif /* NF_ZT_H */
+#endif /* ZITI_ZITI_H */

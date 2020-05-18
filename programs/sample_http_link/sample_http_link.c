@@ -21,7 +21,7 @@ limitations under the License.
 #include <string.h>
 
 static uv_loop_t *loop;
-static nf_context nf;
+static ziti_context nf;
 static um_http_t clt;
 static um_http_src_t zs;
 
@@ -57,12 +57,12 @@ void body_cb(um_http_req_t *req, const char *body, ssize_t len) {
     }
 }
 
-void on_nf_init(nf_context _nf, int status, void* ctx) {
+void on_nf_init(ziti_context _nf, int status, void *ctx) {
     DIE(status);
 
     nf = _nf;
     ziti_src_init(loop, &zs, "httpbin", nf);
-    um_http_init_with_src(loop, &clt, "http://httpbin.org", (um_http_src_t *)&zs);
+    um_http_init_with_src(loop, &clt, "http://httpbin.org", (um_http_src_t *) &zs);
 
     um_http_req_t *r = um_http_req(&clt, "GET", "/json", resp_cb, NULL);
     r->resp.body_cb = body_cb;
@@ -73,9 +73,9 @@ int main(int argc, char** argv) {
     //changes the output to UTF-8 so that the windows output looks correct and not all jumbly
     SetConsoleOutputCP(65001);
 #endif
-    
+
     loop = uv_default_loop();
-    DIE(NF_init(argv[1], loop, on_nf_init, NULL));
+    DIE(ziti_init(argv[1], loop, on_nf_init, NULL));
 
     uv_mbed_set_debug(5, stdout);
 

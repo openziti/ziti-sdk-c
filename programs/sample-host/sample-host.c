@@ -26,7 +26,7 @@ exit(code);\
 }} while(0)
 
 
-static nf_context nf;
+static ziti_context nf;
 static int server = 0;
 static const char *service;
 
@@ -109,7 +109,7 @@ ssize_t on_data(nf_connection c, uint8_t* buf, ssize_t len) {
     return len;
 }
 
-static void on_nf_init(nf_context nf_ctx, int status, void* init_ctx) {
+static void on_nf_init(ziti_context nf_ctx, int status, void *init_ctx) {
     nf = nf_ctx;
     nf_connection conn;
     NF_conn_init(nf, &conn, NULL);
@@ -143,7 +143,7 @@ int main(int argc, char **argv) {
 
     service = argv[3];
 
-    DIE(NF_init(argv[2], loop, on_nf_init, NULL));
+    DIE(ziti_init(argv[2], loop, on_nf_init, NULL));
 
     // loop will finish after the request is complete and NF_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);

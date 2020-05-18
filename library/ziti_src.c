@@ -23,7 +23,7 @@ limitations under the License.
  */
 typedef struct ziti_link_s {
     UV_LINK_FIELDS
-    nf_context nfc;
+    ziti_context nfc;
     nf_connection conn;
     char *service;
 } ziti_link_t;
@@ -58,7 +58,7 @@ static const uv_link_methods_t ziti_link_methods = {
         .read_cb_override = NULL
 };
 
-int ziti_src_init(uv_loop_t *l, um_http_src_t *st, const char *svc, nf_context nfc) {
+int ziti_src_init(uv_loop_t *l, um_http_src_t *st, const char *svc, ziti_context nfc) {
     st->loop = l;
     st->connect = ziti_src_connect;
     st->connect_cb = NULL;
@@ -66,7 +66,7 @@ int ziti_src_init(uv_loop_t *l, um_http_src_t *st, const char *svc, nf_context n
     st->link = malloc(sizeof(ziti_link_t));
     uv_link_init(st->link, &ziti_link_methods);
 
-    ziti_link_t *zl = (ziti_link_t *)st->link;
+    ziti_link_t *zl = (ziti_link_t *) st->link;
     zl->service = strdup(svc);
     zl->nfc = nfc;
     

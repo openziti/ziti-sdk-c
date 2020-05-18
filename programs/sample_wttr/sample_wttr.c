@@ -29,7 +29,7 @@ exit(code);\
 }} while(0)
 
 static size_t total;
-static nf_context nf;
+static ziti_context nf;
 
 ssize_t on_data(nf_connection c, uint8_t *buf, ssize_t len) {
     if (len == ZITI_EOF) {
@@ -75,7 +75,7 @@ void on_connect(nf_connection conn, int status) {
     DIE(NF_write(conn, req, strlen(req), on_write, NULL));
 }
 
-void on_nf_init(nf_context _nf, int status, void* ctx) {
+void on_nf_init(ziti_context _nf, int status, void *ctx) {
     DIE(status);
     nf = _nf;
 
@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
 #endif
     uv_loop_t *loop = uv_default_loop();
 
-    DIE(NF_init(argv[1], loop, on_nf_init, NULL));
+    DIE(ziti_init(argv[1], loop, on_nf_init, NULL));
 
     // loop will finish after the request is complete and NF_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);

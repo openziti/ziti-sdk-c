@@ -48,7 +48,7 @@ struct ch_conn_req {
     void *ctx;
 };
 
-int ziti_channel_init(struct nf_ctx *ctx, ziti_channel_t *ch) {
+int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch) {
     ch->ctx = ctx;
     ch->id = ctx->ch_counter++;
     ch->msg_seq = -1;
@@ -85,7 +85,7 @@ void ziti_channel_free(ziti_channel_t* ch) {
     free(ch->ingress);
 }
 
-int ziti_close_channels(struct nf_ctx *ziti) {
+int ziti_close_channels(struct ziti_ctx *ziti) {
     ziti_channel_t *ch;
     const char *url;
     MODEL_MAP_FOREACH(url, ch, ziti->channels) {
@@ -112,7 +112,7 @@ int ziti_channel_close(ziti_channel_t *ch) {
     return r;
 }
 
-int ziti_channel_connect(nf_context ziti, const char *url, ch_connect_cb cb, void *cb_ctx) {
+int ziti_channel_connect(ziti_context ziti, const char *url, ch_connect_cb cb, void *cb_ctx) {
     ziti_channel_t *ch = model_map_get(&ziti->channels, url);
 
     if (ch != NULL) {
@@ -503,7 +503,7 @@ static void async_write(uv_async_t* ar) {
 }
 
 static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
-    nf_context nf = ch->ctx;
+    ziti_context nf = ch->ctx;
     model_map_remove(&nf->channels, ch->ingress);
 
     nf_connection con;

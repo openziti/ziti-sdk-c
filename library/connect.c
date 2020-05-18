@@ -170,7 +170,7 @@ static void connect_timeout(uv_timer_t *timer) {
     req->conn_timeout = NULL;
 }
 
-static int ziti_connect(struct nf_ctx *ctx, const ziti_net_session *session, struct nf_conn_req *req) {
+static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, struct nf_conn_req *req) {
     struct nf_conn *conn = req->conn;
     conn->token = session->token;
 
@@ -187,7 +187,7 @@ static int ziti_connect(struct nf_ctx *ctx, const ziti_net_session *session, str
 static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) {
     uv_async_t *ar = ctx;
     struct nf_conn_req *req = ar->data;
-    struct nf_ctx *nf_ctx = req->conn->nf_ctx;
+    struct ziti_ctx *nf_ctx = req->conn->nf_ctx;
 
     if (err != NULL) {
         ZITI_LOG(ERROR, "failed to load service (%s): %s(%s)", req->service_name, err->code, err->message);
@@ -217,7 +217,7 @@ static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) 
 static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, void *ctx) {
     uv_async_t *ar = ctx;
     struct nf_conn_req *req = ar->data;
-    struct nf_ctx *nf_ctx = req->conn->nf_ctx;
+    struct ziti_ctx *nf_ctx = req->conn->nf_ctx;
 
     if (err != NULL) {
         ZITI_LOG(ERROR, "failed to load service[%s]: %s(%s)", req->service_name, err->code, err->message);
@@ -237,7 +237,7 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
 
 static void ziti_connect_async(uv_async_t *ar) {
     struct nf_conn_req *req = ar->data;
-    struct nf_ctx *ctx = req->conn->nf_ctx;
+    struct ziti_ctx *ctx = req->conn->nf_ctx;
     uv_loop_t *loop = ar->loop;
 
     const ziti_net_session *net_session = NULL;
@@ -611,7 +611,7 @@ int ziti_channel_start_connection(struct nf_conn_req *req) {
 }
 
 int ziti_bind(nf_connection conn, const char *service, nf_listen_cb listen_cb, nf_client_cb on_clt_cb) {
-    nf_context nf = conn->nf_ctx;
+    ziti_context nf = conn->nf_ctx;
 
     NEWP(req, struct nf_conn_req);
 
@@ -681,7 +681,7 @@ int ziti_accept(nf_connection conn, nf_conn_cb cb, nf_data_cb data_cb) {
     return ZITI_OK;
 }
 
-int ziti_process_connect_reqs(nf_context nf) {
+int ziti_process_connect_reqs(ziti_context nf) {
     ZITI_LOG(WARN, "TODO");
 
     return ZITI_OK;

@@ -24,7 +24,6 @@ limitations under the License.
 #include "zt_internal.h"
 #include <http_parser.h>
 
-#include <utils.h>
 
 #define MJSON_API_ONLY
 #include <mjson.h>
@@ -49,10 +48,10 @@ static const char *ALL_CONFIG_TYPES[] = {
 };
 
 struct nf_init_req {
-    nf_context nf;
+    ziti_context nf;
     int init_status;
-    nf_init_cb init_cb;
-    void* init_ctx;
+    ziti_init_cb init_cb;
+    void *init_ctx;
 };
 
 int code_to_error(const char *code);
@@ -127,7 +126,7 @@ static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout
 }
 
 static void async_connects(uv_async_t *ar) {
-    nf_context nf = ar->data;
+    ziti_context nf = ar->data;
     ziti_process_connect_reqs(nf);
 }
 
@@ -173,7 +172,7 @@ int load_tls(nf_config *cfg, tls_context **ctx) {
     return ZITI_OK;
 }
 
-int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
+int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     init_debug();
     metrics_init(loop, 5);
 
@@ -185,40 +184,40 @@ int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
     strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
 
     ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
-            ziti_get_version(false), ziti_git_commit(), ziti_git_branch(),
-            time_str, start_time.tv_usec/1000);
+             ziti_get_version(false), ziti_git_commit(), ziti_git_branch(),
+             time_str, start_time.tv_usec / 1000);
 
     PREP(ziti);
 
-    if (opts->config == NULL && (opts->controller == NULL || opts->tls == NULL)) {
+    if (options->config == NULL && (options->controller == NULL || options->tls == NULL)) {
         ZITI_LOG(ERROR, "config or controller/tls has to be set");
         return ZITI_INVALID_CONFIG;
     }
 
     nf_config *cfg = NULL;
-    if (opts->config != NULL) {
-        TRY(ziti, load_config(opts->config, &cfg));
+    if (options->config != NULL) {
+        TRY(ziti, load_config(options->config, &cfg));
     }
-    if (opts->controller == NULL) {
-        opts->controller = strdup(cfg->controller_url);
+    if (options->controller == NULL) {
+        options->controller = strdup(cfg->controller_url);
     }
-    if (opts->tls == NULL) {
-        TRY(ziti, load_tls(cfg, &opts->tls));
+    if (options->tls == NULL) {
+        TRY(ziti, load_tls(cfg, &options->tls));
     }
 
     free_nf_config(cfg);
     free(cfg);
 
-    NEWP(ctx, struct nf_ctx);
-    ctx->opts = opts;
-    ctx->tlsCtx = opts->tls;
+    NEWP(ctx, struct ziti_ctx);
+    ctx->opts = options;
+    ctx->tlsCtx = options->tls;
     ctx->loop = loop;
-    ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
+    ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
 
     uv_async_init(loop, &ctx->connect_async, async_connects);
     uv_unref((uv_handle_t *) &ctx->connect_async);
 
-    ziti_ctrl_init(loop, &ctx->controller, opts->controller, ctx->tlsCtx);
+    ziti_ctrl_init(loop, &ctx->controller, options->controller, ctx->tlsCtx);
     ziti_ctrl_get_version(&ctx->controller, version_cb, &ctx->controller);
 
     uv_timer_init(loop, &ctx->session_timer);
@@ -237,7 +236,7 @@ int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
     uv_prepare_start(&ctx->reaper, grim_reaper);
 
     NEWP(init_req, struct nf_init_req);
-    init_req->init_cb = opts->init_cb;
+    init_req->init_cb = options->init_cb;
     init_req->init_ctx = init_ctx;
     init_req->nf = ctx;
     ziti_ctrl_login(&ctx->controller, ctx->opts->config_types, session_cb, init_req);
@@ -249,44 +248,44 @@ int NF_init_opts(nf_options *opts, uv_loop_t *loop, void *init_ctx) {
     return ZITI_OK;
 }
 
-int NF_init(const char *config, uv_loop_t *loop, nf_init_cb init_cb, void *init_ctx) {
+int ziti_init(const char *config, uv_loop_t *loop, ziti_init_cb init_cb, void *init_ctx) {
 
-    NEWP(opts, nf_options);
+    NEWP(opts, ziti_options);
     opts->config = config;
     opts->init_cb = init_cb;
     opts->config_types = ALL_CONFIG_TYPES;
 
-    return NF_init_opts(opts, loop, init_ctx);
+    return ziti_init_opts(opts, loop, init_ctx);
 }
 
-const char *NF_get_controller(nf_context nf) {
+const char *NF_get_controller(ziti_context nf) {
     return nf->opts->controller;
 }
 
-const ziti_version *NF_get_controller_version(nf_context nf) {
+const ziti_version *NF_get_controller_version(ziti_context nf) {
     return &nf->controller.version;
 }
 
-const ziti_identity *NF_get_identity(nf_context nf) {
+const ziti_identity *NF_get_identity(ziti_context nf) {
     return nf->session ? nf->session->identity : NULL;
 }
 
-void NF_get_transfer_rates(nf_context nf, double *up, double *down) {
+void NF_get_transfer_rates(ziti_context nf, double *up, double *down) {
     *up = metrics_rate_get(&nf->up_rate);
     *down = metrics_rate_get(&nf->down_rate);
 }
 
-int NF_set_timeout(nf_context ctx, int timeout) {
+int NF_set_timeout(ziti_context ctx, int timeout) {
     if (timeout > 0) {
         ctx->ziti_timeout = timeout;
     }
     else {
-        ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
+        ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
     }
     return ZITI_OK;
 }
 
-int NF_shutdown(nf_context ctx) {
+int NF_shutdown(ziti_context ctx) {
     ZITI_LOG(INFO, "Ziti is shutting down");
 
     free_ziti_session(ctx->session);
@@ -303,7 +302,7 @@ int NF_shutdown(nf_context ctx) {
     return ZITI_OK;
 }
 
-int NF_free(nf_context *ctxp) {
+int NF_free(ziti_context *ctxp) {
     if ((*ctxp)->tlsCtx != NULL) {
         (*ctxp)->tlsCtx->api->free_ctx((*ctxp)->tlsCtx);
     }
@@ -314,7 +313,7 @@ int NF_free(nf_context *ctxp) {
     return ZITI_OK;
 }
 
-void NF_dump(nf_context ctx) {
+void NF_dump(ziti_context ctx) {
     printf("\n=================\nSession:\n");
     dump_ziti_session(ctx->session, 0);
 
@@ -344,8 +343,8 @@ void NF_dump(nf_context ctx) {
     }
 }
 
-int NF_conn_init(nf_context nf_ctx, nf_connection *conn, void *data) {
-    struct nf_ctx *ctx = nf_ctx;
+int NF_conn_init(ziti_context nf_ctx, nf_connection *conn, void *data) {
+    struct ziti_ctx *ctx = nf_ctx;
     NEWP(c, struct nf_conn);
     c->nf_ctx = nf_ctx;
     c->data = data;
@@ -401,7 +400,7 @@ int NF_write(nf_connection conn, uint8_t* data, size_t length, nf_write_cb write
 }
 
 struct service_req_s {
-    struct nf_ctx *nf;
+    struct ziti_ctx *nf;
     char *service;
     nf_service_cb cb;
     void *cb_ctx;
@@ -433,7 +432,7 @@ static void service_cb(ziti_service *s, ziti_error *err, void *ctx) {
     free(req);
 }
 
-int NF_service_available(nf_context nf, const char *service, nf_service_cb cb, void *ctx) {
+int NF_service_available(ziti_context nf, const char *service, nf_service_cb cb, void *ctx) {
     ziti_service *s = model_map_get(&nf->services, service);
     if (s != NULL) {
         cb(nf, s, ZITI_OK, ctx);
@@ -459,7 +458,7 @@ extern int NF_accept(nf_connection clt, nf_conn_cb cb, nf_data_cb data_cb) {
 }
 
 static void session_refresh(uv_timer_t *t) {
-    nf_context nf = t->data;
+    ziti_context nf = t->data;
     struct nf_init_req *req = calloc(1, sizeof(struct nf_init_req));
     req->nf = nf;
 
@@ -467,7 +466,7 @@ static void session_refresh(uv_timer_t *t) {
     ziti_ctrl_current_api_session(&nf->controller, session_cb, req);
 }
 
-static void update_services(ziti_service_array services, ziti_error *error, nf_context nf) {
+static void update_services(ziti_service_array services, ziti_error *error, ziti_context nf) {
     if (error) {
         ZITI_LOG(ERROR, "failed to get service updates err[%s/%s]", error->code, error->message);
         return;
@@ -553,13 +552,13 @@ static void update_services(ziti_service_array services, ziti_error *error, nf_c
 }
 
 static void services_refresh(uv_timer_t *t) {
-    nf_context nf = t->data;
+    ziti_context nf = t->data;
     ziti_ctrl_get_services(&nf->controller, update_services, nf);
 }
 
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     struct nf_init_req *init_req = ctx;
-    nf_context nf = init_req->nf;
+    ziti_context nf = init_req->nf;
     nf->loop_thread = uv_thread_self();
 
     int errCode = err ? code_to_error(err->code) : ZITI_OK;
@@ -627,7 +626,7 @@ const ziti_version *NF_get_version() {
 }
 
 static void grim_reaper(uv_prepare_t *p) {
-    nf_context nf = p->data;
+    ziti_context nf = p->data;
 
     int total = 0;
     int count = 0;

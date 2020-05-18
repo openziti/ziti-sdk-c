@@ -96,7 +96,7 @@ enum conn_state {
 };
 
 typedef struct ziti_channel {
-    struct nf_ctx *ctx;
+    struct ziti_ctx *ctx;
     char *ingress;
 
     uint32_t id;
@@ -139,7 +139,7 @@ struct nf_conn {
     uint32_t edge_msg_seq;
     uint32_t conn_id;
 
-    struct nf_ctx *nf_ctx;
+    struct ziti_ctx *nf_ctx;
     ziti_channel_t *channel;
     nf_data_cb data_cb;
     nf_client_cb client_cb;
@@ -167,8 +167,8 @@ struct nf_conn {
 };
 
 
-struct nf_ctx {
-    nf_options *opts;
+struct ziti_ctx {
+    ziti_options *opts;
     ziti_controller controller;
 
     tls_context *tlsCtx;
@@ -208,11 +208,11 @@ struct nf_ctx {
 extern "C" {
 #endif
 
-int ziti_process_connect_reqs(nf_context nf);
+int ziti_process_connect_reqs(ziti_context nf);
 
-int ziti_close_channels(nf_context);
+int ziti_close_channels(ziti_context);
 
-int ziti_channel_connect(nf_context nf, const char *url, ch_connect_cb, void *ctx);
+int ziti_channel_connect(ziti_context nf, const char *url, ch_connect_cb, void *ctx);
 
 int ziti_channel_close(ziti_channel_t *ch);
 

@@ -15,7 +15,6 @@ limitations under the License.
 */
 
 #include <mbedtls/error.h>
-// #include <mjson.h>
 #include <uv.h>
 #include <uv_mbed/uv_mbed.h>
 #include <ziti/ziti_model.h>

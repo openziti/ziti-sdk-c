@@ -35,7 +35,7 @@ limitations under the License.
 static char *config = NULL;
 static int report_metrics = -1;
 static uv_timer_t report_timer;
-static nf_context nf;
+static ziti_context nf;
 static uv_signal_t sig;
 
 struct listener {
@@ -323,7 +323,7 @@ static void update_listener(ziti_service *service, int status, struct listener *
     }
 }
 
-static void service_check_cb(nf_context nf_ctx, ziti_service *service, int status, void *ctx) {
+static void service_check_cb(ziti_context nf_ctx, ziti_service *service, int status, void *ctx) {
     listener_l *listeners = ctx;
 
     struct listener *l = NULL;
@@ -334,7 +334,7 @@ static void service_check_cb(nf_context nf_ctx, ziti_service *service, int statu
     }
 }
 
-static void on_nf_init(nf_context nf_ctx, int status, void *ctx) {
+static void on_nf_init(ziti_context nf_ctx, int status, void *ctx) {
     PREPF(ziti, ziti_errorstr);
     TRY(ziti, status);
     CATCH(ziti) {
@@ -378,7 +378,7 @@ void run(int argc, char **argv) {
         LIST_INSERT_HEAD(&listeners, l, next);
     }
 
-    nf_options opts = {
+    ziti_options opts = {
             .config = config,
             .init_cb = on_nf_init,
             .service_cb = service_check_cb,
@@ -387,7 +387,7 @@ void run(int argc, char **argv) {
             .config_types = my_configs,
     };
 
-    NF_init_opts(&opts, loop, &listeners);
+    ziti_init_opts(&opts, loop, &listeners);
 
     TRY(uv, uv_signal_init(loop, &sig));
     sig.data = &listeners;
