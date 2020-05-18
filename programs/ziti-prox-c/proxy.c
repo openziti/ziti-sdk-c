@@ -78,7 +78,7 @@ static void process_stop(uv_loop_t *loop, listener_l *listeners) {
     }
 
     // try to cleanup
-    NF_shutdown(nf);
+    ziti_shutdown(nf);
     uv_loop_close(loop);
 
     CATCH(uv);
@@ -91,12 +91,12 @@ static void debug_dump(listener_l *listeners) {
     LIST_FOREACH(l, listeners, next) {
         printf("listening for service[%s] on port[%d]\n", l->service_name, l->port);
     }
-    NF_dump(nf);
+    ziti_dump(nf);
 }
 
 static void reporter_cb(uv_timer_t *t) {
     double up, down;
-    NF_get_transfer_rates(nf, &up, &down);
+    ziti_get_transfer_rates(nf, &up, &down);
     ZITI_LOG(INFO, "transfer rates: up=%lf down=%lf", up, down);
 }
 
@@ -158,7 +158,7 @@ static void alloc_cb(uv_handle_t *h, size_t suggested_size, uv_buf_t *buf) {
 }
 
 static void on_nf_write(ziti_connection conn, ssize_t status, void *ctx) {
-    uv_stream_t *stream = NF_conn_data(conn);
+    uv_stream_t *stream = ziti_conn_data(conn);
     if (stream != NULL) {
         struct client *clt = stream->data;
         if (status < 0) {
@@ -185,8 +185,8 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         ZITI_LOG(DEBUG, "connection closed %s [%zd/%s](%s)",
                  clt->addr_s, nread, uv_err_name(nread), uv_strerror(nread));
 
-        NF_conn_set_data(clt->nf_conn, NULL);
-        NF_close(&clt->nf_conn);
+        ziti_conn_set_data(clt->nf_conn, NULL);
+        ziti_close(&clt->nf_conn);
 
         uv_read_stop(stream);
         uv_close((uv_handle_t *) stream, close_cb);
@@ -198,13 +198,13 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
     }
     else {
         clt->inb_reqs += 1;
-        NF_write(clt->nf_conn, buf->base, nread, on_nf_write, buf->base);
+        ziti_write(clt->nf_conn, buf->base, nread, on_nf_write, buf->base);
     }
 }
 
 
 void on_ziti_connect(ziti_connection conn, int status) {
-    uv_stream_t *clt = NF_conn_data(conn);
+    uv_stream_t *clt = ziti_conn_data(conn);
 
     if (status == ZITI_OK) {
         uv_read_start(clt, alloc_cb, data_cb);
@@ -216,7 +216,7 @@ void on_ziti_connect(ziti_connection conn, int status) {
 }
 
 ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
-    uv_tcp_t *clt = NF_conn_data(conn);
+    uv_tcp_t *clt = ziti_conn_data(conn);
     struct client *c = clt ? clt->data : NULL;
 
     if (clt == NULL) {
@@ -237,7 +237,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
     else if (len < 0) {
         if (clt != NULL) {
             ZITI_LOG(DEBUG, "ziti connection closed with [%zd](%s)", len, ziti_errorstr(len));
-            NF_conn_set_data(conn, NULL);
+            ziti_conn_set_data(conn, NULL);
             c->nf_conn = NULL;
             if (!c->closed) {
                 c->closed = true;
@@ -272,8 +272,8 @@ static void on_client(uv_stream_t *server, int status) {
              clt->addr_s, l->service_name, l->port);
 
     PREPF(nf, ziti_errorstr);
-    TRY(nf, NF_conn_init(nf, &clt->nf_conn, c));
-    TRY(nf, NF_dial(clt->nf_conn, l->service_name, on_ziti_connect, on_ziti_data));
+    TRY(nf, ziti_conn_init(nf, &clt->nf_conn, c));
+    TRY(nf, ziti_dial(clt->nf_conn, l->service_name, on_ziti_connect, on_ziti_data));
     c->data = clt;
 
     CATCH(nf) {
@@ -340,10 +340,10 @@ static void on_nf_init(ziti_context nf_ctx, int status, void *ctx) {
     CATCH(ziti) {
         exit(status);
     }
-    const ziti_version *ctrl_ver = NF_get_controller_version(nf_ctx);
-    const ziti_identity *proxy_id = NF_get_identity(nf_ctx);
+    const ziti_version *ctrl_ver = ziti_get_controller_version(nf_ctx);
+    const ziti_identity *proxy_id = ziti_get_identity(nf_ctx);
     ZITI_LOG(INFO, "controller version = %s(%s)[%s]", ctrl_ver->version, ctrl_ver->revision, ctrl_ver->build_date);
-    ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, NF_get_controller(nf_ctx));
+    ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, ziti_get_controller(nf_ctx));
 
     nf = nf_ctx;
 }
@@ -397,7 +397,7 @@ void run(int argc, char **argv) {
 
     uv_unref((uv_handle_t *) &sig);
 
-    const ziti_version *ver = NF_get_version();
+    const ziti_version *ver = ziti_get_version();
     ZITI_LOG(INFO, "built with SDK version %s(%s)[%s]", ver->version, ver->revision, ver->build_date);
 
     if (report_metrics > 0) {
@@ -529,7 +529,7 @@ int version_opts(int argc, char **argv) {
 }
 
 void version(int argc, char **argv) {
-    printf("%s\n", ziti_get_version(ver_verbose));
+    printf("%s\n", ziti_get_build_version(ver_verbose));
 }
 
 CommandLine run_cmd = make_command("run", "run proxy", "run <service-name>:port", "run help", run_opts, run);

@@ -48,7 +48,7 @@ void resp_cb(um_http_resp_t *resp, void *data) {
 void body_cb(um_http_req_t *req, const char *body, ssize_t len) {
     if (len == UV_EOF) {
         printf("\n\n====================\nRequest completed\n");
-        NF_shutdown(nf);
+        ziti_shutdown(nf);
     } else if (len < 0) {
         fprintf(stderr, "error(%zd) %s", len, uv_strerror(len));
         exit(-1);
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
 
     uv_mbed_set_debug(5, stdout);
 
-    // loop will finish after the request is complete and NF_shutdown is called
+    // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
 
     printf("========================\n");

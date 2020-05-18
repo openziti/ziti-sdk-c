@@ -65,7 +65,7 @@ limitations under the License.
 #endif
 
 
-const char *ziti_get_version(int verbose) {
+const char *ziti_get_build_version(int verbose) {
     if (verbose) {
         return "\n\tVersion:\t" to_str(ZITI_VERSION)
                "\n\tBuild Date:\t" to_str(BUILD_DATE)

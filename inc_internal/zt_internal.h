@@ -233,13 +233,9 @@ int load_tls(nf_config* cfg, tls_context **tls);
 
 int ziti_bind(ziti_connection conn, const char *service, ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb);
 
-int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb);
-
 void conn_inbound_data_msg(ziti_connection conn, message *msg);
 
-int ziti_dial(ziti_connection conn, const char *service, ziti_conn_cb conn_cb, ziti_data_cb data_cb);
-
-int ziti_write(struct nf_write_req *req);
+int ziti_write_req(struct nf_write_req *req);
 
 int ziti_disconnect(struct ziti_conn *conn);
 

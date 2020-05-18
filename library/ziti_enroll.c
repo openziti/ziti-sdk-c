@@ -155,7 +155,7 @@ int verify_es512(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     return ZITI_OK;
 }
 
-int NF_enroll(const char *jwt_file, uv_loop_t *loop, ziti_enroll_cb external_enroll_cb, void *external_enroll_ctx) {
+int ziti_enroll(const char *jwt, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx) {
     mbedtls_pk_context pkc;
     mbedtls_pk_init(&pkc);
 
@@ -169,11 +169,11 @@ int NF_enroll(const char *jwt_file, uv_loop_t *loop, ziti_enroll_cb external_enr
         ZITI_LOG(ERROR, "unable to covert key to pem");
         return ZITI_KEY_GENERATION_FAILED;
     }
-    return NF_enroll_with_key(jwt_file, pk_pem, loop, external_enroll_cb, external_enroll_ctx);
+    return ziti_enroll_with_key(jwt, pk_pem, loop, enroll_cb, enroll_ctx);
 }
 
-int NF_enroll_with_key(const char *jwt_file, const char *pk_pem, uv_loop_t *loop, ziti_enroll_cb external_enroll_cb,
-                       void *external_enroll_ctx) {
+int ziti_enroll_with_key(const char *jwt, const char *pk_pem, uv_loop_t *loop, ziti_enroll_cb enroll_cb,
+                         void *ctx) {
     init_debug();
 
     int ret;
@@ -186,16 +186,16 @@ int NF_enroll_with_key(const char *jwt_file, const char *pk_pem, uv_loop_t *loop
     strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
 
     ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
-            ziti_get_version(false), ziti_git_commit(), ziti_git_branch(),
-            time_str, start_time.tv_usec/1000);
+             ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
+             time_str, start_time.tv_usec / 1000);
 
     PREP(ziti);
-    
-    ecfg = calloc(1, sizeof(enroll_cfg));
-    ecfg->external_enroll_cb = external_enroll_cb;
-    ecfg->external_enroll_ctx = external_enroll_ctx;
 
-    TRY(ziti, load_jwt(jwt_file, ecfg, &ecfg->zejh, &ecfg->zej));
+    ecfg = calloc(1, sizeof(enroll_cfg));
+    ecfg->external_enroll_cb = enroll_cb;
+    ecfg->external_enroll_ctx = ctx;
+
+    TRY(ziti, load_jwt(jwt, ecfg, &ecfg->zejh, &ecfg->zej));
     if (DEBUG <= ziti_debug_level) {
         dump_ziti_enrollment_jwt_header(ecfg->zejh, 0);
         dump_ziti_enrollment_jwt(ecfg->zej, 0);
@@ -361,7 +361,7 @@ int NF_enroll_with_key(const char *jwt_file, const char *pk_pem, uv_loop_t *loop
         ziti_ctrl_init(loop, &fetch_cert_ctx->controller, ecfg->zej->controller, tls);
 
         NEWP(enroll_req, struct nf_enroll_req);
-        enroll_req->enroll_cb = external_enroll_cb;
+        enroll_req->enroll_cb = enroll_cb;
         enroll_req->enroll_ctx = fetch_cert_ctx;
         enroll_req->ecfg = ecfg;
 
@@ -388,8 +388,8 @@ int NF_enroll_with_key(const char *jwt_file, const char *pk_pem, uv_loop_t *loop
     CATCH(ziti);
 
     if (ERR(ziti)) {
-        if (external_enroll_cb) {
-            external_enroll_cb(NULL, ERR(ziti), "enroll failed", external_enroll_ctx);
+        if (enroll_cb) {
+            enroll_cb(NULL, ERR(ziti), "enroll failed", ctx);
         }
     }
 

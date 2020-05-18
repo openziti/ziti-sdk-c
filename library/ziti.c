@@ -184,7 +184,7 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
 
     ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
-             ziti_get_version(false), ziti_git_commit(), ziti_git_branch(),
+             ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
              time_str, start_time.tv_usec / 1000);
 
     PREP(ziti);
@@ -258,46 +258,46 @@ int ziti_init(const char *config, uv_loop_t *loop, ziti_init_cb init_cb, void *i
     return ziti_init_opts(opts, loop, init_ctx);
 }
 
-const char *NF_get_controller(ziti_context nf) {
-    return nf->opts->controller;
+const char *ziti_get_controller(ziti_context ztx) {
+    return ztx->opts->controller;
 }
 
-const ziti_version *NF_get_controller_version(ziti_context nf) {
-    return &nf->controller.version;
+const ziti_version *ziti_get_controller_version(ziti_context ztx) {
+    return &ztx->controller.version;
 }
 
-const ziti_identity *NF_get_identity(ziti_context nf) {
-    return nf->session ? nf->session->identity : NULL;
+const ziti_identity *ziti_get_identity(ziti_context ztx) {
+    return ztx->session ? ztx->session->identity : NULL;
 }
 
-void NF_get_transfer_rates(ziti_context nf, double *up, double *down) {
-    *up = metrics_rate_get(&nf->up_rate);
-    *down = metrics_rate_get(&nf->down_rate);
+void ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
+    *up = metrics_rate_get(&ztx->up_rate);
+    *down = metrics_rate_get(&ztx->down_rate);
 }
 
-int NF_set_timeout(ziti_context ctx, int timeout) {
+int ziti_set_timeout(ziti_context ztx, int timeout) {
     if (timeout > 0) {
-        ctx->ziti_timeout = timeout;
+        ztx->ziti_timeout = timeout;
     }
     else {
-        ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
+        ztx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
     }
     return ZITI_OK;
 }
 
-int NF_shutdown(ziti_context ctx) {
+int ziti_shutdown(ziti_context ztx) {
     ZITI_LOG(INFO, "Ziti is shutting down");
 
-    free_ziti_session(ctx->session);
-    ctx->session = NULL;
+    free_ziti_session(ztx->session);
+    ztx->session = NULL;
 
-    uv_timer_stop(&ctx->session_timer);
-    ziti_ctrl_close(&ctx->controller);
-    ziti_close_channels(ctx);
+    uv_timer_stop(&ztx->session_timer);
+    ziti_ctrl_close(&ztx->controller);
+    ziti_close_channels(ztx);
 
-    ziti_ctrl_logout(&ctx->controller, NULL, NULL);
-    metrics_rate_close(&ctx->up_rate);
-    metrics_rate_close(&ctx->down_rate);
+    ziti_ctrl_logout(&ztx->controller, NULL, NULL);
+    metrics_rate_close(&ztx->up_rate);
+    metrics_rate_close(&ztx->down_rate);
 
     return ZITI_OK;
 }
@@ -313,27 +313,27 @@ int NF_free(ziti_context *ctxp) {
     return ZITI_OK;
 }
 
-void NF_dump(ziti_context ctx) {
+void ziti_dump(ziti_context ztx) {
     printf("\n=================\nSession:\n");
-    dump_ziti_session(ctx->session, 0);
+    dump_ziti_session(ztx->session, 0);
 
     printf("\n=================\nServices:\n");
     ziti_service *zs;
     const char *name;
-    MODEL_MAP_FOREACH(name, zs, ctx->services) {
+    MODEL_MAP_FOREACH(name, zs, ztx->services) {
         dump_ziti_service(zs, 0);
     }
 
     printf("\n==================\nNet Sessions:\n");
     ziti_net_session *it;
-    MODEL_MAP_FOREACH(name, it, ctx->sessions) {
+    MODEL_MAP_FOREACH(name, it, ztx->sessions) {
         dump_ziti_net_session(it, 0);
     }
 
     printf("\n==================\nChannels:\n");
     ziti_channel_t *ch;
     const char *url;
-    MODEL_MAP_FOREACH(url, ch, ctx->channels) {
+    MODEL_MAP_FOREACH(url, ch, ztx->channels) {
         printf("ch[%d](%s)\n", ch->id, url);
         ziti_connection conn;
         LIST_FOREACH(conn, &ch->connections, next) {
@@ -343,37 +343,33 @@ void NF_dump(ziti_context ctx) {
     }
 }
 
-int NF_conn_init(ziti_context nf_ctx, ziti_connection *conn, void *data) {
-    struct ziti_ctx *ctx = nf_ctx;
+int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {
+    struct ziti_ctx *ctx = ztx;
     NEWP(c, struct ziti_conn);
-    c->nf_ctx = nf_ctx;
+    c->nf_ctx = ztx;
     c->data = data;
     c->channel = NULL;
     c->state = Initial;
     c->timeout = ctx->ziti_timeout;
     c->edge_msg_seq = 1;
-    c->conn_id = nf_ctx->conn_seq++;
+    c->conn_id = ztx->conn_seq++;
     c->inbound = new_buffer();
 
     *conn = c;
     return ZITI_OK;
 }
 
-void *NF_conn_data(ziti_connection conn) {
+void *ziti_conn_data(ziti_connection conn) {
     return conn != NULL ? conn->data : NULL;
 }
 
-void NF_conn_set_data(ziti_connection conn, void *data) {
+void ziti_conn_set_data(ziti_connection conn, void *data) {
     if (conn != NULL) {
         conn->data = data;
     }
 }
 
-int NF_dial(ziti_connection conn, const char *service, ziti_conn_cb conn_cb, ziti_data_cb data_cb) {
-    return ziti_dial(conn, service, conn_cb, data_cb);
-}
-
-int NF_close(ziti_connection *conn) {
+int ziti_close(ziti_connection *conn) {
     struct ziti_conn *c = *conn;
 
     if (c != NULL) {
@@ -385,7 +381,7 @@ int NF_close(ziti_connection *conn) {
     return ZITI_OK;
 }
 
-int NF_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx) {
+int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx) {
 
     NEWP(req, struct nf_write_req);
     req->conn = conn;
@@ -396,7 +392,7 @@ int NF_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb w
 
     metrics_rate_update(&conn->nf_ctx->up_rate, length);
 
-    return ziti_write(req);
+    return ziti_write_req(req);
 }
 
 struct service_req_s {
@@ -432,29 +428,25 @@ static void service_cb(ziti_service *s, ziti_error *err, void *ctx) {
     free(req);
 }
 
-int ziti_service_available(ziti_context nf_ctx, const char *service, ziti_service_cb cb, void *ctx) {
-    ziti_service *s = model_map_get(&nf_ctx->services, service);
+int ziti_service_available(ziti_context ztx, const char *service, ziti_service_cb cb, void *ctx) {
+    ziti_service *s = model_map_get(&ztx->services, service);
     if (s != NULL) {
-        cb(nf_ctx, s, ZITI_OK, ctx);
+        cb(ztx, s, ZITI_OK, ctx);
         return ZITI_OK;
     }
 
     NEWP(req, struct service_req_s);
-    req->nf = nf_ctx;
+    req->nf = ztx;
     req->service = strdup(service);
     req->cb = cb;
     req->cb_ctx = ctx;
 
-    ziti_ctrl_get_service(&nf_ctx->controller, service, service_cb, req);
+    ziti_ctrl_get_service(&ztx->controller, service, service_cb, req);
     return ZITI_OK;
 }
 
-extern int NF_listen(ziti_connection serv_conn, const char *service, ziti_listen_cb lcb, ziti_client_cb cb) {
+extern int ziti_listen(ziti_connection serv_conn, const char *service, ziti_listen_cb lcb, ziti_client_cb cb) {
     return ziti_bind(serv_conn, service, lcb, cb);
-}
-
-extern int NF_accept(ziti_connection clt, ziti_conn_cb cb, ziti_data_cb data_cb) {
-    return ziti_accept(clt, cb, data_cb);
 }
 
 static void session_refresh(uv_timer_t *t) {
@@ -621,7 +613,7 @@ static const ziti_version sdk_version = {
         .build_date = to_str(BUILD_DATE)
 };
 
-const ziti_version *NF_get_version() {
+const ziti_version *ziti_get_version() {
     return &sdk_version;
 }
 

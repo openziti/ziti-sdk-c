@@ -307,7 +307,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
         case ContentTypeDial:
             assert(conn->state == Bound);
             ziti_connection clt;
-            NF_conn_init(conn->nf_ctx, &clt, NULL);
+            ziti_conn_init(conn->nf_ctx, &clt, NULL);
             clt->state = Accepting;
             clt->parent = conn;
             clt->dial_req_seq = msg->header.seq;

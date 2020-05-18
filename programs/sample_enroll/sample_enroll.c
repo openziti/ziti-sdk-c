@@ -72,9 +72,9 @@ int main(int argc, char** argv) {
 
     output_file = argv[2];
 
-    DIE(NF_enroll(argv[1], loop, on_nf_enroll, NULL));
+    DIE(ziti_enroll(argv[1], loop, on_nf_enroll, NULL));
 
-    // loop will finish after the request is complete and NF_shutdown is called
+    // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
 
     printf("\nSuccess\n");

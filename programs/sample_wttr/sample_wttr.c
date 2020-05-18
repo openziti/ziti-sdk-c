@@ -35,14 +35,14 @@ ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
     if (len == ZITI_EOF) {
 
         printf("request completed: %s\n", ziti_errorstr(len));
-        NF_close(&c);
-        NF_shutdown(nf);
+        ziti_close(&c);
+        ziti_shutdown(nf);
 
     }
     else if (len < 0) {
         fprintf(stderr, "unexpected error: %s\n", ziti_errorstr(len));
-        NF_close(&c);
-        NF_shutdown(nf);
+        ziti_close(&c);
+        ziti_shutdown(nf);
     }
     else {
         total += len;
@@ -72,7 +72,7 @@ void on_connect(ziti_connection conn, int status) {
                    "User-Agent: curl/7.59.0\r\n"
                    "\r\n";
 
-    DIE(NF_write(conn, req, strlen(req), on_write, NULL));
+    DIE(ziti_write(conn, req, strlen(req), on_write, NULL));
 }
 
 void on_nf_init(ziti_context _nf, int status, void *ctx) {
@@ -80,8 +80,8 @@ void on_nf_init(ziti_context _nf, int status, void *ctx) {
     nf = _nf;
 
     ziti_connection conn;
-    DIE(NF_conn_init(nf, &conn, NULL));
-    DIE(NF_dial(conn, "demo-weather", on_connect, on_data));
+    DIE(ziti_conn_init(nf, &conn, NULL));
+    DIE(ziti_dial(conn, "demo-weather", on_connect, on_data));
 }
 
 int main(int argc, char** argv) {
@@ -93,10 +93,10 @@ int main(int argc, char** argv) {
 
     DIE(ziti_init(argv[1], loop, on_nf_init, NULL));
 
-    // loop will finish after the request is complete and NF_shutdown is called
+    // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
 
     printf("========================\n");
 
-    NF_shutdown(nf);
+    ziti_shutdown(nf);
 }

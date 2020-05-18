@@ -39,7 +39,7 @@ static ssize_t on_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
         printf("client sent:\n%.*s", (int) len, data);
         char *reply = malloc(128);
         size_t l = sprintf(reply, "%zd\n", len);
-        NF_write(clt, reply, l, on_client_write, reply);
+        ziti_write(clt, reply, l, on_client_write, reply);
     }
     else if (len == ZITI_EOF) {
         printf("client disconnected\n");
@@ -53,12 +53,12 @@ static ssize_t on_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
 static void on_client_connect(ziti_connection clt, int status) {
     if (status == ZITI_OK) {
         uint8_t *msg = "Hello from byte counter!\n";
-        NF_write(clt, msg, strlen(msg), on_client_write, NULL);
+        ziti_write(clt, msg, strlen(msg), on_client_write, NULL);
     }
 }
 
 static void on_client(ziti_connection serv, ziti_connection client, int status) {
-    NF_accept(client, on_client_connect, on_client_data);
+    ziti_accept(client, on_client_connect, on_client_data);
 }
 
 static void listen_cb(ziti_connection serv, int status) {
@@ -67,7 +67,7 @@ static void listen_cb(ziti_connection serv, int status) {
     }
     else {
         printf("ERROR The Byte Counter could not be started: %d(%s)\n", status, ziti_errorstr(status));
-        NF_close(&serv);
+        ziti_close(&serv);
     }
 }
 
@@ -85,7 +85,7 @@ void on_connect(ziti_connection conn, int status) {
 
     uint8_t *req = "hello";
 
-    DIE(NF_write(conn, req, strlen(req), on_write, NULL));
+    DIE(ziti_write(conn, req, strlen(req), on_write, NULL));
 }
 
 static size_t total;
@@ -94,14 +94,14 @@ ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
     if (len == ZITI_EOF) {
 
         printf("request completed: %s\n", ziti_errorstr(len));
-        NF_close(&c);
-        NF_shutdown(nf);
+        ziti_close(&c);
+        ziti_shutdown(nf);
 
     }
     else if (len < 0) {
         fprintf(stderr, "unexpected error: %s\n", ziti_errorstr(len));
-        NF_close(&c);
-        NF_shutdown(nf);
+        ziti_close(&c);
+        ziti_shutdown(nf);
     }
     else {
         total += len;
@@ -113,12 +113,12 @@ ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
 static void on_nf_init(ziti_context nf_ctx, int status, void *init_ctx) {
     nf = nf_ctx;
     ziti_connection conn;
-    NF_conn_init(nf, &conn, NULL);
+    ziti_conn_init(nf, &conn, NULL);
     if (server) {
-        NF_listen(conn, service, listen_cb, on_client);
+        ziti_listen(conn, service, listen_cb, on_client);
     }
     else {
-        DIE(NF_dial(conn, service, on_connect, on_data));
+        DIE(ziti_dial(conn, service, on_connect, on_data));
     }
 }
 
@@ -146,12 +146,12 @@ int main(int argc, char **argv) {
 
     DIE(ziti_init(argv[2], loop, on_nf_init, NULL));
 
-    // loop will finish after the request is complete and NF_shutdown is called
+    // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
 
     printf("========================\n"
            "uv loop is done\n");
 
-    NF_shutdown(nf);
+    ziti_shutdown(nf);
 }
 

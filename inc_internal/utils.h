@@ -29,7 +29,8 @@ limitations under the License.
 extern "C" {
 #endif
 
-extern const char *ziti_get_version(int verbose);
+extern const char *ziti_get_build_version(int verbose);
+
 extern const char *ziti_git_branch();
 extern const char *ziti_git_commit();
 extern void hexDump(char *desc, void *addr, int len);

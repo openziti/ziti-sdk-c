@@ -358,7 +358,7 @@ static void ziti_write_async(uv_async_t *ar) {
     uv_close((uv_handle_t *) ar, free_handle);
 }
 
-int ziti_write(struct nf_write_req *req) {
+int ziti_write_req(struct nf_write_req *req) {
     NEWP(ar, uv_async_t);
     uv_async_init(req->conn->nf_ctx->loop, ar, ziti_write_async);
     req->conn->write_reqs++;

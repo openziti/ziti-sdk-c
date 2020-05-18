@@ -252,7 +252,7 @@ void ziti_ctrl_login(
                                 "}",
                                 "sdkInfo",
                                 "type", "ziti-sdk-c",
-                                "version", ziti_get_version(0),
+                                "version", ziti_get_build_version(0),
                                 "revision", ziti_git_commit(),
                                 "branch", ziti_git_branch(),
                                 "envInfo",

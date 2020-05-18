@@ -37,9 +37,9 @@ extern "C" {
  * @param l the uv loop
  * @param zl the um_http_src_t to initialize
  * @param svc the name of the service to be dialed
- * @param nfc the initialized ziti_context
+ * @param ztx the initialized ziti_context
  */
-int ziti_src_init(uv_loop_t *l, um_http_src_t *zl, const char *svc, ziti_context nfc);
+int ziti_src_init(uv_loop_t *l, um_http_src_t *zl, const char *svc, ziti_context ztx);
 
 #ifdef __cplusplus
 }
