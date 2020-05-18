@@ -35,7 +35,7 @@ limitations under the License.
 static char *config = NULL;
 static int report_metrics = -1;
 static uv_timer_t report_timer;
-static ziti_context nf;
+static ziti_context ziti;
 static uv_signal_t sig;
 
 struct listener {
@@ -78,7 +78,7 @@ static void process_stop(uv_loop_t *loop, listener_l *listeners) {
     }
 
     // try to cleanup
-    ziti_shutdown(nf);
+    ziti_shutdown(ziti);
     uv_loop_close(loop);
 
     CATCH(uv);
@@ -91,12 +91,12 @@ static void debug_dump(listener_l *listeners) {
     LIST_FOREACH(l, listeners, next) {
         printf("listening for service[%s] on port[%d]\n", l->service_name, l->port);
     }
-    ziti_dump(nf);
+    ziti_dump(ziti);
 }
 
 static void reporter_cb(uv_timer_t *t) {
     double up, down;
-    ziti_get_transfer_rates(nf, &up, &down);
+    ziti_get_transfer_rates(ziti, &up, &down);
     ZITI_LOG(INFO, "transfer rates: up=%lf down=%lf", up, down);
 }
 
@@ -271,12 +271,12 @@ static void on_client(uv_stream_t *server, int status) {
     ZITI_LOG(DEBUG, "client connection accepted from %s (%s:%d)",
              clt->addr_s, l->service_name, l->port);
 
-    PREPF(nf, ziti_errorstr);
-    TRY(nf, ziti_conn_init(nf, &clt->nf_conn, c));
-    TRY(nf, ziti_dial(clt->nf_conn, l->service_name, on_ziti_connect, on_ziti_data));
+    PREPF(ziti, ziti_errorstr);
+    TRY(ziti, ziti_conn_init(ziti, &clt->nf_conn, c));
+    TRY(ziti, ziti_dial(clt->nf_conn, l->service_name, on_ziti_connect, on_ziti_data));
     c->data = clt;
 
-    CATCH(nf) {
+    CATCH(ziti) {
         free(clt);
         ZITI_LOG(ERROR, "closing client [%s]", clt->addr_s);
         uv_close((uv_handle_t *) c, close_cb);
@@ -323,7 +323,7 @@ static void update_listener(ziti_service *service, int status, struct listener *
     }
 }
 
-static void service_check_cb(ziti_context nf_ctx, ziti_service *service, int status, void *ctx) {
+static void service_check_cb(ziti_context ztx, ziti_service *service, int status, void *ctx) {
     listener_l *listeners = ctx;
 
     struct listener *l = NULL;
@@ -334,18 +334,18 @@ static void service_check_cb(ziti_context nf_ctx, ziti_service *service, int sta
     }
 }
 
-static void on_nf_init(ziti_context nf_ctx, int status, void *ctx) {
+static void on_nf_init(ziti_context ztx, int status, void *ctx) {
     PREPF(ziti, ziti_errorstr);
     TRY(ziti, status);
     CATCH(ziti) {
         exit(status);
     }
-    const ziti_version *ctrl_ver = ziti_get_controller_version(nf_ctx);
-    const ziti_identity *proxy_id = ziti_get_identity(nf_ctx);
+    const ziti_version *ctrl_ver = ziti_get_controller_version(ztx);
+    const ziti_identity *proxy_id = ziti_get_identity(ztx);
     ZITI_LOG(INFO, "controller version = %s(%s)[%s]", ctrl_ver->version, ctrl_ver->revision, ctrl_ver->build_date);
-    ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, ziti_get_controller(nf_ctx));
+    ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, ziti_get_controller(ztx));
 
-    nf = nf_ctx;
+    ziti = ztx;
 }
 
 
