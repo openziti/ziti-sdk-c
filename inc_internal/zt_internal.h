@@ -225,11 +225,11 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
                             uint32_t body_len, reply_cb,
                             void *reply_ctx);
 
-int load_config(const char *filename, nf_config **);
+int load_config(const char *filename, ziti_config **);
 
 int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **, ziti_enrollment_jwt **);
 
-int load_tls(nf_config* cfg, tls_context **tls);
+int load_tls(ziti_config *cfg, tls_context **tls);
 
 int ziti_bind(ziti_connection conn, const char *service, ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb);
 

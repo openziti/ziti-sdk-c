@@ -130,7 +130,7 @@ static void async_connects(uv_async_t *ar) {
     ziti_process_connect_reqs(nf);
 }
 
-int load_tls(nf_config *cfg, tls_context **ctx) {
+int load_tls(ziti_config *cfg, tls_context **ctx) {
     PREP(ziti);
 
     // load ca from ziti config if present
@@ -194,7 +194,7 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
         return ZITI_INVALID_CONFIG;
     }
 
-    nf_config *cfg = NULL;
+    ziti_config *cfg = NULL;
     if (options->config != NULL) {
         TRY(ziti, load_config(options->config, &cfg));
     }
@@ -205,7 +205,7 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
         TRY(ziti, load_tls(cfg, &options->tls));
     }
 
-    free_nf_config(cfg);
+    free_ziti_config(cfg);
     free(cfg);
 
     NEWP(ctx, struct ziti_ctx);

@@ -21,8 +21,8 @@ limitations under the License.
  * @see programs/sample_http_link.c
  */
 
-#ifndef NF_ZITI_SRC_H
-#define NF_ZITI_SRC_H
+#ifndef ZITI_SDK_ZITI_SRC_H
+#define ZITI_SDK_ZITI_SRC_H
 
 #include <uv_mbed/um_http.h>
 #include <ziti/ziti.h>
@@ -45,4 +45,4 @@ int ziti_src_init(uv_loop_t *l, um_http_src_t *zl, const char *svc, ziti_context
 }
 #endif
 
-#endif //NF_ZITI_SRC_H
+#endif //ZITI_SDK_ZITI_SRC_H
