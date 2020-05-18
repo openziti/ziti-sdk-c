@@ -23,7 +23,7 @@ limitations under the License.
 
 #include <jsmn.h>
 
-#include <nf/model_support.h>
+#include <ziti/model_support.h>
 #include <utils.h>
 
 #if _WIN32

@@ -24,7 +24,7 @@ limitations under the License.
 
 const char* ZITI_SDK_CONFIG = "ZITI_SDK_CONFIG";
 
-int load_config_file(const char *filename, nf_config **cfg) {
+int load_config_file(const char *filename, ziti_config **cfg) {
     struct stat stats;
     int s = stat(filename, &stats);
     if (s == -1) {
@@ -42,9 +42,9 @@ int load_config_file(const char *filename, nf_config **cfg) {
     }
     fclose(file);
 
-    nf_config *c;
-    if (parse_nf_config_ptr(&c, config, config_len) != 0) {
-        free_nf_config(c);
+    ziti_config *c;
+    if (parse_ziti_config_ptr(&c, config, config_len) != 0) {
+        free_ziti_config(c);
         FREE(c);
         return ZITI_INVALID_CONFIG;
     }
@@ -55,7 +55,7 @@ int load_config_file(const char *filename, nf_config **cfg) {
     return ZITI_OK;
 }
 
-int load_config(const char *filename, nf_config **cfg) {
+int load_config(const char *filename, ziti_config **cfg) {
     if (filename != NULL) {
         return load_config_file(filename, cfg);
     }

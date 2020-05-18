@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <nf/ziti.h>
+#include <ziti/ziti.h>
 
 #include <string.h>
 #include <stdlib.h>
@@ -29,20 +29,20 @@ exit(code);\
 }} while(0)
 
 static size_t total;
-static nf_context nf;
+static ziti_context ziti;
 
-ssize_t on_data(nf_connection c, uint8_t *buf, ssize_t len) {
+ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
     if (len == ZITI_EOF) {
 
         printf("request completed: %s\n", ziti_errorstr(len));
-        NF_close(&c);
-        NF_shutdown(nf);
+        ziti_close(&c);
+        ziti_shutdown(ziti);
 
     }
     else if (len < 0) {
         fprintf(stderr, "unexpected error: %s\n", ziti_errorstr(len));
-        NF_close(&c);
-        NF_shutdown(nf);
+        ziti_close(&c);
+        ziti_shutdown(ziti);
     }
     else {
         total += len;
@@ -51,20 +51,20 @@ ssize_t on_data(nf_connection c, uint8_t *buf, ssize_t len) {
     return len;
 }
 
-static void on_write(nf_connection conn, ssize_t status, void *ctx) {
+static void on_write(ziti_connection conn, ssize_t status, void *ctx) {
     if (status < 0) {
-        fprintf(stderr, "request failed to submit status[%zd]: %s\n", status, ziti_errorstr((int)status));
+        fprintf(stderr, "request failed to submit status[%zd]: %s\n", status, ziti_errorstr((int) status));
     }
     else {
         printf("request success: %zd bytes sent\n", status);
     }
 }
 
-void on_connect(nf_connection conn, int status) {
+void on_connect(ziti_connection conn, int status) {
     DIE(status);
 
     printf("sending HTTP request\n");
-    
+
     uint8_t *req = "GET /Rochester HTTP/1.0\r\n"
                    "Accept: */*\r\n"
                    "Connection: close\r\n"
@@ -72,16 +72,16 @@ void on_connect(nf_connection conn, int status) {
                    "User-Agent: curl/7.59.0\r\n"
                    "\r\n";
 
-    DIE(NF_write(conn, req, strlen(req), on_write, NULL));
+    DIE(ziti_write(conn, req, strlen(req), on_write, NULL));
 }
 
-void on_nf_init(nf_context _nf, int status, void* ctx) {
+void on_ziti_init(ziti_context ztx, int status, void *ctx) {
     DIE(status);
-    nf = _nf;
+    ziti = ztx;
 
-    nf_connection conn;
-    DIE(NF_conn_init(nf, &conn, NULL));
-    DIE(NF_dial(conn, "demo-weather", on_connect, on_data));
+    ziti_connection conn;
+    DIE(ziti_conn_init(ziti, &conn, NULL));
+    DIE(ziti_dial(conn, "demo-weather", on_connect, on_data));
 }
 
 int main(int argc, char** argv) {
@@ -91,12 +91,12 @@ int main(int argc, char** argv) {
 #endif
     uv_loop_t *loop = uv_default_loop();
 
-    DIE(NF_init(argv[1], loop, on_nf_init, NULL));
+    DIE(ziti_init(argv[1], loop, on_ziti_init, NULL));
 
-    // loop will finish after the request is complete and NF_shutdown is called
+    // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
 
     printf("========================\n");
 
-    NF_shutdown(nf);
+    ziti_shutdown(ziti);
 }
