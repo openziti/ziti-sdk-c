@@ -259,8 +259,8 @@ static void ziti_connect_async(uv_async_t *ar) {
     }
 
     net_session = model_map_get(&ctx->sessions, req->service->id);
-    if (net_session == NULL) {
-        ZITI_LOG(DEBUG, "requesting session for service[%s]", req->service_name);
+    if (net_session == NULL || strcmp(net_session->session_type, req->session_type) != 0) {
+        ZITI_LOG(DEBUG, "requesting '%s' session for service[%s]", req->session_type, req->service_name);
         ziti_ctrl_get_net_session(&ctx->controller, req->service, req->session_type, connect_get_net_session_cb, ar);
         return;
     }
