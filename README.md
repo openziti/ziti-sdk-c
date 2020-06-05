@@ -6,7 +6,7 @@ quickly and easily.
 <h2>What Is Ziti</h2>
 
 Ziti is the name of NetFoundry's open source network overlay. The goal of Ziti is to
-reinvent neworking by providing secure, scalable connectivity as a network overlay over
+reinvent networking by providing secure, scalable connectivity as a network overlay over
 existing underlay networks.
 
 <h2>Status</h2>
