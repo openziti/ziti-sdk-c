@@ -23,7 +23,7 @@ See the [building.md](./building.md) for information on how to build the project
 Please use these community resources for getting help. We use GitHub [issues](https://github.com/NetFoundry/ziti-sdk-c/issues) 
 for tracking bugs and feature requests and have limited bandwidth to address them.
 
-- Read the [docs](https://openziti.github.io/ziti-doc/ziti/overview.html)
+- Read the [docs](https://openziti.github.io/ziti/overview.html)
 - Join our [Developer Community](https://openziti.org)
 - Participate in discussion on [Discourse](https://openziti.discourse.group/)
 
