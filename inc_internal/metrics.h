@@ -48,6 +48,7 @@ struct rate_s {
 typedef struct rate_s rate_t;
 
 enum rate_type {
+    EWMA_5s,
     EWMA_1m,
     EWMA_5m,
     EWMA_15m,

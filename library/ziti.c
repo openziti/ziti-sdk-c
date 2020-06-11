@@ -557,7 +557,11 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         }
 
         if (nf->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &nf->refresh_timer)) {
+            ZITI_LOG(INFO, "refresh interval set to [%d]", nf->opts->refresh_interval * 1000);
             uv_timer_start(&nf->refresh_timer, services_refresh, 0, nf->opts->refresh_interval * 1000);
+        }
+        else {
+            ZITI_LOG(INFO, "refresh interval not specified. using default refresh interval");
         }
 
     } else {
@@ -566,8 +570,8 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
 
     if (init_req->init_cb) {
         if (errCode == ZITI_OK) {
-            metrics_rate_init(&nf->up_rate, EWMA_1m);
-            metrics_rate_init(&nf->down_rate, EWMA_1m);
+            metrics_rate_init(&nf->up_rate, EWMA_5s);
+            metrics_rate_init(&nf->down_rate, EWMA_5s);
         }
 
         init_req->init_cb(nf, errCode, init_req->init_ctx);
