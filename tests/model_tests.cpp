@@ -17,7 +17,7 @@ limitations under the License.
 #include <cstring>
 #include "catch2/catch.hpp"
 
-#include <nf/model_support.h>
+#include <ziti/model_support.h>
 
 #define BAR_MODEL(xx, ...)\
 xx(num, int, none, num, __VA_ARGS__)\
@@ -188,8 +188,70 @@ TEST_CASE("model map test", "[model]") {
     ObjMap o;
     REQUIRE(parse_ObjMap(&o, json, strlen(json)) == 0);
     CHECK(o.ok);
-    CHECK_THAT((const char*)model_map_get(&o.map, "num"), Equals("42"));
-    CHECK_THAT((const char*)model_map_get(&o.map, "errors"), Equals(R"(["error1", "error2"])"));
+    CHECK_THAT((const char *) model_map_get(&o.map, "num"), Equals("42"));
+    CHECK_THAT((const char *) model_map_get(&o.map, "errors"), Equals(R"(["error1", "error2"])"));
 
     model_map_clear(&o.map, nullptr);
+}
+
+TEST_CASE("model compare", "[model]") {
+    Bar b1;
+    memset(&b1, 0, sizeof(Bar));
+    b1.num = 45;
+    b1.isOK = false;
+    b1.msg = "this is bar1";
+
+    Bar b2;
+    memset(&b2, 0, sizeof(Bar));
+    b2.num = 42;
+    b2.isOK = true;
+    b2.msg = "this is bar2";
+
+    CHECK(model_cmp(&b1, &b2, &Bar_META) != 0);
+
+    b1.isOK = true;
+    CHECK(model_cmp(&b1, &b2, &Bar_META) != 0);
+
+    b2.num = 45;
+    b2.msg = "this is bar1";
+    CHECK(model_cmp(&b1, &b2, &Bar_META) == 0);
+}
+
+TEST_CASE("model compare with map", "[model]") {
+
+    ObjMap o1;
+    o1.map = {0};
+    o1.ok = true;
+
+    ObjMap o2;
+    o2.map = {0},
+    o2.ok = true;
+
+    CHECK(cmp_ObjMap(&o1, &o2) == 0);
+
+    model_map_set(&o1.map, "key1", (void *) "one");
+    CHECK(cmp_ObjMap(&o1, &o2) != 0);
+
+    model_map_set(&o2.map, "key2", (void *) "two");
+    CHECK(cmp_ObjMap(&o1, &o2) != 0);
+
+    model_map_set(&o2.map, "key1", (void *) "one");
+    model_map_set(&o1.map, "key2", (void *) "two");
+    CHECK(cmp_ObjMap(&o1, &o2) == 0);
+}
+
+TEST_CASE("model compare with array", "[model]") {
+    const char *bar_json = BAR1;
+    Bar bar1, bar2;
+
+    REQUIRE(parse_Bar(&bar1, bar_json, strlen(bar_json)) == 0);
+    REQUIRE(parse_Bar(&bar2, bar_json, strlen(bar_json)) == 0);
+
+    CHECK(cmp_Bar(&bar1, &bar2) == 0);
+
+    bar1.errors[0] = strdup("changed error");
+    CHECK(cmp_Bar(&bar1, &bar2) != 0);
+
+    free_Bar(&bar1);
+    free_Bar(&bar2);
 }

@@ -17,7 +17,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-#include <nf/ziti.h>
+#include <ziti/ziti.h>
 #include <uv.h>
 #include "utils.h"
 #include "zt_internal.h"
@@ -60,8 +60,8 @@ static void enroll_cb(char *cert, ziti_error *err, void *ctx);
 int extract_well_known_certs(char *base64_encoded_pkcs7, void *req);
 
 static void async_connects(uv_async_t *ar) {
-    nf_context nf = ar->data;
-    ziti_process_connect_reqs(nf);
+    ziti_context ztx = ar->data;
+    ziti_process_connect_reqs(ztx);
 }
 
 int verify_rs256(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
@@ -155,7 +155,25 @@ int verify_es512(struct enroll_cfg_s *ecfg, mbedtls_pk_context *ctx) {
     return ZITI_OK;
 }
 
-int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enroll_cb, void* external_enroll_ctx) {
+int ziti_enroll(const char *jwt, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx) {
+    mbedtls_pk_context pkc;
+    mbedtls_pk_init(&pkc);
+
+    if (gen_key(&pkc) != 0) {
+        ZITI_LOG(ERROR, "unable to generate key");
+        return ZITI_KEY_GENERATION_FAILED;
+    }
+
+    unsigned char *pk_pem = calloc(1, 16000);
+    if (mbedtls_pk_write_key_pem(&pkc, pk_pem, 16000) != 0) {
+        ZITI_LOG(ERROR, "unable to covert key to pem");
+        return ZITI_KEY_GENERATION_FAILED;
+    }
+    return ziti_enroll_with_key(jwt, pk_pem, loop, enroll_cb, enroll_ctx);
+}
+
+int ziti_enroll_with_key(const char *jwt, const char *pk_pem, uv_loop_t *loop, ziti_enroll_cb enroll_cb,
+                         void *ctx) {
     init_debug();
 
     int ret;
@@ -168,16 +186,16 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
 
     ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
-            ziti_get_version(false), ziti_git_commit(), ziti_git_branch(),
-            time_str, start_time.tv_usec/1000);
+             ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
+             time_str, start_time.tv_usec / 1000);
 
     PREP(ziti);
-    
-    ecfg = calloc(1, sizeof(enroll_cfg));
-    ecfg->external_enroll_cb = external_enroll_cb;
-    ecfg->external_enroll_ctx = external_enroll_ctx;
 
-    TRY(ziti, load_jwt(jwt_file, ecfg, &ecfg->zejh, &ecfg->zej));
+    ecfg = calloc(1, sizeof(enroll_cfg));
+    ecfg->external_enroll_cb = enroll_cb;
+    ecfg->external_enroll_ctx = ctx;
+
+    TRY(ziti, load_jwt(jwt, ecfg, &ecfg->zejh, &ecfg->zej));
     if (DEBUG <= ziti_debug_level) {
         dump_ziti_enrollment_jwt_header(ecfg->zejh, 0);
         dump_ziti_enrollment_jwt(ecfg->zej, 0);
@@ -310,41 +328,40 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
 
     // JWT validation end
 
-
-
-
-    TRY(ziti, gen_key(&ecfg->pk_context));
-
-    ecfg->private_key = calloc(1, 16000);
-    if( ( ret = mbedtls_pk_write_key_pem( &ecfg->pk_context, ecfg->private_key, 16000 ) ) != 0 ) {
-        ZITI_LOG(ERROR, "mbedtls_pk_write_key_pem returned -0x%04x", -ret);
-        return ZITI_KEY_GENERATION_FAILED;
+    // parse private key
+    mbedtls_pk_init(&ecfg->pk_context);
+    int rc = mbedtls_pk_parse_key(&ecfg->pk_context, (const unsigned char *)pk_pem, strlen(pk_pem)+1, NULL, 0);
+    if (rc < 0) {
+        ZITI_LOG(ERROR, "Unable to parse supplied private key");
+        mbedtls_pk_free(&ecfg->pk_context);
+        return ZITI_INVALID_CONFIG;
     }
+    ecfg->private_key = strdup(pk_pem);
 
+    // gen CSR
     gen_csr(ecfg);
 
-    if (strcmp(ecfg->zej->method, "ott") == 0)
-    { 
+    if (strcmp(ecfg->zej->method, "ott") == 0) {
         // Set up an empty tls context, and here's the important part... also turn off SSL verification.
         // Otherwise we'll get an SSL handshake error.
         //
         // We'll be doing an "insecure" call to the controller to fetch its well-known certs.
         // We'll use the received CA chain later, during the call to do enrollment.
         tls_context *tls = default_tls_context(NULL, 0);
-        mbedtls_ssl_conf_authmode( tls->ctx, MBEDTLS_SSL_VERIFY_NONE ); // <-- a.k.a. "insecure"
+        mbedtls_ssl_conf_authmode(tls->ctx, MBEDTLS_SSL_VERIFY_NONE); // <-- a.k.a. "insecure"
 
-        NEWP(fetch_cert_ctx, struct nf_ctx);
+        NEWP(fetch_cert_ctx, struct ziti_ctx);
         fetch_cert_ctx->tlsCtx = tls;
         fetch_cert_ctx->loop = loop;
-        fetch_cert_ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
+        fetch_cert_ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
 
         uv_async_init(loop, &fetch_cert_ctx->connect_async, async_connects);
         uv_unref((uv_handle_t *) &fetch_cert_ctx->connect_async);
 
         ziti_ctrl_init(loop, &fetch_cert_ctx->controller, ecfg->zej->controller, tls);
 
-        NEWP(enroll_req, struct nf_enroll_req);
-        enroll_req->enroll_cb = external_enroll_cb;
+        NEWP(enroll_req, struct ziti_enroll_req);
+        enroll_req->enroll_cb = enroll_cb;
         enroll_req->enroll_ctx = fetch_cert_ctx;
         enroll_req->ecfg = ecfg;
 
@@ -371,8 +388,8 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
     CATCH(ziti);
 
     if (ERR(ziti)) {
-        if (external_enroll_cb) {
-            external_enroll_cb(NULL, ERR(ziti), "enroll failed", external_enroll_ctx);
+        if (enroll_cb) {
+            enroll_cb(NULL, ERR(ziti), "enroll failed", ctx);
         }
     }
 
@@ -387,7 +404,7 @@ int NF_enroll(const char* jwt_file, uv_loop_t* loop, nf_enroll_cb external_enrol
 static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, void *req) {
     ZITI_LOG(DEBUG, "base64_encoded_pkcs7 is: %s", base64_encoded_pkcs7);
 
-    struct nf_enroll_req *enroll_req = req;
+    struct ziti_enroll_req *enroll_req = req;
     int rc;
 
     if ( (NULL == base64_encoded_pkcs7) || (NULL != err)) {
@@ -446,14 +463,14 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
 
     enroll_req->ecfg->CA = ca;
 
-    NEWP(enroll_ctx, struct nf_ctx);
+    NEWP(enroll_ctx, struct ziti_ctx);
     enroll_ctx->tlsCtx = tls;
     enroll_ctx->loop = enroll_req->enroll_ctx->loop;
-    enroll_ctx->ziti_timeout = NF_DEFAULT_TIMEOUT;
+    enroll_ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
 
     ziti_ctrl_init(enroll_ctx->loop, &enroll_ctx->controller, enroll_req->ecfg->zej->controller, tls);
 
-    NEWP(enroll_req2, struct nf_enroll_req);
+    NEWP(enroll_req2, struct ziti_enroll_req);
     enroll_req2->enroll_cb = enroll_req->ecfg->external_enroll_cb;
     enroll_req2->external_enroll_ctx = enroll_req->ecfg->external_enroll_ctx;
     enroll_req2->enroll_ctx = enroll_ctx;
@@ -462,11 +479,10 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
     ziti_ctrl_enroll(&enroll_ctx->controller, enroll_req2->ecfg, enroll_cb, enroll_req2);
 }
 
-
 static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
 
-    struct nf_enroll_req *enroll_req = enroll_ctx;
-    struct nf_ctx *ctx = enroll_req->enroll_ctx;
+    struct ziti_enroll_req *enroll_req = enroll_ctx;
+    struct ziti_ctx *ctx = enroll_req->enroll_ctx;
 
     if (err != NULL) {
         ZITI_LOG(ERROR, "failed to enroll with controller: %s:%s %s (%s)",
@@ -483,18 +499,19 @@ static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
                  ctx->controller.client.host, ctx->controller.client.port);
 
         char *content = NULL;
-        size_t len = mjson_printf(
-            &mjson_print_dynamic_buf,
-            &content,
-            "{\n\t\"ztAPI\": %Q, \n\t\"id\": {\n\t\t\"key\": \"pem:%s\", \n\t\t\"cert\": \"pem:%s\", \n\t\t\"ca\": \"pem:%s\"\n\t}\n}",
-            enroll_req->ecfg->zej->controller,
-            enroll_req->ecfg->private_key,
-            cert,
-            enroll_req->ecfg->CA
-        );
+        if (enroll_req->ecfg->private_key != NULL) {
+            mjson_printf(&mjson_print_dynamic_buf, &content,
+                "{\n\t\"ztAPI\": %Q, \n\t\"id\": {\n\t\t\"key\": \"pem:%s\", \n\t\t\"cert\": \"pem:%s\", \n\t\t\"ca\": \"pem:%s\"\n\t}\n}",
+                enroll_req->ecfg->zej->controller, enroll_req->ecfg->private_key, cert, enroll_req->ecfg->CA);
+        }
+        else {
+            mjson_printf(&mjson_print_dynamic_buf, &content, 
+                "{\"ztAPI\": %Q, \"id\": {\"cert\": \"pem:%s\", \"ca\": \"pem:%s\"}}",
+                enroll_req->ecfg->zej->controller, cert, enroll_req->ecfg->CA);
+        }
 
         if (enroll_req->enroll_cb) {
-            enroll_req->enroll_cb(content, strlen(content), NULL, enroll_req->external_enroll_ctx);
+            enroll_req->enroll_cb((uint8_t *)content, strlen(content), NULL, enroll_req->external_enroll_ctx);
         }
 
         FREE(content);

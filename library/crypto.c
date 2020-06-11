@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <nf/ziti.h>
+#include <ziti/ziti.h>
 #include "zt_internal.h"
 #include "utils.h"
 

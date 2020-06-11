@@ -21,11 +21,11 @@ limitations under the License.
  * @see programs/sample_http_link.c
  */
 
-#ifndef NF_ZITI_SRC_H
-#define NF_ZITI_SRC_H
+#ifndef ZITI_SDK_ZITI_SRC_H
+#define ZITI_SDK_ZITI_SRC_H
 
 #include <uv_mbed/um_http.h>
-#include <nf/ziti.h>
+#include <ziti/ziti.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,12 +37,12 @@ extern "C" {
  * @param l the uv loop
  * @param zl the um_http_src_t to initialize
  * @param svc the name of the service to be dialed
- * @param nfc the initialized nf_context
+ * @param ztx the initialized ziti_context
  */
-int ziti_src_init(uv_loop_t *l, um_http_src_t *zl, const char *svc, nf_context nfc);
+int ziti_src_init(uv_loop_t *l, um_http_src_t *zl, const char *svc, ziti_context ztx);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif //NF_ZITI_SRC_H
+#endif //ZITI_SDK_ZITI_SRC_H

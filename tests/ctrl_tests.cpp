@@ -85,7 +85,7 @@ TEST_CASE("controller_test","[integ]") {
         return;
     }
 
-    nf_config *config;
+    ziti_config *config;
     tls_context *tls;
     ziti_controller ctrl;
     uv_loop_t *loop = uv_default_loop();
@@ -199,5 +199,5 @@ TEST_CASE("controller_test","[integ]") {
     ziti_ctrl_close(&ctrl);
     uv_run(loop, UV_RUN_DEFAULT);
     tls->api->free_ctx(tls);
-    free_nf_config(config);
+    free_ziti_config(config);
 }

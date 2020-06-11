@@ -16,8 +16,8 @@ limitations under the License.
 
 
 #include <internal_model.h>
-#include <nf/ziti_model.h>
-#include <nf/errors.h>
+#include <ziti/ziti_model.h>
+#include <ziti/errors.h>
 
 #include <string.h>
 
@@ -25,9 +25,11 @@ IMPL_MODEL(ziti_service, ZITI_SERVICE_MODEL)
 
 IMPL_MODEL(ziti_intercept, ZITI_INTERCEPT_MODEL)
 
-IMPL_MODEL(nf_id_cfg, ZITI_ID_CFG_MODEL)
+IMPL_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
 
-IMPL_MODEL(nf_config, ZITI_CONFIG_MODEL)
+IMPL_MODEL(ziti_id_cfg, ZITI_ID_CFG_MODEL)
+
+IMPL_MODEL(ziti_config, ZITI_CONFIG_MODEL)
 
 IMPL_MODEL(ziti_ingress, ZITI_INGRESS_MODEL)
 

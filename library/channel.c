@@ -48,7 +48,7 @@ struct ch_conn_req {
     void *ctx;
 };
 
-int ziti_channel_init(struct nf_ctx *ctx, ziti_channel_t *ch) {
+int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch) {
     ch->ctx = ctx;
     ch->id = ctx->ch_counter++;
     ch->msg_seq = -1;
@@ -85,7 +85,7 @@ void ziti_channel_free(ziti_channel_t* ch) {
     free(ch->ingress);
 }
 
-int ziti_close_channels(struct nf_ctx *ziti) {
+int ziti_close_channels(struct ziti_ctx *ziti) {
     ziti_channel_t *ch;
     const char *url;
     MODEL_MAP_FOREACH(url, ch, ziti->channels) {
@@ -112,8 +112,8 @@ int ziti_channel_close(ziti_channel_t *ch) {
     return r;
 }
 
-int ziti_channel_connect(nf_context ziti, const char *url, ch_connect_cb cb, void *cb_ctx) {
-    ziti_channel_t *ch = model_map_get(&ziti->channels, url);
+int ziti_channel_connect(ziti_context ztx, const char *url, ch_connect_cb cb, void *cb_ctx) {
+    ziti_channel_t *ch = model_map_get(&ztx->channels, url);
 
     if (ch != NULL) {
         ZITI_LOG(DEBUG, "existing channel found for ingress[%s]", url);
@@ -138,7 +138,7 @@ int ziti_channel_connect(nf_context ziti, const char *url, ch_connect_cb cb, voi
     }
 
     ch = calloc(1, sizeof(ziti_channel_t));
-    ziti_channel_init(ziti, ch);
+    ziti_channel_init(ztx, ch);
     ch->ingress = strdup(url);
 
     ZITI_LOG(INFO, "opening new channel for ingress[%s] ch[%d]", url, ch->id);
@@ -171,11 +171,11 @@ int ziti_channel_connect(nf_context ziti, const char *url, ch_connect_cb cb, voi
 }
 
 void on_channel_send(uv_write_t *w, int status) {
-    struct nf_write_req *nf_write = w->data;
+    struct ziti_write_req_s *ziti_write = w->data;
 
-    if (nf_write != NULL) {
-        free(nf_write->payload);
-        on_write_completed(nf_write->conn, nf_write, status);
+    if (ziti_write != NULL) {
+        free(ziti_write->payload);
+        on_write_completed(ziti_write->conn, ziti_write, status);
     }
 
     free(w);
@@ -183,7 +183,7 @@ void on_channel_send(uv_write_t *w, int status) {
 
 int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
                       uint32_t body_len,
-                      struct nf_write_req *nf_write) {
+                      struct ziti_write_req_s *ziti_write) {
     header_t header;
     header_init(&header, ch->msg_seq++);
 
@@ -210,8 +210,8 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
 
     uv_buf_t buf = uv_buf_init(msg_buf, msg_size);
     NEWP(req, uv_write_t);
-    req->data = nf_write;
-    nf_write->payload = msg_buf;
+    req->data = ziti_write;
+    ziti_write->payload = msg_buf;
     return uv_mbed_write(req, &ch->connection, &buf, on_channel_send);
 }
 
@@ -270,8 +270,8 @@ int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_
     return 0;
 }
 
-static struct nf_conn *find_conn(ziti_channel_t *ch, uint32_t conn_id) {
-    struct nf_conn *c;
+static struct ziti_conn *find_conn(ziti_channel_t *ch, uint32_t conn_id) {
+    struct ziti_conn *c;
     LIST_FOREACH(c, &ch->connections, next) {
         if (c->conn_id == conn_id) {
             return c;
@@ -280,7 +280,7 @@ static struct nf_conn *find_conn(ziti_channel_t *ch, uint32_t conn_id) {
     return NULL;
 }
 
-static void process_edge_message(struct nf_conn *conn, message *msg) {
+static void process_edge_message(struct ziti_conn *conn, message *msg) {
     int32_t seq;
     int32_t conn_id;
     bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
@@ -306,11 +306,12 @@ static void process_edge_message(struct nf_conn *conn, message *msg) {
 
         case ContentTypeDial:
             assert(conn->state == Bound);
-            nf_connection clt;
-            NF_conn_init(conn->nf_ctx, &clt, NULL);
+            ziti_connection clt;
+            ziti_conn_init(conn->ziti_ctx, &clt, NULL);
             clt->state = Accepting;
             clt->parent = conn;
             clt->dial_req_seq = msg->header.seq;
+            establish_crypto(clt, msg);
             conn->client_cb(conn, clt, ZITI_OK);
             break;
 
@@ -368,7 +369,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
             ZITI_LOG(ERROR, "ch[%d] received message without conn_id ct[%d]", ch->id, m->header.content);
         }
         else {
-            struct nf_conn *conn = find_conn(ch, conn_id);
+            struct ziti_conn *conn = find_conn(ch, conn_id);
             if (conn == NULL) {
                 ZITI_LOG(ERROR, "ch[%d] received message for unknown connection conn_id[%d] ct[%d]",
                          ch->id, conn_id, m->header.content);
@@ -503,10 +504,10 @@ static void async_write(uv_async_t* ar) {
 }
 
 static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
-    nf_context nf = ch->ctx;
-    model_map_remove(&nf->channels, ch->ingress);
+    ziti_context ztx = ch->ctx;
+    model_map_remove(&ztx->channels, ch->ingress);
 
-    nf_connection con;
+    ziti_connection con;
     LIST_FOREACH(con, &ch->connections, next) {
         if (con->state == Connected) {
             con->state = Closed;

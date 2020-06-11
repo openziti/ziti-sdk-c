@@ -252,7 +252,7 @@ void ziti_ctrl_login(
                                 "}",
                                 "sdkInfo",
                                 "type", "ziti-sdk-c",
-                                "version", ziti_get_version(0),
+                                "version", ziti_get_build_version(0),
                                 "revision", ziti_git_commit(),
                                 "branch", ziti_git_branch(),
                                 "envInfo",
@@ -363,16 +363,16 @@ void ziti_ctrl_get_net_sessions(
 }
 
 void
-ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(nf_config *, ziti_error *, void *), void *ctx) {
+ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(ziti_config *, ziti_error *, void *), void *ctx) {
     char *content = strdup(ecfg->x509_csr_pem);
 
     char path[1024];
     snprintf(path, sizeof(path), "/enroll?method=%s&token=%s", ecfg->zej->method, ecfg->zej->token);
 
-    struct ctrl_resp* resp = calloc(1, sizeof(struct ctrl_resp));
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->resp_text_plain = true;   // Make no attempt in ctrl_resp_cb to parse response as JSON
     resp->body_parse_func = NULL;   //   "  "  "  
-    resp->resp_cb = (void (*)(void*, ziti_error*, void*)) cb;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
@@ -383,7 +383,7 @@ ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(nf_config *
 }
 
 void
-ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(nf_config *, ziti_error *, void *),
+ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(ziti_config *, ziti_error *, void *),
                                void *ctx) {
 	struct ctrl_resp* resp = calloc(1, sizeof(struct ctrl_resp));
     resp->resp_text_plain = true;   // Make no attempt in ctrl_resp_cb to parse response as JSON
@@ -396,13 +396,13 @@ ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, enroll_cfg *ecfg, void (*c
     um_http_req(&ctrl->client, "GET", "/.well-known/est/cacerts", ctrl_resp_cb, resp);
 }
 
-void ziti_ctrl_get_public_cert(ziti_controller* ctrl, enroll_cfg* ecfg, void (*cb)(nf_config*, ziti_error*, void*),
-    void* ctx) {
+void ziti_ctrl_get_public_cert(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(ziti_config *, ziti_error *, void *),
+                               void *ctx) {
 
-    struct ctrl_resp* resp = calloc(1, sizeof(struct ctrl_resp));
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->resp_text_plain = true;   // Make no attempt in ctrl_resp_cb to parse response as JSON
     resp->body_parse_func = NULL;   //   "  "  "  
-    resp->resp_cb = (void (*)(void*, ziti_error*, void*)) cb;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;

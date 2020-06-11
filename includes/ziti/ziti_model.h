@@ -40,6 +40,11 @@ XX(config, model_map, none, config, __VA_ARGS__)
 XX(hostname, string, none, hostname, __VA_ARGS__) \
 XX(port, int, none, port, __VA_ARGS__)
 
+#define ZITI_SERVER_CFG_V1_MODEL(XX, ...) \
+XX(protocol, string, none, protocol, __VA_ARGS__) \
+XX(hostname, string, none, hostname, __VA_ARGS__) \
+XX(port, int, none, port, __VA_ARGS__)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -57,6 +62,8 @@ DECLARE_MODEL(ziti_identity, ZITI_IDENTITY_MODEL)
 DECLARE_MODEL(ziti_service, ZITI_SERVICE_MODEL)
 
 DECLARE_MODEL(ziti_intercept, ZITI_INTERCEPT_MODEL)
+
+DECLARE_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
 
 ZITI_FUNC const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type);
 

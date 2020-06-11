@@ -23,13 +23,14 @@ limitations under the License.
 #include <http_parser.h>
 #include <stdlib.h>
 #include <uv_mbed/queue.h>
-#include <nf/ziti_log.h>
+#include <ziti/ziti_log.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-extern const char *ziti_get_version(int verbose);
+extern const char *ziti_get_build_version(int verbose);
+
 extern const char *ziti_git_branch();
 extern const char *ziti_git_commit();
 extern void hexDump(char *desc, void *addr, int len);

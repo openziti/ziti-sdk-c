@@ -110,7 +110,7 @@ TEST_CASE("parse pkcs7") {
     struct enroll_cfg_s *ecfg = NULL;
     ecfg = (struct enroll_cfg_s *)calloc(1, sizeof(enroll_cfg));
 
-    struct nf_enroll_req *enroll_req = (struct nf_enroll_req *)calloc(1, sizeof(struct nf_enroll_req));
+    struct ziti_enroll_req *enroll_req = (struct ziti_enroll_req *) calloc(1, sizeof(struct ziti_enroll_req));
     enroll_req->ecfg = ecfg;
 
     if( ( rc = extract_well_known_certs( pkcs7_bundle, enroll_req ) ) != 0 ) {

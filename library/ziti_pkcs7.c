@@ -18,7 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-#include <nf/ziti.h>
+#include <ziti/ziti.h>
 #include <uv.h>
 #include "utils.h"
 #include "zt_internal.h"
@@ -61,7 +61,7 @@ limitations under the License.
 
 int extract_well_known_certs(char *base64_encoded_pkcs7, void *req) {
 
-    struct nf_enroll_req *enroll_req = req;
+    struct ziti_enroll_req *enroll_req = req;
     size_t der_len;
     unsigned char *p;
     unsigned char *end;
