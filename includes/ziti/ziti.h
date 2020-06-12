@@ -125,7 +125,7 @@ typedef struct ziti_options_s {
     ziti_init_cb init_cb;
     ziti_service_cb service_cb;
 
-    long refresh_interval;
+    long refresh_interval; //the duration in seconds metrics for metrics collection
     void *ctx;
 } ziti_options;
 

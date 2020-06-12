@@ -584,8 +584,30 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
 
     if (init_req->init_cb) {
         if (errCode == ZITI_OK) {
-            metrics_rate_init(&ztx->up_rate, EWMA_5s);
-            metrics_rate_init(&ztx->down_rate, EWMA_5s);
+
+
+            //determin which rate to use.
+            int interval = ztx->opts->refresh_interval;
+            enum rate_type rate = EWMA_1m; //default to 1 min
+
+            if (interval == 5) {
+                ZITI_LOG(DEBUG, "metrics using EWMA_5s");
+                rate = EWMA_5s;
+            }
+            else if (interval == 5 * 60) {
+                ZITI_LOG(DEBUG, "metrics using EWMA_5m");
+                rate = EWMA_5m;
+            }
+            else if (interval == 15 * 60) {
+                ZITI_LOG(DEBUG, "metrics using EWMA_15m");
+                rate = EWMA_15m;
+            }
+            else {
+                ZITI_LOG(DEBUG, "metrics using EWMA_1m");
+            }
+
+            metrics_rate_init(&ztx->up_rate, rate);
+            metrics_rate_init(&ztx->down_rate, rate);
         }
 
         init_req->init_cb(ztx, errCode, init_req->init_ctx);
