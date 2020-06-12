@@ -585,8 +585,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     if (init_req->init_cb) {
         if (errCode == ZITI_OK) {
 
-
-            //determin which rate to use.
+            //determine which rate to use.
             int interval = ztx->opts->refresh_interval;
             enum rate_type rate = EWMA_1m; //default to 1 min
 
