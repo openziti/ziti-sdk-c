@@ -62,12 +62,12 @@ extern void metrics_rate_close(rate_t* r) {
     LIST_REMOVE(r, _next);
 }
 
-extern void metrics_rate_init(rate_t *r, enum rate_type type) {
+extern void metrics_rate_init(rate_t *r, rate_type type) {
     memset(r, 0, sizeof(rate_t));
     switch (type) {
         case EWMA_5s:
             r->tick_fn = tick_ewma;
-            *(double*)(&r->param) = 1.0 - pow(M_E, -(interval /  1.0));
+            *(double*)(&r->param) = 1.0 - pow(M_E, -(interval /  360.0));
             break;
         case EWMA_1m:
             r->tick_fn = tick_ewma;

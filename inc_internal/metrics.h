@@ -21,6 +21,7 @@ limitations under the License.
 #include <stdbool.h>
 #include <uv_mbed/queue.h>
 #include <uv.h>
+#include <ziti/enums.h>
 
 #ifdef __cplusplus
 #include <atomic>
@@ -46,15 +47,6 @@ struct rate_s {
 };
 
 typedef struct rate_s rate_t;
-
-enum rate_type {
-    EWMA_5s,
-    EWMA_1m,
-    EWMA_5m,
-    EWMA_15m,
-    MMA_1m,
-    CMA_1m,
-};
 
 #ifdef __cplusplus
 extern "C" {

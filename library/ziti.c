@@ -571,11 +571,11 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         }
 
         if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
-            ZITI_LOG(INFO, "refresh interval set to [%d]", ztx->opts->refresh_interval * 1000);
+            ZITI_LOG(INFO, "refresh_interval set to [%d] ms", ztx->opts->refresh_interval * 1000);
             uv_timer_start(&ztx->refresh_timer, services_refresh, 0, ztx->opts->refresh_interval * 1000);
         }
         else {
-            ZITI_LOG(INFO, "refresh interval not specified. using default refresh interval");
+            ZITI_LOG(INFO, "refresh_interval not specified");
         }
 
     } else {
@@ -584,26 +584,8 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
 
     if (init_req->init_cb) {
         if (errCode == ZITI_OK) {
-
-            //determine which rate to use.
-            int interval = ztx->opts->refresh_interval;
-            enum rate_type rate = EWMA_1m; //default to 1 min
-
-            if (interval == 5) {
-                ZITI_LOG(DEBUG, "metrics using EWMA_5s");
-                rate = EWMA_5s;
-            }
-            else if (interval == 5 * 60) {
-                ZITI_LOG(DEBUG, "metrics using EWMA_5m");
-                rate = EWMA_5m;
-            }
-            else if (interval == 15 * 60) {
-                ZITI_LOG(DEBUG, "metrics using EWMA_15m");
-                rate = EWMA_15m;
-            }
-            else {
-                ZITI_LOG(DEBUG, "metrics using EWMA_1m");
-            }
+            rate_type rate = ztx->opts->metrics_interval;
+            ZITI_LOG(INFO, "using metrics interval: %d", (int)rate);
 
             metrics_rate_init(&ztx->up_rate, rate);
             metrics_rate_init(&ztx->down_rate, rate);
