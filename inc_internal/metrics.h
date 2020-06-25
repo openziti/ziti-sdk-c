@@ -54,7 +54,7 @@ extern "C" {
 
 extern void metrics_init(uv_loop_t *loop, long interval_secs);
 
-extern void metrics_rate_init(rate_t *r, enum rate_type type);
+extern void metrics_rate_init(rate_t *r, rate_type type);
 extern void metrics_rate_close(rate_t* r);
 
 extern void metrics_rate_update(rate_t *r, long delta);

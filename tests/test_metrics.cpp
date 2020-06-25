@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "catch2/catch.hpp"
 #include <metrics.h>
+#include <ziti/enums.h>
 
 extern "C" {
     extern void tick_all();
