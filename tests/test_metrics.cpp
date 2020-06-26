@@ -41,7 +41,8 @@ TEST_CASE("test-metrics") {
 };
 
 TEST_CASE("init-metrics") {
-    rate_t m1 = {0};
+    rate_t m1;
+    memset(&m1, 0, sizeof(m1));
 
     metrics_rate_close(&m1);
 
