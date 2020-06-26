@@ -39,7 +39,7 @@ void resp_cb(um_http_resp_t *resp, void *data) {
     }
     um_http_hdr *h;
     printf("Response (%d) >>>\nHeaders >>>\n", resp->code);
-    for (h = resp->headers; h != NULL && h->name != NULL; h++) {
+    LIST_FOREACH(h, &resp->headers, _next) {
         printf("\t%s: %s\n", h->name, h->value);
     }
     printf("\n");
