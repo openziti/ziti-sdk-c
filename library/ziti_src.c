@@ -30,7 +30,7 @@ typedef struct ziti_link_s {
 } ziti_link_t;
 
 // connect and release method for um_http custom source link
-static int ziti_src_connect(um_http_src_t *src, um_http_src_connect_cb cb);
+static int ziti_src_connect(um_http_src_t *src, const char *, const char *, um_http_src_connect_cb cb, void *conn_ctx);
 
 static void ziti_src_release(um_http_src_t *src);
 
@@ -80,11 +80,13 @@ int ziti_src_init(uv_loop_t *l, um_http_src_t *st, const char *svc, ziti_context
     return 0; 
 }
 
-static int ziti_src_connect(um_http_src_t *src, um_http_src_connect_cb cb) {
-    ziti_link_t *zl = (ziti_link_t *)src->link;
+static int
+ziti_src_connect(um_http_src_t *src, const char *h, const char *p, um_http_src_connect_cb cb, void *conn_ctx) {
+    ziti_link_t *zl = (ziti_link_t *) src->link;
 
     ZITI_LOG(TRACE, "service %s", zl->service);
     src->connect_cb = cb;
+    src->connect_ctx = conn_ctx;
 
     int status = ziti_conn_init(zl->ztx, &zl->conn, src);
     if (status != ZITI_OK) {
@@ -101,7 +103,7 @@ static void ziti_src_release(um_http_src_t *src) {
 
 static void zlnf_conn_cb(ziti_connection conn, int status) {
     um_http_src_t *src = (um_http_src_t *) ziti_conn_data(conn);
-    src->connect_cb(src, status);
+    src->connect_cb(src, status, src->connect_ctx);
 }
 
 //static void link_close_cb(uv_link_t *l) {}
