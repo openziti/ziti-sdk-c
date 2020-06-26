@@ -22,8 +22,8 @@ extern "C" {
 }
 
 TEST_CASE("test-metrics") {
-    rate_t exp;
-    rate_t cma;
+    rate_t exp = {0};
+    rate_t cma = {0};
 
     metrics_rate_init(&exp, EWMA_1m);
     metrics_rate_init(&cma, MMA_1m);
