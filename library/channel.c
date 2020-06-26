@@ -579,6 +579,9 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
         ZITI_LOG(DEBUG, "ch[%d] connected", ch->id);
         uv_mbed_t *mbed = (uv_mbed_t *) req->handle;
         uv_mbed_read(mbed, ziti_alloc_cb, on_channel_data);
+        if (ch->ctx->opts->router_keepalive != 0) {
+            uv_mbed_keepalive(mbed, 1, ch->ctx->opts->router_keepalive);
+        }
         send_hello(ch);
     }
     else {

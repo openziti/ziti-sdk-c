@@ -126,6 +126,8 @@ typedef struct ziti_options_s {
     ziti_service_cb service_cb;
 
     long refresh_interval;
+    int router_keepalive;
+
     void *ctx;
 } ziti_options;
 
