@@ -16,14 +16,17 @@ limitations under the License.
 
 #include "catch2/catch.hpp"
 #include <metrics.h>
+#include <cstring>
 
 extern "C" {
     extern void tick_all();
 }
 
 TEST_CASE("test-metrics") {
-    rate_t exp = {0};
-    rate_t cma = {0};
+    rate_t exp;
+    rate_t cma;
+    memset(&exp, 0, sizeof(exp));
+    memset(&cma, 0, sizeof(cma));
 
     metrics_rate_init(&exp, EWMA_1m);
     metrics_rate_init(&cma, MMA_1m);
