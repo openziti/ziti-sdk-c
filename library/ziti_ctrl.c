@@ -96,8 +96,8 @@ static void ctrl_resp_cb(um_http_resp_t *r, void *data) {
     else {
         r->body_cb = ctrl_body_cb;
         um_http_hdr *h;
-        for(h = r->headers; h != NULL && h->name != NULL; h++) {
-			if (strcasecmp(h->name, "Content-Length") == 0) {
+        LIST_FOREACH(h, &r->headers, _next) {
+            if (strcasecmp(h->name, "Content-Length") == 0) {
                 resp->body = calloc(1, atol(h->value) + 1);
                 break;
             }
