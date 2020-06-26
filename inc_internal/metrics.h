@@ -41,8 +41,8 @@ struct rate_s {
 
     void (*tick_fn)(struct rate_s *);
     atomic_long init;
+    bool active;
     LIST_ENTRY(rate_s) _next;
-
 };
 
 typedef struct rate_s rate_t;
