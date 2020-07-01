@@ -176,10 +176,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
         resp->received += len;
     }
     else if (len == UV_EOF) {
-        const char *data = NULL;
-        int data_len;
         void *resp_obj = NULL;
-        ziti_error *err = NULL;
 
         ctrl_resp cr = {0};
         if (resp->resp_text_plain && resp->status < 300) {
@@ -188,7 +185,13 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
         }
         else {
             int rc = parse_ctrl_resp(&cr, resp->body, resp->received);
-            if (resp->body_parse_func && cr.data != NULL) {
+            if (rc < 0) {
+                ZITI_LOG(ERROR, "failed to parse controller response of req[%s]", req->path);
+                cr.error = alloc_ziti_error();
+                cr.error->code = strdup("INVALID_CONTROLLER_RESPONSE");
+                cr.error->message = strdup(req->resp.status);
+            }
+            else if (resp->body_parse_func && cr.data != NULL) {
                 if (resp->body_parse_func(&resp_obj, cr.data, strlen(cr.data)) != 0) {
                     ZITI_LOG(ERROR, "error parsing result of req[%s]", req->path);
                 }
@@ -209,6 +212,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_
     um_http_init(loop, &ctrl->client, url);
     um_http_set_ssl(&ctrl->client, tls);
     um_http_idle_keepalive(&ctrl->client, 0);
+    um_http_header(&ctrl->client, "Accept", "application/json");
     ctrl->session = NULL;
 
     return ZITI_OK;
@@ -230,7 +234,7 @@ void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ziti_version *, ziti
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_version_cb;
 
-    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
+    um_http_req(&ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_login(
@@ -296,7 +300,7 @@ void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, ziti_error *, voi
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_logout_cb;
 
-    um_http_req_t* req = um_http_req(&ctrl->client, "DELETE", "/current-api-session", ctrl_resp_cb, resp);
+    um_http_req(&ctrl->client, "DELETE", "/current-api-session", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service_array, ziti_error *, void *), void *ctx) {
@@ -308,7 +312,7 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service_array
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_services_cb;
 
-    um_http_req_t* req = um_http_req(&ctrl->client, "GET", "/services?limit=1000", ctrl_resp_cb, resp);
+    um_http_req(&ctrl->client, "GET", "/services?limit=1000", ctrl_resp_cb, resp);
 }
 
 void
@@ -324,7 +328,7 @@ ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_service_cb;
 
-    um_http_req_t* req = um_http_req(&ctrl->client, "GET", path, ctrl_resp_cb, resp);
+    um_http_req(&ctrl->client, "GET", path, ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_get_net_session(
@@ -385,7 +389,7 @@ ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(ziti_config
 void
 ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(ziti_config *, ziti_error *, void *),
                                void *ctx) {
-	struct ctrl_resp* resp = calloc(1, sizeof(struct ctrl_resp));
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->resp_text_plain = true;   // Make no attempt in ctrl_resp_cb to parse response as JSON
     resp->body_parse_func = NULL;   //   "  "  "  
     resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
@@ -393,7 +397,8 @@ ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, enroll_cfg *ecfg, void (*c
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req(&ctrl->client, "GET", "/.well-known/est/cacerts", ctrl_resp_cb, resp);
+    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/.well-known/est/cacerts", ctrl_resp_cb, resp);
+    um_http_req_header(req, "Accept", "application/pkcs7-mime");
 }
 
 void ziti_ctrl_get_public_cert(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(ziti_config *, ziti_error *, void *),
