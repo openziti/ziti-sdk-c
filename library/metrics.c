@@ -65,16 +65,20 @@ extern void metrics_rate_close(rate_t* r) {
     }
 }
 
-extern void metrics_rate_init(rate_t *r, enum rate_type type) {
+extern void metrics_rate_init(rate_t *r, rate_type type) {
     if (r->active) {
         metrics_rate_close(r);
     }
 
     memset(r, 0, sizeof(rate_t));
     switch (type) {
+        case EWMA_5s:
+            r->tick_fn = tick_ewma;
+            *(double*)(&r->param) = 1.0 - pow(M_E, -(interval / 12));
+            break;
         case EWMA_1m:
             r->tick_fn = tick_ewma;
-            *(double *) (&r->param) = 1.0 - pow(M_E, -(interval / 60.0 / 1.0));
+            *(double*)(&r->param) = 1.0 - pow(M_E, - (interval / 60.0));
             break;
 
         case EWMA_5m:
