@@ -19,10 +19,10 @@ limitations under the License.
 #include <cstring>
 
 extern "C" {
-    extern void tick_all();
+extern void tick_all();
 }
 
-TEST_CASE("test-metrics") {
+TEST_CASE("test-metrics", "[metrics]") {
     rate_t exp;
     rate_t cma;
     memset(&exp, 0, sizeof(exp));
@@ -40,7 +40,7 @@ TEST_CASE("test-metrics") {
     }
 };
 
-TEST_CASE("init-metrics") {
+TEST_CASE("init-metrics", "[metrics]") {
     rate_t m1;
     memset(&m1, 0, sizeof(m1));
 
