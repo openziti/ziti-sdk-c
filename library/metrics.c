@@ -59,15 +59,22 @@ extern void metrics_init(uv_loop_t *loop, long interval_secs) {
 }
 
 extern void metrics_rate_close(rate_t* r) {
-    LIST_REMOVE(r, _next);
+    if (r->active) {
+        r->active = false;
+        LIST_REMOVE(r, _next);
+    }
 }
 
 extern void metrics_rate_init(rate_t *r, enum rate_type type) {
+    if (r->active) {
+        metrics_rate_close(r);
+    }
+
     memset(r, 0, sizeof(rate_t));
     switch (type) {
         case EWMA_1m:
             r->tick_fn = tick_ewma;
-            *(double*)(&r->param) = 1.0 - pow(M_E, - (interval / 60.0 / 1.0));
+            *(double *) (&r->param) = 1.0 - pow(M_E, -(interval / 60.0 / 1.0));
             break;
 
         case EWMA_5m:
@@ -89,6 +96,7 @@ extern void metrics_rate_init(rate_t *r, enum rate_type type) {
             r->tick_fn = tick_cma;
             break;
     }
+    r->active = true;
     LIST_INSERT_HEAD(&all_rates, r, _next);
 }
 

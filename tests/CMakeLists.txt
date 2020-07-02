@@ -17,5 +17,5 @@ target_link_libraries(all_tests
         PRIVATE ziti)
 
 include(CTest)
-add_test(quick_tests all_tests "exclude:[integ]")
+add_test(quick_tests all_tests -d yes "~[integ]~[metrics]")
 
