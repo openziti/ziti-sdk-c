@@ -363,7 +363,30 @@ void ziti_ctrl_get_net_sessions(
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req_t* req = um_http_req(&ctrl->client, "GET", "/sessions", ctrl_resp_cb, resp);
+    um_http_req(&ctrl->client, "GET", "/sessions", ctrl_resp_cb, resp);
+}
+
+static void enroll_pem_cb(void *body, ziti_error *err, struct ctrl_resp *resp) {
+    ziti_enrollment_resp *er = alloc_ziti_enrollment_resp();
+    er->cert = (char *) body;
+    if (resp->resp_cb) {
+        resp->resp_cb(er, err, resp->ctx);
+    }
+}
+
+static void ctrl_enroll_http_cb(um_http_resp_t *http_resp, void *data) {
+    if (http_resp->code < 0) {
+        ctrl_resp_cb(http_resp, data);
+    }
+    else {
+        const char *content_type = um_http_resp_header(http_resp, "content-type");
+        if (content_type != NULL && strcasecmp("application/x-pem-file", content_type) == 0) {
+            struct ctrl_resp *resp = data;
+            resp->resp_text_plain = true;
+            resp->ctrl_cb = enroll_pem_cb;
+        }
+        ctrl_resp_cb(http_resp, data);
+    }
 }
 
 void
@@ -381,7 +404,7 @@ ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(ziti_enroll
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req_t *req = um_http_req(&ctrl->client, "POST", path, ctrl_resp_cb, resp);
+    um_http_req_t *req = um_http_req(&ctrl->client, "POST", path, ctrl_enroll_http_cb, resp);
     um_http_req_header(req, "Content-Type", "text/plain");
     um_http_req_data(req, content, strlen(content), free_body_cb);
 }
