@@ -65,6 +65,9 @@ XX(controller, string, none, iss, __VA_ARGS__) \
 XX(subject, string, none, sub, __VA_ARGS__) \
 XX(token, string, none, jti, __VA_ARGS__)
 
+#define ZITI_ENROLLMENT_RESP(XX, ...) \
+XX(cert, string, none, cert, __VA_ARGS__)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -87,6 +90,8 @@ DECLARE_MODEL(ziti_error, ZITI_ERROR_MODEL)
 
 DECLARE_MODEL(ziti_enrollment_jwt_header, ZITI_ENROLLMENT_JWT_HEADER_MODEL)
 DECLARE_MODEL(ziti_enrollment_jwt, ZITI_ENROLLMENT_JWT_MODEL)
+
+DECLARE_MODEL(ziti_enrollment_resp, ZITI_ENROLLMENT_RESP)
 
 #ifdef __cplusplus
 }
