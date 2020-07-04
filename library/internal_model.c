@@ -48,6 +48,7 @@ IMPL_MODEL(ziti_error, ZITI_ERROR_MODEL)
 IMPL_MODEL(ziti_enrollment_jwt_header, ZITI_ENROLLMENT_JWT_HEADER_MODEL)
 
 IMPL_MODEL(ziti_enrollment_jwt, ZITI_ENROLLMENT_JWT_MODEL)
+IMPL_MODEL(ziti_enrollment_resp, ZITI_ENROLLMENT_RESP)
 
 const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type) {
     return (const char *) model_map_get(&service->config, cfg_type);

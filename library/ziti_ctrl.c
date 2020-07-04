@@ -367,15 +367,15 @@ void ziti_ctrl_get_net_sessions(
 }
 
 void
-ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(ziti_config *, ziti_error *, void *), void *ctx) {
+ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(ziti_enrollment_resp *, ziti_error *, void *),
+                 void *ctx) {
     char *content = strdup(ecfg->x509_csr_pem);
 
     char path[1024];
     snprintf(path, sizeof(path), "/enroll?method=%s&token=%s", ecfg->zej->method, ecfg->zej->token);
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->resp_text_plain = true;   // Make no attempt in ctrl_resp_cb to parse response as JSON
-    resp->body_parse_func = NULL;   //   "  "  "  
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_enrollment_resp_ptr;   //   "  "  "
     resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
