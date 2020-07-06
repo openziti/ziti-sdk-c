@@ -585,6 +585,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     if (init_req->init_cb) {
         if (errCode == ZITI_OK) {
             rate_type rate = ztx->opts->metrics_type;
+
             ZITI_LOG(INFO, "using metrics interval: %d", (int)rate);
 
             metrics_rate_init(&ztx->up_rate, rate);

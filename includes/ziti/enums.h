@@ -21,6 +21,7 @@ typedef enum {
     MMA_1m,
     CMA_1m,
     EWMA_5s,
+    INSTANT,
 } rate_type;
 
 #ifdef __cplusplus

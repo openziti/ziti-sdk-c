@@ -128,6 +128,9 @@ typedef struct ziti_options_s {
 
     long refresh_interval; //the duration in seconds between checking for updates from the controller
     rate_type metrics_type; //an enum describing the metrics to collect
+
+    int router_keepalive;
+
     void *ctx;
 } ziti_options;
 

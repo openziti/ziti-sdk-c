@@ -35,15 +35,29 @@ typedef long atomic_long;
 #endif
 #endif
 
+// an incredibly simple struct to just encapsulate a buffer
+typedef struct circular_accumulator_s {
+    double* buffer;
+
+    int total;
+    int current;
+} circular_accumulator;
+
 struct rate_s {
     atomic_llong delta;
     atomic_llong rate;
     atomic_llong param;
 
     void (*tick_fn)(struct rate_s *);
+    double (*rate_get_fn)(struct rate_s *); //a function that will return the rate as a double
+
     atomic_long init;
     bool active;
     LIST_ENTRY(rate_s) _next;
+
+    //raw data buffer and circular buffer abstraction
+    circular_accumulator raw_data;
+    double* data;
 };
 
 typedef struct rate_s rate_t;
