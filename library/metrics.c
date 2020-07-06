@@ -83,7 +83,7 @@ extern void metrics_rate_init(rate_t *r, rate_type type) {
             break;
         case EWMA_1m:
             r->tick_fn = tick_ewma;
-            *(double*)(&r->param) = 1.0 - pow(M_E, - (interval / 60.0));
+            *(double*)(&r->param) = 1.0 - pow(M_E, -(interval / 60.0));
             break;
 
         case EWMA_5m:
