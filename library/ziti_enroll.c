@@ -56,7 +56,9 @@ limitations under the License.
 #define ZITI_MD_MAX_SIZE_512 64  /* longest known is SHA512 */
 
 static void well_known_certs_cb(char *cert, ziti_error *err, void *req);
-static void enroll_cb(char *cert, ziti_error *err, void *ctx);
+
+static void enroll_cb(ziti_enrollment_resp *er, ziti_error *err, void *ctx);
+
 int extract_well_known_certs(char *base64_encoded_pkcs7, void *req);
 
 static void async_connects(uv_async_t *ar) {
@@ -479,8 +481,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
     ziti_ctrl_enroll(&enroll_ctx->controller, enroll_req2->ecfg, enroll_cb, enroll_req2);
 }
 
-static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
-
+static void enroll_cb(ziti_enrollment_resp *er, ziti_error *err, void *enroll_ctx) {
     struct ziti_enroll_req *enroll_req = enroll_ctx;
     struct ziti_ctx *ctx = enroll_req->enroll_ctx;
 
@@ -495,6 +496,7 @@ static void enroll_cb(char *cert, ziti_error *err, void *enroll_ctx) {
         free_ziti_error(err);
     }
     else {
+        char *cert = er->cert;
         ZITI_LOG(DEBUG, "successfully enrolled with controller %s:%s",
                  ctx->controller.client.host, ctx->controller.client.port);
 

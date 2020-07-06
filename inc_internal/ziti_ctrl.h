@@ -63,7 +63,8 @@ ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, enroll_cfg *cfg, void (*cb
                                void *ctx);
 
 void
-ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *cfg, void (*cb)(ziti_config *, ziti_error *, void *), void *ctx);
+ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *cfg, void (*cb)(ziti_enrollment_resp *, ziti_error *, void *),
+                 void *ctx);
 
 #ifdef __cplusplus
 }
