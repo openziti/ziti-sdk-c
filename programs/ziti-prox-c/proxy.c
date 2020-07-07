@@ -96,8 +96,10 @@ static void debug_dump(listener_l *listeners) {
 
 static void reporter_cb(uv_timer_t *t) {
     double up, down;
-    ziti_get_transfer_rates(ziti, &up, &down);
-    ZITI_LOG(INFO, "transfer rates: up=%lf down=%lf", up, down);
+    if (ziti != NULL) {
+        ziti_get_transfer_rates(ziti, &up, &down);
+        ZITI_LOG(INFO, "transfer rates: up=%lf down=%lf", up, down);
+    }
 }
 
 static void signal_cb(uv_signal_t *s, int signum) {
@@ -441,7 +443,7 @@ int run_opts(int argc, char **argv) {
 
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "dc:m:",
+    while ((c = getopt_long(argc, argv, "d:c:m:",
                             long_options, &option_index)) != -1) {
         switch (c) {
             case 'd':
