@@ -45,9 +45,6 @@ static void tick_ewma(rate_t *ewma);
 static void tick_cma(rate_t *cma);
 static void tick_instant(rate_t *inst);
 
-static double default_rate_get(rate_t* r);
-static double metrics_get_instant(rate_t *r);
-
 extern void metrics_init(uv_loop_t *loop, long interval_secs) {
 
     if (!uv_is_active((uv_handle_t*)&ticker)) {
