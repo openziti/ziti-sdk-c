@@ -153,7 +153,7 @@ static void alloc_cb(uv_handle_t *h, size_t suggested_size, uv_buf_t *buf) {
         buf->len = suggested_size;
     }
     else {
-        ZITI_LOG(WARN, "maximum outstanding writes reached clt[%s]", clt->addr_s);
+        ZITI_LOG(DEBUG, "maximum outstanding writes reached clt[%s]", clt->addr_s);
         buf->base = NULL;
         buf->len = 0;
     }
@@ -181,7 +181,7 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
     struct client *clt = stream->data;
 
     if (nread == UV_ENOBUFS) {
-        ZITI_LOG(WARN, "client[%s] is throttled", clt->addr_s);
+        ZITI_LOG(DEBUG, "client[%s] is throttled", clt->addr_s);
     }
     else if (nread < 0) {
         ZITI_LOG(DEBUG, "connection closed %s [%zd/%s](%s)",
@@ -387,6 +387,7 @@ void run(int argc, char **argv) {
             .refresh_interval = 600,
             .ctx = &listeners,
             .config_types = my_configs,
+            .metrics_type = INSTANT,
     };
 
     ziti_init_opts(&opts, loop, &listeners);

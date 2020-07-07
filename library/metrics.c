@@ -43,6 +43,7 @@ static LIST_HEAD(meters, rate_s) all_rates = LIST_HEAD_INITIALIZER(all_rates);
 static void ticker_cb(uv_timer_t *t);
 static void tick_ewma(rate_t *ewma);
 static void tick_cma(rate_t *cma);
+static void tick_instant(rate_t *inst);
 
 extern void metrics_init(uv_loop_t *loop, long interval_secs) {
 
@@ -65,16 +66,20 @@ extern void metrics_rate_close(rate_t* r) {
     }
 }
 
-extern void metrics_rate_init(rate_t *r, enum rate_type type) {
+extern void metrics_rate_init(rate_t *r, rate_type type) {
     if (r->active) {
         metrics_rate_close(r);
     }
 
     memset(r, 0, sizeof(rate_t));
     switch (type) {
+        case EWMA_5s:
+            r->tick_fn = tick_ewma;
+            *(double*)(&r->param) = 1.0 - pow(M_E, -(interval / 12));
+            break;
         case EWMA_1m:
             r->tick_fn = tick_ewma;
-            *(double *) (&r->param) = 1.0 - pow(M_E, -(interval / 60.0 / 1.0));
+            *(double*)(&r->param) = 1.0 - pow(M_E, -(interval / 60.0));
             break;
 
         case EWMA_5m:
@@ -95,7 +100,13 @@ extern void metrics_rate_init(rate_t *r, enum rate_type type) {
         case CMA_1m:
             r->tick_fn = tick_cma;
             break;
+            
+        case INSTANT:
+            r->tick_fn = tick_instant;
+            r->param = 1;
+            break;
     }
+
     r->active = true;
     LIST_INSERT_HEAD(&all_rates, r, _next);
 }
@@ -149,4 +160,10 @@ static void tick_ewma(rate_t *ewma) {
         InterlockedExchange64(&ewma->rate, *(int64_t *) (&r));
         InterlockedExchange(&ewma->init, 1);
     }
+}
+
+static void tick_instant(rate_t *inst) {
+    double r = instant_rate(inst);
+    InterlockedExchange64(&inst->delta, 0); //reset the delta
+    InterlockedExchange64(&inst->rate, *(int64_t*)(&r));
 }
