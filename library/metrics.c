@@ -165,12 +165,6 @@ static void tick_ewma(rate_t *ewma) {
     }
 }
 
-// a function that will return the last measured value expressed as 
-double metrics_get_instant(rate_t* r) {
-    double d = (double)r->rate;
-    return (double)r->rate;
-}
-
 static void tick_instant(rate_t *inst) {
     double r = instant_rate(inst);
     InterlockedExchange64(&inst->delta, 0); //reset the delta
