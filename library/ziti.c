@@ -571,7 +571,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         }
 
         if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
-            ZITI_LOG(INFO, "refresh_interval set to [%d] ms", ztx->opts->refresh_interval * 1000);
+            ZITI_LOG(INFO, "refresh_interval set to %d seconds", ztx->opts->refresh_interval);
             uv_timer_start(&ztx->refresh_timer, services_refresh, 0, ztx->opts->refresh_interval * 1000);
         }
         else {
