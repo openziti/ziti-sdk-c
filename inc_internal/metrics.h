@@ -41,7 +41,6 @@ struct rate_s {
     atomic_llong param;
 
     void (*tick_fn)(struct rate_s *);
-    double (*rate_get_fn)(struct rate_s *); //a function that will return the rate as a double
 
     atomic_long init;
     bool active;

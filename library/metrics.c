@@ -75,7 +75,6 @@ extern void metrics_rate_init(rate_t *r, rate_type type) {
     }
 
     memset(r, 0, sizeof(rate_t));
-    r->rate_get_fn = default_rate_get;
     switch (type) {
         case EWMA_5s:
             r->tick_fn = tick_ewma;
@@ -107,7 +106,6 @@ extern void metrics_rate_init(rate_t *r, rate_type type) {
             
         case INSTANT:
             r->tick_fn = tick_instant;
-            r->rate_get_fn = metrics_get_instant;
             r->param = 1;
             break;
     }
@@ -121,13 +119,6 @@ extern void metrics_rate_update(rate_t *r, long delta) {
 }
 
 extern double metrics_rate_get(rate_t *r) {
-    if (&r == 0 || r->rate_get_fn == NULL) {
-        return 0;
-    }
-    return r->rate_get_fn(r);
-}
-
-double default_rate_get(rate_t* r) {
     double rate = (*(double*)&r->rate) * (SECOND);
     return rate;
 }
@@ -181,7 +172,7 @@ double metrics_get_instant(rate_t* r) {
 }
 
 static void tick_instant(rate_t *inst) {
-    double r = inst->delta / interval;
+    double r = instant_rate(inst);
     InterlockedExchange64(&inst->delta, 0); //reset the delta
-    InterlockedExchange64(&inst->rate, (int64_t)r); //set the rate to the bytes / interval
+    InterlockedExchange64(&inst->rate, *(int64_t*)(&r));
 }
