@@ -121,6 +121,9 @@ extern void metrics_rate_update(rate_t *r, long delta) {
 }
 
 extern double metrics_rate_get(rate_t *r) {
+    if (&r == 0 || r->rate_get_fn == NULL) {
+        return 0;
+    }
     return r->rate_get_fn(r);
 }
 
