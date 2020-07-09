@@ -1,8 +1,8 @@
 cmake_minimum_required (VERSION 3.12)
 include(git.cmake)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
-project (ziti-sdk
+set(CMAKE_C_STANDARD 99)
+project(ziti-sdk
         VERSION ${ver}
         LANGUAGES C CXX
         )
@@ -110,9 +110,7 @@ if(NOT ${PUB_OS} STREQUAL "ios" )
     add_subdirectory(programs)
 endif()
 
-if(NOT ${CMAKE_CROSSCOMPILING})
-    add_subdirectory(tests)
-endif()
+add_subdirectory(tests)
 
 PUBCOMP(ziti-sdk)
 
