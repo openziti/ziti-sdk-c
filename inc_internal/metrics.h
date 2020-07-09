@@ -27,7 +27,15 @@ limitations under the License.
 using namespace std;
 #else
 #if defined(__linux) || defined(__APPLE__)
-#include <stdatomic.h>
+# if defined(mips) || defined(__mips)
+
+#   include <bits/atomic.h>
+
+#   define atomic_llong uatomic_fast64_t
+#   define atomic_long uatomic_fast32_t
+# else
+#   include <stdatomic.h>
+# endif
 #elif _WIN32
 typedef long long atomic_llong;
 typedef long atomic_long;
