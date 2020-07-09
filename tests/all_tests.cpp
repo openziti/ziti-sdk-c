@@ -16,7 +16,7 @@ limitations under the License.
 
 // tweaks for mips-openwrt build
 // not sure if there is a better way
-#if __GXX_ABI_VERSION == 1002
+#if defined(mips) || defined(__mips)
 #define nextafterl(x, y) nextafter(x,y)
 #define CATCH_CONFIG_NO_CPP11_TO_STRING
 #define CATCH_CONFIG_GLOBAL_NEXTAFTER
