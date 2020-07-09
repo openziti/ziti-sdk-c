@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "externs.h"
 #include "ziti_model.h"
+#include "enums.h"
 
 
 #ifdef __cplusplus
@@ -125,7 +126,9 @@ typedef struct ziti_options_s {
     ziti_init_cb init_cb;
     ziti_service_cb service_cb;
 
-    long refresh_interval;
+    long refresh_interval; //the duration in seconds between checking for updates from the controller
+    rate_type metrics_type; //an enum describing the metrics to collect
+
     int router_keepalive;
 
     void *ctx;

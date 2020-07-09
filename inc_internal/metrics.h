@@ -21,6 +21,7 @@ limitations under the License.
 #include <stdbool.h>
 #include <uv_mbed/queue.h>
 #include <uv.h>
+#include <ziti/enums.h>
 
 #ifdef __cplusplus
 #include <atomic>
@@ -48,6 +49,7 @@ struct rate_s {
     atomic_llong param;
 
     void (*tick_fn)(struct rate_s *);
+
     atomic_long init;
     bool active;
     LIST_ENTRY(rate_s) _next;
@@ -55,21 +57,13 @@ struct rate_s {
 
 typedef struct rate_s rate_t;
 
-enum rate_type {
-    EWMA_1m,
-    EWMA_5m,
-    EWMA_15m,
-    MMA_1m,
-    CMA_1m,
-};
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 extern void metrics_init(uv_loop_t *loop, long interval_secs);
 
-extern void metrics_rate_init(rate_t *r, enum rate_type type);
+extern void metrics_rate_init(rate_t *r, rate_type type);
 extern void metrics_rate_close(rate_t* r);
 
 extern void metrics_rate_update(rate_t *r, long delta);
