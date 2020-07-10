@@ -47,8 +47,10 @@ if(NOT libsodium_POPULATED)
     if (NOT WIN32)
         if (NOT EXISTS ${libsodium_BINARY_DIR}/config.status)
             # first build on macos fails because CMake picks up xcode
-            set(ENV{CC}, ${CMAKE_C_COMPILER})
-            set(ENV{CXX}, ${CMAKE_CXX_COMPILER})
+            if (APPLE)
+                unset(ENV{CC})
+                unset(ENV{CXX})
+            endif()
             execute_process(
                     COMMAND "${libsodium_SOURCE_DIR}/configure" "--prefix=${libsodium_BINARY_DIR}"
                     --enable-opt --without-pthreads --with-pic --host=${triple}
