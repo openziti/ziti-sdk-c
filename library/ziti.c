@@ -458,9 +458,25 @@ static void session_refresh(uv_timer_t *t) {
     ziti_ctrl_current_api_session(&ztx->controller, session_cb, req);
 }
 
+static void ziti_re_auth(ziti_context ztx) {
+    ZITI_LOG(WARN, "starting to re-auth");
+    uv_timer_stop(&ztx->refresh_timer);
+    uv_timer_stop(&ztx->session_timer);
+    free_ziti_session(ztx->session);
+    FREE(ztx->session);
+
+    NEWP(init_req, struct ziti_init_req);
+    init_req->ztx = ztx;
+    ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, session_cb, init_req);
+}
+
 static void update_services(ziti_service_array services, ziti_error *error, ziti_context ztx) {
     if (error) {
         ZITI_LOG(ERROR, "failed to get service updates err[%s/%s]", error->code, error->message);
+        if (strcmp(error->code, "UNAUTHORIZED") == 0) {
+            ZITI_LOG(WARN, "API session is no longer valid. Trying to re-auth");
+            ziti_re_auth(ztx);
+        }
         return;
     }
 
@@ -579,7 +595,16 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         }
 
     } else {
-        ZITI_LOG(ERROR, "failed to login: %s[%d](%s)", err->code, errCode, err->message);
+        if (ztx->session) {
+            ZITI_LOG(WARN, "failed to refresh: %s[%d]", err->code, errCode);
+            if (strcmp(err->code, "UNAUTHORIZED") == 0) {
+                ziti_re_auth(ztx);
+            } else {
+                uv_timer_start(&ztx->session_timer, session_refresh, 5 * 1000, 0);
+            }
+        } else {
+            ZITI_LOG(ERROR, "failed to login: %s[%d](%s)", err->code, errCode, err->message);
+        }
     }
 
     if (init_req->init_cb) {
