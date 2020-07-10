@@ -464,6 +464,7 @@ static void ziti_re_auth(ziti_context ztx) {
     uv_timer_stop(&ztx->session_timer);
     free_ziti_session(ztx->session);
     FREE(ztx->session);
+    model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
 
     NEWP(init_req, struct ziti_init_req);
     init_req->ztx = ztx;
@@ -604,6 +605,16 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
             }
         } else {
             ZITI_LOG(ERROR, "failed to login: %s[%d](%s)", err->code, errCode, err->message);
+
+            if (ztx->opts->service_cb) {
+                const char *name;
+                ziti_service *srv;
+                MODEL_MAP_FOREACH(name, srv, ztx->services) {
+                    ztx->opts->service_cb(ztx, srv, ZITI_SERVICE_UNAVAILABLE, ztx->opts->ctx);
+                }
+            }
+
+            model_map_clear(&ztx->services, free_ziti_service);
         }
     }
 
