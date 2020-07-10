@@ -8,7 +8,7 @@ add_executable(all_tests
         model_tests.cpp
         test_metrics.cpp
         )
-set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
+set_property(TARGET all_tests PROPERTY CXX_STANDARD 11)
 
 target_include_directories(all_tests
         PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)

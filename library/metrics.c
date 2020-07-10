@@ -23,10 +23,19 @@ limitations under the License.
 #include <uv.h>
 
 #if defined(__unix__) || defined(__APPLE__)
+# if defined(mips) || defined(__mips)
+
+#   include <atomic.h>
+
+#   define InterlockedAdd64(p, v) (*p) += (v)
+#   define InterlockedExchange64(p, v) (*p) = (v)
+#   define InterlockedExchange(p, v) (*p) = (v)
+# else
 #include <stdatomic.h>
 #define InterlockedAdd64(p, v) atomic_fetch_add(p,v)
 #define InterlockedExchange64(p, v) atomic_store(p,v)
 #define InterlockedExchange(p, v) atomic_store(p,v)
+# endif
 #endif
 
 #define NANOS(s) ((s) * 1e9)

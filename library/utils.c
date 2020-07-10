@@ -151,16 +151,6 @@ void ziti_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
     }
 }
 
-char* zitistrndup(const char* s, int n)
-{
-	size_t len = strnlen(s, n);
-	char* new = (char*)malloc(len + 1);
-	if (new == NULL)
-		return NULL;
-	new[len] = '\0';
-	return (char*)memcpy(new, s, len);
-}
-
 int get_url_data(const char *url, struct http_parser_url *parser, int uf, char *out, size_t maxout) {
     if ((parser->field_set & (1 << uf)) != 0) {
         snprintf(out, maxout, "%*.*s", parser->field_data[uf].len, parser->field_data[uf].len,

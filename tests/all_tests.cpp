@@ -14,6 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// tweaks for mips-openwrt build
+// not sure if there is a better way
+#if defined(mips) || defined(__mips)
+#define nextafterl(x, y) nextafter(x,y)
+#define CATCH_CONFIG_NO_CPP11_TO_STRING
+#define CATCH_CONFIG_GLOBAL_NEXTAFTER
+#endif
+
 #define CATCH_CONFIG_MAIN  // This tells Catch to provide a main() - only do this in one cpp file
 
 #include "catch2/catch.hpp"
