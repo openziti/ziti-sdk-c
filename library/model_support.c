@@ -590,7 +590,7 @@ void model_map_clear(model_map *map, _free_f free_func) {
         FREE(el->value);
         FREE(el);
     }
-    free(map->entries);
+    FREE(map->entries);
 }
 
 model_map_iter model_map_iterator(model_map *m) {
