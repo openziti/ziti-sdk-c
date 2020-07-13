@@ -64,7 +64,10 @@ int close_conn_internal(struct ziti_conn *conn) {
         FREE(conn->rx);
         conn->flusher->data = NULL;
         uv_close((uv_handle_t *) conn->flusher, free_handle);
-        buffer_cleanup(conn->inbound);
+        if (buffer_available(conn->inbound) > 0) {
+            ZITI_LOG(WARN, "dumping %zd bytes of undelivered data conn[%d]",
+                     buffer_available(conn->inbound), conn->conn_id);
+        }
         free_buffer(conn->inbound);
         FREE(conn);
         return 1;
@@ -469,9 +472,14 @@ static void flush_to_client(uv_async_t *fl) {
         uint8_t *chunk;
         ssize_t chunk_len = buffer_get_next(conn->inbound, 16 * 1024, &chunk);
         ssize_t consumed = conn->data_cb(conn, chunk, chunk_len);
-        if (consumed < chunk_len) {
+        if (consumed < 0) {
+            ZITI_LOG(WARN, "client conn[%d] indicated error[%zd] accepting data (%zd bytes buffered)",
+                     conn->conn_id, consumed, buffer_available(conn->inbound));
+        }
+        else if (consumed < chunk_len) {
             buffer_push_back(conn->inbound, (chunk_len - consumed));
-            ZITI_LOG(WARN, "client stalled %zd bytes buffered", buffer_available(conn->inbound));
+            ZITI_LOG(DEBUG, "client conn[%d] stalled: %zd bytes buffered", conn->conn_id,
+                     buffer_available(conn->inbound));
             // client indicated that it cannot accept any more data
             // schedule retry
             uv_async_send(fl);

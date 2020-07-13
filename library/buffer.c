@@ -52,6 +52,12 @@ buffer *new_buffer() {
 }
 
 void free_buffer(buffer* b) {
+    while (!STAILQ_EMPTY(&b->chunks)) {
+        chunk_t *chunk = STAILQ_FIRST(&b->chunks);
+        STAILQ_REMOVE_HEAD(&b->chunks, next);
+        free(chunk->buf);
+        free(chunk);
+    }
     free(b);
 }
 
