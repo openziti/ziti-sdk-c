@@ -588,11 +588,12 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         }
 
         if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
-            ZITI_LOG(INFO, "refresh_interval set to %d seconds", ztx->opts->refresh_interval);
+            ZITI_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
             uv_timer_start(&ztx->refresh_timer, services_refresh, 0, ztx->opts->refresh_interval * 1000);
         }
-        else {
-            ZITI_LOG(INFO, "refresh_interval not specified");
+        else if (ztx->opts->refresh_interval == 0) {
+            ZITI_LOG(DEBUG, "refresh_interval not specified");
+            uv_timer_stop(&ztx->refresh_timer);
         }
 
     } else {
@@ -614,7 +615,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
                 }
             }
 
-            model_map_clear(&ztx->services, free_ziti_service);
+            model_map_clear(&ztx->services, (_free_f) free_ziti_service);
         }
     }
 
