@@ -12,7 +12,6 @@ SET(ZITI_SRC_FILES
         errors.c
         crypto.c
         ziti_enroll.c
-        ziti_pkcs7.c
         jwt.c
         ziti_ctrl.c
         model_support.c
