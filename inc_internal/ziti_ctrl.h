@@ -58,9 +58,7 @@ void ziti_ctrl_get_net_session(
 void ziti_ctrl_get_net_sessions(
         ziti_controller *ctrl, void (*cb)(ziti_net_session **, ziti_error*, void*), void* ctx);
 
-void
-ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, enroll_cfg *cfg, void (*cb)(ziti_config *, ziti_error *, void *),
-                               void *ctx);
+void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, ziti_error *, void *), void *ctx);
 
 void
 ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *cfg, void (*cb)(ziti_enrollment_resp *, ziti_error *, void *),

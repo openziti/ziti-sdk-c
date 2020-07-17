@@ -242,10 +242,6 @@ int ziti_disconnect(struct ziti_conn *conn);
 
 void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, int status);
 
-int gen_key(mbedtls_pk_context *pk_context);
-
-int gen_csr(enroll_cfg *cfg);
-
 int close_conn_internal(struct ziti_conn *conn);
 
 int establish_crypto(ziti_connection conn, message *msg);
