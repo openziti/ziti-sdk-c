@@ -60,9 +60,8 @@ void ziti_ctrl_get_net_sessions(
 
 void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, ziti_error *, void *), void *ctx);
 
-void
-ziti_ctrl_enroll(ziti_controller *ctrl, enroll_cfg *cfg, void (*cb)(ziti_enrollment_resp *, ziti_error *, void *),
-                 void *ctx);
+void ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, const char *csr,
+                      void (*cb)(ziti_enrollment_resp *, ziti_error *, void *), void *ctx);
 
 #ifdef __cplusplus
 }

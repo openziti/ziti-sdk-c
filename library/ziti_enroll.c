@@ -84,12 +84,7 @@ int verify_controller_jwt(tls_cert cert, void *ctx) {
     return rc;
 }
 
-int ziti_enroll(const char *jwt, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx) {
-    return ziti_enroll_with_key(jwt, NULL, loop, enroll_cb, enroll_ctx);
-}
-
-int ziti_enroll_with_key(const char *jwt, const char *pk_pem, uv_loop_t *loop, ziti_enroll_cb enroll_cb,
-                         void *ctx) {
+int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx) {
     init_debug();
     size_t len;
 
@@ -100,7 +95,7 @@ int ziti_enroll_with_key(const char *jwt, const char *pk_pem, uv_loop_t *loop, z
     char time_str[32];
     strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
 
-    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
+    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting enrollment at (%s.%03d)",
              ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
              time_str, start_time.tv_usec / 1000);
 
@@ -110,26 +105,18 @@ int ziti_enroll_with_key(const char *jwt, const char *pk_pem, uv_loop_t *loop, z
 
     NEWP(ecfg, enroll_cfg);
     ecfg->external_enroll_cb = enroll_cb;
-    ecfg->external_enroll_ctx = ctx;
+    ecfg->external_enroll_ctx = enroll_ctx;
     ecfg->tls = tls;
     ecfg->tls->api->set_cert_verify(ecfg->tls, verify_controller_jwt, ecfg);
+    ecfg->own_cert = opts->enroll_cert;
+    ecfg->private_key = opts->enroll_key;
 
-    TRY(ziti, load_jwt(jwt, ecfg, &ecfg->zejh, &ecfg->zej));
+    TRY(ziti, load_jwt(opts->jwt, ecfg, &ecfg->zejh, &ecfg->zej));
     if (DEBUG <= ziti_debug_level) {
         dump_ziti_enrollment_jwt_header(ecfg->zejh, 0);
         dump_ziti_enrollment_jwt(ecfg->zej, 0);
     }
-    if (pk_pem == NULL) {
-        TRY(TLS, tls->api->generate_key(&ecfg->pk));
-        TRY(TLS, tls->api->write_key_to_pem(ecfg->pk, &ecfg->private_key, &len));
-    }
 
-    TRY(TLS, tls->api->generate_csr_to_pem(ecfg->pk, &ecfg->csr_pem, &len,
-                                           "C", "US",
-                                           "O", "OpenZiti",
-                                           "DC", ecfg->zej->controller,
-                                           "CN", ecfg->zej->subject,
-                                           NULL));
 
     NEWP(ctrl, ziti_controller);
     ecfg->ctrl = ctrl;
@@ -147,7 +134,7 @@ int ziti_enroll_with_key(const char *jwt, const char *pk_pem, uv_loop_t *loop, z
 
     CATCH(ziti) {
         if (enroll_cb) {
-            enroll_cb(NULL, ERR(ziti), "enroll failed", ctx);
+            enroll_cb(NULL, ERR(ziti), "enroll failed", enroll_ctx);
         }
     }
 
@@ -179,13 +166,43 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
     char *ca = NULL;
     size_t total_pem_len = 0;
 
+
     enroll_req->ecfg->tls->api->write_cert_to_pem(chain, 1, &ca, &total_pem_len);
     ZITI_LOG(DEBUG, "CA PEM len = %zd", total_pem_len);
     ZITI_LOG(TRACE, "CA PEM:\n%s", ca);
 
-    tls_context *tls = NULL;
+    tls_context *tls = default_tls_context(ca, (strlen(ca) + 1));
 
-    tls = default_tls_context(ca, (strlen(ca) + 1));
+    if (strcmp("ott", enroll_req->ecfg->zej->method) == 0) {
+        size_t len;
+        if (enroll_req->ecfg->private_key == NULL) {
+            tls->api->generate_key(&enroll_req->ecfg->pk);
+            tls->api->write_key_to_pem(enroll_req->ecfg->pk, &enroll_req->ecfg->private_key, &len);
+        }
+        else {
+            tls->api->load_key(&enroll_req->ecfg->pk, enroll_req->ecfg->private_key,
+                               strlen(enroll_req->ecfg->private_key));
+        }
+
+        tls->api->generate_csr_to_pem(enroll_req->ecfg->pk, &enroll_req->ecfg->csr_pem, &len,
+                                      "C", "US",
+                                      "ST", "NY",
+                                      "O", "OpenZiti",
+                                      "DC", enroll_req->ecfg->zej->controller,
+                                      "CN", enroll_req->ecfg->zej->subject,
+                                      NULL);
+    }
+    else if (strcmp("ottca", enroll_req->ecfg->zej->method) == 0 || strcmp("ca", enroll_req->ecfg->zej->method) == 0) {
+        if (enroll_req->ecfg->own_cert && enroll_req->ecfg->private_key) {
+            tls->api->set_own_cert(tls->ctx, enroll_req->ecfg->own_cert, strlen(enroll_req->ecfg->own_cert),
+                                   enroll_req->ecfg->private_key, strlen(enroll_req->ecfg->private_key));
+        }
+        else {
+            ZITI_LOG(ERROR, "certificate or private key was not provided for enrollment method[%s]",
+                     enroll_req->ecfg->zej->method);
+        }
+    }
+
     enroll_req->ecfg->CA = ca;
 
     NEWP(enroll_req2, struct ziti_enroll_req);
@@ -196,7 +213,8 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
     ziti_ctrl_init(enroll_req2->loop, enroll_req2->controller, enroll_req->ecfg->zej->controller, tls);
     enroll_req2->ecfg = enroll_req->ecfg;
 
-    ziti_ctrl_enroll(enroll_req2->controller, enroll_req2->ecfg, enroll_cb, enroll_req2);
+    ziti_ctrl_enroll(enroll_req2->controller, enroll_req->ecfg->zej->method, enroll_req->ecfg->zej->token,
+                     enroll_req->ecfg->csr_pem, enroll_cb, enroll_req2);
 }
 
 static void enroll_cb(ziti_enrollment_resp *er, ziti_error *err, void *enroll_ctx) {
@@ -214,27 +232,20 @@ static void enroll_cb(ziti_enrollment_resp *er, ziti_error *err, void *enroll_ct
         free_ziti_error(err);
     }
     else {
-        char *cert = er->cert;
         ZITI_LOG(DEBUG, "successfully enrolled with controller %s:%s",
                  ctrl->client.host, ctrl->client.port);
 
-        char *content = NULL;
-        if (enroll_req->ecfg->private_key != NULL) {
-            mjson_printf(&mjson_print_dynamic_buf, &content,
-                         "{\n\t\"ztAPI\": %Q, \n\t\"id\": {\n\t\t\"key\": \"pem:%s\", \n\t\t\"cert\": \"pem:%s\", \n\t\t\"ca\": \"pem:%s\"\n\t}\n}",
-                         enroll_req->ecfg->zej->controller, enroll_req->ecfg->private_key, cert, enroll_req->ecfg->CA);
-        }
-        else {
-            mjson_printf(&mjson_print_dynamic_buf, &content,
-                         "{\"ztAPI\": %Q, \"id\": {\"cert\": \"pem:%s\", \"ca\": \"pem:%s\"}}",
-                enroll_req->ecfg->zej->controller, cert, enroll_req->ecfg->CA);
-        }
+        ziti_config cfg;
+        cfg.controller_url = strdup(enroll_req->ecfg->zej->controller);
+        cfg.id.ca = strdup(enroll_req->ecfg->CA);
+        cfg.id.key = strdup(enroll_req->ecfg->private_key);
+        cfg.id.cert = er->cert ? strdup(er->cert) : strdup(enroll_req->ecfg->own_cert);
 
         if (enroll_req->enroll_cb) {
-            enroll_req->enroll_cb((uint8_t *)content, strlen(content), NULL, enroll_req->external_enroll_ctx);
+            enroll_req->enroll_cb(&cfg, ZITI_OK, NULL, enroll_req->external_enroll_ctx);
         }
 
-        FREE(content);
+        free_ziti_config(&cfg);
     }
 
     FREE(enroll_req);

@@ -48,6 +48,7 @@ typedef struct enroll_cfg_s {
 
     char *private_key;
     tls_private_key pk;
+    char *own_cert;
 
     char *csr_pem;
 } enroll_cfg;

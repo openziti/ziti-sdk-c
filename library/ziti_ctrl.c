@@ -391,11 +391,16 @@ static void ctrl_enroll_http_cb(um_http_resp_t *http_resp, void *data) {
 }
 
 void
-ziti_ctrl_enroll(ziti_controller *ctrl, struct enroll_cfg_s *ecfg,
+ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, const char *csr,
                  void (*cb)(ziti_enrollment_resp *, ziti_error *, void *),
                  void *ctx) {
     char path[1024];
-    snprintf(path, sizeof(path), "/enroll?method=%s&token=%s", ecfg->zej->method, ecfg->zej->token);
+    snprintf(path, sizeof(path), "/enroll?method=%s", method);
+
+    if (token) {
+        strcat(path, "&token=");
+        strcat(path, token);
+    }
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_enrollment_resp_ptr;   //   "  "  "
@@ -406,7 +411,9 @@ ziti_ctrl_enroll(ziti_controller *ctrl, struct enroll_cfg_s *ecfg,
 
     um_http_req_t *req = um_http_req(&ctrl->client, "POST", path, ctrl_enroll_http_cb, resp);
     um_http_req_header(req, "Content-Type", "text/plain");
-    um_http_req_data(req, ecfg->csr_pem, strlen(ecfg->csr_pem), NULL);
+    if (csr) {
+        um_http_req_data(req, csr, strlen(csr), NULL);
+    }
 }
 
 void

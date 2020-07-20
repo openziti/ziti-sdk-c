@@ -134,6 +134,12 @@ typedef struct ziti_options_s {
     void *ctx;
 } ziti_options;
 
+typedef struct ziti_enroll_opts_s {
+    const char *jwt;
+    const char *enroll_key;
+    const char *enroll_cert;
+} ziti_enroll_opts;
+
 /**
  * @brief Data callback.
  *
@@ -219,14 +225,14 @@ typedef void (*ziti_write_cb)(ziti_connection conn, ssize_t status, void *write_
  * This callback also receives a Ziti identity json salvo if the enrollment was successful. 
  * This identity should be persisted into a file, and used in subsequent calls to ziti_init().
  *
- * @param data identity json data buffer
- * @param length size of identity json or error code as defined in #ZITI_ERRORS
+ * @param cfg identity json data buffer
+ * @param status enrollment success or error code
  * @param err_message description of error, or NULL if enrollment succeeded
  * @param enroll_ctx additional context to be passed into #ziti_enroll_cb callback
  *
  * @see ziti_enroll(), ZITI_ERRORS
  */
-typedef void (*ziti_enroll_cb)(uint8_t *data, int length, char *err_message, void *enroll_ctx);
+typedef void (*ziti_enroll_cb)(ziti_config *cfg, int status, char *err_message, void *enroll_ctx);
 
 /**
  * @brief Performs a Ziti enrollment.
@@ -235,30 +241,14 @@ typedef void (*ziti_enroll_cb)(uint8_t *data, int length, char *err_message, voi
  * library and maintains similar semantics.  This function is used to setup the chain of callbacks
  * needed once the loop begins to execute.
  *
- * @param jwt location of JWT file
+ * @param opt enrollment options
  * @param loop libuv event loop
  * @param enroll_cb callback to be called when enrollment is complete
  * @param enroll_ctx additional context to be passed into #ziti_enroll_cb callback
 
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
-extern int ziti_enroll(const char *jwt, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx);
-
-/**
- * @brief Performs a Ziti enrollment.
- * 
- * This function is used to enroll a Ziti Edge identity with a user supplied private key.
- *
- * @param jwt location of JWT file
- * @param pk_pem string containing PEM formatted private key
- * @param loop libuv event loop
- * @param enroll_cb callback to be called when enrollment is complete
- * @param enroll_ctx additional context to be passed into #ziti_enroll_cb callback
-
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
- */
-extern int
-ziti_enroll_with_key(const char *jwt, const char *pk_pem, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *ctx);
+extern int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx);
 
 /**
  * @brief Initializes a Ziti Edge identity.
