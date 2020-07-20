@@ -97,6 +97,10 @@ static size_t parse_ref(const char *val, const char **res) {
             *res = val + 4;
             len = strlen(val + 4) + 1;
         }
+        else {
+            *res = val;
+            len = strlen(val) + 1;
+        }
     }
     return len;
 }
@@ -320,20 +324,20 @@ void ziti_dump(ziti_context ztx) {
     printf("\n=================\nServices:\n");
     ziti_service *zs;
     const char *name;
-    MODEL_MAP_FOREACH(name, zs, ztx->services) {
+    MODEL_MAP_FOREACH(name, zs, &ztx->services) {
         dump_ziti_service(zs, 0);
     }
 
     printf("\n==================\nNet Sessions:\n");
     ziti_net_session *it;
-    MODEL_MAP_FOREACH(name, it, ztx->sessions) {
+    MODEL_MAP_FOREACH(name, it, &ztx->sessions) {
         dump_ziti_net_session(it, 0);
     }
 
     printf("\n==================\nChannels:\n");
     ziti_channel_t *ch;
     const char *url;
-    MODEL_MAP_FOREACH(url, ch, ztx->channels) {
+    MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
         printf("ch[%d](%s)\n", ch->id, url);
         ziti_connection conn;
         LIST_FOREACH(conn, &ch->connections, next) {
@@ -610,7 +614,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
             if (ztx->opts->service_cb) {
                 const char *name;
                 ziti_service *srv;
-                MODEL_MAP_FOREACH(name, srv, ztx->services) {
+                MODEL_MAP_FOREACH(name, srv, &ztx->services) {
                     ztx->opts->service_cb(ztx, srv, ZITI_SERVICE_UNAVAILABLE, ztx->opts->ctx);
                 }
             }
@@ -669,7 +673,7 @@ static void grim_reaper(uv_prepare_t *p) {
     int count = 0;
     const char *url;
     ziti_channel_t *ch;
-    MODEL_MAP_FOREACH(url, ch, ztx->channels) {
+    MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
         ziti_connection conn = LIST_FIRST(&ch->connections);
         while (conn != NULL) {
             ziti_connection try_close = conn;

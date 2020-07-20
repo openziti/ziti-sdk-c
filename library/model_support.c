@@ -178,6 +178,87 @@ int model_parse(void *obj, const char *json, size_t len, type_meta *meta) {
     return res > 0 ? 0 : res;
 }
 
+int model_to_json(void *obj, type_meta *meta, int indent, char *buf, size_t maxlen, size_t *len) {
+    char *p = buf;
+    *p++ = '{';
+    *p++ = '\n';
+    int rc = 0;
+    char *last_coma = NULL;
+    for (int i = 0; rc == 0 && i < meta->field_count; i++) {
+        field_meta *fm = meta->fields + i;
+        type_meta *ftm = fm->meta();
+
+        void **f_addr = (void **) ((char *) obj + fm->offset);
+        void *f_ptr = fm->mod == none_mod ? f_addr : (void *) (*f_addr);
+
+        if (fm->meta == get_string_meta) {
+            f_ptr = (void *) (*f_addr);
+        }
+
+        if (f_ptr == NULL) {
+            continue;
+        }
+
+
+        if (f_ptr != NULL) {
+            for (int j = 0; j <= indent; j++, *p++ = '\t') {}
+            *p++ = '"';
+            strcpy(p, fm->path);
+            p += strlen(fm->path);
+            *p++ = '"';
+            *p++ = ':';
+        }
+
+        if (fm->mod != array_mod) {
+            size_t flen;
+            if (ftm->jsonifier) {
+                ftm->jsonifier(f_ptr, indent + 1, p, buf + maxlen - p, &flen);
+            }
+            else {
+                model_to_json(f_ptr, ftm, indent + 1, p, buf + maxlen - p, &flen);
+            }
+            p += flen;
+        }
+        else {
+            void **arr = (void **) (*f_addr);
+
+            int idx = 0;
+            *p++ = '[';
+            for (idx = 0; rc == 0; idx++) {
+                f_ptr = arr[idx];
+                if (f_ptr == NULL) { break; }
+                if (idx > 0) {
+                    *p++ = ',';
+                }
+
+                size_t ellen;
+                if (ftm->jsonifier) {
+                    rc = ftm->jsonifier(f_ptr, indent + 1, p, buf + maxlen - p, &ellen);
+                }
+                else {
+                    rc = model_to_json(f_ptr, ftm, indent + 1, p, buf + maxlen - p, &ellen);
+                }
+                p += ellen;
+            }
+
+            *p++ = ']';
+        }
+        *p++ = ',';
+        last_coma = p - 1;
+        *p++ = '\n';
+    }
+    if (last_coma != NULL) {
+        p = last_coma;
+        *p++ = '\n';
+    }
+
+    for (int j = 0; j < indent; j++, *p++ = '\t') {}
+    *p++ = '}';
+    *p = '\0';
+    *len = p - buf;
+    return 0;
+}
+
 void model_free_array(void ***ap, type_meta *meta) {
     if (ap == NULL || *ap == NULL) { return; }
 
@@ -368,9 +449,12 @@ static int _parse_bool(bool *val, const char *json, jsmntok_t *tok) {
     return -1;
 }
 static int _parse_json(char **val, const char *json, jsmntok_t *tok) {
-    int json_len = tok->end - tok->start;
+    int start = tok->type == JSMN_STRING ? tok->start - 1 : tok->start;
+    int end = tok->type == JSMN_STRING ? tok->end + 1 : tok->end;
+
+    int json_len = end - start;
     *val = calloc(1, json_len + 1);
-    strncpy(*val, json + tok->start, json_len);
+    strncpy(*val, json + start, json_len);
 
     int processed = 0;
     jsmntok_t *t = tok;
@@ -502,6 +586,116 @@ static int _cmp_map(model_map *lh, model_map *rh) {
     }
 
     return rc;
+}
+
+static int _bool_json(bool *v, int indent, char *json, size_t max, size_t *len) {
+    if (*v) {
+        strcpy(json, "true");
+        *len = 4;
+    }
+    else {
+        strcpy(json, "false");
+        *len = 5;
+    }
+    return 0;
+}
+
+static int _int_json(int *v, int indent, char *json, size_t max, size_t *len) {
+    int rc = snprintf(json, max, "%d", *v);
+    if (rc > 0) {
+        *len = rc;
+        return 0;
+    }
+    return rc;
+}
+
+static int _string_json(const char *s, int indent, char *json, size_t max, size_t *len) {
+
+    char *j = json;
+
+    *j++ = '"';
+    while (*s != '\0') {
+        switch (*s) {
+            case '\n':
+                *j++ = '\\';
+                *j++ = 'n';
+                break;
+            case '\b':
+                *j++ = '\\';
+                *j++ = 'b';
+                break;
+            case '\r':
+                *j++ = '\\';
+                *j++ = 'r';
+                break;
+            case '\t':
+                *j++ = '\\';
+                *j++ = 't';
+                break;
+            case '\\':
+                *j++ = '\\';
+                *j++ = '\\';
+                break;
+            case '"':
+                *j++ = '\\';
+                *j++ = '"';
+                break;
+            default:
+                *j++ = *s;
+        }
+        s++;
+    }
+    *j++ = '"';
+    *len = j - json;
+    return 0;
+}
+
+static int _json_json(const char *s, int indent, char *json, size_t max, size_t *len) {
+    int rc = snprintf(json, max, "%s", s);
+    if (rc > 0) {
+        *len = rc;
+        return 0;
+    }
+    return rc;
+}
+
+static int _timeval_json(timestamp *t, int indent, char *json, size_t max, size_t *len) {
+    struct tm tm2;
+    gmtime_r(&t->tv_sec, &tm2);
+
+    int rc = snprintf(json, max, "\"%04d-%02d-%02dT%02d:%02d:%02d.%06ldZ\"",
+                      tm2.tm_year + 1900, tm2.tm_mon + 1, tm2.tm_mday,
+                      tm2.tm_hour, tm2.tm_min, tm2.tm_sec, t->tv_usec);
+    *len = rc;
+    return 0;
+}
+
+#define mk_indent(p, indent) do { for (int j=0; j < (indent); j++, *p++ = '\t'); } while(0)
+
+static int _map_json(model_map *map, int indent, char *json, size_t max, size_t *len) {
+    char *p = json;
+    *p++ = '{';
+
+    const char *key;
+    const char *val;
+    size_t l;
+    char *last_coma = NULL;
+    MODEL_MAP_FOREACH(key, val, map) {
+        *p++ = '\n';
+        mk_indent(p, indent + 1);
+        _string_json(key, indent, p, json + max - p, &l);
+        p += l;
+        *p++ = ':';
+        _json_json(val, indent, p, json + max - p, &l);
+        p += l;
+        *p++ = ',';
+        last_coma = p - 1;
+    }
+    if (last_coma) { *last_coma = '\n'; }
+    mk_indent(p, indent);
+    *p++ = '}';
+    *len = p - json;
+    return 0;
 }
 
 static void _free_noop(void *v) {}
@@ -663,6 +857,7 @@ static type_meta bool_META = {
         .size = sizeof(bool),
         .comparer = (_cmp_f) _cmp_bool,
         .parser = (_parse_f) (_parse_bool),
+        .jsonifier = (_to_json_f) (_bool_json),
         .destroyer = _free_noop,
 };
 
@@ -670,6 +865,7 @@ static type_meta int_META = {
         .size = sizeof(int),
         .comparer = (_cmp_f) _cmp_int,
         .parser = (_parse_f) _parse_int,
+        .jsonifier = (_to_json_f) _int_json,
         .destroyer = _free_noop,
 };
 
@@ -677,6 +873,7 @@ static type_meta string_META = {
         .size = sizeof(char *),
         .comparer = (_cmp_f) _cmp_string,
         .parser = (_parse_f) _parse_string,
+        .jsonifier = (_to_json_f) _string_json,
         .destroyer = (_free_f) _free_string,
 };
 
@@ -684,6 +881,7 @@ static type_meta timestamp_META = {
         .size = sizeof(struct timeval),
         .comparer = (_cmp_f) _cmp_timeval,
         .parser = (_parse_f) _parse_timeval,
+        .jsonifier = (_to_json_f) _timeval_json,
         .destroyer = (_free_f) _free_noop,
 };
 
@@ -691,6 +889,7 @@ static type_meta json_META = {
         .size = sizeof(char *),
         .comparer = (_cmp_f) _cmp_string,
         .parser = (_parse_f) _parse_json,
+        .jsonifier = (_to_json_f) _json_json,
         .destroyer = (_free_f) _free_string,
 };
 
@@ -698,6 +897,7 @@ static type_meta map_META = {
         .size = sizeof(model_map),
         .comparer = (_cmp_f) _cmp_map,
         .parser = (_parse_f) _parse_map,
+        .jsonifier = (_to_json_f) _map_json,
         .destroyer = (_free_f) _free_map,
 };
 
