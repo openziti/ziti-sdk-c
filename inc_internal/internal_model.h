@@ -21,15 +21,6 @@ limitations under the License.
 #include "ziti/model_support.h"
 #include "ziti/ziti_model.h"
 
-#define ZITI_ID_CFG_MODEL(XX, ...) \
-XX(cert, string, none, cert, __VA_ARGS__) \
-XX(key, string, none, key, __VA_ARGS__) \
-XX(ca, string, none, ca, __VA_ARGS__)
-
-#define ZITI_CONFIG_MODEL(XX, ...) \
-XX(controller_url, string, none, ztAPI, __VA_ARGS__) \
-XX(id, ziti_id_cfg, none, id, __VA_ARGS__)
-
 #define ZITI_INGRESS_MODEL(XX, ...) \
 XX(tls, string, none, tls, __VA_ARGS__)
 
@@ -72,10 +63,6 @@ XX(cert, string, none, cert, __VA_ARGS__)
 extern "C" {
 #endif
 
-
-DECLARE_MODEL(ziti_id_cfg, ZITI_ID_CFG_MODEL)
-
-DECLARE_MODEL(ziti_config, ZITI_CONFIG_MODEL)
 
 
 DECLARE_MODEL(ziti_ingress, ZITI_INGRESS_MODEL)
