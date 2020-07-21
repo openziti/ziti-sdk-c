@@ -660,12 +660,11 @@ static int _json_json(const char *s, int indent, char *json, size_t max, size_t 
 }
 
 static int _timeval_json(timestamp *t, int indent, char *json, size_t max, size_t *len) {
-    struct tm tm2;
-    gmtime_r(&t->tv_sec, &tm2);
+    struct tm *tm2 = gmtime(&t->tv_sec);
 
     int rc = snprintf(json, max, "\"%04d-%02d-%02dT%02d:%02d:%02d.%06ldZ\"",
-                      tm2.tm_year + 1900, tm2.tm_mon + 1, tm2.tm_mday,
-                      tm2.tm_hour, tm2.tm_min, tm2.tm_sec, t->tv_usec);
+                      tm2->tm_year + 1900, tm2->tm_mon + 1, tm2->tm_mday,
+                      tm2->tm_hour, tm2->tm_min, tm2->tm_sec, t->tv_usec);
     *len = rc;
     return 0;
 }
