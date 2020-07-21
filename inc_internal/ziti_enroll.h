@@ -20,17 +20,6 @@ limitations under the License.
 
 #include <uv_mbed/queue.h>
 
-#define MBEDTLS_PLATFORM_C
-#include <mbedtls/platform.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/error.h>
-#include <mbedtls/pk.h>
-#include <mbedtls/ecdsa.h>
-#include <mbedtls/rsa.h>
-#include <mbedtls/error.h>
-#include <mbedtls/entropy.h>
-#include <mbedtls/ctr_drbg.h>
-#include <mbedtls/x509_csr.h>
 #include "internal_model.h"
 
 
@@ -38,14 +27,7 @@ limitations under the License.
 extern "C" {
 #endif
 
-typedef struct wellknown_cert {
-
-    char *cert;
-    char *pem;
-
-    LIST_ENTRY(wellknown_cert) _next;
-
-} wellknown_cert;
+typedef struct ziti_controller_s ziti_controller;
 
 typedef struct enroll_cfg_s {
 
@@ -59,23 +41,24 @@ typedef struct enroll_cfg_s {
     char *jwt_sig;
     size_t jwt_sig_len;
 
+    tls_context *tls;
+    ziti_controller *ctrl;
+
     char *CA;
 
     char *private_key;
-    mbedtls_pk_context pk_context;
+    tls_private_key pk;
+    char *own_cert;
 
-    unsigned char x509_csr_pem[4096];
-    mbedtls_x509write_csr x509_csr_ctx;
-    
-    LIST_HEAD(cert_list, wellknown_cert) wk_certs;
-
+    char *csr_pem;
 } enroll_cfg;
 
 
 struct ziti_enroll_req {
     ziti_enroll_cb enroll_cb;
     void *external_enroll_ctx;
-    struct ziti_ctx *enroll_ctx;
+    uv_loop_t *loop;
+    ziti_controller *controller;
     enroll_cfg *ecfg;
 };
 

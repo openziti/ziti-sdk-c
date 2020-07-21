@@ -1,7 +1,3 @@
-[submodule "deps/mjson"]
-	path = deps/mjson
-	url = https://github.com/cesanta/mjson
-	branch = master
 [submodule "deps/http-parser"]
 	path = deps/http-parser
 	url = https://github.com/NetFoundry/http-parser

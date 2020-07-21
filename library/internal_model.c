@@ -45,9 +45,16 @@ IMPL_MODEL(ziti_session, ZITI_SESSION_MODEL)
 
 IMPL_MODEL(ziti_error, ZITI_ERROR_MODEL)
 
+IMPL_MODEL(ziti_sdk_info, ZITI_SDK_INFO_MODEL)
+
+IMPL_MODEL(ziti_env_info, ZITI_ENV_INFO_MODEL)
+
+IMPL_MODEL(ziti_auth_req, ZITI_AUTH_REQ)
+
 IMPL_MODEL(ziti_enrollment_jwt_header, ZITI_ENROLLMENT_JWT_HEADER_MODEL)
 
 IMPL_MODEL(ziti_enrollment_jwt, ZITI_ENROLLMENT_JWT_MODEL)
+
 IMPL_MODEL(ziti_enrollment_resp, ZITI_ENROLLMENT_RESP)
 
 const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type) {

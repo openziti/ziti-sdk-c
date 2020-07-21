@@ -88,7 +88,7 @@ void ziti_channel_free(ziti_channel_t* ch) {
 int ziti_close_channels(struct ziti_ctx *ziti) {
     ziti_channel_t *ch;
     const char *url;
-    MODEL_MAP_FOREACH(url, ch, ziti->channels) {
+    MODEL_MAP_FOREACH(url, ch, &ziti->channels) {
         ziti_channel_close(ch);
     }
     return ZITI_OK;

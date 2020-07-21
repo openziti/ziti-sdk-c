@@ -4,7 +4,6 @@ add_executable(all_tests
         test_ziti_model.cpp
         ctrl_tests.cpp
         test_jwt.cpp
-        pkcs7_tests.cpp
         model_tests.cpp
         test_metrics.cpp
         )

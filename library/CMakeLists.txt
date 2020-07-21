@@ -10,9 +10,7 @@ SET(ZITI_SRC_FILES
         ziti.c
         config.c
         errors.c
-        crypto.c
         ziti_enroll.c
-        ziti_pkcs7.c
         jwt.c
         ziti_ctrl.c
         model_support.c
@@ -35,7 +33,6 @@ SET(ZITI_INCLUDE_DIRS
 
     PRIVATE ../inc_internal
     PRIVATE ${PROJECT_BINARY_DIR}/include
-    PRIVATE ${PROJECT_SOURCE_DIR}/deps/mjson
 )
 
 add_library(ziti     STATIC ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
@@ -122,7 +119,6 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../includes/
 
 set(ziti_DEPS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../deps)
 install(FILES ${ziti_DEPS_DIR}/http-parser/LICENSE-MIT DESTINATION ${CMAKE_INSTALL_DOCDIR}/http-parser)
-install(FILES ${ziti_DEPS_DIR}/mjson/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mjson)
 install(FILES ${ziti_DEPS_DIR}/uv-mbed/deps/mbedtls/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls)
 install(FILES ${ziti_DEPS_DIR}/uv-mbed/deps/uv_link_t/README.md DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
 install(FILES ${ziti_DEPS_DIR}/uv-mbed/deps/mbedtls/crypto/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls/crypto)

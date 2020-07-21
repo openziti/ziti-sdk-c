@@ -21,15 +21,6 @@ limitations under the License.
 #include "ziti/model_support.h"
 #include "ziti/ziti_model.h"
 
-#define ZITI_ID_CFG_MODEL(XX, ...) \
-XX(cert, string, none, cert, __VA_ARGS__) \
-XX(key, string, none, key, __VA_ARGS__) \
-XX(ca, string, none, ca, __VA_ARGS__)
-
-#define ZITI_CONFIG_MODEL(XX, ...) \
-XX(controller_url, string, none, ztAPI, __VA_ARGS__) \
-XX(id, ziti_id_cfg, none, id, __VA_ARGS__)
-
 #define ZITI_INGRESS_MODEL(XX, ...) \
 XX(tls, string, none, tls, __VA_ARGS__)
 
@@ -65,6 +56,23 @@ XX(controller, string, none, iss, __VA_ARGS__) \
 XX(subject, string, none, sub, __VA_ARGS__) \
 XX(token, string, none, jti, __VA_ARGS__)
 
+#define ZITI_SDK_INFO_MODEL(XX, ...) \
+XX(type, string, none, type, __VA_ARGS__) \
+XX(version, string, none, version, __VA_ARGS__) \
+XX(revision, string, none, revision, __VA_ARGS__) \
+XX(branch, string, none, branch, __VA_ARGS__)
+
+#define ZITI_ENV_INFO_MODEL(XX, ...) \
+XX(os, string, none, os, __VA_ARGS__) \
+XX(os_release, string, none, osRelease, __VA_ARGS__) \
+XX(os_version, string, none, osVersion, __VA_ARGS__) \
+XX(arch, string, none, arch, __VA_ARGS__)
+
+#define ZITI_AUTH_REQ(XX, ...) \
+XX(sdk_info, ziti_sdk_info, none, sdkInfo, __VA_ARGS__) \
+XX(env_info, ziti_env_info, none, envInfo, __VA_ARGS__) \
+XX(config_types, string, array, configTypes, __VA_ARGS__)
+
 #define ZITI_ENROLLMENT_RESP(XX, ...) \
 XX(cert, string, none, cert, __VA_ARGS__)
 
@@ -72,10 +80,6 @@ XX(cert, string, none, cert, __VA_ARGS__)
 extern "C" {
 #endif
 
-
-DECLARE_MODEL(ziti_id_cfg, ZITI_ID_CFG_MODEL)
-
-DECLARE_MODEL(ziti_config, ZITI_CONFIG_MODEL)
 
 
 DECLARE_MODEL(ziti_ingress, ZITI_INGRESS_MODEL)
@@ -89,9 +93,16 @@ DECLARE_MODEL(ziti_session, ZITI_SESSION_MODEL)
 DECLARE_MODEL(ziti_error, ZITI_ERROR_MODEL)
 
 DECLARE_MODEL(ziti_enrollment_jwt_header, ZITI_ENROLLMENT_JWT_HEADER_MODEL)
+
 DECLARE_MODEL(ziti_enrollment_jwt, ZITI_ENROLLMENT_JWT_MODEL)
 
 DECLARE_MODEL(ziti_enrollment_resp, ZITI_ENROLLMENT_RESP)
+
+DECLARE_MODEL(ziti_sdk_info, ZITI_SDK_INFO_MODEL)
+
+DECLARE_MODEL(ziti_env_info, ZITI_ENV_INFO_MODEL)
+
+DECLARE_MODEL(ziti_auth_req, ZITI_AUTH_REQ)
 
 #ifdef __cplusplus
 }

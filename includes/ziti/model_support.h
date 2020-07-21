@@ -71,7 +71,8 @@ MODEL_API void free_##type##_array(array(type) *ap);\
 MODEL_API int parse_##type(ptr(type) v, const char* json, size_t len);\
 MODEL_API int parse_##type##_ptr(ptr(type) *p, const char* json, size_t len);\
 MODEL_API int parse_##type##_array(array(type) *a, const char* json, size_t len);\
-MODEL_API void dump_##type(type *v, int);
+MODEL_API void dump_##type(type *v, int); \
+MODEL_API int json_from_##type(ptr(type) v, char *buf, size_t maxlen, size_t *len);
 
 #define gen_field_meta(n, memtype, modifier, p, partype) {\
 .name = #n, \
@@ -104,7 +105,10 @@ ptr(type) alloc_##type() { return (ptr(type))calloc(1, sizeof(type)); } \
 int cmp_##type(type *lh, type *rh) { return model_cmp(lh, rh, &type##_META); }\
 void free_##type(type *v) { model_free(v, &type##_META); } \
 void free_##type##_array(array(type) *ap) { model_free_array((void***)ap, &type##_META); }\
-void dump_##type(type *v, int off) { model_dump(v, off, &type##_META);}
+void dump_##type(type *v, int off) { model_dump(v, off, &type##_META);} \
+MODEL_API int json_from_##type(ptr(type) v, char *json, size_t maxlen, size_t *len)\
+{ return model_to_json(v, &type##_META, 0, json, maxlen, len); }
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -113,7 +117,7 @@ typedef char *string;
 typedef char **string_array;
 typedef int **int_array;
 typedef bool **bool_array;
-typedef char* json;
+typedef char *json;
 
 enum _field_mod {
     none_mod,
@@ -132,6 +136,8 @@ typedef struct field_meta {
 
 typedef int (*_parse_f)(void *obj, const char *json, void *tok);
 
+typedef int (*_to_json_f)(void *obj, int indent, char *json, size_t max, size_t *len);
+
 typedef void (*_free_f)(void *obj);
 typedef int (*_cmp_f)(void *lh, void *rh);
 
@@ -142,6 +148,7 @@ typedef struct type_meta {
     field_meta *fields;
     _cmp_f comparer;
     _parse_f parser;
+    _to_json_f jsonifier;
     _free_f destroyer;
 } type_meta;
 
@@ -156,6 +163,8 @@ ZITI_FUNC int model_cmp(void *lh, void *rh, type_meta *meta);
 ZITI_FUNC int model_parse(void *obj, const char *json, size_t len, type_meta *meta);
 
 ZITI_FUNC int model_parse_array(void ***arp, const char *json, size_t len, type_meta *meta);
+
+ZITI_FUNC int model_to_json(void *obj, type_meta *meta, int indent, char *buf, size_t maxlen, size_t *len);
 
 ZITI_FUNC extern type_meta *get_bool_meta();
 
@@ -200,7 +209,7 @@ ZITI_FUNC model_map_iter model_map_it_remove(model_map_iter it);
 
 #define MODEL_MAP_FOREACH_l(k, v, map, line) \
 model_map_iter var(e, line);\
-for (var(e,line) = model_map_iterator(&map), k = model_map_it_key(var(e,line)), v = model_map_it_value(var(e,line)); \
+for (var(e,line) = model_map_iterator(map), k = model_map_it_key(var(e,line)), v = model_map_it_value(var(e,line)); \
      var(e,line) != NULL; \
      var(e,line) = model_map_it_next(var(e,line)), k = model_map_it_key(var(e,line)), v = model_map_it_value(var(e,line)))
 

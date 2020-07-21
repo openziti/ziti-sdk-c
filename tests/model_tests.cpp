@@ -18,12 +18,14 @@ limitations under the License.
 #include "catch2/catch.hpp"
 
 #include <ziti/model_support.h>
+#include <iostream>
 
 #define BAR_MODEL(xx, ...)\
 xx(num, int, none, num, __VA_ARGS__)\
 xx(nump, int, ptr, nump, __VA_ARGS__) \
 xx(isOK, bool, none, ok, __VA_ARGS__)\
 xx(msg, string, none, msg, __VA_ARGS__)\
+xx(ts, timestamp, ptr, time, __VA_ARGS__)\
 xx(errors, string, array, errors, __VA_ARGS__)\
 xx(codes, int, array, codes, __VA_ARGS__)
 
@@ -45,6 +47,8 @@ using namespace Catch::Matchers;
 #define BAR1 "{\
 \"num\":42,\
 \"ok\": false,\
+\"time\": \"2020-07-20T14:14:14.666666Z\",\
+\"msg\":\"this is a message\",\
 \"errors\": [\"error1\", \"error2\"], \
 \"codes\": [401, 403] \
 }"
@@ -83,6 +87,10 @@ TEST_CASE("new model tests") {
 
     checkBar1(bar);
 
+    char json[1024];
+    size_t jsonlen;
+    CHECK(json_from_Bar(&bar, json, sizeof(json), &jsonlen) == 0);
+    std::cout << json << std::endl;
     free_Bar(&bar);
 }
 
@@ -104,6 +112,10 @@ TEST_CASE("embedded struct") {
     checkBar1(*foo.bar_arr[0]);
     checkBar2(*foo.bar_arr[1]);
 
+    char json1[1024];
+    size_t jsonlen;
+    CHECK(json_from_Foo(&foo, json1, sizeof(json1), &jsonlen) == 0);
+    std::cout << json1 << std::endl;
     free_Foo(&foo);
 }
 
@@ -112,7 +124,7 @@ TEST_CASE("test skipped fields") {
         "bar":{
             "num":42,
             "ok":true,
-            "msg":"hello world!"
+            "msg":"hello\nworld!"
         },
         "skipper": [{"this":"should be skipped"},42,null],
         "also-skip": {"more":"skipping"},
@@ -128,12 +140,18 @@ TEST_CASE("test skipped fields") {
 
     REQUIRE(foo.bar.num == 42);
     REQUIRE(foo.bar.isOK);
-    REQUIRE_THAT(foo.bar.msg, Catch::Matchers::Equals("hello world!"));
+    REQUIRE_THAT(foo.bar.msg, Catch::Matchers::Equals("hello\nworld!"));
 
     REQUIRE(foo.barp != nullptr);
     REQUIRE(*foo.barp->nump == 42);
     REQUIRE(foo.barp->isOK);
     REQUIRE_THAT(foo.barp->msg, Catch::Matchers::Equals("hello world!"));
+
+    char json1[1024];
+    size_t jsonlen;
+    CHECK(json_from_Foo(&foo, json1, sizeof(json1), &jsonlen) == 0);
+    std::cout << json1 << std::endl;
+
     free_Foo(&foo);
 }
 
@@ -190,6 +208,12 @@ TEST_CASE("model map test", "[model]") {
     CHECK(o.ok);
     CHECK_THAT((const char *) model_map_get(&o.map, "num"), Equals("42"));
     CHECK_THAT((const char *) model_map_get(&o.map, "errors"), Equals(R"(["error1", "error2"])"));
+
+    char j[1024];
+    size_t jlen;
+    json_from_ObjMap(&o, j, sizeof(j), &jlen);
+
+    std::cout << j << std::endl;
 
     model_map_clear(&o.map, nullptr);
 }

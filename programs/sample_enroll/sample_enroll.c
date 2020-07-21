@@ -21,6 +21,9 @@ limitations under the License.
 #include <stdio.h>
 #include <uv.h>
 
+#if _WIN32
+#define realpath(in, out) _fullpath(out, in, PATH_MAX)
+#endif
 #define DIE(v) do { \
 int code = (v);\
 if (code != ZITI_OK) {\
@@ -30,21 +33,20 @@ exit(code);\
 
 const char *output_file;
 
-static int write_identity_file( char *data )
-{
-    int ret;
+static int write_identity_file(ziti_config *cfg) {
     FILE *f;
-    unsigned char output_buf[16000];
-    unsigned char *c = output_buf;
-    size_t len = strlen(data);
 
-    if( ( f = fopen( output_file, "wb" ) ) == NULL )
-        return( -1 );
+    char output_buf[16000];
+    size_t len;
+    json_from_ziti_config(cfg, output_buf, sizeof(output_buf), &len);
 
-    if( fwrite( data, 1, len, f ) != len )
-    {
-        fclose( f );
-        return( -1 );
+    if ((f = fopen(output_file, "wb")) == NULL) {
+        return (-1);
+    }
+
+    if (fwrite(output_buf, 1, len, f) != len) {
+        fclose(f);
+        return (-1);
     }
 
     fclose( f );
@@ -52,18 +54,25 @@ static int write_identity_file( char *data )
     return( ZITI_OK );
 }
 
-void on_ziti_enroll(uint8_t *data, int length, char *err_message, void *ctx) {
-    if ((NULL == data) || (0 == length)) {
-        fprintf(stderr, "ERROR: => %d => %s\n", length, err_message);
-        exit(length);
+void on_ziti_enroll(ziti_config *cfg, int status, char *err_message, void *ctx) {
+
+    if (status != ZITI_OK) {
+        fprintf(stderr, "ERROR: => %d => %s\n", status, err_message);
+        exit(status);
     }
 
-    int rc = write_identity_file((char *) data);
+
+    int rc = write_identity_file(cfg);
 
     DIE(rc);
 }
 
-int main(int argc, char** argv) {
+struct enroll_cert {
+    const char *key;
+    const char *cert;
+};
+
+int main(int argc, char **argv) {
 #if _WIN32
     //changes the output to UTF-8 so that the windows output looks correct and not all jumbly
     SetConsoleOutputCP(65001);
@@ -72,7 +81,19 @@ int main(int argc, char** argv) {
 
     output_file = argv[2];
 
-    DIE(ziti_enroll(argv[1], loop, on_ziti_enroll, NULL));
+    ziti_enroll_opts opts = {0};
+    struct enroll_cert cert;
+    opts.jwt = argv[1];
+
+    if (argc > 3) {
+        opts.enroll_key = realpath(argv[3], NULL);
+    }
+
+    if (argc > 4) {
+        opts.enroll_cert = realpath(argv[4], NULL);
+    }
+
+    DIE(ziti_enroll(&opts, loop, on_ziti_enroll, NULL));
 
     // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
