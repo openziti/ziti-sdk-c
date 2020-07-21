@@ -49,6 +49,8 @@ limitations under the License.
     XX(JWT_VERIFICATION_FAILED, "JWT verification failed") \
     /** unsupported enrollment method */ \
     XX(ENROLLMENT_METHOD_UNSUPPORTED, "unsupported enrollment method") \
+    /** enrollment method requires client certificate */ \
+    XX(ENROLLMENT_CERTIFICATE_REQUIRED, "enrollment method requires certificate") \
     /** Attempt to generate an ECC key failed */ \
     XX(KEY_GENERATION_FAILED, "error generating an ECC key") \
     /** Attempt to generate a CSR failed */ \

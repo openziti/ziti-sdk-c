@@ -80,6 +80,15 @@ int verify_controller_jwt(tls_cert cert, void *ctx) {
     return rc;
 }
 
+static int check_cert_required(enroll_cfg *ecfg) {
+    if (strcmp(ecfg->zej->method, "ca") == 0 || strcmp(ecfg->zej->method, "ottca") == 0) {
+        if (ecfg->own_cert == NULL || ecfg->private_key == 0) {
+            return ZITI_ENROLLMENT_CERTIFICATE_REQUIRED;
+        }
+    }
+    return ZITI_OK;
+}
+
 int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx) {
     init_debug();
     size_t len;
@@ -112,7 +121,7 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
         dump_ziti_enrollment_jwt_header(ecfg->zejh, 0);
         dump_ziti_enrollment_jwt(ecfg->zej, 0);
     }
-
+    TRY(ziti, check_cert_required(ecfg));
 
     NEWP(ctrl, ziti_controller);
     ecfg->ctrl = ctrl;

@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <string.h>
 #include <zt_internal.h>
-#include <mjson.h>
 #include <utils.h>
 #include "internal_model.h"
 #include "ziti_enroll.h"
@@ -144,50 +143,32 @@ int load_jwt_file(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollme
         ZITI_LOG(ERROR, "%s - lacks a second dot", filename);
         return ZITI_JWT_INVALID_FORMAT;
     }
-    ecfg->jwt_signing_input = (unsigned char*)calloc(1, strlen(ecfg->raw_jwt) + 1 );
-    strncpy((char *)ecfg->jwt_signing_input, ecfg->raw_jwt, (dot2 - ecfg->raw_jwt) );
+    ecfg->jwt_signing_input = (unsigned char *) calloc(1, strlen(ecfg->raw_jwt) + 1);
+    strncpy((char *) ecfg->jwt_signing_input, ecfg->raw_jwt, (dot2 - ecfg->raw_jwt));
     ZITI_LOG(DEBUG, "ecfg->jwt_signing_input is: \n%s", ecfg->jwt_signing_input);
-
-    size_t header64len;
-    char *header64 = url64to64(ecfg->raw_jwt, dot1 - ecfg->raw_jwt, &header64len);
-
-    size_t head_len = (header64len / 4) * 3;
-
-    char *head = (char*)calloc(1, head_len + 1);
-    char body[1024];
-
-    size_t body64len;
-    char *body64 = url64to64(dot1 + 1, dot2 - dot1 - 1, &body64len);
-
-    ZITI_LOG(DEBUG, "sig is: \n%s", dot2 + 1);
-
     ecfg->jwt_sig = calloc(1, sizeof(char) * (base64url_decode_len(dot2 + 1)));
     ecfg->jwt_sig_len = base64url_decode(ecfg->jwt_sig, dot2 + 1);
+    ZITI_LOG(DEBUG, "sig is: \n%s", dot2 + 1);
 
-    if (DEBUG <= ziti_debug_level) {
-        hexDump("JWT sig", ecfg->jwt_sig, ecfg->jwt_sig_len);
-    }
+    char *buf = malloc(dot2 - ecfg->raw_jwt); // that's big enough
 
-    int rc2 = mjson_base64_dec(header64, header64len, head, head_len);
-
+    size_t header_len = base64url_decode(buf, ecfg->raw_jwt);
     *zejh = calloc(1, sizeof(ziti_enrollment_jwt_header));
-    if (parse_ziti_enrollment_jwt_header(*zejh, head, rc2) != 0) {
+    if (parse_ziti_enrollment_jwt_header(*zejh, buf, header_len) != 0) {
         free_ziti_enrollment_jwt_header(*zejh);
         FREE(*zejh);
         return ZITI_JWT_INVALID_FORMAT;
     }
 
-    rc2 = mjson_base64_dec(body64, body64len, body, sizeof(body));
+    size_t blen = base64url_decode(buf, dot1 + 1);
 
     *zej = calloc(1, sizeof(ziti_enrollment_jwt));
-    if (parse_ziti_enrollment_jwt(*zej, body, rc2) != 0) {
+    if (parse_ziti_enrollment_jwt(*zej, buf, blen) != 0) {
         free_ziti_enrollment_jwt(*zej);
         FREE(*zej);
         return ZITI_JWT_INVALID_FORMAT;
     }
-
-    free(head);
-
+    free(buf);
     return ZITI_OK;
 }
 

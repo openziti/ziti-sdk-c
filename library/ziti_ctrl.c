@@ -22,10 +22,6 @@ limitations under the License.
 #include <ziti_ctrl.h>
 #include <uv_mbed/um_http.h>
 
-#define MJSON_API_ONLY
-
-#include <mjson.h>
-
 #if _WIN32
 
 #define strcasecmp _stricmp
@@ -247,25 +243,25 @@ void ziti_ctrl_login(
     uv_utsname_t osInfo;
     uv_os_uname(&osInfo);
 
-    const char *body = NULL;
-    char *cfg_type_json = str_array_to_json(cfg_types);
-    int body_len = mjson_printf(&mjson_print_dynamic_buf, &body,
-                                "{"
-                                "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q}, "
-                                "%Q:{%Q:%Q, %Q:%Q, %Q:%Q, %Q:%Q},"
-                                "%Q:%s"
-                                "}",
-                                "sdkInfo",
-                                "type", "ziti-sdk-c",
-                                "version", ziti_get_build_version(0),
-                                "revision", ziti_git_commit(),
-                                "branch", ziti_git_branch(),
-                                "envInfo",
-                                "os", osInfo.sysname,
-                                "osRelease", osInfo.release,
-                                "osVersion", osInfo.version,
-                                "arch", osInfo.machine,
-                                "configTypes", cfg_type_json);
+    ziti_auth_req authreq = {
+            .sdk_info = {
+                    .type = "ziti-sdk-c",
+                    .version = (char *) ziti_get_build_version(0),
+                    .revision = (char *) ziti_git_commit(),
+                    .branch = (char *) ziti_git_branch(),
+            },
+            .env_info = {
+                    .os = osInfo.sysname,
+                    .os_release = osInfo.release,
+                    .os_version = osInfo.version,
+                    .arch = osInfo.machine,
+            },
+            .config_types = (string_array) cfg_types,
+    };
+
+    char *body = malloc(1024);
+    size_t body_len;
+    json_from_ziti_auth_req(&authreq, body, 1024, &body_len);
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_session_ptr;
@@ -274,12 +270,9 @@ void ziti_ctrl_login(
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_login_cb;
 
-    um_http_req_t* req = um_http_req(&ctrl->client, "POST", "/authenticate?method=cert", ctrl_resp_cb, resp);
+    um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/authenticate?method=cert", ctrl_resp_cb, resp);
     um_http_req_header(req, "Content-Type", "application/json");
     um_http_req_data(req, body, body_len, free_body_cb);
-
-
-    free(cfg_type_json);
 }
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session *, ziti_error *, void *), void *ctx) {
@@ -336,15 +329,14 @@ void ziti_ctrl_get_net_session(
         ziti_controller *ctrl, ziti_service *service, const char *type,
         void (*cb)(ziti_net_session *, ziti_error *, void *), void *ctx) {
 
-    char *content = NULL;
-    size_t len = mjson_printf(&mjson_print_dynamic_buf, &content,
-                              "{%Q: %Q, %Q: %Q}",
-                              "serviceId", service->id,
-                              "type", type);
+    char *content = malloc(128);
+    size_t len = snprintf(content, 128,
+                          "{\"serviceId\": %s, \"type\": %s}",
+                          service->id, type);
 
-    struct ctrl_resp* resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void*, const char*, size_t)) parse_ziti_net_session_ptr;
-    resp->resp_cb = (void (*)(void*, ziti_error*, void*)) cb;
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_net_session_ptr;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
