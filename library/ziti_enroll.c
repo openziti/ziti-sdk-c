@@ -22,10 +22,6 @@ limitations under the License.
 #include "utils.h"
 #include "zt_internal.h"
 #include "ziti_enroll.h"
-#include <http_parser.h>
-
-#define MJSON_API_ONLY
-#include <mjson.h>
 
 #ifndef MAXPATHLEN
 #ifdef _MAX_PATH

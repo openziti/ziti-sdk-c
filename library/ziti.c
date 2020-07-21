@@ -24,10 +24,6 @@ limitations under the License.
 #include "zt_internal.h"
 #include <http_parser.h>
 
-
-#define MJSON_API_ONLY
-#include <mjson.h>
-
 #ifndef MAXPATHLEN
 #ifdef _MAX_PATH
 #define MAXPATHLEN _MAX_PATH
