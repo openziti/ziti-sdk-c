@@ -331,7 +331,7 @@ void ziti_ctrl_get_net_session(
 
     char *content = malloc(128);
     size_t len = snprintf(content, 128,
-                          "{\"serviceId\": %s, \"type\": %s}",
+                          "{\"serviceId\": \"%s\", \"type\": \"%s\"}",
                           service->id, type);
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
