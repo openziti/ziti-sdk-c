@@ -186,7 +186,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
         }
         else {
             tls->api->load_key(&enroll_req->ecfg->pk, enroll_req->ecfg->private_key,
-                               strlen(enroll_req->ecfg->private_key));
+                               strlen(enroll_req->ecfg->private_key) + 1);
         }
 
         tls->api->generate_csr_to_pem(enroll_req->ecfg->pk, &enroll_req->ecfg->csr_pem, &len,
