@@ -186,7 +186,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
         else {
             ziti_err = ZITI_KEY_LOAD_FAILED;
             TRY(TLS, tls->api->load_key(&enroll_req->ecfg->pk, enroll_req->ecfg->private_key,
-                                        strlen(enroll_req->ecfg->private_key)));
+                                        strlen(enroll_req->ecfg->private_key) + 1));
         }
 
         ziti_err = ZITI_CSR_GENERATION_FAILED;

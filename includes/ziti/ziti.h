@@ -225,7 +225,7 @@ typedef void (*ziti_write_cb)(ziti_connection conn, ssize_t status, void *write_
  * This callback also receives a Ziti identity json salvo if the enrollment was successful. 
  * This identity should be persisted into a file, and used in subsequent calls to ziti_init().
  *
- * @param cfg identity json data buffer
+ * @param cfg identity config object, NULL if enrollment fails for any reason
  * @param status enrollment success or error code
  * @param err_message description of error, or NULL if enrollment succeeded
  * @param enroll_ctx additional context to be passed into #ziti_enroll_cb callback
