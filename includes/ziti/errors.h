@@ -51,8 +51,10 @@ limitations under the License.
     XX(ENROLLMENT_METHOD_UNSUPPORTED, "unsupported enrollment method") \
     /** enrollment method requires client certificate */ \
     XX(ENROLLMENT_CERTIFICATE_REQUIRED, "enrollment method requires certificate") \
-    /** Attempt to generate an ECC key failed */ \
-    XX(KEY_GENERATION_FAILED, "error generating an ECC key") \
+    /** Attempt to generate an private key failed */ \
+    XX(KEY_GENERATION_FAILED, "error generating private key") \
+    /** Attempt to load TLS key failed */ \
+    XX(KEY_LOAD_FAILED, "error loading TLS key") \
     /** Attempt to generate a CSR failed */ \
     XX(CSR_GENERATION_FAILED, "error generating a CSR") \
     /** Some or all of the provided configuration is incorrect */ \
