@@ -149,30 +149,28 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
 static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, void *req) {
     ZITI_LOG(DEBUG, "base64_encoded_pkcs7 is: %s", base64_encoded_pkcs7);
 
+    int ziti_err;
     struct ziti_enroll_req *enroll_req = req;
     if ((NULL == base64_encoded_pkcs7) || (NULL != err)) {
         ZITI_LOG(DEBUG, "err->message is: %s", err->message);
         if (enroll_req->enroll_cb) {
-            enroll_req->enroll_cb(NULL, 0, err->code, enroll_req->external_enroll_ctx);
+            enroll_req->enroll_cb(NULL, ZITI_JWT_VERIFICATION_FAILED, err->code, enroll_req->external_enroll_ctx);
         }
         return;
     }
 
+    PREPF(TLS, enroll_req->ecfg->tls->api->strerror);
     tls_cert chain = NULL;
-    if (enroll_req->ecfg->tls->api->parse_pkcs7_certs(&chain, base64_encoded_pkcs7, strlen(base64_encoded_pkcs7)) !=
-        0) {
-        if (enroll_req->enroll_cb) {
-            enroll_req->enroll_cb(NULL, ZITI_PKCS7_ASN1_PARSING_FAILED, "cannot extract well-known certs",
-                                  enroll_req->external_enroll_ctx);
-        }
-        return;
-    }
+    ziti_err = ZITI_PKCS7_ASN1_PARSING_FAILED;
+    TRY(TLS, enroll_req->ecfg->tls->api->parse_pkcs7_certs(
+            &chain, base64_encoded_pkcs7, strlen(base64_encoded_pkcs7)));
 
     char *ca = NULL;
     size_t total_pem_len = 0;
 
+    ziti_err = ZITI_INVALID_CONFIG;
+    TRY(TLS, enroll_req->ecfg->tls->api->write_cert_to_pem(chain, 1, &ca, &total_pem_len));
 
-    enroll_req->ecfg->tls->api->write_cert_to_pem(chain, 1, &ca, &total_pem_len);
     ZITI_LOG(DEBUG, "CA PEM len = %zd", total_pem_len);
     ZITI_LOG(TRACE, "CA PEM:\n%s", ca);
 
@@ -181,31 +179,30 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
     if (strcmp("ott", enroll_req->ecfg->zej->method) == 0) {
         size_t len;
         if (enroll_req->ecfg->private_key == NULL) {
-            tls->api->generate_key(&enroll_req->ecfg->pk);
-            tls->api->write_key_to_pem(enroll_req->ecfg->pk, &enroll_req->ecfg->private_key, &len);
+            ziti_err = ZITI_KEY_GENERATION_FAILED;
+            TRY(TLS, tls->api->generate_key(&enroll_req->ecfg->pk));
+            TRY(TLS, tls->api->write_key_to_pem(enroll_req->ecfg->pk, &enroll_req->ecfg->private_key, &len));
         }
         else {
-            tls->api->load_key(&enroll_req->ecfg->pk, enroll_req->ecfg->private_key,
-                               strlen(enroll_req->ecfg->private_key));
+            ziti_err = ZITI_KEY_LOAD_FAILED;
+            TRY(TLS, tls->api->load_key(&enroll_req->ecfg->pk, enroll_req->ecfg->private_key,
+                                        strlen(enroll_req->ecfg->private_key) + 1));
         }
 
-        tls->api->generate_csr_to_pem(enroll_req->ecfg->pk, &enroll_req->ecfg->csr_pem, &len,
-                                      "C", "US",
-                                      "ST", "NY",
-                                      "O", "OpenZiti",
-                                      "DC", enroll_req->ecfg->zej->controller,
-                                      "CN", enroll_req->ecfg->zej->subject,
-                                      NULL);
+        ziti_err = ZITI_CSR_GENERATION_FAILED;
+        TRY(TLS, tls->api->generate_csr_to_pem(enroll_req->ecfg->pk, &enroll_req->ecfg->csr_pem, &len,
+                                               "C", "US",
+                                               "ST", "NY",
+                                               "O", "OpenZiti",
+                                               "DC", enroll_req->ecfg->zej->controller,
+                                               "CN", enroll_req->ecfg->zej->subject,
+                                               NULL));
     }
     else if (strcmp("ottca", enroll_req->ecfg->zej->method) == 0 || strcmp("ca", enroll_req->ecfg->zej->method) == 0) {
-        if (enroll_req->ecfg->own_cert && enroll_req->ecfg->private_key) {
-            tls->api->set_own_cert(tls->ctx, enroll_req->ecfg->own_cert, strlen(enroll_req->ecfg->own_cert),
-                                   enroll_req->ecfg->private_key, strlen(enroll_req->ecfg->private_key));
-        }
-        else {
-            ZITI_LOG(ERROR, "certificate or private key was not provided for enrollment method[%s]",
-                     enroll_req->ecfg->zej->method);
-        }
+        ziti_err = ZITI_KEY_LOAD_FAILED;
+        TRY(TLS, tls->api->set_own_cert(tls->ctx,
+                                        enroll_req->ecfg->own_cert, strlen(enroll_req->ecfg->own_cert),
+                                        enroll_req->ecfg->private_key, strlen(enroll_req->ecfg->private_key)));
     }
 
     enroll_req->ecfg->CA = ca;
@@ -220,6 +217,15 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
 
     ziti_ctrl_enroll(enroll_req2->controller, enroll_req->ecfg->zej->method, enroll_req->ecfg->zej->token,
                      enroll_req->ecfg->csr_pem, enroll_cb, enroll_req2);
+
+    ziti_err = 0;
+    CATCH(TLS) {
+        if (enroll_req->enroll_cb) {
+            static char err[1024];
+            snprintf(err, sizeof(err), "%s[%d]: %s", ziti_errorstr(ziti_err), ziti_err, tls->api->strerror(ERR(TLS)));
+            enroll_req->enroll_cb(NULL, ziti_err, err, enroll_req->external_enroll_ctx);
+        }
+    }
 }
 
 static void enroll_cb(ziti_enrollment_resp *er, ziti_error *err, void *enroll_ctx) {
