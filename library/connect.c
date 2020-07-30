@@ -58,7 +58,7 @@ static void free_conn_req(struct ziti_conn_req *r) {
 };
 
 int close_conn_internal(struct ziti_conn *conn) {
-    ZITI_LOG(TRACE, "conn is: %p", conn);
+    ZITI_LOG(TRACE, "connection[%d]", conn->conn_id);
     if (conn->state == Closed && conn->write_reqs == 0) {
         ZITI_LOG(VERBOSE, "removing connection[%d]", conn->conn_id);
         LIST_REMOVE(conn, next);
@@ -70,7 +70,7 @@ int close_conn_internal(struct ziti_conn *conn) {
                      buffer_available(conn->inbound), conn->conn_id);
         }
         free_buffer(conn->inbound);
-        ZITI_LOG(TRACE, "conn %p is being free()'d", conn);
+        ZITI_LOG(TRACE, "connection[%d] is being free()'d", conn->conn_id);
         FREE(conn);
         return 1;
     }
@@ -78,7 +78,7 @@ int close_conn_internal(struct ziti_conn *conn) {
 }
 
 void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, int status) {
-    ZITI_LOG(TRACE, "conn %p status %d", conn, status);    
+    ZITI_LOG(TRACE, "connection[%d] status %d", conn->conn_id, status);    
     if (req->conn == NULL) {
         ZITI_LOG(DEBUG, "write completed for timed out or closed connection");
         free(req);
@@ -98,7 +98,7 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
 
         if (status < 0) {
             conn->state = Closed;
-            ZITI_LOG(TRACE, "conn %p state is now Closed", conn);
+            ZITI_LOG(TRACE, "connection[%d] state is now Closed", conn->conn_id);
         }
 
         req->cb(conn, status, req->ctx);
