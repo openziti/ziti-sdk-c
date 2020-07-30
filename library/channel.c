@@ -299,7 +299,11 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
             break;
 
         case ContentTypeData:
-            assert(conn->state == Connected);
+            if (conn->state != Connected) {
+                ZITI_LOG(WARN, "data[%d bytes] received for connection[%d] in state[%d]",
+                         msg->header.body_len, conn_id, conn->state);
+                break;
+            }
 
             conn_inbound_data_msg(conn, msg);
             break;
