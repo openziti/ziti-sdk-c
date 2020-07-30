@@ -416,4 +416,6 @@ TEST_CASE("identity tags", "[model]") {
     json_from_ziti_identity(&id, buf, 1024, &l);
 
     printf("%.*s", (int)l, buf);
+
+    free_ziti_identity(&id);
 }

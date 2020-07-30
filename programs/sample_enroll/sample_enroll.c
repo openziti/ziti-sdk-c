@@ -21,8 +21,9 @@ limitations under the License.
 #include <stdio.h>
 #include <uv.h>
 
+
 #if _WIN32
-#define realpath(in, out) _fullpath(out, in, PATH_MAX)
+#define realpath(in, out) _fullpath(out, in, FILENAME_MAX)
 #endif
 #define DIE(v) do { \
 int code = (v);\
