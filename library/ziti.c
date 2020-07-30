@@ -390,9 +390,6 @@ int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb
     req->cb = write_cb;
     req->ctx = write_ctx;
 
-    ZITI_LOG(TRACE, "conn is: %p", conn);
-    ZITI_LOG(TRACE, "conn->ziti_ctx is: %p", conn->ziti_ctx);
-
     metrics_rate_update(&conn->ziti_ctx->up_rate, length);
 
     return ziti_write_req(req);
