@@ -209,7 +209,7 @@ int model_to_json(void *obj, type_meta *meta, int indent, char *buf, size_t maxl
             *p++ = ':';
         }
 
-        if (fm->mod != array_mod) {
+        if (fm->mod == none_mod || fm->mod == ptr_mod) {
             size_t flen;
             if (ftm->jsonifier) {
                 ftm->jsonifier(f_ptr, indent + 1, p, buf + maxlen - p, &flen);
@@ -219,7 +219,40 @@ int model_to_json(void *obj, type_meta *meta, int indent, char *buf, size_t maxl
             }
             p += flen;
         }
-        else {
+        else if (fm->mod == map_mod) {
+            indent++;
+            model_map *map = (model_map *) f_addr;
+            const char *k;
+            void *v;
+            *p++ = '{';
+            char *comma = p;
+            *p++ = '\n';
+            size_t ellen;
+            MODEL_MAP_FOREACH(k, v, map) {
+                for (int j = 0; j <= indent; j++, *p++ = '\t') {}
+                *p++ = '"';
+                strcpy(p, k);
+                p += strlen(k);
+                *p++ = '"';
+                *p++ = ':';
+                if (ftm->jsonifier) {
+                    ftm->jsonifier(v, indent + 1, p, buf + maxlen - p, &ellen);
+                }
+                else {
+                    model_to_json(v, ftm, indent + 1, p, buf + maxlen - p, &ellen);
+                }
+                p += ellen;
+                comma = p;
+                *p++ = ',';
+                *p++ = '\n';
+            }
+            if (comma != NULL) {
+                p = comma;
+            }
+            *p++ = '}';
+            indent--;
+        }
+        else if (fm->mod == array_mod) {
             void **arr = (void **) (*f_addr);
 
             int idx = 0;
@@ -242,6 +275,10 @@ int model_to_json(void *obj, type_meta *meta, int indent, char *buf, size_t maxl
             }
 
             *p++ = ']';
+        }
+        else {
+            fprintf(stderr, "unsupported mod[%d] for field[%s]", fm->mod, fm->name);
+            return -1;
         }
         *p++ = ',';
         last_coma = p - 1;
@@ -310,6 +347,34 @@ void model_free(void *obj, type_meta *meta) {
                 free(arr);
             }
         }
+        else if (fm->mod == map_mod) {
+            model_map *map = (model_map *) f_addr;
+            _free_f ff = NULL;
+            model_map_iter it = model_map_iterator(map);
+            while (it != NULL) {
+                const char *k = model_map_it_key(it);
+                void *v = model_map_it_value(it);
+                if (fm->meta == get_string_meta) {
+                }
+                else if (fm->meta()->destroyer) {
+                    fm->meta()->destroyer(v);
+                }
+                else {
+                    model_free(v, fm->meta());
+                }
+                free(v);
+
+                it = model_map_it_remove(it);
+            }
+
+            if (fm->meta == get_string_meta) {
+                ff = free;
+            }
+            else {
+                ff = fm->meta()->destroyer;
+            }
+            model_map_clear(map, ff);
+        }
     }
 }
 
@@ -349,6 +414,50 @@ static int parse_array(void **arr, const char *json, jsmntok_t *tok, type_meta *
     return processed;
 }
 
+static int parse_map(void *mapp, const char *json, jsmntok_t *tok, type_meta *el_meta) {
+    if (tok->type != JSMN_OBJECT) {
+        ZITI_LOG(ERROR, "unexspected JSON token near '%.*s', expecting object", 20, json + tok->start);
+        return -1;
+    }
+    model_map *map = mapp;
+    int tokens_processed = 1;
+    int children = tok->size;
+    tok++;
+    for (int i = 0; i < children; i++) {
+        if (tok->type != JSMN_STRING) {
+            ZITI_LOG(ERROR, "parsing[map] error: unexpected token starting at `%.*s'\n", 20, json + tok->start);
+            return -1;
+        }
+        const char *key = json + tok->start;
+        size_t keylen = tok->end - tok->start;
+
+        tok++;
+        tokens_processed++;
+        void *value = NULL;
+        int rc;
+        if (el_meta == get_string_meta()) {
+            rc = get_string_meta()->parser(&value, json, tok);
+        }
+        else {
+            value = calloc(1, el_meta->size);
+            rc = el_meta->parser ?
+                 el_meta->parser(value, json, tok) :
+                 parse_obj(value, json, tok, el_meta);
+        }
+        if (rc < 0) {
+            FREE(value);
+            return rc;
+        }
+        tok += rc;
+        tokens_processed += rc;
+        char *k = calloc(1, keylen + 1);
+        strncpy(k, key, keylen);
+        model_map_set(map, k, value);
+        free(k);
+    }
+    return tokens_processed;
+}
+
 static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *meta) {
     memset(obj, 0, meta->size);
     if (tok->type != JSMN_OBJECT) {
@@ -377,6 +486,9 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
             void *field = (char *) obj + fm->offset;
             if (fm->mod == array_mod) {
                 rc = parse_array(field, json, tok, fm->meta());
+            }
+            else if (fm->mod == map_mod) {
+                rc = parse_map(field, json, tok, fm->meta());
             }
             else {
                 char *memobj = NULL;
