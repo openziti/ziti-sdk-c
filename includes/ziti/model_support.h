@@ -218,6 +218,24 @@ for (var(e,line) = model_map_iterator(map), k = model_map_it_key(var(e,line)), v
 #define MODEL_MAP_FOREACH(k, v, map) MODEL_MAP_FOREACH_l(k, v, map, __LINE__)
 
 
+typedef enum {
+    tag_null,
+    tag_bool,
+    tag_number,
+    tag_string
+} tag_type;
+
+typedef struct {
+    tag_type type;
+    union {
+        bool bool_value;
+        int num_value;
+        string string_value;
+    };
+} tag;
+
+ZITI_FUNC type_meta *get_tag_meta();
+
 #if __cplusplus
 }
 #endif

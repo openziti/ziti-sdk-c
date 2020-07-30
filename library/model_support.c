@@ -438,6 +438,9 @@ static int parse_map(void *mapp, const char *json, jsmntok_t *tok, type_meta *el
         if (el_meta == get_string_meta()) {
             rc = get_string_meta()->parser(&value, json, tok);
         }
+        else if (el_meta == get_json_meta()) {
+            rc = get_json_meta()->parser(&value, json, tok);
+        }
         else {
             value = calloc(1, el_meta->size);
             rc = el_meta->parser ?
@@ -621,6 +624,29 @@ static int _parse_string(char **val, const char *json, jsmntok_t *tok) {
     return -1;
 }
 
+static int _parse_tag(tag *t, const char *json, jsmntok_t *tok) {
+    int rc = -1;
+    switch (tok->type) {
+        case JSMN_PRIMITIVE:
+            rc = _parse_bool(&t->bool_value, json, tok);
+            if (rc == -1) {
+                rc = _parse_int(&t->num_value, json, tok);
+                t->type = tag_number;
+            }
+            else {
+                t->type = tag_bool;
+            }
+            break;
+        case JSMN_STRING:
+            rc = _parse_string(&t->string_value, json, tok);
+            t->type = tag_string;
+            break;
+        default:
+            rc = -1;
+    }
+    return rc;
+}
+
 static int _parse_timeval(timestamp *t, const char *json, jsmntok_t *tok) {
 
     char *date_str = NULL;
@@ -665,6 +691,25 @@ static int _cmp_string(char **lh, char **rh) {
     if (*lh == *rh) { return 0; } // same ptr or both NULL
 
     return strcmp(*lh, *rh);
+}
+
+static int _cmp_tag(tag *lh, tag *rh) {
+    null_checks(lh, rh)
+    if (lh == rh) { return 0; } // same ptr or both NULL
+    if (lh->type != rh->type) {
+        return (int) lh->type - (int) rh->type;
+    }
+
+    switch (lh->type) {
+        case tag_bool:
+            return _cmp_bool(&lh->bool_value, &rh->bool_value);
+        case tag_number:
+            return _cmp_int(&lh->num_value, &rh->num_value);
+        case tag_string:
+            return _cmp_string(&lh->string_value, &rh->string_value);
+        case tag_null:
+            return 0;
+    }
 }
 
 static int _cmp_map(model_map *lh, model_map *rh) {
@@ -762,6 +807,29 @@ static int _string_json(const char *s, int indent, char *json, size_t max, size_
     return 0;
 }
 
+static int _tag_json(tag *t, int indent, char *json, size_t max, size_t *len) {
+    int rc;
+    switch (t->type) {
+        case tag_null:
+            rc = snprintf(json, max, "null");
+            break;
+        case tag_bool:
+            rc = snprintf(json, max, t->bool_value ? "true" : "false");
+            break;
+        case tag_number:
+            rc = snprintf(json, max, "%d", t->num_value);
+            break;
+        case tag_string:
+            return _string_json(t->string_value, indent, json, max, len);
+            break;
+    }
+    if (rc > 0) {
+        *len = rc;
+        return 0;
+    }
+    return rc;
+}
+
 static int _json_json(const char *s, int indent, char *json, size_t max, size_t *len) {
     int rc = snprintf(json, max, "%s", s);
     if (rc > 0) {
@@ -823,13 +891,22 @@ static void _free_string(char **s) {
     }
 }
 
+static void _free_tag(tag *t) {
+    if (t != NULL) {
+        if (t->type == tag_string) {
+            FREE(t->string_value);
+        }
+    }
+}
+
 struct model_map_entry {
     char *key;
     void *value;
     LIST_ENTRY(model_map_entry) _next;
 };
 typedef LIST_HEAD(mm_e, model_map_entry) entries_t;
-void* model_map_set(model_map *m, const char *key, void *val) {
+
+void *model_map_set(model_map *m, const char *key, void *val) {
     if (m->entries == NULL) {
         m->entries = calloc(1, sizeof(entries_t));
     }
@@ -1017,6 +1094,15 @@ static type_meta map_META = {
         .destroyer = (_free_f) _free_map,
 };
 
+static type_meta tag_META = {
+        .size = sizeof(tag),
+        .comparer = (_cmp_f) _cmp_tag,
+        .parser = (_parse_f) _parse_tag,
+        .jsonifier = (_to_json_f) _tag_json,
+        .destroyer = (_free_f) _free_tag,
+
+};
+
 type_meta *get_bool_meta() { return &bool_META; }
 
 type_meta *get_int_meta() { return &int_META; }
@@ -1028,3 +1114,5 @@ type_meta *get_timestamp_meta() { return &timestamp_META; }
 type_meta *get_json_meta() { return &json_META; }
 
 type_meta *get_model_map_meta() { return &map_META; }
+
+type_meta *get_tag_meta() { return &tag_META; }
