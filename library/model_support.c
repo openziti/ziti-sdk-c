@@ -209,7 +209,7 @@ int model_to_json(void *obj, type_meta *meta, int indent, char *buf, size_t maxl
             *p++ = ':';
         }
 
-        if (fm->mod != array_mod) {
+        if (fm->mod == none_mod || fm->mod == ptr_mod) {
             size_t flen;
             if (ftm->jsonifier) {
                 ftm->jsonifier(f_ptr, indent + 1, p, buf + maxlen - p, &flen);
@@ -219,7 +219,40 @@ int model_to_json(void *obj, type_meta *meta, int indent, char *buf, size_t maxl
             }
             p += flen;
         }
-        else {
+        else if (fm->mod == map_mod) {
+            indent++;
+            model_map *map = (model_map *) f_addr;
+            const char *k;
+            void *v;
+            *p++ = '{';
+            char *comma = p;
+            *p++ = '\n';
+            size_t ellen;
+            MODEL_MAP_FOREACH(k, v, map) {
+                for (int j = 0; j <= indent; j++, *p++ = '\t') {}
+                *p++ = '"';
+                strcpy(p, k);
+                p += strlen(k);
+                *p++ = '"';
+                *p++ = ':';
+                if (ftm->jsonifier) {
+                    ftm->jsonifier(v, indent + 1, p, buf + maxlen - p, &ellen);
+                }
+                else {
+                    model_to_json(v, ftm, indent + 1, p, buf + maxlen - p, &ellen);
+                }
+                p += ellen;
+                comma = p;
+                *p++ = ',';
+                *p++ = '\n';
+            }
+            if (comma != NULL) {
+                p = comma;
+            }
+            *p++ = '}';
+            indent--;
+        }
+        else if (fm->mod == array_mod) {
             void **arr = (void **) (*f_addr);
 
             int idx = 0;
@@ -242,6 +275,10 @@ int model_to_json(void *obj, type_meta *meta, int indent, char *buf, size_t maxl
             }
 
             *p++ = ']';
+        }
+        else {
+            ZITI_LOG(ERROR, "unsupported mod[%d] for field[%s]", fm->mod, fm->name);
+            return -1;
         }
         *p++ = ',';
         last_coma = p - 1;
@@ -310,12 +347,40 @@ void model_free(void *obj, type_meta *meta) {
                 free(arr);
             }
         }
+        else if (fm->mod == map_mod) {
+            model_map *map = (model_map *) f_addr;
+            _free_f ff = NULL;
+            model_map_iter it = model_map_iterator(map);
+            while (it != NULL) {
+                const char *k = model_map_it_key(it);
+                void *v = model_map_it_value(it);
+                if (fm->meta == get_string_meta) {
+                }
+                else if (fm->meta()->destroyer) {
+                    fm->meta()->destroyer(v);
+                }
+                else {
+                    model_free(v, fm->meta());
+                }
+                free(v);
+
+                it = model_map_it_remove(it);
+            }
+
+            if (fm->meta == get_string_meta) {
+                ff = free;
+            }
+            else {
+                ff = fm->meta()->destroyer;
+            }
+            model_map_clear(map, ff);
+        }
     }
 }
 
 static int parse_array(void **arr, const char *json, jsmntok_t *tok, type_meta *el_meta) {
     if (tok->type != JSMN_ARRAY) {
-        fprintf(stderr, "unexpected token, array as expected\n");
+        ZITI_LOG(ERROR, "unexpected token, array as expected");
         return -1;
     }
     int children = tok->size;
@@ -349,6 +414,53 @@ static int parse_array(void **arr, const char *json, jsmntok_t *tok, type_meta *
     return processed;
 }
 
+static int parse_map(void *mapp, const char *json, jsmntok_t *tok, type_meta *el_meta) {
+    if (tok->type != JSMN_OBJECT) {
+        ZITI_LOG(ERROR, "unexspected JSON token near '%.*s', expecting object", 20, json + tok->start);
+        return -1;
+    }
+    model_map *map = mapp;
+    int tokens_processed = 1;
+    int children = tok->size;
+    tok++;
+    for (int i = 0; i < children; i++) {
+        if (tok->type != JSMN_STRING) {
+            ZITI_LOG(ERROR, "parsing[map] error: unexpected token starting at `%.*s'", 20, json + tok->start);
+            return -1;
+        }
+        const char *key = json + tok->start;
+        size_t keylen = tok->end - tok->start;
+
+        tok++;
+        tokens_processed++;
+        void *value = NULL;
+        int rc;
+        if (el_meta == get_string_meta()) {
+            rc = get_string_meta()->parser(&value, json, tok);
+        }
+        else if (el_meta == get_json_meta()) {
+            rc = get_json_meta()->parser(&value, json, tok);
+        }
+        else {
+            value = calloc(1, el_meta->size);
+            rc = el_meta->parser ?
+                 el_meta->parser(value, json, tok) :
+                 parse_obj(value, json, tok, el_meta);
+        }
+        if (rc < 0) {
+            FREE(value);
+            return rc;
+        }
+        tok += rc;
+        tokens_processed += rc;
+        char *k = calloc(1, keylen + 1);
+        strncpy(k, key, keylen);
+        model_map_set(map, k, value);
+        free(k);
+    }
+    return tokens_processed;
+}
+
 static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *meta) {
     memset(obj, 0, meta->size);
     if (tok->type != JSMN_OBJECT) {
@@ -378,6 +490,9 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
             if (fm->mod == array_mod) {
                 rc = parse_array(field, json, tok, fm->meta());
             }
+            else if (fm->mod == map_mod) {
+                rc = parse_map(field, json, tok, fm->meta());
+            }
             else {
                 char *memobj = NULL;
                 if (fm->mod == none_mod) {
@@ -388,7 +503,7 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
                     *(char **) field = memobj;
                 }
                 if (memobj == NULL) {
-                    fprintf(stderr, "member[%s] not found\n", fm->name);
+                    ZITI_LOG(ERROR, "member[%s] not found", fm->name);
                     return -1;
                 }
 
@@ -425,7 +540,7 @@ static int _parse_int(int *val, const char *json, jsmntok_t *tok) {
         char *end;
         int v = (int) strtol(&json[tok->start], &end, 10);
         if (end != &json[tok->end]) {
-            fprintf(stderr, "did not consume all parsing int\n");
+            ZITI_LOG(WARN, "did not consume all parsing int");
         }
         *val = v;
         return 1;
@@ -496,7 +611,7 @@ static int _parse_string(char **val, const char *json, jsmntok_t *tok) {
                         break;
                     default:
                         *out++ = *in;
-                        fprintf(stderr, "unhandled escape seq '\\%c'", *in);
+                        ZITI_LOG(ERROR, "unhandled escape seq '\\%c'", *in);
                 }
                 in++;
             }
@@ -507,6 +622,29 @@ static int _parse_string(char **val, const char *json, jsmntok_t *tok) {
         return 1;
     }
     return -1;
+}
+
+static int _parse_tag(tag *t, const char *json, jsmntok_t *tok) {
+    int rc = -1;
+    switch (tok->type) {
+        case JSMN_PRIMITIVE:
+            rc = _parse_bool(&t->bool_value, json, tok);
+            if (rc == -1) {
+                rc = _parse_int(&t->num_value, json, tok);
+                t->type = tag_number;
+            }
+            else {
+                t->type = tag_bool;
+            }
+            break;
+        case JSMN_STRING:
+            rc = _parse_string(&t->string_value, json, tok);
+            t->type = tag_string;
+            break;
+        default:
+            rc = -1;
+    }
+    return rc;
 }
 
 static int _parse_timeval(timestamp *t, const char *json, jsmntok_t *tok) {
@@ -553,6 +691,25 @@ static int _cmp_string(char **lh, char **rh) {
     if (*lh == *rh) { return 0; } // same ptr or both NULL
 
     return strcmp(*lh, *rh);
+}
+
+static int _cmp_tag(tag *lh, tag *rh) {
+    null_checks(lh, rh)
+    if (lh == rh) { return 0; } // same ptr or both NULL
+    if (lh->type != rh->type) {
+        return (int) lh->type - (int) rh->type;
+    }
+
+    switch (lh->type) {
+        case tag_bool:
+            return _cmp_bool(&lh->bool_value, &rh->bool_value);
+        case tag_number:
+            return _cmp_int(&lh->num_value, &rh->num_value);
+        case tag_string:
+            return _cmp_string(&lh->string_value, &rh->string_value);
+        case tag_null:
+            return 0;
+    }
 }
 
 static int _cmp_map(model_map *lh, model_map *rh) {
@@ -650,6 +807,29 @@ static int _string_json(const char *s, int indent, char *json, size_t max, size_
     return 0;
 }
 
+static int _tag_json(tag *t, int indent, char *json, size_t max, size_t *len) {
+    int rc;
+    switch (t->type) {
+        case tag_null:
+            rc = snprintf(json, max, "null");
+            break;
+        case tag_bool:
+            rc = snprintf(json, max, t->bool_value ? "true" : "false");
+            break;
+        case tag_number:
+            rc = snprintf(json, max, "%d", t->num_value);
+            break;
+        case tag_string:
+            return _string_json(t->string_value, indent, json, max, len);
+            break;
+    }
+    if (rc > 0) {
+        *len = rc;
+        return 0;
+    }
+    return rc;
+}
+
 static int _json_json(const char *s, int indent, char *json, size_t max, size_t *len) {
     int rc = snprintf(json, max, "%s", s);
     if (rc > 0) {
@@ -711,13 +891,22 @@ static void _free_string(char **s) {
     }
 }
 
+static void _free_tag(tag *t) {
+    if (t != NULL) {
+        if (t->type == tag_string) {
+            FREE(t->string_value);
+        }
+    }
+}
+
 struct model_map_entry {
     char *key;
     void *value;
     LIST_ENTRY(model_map_entry) _next;
 };
 typedef LIST_HEAD(mm_e, model_map_entry) entries_t;
-void* model_map_set(model_map *m, const char *key, void *val) {
+
+void *model_map_set(model_map *m, const char *key, void *val) {
     if (m->entries == NULL) {
         m->entries = calloc(1, sizeof(entries_t));
     }
@@ -821,7 +1010,7 @@ model_map_iter model_map_it_remove(model_map_iter it) {
 
 static int _parse_map(model_map *m, const char *json, jsmntok_t *tok) {
     if (tok->type != JSMN_OBJECT) {
-        ZITI_LOG(ERROR, "unexspected JSON token near '%.*s', expecting object", 20, json + tok->start);
+        ZITI_LOG(ERROR, "unexpected JSON token near '%.*s', expecting object", 20, json + tok->start);
         return -1;
     }
 
@@ -905,6 +1094,15 @@ static type_meta map_META = {
         .destroyer = (_free_f) _free_map,
 };
 
+static type_meta tag_META = {
+        .size = sizeof(tag),
+        .comparer = (_cmp_f) _cmp_tag,
+        .parser = (_parse_f) _parse_tag,
+        .jsonifier = (_to_json_f) _tag_json,
+        .destroyer = (_free_f) _free_tag,
+
+};
+
 type_meta *get_bool_meta() { return &bool_META; }
 
 type_meta *get_int_meta() { return &int_META; }
@@ -916,3 +1114,5 @@ type_meta *get_timestamp_meta() { return &timestamp_META; }
 type_meta *get_json_meta() { return &json_META; }
 
 type_meta *get_model_map_meta() { return &map_META; }
+
+type_meta *get_tag_meta() { return &tag_META; }

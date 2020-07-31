@@ -281,3 +281,141 @@ TEST_CASE("test service array", "[model]") {
     free_ziti_service_array(&arr);
 }
 
+
+TEST_CASE("service config test", "[model]") {
+    const char *j = R"({
+    "_links": {
+      "configs": {
+        "href": "./services/c8c07cb8-5234-4106-92ea-fde5721095fd/configs"
+      },
+      "self": {
+        "href": "./services/c8c07cb8-5234-4106-92ea-fde5721095fd"
+      },
+      "service-edge-router-policies": {
+        "href": "./services/c8c07cb8-5234-4106-92ea-fde5721095fd/service-edge-router-policies"
+      },
+      "service-policies": {
+        "href": "./services/c8c07cb8-5234-4106-92ea-fde5721095fd/service-policies"
+      },
+      "terminators": {
+        "href": "./services/c8c07cb8-5234-4106-92ea-fde5721095fd/terminators"
+      }
+    },
+    "createdAt": "2020-04-28T17:43:52.717Z",
+    "id": "c8c07cb8-5234-4106-92ea-fde5721095fd",
+    "tags": {},
+    "updatedAt": "2020-05-12T02:56:36.860Z",
+    "config": {
+      "ziti-tunneler-client.v1": {
+        "hostname": "hello.ziti",
+        "port": 80
+      }
+    },
+    "configs": [
+      "d1339ad5-6556-4297-b357-308b3bc79db0"
+    ],
+    "name": "hello-svc",
+    "permissions": [
+      "Bind",
+      "Dial"
+    ],
+    "roleAttributes": null,
+    "terminatorStrategy": "smartrouting"
+  }
+)";
+
+    ziti_service s;
+    REQUIRE(parse_ziti_service(&s, j, strlen(j)) == 0);
+
+    ziti_intercept cfg;
+    REQUIRE(ziti_service_get_config(&s, "ziti-tunneler-client.v1", &cfg,
+                                    (int (*)(void *, const char *, size_t)) (parse_ziti_intercept)) == 0);
+
+    CHECK_THAT(cfg.hostname, Equals("hello.ziti"));
+    CHECK(cfg.port == 80);
+}
+
+TEST_CASE("identity tags", "[model]") {
+    const char *json = R"(        {
+            "_links": {
+                "edge-router-policies": {
+                    "href": "./identities/499af8c0-bede-4305-b4fb-334e2750e872/edge-routers"
+                },
+                "self": {
+                    "href": "./identities/499af8c0-bede-4305-b4fb-334e2750e872"
+                }
+            },
+            "createdAt": "2020-03-06T20:52:14.790Z",
+            "id": "499af8c0-bede-4305-b4fb-334e2750e872",
+            "tags": {
+                "type": "test phone",
+                "active": true,
+                "answer": 42,
+                "owner": "Eugene"
+            },
+            "updatedAt": "2020-07-30T16:50:59.461Z",
+            "authenticators": {
+                "cert": {
+                    "fingerprint": "ae4b6a14167c816f14fc0434f55213c2b5c9df91"
+                }
+            },
+            "enrollment": {},
+            "envInfo": {
+                "arch": "x86_64",
+                "os": "Linux",
+                "osRelease": "5.4.0-42-generic",
+                "osVersion": "#46-Ubuntu SMP Fri Jul 10 00:24:02 UTC 2020"
+            },
+            "isAdmin": false,
+            "isDefaultAdmin": false,
+            "name": "ek-hermes",
+            "roleAttributes": [
+                "#ek",
+                "ek"
+            ],
+            "sdkInfo": {
+                "branch": "model-tags-support",
+                "revision": "fa9a8a6",
+                "type": "ziti-sdk-c",
+                "version": "0.15.2.7-local"
+            },
+            "type": {
+                "_links": {
+                    "self": {
+                        "href": "./identities/5b53fb49-51b1-4a87-a4e4-edda9716a970"
+                    }
+                },
+                "entity": "identities",
+                "id": "5b53fb49-51b1-4a87-a4e4-edda9716a970",
+                "name": "Device"
+            },
+            "typeId": "5b53fb49-51b1-4a87-a4e4-edda9716a970"
+        }
+)";
+
+    ziti_identity id;
+    REQUIRE(parse_ziti_identity(&id, json, strlen(json)) == 0);
+
+    tag *t = (tag *) model_map_get(&id.tags, "owner");
+    REQUIRE(t != nullptr);
+    REQUIRE(t->type == tag_string);
+    REQUIRE_THAT(t->string_value, Equals("Eugene"));
+
+    t = (tag *) model_map_get(&id.tags, "active");
+    REQUIRE(t != nullptr);
+    REQUIRE(t->type == tag_bool);
+    REQUIRE(t->bool_value == true);
+
+    t = (tag *) model_map_get(&id.tags, "answer");
+    REQUIRE(t != nullptr);
+    REQUIRE(t->type == tag_number);
+    REQUIRE(t->num_value == 42);
+
+    char buf[1024];
+    size_t l;
+    json_from_ziti_identity(&id, buf, 1024, &l);
+
+    printf("%.*s", (int)l, buf);
+
+    free_ziti_identity(&id);
+}

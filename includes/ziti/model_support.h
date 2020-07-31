@@ -55,6 +55,7 @@ limitations under the License.
 #define none(t) t
 #define ptr(t)  t*
 #define array(t) t##_array
+#define map(t)  model_map
 
 #define FIELD_DECL(name, type, mod, path, _) mod(type) name;
 
@@ -122,7 +123,8 @@ typedef char *json;
 enum _field_mod {
     none_mod,
     ptr_mod,
-    array_mod
+    array_mod,
+    map_mod
 };
 
 typedef struct field_meta {
@@ -215,6 +217,24 @@ for (var(e,line) = model_map_iterator(map), k = model_map_it_key(var(e,line)), v
 
 #define MODEL_MAP_FOREACH(k, v, map) MODEL_MAP_FOREACH_l(k, v, map, __LINE__)
 
+
+typedef enum {
+    tag_null,
+    tag_bool,
+    tag_number,
+    tag_string
+} tag_type;
+
+typedef struct {
+    tag_type type;
+    union {
+        bool bool_value;
+        int num_value;
+        string string_value;
+    };
+} tag;
+
+ZITI_FUNC type_meta *get_tag_meta();
 
 #if __cplusplus
 }

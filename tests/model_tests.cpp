@@ -279,3 +279,73 @@ TEST_CASE("model compare with array", "[model]") {
     free_Bar(&bar1);
     free_Bar(&bar2);
 }
+
+#define string_map_model(XX, ...) \
+XX(tags, string, map, tags, __VA_ARGS__)
+
+DECLARE_MODEL(tagged, string_map_model)
+
+IMPL_MODEL(tagged, string_map_model)
+
+
+TEST_CASE("model with string map", "[model]") {
+    const char *json = R"({
+        "tags":{
+            "num":"42",
+            "ok":"true",
+            "msg":"hello\nworld!"
+        }
+    })";
+
+    tagged obj;
+    REQUIRE(parse_tagged(&obj, json, strlen(json)) == 0);
+
+    const char *num = (const char *) model_map_get(&obj.tags, "num");
+    CHECK_THAT(num, Equals("42"));
+    CHECK_THAT((const char *) model_map_get(&obj.tags, "ok"), Equals("true"));
+    CHECK_THAT((const char *) model_map_get(&obj.tags, "msg"), Equals("hello\nworld!"));
+
+    char buf[1024];
+    size_t json_len;
+    REQUIRE(json_from_tagged(&obj, buf, 1024, &json_len) == 0);
+
+    printf("%.*s", (int) json_len, buf);
+    free_tagged(&obj);
+}
+
+#define objmap_model(XX, ...) \
+XX(objects, Bar, map, objects, __VA_ARGS__)
+
+DECLARE_MODEL(MapOfObjects, objmap_model)
+
+IMPL_MODEL(MapOfObjects, objmap_model)
+
+TEST_CASE("map of objects", "[model]") {
+    const char *json = "{"
+                       "\"objects\":{"
+                       "\"bar1\":" BAR1 ","
+                       "\"bar2\":" BAR2
+                       "}}";
+
+    MapOfObjects m;
+    REQUIRE(parse_MapOfObjects(&m, json, strlen(json)) == 0);
+
+    Bar *b1 = static_cast<Bar *>(model_map_get(&m.objects, "bar1"));
+    Bar *b2 = static_cast<Bar *>(model_map_get(&m.objects, "bar2"));
+
+    REQUIRE(b1 != nullptr);
+    REQUIRE(b2 != nullptr);
+    CHECK(b1->num == 42);
+    CHECK(!b1->isOK);
+
+    CHECK_THAT(b1->msg, Equals("this is a message"));
+
+    char buf[1024];
+    size_t json_len;
+    REQUIRE(json_from_MapOfObjects(&m, buf, 1024, &json_len) == 0);
+
+    printf("%.*s", (int) json_len, buf);
+
+    free_MapOfObjects(&m);
+}
+
