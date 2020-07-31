@@ -277,7 +277,7 @@ int model_to_json(void *obj, type_meta *meta, int indent, char *buf, size_t maxl
             *p++ = ']';
         }
         else {
-            fprintf(stderr, "unsupported mod[%d] for field[%s]", fm->mod, fm->name);
+            ZITI_LOG(ERROR, "unsupported mod[%d] for field[%s]", fm->mod, fm->name);
             return -1;
         }
         *p++ = ',';
@@ -380,7 +380,7 @@ void model_free(void *obj, type_meta *meta) {
 
 static int parse_array(void **arr, const char *json, jsmntok_t *tok, type_meta *el_meta) {
     if (tok->type != JSMN_ARRAY) {
-        fprintf(stderr, "unexpected token, array as expected\n");
+        ZITI_LOG(ERROR, "unexpected token, array as expected");
         return -1;
     }
     int children = tok->size;
@@ -425,7 +425,7 @@ static int parse_map(void *mapp, const char *json, jsmntok_t *tok, type_meta *el
     tok++;
     for (int i = 0; i < children; i++) {
         if (tok->type != JSMN_STRING) {
-            ZITI_LOG(ERROR, "parsing[map] error: unexpected token starting at `%.*s'\n", 20, json + tok->start);
+            ZITI_LOG(ERROR, "parsing[map] error: unexpected token starting at `%.*s'", 20, json + tok->start);
             return -1;
         }
         const char *key = json + tok->start;
@@ -503,7 +503,7 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
                     *(char **) field = memobj;
                 }
                 if (memobj == NULL) {
-                    fprintf(stderr, "member[%s] not found\n", fm->name);
+                    ZITI_LOG(ERROR, "member[%s] not found", fm->name);
                     return -1;
                 }
 
@@ -540,7 +540,7 @@ static int _parse_int(int *val, const char *json, jsmntok_t *tok) {
         char *end;
         int v = (int) strtol(&json[tok->start], &end, 10);
         if (end != &json[tok->end]) {
-            fprintf(stderr, "did not consume all parsing int\n");
+            ZITI_LOG(WARN, "did not consume all parsing int");
         }
         *val = v;
         return 1;
@@ -611,7 +611,7 @@ static int _parse_string(char **val, const char *json, jsmntok_t *tok) {
                         break;
                     default:
                         *out++ = *in;
-                        fprintf(stderr, "unhandled escape seq '\\%c'", *in);
+                        ZITI_LOG(ERROR, "unhandled escape seq '\\%c'", *in);
                 }
                 in++;
             }
@@ -1010,7 +1010,7 @@ model_map_iter model_map_it_remove(model_map_iter it) {
 
 static int _parse_map(model_map *m, const char *json, jsmntok_t *tok) {
     if (tok->type != JSMN_OBJECT) {
-        ZITI_LOG(ERROR, "unexspected JSON token near '%.*s', expecting object", 20, json + tok->start);
+        ZITI_LOG(ERROR, "unexpected JSON token near '%.*s', expecting object", 20, json + tok->start);
         return -1;
     }
 
