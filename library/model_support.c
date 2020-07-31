@@ -354,7 +354,8 @@ void model_free(void *obj, type_meta *meta) {
             while (it != NULL) {
                 const char *k = model_map_it_key(it);
                 void *v = model_map_it_value(it);
-                if (fm->meta == get_string_meta) {
+                if (fm->meta == get_string_meta || fm->meta == get_json_meta) {
+                    fm->meta()->destroyer(&v);
                 }
                 else if (fm->meta()->destroyer) {
                     fm->meta()->destroyer(v);
