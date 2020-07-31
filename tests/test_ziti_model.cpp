@@ -333,6 +333,8 @@ TEST_CASE("service config test", "[model]") {
 
     CHECK_THAT(cfg.hostname, Equals("hello.ziti"));
     CHECK(cfg.port == 80);
+    free_ziti_service(&s);
+    free_ziti_intercept(&cfg);
 }
 
 TEST_CASE("identity tags", "[model]") {
