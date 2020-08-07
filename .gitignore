@@ -2,7 +2,7 @@
 
 build-*/
 build/
-cmake-build-debug/
+cmake-build-*/
 
 # visual studio files
 .vs
