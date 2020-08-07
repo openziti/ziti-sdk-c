@@ -52,16 +52,16 @@ int verify_controller_jwt(tls_cert cert, void *ctx) {
     enroll_cfg *ecfg = ctx;
     enum hash_algo md;
     if (strcmp(ecfg->zejh->alg, "RS256") == 0) {
-        md = SHA256;
+        md = hash_SHA256;
     }
     else if (strcmp(ecfg->zejh->alg, "ES256") == 0) {
-        md = SHA256;
+        md = hash_SHA256;
     }
     else if (strcmp(ecfg->zejh->alg, "ES384") == 0) {
-        md = SHA384;
+        md = hash_SHA384;
     }
     else if (strcmp(ecfg->zejh->alg, "ES512") == 0) {
-        md = SHA512;
+        md = hash_SHA512;
     }
     else {
         ZITI_LOG(ERROR, "unsupported signature algo `%s'", ecfg->zejh->alg);

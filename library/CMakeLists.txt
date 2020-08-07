@@ -23,14 +23,8 @@ SET(ZITI_SRC_FILES
         metrics.c
 )
 
-SET(ZITI_PRIVATE_SRC_FILES
-    ${PROJECT_SOURCE_DIR}/deps/http-parser/http_parser.c
-)
-
 SET(ZITI_INCLUDE_DIRS
     PUBLIC ../includes
-    PUBLIC ${PROJECT_SOURCE_DIR}/deps/http-parser
-
     PRIVATE ../inc_internal
     PRIVATE ${PROJECT_BINARY_DIR}/include
 )
@@ -117,16 +111,16 @@ install(TARGETS ziti ziti_dll
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../includes/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-set(ziti_DEPS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../deps)
-install(FILES ${ziti_DEPS_DIR}/http-parser/LICENSE-MIT DESTINATION ${CMAKE_INSTALL_DOCDIR}/http-parser)
-install(FILES ${ziti_DEPS_DIR}/uv-mbed/deps/mbedtls/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls)
-install(FILES ${ziti_DEPS_DIR}/uv-mbed/deps/uv_link_t/README.md DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
-install(FILES ${ziti_DEPS_DIR}/uv-mbed/deps/mbedtls/crypto/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls/crypto)
-install(FILES ${ziti_DEPS_DIR}/uv-mbed/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_mbed)
+set(ziti_DEPS_DIR ${CMAKE_BINARY_DIR}/_deps)
+install(FILES ${ziti_DEPS_DIR}/mbedtls-src/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls)
+install(FILES ${ziti_DEPS_DIR}/mbedtls-src/crypto/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls/crypto)
+install(FILES ${uv-mbed_SOURCE_DIR}/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_mbed)
+install(FILES ${uv-mbed_SOURCE_DIR}/deps/uv_link_t/README.md DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
+install(FILES ${uv-mbed_SOURCE_DIR}/deps/http-parser/LICENSE-MIT DESTINATION ${CMAKE_INSTALL_DOCDIR}/http-parser)
 
 if (NOT WIN32) # no license file windows pre-built bundle
-install(FILES ${CMAKE_BINARY_DIR}/_deps/libsodium-src/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/libsodium)
-endif()
+    install(FILES ${CMAKE_BINARY_DIR}/_deps/libsodium-src/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/libsodium)
+endif ()
 
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ziti.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 

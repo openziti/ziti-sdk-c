@@ -1,5 +1,5 @@
 /*
-Copyright 2020 Netfoundry, Inc.
+Copyright 2020 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,9 @@ limitations under the License.
 */
 
 #include "catch2/catch.hpp"
-#include <string.h>
-// #include <iostream>
+#include <cstring>
 #include <zt_internal.h>
 #include <utils.h>
-#include <mbedtls/x509_csr.h>
 #include "internal_model.h"
 
 static char* url64to64(const char* in, size_t ilen, size_t *olen) {
@@ -53,9 +51,9 @@ TEST_CASE("load_jwt","[integ]") {
         return;
     }
 
-    struct enroll_cfg_s *ecfg = (struct enroll_cfg_s *)calloc(1, sizeof(enroll_cfg));
-    ziti_enrollment_jwt_header *zejh = NULL;
-    ziti_enrollment_jwt *zej = NULL;
+    auto *ecfg = (struct enroll_cfg_s *) calloc(1, sizeof(enroll_cfg));
+    ziti_enrollment_jwt_header *zejh = nullptr;
+    ziti_enrollment_jwt *zej = nullptr;
 
     load_jwt(conf, ecfg, &zejh, &zej);
 
@@ -66,38 +64,4 @@ TEST_CASE("load_jwt","[integ]") {
     REQUIRE_THAT(zej->subject, Catch::Matchers::Equals("c17291f4-37fe-4cdb-9f57-3eb757b648f5"));
     REQUIRE_THAT(zej->token, Catch::Matchers::Equals("f581d770-fffc-11e9-a81a-000d3a1b4b17"));
 
-}
-
-TEST_CASE("test generate csr", "[engine]") {
-    tls_context *tls = default_tls_context(nullptr, 0);
-
-    tls_private_key pk;
-    CHECK(tls->api->generate_key(&pk) == 0);
-    REQUIRE(pk != nullptr);
-
-    char *keypem;
-    std::size_t keypemlen;
-    REQUIRE(tls->api->write_key_to_pem(pk, &keypem, &keypemlen) == 0);
-    printf("key pem =\n%.*s\n", (int) keypemlen, keypem);
-    free(keypem);
-
-    uint8_t *pem;
-    std::size_t pemlen;
-    REQUIRE(tls->api->generate_csr_to_pem(pk, (char **) &pem, &pemlen,
-                                          "C", "US",
-                                          "ST", "NY",
-                                          "O", "OpenZiti",
-                                          "OU", "Developers",
-                                          "DC", "https://demo4.ziti"
-                                                "CN", "this is test",
-                                          nullptr) == 0);
-    printf("csr pem =\n%.*s\n", (int) pemlen, pem);
-
-    mbedtls_x509_csr csr;
-    mbedtls_x509_csr_init(&csr);
-    REQUIRE(mbedtls_x509_csr_parse(&csr, pem, pemlen) == 0);
-    free(pem);
-    tls->api->free_key(&pk);
-    tls->api->free_ctx(tls);
-    mbedtls_x509_csr_free(&csr);
 }
