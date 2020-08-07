@@ -112,5 +112,3 @@ endif()
 
 add_subdirectory(tests)
 
-PUBCOMP(ziti-sdk)
-
