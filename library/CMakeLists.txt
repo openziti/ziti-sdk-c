@@ -23,14 +23,8 @@ SET(ZITI_SRC_FILES
         metrics.c
 )
 
-SET(ZITI_PRIVATE_SRC_FILES
-    ${PROJECT_SOURCE_DIR}/deps/http-parser/http_parser.c
-)
-
 SET(ZITI_INCLUDE_DIRS
     PUBLIC ../includes
-    PUBLIC ${PROJECT_SOURCE_DIR}/deps/http-parser
-
     PRIVATE ../inc_internal
     PRIVATE ${PROJECT_BINARY_DIR}/include
 )

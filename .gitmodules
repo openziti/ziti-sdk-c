@@ -1,4 +1,0 @@
-[submodule "deps/subcommand"]
-	path = deps/subcommand
-	url = https://github.com/dimitri/subcommands.c.git
-	branch = master

@@ -5,8 +5,7 @@ pipeline {
     stage("Setup") {
       steps {
         sh 'env'
-        sh 'git submodule update --init --recursive'
-        sh 'git submodule status --recursive'
+
         sh 'git tag --delete $(git tag -l)'
         sh 'git fetch --verbose --tags'
         script {
