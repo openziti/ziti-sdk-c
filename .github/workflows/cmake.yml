@@ -19,6 +19,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
       - name: make build dir
         run: cmake -E make_directory ${{runner.workspace}}/build
       - name: configure cmake
