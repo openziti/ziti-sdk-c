@@ -1,0 +1,30 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ '*' ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macOS-latest
+          - windows-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: make build dir
+        run: cmake -E make_directory ${{runner.workspace}}/build
+      - name: configure cmake
+        run: cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+      - name: build
+        run: cmake --build ${{runner.workspace}}/build
+      - name: test
+        working-directory: ${{runner.workspace}}/build
+        run: ctest -VV --no-compress-output
