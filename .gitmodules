@@ -1,7 +1,3 @@
-[submodule "deps/http-parser"]
-	path = deps/http-parser
-	url = https://github.com/NetFoundry/http-parser
-	branch = support-opaque-urls
 [submodule "deps/subcommand"]
 	path = deps/subcommand
 	url = https://github.com/dimitri/subcommands.c.git
