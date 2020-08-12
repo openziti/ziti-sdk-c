@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.12)
+cmake_minimum_required(VERSION 3.12)
 include(git.cmake)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_C_STANDARD 99)
@@ -6,6 +6,9 @@ project(ziti-sdk
         VERSION ${ver}
         LANGUAGES C CXX
         )
+
+option(ZITI_BUILD_PROGRAMS "Build programs." ON)
+option(ZITI_BUILD_TESTS "Build tests." ON)
 
 message("project version: ${PROJECT_VERSION}")
 message("git info:")
@@ -106,9 +109,13 @@ endif()
 
 add_subdirectory(library)
 
-if(NOT ${PUB_OS} STREQUAL "ios" )
-    add_subdirectory(programs)
-endif()
+if (ZITI_BUILD_PROGRAMS)
+    if (NOT ${PUB_OS} STREQUAL "ios")
+        add_subdirectory(programs)
+    endif ()
+endif ()
 
-add_subdirectory(tests)
+if (ZITI_BUILD_TESTS)
+    add_subdirectory(tests)
+endif ()
 
