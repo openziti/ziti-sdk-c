@@ -314,6 +314,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
             ziti_conn_init(conn->ziti_ctx, &clt, NULL);
             clt->state = Accepting;
             clt->parent = conn;
+            clt->channel = conn->channel;
             clt->dial_req_seq = msg->header.seq;
             establish_crypto(clt, msg);
             conn->client_cb(conn, clt, ZITI_OK);
