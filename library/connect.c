@@ -391,7 +391,7 @@ static void ziti_disconnect_async(uv_async_t *ar) {
 
     uv_close((uv_handle_t *) ar, free_handle);
 
-    if (conn->state == Connected) {
+    if (conn->state == Connected || conn->state == Accepting) {
         NEWP(wr, struct ziti_write_req_s);
         wr->conn = conn;
         wr->cb = ziti_disconnect_cb;
