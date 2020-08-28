@@ -26,7 +26,7 @@ limitations under the License.
 // @endcond
 
 #include "externs.h"
-#include "error-defs.h"
+#include "error_defs.h"
 
 #ifdef __cplusplus
 extern "C" {
