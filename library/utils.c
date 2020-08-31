@@ -201,3 +201,13 @@ void hexDump (char *desc, void *addr, int len) {
     fflush(stdout); 
     ZITI_LOG(DEBUG, " ");
 }
+
+void ziti_log_format(char* time_str) {
+#if _WIN32
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    sprintf(time_str, "%02d-%02d-%04dT%02d:%02d:%02d", st.wDay, st.wMonth, st.wYear, st.wHour, st.wMinute, st.wSecond);
+#else
+    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
+#endif
+}

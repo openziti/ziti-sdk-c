@@ -246,6 +246,8 @@ int close_conn_internal(struct ziti_conn *conn);
 
 int establish_crypto(ziti_connection conn, message *msg);
 
+void ziti_log_format(char* time_str);
+
 #ifdef __cplusplus
 }
 #endif

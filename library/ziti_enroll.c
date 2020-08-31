@@ -98,7 +98,7 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
 
     struct tm *start_tm = gmtime((const time_t *) &start_time.tv_sec);
     char time_str[32];
-    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
+    ziti_log_format(&time_str);
 
     ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting enrollment at (%s.%03d)",
              ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
