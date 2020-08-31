@@ -248,6 +248,7 @@ typedef void (*ziti_enroll_cb)(ziti_config *cfg, int status, char *err_message, 
 
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
+ZITI_FUNC
 extern int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx);
 
 /**
