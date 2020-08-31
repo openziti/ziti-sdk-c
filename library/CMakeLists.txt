@@ -1,5 +1,6 @@
 set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/errors.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/error_defs.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/enums.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_src.h
@@ -113,7 +114,6 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../includes/
 
 set(ziti_DEPS_DIR ${CMAKE_BINARY_DIR}/_deps)
 install(FILES ${ziti_DEPS_DIR}/mbedtls-src/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls)
-install(FILES ${ziti_DEPS_DIR}/mbedtls-src/crypto/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls/crypto)
 install(FILES ${uv-mbed_SOURCE_DIR}/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_mbed)
 install(FILES ${uv-mbed_SOURCE_DIR}/deps/uv_link_t/README.md DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
 install(FILES ${uv-mbed_SOURCE_DIR}/deps/http-parser/LICENSE-MIT DESTINATION ${CMAKE_INSTALL_DOCDIR}/http-parser)
