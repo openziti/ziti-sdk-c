@@ -180,7 +180,7 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     uv_gettimeofday(&start_time);
 
     char time_str[32];
-    ziti_fmt_time(&time_str, sizeof(time_str), start_time);
+    ziti_fmt_time(time_str, sizeof(time_str), start_time);
 
     ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
              ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
