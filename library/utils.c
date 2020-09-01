@@ -18,6 +18,9 @@ limitations under the License.
 #include <uv_mbed/uv_mbed.h>
 #include <ziti/ziti_model.h>
 #include "utils.h"
+#if _WIN32
+#include <time.h>
+#endif
 
 
 #if !defined(ZITI_VERSION)
@@ -202,12 +205,15 @@ void hexDump (char *desc, void *addr, int len) {
     ZITI_LOG(DEBUG, " ");
 }
 
-void ziti_log_format(char* time_str) {
+void ziti_log_format(char* time_str, size_t time_str_len, uv_timeval64_t start_time) {
 #if _WIN32
-    SYSTEMTIME st;
-    GetLocalTime(&st);
-    sprintf(time_str, "%02d-%02d-%04dT%02d:%02d:%02d", st.wDay, st.wMonth, st.wYear, st.wHour, st.wMinute, st.wSecond);
+    time_t rawtime = start_time.tv_sec;
+    struct tm  start_tm;
+
+    start_tm = *localtime(&rawtime);
+    strftime(time_str, time_str_len, "%Y-%m-%dT%H:%M:%S", &start_tm);
 #else
-    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
+    struct tm* start_tm = gmtime(&start_time.tv_sec);
+    strftime(time_str, time_str_len, "%FT%T", start_tm);
 #endif
 }

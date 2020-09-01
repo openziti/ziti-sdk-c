@@ -179,9 +179,8 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     uv_timeval64_t start_time;
     uv_gettimeofday(&start_time);
 
-    struct tm *start_tm = gmtime(&start_time.tv_sec);
     char time_str[32];
-    ziti_log_format(&time_str);
+    ziti_log_format(&time_str, sizeof(time_str), start_time);
 
     ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
              ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
