@@ -207,7 +207,7 @@ void hexDump (char *desc, void *addr, int len) {
 
 void ziti_fmt_time(char* time_str, size_t time_str_sz, uv_timeval64_t* start_time) {
     if (start_time == NULL) {
-        strncpy(start_time, "null start_time", time_str_sz);
+        strncpy(time_str, "null start_time", time_str_sz);
     } else {
         struct tm* start_tm = gmtime(start_time->tv_sec);
         strftime(time_str, time_str_sz, "%FT%T", start_tm);
