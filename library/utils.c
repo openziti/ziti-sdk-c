@@ -205,7 +205,7 @@ void hexDump (char *desc, void *addr, int len) {
     ZITI_LOG(DEBUG, " ");
 }
 
-void ziti_log_format(char* time_str, size_t time_str_len, uv_timeval64_t start_time) {
+void ziti_fmt_time(char* time_str, size_t time_str_len, uv_timeval64_t start_time) {
     struct tm* start_tm = gmtime(&start_time.tv_sec);
     strftime(time_str, time_str_len, "%FT%T", start_tm);
 }
