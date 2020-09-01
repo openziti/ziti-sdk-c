@@ -10,6 +10,8 @@ project(ziti-sdk
 option(ZITI_BUILD_PROGRAMS "Build programs." ON)
 option(ZITI_BUILD_TESTS "Build tests." ON)
 
+option(HAVE_LIBSODIUM "use and link installed shared libsodium library" OFF)
+
 message("project version: ${PROJECT_VERSION}")
 message("git info:")
 message("   branch : ${GIT_BRANCH}")
@@ -30,7 +32,7 @@ if (WIN32)
         set(CMAKE_INSTALL_PREFIX ${CMAKE_BINARY_DIR}/cmake_install/ziti-sdk-${PROJECT_VERSION})
     endif()
 else()
-    set(CMAKE_INSTALL_PREFIX /opt/netfoundry/ziti-sdk-${PROJECT_VERSION})
+    set(CMAKE_INSTALL_PREFIX /opt/openziti/ziti-sdk-${PROJECT_VERSION})
 endif()
 
 message("cross-compiling ${CMAKE_CROSSCOMPILING}")
