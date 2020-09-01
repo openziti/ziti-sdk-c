@@ -206,14 +206,6 @@ void hexDump (char *desc, void *addr, int len) {
 }
 
 void ziti_log_format(char* time_str, size_t time_str_len, uv_timeval64_t start_time) {
-#if _WIN32
-    time_t rawtime = start_time.tv_sec;
-    struct tm  start_tm;
-
-    start_tm = *localtime(&rawtime);
-    strftime(time_str, time_str_len, "%Y-%m-%dT%H:%M:%S", &start_tm);
-#else
     struct tm* start_tm = gmtime(&start_time.tv_sec);
     strftime(time_str, time_str_len, "%FT%T", start_tm);
-#endif
 }
