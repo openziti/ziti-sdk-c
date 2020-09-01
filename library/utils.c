@@ -205,11 +205,11 @@ void hexDump (char *desc, void *addr, int len) {
     ZITI_LOG(DEBUG, " ");
 }
 
-void ziti_fmt_time(char* time_str, size_t time_str_sz, uv_timeval64_t* start_time) {
-    if (start_time == NULL) {
-        strncpy(time_str, "null start_time", time_str_sz);
+void ziti_fmt_time(char* time_str, size_t time_str_sz, uv_timeval64_t* tv) {
+    if (tv == NULL) {
+        strncpy(time_str, "null tv", time_str_sz);
     } else {
-        struct tm* start_tm = gmtime(start_time->tv_sec);
+        struct tm* start_tm = gmtime(tv->tv_sec);
         strftime(time_str, time_str_sz, "%FT%T", start_tm);
     }
 }
