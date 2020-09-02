@@ -413,8 +413,8 @@ extern void *ziti_conn_data(ziti_connection conn);
  *
  * @see ziti_conn_data(), ziti_conn_init()
  */
- ZITI_FUNC
- extern void ziti_conn_set_data(ziti_connection conn, void *data);
+ZITI_FUNC
+extern void ziti_conn_set_data(ziti_connection conn, void *data);
 
 /**
  * @brief Checks availability of the service for the given edge context.

@@ -18,6 +18,9 @@ limitations under the License.
 #include <uv_mbed/uv_mbed.h>
 #include <ziti/ziti_model.h>
 #include "utils.h"
+#if _WIN32
+#include <time.h>
+#endif
 
 
 #if !defined(ZITI_VERSION)
@@ -200,4 +203,13 @@ void hexDump (char *desc, void *addr, int len) {
     printf ("  %s\n", buffLine);
     fflush(stdout); 
     ZITI_LOG(DEBUG, " ");
+}
+
+void ziti_fmt_time(char* time_str, size_t time_str_sz, uv_timeval64_t* tv) {
+    if (tv == NULL) {
+        strncpy(time_str, "null tv", time_str_sz);
+    } else {
+        struct tm* start_tm = gmtime(tv->tv_sec);
+        strftime(time_str, time_str_sz, "%FT%T", start_tm);
+    }
 }

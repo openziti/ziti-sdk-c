@@ -179,15 +179,8 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     uv_timeval64_t start_time;
     uv_gettimeofday(&start_time);
 
-    struct tm *start_tm = gmtime(&start_time.tv_sec);
     char time_str[32];
-#if _WIN32
-    SYSTEMTIME st;
-    GetLocalTime(&st);
-    sprintf(time_str, "%02d-%02d-%04dT%02d:%02d:%02d", st.wDay, st.wMonth, st.wYear, st.wHour, st.wMinute, st.wSecond);
-#else
-    strftime(time_str, sizeof(time_str), "%FT%T", start_tm);
-#endif
+    ziti_fmt_time(time_str, sizeof(time_str), &start_time);
 
     ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
              ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
