@@ -209,7 +209,7 @@ void ziti_fmt_time(char* time_str, size_t time_str_sz, uv_timeval64_t* tv) {
     if (tv == NULL) {
         strncpy(time_str, "null tv", time_str_sz);
     } else {
-        struct tm* start_tm = gmtime(tv->tv_sec);
+        struct tm* start_tm = gmtime(&tv->tv_sec);
         strftime(time_str, time_str_sz, "%FT%T", start_tm);
     }
 }
