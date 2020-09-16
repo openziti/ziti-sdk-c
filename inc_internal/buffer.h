@@ -17,8 +17,15 @@ limitations under the License.
 #ifndef ZITI_SDK_BUFFER_H
 #define ZITI_SDK_BUFFER_H
 
+#if !defined(__DEFINED_ssize_t) && !defined(__ssize_t_defined)
 #if _WIN32
-#include <uv.h>
+#include <stdint.h>
+typedef intptr_t ssize_t;
+#define __DEFINED_ssize_t
+#define __ssize_t_defined
+#else
+#include <unistd.h>
+#endif
 #endif
 
 typedef struct buffer_s buffer;
