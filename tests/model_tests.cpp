@@ -349,3 +349,96 @@ TEST_CASE("map of objects", "[model]") {
     free_MapOfObjects(&m);
 }
 
+#define basket_model(XX, ...) \
+XX(json_fruits,json,map, json_fruits,__VA_ARGS__) \
+XX(fruits,Fruit,map,fruits,__VA_ARGS__)          \
+XX(strings,string,map,strings,__VA_ARGS__)
+
+#define fruit_model(XX, ...) \
+XX(color,string,none,color,__VA_ARGS__) \
+XX(count,int,none,count,__VA_ARGS__)
+
+DECLARE_MODEL(Fruit, fruit_model)
+
+IMPL_MODEL(Fruit, fruit_model)
+
+DECLARE_MODEL(Basket, basket_model)
+
+IMPL_MODEL(Basket, basket_model)
+
+
+TEST_CASE("map compare", "[model]") {
+    const char *json1 = R"({
+  "fruits" : {
+    "orange" : {
+      "color": "orange",
+      "count": 1
+    },
+    "apple": {
+      "color": "red",
+      "count": 2
+    }
+  },
+  "json_fruits" : {
+    "orange" : {
+      "color": "orange",
+      "count": 1
+    },
+    "apple": {
+      "color": "red",
+      "count": 2
+    }
+  },
+  "strings" : {
+     "one": "1",
+     "two": "2"
+  }
+})";
+
+    const char *json2 = R"({
+  "json_fruits" : {
+    "orange" : {
+      "color": "orange",
+      "count": 1
+    }
+  },
+  "fruits" : {
+    "orange" : {
+      "color": "orange",
+      "count": 1
+    }
+  },
+  "strings" : {
+     "two": "2"
+  }
+})";
+
+    Basket b1, b2;
+    parse_Basket(&b1, json1, strlen(json1));
+    parse_Basket(&b2, json2, strlen(json2));
+
+    int rc = cmp_Basket(&b1, &b2);
+    CHECK(rc != 0);
+
+    char *apple = (char *) model_map_remove(&b1.json_fruits, "apple");
+    free(apple);
+
+    rc = cmp_Basket(&b1, &b2);
+    CHECK(rc != 0);
+
+    Fruit *app = (Fruit *) model_map_remove(&b1.fruits, "apple");
+    CHECK(app->count == 2);
+    CHECK_THAT(app->color, Matches("red"));
+    free_Fruit(app);
+    free(app);
+
+    char *one = (char *) model_map_remove(&b1.strings, "one");
+    CHECK_THAT(one, Matches("1"));
+    free(one);
+
+    rc = cmp_Basket(&b1, &b2);
+    CHECK(rc == 0);
+
+    free_Basket(&b1);
+    free_Basket(&b2);
+}
