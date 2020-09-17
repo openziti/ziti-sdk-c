@@ -41,6 +41,8 @@ limitations under the License.
 
 static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *meta);
 
+static int model_map_compare(model_map *lh, model_map *rh, type_meta *m);
+
 void model_dump(void *obj, int off, type_meta *meta) {
     // TODO
 }
@@ -86,24 +88,23 @@ int model_cmp(void *lh, void *rh, type_meta *meta) {
         void **rf_addr = (void **) ((char *) rh + fm->offset);
         void *lf_ptr, *rf_ptr;
 
-        if (fm->mod != array_mod) {
-            if (fm->mod == none_mod) {
-                lf_ptr = lf_addr;
-                rf_ptr = rf_addr;
-            }
-            else if (fm->mod == ptr_mod) {
-                lf_ptr = (void *) (*lf_addr);
-                rf_ptr = (void *) (*rf_addr);
-            }
-
-            if (ftm->comparer) {
-                rc = ftm->comparer(lf_ptr, rf_ptr);
-            }
-            else {
-                rc = model_cmp(lf_ptr, rf_ptr, ftm);
-            }
+        if (fm->mod == none_mod) {
+            lf_ptr = lf_addr;
+            rf_ptr = rf_addr;
+            rc = ftm->comparer ? ftm->comparer(lf_ptr, rf_ptr) : model_cmp(lf_ptr, rf_ptr, ftm);
         }
-        else {
+        else if (fm->mod == ptr_mod) {
+            lf_ptr = (void *) (*lf_addr);
+            rf_ptr = (void *) (*rf_addr);
+            rc = ftm->comparer ? ftm->comparer(lf_ptr, rf_ptr) : model_cmp(lf_ptr, rf_ptr, ftm);
+        }
+        else if (fm->mod == map_mod) {
+            lf_ptr = lf_addr;
+            rf_ptr = rf_addr;
+
+            rc = model_map_compare(lf_ptr, rf_ptr, ftm);
+        }
+        else if (fm->mod == array_mod) {
             void **larr = (void **) (*lf_addr);
             void **rarr = (void **) (*rf_addr);
 
@@ -1007,6 +1008,43 @@ model_map_iter model_map_it_remove(model_map_iter it) {
         free(e);
     }
     return next;
+}
+
+static int model_map_compare(model_map *lh, model_map *rh, type_meta *m) {
+    null_checks(lh, rh)
+
+    int rc = 0;
+    for (model_map_iter lit = model_map_iterator(lh), rit = model_map_iterator(rh);
+         lit != NULL && rit != NULL;
+         lit = model_map_it_next(lit), rit = model_map_it_next(rit)) {
+
+        if (lit == NULL) { rc -= 1; }
+        if (rit == NULL) { rc += 1; }
+    }
+
+    //
+    if (rc == 0) {
+        model_map_iter it = model_map_iterator(lh);
+        while (it != NULL && rc == 0) {
+            char *lhv = model_map_it_value(it);
+            char *rhv = model_map_get(rh, model_map_it_key(it));
+            if (rhv == NULL) {
+                rc = 1;
+            }
+            else {
+                if (m == get_string_meta()) {
+                    rc = m->comparer(&lhv, &rhv);
+                }
+                else {
+                    rc = m->comparer ? m->comparer(lhv, rhv) : model_cmp(lhv, rhv, m);
+                }
+            }
+
+            it = model_map_it_next(it);
+        }
+    }
+
+    return rc;
 }
 
 static int _parse_map(model_map *m, const char *json, jsmntok_t *tok) {
