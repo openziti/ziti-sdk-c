@@ -421,12 +421,10 @@ int establish_crypto(ziti_connection conn, message *msg) {
     uint8_t *peer_key;
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
     if (!peer_key_sent) {
-        ZITI_LOG(DEBUG, "did not receive peer key. connection[%d] will not be encrypted", conn->conn_id);
-        conn->encrypted = false;
-        return ZITI_OK;
+        ZITI_LOG(ERROR, "failed to establish crypto: connection[%d] did not receive peer key", conn->conn_id);
+        return ZITI_CRYPTO_FAIL;
     }
 
-    conn->encrypted = true;
     conn->tx = calloc(1, crypto_secretstream_xchacha20poly1305_KEYBYTES);
     conn->rx = calloc(1, crypto_secretstream_xchacha20poly1305_KEYBYTES);
     int rc;
@@ -552,10 +550,15 @@ void connect_reply_cb(void *ctx, message *msg) {
         case ContentTypeStateConnected:
             if (conn->state == Connecting) {
                 ZITI_LOG(TRACE, "edge conn_id[%d]: connected.", conn->conn_id);
-                establish_crypto(conn, msg);
-                send_crypto_header(conn);
-                conn->state = Connected;
-                req->cb(conn, ZITI_OK);
+                int rc = ZITI_OK;
+                if (conn->encrypted) {
+                    rc = establish_crypto(conn, msg);
+                    if (rc == ZITI_OK) {
+                        send_crypto_header(conn);
+                    }
+                }
+                conn->state = rc == ZITI_OK ? Connected : Closed;
+                req->cb(conn, rc);
             }
             else if (conn->state == Binding) {
                 ZITI_LOG(TRACE, "edge conn_id[%d]: bound.", conn->conn_id);
@@ -564,7 +567,9 @@ void connect_reply_cb(void *ctx, message *msg) {
             }
             else if (conn->state == Accepting) {
                 ZITI_LOG(TRACE, "edge conn_id[%d]: accepted.", conn->conn_id);
-                send_crypto_header(conn);
+                if (conn->encrypted) {
+                    send_crypto_header(conn);
+                }
                 conn->state = Connected;
                 req->cb(conn, ZITI_OK);
             }
@@ -612,7 +617,6 @@ int ziti_channel_start_connection(struct ziti_conn_req *req) {
 
     int32_t conn_id = htole32(req->conn->conn_id);
     int32_t msg_seq = htole32(0);
-    crypto_kx_keypair(req->conn->pk, req->conn->sk);
 
     hdr_t headers[] = {
             {
@@ -631,7 +635,13 @@ int ziti_channel_start_connection(struct ziti_conn_req *req) {
                     .value = req->conn->pk,
             }
     };
-    ziti_channel_send_for_reply(ch, content_type, headers, 3, req->conn->token, strlen(req->conn->token),
+    int nheaders = 2;
+    if (req->service->encryption) {
+        req->conn->encrypted = true;
+        crypto_kx_keypair(req->conn->pk, req->conn->sk);
+        nheaders = 3;
+    }
+    ziti_channel_send_for_reply(ch, content_type, headers, nheaders, req->conn->token, strlen(req->conn->token),
                                 connect_reply_cb, req);
 
     return ZITI_OK;

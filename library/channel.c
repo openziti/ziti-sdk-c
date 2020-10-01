@@ -286,9 +286,12 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
     bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
     bool has_conn_id = message_get_int32_header(msg, ConnIdHeader, &conn_id);
 
+    ZITI_LOG(TRACE, "conn_id[%d] <= ct[%X] edge_seq[%d] body[%d]", conn->conn_id, msg->header.content, seq,
+             msg->header.body_len);
+
     switch (msg->header.content) {
         case ContentTypeStateClosed:
-            ZITI_LOG(TRACE, "conection status[%d] conn_id[%d] seq[%d]", msg->header.content, conn_id, seq);
+            ZITI_LOG(TRACE, "connection status[%d] conn_id[%d] seq[%d]", msg->header.content, conn_id, seq);
             if (conn->state == Bound) {
                 conn->client_cb(conn, NULL, ZITI_EOF);
             }
@@ -316,7 +319,10 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
             clt->parent = conn;
             clt->channel = conn->channel;
             clt->dial_req_seq = msg->header.seq;
-            establish_crypto(clt, msg);
+            clt->encrypted = conn->encrypted;
+            if (conn->encrypted) {
+                establish_crypto(clt, msg);
+            }
             conn->client_cb(conn, clt, ZITI_OK);
             break;
 
