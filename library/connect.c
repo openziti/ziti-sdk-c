@@ -421,7 +421,7 @@ int establish_crypto(ziti_connection conn, message *msg) {
     uint8_t *peer_key;
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
     if (!peer_key_sent) {
-        ZITI_LOG(ERROR, "failed to establish crypto: connection[%d] did not receive peer key", conn->conn_id);
+        ZITI_LOG(ERROR, "conn[%d] failed to establish crypto: did not receive peer key", conn->conn_id);
         return ZITI_CRYPTO_FAIL;
     }
 
@@ -435,10 +435,11 @@ int establish_crypto(ziti_connection conn, message *msg) {
         rc = crypto_kx_server_session_keys(conn->rx, conn->tx, conn->parent->pk, conn->parent->sk, peer_key);
     }
     else {
-        ZITI_LOG(ERROR, "cannot establish crypto in %d state", conn->state);
+        ZITI_LOG(ERROR, "conn[%d] cannot establish crypto in %d state", conn->conn_id, conn->state);
         return ZITI_INVALID_STATE;
     }
     if (rc != 0) {
+        ZITI_LOG(ERROR, "conn[%d] failed to establish encryption: crypto error", conn->state);
         return ZITI_CRYPTO_FAIL;
     }
     return ZITI_OK;
