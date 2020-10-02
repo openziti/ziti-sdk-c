@@ -43,6 +43,7 @@ XX(tags, tag, map, tags, __VA_ARGS__)
 XX(id, string, none, id, __VA_ARGS__) \
 XX(name, string, none, name, __VA_ARGS__) \
 XX(permissions, string, array, permissions, __VA_ARGS__) \
+XX(encryption, bool, none, encryptionRequired, __VA_ARGS__) \
 XX(perm_flags, int, none, NULL, __VA_ARGS__) \
 XX(config, json, map, config, __VA_ARGS__)
 
