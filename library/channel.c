@@ -327,7 +327,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
             break;
 
         default:
-            ZITI_LOG(ERROR, "conection conn_id[%d] received unexpected content_type[%d]", conn_id, msg->header.content);
+            ZITI_LOG(ERROR, "conn[%d] received unexpected content_type[%d]", conn_id, msg->header.content);
     }
 }
 

@@ -421,9 +421,17 @@ int establish_crypto(ziti_connection conn, message *msg) {
     uint8_t *peer_key;
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
     if (!peer_key_sent) {
-        ZITI_LOG(ERROR, "conn[%d] failed to establish crypto: did not receive peer key", conn->conn_id);
-        return ZITI_CRYPTO_FAIL;
+        if (conn->encrypted) {
+            ZITI_LOG(ERROR, "conn[%d] failed to establish crypto for encrypted service: did not receive peer key",
+                     conn->conn_id);
+            return ZITI_CRYPTO_FAIL;
+        }
+        else {
+            // service is not required to be encrypted and hosting side did not send the key
+            return ZITI_OK;
+        }
     }
+    conn->encrypted = true;
 
     conn->tx = calloc(1, crypto_secretstream_xchacha20poly1305_KEYBYTES);
     conn->rx = calloc(1, crypto_secretstream_xchacha20poly1305_KEYBYTES);
@@ -551,12 +559,9 @@ void connect_reply_cb(void *ctx, message *msg) {
         case ContentTypeStateConnected:
             if (conn->state == Connecting) {
                 ZITI_LOG(TRACE, "edge conn_id[%d]: connected.", conn->conn_id);
-                int rc = ZITI_OK;
-                if (conn->encrypted) {
-                    rc = establish_crypto(conn, msg);
-                    if (rc == ZITI_OK) {
-                        send_crypto_header(conn);
-                    }
+                int rc = establish_crypto(conn, msg);
+                if (rc == ZITI_OK && conn->encrypted) {
+                    send_crypto_header(conn);
                 }
                 conn->state = rc == ZITI_OK ? Connected : Closed;
                 req->cb(conn, rc);
@@ -637,8 +642,9 @@ int ziti_channel_start_connection(struct ziti_conn_req *req) {
             }
     };
     int nheaders = 2;
-    if (req->service->encryption) {
-        req->conn->encrypted = true;
+    // always prepare encryption on client side in case hosting side expects it
+    if (req->service->encryption || content_type == ContentTypeConnect) {
+        req->conn->encrypted = req->service->encryption;
         crypto_kx_keypair(req->conn->pk, req->conn->sk);
         nheaders = 3;
     }
