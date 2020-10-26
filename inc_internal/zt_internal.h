@@ -27,6 +27,7 @@ limitations under the License.
 #include "ziti_enroll.h"
 #include "ziti_ctrl.h"
 #include "metrics.h"
+#include "edge_protocol.h"
 
 #include <sodium.h>
 
@@ -41,40 +42,6 @@ limitations under the License.
 #define uint unsigned int
 #endif
 
-enum content_type {
-
-    ContentTypeHelloType = 0,
-    ContentTypePingType = 1,
-    ContentTypeResultType = 2,
-    ContentTypeLatencyType = 3,
-
-    ContentTypeEdge = 0xED6E,
-    ContentTypeConnect = 60783,
-    ContentTypeStateConnected = 60784,
-    ContentTypeStateClosed = 60785,
-    ContentTypeData = 60786,
-    ContentTypeDial = 60787,
-    ContentTypeDialSuccess = 60788,
-    ContentTypeDialFailed = 60789,
-    ContentTypeBind = 60790,
-    ContentTypeUnbind = 60791,
-};
-
-enum header_id {
-    ConnectionIdHeader = 0,
-    ReplyForHeader = 1,
-    ResultSuccessHeader = 2,
-    HelloListenerHeader = 3,
-
-    // Headers in the range 128-255 inclusive will be reflected when creating replies
-    ReflectedHeaderBitMask = 1 << 7,
-    MaxReflectedHeader = (1 << 8) - 1,
-
-    ConnIdHeader = 1000,
-    SeqHeader = 1001,
-    SessionTokenHeader = 1002,
-    PublicKeyHeader = 1003,
-};
 
 typedef struct ziti_channel ziti_channel_t;
 
@@ -92,6 +59,7 @@ enum conn_state {
     Bound,
     Accepting,
     Timedout,
+    CloseWrite,
     Closed
 };
 
@@ -144,6 +112,8 @@ struct ziti_conn {
     ziti_data_cb data_cb;
     ziti_client_cb client_cb;
     enum conn_state state;
+    bool fin_sent;
+    bool fin_recv;
     int timeout;
 
     buffer *inbound;

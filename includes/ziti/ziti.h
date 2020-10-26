@@ -519,6 +519,26 @@ ZITI_FUNC
 extern int ziti_close(ziti_connection *conn);
 
 /**
+ * @brief Closes the outgoing (write) side of the given ziti connection.
+ *
+ * Any pending write requests will be able to complete. The `conn` should refer to a initialized ziti connection.
+ *
+ * This notifies peer ziti connection that no more data will be sent -- peer receives EOF.
+ * Any further calls to `ziti_write()` will return an error.
+ *
+ * This leaves incoming(read) side of ziti connection open.
+ *
+ * @note this is roughly equivalent to calling `uv_shutdown()` on a duplex `uv_stream`, or
+ *       `shutdown(sock, SHUT_WR)` on socket fd.
+ *
+ * @param conn the #ziti_connection to be closed
+ *
+ * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ */
+ZITI_FUNC
+extern int ziti_close_write(ziti_connection conn);
+
+/**
  * @brief Send data to the connection peer.
  *
  * This function is invoked to send data from the Ziti C SDK to the peer on the other side of the Ziti connection. It is

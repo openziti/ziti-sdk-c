@@ -51,6 +51,8 @@ struct client {
     struct sockaddr_in addr;
     char addr_s[32];
     ziti_connection ziti_conn;
+    bool read_done;
+    bool write_done;
     int closed;
     size_t inb_reqs;
 };
@@ -179,9 +181,24 @@ static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
 
 static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
     struct client *clt = stream->data;
-
+    ZITI_LOG(INFO, "client[%s]: nread[%zd]", clt->addr_s, nread);
     if (nread == UV_ENOBUFS) {
         ZITI_LOG(DEBUG, "client[%s] is throttled", clt->addr_s);
+    }
+    else if (nread == UV_EOF) {
+        ZITI_LOG(DEBUG, "connection %s sent FIN", clt->addr_s);
+        if (clt->write_done) {
+            ziti_conn_set_data(clt->ziti_conn, NULL);
+            ziti_close(&clt->ziti_conn);
+            clt->closed = true;
+            uv_close((uv_handle_t *) stream, close_cb);
+        }
+        else {
+            ziti_close_write(clt->ziti_conn);
+            uv_read_stop(stream);
+        }
+        clt->read_done = true;
+        free(buf->base);
     }
     else if (nread < 0) {
         ZITI_LOG(DEBUG, "connection closed %s [%zd/%s](%s)",
@@ -235,6 +252,19 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         ZITI_LOG(TRACE, "writing %zd bytes to [%s] wqs[%zd]", len, c->addr_s, clt->write_queue_size);
         uv_write(req, (uv_stream_t *) clt, &buf, 1, on_client_write);
         return len;
+    }
+    else if (len == ZITI_EOF) {
+        if (c->read_done) {
+            if (!c->closed) {
+                c->closed = true;
+                uv_close((uv_handle_t *) clt, close_cb);
+            }
+        }
+        else {
+            uv_shutdown_t *sr = calloc(1, sizeof(uv_shutdown_t));
+            uv_shutdown(sr, (uv_stream_t *) clt, NULL);
+            c->write_done = true;
+        }
     }
     else if (len < 0) {
         if (clt != NULL) {

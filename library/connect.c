@@ -43,6 +43,8 @@ static void flush_to_client(uv_async_t *fl);
 
 static void ziti_connect_async(uv_async_t *ar);
 
+static int send_fin_message(ziti_connection conn);
+
 int ziti_channel_start_connection(struct ziti_conn_req *req);
 
 static void free_handle(uv_handle_t *h) {
@@ -105,6 +107,11 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
     }
 
     free(req);
+
+    if (conn->write_reqs == 0 && conn->state == CloseWrite) {
+        ZITI_LOG(DEBUG, "sending FIN");
+        send_fin_message(conn);
+    }
 }
 
 static int
@@ -477,6 +484,12 @@ static void flush_to_client(uv_async_t *fl) {
         return;
     }
 
+    // if fin was received and all data is flushed, signal EOF
+    if (conn->fin_recv && buffer_available(conn->inbound) == 0) {
+        conn->data_cb(conn, NULL, ZITI_EOF);
+        return;
+    }
+
     ZITI_LOG(TRACE, "flushing %zd bytes to client", buffer_available(conn->inbound));
 
     while (buffer_available(conn->inbound) > 0) {
@@ -501,24 +514,33 @@ static void flush_to_client(uv_async_t *fl) {
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg) {
     uint8_t *plain_text = NULL;
-    if (conn->state == Closed) {
-        ZITI_LOG(VERBOSE, "inbound data on closed connection");
+    if (conn->state == Closed || conn->fin_recv) {
+        ZITI_LOG(WARN, "inbound data on closed connection");
+        return;
     }
+
     plain_text = malloc(msg->header.body_len);
     if (conn->encrypted) {
         PREP(crypto);
         // first message is expected to be peer crypto header
         if (conn->rx != NULL) {
+            ZITI_LOG(VERBOSE, "conn[%d] processing crypto header(%d bytes)", conn->conn_id, msg->header.body_len);
             TRY(crypto, msg->header.body_len != crypto_secretstream_xchacha20poly1305_HEADERBYTES);
             TRY(crypto, crypto_secretstream_xchacha20poly1305_init_pull(&conn->crypt_i, msg->body, conn->rx));
+            ZITI_LOG(VERBOSE, "conn[%d] processed crypto header", conn->conn_id);
             FREE(conn->rx);
         } else {
             unsigned long long plain_len;
             unsigned char tag;
-
-            TRY(crypto, crypto_secretstream_xchacha20poly1305_pull(&conn->crypt_i, plain_text, &plain_len, &tag, msg->body, msg->header.body_len, NULL, 0));
-            buffer_append(conn->inbound, plain_text, plain_len);
-            metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) plain_len);
+            if (msg->header.body_len > 0) {
+                ZITI_LOG(VERBOSE, "conn[%d] decrypting %d bytes", conn->conn_id, msg->header.body_len);
+                TRY(crypto, crypto_secretstream_xchacha20poly1305_pull(&conn->crypt_i,
+                                                                       plain_text, &plain_len, &tag,
+                                                                       msg->body, msg->header.body_len, NULL, 0));
+                ZITI_LOG(VERBOSE, "conn[%d] decrypted %lld bytes", conn->conn_id, plain_len);
+                buffer_append(conn->inbound, plain_text, plain_len);
+                metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) plain_len);
+            }
         }
 
         CATCH(crypto) {
@@ -527,10 +549,16 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
             conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
             return;
         }
-    } else {
+    }
+    else if (msg->header.body_len > 0) {
         memcpy(plain_text, msg->body, msg->header.body_len);
         buffer_append(conn->inbound, plain_text, msg->header.body_len);
         metrics_rate_update(&conn->ziti_ctx->down_rate, msg->header.body_len);
+    }
+
+    int32_t flags;
+    if (message_get_int32_header(msg, FlagsHeader, &flags) && (flags & EDGE_FIN)) {
+        conn->fin_recv = true;
     }
 
     flush_to_client(conn->flusher);
@@ -726,5 +754,42 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
 int ziti_process_connect_reqs(ziti_context ztx) {
     ZITI_LOG(WARN, "TODO");
 
+    return ZITI_OK;
+}
+
+static int send_fin_message(ziti_connection conn) {
+    ziti_channel_t *ch = conn->channel;
+    int32_t conn_id = htole32(conn->conn_id);
+    int32_t msg_seq = htole32(conn->edge_msg_seq++);
+    int32_t flags = htole32(EDGE_FIN);
+    hdr_t headers[] = {
+            {
+                    .header_id = ConnIdHeader,
+                    .length = sizeof(conn_id),
+                    .value = (uint8_t *) &conn_id
+            },
+            {
+                    .header_id = SeqHeader,
+                    .length = sizeof(msg_seq),
+                    .value = (uint8_t *) &msg_seq
+            },
+            {
+                    .header_id = FlagsHeader,
+                    .length = sizeof(flags),
+                    .value = (uint8_t *) &flags
+            },
+    };
+    NEWP(wr, struct ziti_write_req_s);
+    return ziti_channel_send(ch, ContentTypeData, headers, 3, NULL, 0, wr);
+}
+
+int ziti_close_write(ziti_connection conn) {
+    if (conn->fin_sent || conn->state == Closed) {
+        return ZITI_OK;
+    }
+    conn->state = CloseWrite;
+    if (conn->write_reqs == 0) {
+        return send_fin_message(conn);
+    }
     return ZITI_OK;
 }
