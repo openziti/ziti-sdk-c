@@ -309,10 +309,17 @@ TEST_CASE("service config test", "[model]") {
       "ziti-tunneler-client.v1": {
         "hostname": "hello.ziti",
         "port": 80
+      },
+      "intercept.v1": {
+        "protocols": [ "tcp", "udp" ],
+        "addresses": [ "1.2.3.4" ],
+        "portRanges": [ { "low": 80, "high": 80 }, { "low": 443, "high": 443 } ],
+        "dialOptions": { "identity": "helloitsme" }
       }
     },
     "configs": [
-      "d1339ad5-6556-4297-b357-308b3bc79db0"
+      "d1339ad5-6556-4297-b357-308b3bc79db0",
+      "tUussYpGR"
     ],
     "name": "hello-svc",
     "permissions": [
@@ -327,14 +334,28 @@ TEST_CASE("service config test", "[model]") {
     ziti_service s;
     REQUIRE(parse_ziti_service(&s, j, strlen(j)) == 0);
 
-    ziti_intercept cfg;
-    REQUIRE(ziti_service_get_config(&s, "ziti-tunneler-client.v1", &cfg,
-                                    (int (*)(void *, const char *, size_t)) (parse_ziti_intercept)) == 0);
+    {
+        ziti_client_cfg_v1 cfg;
+        REQUIRE(ziti_service_get_config(&s, "ziti-tunneler-client.v1", &cfg,
+                                        (int (*)(void *, const char *, size_t)) (parse_ziti_client_cfg_v1)) == 0);
 
-    CHECK_THAT(cfg.hostname, Equals("hello.ziti"));
-    CHECK(cfg.port == 80);
+        CHECK_THAT(cfg.hostname, Equals("hello.ziti"));
+        CHECK(cfg.port == 80);
+        free_ziti_client_cfg_v1(&cfg);
+    }
+
+    {
+        ziti_intercept_cfg_v1 cfg;
+        REQUIRE(ziti_service_get_config(&s, "intercept.v1", &cfg,
+                                        (int (*)(void *, const char *, size_t)) (parse_ziti_intercept_cfg_v1)) == 0);
+
+        CHECK_THAT(cfg.protocols[0], Equals("tcp"));
+        CHECK_THAT(cfg.addresses[0], Equals("1.2.3.4"));
+        CHECK(cfg.port_ranges[0]->high == 80);
+        free_ziti_intercept_cfg_v1(&cfg);
+    }
+
     free_ziti_service(&s);
-    free_ziti_intercept(&cfg);
 }
 
 TEST_CASE("identity tags", "[model]") {
