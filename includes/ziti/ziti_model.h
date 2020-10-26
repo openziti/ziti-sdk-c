@@ -67,14 +67,13 @@ XX(protocol, string, none, protocol, __VA_ARGS__) \
 XX(hostname, string, none, hostname, __VA_ARGS__) \
 XX(port, int, none, port, __VA_ARGS__)
 
-#define ZITI_DIAL_ADDRESS_MODEL(XX, ...) \
-XX(protocol, string, none, protocol, __VA_ARGS__) \
-XX(address, string, none, address, __VA_ARGS__) \
-XX(port, int, none, port, __VA_ARGS__)
-
 #define ZITI_HOST_CFG_V1_MODEL(XX, ...) \
-XX(dial_address, ziti_dial_address, none, dialAddress, __VA_ARGS__) \
+XX(protocol, string, none, protocol, __VA_ARGS__) \
+XX(dial_intercepted_protocol, bool, none, dialInterceptedProtocol, __VA_ARGS__) \
+XX(address, string, none, address, __VA_ARGS__) \
 XX(dial_intercepted_address, bool, none, dialInterceptedAddress, __VA_ARGS__) \
+XX(port, int, none, port, __VA_ARGS__) \
+XX(dial_intercepted_port, bool, none, dialInterceptedPort, __VA_ARGS__) \
 XX(listen_options, tag, map, listenOptions, __VA_ARGS__)
 
 #ifdef __cplusplus
@@ -104,8 +103,6 @@ DECLARE_MODEL(ziti_port_range, ZITI_PORT_RANGE_MODEL)
 DECLARE_MODEL(ziti_intercept_cfg_v1, ZITI_INTERCEPT_CFG_V1_MODEL)
 
 DECLARE_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
-
-DECLARE_MODEL(ziti_dial_address, ZITI_DIAL_ADDRESS_MODEL)
 
 DECLARE_MODEL(ziti_host_cfg_v1, ZITI_HOST_CFG_V1_MODEL)
 
