@@ -302,13 +302,15 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
             break;
 
         case ContentTypeData:
-            if (conn->state != Connected) {
-                ZITI_LOG(WARN, "data[%d bytes] received for connection[%d] in state[%d]",
-                         msg->header.body_len, conn_id, conn->state);
-                break;
+            switch (conn->state) {
+                case Connected:
+                case CloseWrite:
+                    conn_inbound_data_msg(conn, msg);
+                    break;
+                default:
+                    ZITI_LOG(WARN, "data[%d bytes] received for connection[%d] in state[%d]",
+                             msg->header.body_len, conn_id, conn->state);
             }
-
-            conn_inbound_data_msg(conn, msg);
             break;
 
         case ContentTypeDial:
@@ -327,7 +329,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
             break;
 
         default:
-            ZITI_LOG(ERROR, "conection conn_id[%d] received unexpected content_type[%d]", conn_id, msg->header.content);
+            ZITI_LOG(ERROR, "conn[%d] received unexpected content_type[%d]", conn_id, msg->header.content);
     }
 }
 
