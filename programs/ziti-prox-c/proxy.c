@@ -32,6 +32,9 @@ limitations under the License.
 
 #define MAX_WRITES 4
 
+/* avoid xgress chunking */
+#define MAX_PROXY_PAYLOAD (63*1024)
+
 static char *config = NULL;
 static int report_metrics = -1;
 static uv_timer_t report_timer;
@@ -151,8 +154,8 @@ static void alloc_cb(uv_handle_t *h, size_t suggested_size, uv_buf_t *buf) {
 
     // if too many writes are in flight throttle the client
     if (clt->inb_reqs < MAX_WRITES) {
-        buf->base = malloc(suggested_size);
-        buf->len = suggested_size;
+        buf->len = suggested_size > MAX_PROXY_PAYLOAD ? MAX_PROXY_PAYLOAD : suggested_size;
+        buf->base = malloc(buf->len);
     }
     else {
         ZITI_LOG(DEBUG, "maximum outstanding writes reached clt[%s]", clt->addr_s);
