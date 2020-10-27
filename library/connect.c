@@ -60,7 +60,6 @@ static void free_conn_req(struct ziti_conn_req *r) {
 };
 
 int close_conn_internal(struct ziti_conn *conn) {
-    ZITI_LOG(TRACE, "connection[%d]", conn->conn_id);
     if (conn->state == Closed && conn->write_reqs == 0) {
         ZITI_LOG(VERBOSE, "removing connection[%d]", conn->conn_id);
         LIST_REMOVE(conn, next);
