@@ -181,7 +181,7 @@ static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
 
 static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
     struct client *clt = stream->data;
-    ZITI_LOG(INFO, "client[%s]: nread[%zd]", clt->addr_s, nread);
+    ZITI_LOG(TRACE, "client[%s]: nread[%zd]", clt->addr_s, nread);
     if (nread == UV_ENOBUFS) {
         ZITI_LOG(DEBUG, "client[%s] is throttled", clt->addr_s);
     }
