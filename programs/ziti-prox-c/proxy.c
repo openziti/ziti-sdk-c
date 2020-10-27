@@ -186,7 +186,9 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         ZITI_LOG(DEBUG, "client[%s] is throttled", clt->addr_s);
     }
     else if (nread == UV_EOF) {
-        ZITI_LOG(DEBUG, "connection %s sent FIN", clt->addr_s);
+        ZITI_LOG(DEBUG, "connection %s sent FIN write_done=%d, read_done=%d", clt->addr_s, clt->write_done,
+                 clt->read_done);
+        clt->read_done = true;
         if (clt->write_done) {
             ziti_conn_set_data(clt->ziti_conn, NULL);
             ziti_close(&clt->ziti_conn);
@@ -197,7 +199,6 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
             ziti_close_write(clt->ziti_conn);
             uv_read_stop(stream);
         }
-        clt->read_done = true;
         free(buf->base);
     }
     else if (nread < 0) {
@@ -254,6 +255,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         return len;
     }
     else if (len == ZITI_EOF) {
+        ZITI_LOG(DEBUG, "ziti sent EOF to[%s] write_done=%d, read_done=%d", c->addr_s, c->write_done, c->read_done);
         if (c->read_done) {
             if (!c->closed) {
                 c->closed = true;
