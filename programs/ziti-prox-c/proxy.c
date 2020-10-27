@@ -32,6 +32,9 @@ limitations under the License.
 
 #define MAX_WRITES 4
 
+/* avoid xgress chunking */
+#define MAX_PROXY_PAYLOAD (63*1024)
+
 static char *config = NULL;
 static int report_metrics = -1;
 static uv_timer_t report_timer;
@@ -151,8 +154,8 @@ static void alloc_cb(uv_handle_t *h, size_t suggested_size, uv_buf_t *buf) {
 
     // if too many writes are in flight throttle the client
     if (clt->inb_reqs < MAX_WRITES) {
-        buf->base = malloc(suggested_size);
-        buf->len = suggested_size;
+        buf->len = suggested_size > MAX_PROXY_PAYLOAD ? MAX_PROXY_PAYLOAD : suggested_size;
+        buf->base = malloc(buf->len);
     }
     else {
         ZITI_LOG(DEBUG, "maximum outstanding writes reached clt[%s]", clt->addr_s);
@@ -186,7 +189,9 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         ZITI_LOG(DEBUG, "client[%s] is throttled", clt->addr_s);
     }
     else if (nread == UV_EOF) {
-        ZITI_LOG(DEBUG, "connection %s sent FIN", clt->addr_s);
+        ZITI_LOG(DEBUG, "connection %s sent FIN write_done=%d, read_done=%d", clt->addr_s, clt->write_done,
+                 clt->read_done);
+        clt->read_done = true;
         if (clt->write_done) {
             ziti_conn_set_data(clt->ziti_conn, NULL);
             ziti_close(&clt->ziti_conn);
@@ -197,7 +202,6 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
             ziti_close_write(clt->ziti_conn);
             uv_read_stop(stream);
         }
-        clt->read_done = true;
         free(buf->base);
     }
     else if (nread < 0) {
@@ -254,6 +258,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         return len;
     }
     else if (len == ZITI_EOF) {
+        ZITI_LOG(DEBUG, "ziti sent EOF to[%s] write_done=%d, read_done=%d", c->addr_s, c->write_done, c->read_done);
         if (c->read_done) {
             if (!c->closed) {
                 c->closed = true;

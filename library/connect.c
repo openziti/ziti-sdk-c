@@ -60,7 +60,6 @@ static void free_conn_req(struct ziti_conn_req *r) {
 };
 
 int close_conn_internal(struct ziti_conn *conn) {
-    ZITI_LOG(TRACE, "connection[%d]", conn->conn_id);
     if (conn->state == Closed && conn->write_reqs == 0) {
         ZITI_LOG(VERBOSE, "removing connection[%d]", conn->conn_id);
         LIST_REMOVE(conn, next);
@@ -395,15 +394,22 @@ static void ziti_disconnect_cb(ziti_connection conn, ssize_t status, void *ctx) 
 
 static void ziti_disconnect_async(uv_async_t *ar) {
     struct ziti_conn *conn = ar->data;
-
     uv_close((uv_handle_t *) ar, free_handle);
+    switch (conn->state) {
+        case Bound:
+        case Accepting:
+        case Connected:
+        case CloseWrite: {
+            NEWP(wr, struct ziti_write_req_s);
+            wr->conn = conn;
+            wr->cb = ziti_disconnect_cb;
+            conn->write_reqs++;
+            send_message(conn, ContentTypeStateClosed, NULL, 0, wr);
+            break;
+        }
 
-    if (conn->state == Connected || conn->state == Accepting) {
-        NEWP(wr, struct ziti_write_req_s);
-        wr->conn = conn;
-        wr->cb = ziti_disconnect_cb;
-        conn->write_reqs++;
-        send_message(conn, ContentTypeStateClosed, NULL, 0, wr);
+        default:
+            ZITI_LOG(DEBUG, "conn[%d] can't send StateClosed in state[%d]", conn->conn_id, conn->state);
     }
 }
 
