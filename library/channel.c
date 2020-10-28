@@ -293,10 +293,10 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
         case ContentTypeStateClosed:
             ZITI_LOG(VERBOSE, "connection status[%d] conn_id[%d] seq[%d]", msg->header.content, conn_id, seq);
             if (conn->state == Bound) {
-                conn->client_cb(conn, NULL, ZITI_EOF);
+                conn->client_cb(conn, NULL, ZITI_CONN_CLOSED);
             }
             else if (conn->state == Connected || conn->state == CloseWrite) {
-                conn->data_cb(conn, NULL, ZITI_EOF);
+                conn->data_cb(conn, NULL, ZITI_CONN_CLOSED);
             }
             conn->state = Closed;
             break;
@@ -563,7 +563,7 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
             case UV_EPIPE:
                 ZITI_LOG(INFO, "channel was closed: %d(%s)", (int) len, uv_strerror((int) len));
                 // propagate close
-                on_channel_close(ch, ZITI_EOF);
+                on_channel_close(ch, ZITI_CONNABORT);
                 break;
 
             default:
