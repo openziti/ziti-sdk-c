@@ -337,6 +337,67 @@ TEST_CASE("service config test", "[model]") {
     free_ziti_intercept(&cfg);
 }
 
+TEST_CASE("config change", "[model]") {
+    const char *j1 = R"({
+    "id": "c8c07cb8-5234-4106-92ea-fde5721095fd",
+    "tags": {},
+    "config": {
+      "ziti-tunneler-client.v1": {
+        "hostname": "hello.ziti",
+        "port": 80
+      }
+    },
+    "configs": [
+      "d1339ad5-6556-4297-b357-308b3bc79db0"
+    ],
+    "name": "hello-svc",
+    "permissions": [
+      "Bind",
+      "Dial"
+    ],
+    "roleAttributes": null,
+    "terminatorStrategy": "smartrouting"
+  }
+)";
+
+    const char *j2 = R"({
+    "id": "c8c07cb8-5234-4106-92ea-fde5721095fd",
+    "tags": {},
+    "config": {
+      "ziti-tunneler-client.v1": {
+        "hostname": "hello.ziti",
+        "port": 8080
+      }
+    },
+    "configs": [
+      "d1339ad5-6556-4297-b357-308b3bc79db0"
+    ],
+    "name": "hello-svc",
+    "permissions": [
+      "Bind",
+      "Dial"
+    ],
+    "roleAttributes": null,
+    "terminatorStrategy": "smartrouting"
+  }
+)";
+
+
+    ziti_service s, s1, s2;
+    REQUIRE(parse_ziti_service(&s, j1, strlen(j1)) == 0);
+    REQUIRE(parse_ziti_service(&s1, j1, strlen(j1)) == 0);
+    REQUIRE(parse_ziti_service(&s2, j2, strlen(j2)) == 0);
+
+    CHECK(cmp_ziti_service(&s, &s1) == 0);
+    CHECK(cmp_ziti_service(&s, &s2) != 0);
+    CHECK(cmp_ziti_service(&s2, &s1) != 0);
+
+
+    free_ziti_service(&s);
+    free_ziti_service(&s1);
+    free_ziti_service(&s2);
+}
+
 TEST_CASE("identity tags", "[model]") {
     const char *json = R"(        {
             "_links": {

@@ -330,6 +330,11 @@ static void update_listener(ziti_service *service, int status, struct listener *
     PREPF(uv, uv_strerror);
 
     if (status == ZITI_OK && (service->perm_flags & ZITI_CAN_DIAL)) {
+        if (uv_is_active((const uv_handle_t *) &l->server)) {
+            ZITI_LOG(INFO, "listener for service[%s] is already active on port[%d]", l->service_name, l->port);
+            return;
+        }
+
         ZITI_LOG(INFO, "starting listener for service[%s] on port[%d]", l->service_name, l->port);
 
         NEWP(addr, struct sockaddr_in);
