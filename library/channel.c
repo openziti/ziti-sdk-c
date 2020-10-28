@@ -293,10 +293,10 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
         case ContentTypeStateClosed:
             ZITI_LOG(VERBOSE, "connection status[%d] conn_id[%d] seq[%d]", msg->header.content, conn_id, seq);
             if (conn->state == Bound) {
-                conn->client_cb(conn, NULL, ZITI_EOF);
+                conn->client_cb(conn, NULL, ZITI_CONN_CLOSED);
             }
             else if (conn->state == Connected || conn->state == CloseWrite) {
-                conn->data_cb(conn, NULL, ZITI_EOF);
+                conn->data_cb(conn, NULL, ZITI_CONN_CLOSED);
             }
             conn->state = Closed;
             break;
