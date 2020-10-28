@@ -349,7 +349,7 @@ static void ziti_write_async(uv_async_t *ar) {
         ZITI_LOG(WARN, "got write req for closed conn[%d]", conn->conn_id);
         conn->write_reqs--;
 
-        req->cb(conn, ZITI_EOF, req->ctx);
+        req->cb(conn, ZITI_CONN_CLOSED, req->ctx);
         free(req);
     }
     else {
@@ -586,7 +586,7 @@ void connect_reply_cb(void *ctx, message *msg) {
                      conn->conn_id, conn->state == Binding ? "bind" : "connect",
                      msg->header.body_len, msg->header.body_len, msg->body);
             conn->state = Closed;
-            req->cb(conn, ZITI_EOF);
+            req->cb(conn, ZITI_CONN_CLOSED);
             req->failed = true;
             break;
 

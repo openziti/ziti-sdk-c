@@ -563,7 +563,7 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
             case UV_EPIPE:
                 ZITI_LOG(INFO, "channel was closed: %d(%s)", (int) len, uv_strerror((int) len));
                 // propagate close
-                on_channel_close(ch, ZITI_EOF);
+                on_channel_close(ch, ZITI_CONNABORT);
                 break;
 
             default:
