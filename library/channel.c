@@ -112,8 +112,12 @@ int ziti_channel_close(ziti_channel_t *ch) {
     return r;
 }
 
-int ziti_channel_connect(ziti_context ztx, const char *url, ch_connect_cb cb, void *cb_ctx) {
-    ziti_channel_t *ch = model_map_get(&ztx->channels, url);
+int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb cb, void *cb_ctx) {
+    size_t ch_name_len = strlen(name) + strlen(url) + 2;
+    char *ch_name = malloc(ch_name_len);
+    snprintf(ch_name, ch_name_len, "%s@%s", name, url);
+
+    ziti_channel_t *ch = model_map_get(&ztx->channels, ch_name);
 
     if (ch != NULL) {
         ZITI_LOG(DEBUG, "existing channel found for ingress[%s]", url);
@@ -134,14 +138,14 @@ int ziti_channel_connect(ziti_context ztx, const char *url, ch_connect_cb cb, vo
             ZITI_LOG(ERROR, "should not be here: %s", ziti_errorstr(ZITI_WTF));
             return ZITI_WTF;
         }
+        free(ch_name);
         return ZITI_OK;
     }
 
     ch = calloc(1, sizeof(ziti_channel_t));
     ziti_channel_init(ztx, ch);
-    ch->ingress = strdup(url);
-
-    ZITI_LOG(INFO, "opening new channel for ingress[%s] ch[%d]", url, ch->id);
+    ch->ingress = ch_name;
+    ZITI_LOG(INFO, "opening new channel for ingress[%s] ch[%d]", ch->ingress, ch->id);
 
     struct http_parser_url ingress;
     http_parser_url_init(&ingress);
@@ -384,7 +388,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
         else {
             struct ziti_conn *conn = find_conn(ch, conn_id);
             if (conn == NULL) {
-                ZITI_LOG(ERROR, "ch[%d] received message for unknown connection conn_id[%d] ct[%d]",
+                ZITI_LOG(DEBUG, "ch[%d] received message for unknown connection conn_id[%d] ct[%d]",
                          ch->id, conn_id, m->header.content);
             }
             else {
@@ -465,6 +469,31 @@ static void process_inbound(ziti_channel_t *ch) {
     buffer_cleanup(ch->incoming);
 }
 
+static void latency_reply_cb(void *ctx, message *reply) {
+    ziti_channel_t *ch = ctx;
+    uint64_t ts;
+    if (reply->header.content == ContentTypeResultType &&
+        message_get_uint64_header(reply, LatencyProbeTime, &ts)) {
+        ZITI_LOG(VERBOSE, "channel[%s] latency is now %ld", ch->ingress, uv_now(ch->ctx->loop) - ts);
+    } else {
+        ZITI_LOG(WARN, "invalid latency probe result ct[%d]", reply->header.content);
+    }
+}
+
+static void send_latency_probe(uv_timer_t *t) {
+    ziti_channel_t *ch = t->data;
+    uint64_t now = htole64(uv_now(t->loop));
+    hdr_t headers[] = {
+            {
+                    .header_id = LatencyProbeTime,
+                    .length = sizeof(now),
+                    .value = (uint8_t *) &now,
+            }
+    };
+
+    ziti_channel_send_for_reply(ch, ContentTypeLatencyType, headers, 1, NULL, 0, latency_reply_cb, ch);
+}
+
 static void hello_reply_cb(void *ctx, message *msg) {
 
     assert (msg->header.content == ContentTypeResultType);
@@ -491,6 +520,13 @@ static void hello_reply_cb(void *ctx, message *msg) {
         free(r);
     }
     ch->conn_reqs_n = 0;
+
+    // initial latency
+    ch->latency = uv_now(ch->ctx->loop) - ch->latency;
+    uv_timer_init(ch->ctx->loop, &ch->latency_timer);
+    ch->latency_timer.data = ch;
+    uv_unref((uv_handle_t *) &ch->latency_timer);
+    uv_timer_start(&ch->latency_timer, send_latency_probe, 0, 60 * 1000);
 }
 
 static void send_hello(ziti_channel_t *ch) {
@@ -501,7 +537,7 @@ static void send_hello(ziti_channel_t *ch) {
                     .value = ch->ctx->session->token
             }
     };
-
+    ch->latency = uv_now(ch->ctx->loop);
     ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 1, ch->token, strlen(ch->token), hello_reply_cb, ch);
 }
 
@@ -524,6 +560,7 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
     LIST_FOREACH(con, &ch->connections, next) {
         if (con->state == Connected) {
             con->state = Closed;
+            con->channel = NULL;
             con->data_cb(con, NULL, code);
         }
     }
