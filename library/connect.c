@@ -61,11 +61,14 @@ static void free_conn_req(struct ziti_conn_req *r) {
 
 int close_conn_internal(struct ziti_conn *conn) {
     if (conn->state == Closed && conn->write_reqs == 0) {
-        ZITI_LOG(VERBOSE, "removing connection[%d]", conn->conn_id);
+        ZITI_LOG(DEBUG, "removing conn_id[%d]", conn->conn_id);
         LIST_REMOVE(conn, next);
         FREE(conn->rx);
         conn->flusher->data = NULL;
         uv_close((uv_handle_t *) conn->flusher, free_handle);
+        if (conn->disconnector) {
+            uv_close((uv_handle_t *) conn->disconnector, free_handle);
+        }
         if (buffer_available(conn->inbound) > 0) {
             ZITI_LOG(WARN, "dumping %zd bytes of undelivered data conn[%d]",
                      buffer_available(conn->inbound), conn->conn_id);
@@ -79,12 +82,12 @@ int close_conn_internal(struct ziti_conn *conn) {
 }
 
 void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, int status) {
-    ZITI_LOG(TRACE, "connection[%d] status %d", conn->conn_id, status);    
     if (req->conn == NULL) {
         ZITI_LOG(DEBUG, "write completed for timed out or closed connection");
         free(req);
         return;
     }
+    ZITI_LOG(TRACE, "connection[%d] status %d", conn->conn_id, status);
     conn->write_reqs--;
 
     if (req->timeout != NULL) {
@@ -150,7 +153,7 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
             ZITI_LOG(DEBUG, "request already timed out or closed");
         }
         else { // first channel to connect
-            ZITI_LOG(TRACE, "channel connected status[%d]", status);
+            ZITI_LOG(DEBUG, "selected ch[%s] status[%d] for conn_id[%d]", ch->ingress, status, req->conn->conn_id);
 
             req->channel = ch;
             req->conn->channel = ch;
@@ -191,10 +194,33 @@ static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, s
     conn->token = session->token;
 
     ziti_edge_router **er;
+    ziti_channel_t *best_ch = NULL;
+    uint64_t best_latency = UINT64_MAX;
+
     for (er = session->edge_routers; *er != NULL; er++) {
+        size_t ch_name_len = strlen((*er)->name) + strlen((*er)->ingress.tls) + 2;
+        char *ch_name = malloc(ch_name_len);
+        snprintf(ch_name, ch_name_len, "%s@%s", (*er)->name, (*er)->ingress.tls);
+        ziti_channel_t *ch = model_map_get(&ctx->channels, ch_name);
+
+        if (ch != NULL && ch->state == Connected) {
+            if (ch->latency < best_latency) {
+                best_ch = ch;
+                best_latency = ch->latency;
+            }
+        }
+        else {
+            req->chan_tries++;
+            ZITI_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, (*er)->ingress.tls, conn->token);
+            ziti_channel_connect(ctx, ch_name, (*er)->ingress.tls, on_channel_connected, req);
+        }
+        free(ch_name);
+    }
+
+    if (best_ch) {
+        ZITI_LOG(DEBUG, "selected ch[%s] for best latency(%ldms)", best_ch->ingress, best_ch->latency);
         req->chan_tries++;
-        ZITI_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, (*er)->ingress.tls, conn->token);
-        ziti_channel_connect(ctx, (*er)->ingress.tls, on_channel_connected, req);
+        on_channel_connected(best_ch, req, ZITI_OK);
     }
 
     return 0;
@@ -394,7 +420,6 @@ static void ziti_disconnect_cb(ziti_connection conn, ssize_t status, void *ctx) 
 
 static void ziti_disconnect_async(uv_async_t *ar) {
     struct ziti_conn *conn = ar->data;
-    uv_close((uv_handle_t *) ar, free_handle);
     switch (conn->state) {
         case Bound:
         case Accepting:
@@ -417,7 +442,8 @@ int ziti_disconnect(struct ziti_conn *conn) {
     NEWP(ar, uv_async_t);
     uv_async_init(conn->channel->ctx->loop, ar, ziti_disconnect_async);
     ar->data = conn;
-    return uv_async_send(ar);
+    conn->disconnector = ar;
+    return uv_async_send(conn->disconnector);
 }
 
 static void crypto_wr_cb(ziti_connection conn, ssize_t status, void *ctx) {

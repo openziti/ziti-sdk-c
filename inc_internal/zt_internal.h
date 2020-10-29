@@ -71,6 +71,9 @@ typedef struct ziti_channel {
     char token[UUID_STR_LEN];
     uv_mbed_t connection;
 
+    uint64_t latency;
+    uv_timer_t latency_timer;
+
     enum conn_state state;
 
     struct ch_conn_req **conn_reqs;
@@ -118,6 +121,7 @@ struct ziti_conn {
 
     buffer *inbound;
     uv_async_t *flusher;
+    uv_async_t *disconnector;
     int write_reqs;
 
     void *data;
@@ -183,7 +187,7 @@ int ziti_process_connect_reqs(ziti_context ztx);
 
 int ziti_close_channels(ziti_context ztx);
 
-int ziti_channel_connect(ziti_context ztx, const char *url, ch_connect_cb, void *ctx);
+int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb, void *ctx);
 
 int ziti_channel_close(ziti_channel_t *ch);
 

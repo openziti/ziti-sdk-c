@@ -30,7 +30,7 @@ limitations under the License.
 #define SIGUSR1 10
 #endif
 
-#define MAX_WRITES 4
+#define MAX_WRITES 16
 
 /* avoid xgress chunking */
 #define MAX_PROXY_PAYLOAD (63*1024)
@@ -134,13 +134,19 @@ static void close_cb(uv_handle_t *h) {
 }
 
 static void on_client_write(uv_write_t *req, int status) {
-
+    uv_stream_t *s = req->handle;
+    struct client *client = s->data;
     if (status < 0) {
         switch (status) {
             case UV_EPIPE:
             case UV_ECONNRESET:
-            case UV_ECANCELED:
+            case UV_ECANCELED: {
+                ZITI_LOG(WARN, "write failed: [%d/%s](%s) -- closing client[%s]", status,
+                         uv_err_name(status), uv_strerror(status), client->addr_s);
+                client->write_done = true;
+                ziti_close(&client->ziti_conn);
                 break;
+            }
             default:
                 ZITI_LOG(WARN, "unexpected: [%d/%s](%s)", status, uv_err_name(status), uv_strerror(status));
         }
@@ -158,7 +164,7 @@ static void alloc_cb(uv_handle_t *h, size_t suggested_size, uv_buf_t *buf) {
         buf->base = malloc(buf->len);
     }
     else {
-        ZITI_LOG(DEBUG, "maximum outstanding writes reached clt[%s]", clt->addr_s);
+        ZITI_LOG(VERBOSE, "maximum outstanding writes reached clt[%s]", clt->addr_s);
         buf->base = NULL;
         buf->len = 0;
     }
@@ -186,13 +192,14 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
     struct client *clt = stream->data;
     ZITI_LOG(TRACE, "client[%s]: nread[%zd]", clt->addr_s, nread);
     if (nread == UV_ENOBUFS) {
-        ZITI_LOG(DEBUG, "client[%s] is throttled", clt->addr_s);
+        ZITI_LOG(VERBOSE, "client[%s] is throttled", clt->addr_s);
     }
     else if (nread == UV_EOF) {
         ZITI_LOG(DEBUG, "connection %s sent FIN write_done=%d, read_done=%d", clt->addr_s, clt->write_done,
                  clt->read_done);
         clt->read_done = true;
         if (clt->write_done) {
+            ZITI_LOG(DEBUG, "closing client[%s]", clt->addr_s);
             ziti_conn_set_data(clt->ziti_conn, NULL);
             ziti_close(&clt->ziti_conn);
             clt->closed = true;
@@ -247,7 +254,15 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         ZITI_LOG(DEBUG, "received data[%zd] for disconnected client", len);
         return len;
     }
-    else if (len > 0) {
+
+    if (!uv_is_active((const uv_handle_t *) clt)) {
+        c->closed = true;
+        ZITI_LOG(DEBUG, "tcp side of client[%s] is closed", c->addr_s);
+        ziti_close(&c->ziti_conn);
+        return UV_ECONNABORTED;
+    }
+
+    if (len > 0) {
         NEWP(req, uv_write_t);
         char *copy = malloc(len);
         memcpy(copy, data, len);
@@ -434,6 +449,14 @@ void run(int argc, char **argv) {
 
     TRY(uv, uv_signal_init(loop, &sig));
     sig.data = &listeners;
+
+#if __unix__ || __unix
+    // prevent termination when running under valgrind
+    // client forcefully closing connection results in SIGPIPE
+    // which causes valgrind to freak out
+    signal(SIGPIPE, SIG_IGN);
+#endif
+
     TRY(uv, uv_signal_start(&sig, signal_cb, SIGINT));
     TRY(uv, uv_signal_start(&sig, signal_cb, SIGTERM));
     TRY(uv, uv_signal_start(&sig, signal_cb, SIGUSR1));
