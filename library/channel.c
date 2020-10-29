@@ -474,7 +474,8 @@ static void latency_reply_cb(void *ctx, message *reply) {
     uint64_t ts;
     if (reply->header.content == ContentTypeResultType &&
         message_get_uint64_header(reply, LatencyProbeTime, &ts)) {
-        ZITI_LOG(VERBOSE, "channel[%s] latency is now %ld", ch->ingress, uv_now(ch->ctx->loop) - ts);
+        ch->latency = uv_now(ch->ctx->loop) - ts;
+        ZITI_LOG(VERBOSE, "channel[%s] latency is now %ld", ch->ingress, ch->latency);
     } else {
         ZITI_LOG(WARN, "invalid latency probe result ct[%d]", reply->header.content);
     }
