@@ -284,9 +284,6 @@ static struct ziti_conn *find_conn(ziti_channel_t *ch, uint32_t conn_id) {
 static void process_edge_message(struct ziti_conn *conn, message *msg) {
     int32_t seq;
     int32_t conn_id;
-    for (int i = 0; i < msg->nhdrs; i++) {
-        ZITI_LOG(INFO, "received hdr %d: %d", msg->hdrs[i].header_id, msg->hdrs[i].length);
-    }
     bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
     bool has_conn_id = message_get_int32_header(msg, ConnIdHeader, &conn_id);
 

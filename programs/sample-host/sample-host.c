@@ -119,13 +119,20 @@ static void on_ziti_init(ziti_context ztx, int status, void *ctx) {
     ziti_connection conn;
     ziti_conn_init(ziti, &conn, NULL);
     if (server) {
-        ziti_listen(conn, service, listen_cb, on_client);
+        ziti_listen_opts listen_opts = {
+//                .identity = "itsamee",
+//                .bind_using_edge_identity = true,
+//                .terminator_precedence = PRECEDENCE_REQUIRED,
+//                .terminator_cost = 10,
+        };
+        ziti_listen_with_options(conn, service, &listen_opts, listen_cb, on_client);
     }
     else {
-        char *app_data = "here is some data to get you started";
+        char *app_data = "here is some data from the client to get you started";
         ziti_dial_opts dial_opts = {
-                .app_data = app_data,
-                .app_data_sz = strlen(app_data) + 1,
+//                .identity = "itsamee",
+//                .app_data = app_data,
+//                .app_data_sz = strlen(app_data) + 1,
         };
         DIE(ziti_dial_with_options(conn, service, &dial_opts, on_connect, on_data));
     }

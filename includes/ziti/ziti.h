@@ -140,7 +140,7 @@ typedef struct ziti_enroll_opts_s {
     const char *enroll_cert;
 } ziti_enroll_opts;
 
-typedef struct ziti_dial_ops_s {
+typedef struct ziti_dial_opts_s {
     int connect_timeout_seconds;
     char *identity;
     void *app_data;
@@ -155,13 +155,11 @@ typedef enum ziti_terminator_precedence_e {
 
 typedef struct ziti_listen_opts_s {
     uint16_t terminator_cost;
-    ziti_terminator_precedence terminator_precedence;
+    uint8_t terminator_precedence;
     int connect_timeout_seconds;
-    int max_connections;
+    //int max_connections;  // todo implement
     char *identity;
     bool bind_using_edge_identity;
-    void *app_data;
-    size_t app_data_sz;
 } ziti_listen_opts;
 
 /**
