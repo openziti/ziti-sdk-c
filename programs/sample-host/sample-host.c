@@ -58,6 +58,10 @@ static void on_client_connect(ziti_connection clt, int status) {
 }
 
 static void on_client(ziti_connection serv, ziti_connection client, int status) {
+    char *app_data = ziti_conn_data(client);
+    if (app_data != NULL) {
+        fprintf(stderr, "got app data '%s'!\n", app_data);
+    }
     ziti_accept(client, on_client_connect, on_client_data);
 }
 
@@ -118,7 +122,12 @@ static void on_ziti_init(ziti_context ztx, int status, void *ctx) {
         ziti_listen(conn, service, listen_cb, on_client);
     }
     else {
-        DIE(ziti_dial(conn, service, on_connect, on_data));
+        char *app_data = "here is some data to get you started";
+        ziti_dial_opts dial_opts = {
+                .app_data = app_data,
+                .app_data_sz = strlen(app_data) + 1,
+        };
+        DIE(ziti_dial_with_options(conn, service, &dial_opts, on_connect, on_data));
     }
 }
 

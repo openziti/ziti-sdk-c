@@ -202,7 +202,7 @@ int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jw
 
 int load_tls(ziti_config *cfg, tls_context **tls);
 
-int ziti_bind(ziti_connection conn, const char *service, ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb);
+int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *ln_opts, ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb);
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg);
 

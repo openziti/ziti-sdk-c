@@ -237,6 +237,7 @@ int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_
     uint8_t *p = msg_buf + HEADER_SIZE;
     for (int i = 0; i < nhdrs; i++) {
         p = write_hdr(&hdrs[i], p);
+        ZITI_LOG(INFO, "sending hdr %d: %d", hdrs[i].header_id, hdrs[i].length);
     }
     assert(p == msg_buf + HEADER_SIZE + hdrs_len);
 
@@ -283,6 +284,9 @@ static struct ziti_conn *find_conn(ziti_channel_t *ch, uint32_t conn_id) {
 static void process_edge_message(struct ziti_conn *conn, message *msg) {
     int32_t seq;
     int32_t conn_id;
+    for (int i = 0; i < msg->nhdrs; i++) {
+        ZITI_LOG(INFO, "received hdr %d: %d", msg->hdrs[i].header_id, msg->hdrs[i].length);
+    }
     bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
     bool has_conn_id = message_get_int32_header(msg, ConnIdHeader, &conn_id);
 
@@ -315,8 +319,11 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
 
         case ContentTypeDial:
             assert(conn->state == Bound);
+            uint8_t *app_data = NULL;
+            size_t app_data_sz = 0;
+            message_get_bytes_header(msg, AppDataHeader, &app_data, &app_data_sz);
             ziti_connection clt;
-            ziti_conn_init(conn->ziti_ctx, &clt, NULL);
+            ziti_conn_init(conn->ziti_ctx, &clt, app_data);
             clt->state = Accepting;
             clt->parent = conn;
             clt->channel = conn->channel;

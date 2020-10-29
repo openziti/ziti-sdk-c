@@ -67,6 +67,7 @@ enum header_id {
     CallerIdHeader = 1008,
     CryptoMethodHeader = 1009,
     FlagsHeader = 1010,
+    AppDataHeader = 1011,
 };
 
 enum crypto_method {
