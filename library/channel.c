@@ -237,7 +237,6 @@ int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_
     uint8_t *p = msg_buf + HEADER_SIZE;
     for (int i = 0; i < nhdrs; i++) {
         p = write_hdr(&hdrs[i], p);
-        ZITI_LOG(INFO, "sending hdr %d: %d", hdrs[i].header_id, hdrs[i].length);
     }
     assert(p == msg_buf + HEADER_SIZE + hdrs_len);
 
