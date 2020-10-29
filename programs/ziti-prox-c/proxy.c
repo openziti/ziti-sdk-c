@@ -143,6 +143,7 @@ static void on_client_write(uv_write_t *req, int status) {
             case UV_ECANCELED: {
                 ZITI_LOG(WARN, "write failed: [%d/%s](%s) -- closing client[%s]", status,
                          uv_err_name(status), uv_strerror(status), client->addr_s);
+                client->write_done = true;
                 ziti_close(&client->ziti_conn);
                 break;
             }

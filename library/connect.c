@@ -197,9 +197,10 @@ static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, s
     ziti_channel_t *best_ch = NULL;
     uint64_t best_latency = UINT64_MAX;
 
-    char ch_name[128];
     for (er = session->edge_routers; *er != NULL; er++) {
-        snprintf(ch_name, sizeof(ch_name), "%s@%s", (*er)->name, (*er)->ingress.tls);
+        size_t ch_name_len = strlen((*er)->name) + strlen((*er)->ingress.tls) + 2;
+        char *ch_name = malloc(ch_name_len);
+        snprintf(ch_name, ch_name_len, "%s@%s", (*er)->name, (*er)->ingress.tls);
         ziti_channel_t *ch = model_map_get(&ctx->channels, ch_name);
 
         if (ch != NULL && ch->state == Connected) {
@@ -211,8 +212,9 @@ static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, s
         else {
             req->chan_tries++;
             ZITI_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, (*er)->ingress.tls, conn->token);
-            ziti_channel_connect(ctx, (*er)->name, (*er)->ingress.tls, on_channel_connected, req);
+            ziti_channel_connect(ctx, ch_name, (*er)->ingress.tls, on_channel_connected, req);
         }
+        free(ch_name);
     }
 
     if (best_ch) {

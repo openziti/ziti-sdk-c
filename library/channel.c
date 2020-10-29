@@ -113,11 +113,7 @@ int ziti_channel_close(ziti_channel_t *ch) {
     return r;
 }
 
-int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb cb, void *cb_ctx) {
-    size_t ch_name_len = strlen(name) + strlen(url) + 2;
-    char *ch_name = malloc(ch_name_len);
-    snprintf(ch_name, ch_name_len, "%s@%s", name, url);
-
+int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url, ch_connect_cb cb, void *cb_ctx) {
     ziti_channel_t *ch = model_map_get(&ztx->channels, ch_name);
 
     if (ch != NULL) {
@@ -139,13 +135,12 @@ int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch
             ZITI_LOG(ERROR, "should not be here: %s", ziti_errorstr(ZITI_WTF));
             return ZITI_WTF;
         }
-        free(ch_name);
         return ZITI_OK;
     }
 
     ch = calloc(1, sizeof(ziti_channel_t));
     ziti_channel_init(ztx, ch);
-    ch->ingress = ch_name;
+    ch->ingress = strdup(ch_name);
     ZITI_LOG(INFO, "opening new channel for ingress[%s] ch[%d]", ch->ingress, ch->id);
 
     struct http_parser_url ingress;
