@@ -39,7 +39,7 @@ struct ziti_conn_req {
 
 };
 
-static void flush_to_client(uv_async_t *fl);
+static void flush_to_client(uv_check_t *fl);
 
 static void ziti_connect_async(uv_async_t *ar);
 
@@ -342,7 +342,7 @@ int ziti_dial(ziti_connection conn, const char *service, ziti_conn_cb conn_cb, z
     uv_async_init(conn->ziti_ctx->loop, async_cr, ziti_connect_async);
 
     conn->flusher = calloc(1, sizeof(uv_async_t));
-    uv_async_init(conn->ziti_ctx->loop, conn->flusher, flush_to_client);
+    uv_check_init(conn->ziti_ctx->loop, conn->flusher);
     conn->flusher->data = conn;
     uv_unref((uv_handle_t *) conn->flusher);
 
@@ -510,9 +510,10 @@ static int send_crypto_header(ziti_connection conn) {
     return ZITI_OK;
 }
 
-static void flush_to_client(uv_async_t *fl) {
+static void flush_to_client(uv_check_t *fl) {
     ziti_connection conn = fl->data;
     if (conn == NULL || conn->state == Closed) {
+        uv_check_stop(fl);
         return;
     }
 
@@ -522,7 +523,7 @@ static void flush_to_client(uv_async_t *fl) {
         return;
     }
 
-    ZITI_LOG(TRACE, "flushing %zd bytes to client", buffer_available(conn->inbound));
+    ZITI_LOG(TRACE, "conn[%d] flushing %zd bytes to client", conn->conn_id, buffer_available(conn->inbound));
 
     while (buffer_available(conn->inbound) > 0) {
         uint8_t *chunk;
@@ -534,14 +535,17 @@ static void flush_to_client(uv_async_t *fl) {
         }
         else if (consumed < chunk_len) {
             buffer_push_back(conn->inbound, (chunk_len - consumed));
-            ZITI_LOG(DEBUG, "client conn[%d] stalled: %zd bytes buffered", conn->conn_id,
+            ZITI_LOG(VERBOSE, "client conn[%d] stalled: %zd bytes buffered", conn->conn_id,
                      buffer_available(conn->inbound));
             // client indicated that it cannot accept any more data
             // schedule retry
-            uv_async_send(fl);
+            if (!uv_is_active((const uv_handle_t *) fl)) {
+                uv_check_start(fl, flush_to_client);
+            }
             return;
         }
     }
+    uv_check_stop(fl);
 }
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg) {
@@ -739,8 +743,8 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     conn->channel = ch;
     conn->data_cb = data_cb;
 
-    conn->flusher = calloc(1, sizeof(uv_async_t));
-    uv_async_init(conn->ziti_ctx->loop, conn->flusher, flush_to_client);
+    conn->flusher = calloc(1, sizeof(uv_check_t));
+    uv_check_init(conn->ziti_ctx->loop, conn->flusher);
     conn->flusher->data = conn;
     uv_unref((uv_handle_t *) &conn->flusher);
 
