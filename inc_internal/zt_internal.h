@@ -120,7 +120,7 @@ struct ziti_conn {
     int timeout;
 
     buffer *inbound;
-    uv_async_t *flusher;
+    uv_check_t *flusher;
     uv_async_t *disconnector;
     int write_reqs;
 
