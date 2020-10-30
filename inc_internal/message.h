@@ -72,6 +72,8 @@ bool message_get_bool_header(message *m, int header_id, bool *v);
 
 bool message_get_int32_header(message *m, int header_id, int32_t *v);
 
+bool message_get_uint64_header(message *m, int header_id, uint64_t *v);
+
 bool message_get_bytes_header(message *m, int header_id, uint8_t **ptr, size_t *len);
 
 uint8_t *write_hdr(const hdr_t *h, uint8_t *buf);

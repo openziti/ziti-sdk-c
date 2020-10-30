@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "zt_internal.h"
 #include "utils.h"
+#include "endian_internal.h"
 
 #ifndef MAXHOSTNAMELEN
 #define MAXHOSTNAMELEN 255
@@ -112,8 +113,8 @@ int ziti_channel_close(ziti_channel_t *ch) {
     return r;
 }
 
-int ziti_channel_connect(ziti_context ztx, const char *url, ch_connect_cb cb, void *cb_ctx) {
-    ziti_channel_t *ch = model_map_get(&ztx->channels, url);
+int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url, ch_connect_cb cb, void *cb_ctx) {
+    ziti_channel_t *ch = model_map_get(&ztx->channels, ch_name);
 
     if (ch != NULL) {
         ZITI_LOG(DEBUG, "existing channel found for ingress[%s]", url);
@@ -139,9 +140,8 @@ int ziti_channel_connect(ziti_context ztx, const char *url, ch_connect_cb cb, vo
 
     ch = calloc(1, sizeof(ziti_channel_t));
     ziti_channel_init(ztx, ch);
-    ch->ingress = strdup(url);
-
-    ZITI_LOG(INFO, "opening new channel for ingress[%s] ch[%d]", url, ch->id);
+    ch->ingress = strdup(ch_name);
+    ZITI_LOG(INFO, "opening new channel for ingress[%s] ch[%d]", ch->ingress, ch->id);
 
     struct http_parser_url ingress;
     http_parser_url_init(&ingress);
@@ -293,10 +293,10 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
         case ContentTypeStateClosed:
             ZITI_LOG(VERBOSE, "connection status[%d] conn_id[%d] seq[%d]", msg->header.content, conn_id, seq);
             if (conn->state == Bound) {
-                conn->client_cb(conn, NULL, ZITI_EOF);
+                conn->client_cb(conn, NULL, ZITI_CONN_CLOSED);
             }
             else if (conn->state == Connected || conn->state == CloseWrite) {
-                conn->data_cb(conn, NULL, ZITI_EOF);
+                conn->data_cb(conn, NULL, ZITI_CONN_CLOSED);
             }
             conn->state = Closed;
             break;
@@ -387,7 +387,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
         else {
             struct ziti_conn *conn = find_conn(ch, conn_id);
             if (conn == NULL) {
-                ZITI_LOG(ERROR, "ch[%d] received message for unknown connection conn_id[%d] ct[%d]",
+                ZITI_LOG(DEBUG, "ch[%d] received message for unknown connection conn_id[%d] ct[%d]",
                          ch->id, conn_id, m->header.content);
             }
             else {
@@ -468,6 +468,32 @@ static void process_inbound(ziti_channel_t *ch) {
     buffer_cleanup(ch->incoming);
 }
 
+static void latency_reply_cb(void *ctx, message *reply) {
+    ziti_channel_t *ch = ctx;
+    uint64_t ts;
+    if (reply->header.content == ContentTypeResultType &&
+        message_get_uint64_header(reply, LatencyProbeTime, &ts)) {
+        ch->latency = uv_now(ch->ctx->loop) - ts;
+        ZITI_LOG(VERBOSE, "channel[%s] latency is now %ld", ch->ingress, ch->latency);
+    } else {
+        ZITI_LOG(WARN, "invalid latency probe result ct[%d]", reply->header.content);
+    }
+}
+
+static void send_latency_probe(uv_timer_t *t) {
+    ziti_channel_t *ch = t->data;
+    uint64_t now = htole64(uv_now(t->loop));
+    hdr_t headers[] = {
+            {
+                    .header_id = LatencyProbeTime,
+                    .length = sizeof(now),
+                    .value = (uint8_t *) &now,
+            }
+    };
+
+    ziti_channel_send_for_reply(ch, ContentTypeLatencyType, headers, 1, NULL, 0, latency_reply_cb, ch);
+}
+
 static void hello_reply_cb(void *ctx, message *msg) {
 
     assert (msg->header.content == ContentTypeResultType);
@@ -494,6 +520,13 @@ static void hello_reply_cb(void *ctx, message *msg) {
         free(r);
     }
     ch->conn_reqs_n = 0;
+
+    // initial latency
+    ch->latency = uv_now(ch->ctx->loop) - ch->latency;
+    uv_timer_init(ch->ctx->loop, &ch->latency_timer);
+    ch->latency_timer.data = ch;
+    uv_unref((uv_handle_t *) &ch->latency_timer);
+    uv_timer_start(&ch->latency_timer, send_latency_probe, 0, 60 * 1000);
 }
 
 static void send_hello(ziti_channel_t *ch) {
@@ -504,7 +537,7 @@ static void send_hello(ziti_channel_t *ch) {
                     .value = ch->ctx->session->token
             }
     };
-
+    ch->latency = uv_now(ch->ctx->loop);
     ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 1, ch->token, strlen(ch->token), hello_reply_cb, ch);
 }
 
@@ -527,6 +560,7 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
     LIST_FOREACH(con, &ch->connections, next) {
         if (con->state == Connected) {
             con->state = Closed;
+            con->channel = NULL;
             con->data_cb(con, NULL, code);
         }
     }
@@ -566,7 +600,7 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
             case UV_EPIPE:
                 ZITI_LOG(INFO, "channel was closed: %d(%s)", (int) len, uv_strerror((int) len));
                 // propagate close
-                on_channel_close(ch, ZITI_EOF);
+                on_channel_close(ch, ZITI_CONNABORT);
                 break;
 
             default:

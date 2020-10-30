@@ -734,7 +734,6 @@ static int _cmp_map(model_map *lh, model_map *rh) {
             char *rhv = model_map_get(rh, model_map_it_key(it));
             if (rhv == NULL) {
                 rc = 1;
-
             }
             else {
                 rc = strcmp(lhv, rhv);
@@ -1032,7 +1031,7 @@ static int model_map_compare(model_map *lh, model_map *rh, type_meta *m) {
                 rc = 1;
             }
             else {
-                if (m == get_string_meta()) {
+                if (m == get_string_meta() || m == get_json_meta()) {
                     rc = m->comparer(&lhv, &rhv);
                 }
                 else {
