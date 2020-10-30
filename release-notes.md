@@ -1,5 +1,9 @@
 Ziti SDK for C
 --------------
+# Release 0.17.0
+
+* Adds models for `intercept.v1` and `host.v1` service configuration types.
+* Renames `ziti_intercept` model to `ziti_client_cfg_v1`.
 
 # Release 0.14.0
 

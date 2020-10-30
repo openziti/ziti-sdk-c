@@ -23,9 +23,15 @@ limitations under the License.
 
 IMPL_MODEL(ziti_service, ZITI_SERVICE_MODEL)
 
-IMPL_MODEL(ziti_intercept, ZITI_INTERCEPT_MODEL)
+IMPL_MODEL(ziti_client_cfg_v1, ZITI_CLIENT_CFG_V1_MODEL)
+
+IMPL_MODEL(ziti_port_range, ZITI_PORT_RANGE_MODEL)
+
+IMPL_MODEL(ziti_intercept_cfg_v1, ZITI_INTERCEPT_CFG_V1_MODEL)
 
 IMPL_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
+
+IMPL_MODEL(ziti_host_cfg_v1, ZITI_HOST_CFG_V1_MODEL)
 
 IMPL_MODEL(ziti_id_cfg, ZITI_ID_CFG_MODEL)
 

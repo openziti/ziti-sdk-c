@@ -359,15 +359,15 @@ static void update_listener(ziti_service *service, int status, struct listener *
         free(addr);
 
         // this is for illustration purposes only
-        ziti_intercept intercept;
+        ziti_client_cfg_v1 intercept;
         int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept,
-                                         (int (*)(void *, const char *, size_t)) parse_ziti_intercept);
+                                         (int (*)(void *, const char *, size_t)) parse_ziti_client_cfg_v1);
         if (rc != 0) {
             ZITI_LOG(ERROR, "failed to parse client intercept");
         }
         else {
             ZITI_LOG(INFO, "should intercepting %s:%d", intercept.hostname, intercept.port);
-            free_ziti_intercept(&intercept);
+            free_ziti_client_cfg_v1(&intercept);
         }
     }
     else {
