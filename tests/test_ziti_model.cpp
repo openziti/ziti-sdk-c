@@ -309,6 +309,12 @@ TEST_CASE("service config test", "[model]") {
       "ziti-tunneler-client.v1": {
         "hostname": "hello.ziti",
         "port": 80
+      },
+      "intercept.v1": {
+         "protocols": [ "tcp", "udp" ],
+         "addresses": [ "1.2.3.4" ],
+         "portRanges": [ { "low": 80, "high": 80 }, { "low": 443, "high": 443 } ],
+         "dialOptions": { "identity": "helloitsme" }
       }
     },
     "configs": [
