@@ -54,6 +54,7 @@ enum header_id {
     ReflectedHeaderBitMask = 1 << 7,
     MaxReflectedHeader = (1 << 8) - 1,
 
+    LatencyProbeTime = 128,
     UUIDHeader = 128,
 
     ConnIdHeader = 1000,

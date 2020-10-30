@@ -125,9 +125,25 @@ bool message_get_bool_header(message *m, int header_id, bool *v) {
 
 bool message_get_int32_header(message *m, int header_id, int32_t *v) {
     hdr_t *h = find_header(m, header_id);
+    uint32_t val = 0;
     if (h != NULL) {
-        int32_t val = *(int32_t *) h->value;
-        *v = le32toh(val);
+        for (unsigned int i = 0; i < h->length && i < 4; i++) {
+            val += (h->value[i] << (i * 8));
+        }
+        *v = val;
+        return true;
+    }
+    return false;
+}
+
+bool message_get_uint64_header(message *m, int header_id, uint64_t *v) {
+    hdr_t *h = find_header(m, header_id);
+    uint64_t val = 0;
+    if (h != NULL) {
+        for (unsigned int i = 0; i < h->length && i < 8; i++) {
+            val += (h->value[i] << (i * 8));
+        }
+        *v = val;
         return true;
     }
     return false;

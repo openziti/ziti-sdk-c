@@ -27,6 +27,7 @@ limitations under the License.
 #elif defined (__APPLE__)
 #  include <libkern/OSByteOrder.h>
 #  define htole32(x) OSSwapHostToLittleInt32(x)
+#  define htole64(x) OSSwapHostToLittleInt64(x)
 #  define le32toh(x) OSSwapLittleToHostInt32(x)
 #elif defined(__WINDOWS__)
 // thanks to https://gist.github.com/PkmX/63dd23f28ba885be53a5
