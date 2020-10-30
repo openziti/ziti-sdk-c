@@ -140,6 +140,28 @@ typedef struct ziti_enroll_opts_s {
     const char *enroll_cert;
 } ziti_enroll_opts;
 
+typedef struct ziti_dial_opts_s {
+    int connect_timeout_seconds;
+    char *identity;
+    void *app_data;
+    size_t app_data_sz;
+} ziti_dial_opts;
+
+typedef enum ziti_terminator_precedence_e {
+    PRECEDENCE_DEFAULT = 0,
+    PRECEDENCE_REQUIRED,
+    PRECEDENCE_FAILED
+} ziti_terminator_precedence;
+
+typedef struct ziti_listen_opts_s {
+    uint16_t terminator_cost;
+    uint8_t terminator_precedence;
+    int connect_timeout_seconds;
+    //int max_connections;  // todo implement
+    char *identity;
+    bool bind_using_edge_identity;
+} ziti_listen_opts;
+
 /**
  * @brief Data callback.
  *
@@ -455,6 +477,9 @@ extern int ziti_service_available(ziti_context ztx, const char *service, ziti_se
 ZITI_FUNC
 extern int ziti_dial(ziti_connection conn, const char *service, ziti_conn_cb cb, ziti_data_cb data_cb);
 
+ZITI_FUNC
+extern int ziti_dial_with_options(ziti_connection conn, const char *service, ziti_dial_opts *dial_opts, ziti_conn_cb cb, ziti_data_cb data_cb);
+
 /**
  * @brief Start accepting ziti client connections.
  *
@@ -479,6 +504,9 @@ extern int ziti_dial(ziti_connection conn, const char *service, ziti_conn_cb cb,
  */
 ZITI_FUNC
 extern int ziti_listen(ziti_connection serv_conn, const char *service, ziti_listen_cb lcb, ziti_client_cb cb);
+
+ZITI_FUNC
+extern int ziti_listen_with_options(ziti_connection serv_conn, const char *service, ziti_listen_opts *listen_opts, ziti_listen_cb lcb, ziti_client_cb cb);
 
 /**
  * @brief Completes client connection.
