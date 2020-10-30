@@ -359,7 +359,7 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
         req->dial_opts = clone_ziti_dial_opts(dial_opts);
 
         // override connection timeout if set in dial_opts
-        if (dial_opts->connect_timeout_seconds != 0) {
+        if (dial_opts->connect_timeout_seconds > 0) {
             conn->timeout = dial_opts->connect_timeout_seconds * 1000;
         }
     }
@@ -840,7 +840,7 @@ int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *liste
         req->listen_opts = clone_ziti_listen_opts(listen_opts);
 
         // override connection timeout if set in listen_opts
-        if (listen_opts->connect_timeout_seconds != 0) {
+        if (listen_opts->connect_timeout_seconds > 0) {
             conn->timeout = listen_opts->connect_timeout_seconds * 1000;
         }
     }
