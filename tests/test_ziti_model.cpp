@@ -311,10 +311,10 @@ TEST_CASE("service config test", "[model]") {
         "port": 80
       },
       "intercept.v1": {
-         "protocols": [ "tcp", "udp" ],
-         "addresses": [ "1.2.3.4" ],
-         "portRanges": [ { "low": 80, "high": 80 }, { "low": 443, "high": 443 } ],
-         "dialOptions": { "identity": "helloitsme" }
+        "protocols": [ "tcp", "udp" ],
+        "addresses": [ "1.2.3.4" ],
+        "portRanges": [ { "low": 80, "high": 80 }, { "low": 443, "high": 443 } ],
+        "dialOptions": { "identity": "helloitsme" }
       }
     },
     "configs": [
