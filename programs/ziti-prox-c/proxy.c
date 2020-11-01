@@ -245,6 +245,10 @@ void on_ziti_connect(ziti_connection conn, int status) {
     }
 }
 
+static void tcp_shutdown_cb(uv_shutdown_t *sr, int code) {
+    free(sr);
+}
+
 ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
     uv_tcp_t *clt = ziti_conn_data(conn);
     struct client *c = clt ? clt->data : NULL;
@@ -282,7 +286,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         }
         else {
             uv_shutdown_t *sr = calloc(1, sizeof(uv_shutdown_t));
-            uv_shutdown(sr, (uv_stream_t *) clt, NULL);
+            uv_shutdown(sr, (uv_stream_t *) clt, tcp_shutdown_cb);
             c->write_done = true;
         }
     }
