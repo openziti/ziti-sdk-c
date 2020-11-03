@@ -23,6 +23,13 @@ limitations under the License.
 #include "utils.h"
 #include "zt_internal.h"
 #include <http_parser.h>
+#include <posture.h>
+
+#if _WIN32
+
+#include <windows.h>
+
+#endif
 
 #ifndef MAXPATHLEN
 #ifdef _MAX_PATH
@@ -151,7 +158,7 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
         if (endp == NULL) {
             TRY(ziti, ("invalid pkcs11 key specification", ZITI_INVALID_CONFIG));
         }
-        sprintf(path, "%*.*s", (int)(endp - p), (int)(endp - p), p);
+        sprintf(path, "%*.*s", (int) (endp - p), (int) (endp - p), p);
 
         TRY(ziti, parse_getopt(q, "pin", pin, sizeof(pin)));
         TRY(ziti, parse_getopt(q, "slot", slot, sizeof(slot)));
@@ -164,7 +171,7 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
         tls->api->set_own_cert(tls->ctx, cert, cert_len, key, key_len);
     }
 
-     CATCH(ziti) {
+    CATCH(ziti) {
         return ERR(ziti);
     }
 
@@ -240,6 +247,8 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     init_req->ztx = ctx;
     ziti_ctrl_login(&ctx->controller, ctx->opts->config_types, session_cb, init_req);
 
+    posture_init(ctx, 20);
+
     CATCH(ziti) {
         return ERR(ziti);
     }
@@ -277,8 +286,7 @@ void ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
 int ziti_set_timeout(ziti_context ztx, int timeout) {
     if (timeout > 0) {
         ztx->ziti_timeout = timeout;
-    }
-    else {
+    } else {
         ztx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
     }
     return ZITI_OK;
@@ -291,6 +299,8 @@ int ziti_shutdown(ziti_context ztx) {
     ztx->session = NULL;
 
     uv_timer_stop(&ztx->session_timer);
+    uv_timer_stop(&ztx->posture_checks->timer);
+
     ziti_ctrl_close(&ztx->controller);
     ziti_close_channels(ztx);
 
@@ -305,6 +315,9 @@ int ziti_ctx_free(ziti_context *ctxp) {
     if ((*ctxp)->tlsCtx != NULL) {
         (*ctxp)->tlsCtx->api->free_ctx((*ctxp)->tlsCtx);
     }
+
+    ziti_posture_checks_free((*ctxp)->posture_checks);
+
     free(*ctxp);
     *ctxp = NULL;
 
@@ -453,7 +466,8 @@ int ziti_listen(ziti_connection serv_conn, const char *service, ziti_listen_cb l
     return ziti_bind(serv_conn, service, NULL, lcb, cb);
 }
 
-int ziti_listen_with_options(ziti_connection serv_conn, const char *service, ziti_listen_opts *listen_opts, ziti_listen_cb lcb, ziti_client_cb cb) {
+int ziti_listen_with_options(ziti_connection serv_conn, const char *service, ziti_listen_opts *listen_opts,
+                             ziti_listen_cb lcb, ziti_client_cb cb) {
     return ziti_bind(serv_conn, service, listen_opts, lcb, cb);
 }
 
@@ -509,16 +523,14 @@ static void update_services(ziti_service_array services, ziti_error *error, ziti
         if (updt != NULL) {
             if (cmp_ziti_service(updt, model_map_it_value(it)) != 0) {
                 model_map_set(&changes, model_map_it_key(it), updt);
-            }
-            else {
+            } else {
                 // no changes detected, just discard it
                 free_ziti_service(updt);
                 free(updt);
             }
 
             it = model_map_it_next(it);
-        }
-        else {
+        } else {
             // service was removed
             ZITI_LOG(DEBUG, "service[%s] is not longer available", model_map_it_key(it));
             s = model_map_it_value(it);
@@ -598,8 +610,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
             ZITI_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
             uv_timer_start(&ztx->refresh_timer, services_refresh, 0, ztx->opts->refresh_interval * 1000);
-        }
-        else if (ztx->opts->refresh_interval == 0) {
+        } else if (ztx->opts->refresh_interval == 0) {
             ZITI_LOG(DEBUG, "refresh_interval not specified");
             uv_timer_stop(&ztx->refresh_timer);
         }
@@ -631,7 +642,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         if (errCode == ZITI_OK) {
             rate_type rate = ztx->opts->metrics_type;
 
-            ZITI_LOG(INFO, "using metrics interval: %d", (int)rate);
+            ZITI_LOG(INFO, "using metrics interval: %d", (int) rate);
 
             metrics_rate_init(&ztx->up_rate, rate);
             metrics_rate_init(&ztx->down_rate, rate);
@@ -651,8 +662,7 @@ static void version_cb(ziti_version *v, ziti_error *err, void *ctx) {
                  ctrl->client.host, ctrl->client.port, err->code, err->message);
         free_ziti_error(err);
         FREE(err);
-    }
-    else {
+    } else {
         ZITI_LOG(INFO, "connected to controller %s:%s version %s(%s %s)",
                  ctrl->client.host, ctrl->client.port, v->version, v->revision, v->build_date);
         free_ziti_version(v);

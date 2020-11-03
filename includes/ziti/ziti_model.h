@@ -39,13 +39,28 @@ XX(id, string, none, id, __VA_ARGS__) \
 XX(name, string, none, name, __VA_ARGS__)\
 XX(tags, tag, map, tags, __VA_ARGS__)
 
+#define ZITI_PROCESS_MODEL(XX, ...) \
+XX(path, string, none, path, __VA_ARGS__)
+
+#define ZITI_POSTURE_QUERY_MODEL(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__) \
+XX(is_passing, bool, none, isPassing, __VA_ARGS__) \
+XX(query_type, string, none, queryType, __VA_ARGS__) \
+XX(process, ziti_process, ptr, process, __VA_ARGS__)
+
+#define ZITI_POSTURE_QUERY_SET_MODEL(XX, ...) \
+XX(policy_id, string, none, policyId, __VA_ARGS__) \
+XX(is_passing, bool, none, isPassing, __VA_ARGS__) \
+XX(posture_queries, ziti_posture_query, array, postureQueries, __VA_ARGS__)
+
 #define ZITI_SERVICE_MODEL(XX, ...) \
 XX(id, string, none, id, __VA_ARGS__) \
 XX(name, string, none, name, __VA_ARGS__) \
 XX(permissions, string, array, permissions, __VA_ARGS__) \
 XX(encryption, bool, none, encryptionRequired, __VA_ARGS__) \
 XX(perm_flags, int, none, NULL, __VA_ARGS__) \
-XX(config, json, map, config, __VA_ARGS__)
+XX(config, json, map, config, __VA_ARGS__) \
+XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__)
 
 #define ZITI_CLIENT_CFG_V1_MODEL(XX, ...) \
 XX(hostname, string, none, hostname, __VA_ARGS__) \
@@ -93,6 +108,12 @@ DECLARE_MODEL(ziti_id_cfg, ZITI_ID_CFG_MODEL)
 DECLARE_MODEL(ziti_config, ZITI_CONFIG_MODEL)
 
 DECLARE_MODEL(ziti_identity, ZITI_IDENTITY_MODEL)
+
+DECLARE_MODEL(ziti_process, ZITI_PROCESS_MODEL)
+
+DECLARE_MODEL(ziti_posture_query, ZITI_POSTURE_QUERY_MODEL)
+
+DECLARE_MODEL(ziti_posture_query_set, ZITI_POSTURE_QUERY_SET_MODEL)
 
 DECLARE_MODEL(ziti_service, ZITI_SERVICE_MODEL)
 

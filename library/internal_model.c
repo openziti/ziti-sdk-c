@@ -21,6 +21,12 @@ limitations under the License.
 
 #include <string.h>
 
+IMPL_MODEL(ziti_posture_query, ZITI_POSTURE_QUERY_MODEL)
+
+IMPL_MODEL(ziti_posture_query_set, ZITI_POSTURE_QUERY_SET_MODEL)
+
+IMPL_MODEL(ziti_process, ZITI_PROCESS_MODEL)
+
 IMPL_MODEL(ziti_service, ZITI_SERVICE_MODEL)
 
 IMPL_MODEL(ziti_client_cfg_v1, ZITI_CLIENT_CFG_V1_MODEL)
@@ -62,6 +68,16 @@ IMPL_MODEL(ziti_enrollment_jwt_header, ZITI_ENROLLMENT_JWT_HEADER_MODEL)
 IMPL_MODEL(ziti_enrollment_jwt, ZITI_ENROLLMENT_JWT_MODEL)
 
 IMPL_MODEL(ziti_enrollment_resp, ZITI_ENROLLMENT_RESP)
+
+IMPL_MODEL(ziti_pr_mac_req, ZITI_PR_MAC_REQ)
+
+IMPL_MODEL(ziti_pr_os_req, ZITI_PR_OS_REQ)
+
+IMPL_MODEL(ziti_pr_process, ZITI_PR_PROCESS)
+
+IMPL_MODEL(ziti_pr_process_req, ZITI_PR_PROCESS_REQ)
+
+IMPL_MODEL(ziti_pr_domain_req, ZITI_PR_DOMAIN_REQ)
 
 const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type) {
     return (const char *) model_map_get(&service->config, cfg_type);

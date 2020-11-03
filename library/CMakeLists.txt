@@ -22,6 +22,7 @@ SET(ZITI_SRC_FILES
         buffer.c
         ziti_src.c
         metrics.c
+        posture.c
 )
 
 SET(ZITI_INCLUDE_DIRS

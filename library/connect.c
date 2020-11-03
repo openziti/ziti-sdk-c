@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include <stdlib.h>
+#include <posture.h>
 
 #include "zt_internal.h"
 #include "utils.h"
@@ -346,6 +347,8 @@ static void ziti_connect_async(uv_async_t *ar) {
             return;
         }
     }
+
+    ziti_send_posture_data(ctx);
 
     net_session = model_map_get(&ctx->sessions, req->service->id);
     if (net_session == NULL || strcmp(net_session->session_type, req->session_type) != 0) {

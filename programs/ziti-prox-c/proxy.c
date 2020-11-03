@@ -415,6 +415,30 @@ const char *my_configs[] = {
         "all", NULL
 };
 
+
+static void process_cb(ziti_context ztx, char *id, char *path, ziti_pr_process_cb response_cb) {
+    char sha512[129] = "B4F3228217A2BAE3F21F6B6DF3750D0723A5C3973DB9AAD360A8F25BC31E3676D38180CF0ABC89D7FCA7A26E1919A1E52739ED3116011ACC7E96630313DA56B8";
+    response_cb(ztx, id, path, true, sha512, NULL, 0);
+}
+
+static void os_cb(ziti_context ztx, char *id, ziti_pr_os_cb response_cb) {
+    response_cb(ztx, id, "Windows", "10", "1409");
+}
+
+static void domain_cb(ziti_context ztx, char *id, ziti_pr_domain_cb response_cb) {
+    response_cb(ztx, id, "mycompany.com");
+}
+
+static void mac_cb(ziti_context ztx, char *id, ziti_pr_mac_cb response_cb) {
+    char *address = "62-69-B3-72-7D-05";
+    char **mac_addresses = malloc(sizeof(char *));
+    mac_addresses[0] = address;
+
+    response_cb(ztx, id, mac_addresses, 1);
+
+    free(mac_addresses);
+}
+
 void run(int argc, char **argv) {
 
     PREPF(uv, uv_strerror);
@@ -447,6 +471,10 @@ void run(int argc, char **argv) {
             .ctx = &listeners,
             .config_types = my_configs,
             .metrics_type = INSTANT,
+            .pq_process_cb = process_cb,
+            .pq_os_cb = os_cb,
+            .pq_mac_cb = mac_cb,
+            .pq_domain_cb = domain_cb,
     };
 
     ziti_init_opts(&opts, loop, &listeners);
