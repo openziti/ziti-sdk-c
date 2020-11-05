@@ -152,7 +152,7 @@ struct process {
 struct posture_checks {
     uv_timer_t timer;
     double interval;
-} posture_checks;
+};
 
 struct ziti_ctx {
     ziti_options *opts;
