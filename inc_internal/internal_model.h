@@ -36,11 +36,15 @@ XX(session_type, string, none, type, __VA_ARGS__) \
 XX(edge_routers, ziti_edge_router, array, edgeRouters, __VA_ARGS__) \
 XX(service_id, string, none, NULL, __VA_ARGS__)
 
+#define ZITI_PROCESS_MODEL(XX, ...) \
+XX(path, string, none, path, __VA_ARGS__)
+
 #define ZITI_SESSION_MODEL(XX, ...)\
 XX(id, string, none, id, __VA_ARGS__) \
 XX(token, string, none, token, __VA_ARGS__) \
 XX(expires, timestamp, ptr, expiresAt, __VA_ARGS__)\
-XX(identity, ziti_identity, ptr, identity, __VA_ARGS__)
+XX(identity, ziti_identity, ptr, identity, __VA_ARGS__) \
+XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__)
 
 #define ZITI_ERROR_MODEL(XX, ...) \
 XX(code, string, none, code, __VA_ARGS__) \
@@ -76,10 +80,38 @@ XX(config_types, string, array, configTypes, __VA_ARGS__)
 #define ZITI_ENROLLMENT_RESP(XX, ...) \
 XX(cert, string, none, cert, __VA_ARGS__)
 
+#define ZITI_PR_MAC_REQ(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__) \
+XX(typeId, string, none, typeId, __VA_ARGS__) \
+XX(mac_addresses, string, array, macAddresses, __VA_ARGS__)
+
+#define ZITI_PR_DOMAIN_REQ(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__) \
+XX(typeId, string, none, typeId, __VA_ARGS__) \
+XX(domain, string, none, domain, __VA_ARGS__)
+
+#define ZITI_PR_OS_REQ(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__) \
+XX(typeId, string, none, typeId, __VA_ARGS__) \
+XX(type, string, none, type, __VA_ARGS__) \
+XX(version, string, none, version, __VA_ARGS__) \
+XX(build, string, none, build, __VA_ARGS__)
+
+#define ZITI_PR_PROCESS(XX, ...) \
+XX(is_running, bool, none, isRunning, __VA_ARGS__) \
+XX(hash, string, none, hash, __VA_ARGS__) \
+XX(signer, string, none, signerFingerprint, __VA_ARGS__)
+
+#define ZITI_PR_PROCESS_REQ(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__) \
+XX(typeId, string, none, typeId, __VA_ARGS__) \
+XX(is_running, bool, none, isRunning, __VA_ARGS__) \
+XX(hash, string, none, hash, __VA_ARGS__) \
+XX(signer, string, none, signerFingerprint, __VA_ARGS__)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 
 
 DECLARE_MODEL(ziti_ingress, ZITI_INGRESS_MODEL)
@@ -103,6 +135,16 @@ DECLARE_MODEL(ziti_sdk_info, ZITI_SDK_INFO_MODEL)
 DECLARE_MODEL(ziti_env_info, ZITI_ENV_INFO_MODEL)
 
 DECLARE_MODEL(ziti_auth_req, ZITI_AUTH_REQ)
+
+DECLARE_MODEL(ziti_pr_mac_req, ZITI_PR_MAC_REQ)
+
+DECLARE_MODEL(ziti_pr_os_req, ZITI_PR_OS_REQ)
+
+DECLARE_MODEL(ziti_pr_process, ZITI_PR_PROCESS)
+
+DECLARE_MODEL(ziti_pr_process_req, ZITI_PR_PROCESS_REQ)
+
+DECLARE_MODEL(ziti_pr_domain_req, ZITI_PR_DOMAIN_REQ)
 
 #ifdef __cplusplus
 }

@@ -27,6 +27,11 @@ limitations under the License.
 extern "C" {
 #endif
 
+extern const char* const PC_DOMAIN_TYPE;
+extern const char* const PC_OS_TYPE;
+extern const char* const PC_PROCESS_TYPE;
+extern const char* const PC_MAC_TYPE;
+
 typedef struct ziti_controller_s {
     um_http_t client;
     ziti_version version;
@@ -35,6 +40,7 @@ typedef struct ziti_controller_s {
 } ziti_controller;
 
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctlr, const char *url, tls_context *tls);
+
 int ziti_ctrl_close(ziti_controller *ctrl);
 
 void ziti_ctrl_get_version(ziti_controller *ctrl, void (*ver_cb)(ziti_version *, ziti_error *, void *), void *ctx);
@@ -62,6 +68,23 @@ void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, zi
 
 void ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, const char *csr,
                       void (*cb)(ziti_enrollment_resp *, ziti_error *, void *), void *ctx);
+
+void ziti_ctrl_pr_post_domain(ziti_controller *ctrl, char *id, char *domain,
+                              void (*cb)(void *, ziti_error *, void *),
+                              void *ctx);
+
+void ziti_ctrl_pr_post_mac(ziti_controller *ctrl, char *id, char **mac_addresses, int num_addresses,
+                           void (*cb)(void *, ziti_error *, void *),
+                           void *ctx);
+
+void ziti_ctrl_pr_post_os(ziti_controller *ctrl, char *id, char *os_type, char *os_version, char *os_build,
+                          void (*cb)(void *, ziti_error *, void *),
+                          void *ctx);
+
+void ziti_ctrl_pr_post_process(ziti_controller *ctrl, char *id, bool is_running, char *sha_512_hash, char **signers,
+                               int num_signers,
+                               void (*cb)(void *, ziti_error *, void *),
+                               void *ctx);
 
 #ifdef __cplusplus
 }

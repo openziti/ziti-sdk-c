@@ -29,6 +29,11 @@ limitations under the License.
 
 #endif
 
+const char *const PC_DOMAIN_TYPE = "DOMAIN";
+const char *const PC_OS_TYPE = "OS";
+const char *const PC_PROCESS_TYPE = "PROCESS";
+const char *const PC_MAC_TYPE = "MAC";
+
 #define CTRL_REQ_MODEL(XX, ...) \
 XX(meta, json, none, meta, __VA_ARGS__) \
 XX(data, json, none, data, __VA_ARGS__) \
@@ -79,7 +84,8 @@ struct ctrl_resp {
 static char *str_array_to_json(const char **arr);
 
 static void ctrl_default_cb(void *s, ziti_error *e, struct ctrl_resp *resp);
-static void ctrl_body_cb(um_http_req_t* req, const char* b, ssize_t len);
+
+static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len);
 
 static void ctrl_resp_cb(um_http_resp_t *r, void *data) {
     struct ctrl_resp *resp = data;
@@ -89,8 +95,7 @@ static void ctrl_resp_cb(um_http_resp_t *r, void *data) {
         err->code = strdup("CONTROLLER_UNAVAILABLE");
         err->message = strdup(uv_strerror(r->code));
         ctrl_default_cb(NULL, err, resp);
-    }
-    else {
+    } else {
         r->body_cb = ctrl_body_cb;
         um_http_hdr *h;
         LIST_FOREACH(h, &r->headers, _next) {
@@ -171,24 +176,21 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
         }
         memcpy(resp->body + resp->received, b, len);
         resp->received += len;
-    }
-    else if (len == UV_EOF) {
+    } else if (len == UV_EOF) {
         void *resp_obj = NULL;
 
         ctrl_resp cr = {0};
         if (resp->resp_text_plain && resp->status < 300) {
             resp_obj = calloc(1, resp->received + 1);
             memcpy(resp_obj, resp->body, resp->received);
-        }
-        else {
+        } else {
             int rc = parse_ctrl_resp(&cr, resp->body, resp->received);
             if (rc < 0) {
                 ZITI_LOG(ERROR, "failed to parse controller response of req[%s]", req->path);
                 cr.error = alloc_ziti_error();
                 cr.error->code = strdup("INVALID_CONTROLLER_RESPONSE");
                 cr.error->message = strdup(req->resp.status);
-            }
-            else if (resp->body_parse_func && cr.data != NULL) {
+            } else if (resp->body_parse_func && cr.data != NULL) {
                 if (resp->body_parse_func(&resp_obj, cr.data, strlen(cr.data)) != 0) {
                     ZITI_LOG(ERROR, "error parsing result of req[%s]", req->path);
                 }
@@ -199,8 +201,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
         FREE(resp->body);
 
         resp->ctrl_cb(resp_obj, cr.error, resp);
-    }
-    else {
+    } else {
         ZITI_LOG(ERROR, "Unexpected ERROR: %zd", len);
     }
 }
@@ -283,7 +284,7 @@ void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_login_cb;
 
-    um_http_req_t* req = um_http_req(&ctrl->client, "GET", "/current-api-session", ctrl_resp_cb, resp);
+    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/current-api-session", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, ziti_error *, void *), void *ctx) {
@@ -370,8 +371,7 @@ static void enroll_pem_cb(void *body, ziti_error *err, struct ctrl_resp *resp) {
 static void ctrl_enroll_http_cb(um_http_resp_t *http_resp, void *data) {
     if (http_resp->code < 0) {
         ctrl_resp_cb(http_resp, data);
-    }
-    else {
+    } else {
         const char *content_type = um_http_resp_header(http_resp, "content-type");
         if (content_type != NULL && strcasecmp("application/x-pem-file", content_type) == 0) {
             struct ctrl_resp *resp = data;
@@ -464,4 +464,105 @@ static char *str_array_to_json(const char **arr) {
     *outp++ = ']';
     *outp = '\0';
     return json;
+}
+
+void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
+                  void(*cb)(void *, ziti_error *, void *), void *ctx) {
+
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = NULL;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_default_cb;
+
+    um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/posture-response", ctrl_resp_cb, resp);
+    um_http_req_header(req, "Content-Type", "application/json");
+    um_http_req_data(req, body, body_len, free_body_cb);
+}
+
+void ziti_ctrl_pr_post_domain(ziti_controller *ctrl, char *id, char *domain,
+                              void (*cb)(void *, ziti_error *, void *),
+                              void *ctx) {
+    ziti_pr_domain_req domain_req = {
+            .id = id,
+            .domain = domain,
+            .typeId = PC_DOMAIN_TYPE,
+    };
+
+    char *body = malloc(1024);
+    size_t body_len;
+
+    json_from_ziti_pr_domain_req(&domain_req, body, 1024, &body_len);
+
+    ziti_pr_post(ctrl, body, body_len, cb, ctx);
+}
+
+void ziti_ctrl_pr_post_mac(ziti_controller *ctrl, char *id, char **mac_addresses, int num_addresses,
+                           void (*cb)(void *, ziti_error *, void *),
+                           void *ctx) {
+
+    size_t arr_size = sizeof(char (**));
+    char **addresses = calloc((num_addresses + 1), arr_size);
+
+    memcpy(addresses, mac_addresses, (num_addresses) * arr_size);
+
+    ziti_pr_mac_req mac_req = {
+            .id = id,
+            .typeId = PC_MAC_TYPE,
+            .mac_addresses = addresses,
+    };
+
+    char *body = malloc(1024);
+    size_t body_len;
+
+    json_from_ziti_pr_mac_req(&mac_req, body, 1024, &body_len);
+
+    ziti_pr_post(ctrl, body, body_len, cb, ctx);
+
+    free(addresses);
+}
+
+void ziti_ctrl_pr_post_os(ziti_controller *ctrl, char *id, char *os_type, char *os_version, char *os_build,
+                          void (*cb)(void *, ziti_error *, void *),
+                          void *ctx) {
+    ziti_pr_os_req os_req = {
+            .id = id,
+            .typeId = PC_OS_TYPE,
+            .type = os_type,
+            .version = os_version,
+            .build = os_build
+    };
+
+    char *body = malloc(1024);
+    size_t body_len;
+
+    json_from_ziti_pr_os_req(&os_req, body, 1024, &body_len);
+
+    ziti_pr_post(ctrl, body, body_len, cb, ctx);
+}
+
+void ziti_ctrl_pr_post_process(ziti_controller *ctrl, char *id, bool is_running, char *sha_512_hash, char **signers,
+                               int num_signers,
+                               void (*cb)(void *, ziti_error *, void *),
+                               void *ctx) {
+    char *signer = "";
+    if (num_signers > 0) {
+        signer = signers[0];
+    }
+
+    ziti_pr_process_req process_req = {
+            .id = id,
+            .typeId = PC_PROCESS_TYPE,
+            .is_running = is_running,
+            .hash = sha_512_hash,
+            .signer = signer
+    };
+
+    char *body = malloc(1024);
+    size_t body_len;
+
+    json_from_ziti_pr_process_req(&process_req, body, 1024, &body_len);
+
+    ziti_pr_post(ctrl, body, body_len, cb, ctx);
 }

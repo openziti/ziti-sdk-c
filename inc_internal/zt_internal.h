@@ -141,6 +141,18 @@ struct ziti_conn {
     LIST_ENTRY(ziti_conn) next;
 };
 
+struct process {
+    char *path;
+    bool is_running;
+    char *sha_512_hash;
+    char **signers;
+    int num_signers;
+};
+
+struct posture_checks {
+    uv_timer_t timer;
+    double interval;
+};
 
 struct ziti_ctx {
     ziti_options *opts;
@@ -176,7 +188,8 @@ struct ziti_ctx {
     rate_t up_rate;
     rate_t down_rate;
 
-
+    /* posture check support */
+    struct posture_checks *posture_checks;
 };
 
 #ifdef __cplusplus
@@ -206,7 +219,8 @@ int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jw
 
 int load_tls(ziti_config *cfg, tls_context **tls);
 
-int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *listen_opts, ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb);
+int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *listen_opts, ziti_listen_cb listen_cb,
+              ziti_client_cb on_clt_cb);
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg);
 
@@ -220,7 +234,7 @@ int close_conn_internal(struct ziti_conn *conn);
 
 int establish_crypto(ziti_connection conn, message *msg);
 
-void ziti_fmt_time(char* time_str, size_t time_str_len, uv_timeval64_t* tv);
+void ziti_fmt_time(char *time_str, size_t time_str_len, uv_timeval64_t *tv);
 
 #ifdef __cplusplus
 }
