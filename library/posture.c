@@ -23,8 +23,6 @@ limitations under the License.
 
 static void ticker_cb(uv_timer_t *t);
 
-static void free_string_arr(char **string_arr, int size);
-
 static void ziti_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac);
 
 static void ziti_handle_domain(ziti_context ztx, char *id, char *domain);
@@ -67,14 +65,13 @@ struct query_info {
 
 void ziti_send_posture_data(struct ziti_ctx *ztx) {
     ZITI_LOG(DEBUG, "starting to send posture data");
-    const char *service_id;
 
     NEWP(domainInfo, struct query_info);
     NEWP(osInfo, struct query_info);
     NEWP(macInfo, struct query_info);
-    struct query_info *procInfo = NULL;
 
-    NEWP(processes, model_map);
+    struct query_info *procInfo = NULL;
+    struct model_map processes = {NULL};
 
     const char *name;
     ziti_service *service;
@@ -99,14 +96,17 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
                     osInfo->query = query;
                     osInfo->service = service;
                 } else if (strcmp(query->query_type, PC_PROCESS_TYPE) == 0) {
-                    NEWP(newProcInfo, struct query_info);
-                    newProcInfo->query_set = set;
-                    newProcInfo->query = query;
-                    newProcInfo->service = service;
-                    model_map_set(processes, query->process->path, newProcInfo);
 
-                    if (procInfo == NULL) {
-                        procInfo = newProcInfo;
+                    void *curVal = model_map_get(&processes, query->process->path);
+                    if (curVal == NULL) {
+                        NEWP(newProcInfo, struct query_info);
+                        newProcInfo->query_set = set;
+                        newProcInfo->query = query;
+                        newProcInfo->service = service;
+                        model_map_set(&processes, query->process->path, newProcInfo);
+                        if (procInfo == NULL) {
+                            procInfo = newProcInfo;
+                        }
                     }
                 }
                 queryIdx++;
@@ -147,35 +147,23 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
         struct query_info *info;
 
         if (ztx->opts->pq_process_cb != NULL) {
-            MODEL_MAP_FOREACH(path, info, processes) {
+            MODEL_MAP_FOREACH(path, info, &processes) {
                 ztx->opts->pq_process_cb(ztx, info->query->id, path, ziti_handle_process);
-                free(info);
             }
         } else {
             ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_PROCESS_TYPE,
                      osInfo->service->name, osInfo->query_set->policy_id, osInfo->query->id);
-            MODEL_MAP_FOREACH(path, info, processes) {
-                free(info);
-            }
         }
     }
+
+    model_map_clear(&processes, NULL);
+
     ZITI_LOG(DEBUG, "done sending posture data, free");
-    free(processes);
     free(domainInfo);
     free(osInfo);
     free(macInfo);
     //no free(procInfo), free'ed in map
     ZITI_LOG(DEBUG, "done sending posture data");
-}
-
-static void free_string_arr(char **string_arr, int size) {
-    if (string_arr == NULL) {
-        return;
-    }
-    for (int i = 0; i < size; i++) {
-        FREE(string_arr[i])
-    }
-    FREE(string_arr)
 }
 
 static void ziti_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac) {

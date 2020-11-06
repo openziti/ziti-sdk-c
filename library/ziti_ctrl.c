@@ -551,16 +551,12 @@ void ziti_ctrl_pr_post_process(ziti_controller *ctrl, char *id, bool is_running,
         signer = signers[0];
     }
 
-    ziti_pr_process process = {
-            .is_running = is_running,
-            .hash = sha_512_hash,
-            .signer = signer
-    };
-
     ziti_pr_process_req process_req = {
             .id = id,
             .typeId = PC_PROCESS_TYPE,
-            .process = process
+            .is_running = is_running,
+            .hash = sha_512_hash,
+            .signer = signer
     };
 
     char *body = malloc(1024);
