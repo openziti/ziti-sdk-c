@@ -105,7 +105,7 @@ TEST_CASE("parse-services-array", "[model]") {
                        "      \"Bind\"\n"
                        "    ]\n"
                        "  },"
-                     " {\n"
+                     "   {\n"
                        "    \"id\": \"4aba8ab0-df3f-45fd-bed7-79127d2c3d29\",\n"
                        "    \"createdAt\": \"2020-01-10T17:04:30.679489183Z\",\n"
                        "    \"updatedAt\": \"2020-01-10T17:04:30.679489183Z\",\n"
@@ -128,6 +128,96 @@ TEST_CASE("parse-services-array", "[model]") {
                        "    \"roleAttributes\": null,\n"
                        "    \"permissions\": [\n"
                        "      \"Dial\"\n"
+                       "    ],\n"
+                       "    \"postureQueries\": null\n"
+                       "  },"
+                       "  {\n"
+                       "    \"id\": \"4aba8ab0-df3f-45fd-bed7-79127d2c3d29\",\n"
+                       "    \"createdAt\": \"2020-01-10T17:04:30.679489183Z\",\n"
+                       "    \"updatedAt\": \"2020-01-10T17:04:30.679489183Z\",\n"
+                       "    \"_links\": {\n"
+                       "      \"edge-routers\": {\n"
+                       "        \"href\": \"./services/4aba8ab0-df3f-45fd-bed7-79127d2c3d29/edge-routers\"\n"
+                       "      },\n"
+                       "      \"self\": {\n"
+                       "        \"href\": \"./services/4aba8ab0-df3f-45fd-bed7-79127d2c3d29\"\n"
+                       "      },\n"
+                       "      \"service-policies\": {\n"
+                       "        \"href\": \"./services/4aba8ab0-df3f-45fd-bed7-79127d2c3d29/identities\"\n"
+                       "      }\n"
+                       "    },\n"
+                       "    \"tags\": {},\n"
+                       "    \"name\": \"httpbin\",\n"
+                       "    \"endpointAddress\": \"tcp:httpbin.org:80\",\n"
+                       "    \"egressRouter\": \"1bcefeb5-6385-42e4-bd92-be1085825b58\",\n"
+                       "    \"edgeRouterRoles\": null,\n"
+                       "    \"roleAttributes\": null,\n"
+                       "    \"permissions\": [\n"
+                       "      \"Dial\"\n"
+                       "    ],\n"
+                       "    \"postureQueries\": [\n"
+                       "        {\n"
+                       "            \"isPassing\": false,\n"
+                       "            \"policyId\": \"FqPD7ohMR\",\n"
+                       "            \"postureQueries\": [\n"
+                       "                {\n"
+                       "                    \"_links\": {\n"
+                       "                        \"self\": {\n"
+                       "                            \"href\": \"./posture-checks/OjUDnohGg\"\n"
+                       "                        }\n"
+                       "                    },\n"
+                       "                    \"createdAt\": \"2020-11-05T14:30:18.794Z\",\n"
+                       "                    \"id\": \"OjUDnohGg\",\n"
+                       "                    \"tags\": {},\n"
+                       "                    \"updatedAt\": \"2020-11-05T14:30:18.794Z\",\n"
+                       "                    \"isPassing\": false,\n"
+                       "                    \"queryType\": \"OS\"\n"
+                       "                },\n"
+                       "                {\n"
+                       "                    \"_links\": {\n"
+                       "                        \"self\": {\n"
+                       "                            \"href\": \"./posture-checks/j08v7T2MR\"\n"
+                       "                        }\n"
+                       "                    },\n"
+                       "                    \"createdAt\": \"2020-11-05T14:30:18.397Z\",\n"
+                       "                    \"id\": \"j08v7T2MR\",\n"
+                       "                    \"tags\": {},\n"
+                       "                    \"updatedAt\": \"2020-11-05T14:30:18.397Z\",\n"
+                       "                    \"isPassing\": false,\n"
+                       "                    \"process\": {\n"
+                       "                        \"osType\": \"Windows\",\n"
+                       "                        \"path\": \"C:\\\\Users\\\\andrew\\\\go\\\\bin\\\\test.exe\"\n"
+                       "                    },\n"
+                       "                    \"queryType\": \"PROCESS\"\n"
+                       "                },\n"
+                       "                {\n"
+                       "                    \"_links\": {\n"
+                       "                        \"self\": {\n"
+                       "                            \"href\": \"./posture-checks/vG8v7ThGg\"\n"
+                       "                        }\n"
+                       "                    },\n"
+                       "                    \"createdAt\": \"2020-11-05T14:30:17.993Z\",\n"
+                       "                    \"id\": \"vG8v7ThGg\",\n"
+                       "                    \"tags\": {},\n"
+                       "                    \"updatedAt\": \"2020-11-05T14:30:17.993Z\",\n"
+                       "                    \"isPassing\": true,\n"
+                       "                    \"queryType\": \"DOMAIN\"\n"
+                       "                },\n"
+                       "                {\n"
+                       "                    \"_links\": {\n"
+                       "                        \"self\": {\n"
+                       "                            \"href\": \"./posture-checks/wyyDnThMR\"\n"
+                       "                        }\n"
+                       "                    },\n"
+                       "                    \"createdAt\": \"2020-11-05T14:30:17.593Z\",\n"
+                       "                    \"id\": \"wyyDnThMR\",\n"
+                       "                    \"tags\": {},\n"
+                       "                    \"updatedAt\": \"2020-11-05T14:30:17.593Z\",\n"
+                       "                    \"isPassing\": false,\n"
+                       "                    \"queryType\": \"MAC\"\n"
+                       "                }\n"
+                       "            ]\n"
+                       "        }\n"
                        "    ]\n"
                        "  }"
                        "]";
@@ -142,14 +232,54 @@ TEST_CASE("parse-services-array", "[model]") {
         printf("service #%d: %s\n", idx, (*s)->name);
         dump_ziti_service(services[idx], 2);
     }
-    REQUIRE(idx == 2);
+    REQUIRE(idx == 3);
     REQUIRE(services[idx] == nullptr);
 
     REQUIRE_THAT(services[0]->name, Equals("hosting"));
     REQUIRE_THAT(services[0]->permissions[0], Equals("Bind"));
+    REQUIRE(services[0]->posture_query_set == nullptr); //missing
 
     REQUIRE(strcmp(services[1]->name, "httpbin") == 0);
     REQUIRE_THAT(services[1]->permissions[0], Equals("Dial"));
+
+    REQUIRE(services[1]->posture_query_set == nullptr); //present but null
+
+
+    REQUIRE(services[2]->posture_query_set != nullptr); //present
+
+    ziti_posture_query_set_array query_set;
+    for (idx = 0, query_set = services[2]->posture_query_set; *query_set != nullptr; query_set++, idx++) {}
+    REQUIRE(idx == 1);
+
+    REQUIRE_THAT(services[2]->posture_query_set[0]->policy_id, Equals("FqPD7ohMR"));
+    REQUIRE(!services[2]->posture_query_set[0]->is_passing);
+    REQUIRE(services[2]->posture_query_set[0]->posture_queries != nullptr);
+
+    ziti_posture_query_array pq_arr = nullptr;
+    for (idx = 0, pq_arr = services[2]->posture_query_set[0]->posture_queries; *pq_arr != nullptr; pq_arr++, idx++) {}
+    REQUIRE(idx == 4);
+
+    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[0]->id, Equals("OjUDnohGg"));
+    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[0]->query_type, Equals("OS"));
+    REQUIRE(!services[2]->posture_query_set[0]->posture_queries[0]->is_passing);
+    REQUIRE(services[2]->posture_query_set[0]->posture_queries[0]->process == nullptr);
+
+
+    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[1]->id, Equals("j08v7T2MR"));
+    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[1]->query_type, Equals("PROCESS"));
+    REQUIRE(!services[2]->posture_query_set[0]->posture_queries[1]->is_passing);
+    REQUIRE(services[2]->posture_query_set[0]->posture_queries[1]->process != nullptr);
+    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[1]->process->path, Equals("C:\\Users\\andrew\\go\\bin\\test.exe"));
+
+    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[2]->id, Equals("vG8v7ThGg"));
+    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[2]->query_type, Equals("DOMAIN"));
+    REQUIRE(services[2]->posture_query_set[0]->posture_queries[2]->is_passing);
+    REQUIRE(services[2]->posture_query_set[0]->posture_queries[2]->process == nullptr);
+
+    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[3]->id, Equals("wyyDnThMR"));
+    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[3]->query_type, Equals("MAC"));
+    REQUIRE(!services[2]->posture_query_set[0]->posture_queries[3]->is_passing);
+    REQUIRE(services[2]->posture_query_set[0]->posture_queries[3]->process == nullptr);
 
     free_ziti_service_array(&services);
 }

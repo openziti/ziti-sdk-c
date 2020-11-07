@@ -53,6 +53,23 @@ using namespace Catch::Matchers;
 \"codes\": [401, 403] \
 }"
 
+#define BAR_WITH_NULL_CODES_ARRAY "{\
+\"num\":42,\
+\"ok\": false,\
+\"time\": \"2020-07-20T14:14:14.666666Z\",\
+\"msg\":\"this is a message\",\
+\"errors\": [\"error1\", \"error2\"], \
+\"codes\": null \
+}"
+
+#define BAR_WITH_MISSING_CODES_ARRAY "{\
+\"num\":42,\
+\"ok\": false,\
+\"time\": \"2020-07-20T14:14:14.666666Z\",\
+\"msg\":\"this is a message\",\
+\"errors\": [\"error1\", \"error2\"] \
+}"
+
 static void checkBar1(const Bar &bar) {
     CHECK(bar.num == 42);
     CHECK(!bar.isOK);
@@ -278,6 +295,28 @@ TEST_CASE("model compare with array", "[model]") {
 
     free_Bar(&bar1);
     free_Bar(&bar2);
+}
+
+TEST_CASE("model with null array is null") {
+    const char *bar_json = BAR_WITH_NULL_CODES_ARRAY;
+    Bar bar;
+
+    REQUIRE(parse_Bar(&bar, bar_json, strlen(bar_json)) == 0);
+
+    CHECK(bar.codes == nullptr);
+
+    free_Bar(&bar);
+}
+
+TEST_CASE("model with missing array is null") {
+    const char *bar_json = BAR_WITH_MISSING_CODES_ARRAY;
+    Bar bar;
+
+    REQUIRE(parse_Bar(&bar, bar_json, strlen(bar_json)) == 0);
+
+    CHECK(bar.codes == nullptr);
+
+    free_Bar(&bar);
 }
 
 #define string_map_model(XX, ...) \
