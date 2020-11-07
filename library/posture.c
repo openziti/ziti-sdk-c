@@ -76,6 +76,10 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
     const char *name;
     ziti_service *service;
     MODEL_MAP_FOREACH(name, service, &ztx->services) {
+        if(service->posture_query_set == NULL) {
+            continue;
+        }
+
         int setIdx = 0;
         ziti_posture_query_set *set = NULL;
         while (service->posture_query_set[setIdx] != NULL) {

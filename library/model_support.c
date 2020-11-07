@@ -381,6 +381,11 @@ void model_free(void *obj, type_meta *meta) {
 }
 
 static int parse_array(void **arr, const char *json, jsmntok_t *tok, type_meta *el_meta) {
+    if(tok-> type == JSMN_PRIMITIVE && json[tok->start] == 'n'){ //null check
+        *arr = NULL;
+        return 1;
+    }
+
     if (tok->type != JSMN_ARRAY) {
         ZITI_LOG(ERROR, "unexpected token, array as expected");
         return -1;
