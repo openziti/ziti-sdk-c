@@ -335,7 +335,7 @@ void ziti_dump(ziti_context ztx) {
     const char *name;
     MODEL_MAP_FOREACH(name, zs, &ztx->services) {
 
-        printf("%s: id[%s] perm(dial[%s],bind[%s]\n", zs->name, zs->id,
+        printf("%s: id[%s] perm(dial=%s,bind=%s)\n", zs->name, zs->id,
                (zs->perm_flags & ZITI_CAN_DIAL ? "true" : "false"),
                (zs->perm_flags & ZITI_CAN_BIND ? "true" : "false")
         );
@@ -357,8 +357,8 @@ void ziti_dump(ziti_context ztx) {
     printf("\n==================\nConnections:\n");
     ziti_connection conn;
     LIST_FOREACH(conn, &ztx->connections, next) {
-        printf("conn[%d]: state[%d] service[TODO] using ch[%d] %s\n",
-               conn->conn_id, conn->state,
+        printf("conn[%d]: state[%d] service[%s] using ch[%d] %s\n",
+               conn->conn_id, conn->state, conn->service,
                conn->channel ? conn->channel->id : -1,
                conn->channel ? conn->channel->ingress : "(none)");
     }
