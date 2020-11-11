@@ -29,7 +29,9 @@ limitations under the License.
 static void on_channel_connect_internal(uv_connect_t *req, int status);
 
 static void on_write(uv_write_t *req, int status);
-static void async_write(uv_async_t* ar);
+static void async_write(uv_async_t *ar);
+
+static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id);
 
 struct async_write_req {
     uv_buf_t buf;
@@ -49,6 +51,15 @@ struct ch_conn_req {
     void *ctx;
 };
 
+struct msg_receiver {
+    int id;
+    void *receiver;
+
+    void (*receive)(void *receiver, message *m, int code);
+
+    LIST_ENTRY(msg_receiver) _next;
+};
+
 int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch) {
     ch->ctx = ctx;
     ch->id = ctx->ch_counter++;
@@ -64,13 +75,13 @@ int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch) {
     // 32 concurrent connect requests for the same channel is probably enough
     ch->conn_reqs = calloc(32, sizeof(struct ch_conn_req *));
     ch->conn_reqs_n = 0;
-    
+
     ch->ingress = NULL;
     ch->in_next = NULL;
     ch->in_body_offset = 0;
     ch->incoming = new_buffer();
 
-    LIST_INIT(&ch->connections);
+    LIST_INIT(&ch->receivers);
     LIST_INIT(&ch->waiters);
 
     uv_mbed_init(ctx->loop, &ch->connection, ctx->tlsCtx);
@@ -111,6 +122,26 @@ int ziti_channel_close(ziti_channel_t *ch) {
         ch->state = Closed;
     }
     return r;
+}
+
+void ziti_channel_add_receiver(ziti_channel_t *ch, int id, void *receiver, void (*receive_f)(void *, message *, int)) {
+    NEWP(r, struct msg_receiver);
+    r->id = id;
+    r->receiver = receiver;
+    r->receive = receive_f;
+
+    LIST_INSERT_HEAD(&ch->receivers, r, _next);
+    ZITI_LOG(DEBUG, "ch[%d] added receiver[%d]", ch->id, id);
+}
+
+void ziti_channel_rem_receiver(ziti_channel_t *ch, int id) {
+    struct msg_receiver *r = find_receiver(ch, id);
+
+    if (r) {
+        LIST_REMOVE(r, _next);
+        ZITI_LOG(DEBUG, "ch[%d] removed receiver[%d]", ch->id, id);
+        free(r);
+    }
 }
 
 int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url, ch_connect_cb cb, void *cb_ctx) {
@@ -270,71 +301,16 @@ int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_
     return 0;
 }
 
-static struct ziti_conn *find_conn(ziti_channel_t *ch, uint32_t conn_id) {
-    struct ziti_conn *c;
-    LIST_FOREACH(c, &ch->connections, next) {
-        if (c->conn_id == conn_id) {
+static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id) {
+    struct msg_receiver *c;
+    LIST_FOREACH(c, &ch->receivers, _next) {
+        if (c->id == conn_id) {
             return c;
         }
     }
     return NULL;
 }
 
-static void process_edge_message(struct ziti_conn *conn, message *msg) {
-    int32_t seq;
-    int32_t conn_id;
-    bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
-    bool has_conn_id = message_get_int32_header(msg, ConnIdHeader, &conn_id);
-
-    ZITI_LOG(TRACE, "conn_id[%d] <= ct[%X] edge_seq[%d] body[%d]", conn->conn_id, msg->header.content, seq,
-             msg->header.body_len);
-
-    switch (msg->header.content) {
-        case ContentTypeStateClosed:
-            ZITI_LOG(VERBOSE, "connection status[%d] conn_id[%d] seq[%d]", msg->header.content, conn_id, seq);
-            if (conn->state == Bound) {
-                conn->client_cb(conn, NULL, ZITI_CONN_CLOSED);
-            }
-            else if (conn->state == Connected || conn->state == CloseWrite) {
-                conn->data_cb(conn, NULL, ZITI_CONN_CLOSED);
-            }
-            conn->state = Closed;
-            break;
-
-        case ContentTypeData:
-            switch (conn->state) {
-                case Connected:
-                case CloseWrite:
-                    conn_inbound_data_msg(conn, msg);
-                    break;
-                default:
-                    ZITI_LOG(WARN, "data[%d bytes] received for connection[%d] in state[%d]",
-                             msg->header.body_len, conn_id, conn->state);
-            }
-            break;
-
-        case ContentTypeDial:
-            assert(conn->state == Bound);
-            uint8_t *app_data = NULL;
-            size_t app_data_sz = 0;
-            message_get_bytes_header(msg, AppDataHeader, &app_data, &app_data_sz);
-            ziti_connection clt;
-            ziti_conn_init(conn->ziti_ctx, &clt, app_data);
-            clt->state = Accepting;
-            clt->parent = conn;
-            clt->channel = conn->channel;
-            clt->dial_req_seq = msg->header.seq;
-            clt->encrypted = conn->encrypted;
-            if (conn->encrypted) {
-                establish_crypto(clt, msg);
-            }
-            conn->client_cb(conn, clt, ZITI_OK);
-            break;
-
-        default:
-            ZITI_LOG(ERROR, "conn[%d] received unexpected content_type[%d]", conn_id, msg->header.content);
-    }
-}
 
 static bool is_edge(int32_t content) {
     switch (content) {
@@ -385,13 +361,13 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
             ZITI_LOG(ERROR, "ch[%d] received message without conn_id ct[%d]", ch->id, m->header.content);
         }
         else {
-            struct ziti_conn *conn = find_conn(ch, conn_id);
+            struct msg_receiver *conn = find_receiver(ch, conn_id);
             if (conn == NULL) {
                 ZITI_LOG(DEBUG, "ch[%d] received message for unknown connection conn_id[%d] ct[%d]",
                          ch->id, conn_id, m->header.content);
             }
             else {
-                process_edge_message(conn, m);
+                conn->receive(conn->receiver, m, ZITI_OK);
             }
         }
     }
@@ -556,13 +532,11 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
     ziti_context ztx = ch->ctx;
     model_map_remove(&ztx->channels, ch->ingress);
 
-    ziti_connection con;
-    LIST_FOREACH(con, &ch->connections, next) {
-        if (con->state == Connected) {
-            con->state = Closed;
-            con->channel = NULL;
-            con->data_cb(con, NULL, code);
-        }
+    while (!LIST_EMPTY(&ch->receivers)) {
+        struct msg_receiver *con = LIST_FIRST(&ch->receivers);
+        LIST_REMOVE(con, _next);
+        con->receive(con->receiver, NULL, (int) code);
+        free(con);
     }
 }
 

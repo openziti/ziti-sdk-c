@@ -48,6 +48,8 @@ static void ziti_connect_async(uv_async_t *ar);
 
 static int send_fin_message(ziti_connection conn);
 
+static void process_edge_message(struct ziti_conn *conn, message *msg, int code);
+
 int ziti_channel_start_connection(struct ziti_conn_req *req);
 
 static void free_handle(uv_handle_t *h) {
@@ -113,10 +115,19 @@ static void free_conn_req(struct ziti_conn_req *r) {
 int close_conn_internal(struct ziti_conn *conn) {
     if (conn->state == Closed && conn->write_reqs == 0) {
         ZITI_LOG(DEBUG, "removing conn_id[%d]", conn->conn_id);
+        if (conn->channel) {
+            ziti_channel_rem_receiver(conn->channel, conn->conn_id);
+        }
+
         LIST_REMOVE(conn, next);
         FREE(conn->rx);
-        conn->flusher->data = NULL;
-        uv_close((uv_handle_t *) conn->flusher, free_handle);
+
+        if (conn->flusher) {
+            conn->flusher->data = NULL;
+            uv_close((uv_handle_t *) conn->flusher, free_handle);
+            conn->flusher = NULL;
+        }
+
         if (conn->disconnector) {
             uv_close((uv_handle_t *) conn->disconnector, free_handle);
         }
@@ -754,7 +765,8 @@ int ziti_channel_start_connection(struct ziti_conn_req *req) {
             return ZITI_WTF;
     }
 
-    LIST_INSERT_HEAD(&ch->connections, req->conn, next);
+    ziti_channel_add_receiver(ch, req->conn->conn_id, req->conn,
+                              (void (*)(void *, message *, int)) process_edge_message);
 
     int32_t conn_id = htole32(req->conn->conn_id);
     int32_t msg_seq = htole32(0);
@@ -900,7 +912,7 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     conn->flusher->data = conn;
     uv_unref((uv_handle_t *) &conn->flusher);
 
-    LIST_INSERT_HEAD(&ch->connections, conn, next);
+    ziti_channel_add_receiver(ch, conn->conn_id, conn, process_edge_message);
 
     ZITI_LOG(TRACE, "ch[%d] => Edge Accept conn_id[%d] parent_conn_id[%d]", ch->id, conn->conn_id,
              conn->parent->conn_id);
@@ -980,4 +992,69 @@ int ziti_close_write(ziti_connection conn) {
         return send_fin_message(conn);
     }
     return ZITI_OK;
+}
+
+static void process_edge_message(struct ziti_conn *conn, message *msg, int code) {
+
+    if (msg == NULL) {
+        ZITI_LOG(DEBUG, "conn[%d] is closed due to err[%d](%s)", conn->conn_id, code, ziti_errorstr(code));
+        conn->data_cb(conn, NULL, code);
+        conn->state = Closed;
+    }
+
+    int32_t seq;
+    int32_t conn_id;
+    bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
+    bool has_conn_id = message_get_int32_header(msg, ConnIdHeader, &conn_id);
+
+    ZITI_LOG(TRACE, "conn_id[%d] <= ct[%X] edge_seq[%d] body[%d]", conn->conn_id, msg->header.content, seq,
+             msg->header.body_len);
+
+    switch (msg->header.content) {
+        case ContentTypeStateClosed:
+            ZITI_LOG(VERBOSE, "connection status[%d] conn_id[%d] seq[%d]", msg->header.content, conn_id, seq);
+            if (conn->state == Bound) {
+                conn->client_cb(conn, NULL, ZITI_CONN_CLOSED);
+            }
+            else if (conn->state == Connected || conn->state == CloseWrite) {
+                conn->data_cb(conn, NULL, ZITI_CONN_CLOSED);
+            }
+            conn->state = Closed;
+            break;
+
+        case ContentTypeData:
+            switch (conn->state) {
+                case Connected:
+                case CloseWrite:
+                    conn_inbound_data_msg(conn, msg);
+                    break;
+                default:
+                    ZITI_LOG(WARN, "data[%d bytes] received for connection[%d] in state[%d]",
+                             msg->header.body_len, conn_id, conn->state);
+            }
+            break;
+
+        case ContentTypeDial:
+            if (conn->state != Bound) {
+                ZITI_LOG(ERROR, "invalid message received");
+            }
+            uint8_t *app_data = NULL;
+            size_t app_data_sz = 0;
+            message_get_bytes_header(msg, AppDataHeader, &app_data, &app_data_sz);
+            ziti_connection clt;
+            ziti_conn_init(conn->ziti_ctx, &clt, app_data);
+            clt->state = Accepting;
+            clt->parent = conn;
+            clt->channel = conn->channel;
+            clt->dial_req_seq = msg->header.seq;
+            clt->encrypted = conn->encrypted;
+            if (conn->encrypted) {
+                establish_crypto(clt, msg);
+            }
+            conn->client_cb(conn, clt, ZITI_OK);
+            break;
+
+        default:
+            ZITI_LOG(ERROR, "conn[%d] received unexpected content_type[%d]", conn_id, msg->header.content);
+    }
 }
