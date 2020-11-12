@@ -925,7 +925,7 @@ int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *liste
 
     NEWP(async_cr, uv_async_t);
     uv_async_init(conn->ziti_ctx->loop, async_cr, ziti_connect_async);
-    async_cr->data = req;
+    async_cr->data = conn;
     return uv_async_send(async_cr);
 }
 
