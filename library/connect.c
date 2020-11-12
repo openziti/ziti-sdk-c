@@ -36,7 +36,7 @@ struct ziti_conn_req {
     ziti_listen_opts *listen_opts;
 
     int retry_count;
-    uv_timer_t *conn_timeout;
+    uv_timer_t conn_timeout;
     bool failed;
 };
 
@@ -101,8 +101,8 @@ static void free_ziti_listen_opts(ziti_listen_opts *ln_opts) {
 }
 
 static void free_conn_req(struct ziti_conn_req *r) {
-    if (r->conn_timeout) {
-        uv_close((uv_handle_t *) r->conn_timeout, free_handle);
+    if (uv_is_active((const uv_handle_t *) &r->conn_timeout)) {
+        uv_close((uv_handle_t *) &r->conn_timeout, NULL);
     }
     free_ziti_dial_opts(r->dial_opts);
     free_ziti_listen_opts(r->listen_opts);
@@ -235,21 +235,26 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
     }
 }
 
+static void fail_conn_req(struct ziti_conn *conn, int code) {
+    if (conn->conn_req) {
+        conn->conn_req->failed = true;
+        conn->conn_req->cb(conn, code);
+        uv_timer_stop(&conn->conn_req->conn_timeout);
+    }
+}
+
 static void connect_timeout(uv_timer_t *timer) {
     struct ziti_conn *conn = timer->data;
-    struct ziti_conn_req *req = conn->conn_req;
 
     if (conn->state == Connecting) {
         ZITI_LOG(WARN, "ziti connection timed out");
         conn->state = Timedout;
-        req->failed = true;
-        req->cb(conn, ZITI_TIMEOUT);
+        fail_conn_req(conn, ZITI_TIMEOUT);
     }
     else {
         ZITI_LOG(ERROR, "timeout for connection[%d] in unexpected state[%d]", conn->conn_id, conn->state);
     }
-    uv_close((uv_handle_t *) timer, free_handle);
-    req->conn_timeout = NULL;
+    uv_close((uv_handle_t *) timer, NULL);
 }
 
 static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, struct ziti_conn *conn) {
@@ -258,7 +263,7 @@ static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, s
 
     if (session->edge_routers == NULL) {
         ZITI_LOG(ERROR, "no edge routers available for service[%s] session[%s]", conn->service, session->id);
-        conn->conn_req->cb(conn, ZITI_GATEWAY_UNAVAILABLE);
+        fail_conn_req(conn, ZITI_GATEWAY_UNAVAILABLE);
         return ZITI_GATEWAY_UNAVAILABLE;
     }
 
@@ -303,9 +308,7 @@ static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) 
         ZITI_LOG(ERROR, "failed to load service (%s): %s(%s)", conn->service, err->code, err->message);
     }
     if (s == NULL) {
-        req->cb(conn, ZITI_SERVICE_UNAVAILABLE);
-        free_conn_req(req);
-        conn->conn_req = NULL;
+        fail_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
     }
     else {
         ZITI_LOG(INFO, "got service[%s] id[%s]", s->name, s->id);
@@ -336,9 +339,7 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
         ZITI_LOG(ERROR, "failed to load service[%s]: %s(%s)", conn->service, err->code, err->message);
     }
     if (s == NULL) {
-        req->cb(conn, ZITI_SERVICE_UNAVAILABLE);
-        free_conn_req(req);
-        conn->conn_req = NULL;
+        fail_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
     }
     else {
         ZITI_LOG(INFO, "got session[%s] for service[%s]", s->id, conn->service);
@@ -380,10 +381,9 @@ static void ziti_connect_async(uv_async_t *ar) {
         return;
     }
     else {
-        req->conn_timeout = malloc(sizeof(uv_timer_t));
-        uv_timer_init(loop, req->conn_timeout);
-        req->conn_timeout->data = conn;
-        uv_timer_start(req->conn_timeout, connect_timeout, conn->timeout, 0);
+        uv_timer_init(loop, &req->conn_timeout);
+        req->conn_timeout.data = conn;
+        uv_timer_start(&req->conn_timeout, connect_timeout, conn->timeout, 0);
 
         ZITI_LOG(DEBUG, "starting connection for service[%s] with session[%s]", conn->service, net_session->id);
         ziti_connect(ztx, net_session, conn);
@@ -696,7 +696,8 @@ static void restart_connect(struct ziti_conn *conn) {
 
     if (++conn->conn_req->retry_count >= MAX_CONNECT_RETRY) {
         ZITI_LOG(ERROR, "conn[%d] failed to connect after %d retries", conn->conn_id, conn->conn_req->retry_count);
-        conn->conn_req->cb(conn, ZITI_SERVICE_UNAVAILABLE);
+        fail_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
+        return;
     }
 
     ZITI_LOG(DEBUG, "conn[%d] restarting connect sequence", conn->conn_id);
@@ -712,9 +713,8 @@ void connect_reply_cb(void *ctx, message *msg) {
     struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
 
-    if (req->conn_timeout != NULL) {
-        uv_timer_stop(req->conn_timeout);
-    }
+    uv_timer_stop(&req->conn_timeout);
+
 
     switch (msg->header.content) {
         case ContentTypeStateClosed:
@@ -732,8 +732,7 @@ void connect_reply_cb(void *ctx, message *msg) {
                          conn->conn_id, conn->state == Binding ? "bind" : "connect",
                          msg->header.body_len, msg->header.body_len, msg->body);
                 conn->state = Closed;
-                req->cb(conn, ZITI_CONN_CLOSED);
-                req->failed = true;
+                fail_conn_req(conn, ZITI_CONN_CLOSED);
             }
             break;
 
