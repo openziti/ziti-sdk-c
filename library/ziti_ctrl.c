@@ -546,17 +546,17 @@ void ziti_ctrl_pr_post_process(ziti_controller *ctrl, char *id, bool is_running,
                                int num_signers,
                                void (*cb)(void *, ziti_error *, void *),
                                void *ctx) {
-    char *signer = "";
-    if (num_signers > 0) {
-        signer = signers[0];
-    }
+
+    size_t arr_size = sizeof(char (**));
+    char **null_term_signers = calloc((num_signers + 1), arr_size);
+    memcpy(null_term_signers, signers, num_signers * arr_size);
 
     ziti_pr_process_req process_req = {
             .id = id,
             .typeId = PC_PROCESS_TYPE,
             .is_running = is_running,
             .hash = sha_512_hash,
-            .signer = signer
+            .signers = null_term_signers,
     };
 
     char *body = malloc(1024);
@@ -565,4 +565,6 @@ void ziti_ctrl_pr_post_process(ziti_controller *ctrl, char *id, bool is_running,
     json_from_ziti_pr_process_req(&process_req, body, 1024, &body_len);
 
     ziti_pr_post(ctrl, body, body_len, cb, ctx);
+
+    free(null_term_signers);
 }

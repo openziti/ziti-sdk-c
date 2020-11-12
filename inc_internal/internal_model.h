@@ -107,7 +107,7 @@ XX(id, string, none, id, __VA_ARGS__) \
 XX(typeId, string, none, typeId, __VA_ARGS__) \
 XX(is_running, bool, none, isRunning, __VA_ARGS__) \
 XX(hash, string, none, hash, __VA_ARGS__) \
-XX(signer, string, none, signerFingerprint, __VA_ARGS__)
+XX(signers, string, array, signerFingerprints, __VA_ARGS__)
 
 #ifdef __cplusplus
 extern "C" {
