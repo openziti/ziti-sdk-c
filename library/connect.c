@@ -256,6 +256,12 @@ static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, s
     conn->token = session->token;
     conn->channel = NULL;
 
+    if (session->edge_routers == NULL) {
+        ZITI_LOG(ERROR, "no edge routers available for service[%s] session[%s]", conn->service, session->id);
+        conn->conn_req->cb(conn, ZITI_GATEWAY_UNAVAILABLE);
+        return ZITI_GATEWAY_UNAVAILABLE;
+    }
+
     ziti_edge_router **er;
     ziti_channel_t *best_ch = NULL;
     uint64_t best_latency = UINT64_MAX;
@@ -299,6 +305,7 @@ static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) 
     if (s == NULL) {
         req->cb(conn, ZITI_SERVICE_UNAVAILABLE);
         free_conn_req(req);
+        conn->conn_req = NULL;
     }
     else {
         ZITI_LOG(INFO, "got service[%s] id[%s]", s->name, s->id);
