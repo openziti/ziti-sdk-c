@@ -36,7 +36,7 @@ struct ziti_conn_req {
     ziti_listen_opts *listen_opts;
 
     int retry_count;
-    uv_timer_t conn_timeout;
+    uv_timer_t *conn_timeout;
     bool failed;
 };
 
@@ -101,9 +101,8 @@ static void free_ziti_listen_opts(ziti_listen_opts *ln_opts) {
 }
 
 static void free_conn_req(struct ziti_conn_req *r) {
-    if (uv_is_active((const uv_handle_t *) &r->conn_timeout)) {
-        uv_close((uv_handle_t *) &r->conn_timeout, NULL);
-    }
+    uv_close((uv_handle_t *) r->conn_timeout, free_handle);
+
     free_ziti_dial_opts(r->dial_opts);
     free_ziti_listen_opts(r->listen_opts);
     FREE(r->service_id);
@@ -240,7 +239,7 @@ static void complete_conn_req(struct ziti_conn *conn, int code) {
         conn->conn_req->failed = code != ZITI_OK;
         conn->conn_req->cb(conn, code);
         conn->conn_req->cb = NULL;
-        uv_timer_stop(&conn->conn_req->conn_timeout);
+        uv_timer_stop(conn->conn_req->conn_timeout);
     } else {
         ZITI_LOG(WARN, "conn[%d] connection attempt was already completed", conn->conn_id);
     }
@@ -384,9 +383,10 @@ static void ziti_connect_async(uv_async_t *ar) {
         return;
     }
     else {
-        uv_timer_init(loop, &req->conn_timeout);
-        req->conn_timeout.data = conn;
-        uv_timer_start(&req->conn_timeout, connect_timeout, conn->timeout, 0);
+        req->conn_timeout = calloc(1, sizeof(uv_timer_t));
+        uv_timer_init(loop, req->conn_timeout);
+        req->conn_timeout->data = conn;
+        uv_timer_start(req->conn_timeout, connect_timeout, conn->timeout, 0);
 
         ZITI_LOG(DEBUG, "starting connection for service[%s] with session[%s]", conn->service, net_session->id);
         ziti_connect(ztx, net_session, conn);
@@ -716,7 +716,7 @@ void connect_reply_cb(void *ctx, message *msg) {
     struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
 
-    uv_timer_stop(&req->conn_timeout);
+    uv_timer_stop(req->conn_timeout);
 
 
     switch (msg->header.content) {
