@@ -327,13 +327,13 @@ ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb
 }
 
 void ziti_ctrl_get_net_session(
-        ziti_controller *ctrl, ziti_service *service, const char *type,
+        ziti_controller *ctrl, const char *service_id, const char *type,
         void (*cb)(ziti_net_session *, ziti_error *, void *), void *ctx) {
 
     char *content = malloc(128);
     size_t len = snprintf(content, 128,
                           "{\"serviceId\": \"%s\", \"type\": \"%s\"}",
-                          service->id, type);
+                          service_id, type);
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_net_session_ptr;

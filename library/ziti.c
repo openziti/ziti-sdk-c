@@ -327,19 +327,24 @@ int ziti_ctx_free(ziti_context *ctxp) {
 
 void ziti_dump(ziti_context ztx) {
     printf("\n=================\nSession:\n");
-    dump_ziti_session(ztx->session, 0);
+    printf("Session Info: id[%s] name[%s] api_session[%s]\n",
+           ztx->session->identity->id, ztx->session->identity->name, ztx->session->id);
 
     printf("\n=================\nServices:\n");
     ziti_service *zs;
     const char *name;
     MODEL_MAP_FOREACH(name, zs, &ztx->services) {
-        dump_ziti_service(zs, 0);
+
+        printf("%s: id[%s] perm(dial=%s,bind=%s)\n", zs->name, zs->id,
+               (zs->perm_flags & ZITI_CAN_DIAL ? "true" : "false"),
+               (zs->perm_flags & ZITI_CAN_BIND ? "true" : "false")
+        );
     }
 
     printf("\n==================\nNet Sessions:\n");
     ziti_net_session *it;
     MODEL_MAP_FOREACH(name, it, &ztx->sessions) {
-        dump_ziti_net_session(it, 0);
+        printf("%s: service_id[%s]\n", it->id, name);
     }
 
     printf("\n==================\nChannels:\n");
@@ -347,11 +352,15 @@ void ziti_dump(ziti_context ztx) {
     const char *url;
     MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
         printf("ch[%d](%s)\n", ch->id, url);
-        ziti_connection conn;
-        LIST_FOREACH(conn, &ch->connections, next) {
-            printf("\tconn[%d]: state[%s] service[%s] session[%s]\n", conn->conn_id, strstate(conn->state),
-                   "TODO", "TODO"); // TODO
-        }
+    }
+
+    printf("\n==================\nConnections:\n");
+    ziti_connection conn;
+    LIST_FOREACH(conn, &ztx->connections, next) {
+        printf("conn[%d]: state[%d] service[%s] using ch[%d] %s\n",
+               conn->conn_id, conn->state, conn->service,
+               conn->channel ? conn->channel->id : -1,
+               conn->channel ? conn->channel->ingress : "(none)");
     }
 }
 
@@ -368,6 +377,7 @@ int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {
     c->inbound = new_buffer();
 
     *conn = c;
+    LIST_INSERT_HEAD(&ctx->connections, c, next);
     return ZITI_OK;
 }
 
@@ -685,16 +695,13 @@ static void grim_reaper(uv_prepare_t *p) {
 
     int total = 0;
     int count = 0;
-    const char *url;
-    ziti_channel_t *ch;
-    MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
-        ziti_connection conn = LIST_FIRST(&ch->connections);
-        while (conn != NULL) {
-            ziti_connection try_close = conn;
-            total++;
-            conn = LIST_NEXT(conn, next);
-            count += close_conn_internal(try_close);
-        }
+
+    ziti_connection conn = LIST_FIRST(&ztx->connections);
+    while (conn != NULL) {
+        ziti_connection try_close = conn;
+        total++;
+        conn = LIST_NEXT(conn, next);
+        count += close_conn_internal(try_close);
     }
     if (count > 0) {
         ZITI_LOG(INFO, "reaped %d closed (out of %d total) connections", count, total);

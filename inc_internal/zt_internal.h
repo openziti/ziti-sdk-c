@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <stdbool.h>
 #include <uv_mbed/uv_mbed.h>
+#include <uv_mbed/queue.h>
 
 #include <ziti/ziti.h>
 #include "buffer.h"
@@ -86,7 +87,7 @@ typedef struct ziti_channel {
     message *in_next;
     int in_body_offset;
 
-    LIST_HEAD(con_list, ziti_conn) connections;
+    LIST_HEAD(con_list, msg_receiver) receivers;
     LIST_HEAD(waiter, waiter_s) waiters;
 
     LIST_ENTRY(ziti_channel) next;
@@ -106,6 +107,8 @@ struct ziti_write_req_s {
 
 struct ziti_conn {
     char *token;
+    char *service;
+    struct ziti_conn_req *conn_req;
 
     uint32_t edge_msg_seq;
     uint32_t conn_id;
@@ -177,6 +180,7 @@ struct ziti_ctx {
 
     // map<erUrl,ziti_channel>
     model_map channels;
+    LIST_HEAD(conns, ziti_conn) connections;
 
     uv_async_t connect_async;
     uint32_t conn_seq;
@@ -203,6 +207,10 @@ int ziti_close_channels(ziti_context ztx);
 int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb, void *ctx);
 
 int ziti_channel_close(ziti_channel_t *ch);
+
+void ziti_channel_add_receiver(ziti_channel_t *ch, int id, void *receiver, void (*receive_f)(void *, message *, int));
+
+void ziti_channel_rem_receiver(ziti_channel_t *ch, int id);
 
 int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
                       uint32_t body_len,
