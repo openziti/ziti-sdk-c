@@ -239,7 +239,9 @@ static void complete_conn_req(struct ziti_conn *conn, int code) {
         conn->conn_req->failed = code != ZITI_OK;
         conn->conn_req->cb(conn, code);
         conn->conn_req->cb = NULL;
-        uv_timer_stop(conn->conn_req->conn_timeout);
+        if(conn->conn_req->conn_timeout != NULL) {
+            uv_timer_stop(conn->conn_req->conn_timeout);
+        }
     } else {
         ZITI_LOG(WARN, "conn[%d] connection attempt was already completed", conn->conn_id);
     }
