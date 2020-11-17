@@ -58,11 +58,15 @@ static void on_client_connect(ziti_connection clt, int status) {
 }
 
 static void on_client(ziti_connection serv, ziti_connection client, int status) {
-    char *app_data = ziti_conn_data(client);
-    if (app_data != NULL) {
-        fprintf(stderr, "got app data '%s'!\n", app_data);
+    if (status == ZITI_OK) {
+        char *app_data = ziti_conn_data(client);
+        if (app_data != NULL) {
+            fprintf(stderr, "got app data '%s'!\n", app_data);
+        }
+        ziti_accept(client, on_client_connect, on_client_data);
+    } else {
+        fprintf(stderr, "failed to accept client: %s(%d)\n", ziti_errorstr(status), status);
     }
-    ziti_accept(client, on_client_connect, on_client_data);
 }
 
 static void listen_cb(ziti_connection serv, int status) {

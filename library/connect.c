@@ -1030,7 +1030,11 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
 
     if (msg == NULL) {
         ZITI_LOG(DEBUG, "conn[%d] is closed due to err[%d](%s)", conn->conn_id, code, ziti_errorstr(code));
-        conn->data_cb(conn, NULL, code);
+        if (conn->state == Connected) {
+            conn->data_cb(conn, NULL, code);
+        } else if (conn->state == Bound) {
+            conn->client_cb(conn, NULL, code);
+        }
         conn->state = Closed;
         return;
     }
