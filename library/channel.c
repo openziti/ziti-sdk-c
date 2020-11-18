@@ -482,7 +482,11 @@ static void hello_reply_cb(void *ctx, message *msg) {
 
     int cb_code = ZITI_OK;
     if (success) {
-        ZITI_LOG(TRACE, "channel[%d] connected: %d", ch->id, success);
+        uint8_t *erVersion = "<unknown>";
+        size_t erVersionLen = strlen(erVersion);
+        message_get_bytes_header(msg, HelloVersionHeader, &erVersion, &erVersionLen);
+        ZITI_LOG(INFO, "ch[%d](%s) connected. EdgeRouter version: %.*s",
+                 ch->id, ch->ingress, (int)erVersionLen, erVersion);
         ch->state = Connected;
     } else {
         ZITI_LOG(ERROR, "channel[%d] connect rejected: %d %*s", ch->id, success, msg->header.body_len, msg->body);
