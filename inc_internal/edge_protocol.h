@@ -49,6 +49,7 @@ enum header_id {
     ReplyForHeader = 1,
     ResultSuccessHeader = 2,
     HelloListenerHeader = 3,
+    HelloVersionHeader = 4,
 
     // Headers in the range 128-255 inclusive will be reflected when creating replies
     ReflectedHeaderBitMask = 1 << 7,
