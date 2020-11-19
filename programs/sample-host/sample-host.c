@@ -61,7 +61,7 @@ static void on_client(ziti_connection serv, ziti_connection client, int status) 
     if (status == ZITI_OK) {
         char *app_data = ziti_conn_data(client);
         if (app_data != NULL) {
-            fprintf(stderr, "got app data '%s'!\n", app_data);
+            fprintf(stderr, "got app data '%s' from client '%s'!\n", app_data, ziti_conn_source_identity(client));
         }
         ziti_accept(client, on_client_connect, on_client_data);
     } else {
@@ -125,7 +125,7 @@ static void on_ziti_init(ziti_context ztx, int status, void *ctx) {
     if (server) {
         ziti_listen_opts listen_opts = {
 //                .identity = "itsamee",
-                .bind_using_edge_identity = true,
+                .bind_using_edge_identity = false,
                 .terminator_precedence = PRECEDENCE_REQUIRED,
                 .terminator_cost = 10,
         };

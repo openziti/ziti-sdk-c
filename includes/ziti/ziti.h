@@ -558,6 +558,14 @@ ZITI_FUNC
 extern void ziti_conn_set_data(ziti_connection conn, void *data);
 
 /**
+ * @brief Get the identity of the client that initiated the #ziti_connection.
+ *
+ * @return identity of the client that requested the connection.
+ */
+ZITI_FUNC
+extern const char *ziti_conn_source_identity(ziti_connection conn);
+
+/**
  * @brief Checks availability of the service for the given edge context.
  *
  * Checks to see if a given #ziti_context has a service available by the name supplied. The supplied name

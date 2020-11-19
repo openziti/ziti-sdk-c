@@ -139,6 +139,7 @@ int close_conn_internal(struct ziti_conn *conn) {
         free_buffer(conn->inbound);
         ZITI_LOG(TRACE, "connection[%d] is being free()'d", conn->conn_id);
         FREE(conn->service);
+        FREE(conn->source_identity);
         FREE(conn);
         return 1;
     }
@@ -718,8 +719,9 @@ void connect_reply_cb(void *ctx, message *msg) {
     struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
 
-    uv_timer_stop(req->conn_timeout);
-
+    if (req->conn_timeout != NULL) {
+        uv_timer_stop(req->conn_timeout);
+    }
 
     switch (msg->header.content) {
         case ContentTypeStateClosed:
@@ -818,7 +820,7 @@ int ziti_channel_start_connection(struct ziti_conn *conn) {
             },
             {
                     .header_id = CallerIdHeader,
-                    .length = strlen(conn->ziti_ctx->session->identity->name),
+                    .length = strlen(conn->ziti_ctx->session->identity->name) + 1,
                     .value = conn->ziti_ctx->session->identity->name,
             },
             {
@@ -1080,6 +1082,12 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
             message_get_bytes_header(msg, AppDataHeader, &app_data, &app_data_sz);
             ziti_connection clt;
             ziti_conn_init(conn->ziti_ctx, &clt, app_data);
+            uint8_t *source_identity = NULL;
+            size_t source_identity_sz = 0;
+            bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
+            if (caller_id_sent) {
+                clt->source_identity = strdup((char *)source_identity);
+            }
             clt->state = Accepting;
             clt->parent = conn;
             clt->channel = conn->channel;
