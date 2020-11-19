@@ -240,13 +240,13 @@ TEST_CASE("model compare", "[model]") {
     memset(&b1, 0, sizeof(Bar));
     b1.num = 45;
     b1.isOK = false;
-    b1.msg = "this is bar1";
+    b1.msg = (char *)"this is bar1";
 
     Bar b2;
     memset(&b2, 0, sizeof(Bar));
     b2.num = 42;
     b2.isOK = true;
-    b2.msg = "this is bar2";
+    b2.msg = (char *)"this is bar2";
 
     CHECK(model_cmp(&b1, &b2, &Bar_META) != 0);
 
@@ -254,7 +254,7 @@ TEST_CASE("model compare", "[model]") {
     CHECK(model_cmp(&b1, &b2, &Bar_META) != 0);
 
     b2.num = 45;
-    b2.msg = "this is bar1";
+    b2.msg = (char *)"this is bar1";
     CHECK(model_cmp(&b1, &b2, &Bar_META) == 0);
 }
 
