@@ -59,9 +59,15 @@ static void on_client_connect(ziti_connection clt, int status) {
 
 static void on_client(ziti_connection serv, ziti_connection client, int status) {
     if (status == ZITI_OK) {
+        const char *source_identity = ziti_conn_source_identity(client);
+        if (source_identity != NULL) {
+            fprintf(stderr, "incoming connection from '%s'\n", source_identity);
+        } else {
+            fprintf(stderr, "incoming connection from unidentified client\n");
+        }
         char *app_data = ziti_conn_data(client);
         if (app_data != NULL) {
-            fprintf(stderr, "got app data '%s' from client '%s'!\n", app_data, ziti_conn_source_identity(client));
+            fprintf(stderr, "got app data '%s'!\n", app_data);
         }
         ziti_accept(client, on_client_connect, on_client_data);
     } else {
