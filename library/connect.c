@@ -859,7 +859,7 @@ int ziti_channel_start_connection(struct ziti_conn *conn) {
                 if (req->dial_opts->identity != NULL) {
                     headers[nheaders].header_id = TerminatorIdentityHeader;
                     headers[nheaders].value = (uint8_t *) req->dial_opts->identity;
-                    headers[nheaders].length = strlen(req->dial_opts->identity) + 1;
+                    headers[nheaders].length = strlen(req->dial_opts->identity);
                     nheaders++;
                 }
                 if (req->dial_opts->app_data != NULL) {
@@ -885,7 +885,7 @@ int ziti_channel_start_connection(struct ziti_conn *conn) {
                 if (identity != NULL) {
                     headers[nheaders].header_id = TerminatorIdentityHeader;
                     headers[nheaders].value = (uint8_t *) identity;
-                    headers[nheaders].length = strlen(identity) + 1;
+                    headers[nheaders].length = strlen(identity);
                     nheaders++;
                 }
                 if (opts->terminator_cost > 0) {
