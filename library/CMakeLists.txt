@@ -63,8 +63,8 @@ if (NOT WIN32)
     target_link_libraries(ziti_dll PUBLIC m )
 endif()
 
-target_include_directories(ziti     ${ZITI_INCLUDE_DIRS})
-target_include_directories(ziti_dll ${ZITI_INCLUDE_DIRS})
+target_include_directories(ziti     ${ZITI_INCLUDE_DIRS} ${uv-mbed_SOURCE_DIR}/src)
+target_include_directories(ziti_dll ${ZITI_INCLUDE_DIRS} ${uv-mbed_SOURCE_DIR}/src)
 set_target_properties(ziti_dll PROPERTIES OUTPUT_NAME "ziti")
 
 target_compile_definitions(ziti PUBLIC

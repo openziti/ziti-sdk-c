@@ -20,6 +20,7 @@ limitations under the License.
 #include "zt_internal.h"
 #include "utils.h"
 #include "endian_internal.h"
+#include "win32_compat.h"
 
 static const char *TYPE_BIND = "Bind";
 static const char *TYPE_DIAL = "Dial";
