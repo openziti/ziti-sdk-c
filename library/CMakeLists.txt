@@ -7,7 +7,7 @@ set(ZITI_HEADER_FILES
 )
 
 SET(ZITI_SRC_FILES
-        utils.c strutils.h
+        utils.c
         ziti.c
         config.c
         errors.c
@@ -29,6 +29,7 @@ SET(ZITI_INCLUDE_DIRS
     PUBLIC ../includes
     PRIVATE ../inc_internal
     PRIVATE ${PROJECT_BINARY_DIR}/include
+    PRIVATE ${uv-mbed_SOURCE_DIR}/src
 )
 
 add_library(ziti     STATIC ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
@@ -63,8 +64,8 @@ if (NOT WIN32)
     target_link_libraries(ziti_dll PUBLIC m )
 endif()
 
-target_include_directories(ziti     ${ZITI_INCLUDE_DIRS} ${uv-mbed_SOURCE_DIR}/src)
-target_include_directories(ziti_dll ${ZITI_INCLUDE_DIRS} ${uv-mbed_SOURCE_DIR}/src)
+target_include_directories(ziti     ${ZITI_INCLUDE_DIRS})
+target_include_directories(ziti_dll ${ZITI_INCLUDE_DIRS})
 set_target_properties(ziti_dll PROPERTIES OUTPUT_NAME "ziti")
 
 target_compile_definitions(ziti PUBLIC
