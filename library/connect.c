@@ -101,7 +101,9 @@ static void free_ziti_listen_opts(ziti_listen_opts *ln_opts) {
 }
 
 static void free_conn_req(struct ziti_conn_req *r) {
-    uv_close((uv_handle_t *) r->conn_timeout, free_handle);
+    if (r->conn_timeout != NULL) {
+        uv_close((uv_handle_t *) r->conn_timeout, free_handle);
+    }
 
     free_ziti_dial_opts(r->dial_opts);
     free_ziti_listen_opts(r->listen_opts);
@@ -820,7 +822,7 @@ int ziti_channel_start_connection(struct ziti_conn *conn) {
             },
             {
                     .header_id = CallerIdHeader,
-                    .length = strlen(conn->ziti_ctx->session->identity->name) + 1,
+                    .length = strlen(conn->ziti_ctx->session->identity->name),
                     .value = conn->ziti_ctx->session->identity->name,
             },
             {
@@ -1086,7 +1088,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
             size_t source_identity_sz = 0;
             bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
             if (caller_id_sent) {
-                clt->source_identity = strdup((char *)source_identity);
+                clt->source_identity = strndup((char *)source_identity, source_identity_sz);
             }
             clt->state = Accepting;
             clt->parent = conn;
