@@ -330,6 +330,7 @@ static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) 
 
         model_map_set(&ztx->services, s->name, s);
         req->service_id = strdup(s->id);
+        conn->encrypted = s->encryption;
         ziti_connect_async(ar);
     }
 
@@ -721,7 +722,7 @@ void connect_reply_cb(void *ctx, message *msg) {
     struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
 
-    if (req->conn_timeout != NULL) {
+    if (req->conn_timeout) {
         uv_timer_stop(req->conn_timeout);
     }
 
