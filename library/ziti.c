@@ -391,6 +391,10 @@ void ziti_conn_set_data(ziti_connection conn, void *data) {
     }
 }
 
+const char *ziti_conn_source_identity(ziti_connection conn) {
+    return conn != NULL ? conn->source_identity : NULL;
+}
+
 int ziti_close(ziti_connection *conn) {
     struct ziti_conn *c = *conn;
 

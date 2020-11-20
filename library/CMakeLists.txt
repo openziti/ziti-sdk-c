@@ -7,7 +7,7 @@ set(ZITI_HEADER_FILES
 )
 
 SET(ZITI_SRC_FILES
-        utils.c strutils.h
+        utils.c
         ziti.c
         config.c
         errors.c
@@ -29,6 +29,7 @@ SET(ZITI_INCLUDE_DIRS
     PUBLIC ../includes
     PRIVATE ../inc_internal
     PRIVATE ${PROJECT_BINARY_DIR}/include
+    PRIVATE ${uv-mbed_SOURCE_DIR}/src
 )
 
 add_library(ziti     STATIC ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )

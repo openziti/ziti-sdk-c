@@ -108,6 +108,7 @@ struct ziti_write_req_s {
 struct ziti_conn {
     char *token;
     char *service;
+    char *source_identity;
     struct ziti_conn_req *conn_req;
 
     uint32_t edge_msg_seq;

@@ -20,6 +20,7 @@ limitations under the License.
 #include "zt_internal.h"
 #include "utils.h"
 #include "endian_internal.h"
+#include "win32_compat.h"
 
 static const char *TYPE_BIND = "Bind";
 static const char *TYPE_DIAL = "Dial";
@@ -101,7 +102,9 @@ static void free_ziti_listen_opts(ziti_listen_opts *ln_opts) {
 }
 
 static void free_conn_req(struct ziti_conn_req *r) {
-    uv_close((uv_handle_t *) r->conn_timeout, free_handle);
+    if (r->conn_timeout != NULL) {
+        uv_close((uv_handle_t *) r->conn_timeout, free_handle);
+    }
 
     free_ziti_dial_opts(r->dial_opts);
     free_ziti_listen_opts(r->listen_opts);
@@ -139,6 +142,7 @@ int close_conn_internal(struct ziti_conn *conn) {
         free_buffer(conn->inbound);
         ZITI_LOG(TRACE, "connection[%d] is being free()'d", conn->conn_id);
         FREE(conn->service);
+        FREE(conn->source_identity);
         FREE(conn);
         return 1;
     }
@@ -856,7 +860,7 @@ int ziti_channel_start_connection(struct ziti_conn *conn) {
                 if (req->dial_opts->identity != NULL) {
                     headers[nheaders].header_id = TerminatorIdentityHeader;
                     headers[nheaders].value = (uint8_t *) req->dial_opts->identity;
-                    headers[nheaders].length = strlen(req->dial_opts->identity) + 1;
+                    headers[nheaders].length = strlen(req->dial_opts->identity);
                     nheaders++;
                 }
                 if (req->dial_opts->app_data != NULL) {
@@ -882,7 +886,7 @@ int ziti_channel_start_connection(struct ziti_conn *conn) {
                 if (identity != NULL) {
                     headers[nheaders].header_id = TerminatorIdentityHeader;
                     headers[nheaders].value = (uint8_t *) identity;
-                    headers[nheaders].length = strlen(identity) + 1;
+                    headers[nheaders].length = strlen(identity);
                     nheaders++;
                 }
                 if (opts->terminator_cost > 0) {
@@ -1082,6 +1086,12 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
             message_get_bytes_header(msg, AppDataHeader, &app_data, &app_data_sz);
             ziti_connection clt;
             ziti_conn_init(conn->ziti_ctx, &clt, app_data);
+            uint8_t *source_identity = NULL;
+            size_t source_identity_sz = 0;
+            bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
+            if (caller_id_sent) {
+                clt->source_identity = strndup((char *)source_identity, source_identity_sz);
+            }
             clt->state = Accepting;
             clt->parent = conn;
             clt->channel = conn->channel;

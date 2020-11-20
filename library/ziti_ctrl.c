@@ -18,7 +18,6 @@ limitations under the License.
 #include <http_parser.h>
 #include "utils.h"
 #include "zt_internal.h"
-#include "strutils.h"
 #include <ziti_ctrl.h>
 #include <uv_mbed/um_http.h>
 
