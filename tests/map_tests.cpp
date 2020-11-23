@@ -30,10 +30,23 @@ TEST_CASE("model bench", "[model]") {
         model_map_set(&m, key, strdup(key));
     }
 
-    for (int i = 0; i < 50000; i++) {
+    model_map_iter it = model_map_iterator(&m);
+
+    int i = 0;
+    while(it != nullptr) {
+        void *val = model_map_it_value(it);
+        if (i++ % 2 == 0) {
+            free(val);
+            it = model_map_it_remove(it);
+        } else {
+            it = model_map_it_next(it);
+        }
+    }
+
+    for (i = 0; i < 50000; i++) {
         snprintf(key, sizeof(key), "key%d", i);
         void *val = model_map_remove(&m, key);
-        free(val);
+        if (val) free(val);
     }
 
     model_map_clear(&m, nullptr);
