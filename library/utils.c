@@ -94,50 +94,75 @@ FILE *ziti_debug_out;
 static bool log_initialized = false;
 
 #if _WIN32
-LARGE_INTEGER frequency;
-LARGE_INTEGER start;
-LARGE_INTEGER end;
-#else
-struct timespec starttime;
+#define strcasecmp _stricmp
 #endif
 
-void ziti_set_log(FILE *log) {
-    init_debug();
+const char* (*get_elapsed)();
+
+static const char *get_elapsed_time();
+static const char *get_utc_time();
+
+static uv_loop_t *ts_loop;
+static uint64_t starttime;
+static uint64_t last_update;
+static char elapsed_buffer[32];
+static uint64_t clock_offset;
+
+void ziti_set_log(FILE *log, uv_loop_t *loop) {
+    init_debug(loop);
     ziti_debug_out = log;
     uv_mbed_set_debug(ziti_debug_level, log);
 }
 
-void init_debug() {
+void init_debug(uv_loop_t *loop) {
     if (log_initialized) {
         return;
     }
+    get_elapsed = get_elapsed_time;
+    char *ts_format = getenv("ZITI_TIME_FORMAT");
+    if (ts_format && strcasecmp("utc", ts_format) == 0) {
+        get_elapsed = get_utc_time;
+    }
+    ts_loop = loop;
     log_initialized = true;
     char *level = getenv("ZITI_LOG");
     if (level != NULL) {
         ziti_debug_level = (int) strtol(level, NULL, 10);
     }
     ziti_debug_out = stderr;
-
     uv_mbed_set_debug(ziti_debug_level, ziti_debug_out);
-#if _WIN32
-	QueryPerformanceFrequency(&frequency);
-	QueryPerformanceCounter(&start);
-#else
-    clock_gettime(CLOCK_MONOTONIC, &starttime);
-#endif
+
+    starttime = uv_now(loop);
+    uv_timeval64_t clock;
+    uv_gettimeofday(&clock);
+    clock_offset = (clock.tv_sec * 1000 + clock.tv_usec / 1000) - starttime; // in millis
 }
 
-long get_elapsed() {
-#if _WIN32
-	QueryPerformanceCounter(&end);
-	LARGE_INTEGER elapsed; // microseconds
-	elapsed.QuadPart = ( end.QuadPart - start.QuadPart ) * 1000;
-	return ( elapsed.QuadPart /= frequency.QuadPart ) ;
-#else
-	struct timespec cur;
-	clock_gettime(CLOCK_MONOTONIC, &cur);
-	return (cur.tv_sec - starttime.tv_sec) * 1000 + ((cur.tv_nsec - starttime.tv_nsec) / ((long)1e6));
-#endif
+static const char *get_elapsed_time() {
+    uint64_t now = uv_now(ts_loop);
+    if (now > last_update) {
+        last_update = now;
+        uint64_t elapsed = now - starttime;
+        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%9ld.%03ld", elapsed / 1000, elapsed % 1000);
+    }
+    return elapsed_buffer;
+}
+
+static const char *get_utc_time() {
+    uint64_t now = uv_now(ts_loop);
+    if (now > last_update) {
+        last_update = now;
+        uint64_t realtime = clock_offset + now;
+        time_t time = realtime / 1000; // seconds
+        time_t millis = realtime % 1000;
+        struct tm *tm = gmtime(&time);
+
+        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%04d-%02d-%02dT%02d:%02d:%02d.%03ldZ",
+                 1900 + tm->tm_year, tm->tm_mon + 1, tm->tm_mday,
+                 tm->tm_hour, tm->tm_min, tm->tm_sec, millis
+                 );
+    }
+    return elapsed_buffer;
 }
 
 static char errbuf[1024];

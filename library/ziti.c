@@ -180,7 +180,7 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
 }
 
 int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
-    init_debug();
+    init_debug(loop);
     metrics_init(loop, 5);
 
     uv_timeval64_t start_time;
