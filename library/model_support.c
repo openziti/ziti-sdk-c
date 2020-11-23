@@ -907,7 +907,7 @@ static void _free_tag(tag *t) {
 
 struct model_map_entry {
     char *key;
-    uint key_hash;
+    uint32_t key_hash;
     void *value;
     LIST_ENTRY(model_map_entry) _next;
     LIST_ENTRY(model_map_entry) _tnext;
@@ -923,8 +923,8 @@ struct model_impl_s {
     size_t size;
 };
 
-static uint key_hash0(const char *key) {
-    uint h = 0;
+static uint32_t key_hash0(const char *key) {
+    uint32_t h = 0;
     char b;
     while ((b = *key++)) {
         h = ((h << 5U) + h) + b;
@@ -933,7 +933,7 @@ static uint key_hash0(const char *key) {
 }
 
 static const int DEFAULT_MAP_BUCKETS = 16;
-static uint (*key_hash)(const char *key) = key_hash0;
+static uint32_t (*key_hash)(const char *key) = key_hash0;
 
 static void map_resize_table(model_map* m) {
     if (m->impl == NULL) return;
@@ -945,18 +945,18 @@ static void map_resize_table(model_map* m) {
 
     struct model_map_entry *el;
     LIST_FOREACH(el, &m->impl->entries, _next) {
-        uint idx = el->key_hash % m->impl->buckets;
+        uint32_t idx = el->key_hash % m->impl->buckets;
         entries_t *bucket = m->impl->table + idx;
         LIST_INSERT_HEAD(bucket, el, _tnext);
     }
 }
 
-static struct model_map_entry *find_map_entry(model_map *m, const char *key, uint *hash_out) {
-    uint kh = key_hash(key);
+static struct model_map_entry *find_map_entry(model_map *m, const char *key, uint32_t *hash_out) {
+    uint32_t kh = key_hash(key);
     if (hash_out) {
         *hash_out = kh;
     }
-    uint idx = kh % m->impl->buckets;
+    uint32_t idx = kh % m->impl->buckets;
     entries_t *bucket = m->impl->table + idx;
     struct model_map_entry *entry;
     LIST_FOREACH(entry, bucket, _tnext) {
@@ -974,7 +974,7 @@ void *model_map_set(model_map *m, const char *key, void *val) {
         m->impl->table = calloc(m->impl->buckets, sizeof(entries_t));
     }
 
-    uint kh;
+    uint32_t kh;
     struct model_map_entry *el = find_map_entry(m, key, &kh);
     if (el != NULL) {
         void *old_val = el->value;
@@ -987,7 +987,7 @@ void *model_map_set(model_map *m, const char *key, void *val) {
     el->key = strdup(key);
     el->key_hash = kh;
     el->_impl = m->impl;
-    uint idx = el->key_hash % m->impl->buckets;
+    uint32_t idx = el->key_hash % m->impl->buckets;
 
     entries_t *bucket = m->impl->table + idx;
     LIST_INSERT_HEAD(&m->impl->entries, el, _next);
