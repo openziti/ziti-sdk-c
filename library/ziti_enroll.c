@@ -90,7 +90,7 @@ static int check_cert_required(enroll_cfg *ecfg) {
 }
 
 int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx) {
-    init_debug();
+    init_debug(loop);
 
     uv_timeval64_t start_time;
     uv_gettimeofday(&start_time);

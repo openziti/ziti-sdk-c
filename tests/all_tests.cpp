@@ -28,7 +28,7 @@ limitations under the License.
 #include "../inc_internal/utils.h"
 
 int init() {
-    init_debug();
+   // init_debug();
     return 0;
 }
 

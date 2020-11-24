@@ -39,9 +39,9 @@ enum DebugLevel {
 
 #define ZITI_LOG(level, fmt, ...) do { \
 if (level <= ziti_debug_level) {\
-    long elapsed = get_elapsed();\
-    fprintf(ziti_debug_out, "[%9ld.%03ld] " #level "\t" to_str(ZITI_LOG_PREFIX) ":%s:%d %s(): " fmt "\n",\
-        elapsed/1000, elapsed%1000, __FILENAME__, __LINE__, __func__, ##__VA_ARGS__);\
+    const char *elapsed = get_elapsed();\
+    fprintf(ziti_debug_out, "[%s] " #level "\t" to_str(ZITI_LOG_PREFIX) ":%s:%d %s(): " fmt "\n",\
+        elapsed, __FILENAME__, __LINE__, __func__, ##__VA_ARGS__);\
         }\
 } while(0)
 
@@ -49,9 +49,9 @@ if (level <= ziti_debug_level) {\
 extern "C" {
 #endif
 
-ZITI_FUNC long get_elapsed();
-ZITI_FUNC extern void init_debug();
-ZITI_FUNC extern void ziti_set_log(FILE *log);
+ZITI_FUNC extern const char* (*get_elapsed)();
+ZITI_FUNC extern void init_debug(uv_loop_t *loop);
+ZITI_FUNC extern void ziti_set_log(FILE *log, uv_loop_t *loop);
 ZITI_FUNC extern int ziti_debug_level;
 ZITI_FUNC extern FILE *ziti_debug_out;
 
