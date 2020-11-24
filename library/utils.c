@@ -130,7 +130,7 @@ void init_debug(uv_loop_t *loop) {
         ziti_debug_level = (int) strtol(level, NULL, 10);
     }
     ziti_debug_out = stderr;
-    uv_mbed_set_debug(ziti_debug_level, ziti_debug_out);
+    //uv_mbed_set_debug(ziti_debug_level, ziti_debug_out);
 
     starttime = uv_now(loop);
     uv_timeval64_t clock;
