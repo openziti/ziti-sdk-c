@@ -5,6 +5,8 @@
 #ifndef ZITI_SDK_ZITI_LOG_H
 #define ZITI_SDK_ZITI_LOG_H
 
+#include <uv.h>
+
 #include "externs.h"
 
 #ifdef SOURCE_PATH_SIZE
