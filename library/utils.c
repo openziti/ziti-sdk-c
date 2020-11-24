@@ -17,7 +17,11 @@ limitations under the License.
 #include <uv.h>
 #include <uv_mbed/uv_mbed.h>
 #include <ziti/ziti_model.h>
+#include <ziti/ziti_log.h>
+#include <stdarg.h>
+
 #include "utils.h"
+
 #if _WIN32
 #include <time.h>
 #endif
@@ -66,6 +70,7 @@ limitations under the License.
 #define ZITI_ARCH UKNOWN
 #endif
 
+#define MAX_LOG_LINE (1024 * 2)
 
 const char *ziti_get_build_version(int verbose) {
     if (verbose) {
@@ -90,17 +95,24 @@ const char* ziti_git_commit() {
 }
 
 int ziti_debug_level = INFO;
-FILE *ziti_debug_out;
+static FILE *ziti_debug_out;
 static bool log_initialized = false;
 
 #if _WIN32
 #define strcasecmp _stricmp
 #endif
 
-const char* (*get_elapsed)();
+const char *(*get_elapsed)();
 
 static const char *get_elapsed_time();
+
 static const char *get_utc_time();
+
+static void flush_log(uv_prepare_t *p);
+
+static void uv_mbed_logger(const char *level, const char *file, unsigned int line, const char *msg);
+
+static void default_log_writer(const char *level, const char *loc, const char *msg, size_t msglen);
 
 static uv_loop_t *ts_loop;
 static uint64_t starttime;
@@ -108,10 +120,13 @@ static uint64_t last_update;
 static char elapsed_buffer[32];
 static uint64_t clock_offset;
 
-void ziti_set_log(FILE *log, uv_loop_t *loop) {
+static uv_prepare_t log_flusher;
+static log_writer logger = default_log_writer;
+
+void ziti_set_log(log_writer log_func, uv_loop_t *loop) {
     init_debug(loop);
-    ziti_debug_out = log;
-    // uv_mbed_set_debug(ziti_debug_level, log);
+    uv_mbed_set_debug(ziti_debug_level, uv_mbed_logger);
+    logger = log_func;
 }
 
 void init_debug(uv_loop_t *loop) {
@@ -130,12 +145,57 @@ void init_debug(uv_loop_t *loop) {
         ziti_debug_level = (int) strtol(level, NULL, 10);
     }
     ziti_debug_out = stderr;
-    //uv_mbed_set_debug(ziti_debug_level, ziti_debug_out);
+    uv_mbed_set_debug(ziti_debug_level, uv_mbed_logger);
 
     starttime = uv_now(loop);
     uv_timeval64_t clock;
     uv_gettimeofday(&clock);
     clock_offset = (clock.tv_sec * 1000 + clock.tv_usec / 1000) - starttime; // in millis
+
+    uv_prepare_init(loop, &log_flusher);
+    uv_unref((uv_handle_t *) &log_flusher);
+    uv_prepare_start(&log_flusher, flush_log);
+}
+
+void ziti_logger(const char *level, const char *file, unsigned int line, const char *func, const char *fmt, ...) {
+    static size_t loglinelen = 1024;
+    static char *logbuf;
+
+    if (!logbuf) { logbuf = malloc(loglinelen); }
+
+    va_list argp;
+    va_start(argp, fmt);
+    char location[128];
+    if (func && func[0]) {
+        snprintf(location, sizeof(location), "%s:%d %s()", file, line, func);
+    }
+    else {
+        snprintf(location, sizeof(location), "%s:%d", file, line);
+    }
+
+    int len = vsnprintf(logbuf, loglinelen, fmt, argp);
+    if (len > loglinelen) {
+        loglinelen = len + 1;
+        logbuf = realloc(logbuf, loglinelen);
+        vsnprintf(logbuf, loglinelen, fmt, argp);
+    }
+
+    if (logger) { logger(level, location, logbuf, len); }
+}
+
+static void default_log_writer(const char *level, const char *loc, const char *msg, size_t msglen) {
+    const char *elapsed = get_elapsed();
+    fprintf(ziti_debug_out, "[%s] %7s %s ", elapsed, level, loc);
+    fwrite(msg, 1, msglen, ziti_debug_out);
+    fputc('\n', ziti_debug_out);
+}
+
+static void uv_mbed_logger(const char *level, const char *file, unsigned int line, const char *msg) {
+    ziti_logger(level, file, line, NULL, msg);
+}
+
+static void flush_log(uv_prepare_t *p) {
+    fflush(ziti_debug_out);
 }
 
 static const char *get_elapsed_time() {
