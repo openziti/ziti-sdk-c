@@ -29,7 +29,7 @@ else()
         add_custom_target(ziti-prox-c-pack
                 BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${ZITI_EXECUTABLE_NAME}
                 DEPENDS ziti-prox-c
-                COMMAND ${CMAKE_BUILD_TYPE}/zip ${ZITI_EXECUTABLE_NAME} ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}
+                COMMAND ${CMAKE_BUILD_TYPE}/zip "${CMAKE_BUILD_TYPE}/${ZITI_EXECUTABLE_NAME} ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}
                 )
         else()
             MESSAGE("NO EXECUTABLE EXISTS: ${ZITI_EXECUTABLE_NAME}")
