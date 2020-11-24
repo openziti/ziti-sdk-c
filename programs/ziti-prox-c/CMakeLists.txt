@@ -32,6 +32,8 @@ else()
                 COMMAND ${CMAKE_BUILD_TYPE}/zip ${ZITI_EXECUTABLE_NAME} ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}
                 )
         else()
+            MESSAGE("NO EXECUTABLE EXISTS: ${ZITI_EXECUTABLE_NAME}")
+        endif()
     endif()
 endif()
 
