@@ -10,32 +10,33 @@ endif()
 target_link_libraries(ziti-prox-c PUBLIC ziti subcommand)
 target_include_directories(ziti-prox-c PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 
-set(ZITI_EXECUTABLE_NAME "ziti-prox-c-${ZITI_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx}")
+set(ZITI_ARCHIVE_NAME "ziti-prox-c-${ZITI_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx}")
+set(ZITI_EXECUTABLE_NAME "ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}")
 if (UNIX)
     add_custom_target(ziti-prox-c-pack
-            BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${ZITI_EXECUTABLE_NAME}
+            BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${ZITI_ARCHIVE_NAME}
             DEPENDS ziti-prox-c
-            COMMAND tar zcf ${ZITI_EXECUTABLE_NAME} ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}
+            COMMAND tar zcf ${ZITI_ARCHIVE_NAME} ${ZITI_EXECUTABLE_NAME}
             )
 else()
     if(EXISTS "${ZITI_EXECUTABLE_NAME}")
         add_custom_target(ziti-prox-c-pack
-                BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${ZITI_EXECUTABLE_NAME}
+                BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/${ZITI_ARCHIVE_NAME}"
                 DEPENDS ziti-prox-c
-                COMMAND zip ${ZITI_EXECUTABLE_NAME} ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}
+                COMMAND zip "${ZITI_ARCHIVE_NAME}" "${ZITI_EXECUTABLE_NAME}"
                 )
     else()
-        if(EXISTS "${CMAKE_BUILD_TYPE}/${ZITI_EXECUTABLE_NAME}")
-        add_custom_target(ziti-prox-c-pack
-                BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${ZITI_EXECUTABLE_NAME}
+        if(EXISTS "${PROJECT_BINARY_DIR}/${CMAKE_BUILD_TYPE_INIT}/${ZITI_EXECUTABLE_NAME}")
+            add_custom_target(ziti-prox-c-pack
+                BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/${ZITI_ARCHIVE_NAME}"
                 DEPENDS ziti-prox-c
-                COMMAND zip "${CMAKE_BUILD_TYPE}/${ZITI_EXECUTABLE_NAME}" ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}
-                )
+                COMMAND zip "${ZITI_ARCHIVE_NAME}" "${PROJECT_BINARY_DIR}/${CMAKE_BUILD_TYPE_INIT}/${ZITI_EXECUTABLE_NAME}"
+            )
         else()
-            MESSAGE("NO EXECUTABLE EXISTS: ${ZITI_EXECUTABLE_NAME}")
+            MESSAGE(FATAL_ERROR "NO EXECUTABLE EXISTS AT THE EXPECTED LOCATION: ${PROJECT_BINARY_DIR}/${CMAKE_BUILD_TYPE_INIT}/${ZITI_EXECUTABLE_NAME}")
         endif()
     endif()
 endif()
 
-#add_dependencies(publish ${ZITI_EXECUTABLE_NAME})
+#add_dependencies(publish ${ZITI_ARCHIVE_NAME})
 PUBCOMP(ziti-prox-c)
