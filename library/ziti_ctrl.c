@@ -28,20 +28,40 @@ limitations under the License.
 
 #endif
 
+#define DEFAULT_PAGE_SIZE 25
+
 const char *const PC_DOMAIN_TYPE = "DOMAIN";
 const char *const PC_OS_TYPE = "OS";
 const char *const PC_PROCESS_TYPE = "PROCESS";
 const char *const PC_MAC_TYPE = "MAC";
 
-#define CTRL_REQ_MODEL(XX, ...) \
-XX(meta, json, none, meta, __VA_ARGS__) \
+#undef MODEL_API
+#define MODEL_API static
+
+#define PAGINATION_MODEL(XX, ...) \
+XX(limit, int, none, limit, __VA_ARGS__) \
+XX(offset, int, none, offset, __VA_ARGS__) \
+XX(total, int, none, totalCount, __VA_ARGS__) \
+
+DECLARE_MODEL(resp_pagination, PAGINATION_MODEL)
+
+#define RESP_META_MODEL(XX, ...) \
+XX(pagination,resp_pagination,none,pagination, __VA_ARGS__)
+
+DECLARE_MODEL(resp_meta, RESP_META_MODEL)
+
+#define API_RESP_MODEL(XX, ...) \
+XX(meta, resp_meta, none, meta, __VA_ARGS__) \
 XX(data, json, none, data, __VA_ARGS__) \
 XX(error, ziti_error, ptr, error, __VA_ARGS__)
 
-#define MODEL_API static
-DECLARE_MODEL(ctrl_resp, CTRL_REQ_MODEL)
+DECLARE_MODEL(api_resp, API_RESP_MODEL)
 
-IMPL_MODEL(ctrl_resp, CTRL_REQ_MODEL)
+IMPL_MODEL(resp_pagination, PAGINATION_MODEL)
+
+IMPL_MODEL(resp_meta, RESP_META_MODEL)
+
+IMPL_MODEL(api_resp, API_RESP_MODEL)
 
 int code_to_error(const char *code) {
 
@@ -69,6 +89,13 @@ struct ctrl_resp {
     bool resp_chunked;
     bool resp_text_plain;
 
+    bool paging;
+    const char *base_path;
+    int limit;
+    int total;
+    int recd;
+    void **resp_array;
+
     int (*body_parse_func)(void *, const char *, size_t);
 
     void (*resp_cb)(void *, ziti_error *, void *);
@@ -79,6 +106,8 @@ struct ctrl_resp {
 
     void (*ctrl_cb)(void *, ziti_error *, struct ctrl_resp *);
 };
+
+static void ctrl_paging_req(struct ctrl_resp *resp);
 
 static char *str_array_to_json(const char **arr);
 
@@ -178,25 +207,49 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
     } else if (len == UV_EOF) {
         void *resp_obj = NULL;
 
-        ctrl_resp cr = {0};
+        api_resp cr = {0};
         if (resp->resp_text_plain && resp->status < 300) {
             resp_obj = calloc(1, resp->received + 1);
             memcpy(resp_obj, resp->body, resp->received);
         } else {
-            int rc = parse_ctrl_resp(&cr, resp->body, resp->received);
+            int rc = parse_api_resp(&cr, resp->body, resp->received);
             if (rc < 0) {
                 ZITI_LOG(ERROR, "failed to parse controller response of req[%s]", req->path);
                 cr.error = alloc_ziti_error();
                 cr.error->code = strdup("INVALID_CONTROLLER_RESPONSE");
                 cr.error->message = strdup(req->resp.status);
-            } else if (resp->body_parse_func && cr.data != NULL) {
+            }
+            else if (resp->body_parse_func && cr.data != NULL) {
                 if (resp->body_parse_func(&resp_obj, cr.data, strlen(cr.data)) != 0) {
                     ZITI_LOG(ERROR, "error parsing result of req[%s]", req->path);
                 }
+
+                if (resp->paging) {
+                    bool last_page = cr.meta.pagination.total <= cr.meta.pagination.offset + cr.meta.pagination.limit;
+                    if (cr.meta.pagination.total > resp->total) {
+                        resp->total = cr.meta.pagination.total;
+                        resp->resp_array = realloc(resp->resp_array, (resp->total + 1) * sizeof(void *));
+                    }
+                    void **chunk = resp_obj;
+                    while (*chunk != NULL) {
+                        resp->resp_array[resp->recd++] = *chunk++;
+                    }
+                    resp->resp_array[resp->recd] = NULL;
+                    FREE(resp_obj);
+                    resp->received = 0;
+                    FREE(resp->body);
+
+                    free_api_resp(&cr);
+                    if (!last_page) {
+                        ctrl_paging_req(resp);
+                        return;
+                    }
+                    resp_obj = resp->resp_array;
+                }
             }
         }
-        FREE(cr.meta);
-        FREE(cr.data);
+
+        free_api_resp(&cr);
         FREE(resp->body);
 
         resp->ctrl_cb(resp_obj, cr.error, resp);
@@ -306,7 +359,9 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service_array
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_services_cb;
 
-    um_http_req(&ctrl->client, "GET", "/services?limit=1000", ctrl_resp_cb, resp);
+    resp->paging = true;
+    resp->base_path = "/services";
+    ctrl_paging_req(resp);
 }
 
 void
@@ -346,7 +401,7 @@ void ziti_ctrl_get_net_session(
     um_http_req_data(req, content, len, free_body_cb);
 }
 
-void ziti_ctrl_get_net_sessions(
+void ziti_ctrl_get_sessions(
         ziti_controller *ctrl, void (*cb)(ziti_net_session **, ziti_error *, void *), void *ctx) {
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
@@ -356,7 +411,9 @@ void ziti_ctrl_get_net_sessions(
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req(&ctrl->client, "GET", "/sessions", ctrl_resp_cb, resp);
+    resp->paging = true;
+    resp->base_path = "/sessions";
+    ctrl_paging_req(resp);
 }
 
 static void enroll_pem_cb(void *body, ziti_error *err, struct ctrl_resp *resp) {
@@ -566,4 +623,15 @@ void ziti_ctrl_pr_post_process(ziti_controller *ctrl, char *id, bool is_running,
     ziti_pr_post(ctrl, body, body_len, cb, ctx);
 
     free(null_term_signers);
+}
+
+static void ctrl_paging_req(struct ctrl_resp *resp) {
+    if (resp->limit == 0) {
+        resp->limit = DEFAULT_PAGE_SIZE;
+    }
+    char query = strchr(resp->base_path, '?') ? '&' : '?';
+    char path[128];
+    snprintf(path, sizeof(path), "%s%climit=%d&offset=%d", resp->base_path, query, resp->limit, resp->recd);
+    ZITI_LOG(VERBOSE, "requesting %s", path);
+    um_http_req(&resp->ctrl->client, "GET", path, ctrl_resp_cb, resp);
 }

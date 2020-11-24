@@ -61,8 +61,8 @@ void ziti_ctrl_get_net_session(
         ziti_controller *ctrl, const char *service_id, const char *type,
         void (*cb)(ziti_net_session *, ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_get_net_sessions(
-        ziti_controller *ctrl, void (*cb)(ziti_net_session **, ziti_error*, void*), void* ctx);
+void ziti_ctrl_get_sessions(
+        ziti_controller *ctrl, void (*cb)(ziti_net_session **, ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, ziti_error *, void *), void *ctx);
 
