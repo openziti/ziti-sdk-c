@@ -37,5 +37,5 @@ else()
     endif()
 endif()
 
-#add_dependencies(publish ZITI_EXECUTABLE_NAME)
+#add_dependencies(publish ${ZITI_EXECUTABLE_NAME})
 PUBCOMP(ziti-prox-c)
