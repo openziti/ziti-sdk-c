@@ -228,7 +228,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
                     bool last_page = cr.meta.pagination.total <= cr.meta.pagination.offset + cr.meta.pagination.limit;
                     if (cr.meta.pagination.total > resp->total) {
                         resp->total = cr.meta.pagination.total;
-                        resp->resp_array = reallocarray(resp->resp_array, resp->total + 1, sizeof(void *));
+                        resp->resp_array = realloc(resp->resp_array, (resp->total + 1) * sizeof(void *));
                     }
                     void **chunk = resp_obj;
                     while (*chunk != NULL) {
