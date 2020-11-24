@@ -14,27 +14,17 @@ set(ZITI_ARCHIVE_NAME "ziti-prox-c-${ZITI_VERSION}-${CPACK_SYSTEM_NAME}.${archiv
 set(ZITI_EXECUTABLE_NAME "ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}")
 if (UNIX)
     add_custom_target(ziti-prox-c-pack
-            BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${ZITI_ARCHIVE_NAME}
-            DEPENDS ziti-prox-c
-            COMMAND tar zcf ${ZITI_ARCHIVE_NAME} ${ZITI_EXECUTABLE_NAME}
-            )
+        BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${ZITI_ARCHIVE_NAME}
+        DEPENDS ziti-prox-c
+        COMMAND tar zcf ${ZITI_ARCHIVE_NAME} ${ZITI_EXECUTABLE_NAME}
+    )
 else()
-    if(EXISTS "${ZITI_EXECUTABLE_NAME}")
+    if(EXISTS "${PROJECT_BINARY_DIR}/${CMAKE_BUILD_TYPE_INIT}/${ZITI_EXECUTABLE_NAME}")
         add_custom_target(ziti-prox-c-pack
-                BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/${ZITI_ARCHIVE_NAME}"
-                DEPENDS ziti-prox-c
-                COMMAND zip "${ZITI_ARCHIVE_NAME}" "${ZITI_EXECUTABLE_NAME}"
-                )
-    else()
-        if(EXISTS "${PROJECT_BINARY_DIR}/${CMAKE_BUILD_TYPE_INIT}/${ZITI_EXECUTABLE_NAME}")
-            add_custom_target(ziti-prox-c-pack
-                BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/${ZITI_ARCHIVE_NAME}"
-                DEPENDS ziti-prox-c
-                COMMAND zip "${ZITI_ARCHIVE_NAME}" "${PROJECT_BINARY_DIR}/${CMAKE_BUILD_TYPE_INIT}/${ZITI_EXECUTABLE_NAME}"
-            )
-        else()
-            MESSAGE(FATAL_ERROR "NO EXECUTABLE EXISTS AT THE EXPECTED LOCATION: ${PROJECT_BINARY_DIR}/${CMAKE_BUILD_TYPE_INIT}/${ZITI_EXECUTABLE_NAME}")
-        endif()
+            BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/${ZITI_ARCHIVE_NAME}"
+            DEPENDS ziti-prox-c
+            COMMAND zip "${ZITI_ARCHIVE_NAME}" "${PROJECT_BINARY_DIR}/${CMAKE_BUILD_TYPE_INIT}/${ZITI_EXECUTABLE_NAME}"
+        )
     endif()
 endif()
 
