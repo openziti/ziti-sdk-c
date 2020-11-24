@@ -186,7 +186,7 @@ typedef struct timeval timestamp;
 typedef void *model_map_iter;
 
 typedef struct model_map {
-    void *entries;
+    struct model_impl_s *impl;
 } model_map;
 
 ZITI_FUNC void *model_map_set(model_map *map, const char *key, void *val);

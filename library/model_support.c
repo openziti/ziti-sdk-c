@@ -907,74 +907,132 @@ static void _free_tag(tag *t) {
 
 struct model_map_entry {
     char *key;
+    uint32_t key_hash;
     void *value;
     LIST_ENTRY(model_map_entry) _next;
+    LIST_ENTRY(model_map_entry) _tnext;
+    struct model_impl_s *_impl;
 };
-typedef LIST_HEAD(mm_e, model_map_entry) entries_t;
 
-void *model_map_set(model_map *m, const char *key, void *val) {
-    if (m->entries == NULL) {
-        m->entries = calloc(1, sizeof(entries_t));
+typedef LIST_HEAD(entries_s, model_map_entry) entries_t;
+
+struct model_impl_s {
+    entries_t entries;
+    entries_t *table;
+    int buckets;
+    size_t size;
+};
+
+static uint32_t key_hash0(const char *key) {
+    uint32_t h = 0;
+    char b;
+    while ((b = *key++)) {
+        h = ((h << 5U) + h) + b;
     }
+    return h;
+}
+
+static const int DEFAULT_MAP_BUCKETS = 16;
+static uint32_t (*key_hash)(const char *key) = key_hash0;
+
+static void map_resize_table(model_map* m) {
+    if (m->impl == NULL) return;
+
+    int orig_buckets = m->impl->buckets;
+    m->impl->buckets *= 2;
+    m->impl->table = realloc(m->impl->table, m->impl->buckets * sizeof(entries_t));
+    memset(m->impl->table, 0, sizeof(entries_t) * m->impl->buckets);
 
     struct model_map_entry *el;
-    void *old_val = NULL;
-    /* replace old value */
-    LIST_FOREACH(el, (entries_t*)m->entries, _next) {
-        if (strcmp(key, el->key) == 0) {
-            old_val = el->value;
-            el->value = val;
-            return old_val;
+    LIST_FOREACH(el, &m->impl->entries, _next) {
+        uint32_t idx = el->key_hash % m->impl->buckets;
+        entries_t *bucket = m->impl->table + idx;
+        LIST_INSERT_HEAD(bucket, el, _tnext);
+    }
+}
+
+static struct model_map_entry *find_map_entry(model_map *m, const char *key, uint32_t *hash_out) {
+    uint32_t kh = key_hash(key);
+    if (hash_out) {
+        *hash_out = kh;
+    }
+    uint32_t idx = kh % m->impl->buckets;
+    entries_t *bucket = m->impl->table + idx;
+    struct model_map_entry *entry;
+    LIST_FOREACH(entry, bucket, _tnext) {
+        if (kh == entry->key_hash && strcmp(key, entry->key) == 0) {
+            return entry;
         }
+    }
+    return NULL;
+}
+
+void *model_map_set(model_map *m, const char *key, void *val) {
+    if (m->impl == NULL) {
+        m->impl = calloc(1, sizeof(struct model_impl_s));
+        m->impl->buckets = DEFAULT_MAP_BUCKETS;
+        m->impl->table = calloc(m->impl->buckets, sizeof(entries_t));
+    }
+
+    uint32_t kh;
+    struct model_map_entry *el = find_map_entry(m, key, &kh);
+    if (el != NULL) {
+        void *old_val = el->value;
+        el->value = val;
+        return old_val;
     }
 
     el = malloc(sizeof(struct model_map_entry));
     el->value = val;
     el->key = strdup(key);
-    LIST_INSERT_HEAD((entries_t *)m->entries, el, _next);
+    el->key_hash = kh;
+    el->_impl = m->impl;
+    uint32_t idx = el->key_hash % m->impl->buckets;
+
+    entries_t *bucket = m->impl->table + idx;
+    LIST_INSERT_HEAD(&m->impl->entries, el, _next);
+    LIST_INSERT_HEAD(bucket, el, _tnext);
+    m->impl->size++;
+
+    if (m->impl->size > m->impl->buckets * 2) {
+        map_resize_table(m);
+    }
 
     return NULL;
 }
 
 void* model_map_get(model_map *m, const char* key) {
-    if (m->entries == NULL)
+    if (m->impl == NULL) {
         return NULL;
-
-    struct model_map_entry *el;
-    LIST_FOREACH(el, (entries_t *) m->entries, _next) {
-        if (strcmp(key, el->key) == 0) {
-            return el->value;
-        }
     }
-    return NULL;
+
+    struct model_map_entry *el = find_map_entry(m, key, NULL);
+    return el ? el->value : NULL;
 }
 
 void *model_map_remove(model_map *m, const char *key) {
-    if (m->entries == NULL) {
+    if (m->impl == NULL) {
         return NULL;
     }
 
     void *val = NULL;
-    struct model_map_entry *el;
-    LIST_FOREACH(el, (entries_t *) m->entries, _next) {
-        if (strcmp(key, el->key) == 0) {
-            break;
-        }
-    }
+    struct model_map_entry *el = find_map_entry(m, key, NULL);
     if (el != NULL) {
         val = el->value;
         LIST_REMOVE(el, _next);
+        LIST_REMOVE(el, _tnext);
         free(el->key);
         free(el);
+        m->impl->size--;
     }
     return val;
 }
 
 void model_map_clear(model_map *map, _free_f free_func) {
-    if (map->entries == NULL) { return; }
+    if (map->impl == NULL) { return; }
 
-    while (!LIST_EMPTY((entries_t *) map->entries)) {
-        struct model_map_entry *el = LIST_FIRST((entries_t *) map->entries);
+    while (!LIST_EMPTY(&map->impl->entries)) {
+        struct model_map_entry *el = LIST_FIRST(&map->impl->entries);
         LIST_REMOVE(el, _next);
         FREE(el->key);
         if (free_func) {
@@ -983,12 +1041,13 @@ void model_map_clear(model_map *map, _free_f free_func) {
         FREE(el->value);
         FREE(el);
     }
-    FREE(map->entries);
+    FREE(map->impl->table);
+    FREE(map->impl);
 }
 
 model_map_iter model_map_iterator(model_map *m) {
-    if (m->entries == NULL) return NULL;
-    return LIST_FIRST((entries_t*)m->entries);
+    if (m->impl == NULL) { return NULL; }
+    return LIST_FIRST(&m->impl->entries);
 }
 
 const char *model_map_it_key(model_map_iter *it) {
@@ -1007,7 +1066,9 @@ model_map_iter model_map_it_remove(model_map_iter it) {
     model_map_iter next = model_map_it_next(it);
     if (it != NULL) {
         struct model_map_entry *e = (struct model_map_entry *) it;
+        e->_impl->size--;
         LIST_REMOVE(e, _next);
+        LIST_REMOVE(e, _tnext);
         free(e->key);
         free(e);
     }
