@@ -528,7 +528,6 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
             tokens_processed += rc;
         }
         else {
-            ZITI_LOG(TRACE, "skipping unmapped field[%.*s] while parsing %s", tok->end - tok->start, json + tok->start, meta->name);
             tok++;
             int end = tok->end;
             while (tok->type != JSMN_UNDEFINED && tok->start <= end) {
