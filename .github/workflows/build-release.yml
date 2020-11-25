@@ -9,7 +9,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     env:
-      BUILD_NUMBER: ${{ github.GITHUB_RUN_NUMBER }}
+      BUILD_NUMBER: ${{ github.run_number }}
     strategy:
       matrix:
         os:
@@ -20,12 +20,12 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
-      - name: make build dir
-        run: cmake -E make_directory ${{runner.workspace}}/build
-      - name: configure cmake
-        run: cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-      - name: build
-        run: cmake --build ${{runner.workspace}}/build
+      - name: setup/build CMake
+        run: |
+          echo "build number = ${BUILD_NUMBER}"
+          cmake -E make_directory ${{runner.workspace}}/build
+          cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+          cmake --build ${{runner.workspace}}/build
       - name: make artifacts
         run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c
       - name: zip artifacts
