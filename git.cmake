@@ -32,7 +32,7 @@ endif()
 
 # lookup most recent tag to derive version
 execute_process(
-        COMMAND git describe HEAD
+        COMMAND git describe --tags HEAD
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         OUTPUT_VARIABLE GIT_INFO
         OUTPUT_STRIP_TRAILING_WHITESPACE
