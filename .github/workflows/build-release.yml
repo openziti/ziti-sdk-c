@@ -8,6 +8,8 @@ jobs:
   build:
 
     runs-on: ${{ matrix.os }}
+    env:
+      BUILD_NUMBER: ${{ github.GITHUB_RUN_NUMBER }}
     strategy:
       matrix:
         os:
