@@ -230,6 +230,11 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
                         resp->total = cr.meta.pagination.total;
                         resp->resp_array = realloc(resp->resp_array, (resp->total + 1) * sizeof(void *));
                     }
+                    // empty result
+                    if (resp->resp_array == NULL) {
+                        resp->resp_array = calloc(1, sizeof(void *));
+                    }
+
                     void **chunk = resp_obj;
                     while (*chunk != NULL) {
                         resp->resp_array[resp->recd++] = *chunk++;
@@ -249,7 +254,8 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
             }
         }
 
-        free_api_resp(&cr);
+        free_resp_meta(&cr.meta);
+        FREE(cr.data);
         FREE(resp->body);
 
         resp->ctrl_cb(resp_obj, cr.error, resp);
