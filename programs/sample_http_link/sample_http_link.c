@@ -77,8 +77,6 @@ int main(int argc, char** argv) {
     loop = uv_default_loop();
     DIE(ziti_init(argv[1], loop, on_ziti_init, NULL));
 
-    uv_mbed_set_debug(5, stdout);
-
     // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
 

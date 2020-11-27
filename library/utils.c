@@ -72,6 +72,11 @@ limitations under the License.
 
 #define MAX_LOG_LINE (1024 * 2)
 
+#define LEVEL_LBL(lvl) #lvl,
+static const char *const level_labels[] = {
+        DEBUG_LEVELS(LEVEL_LBL)
+};
+
 const char *ziti_get_build_version(int verbose) {
     if (verbose) {
         return "\n\tVersion:\t" to_str(ZITI_VERSION)
@@ -110,9 +115,9 @@ static const char *get_utc_time();
 
 static void flush_log(uv_prepare_t *p);
 
-static void uv_mbed_logger(const char *level, const char *file, unsigned int line, const char *msg);
+static void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg);
 
-static void default_log_writer(const char *level, const char *loc, const char *msg, size_t msglen);
+static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen);
 
 static uv_loop_t *ts_loop;
 static uint64_t starttime;
@@ -157,7 +162,7 @@ void init_debug(uv_loop_t *loop) {
     uv_prepare_start(&log_flusher, flush_log);
 }
 
-void ziti_logger(const char *level, const char *file, unsigned int line, const char *func, const char *fmt, ...) {
+void ziti_logger(int level, const char *file, unsigned int line, const char *func, const char *fmt, ...) {
     static size_t loglinelen = 1024;
     static char *logbuf;
 
@@ -183,14 +188,14 @@ void ziti_logger(const char *level, const char *file, unsigned int line, const c
     if (logger) { logger(level, location, logbuf, len); }
 }
 
-static void default_log_writer(const char *level, const char *loc, const char *msg, size_t msglen) {
+static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
     const char *elapsed = get_elapsed();
-    fprintf(ziti_debug_out, "[%s] %7s %s ", elapsed, level, loc);
+    fprintf(ziti_debug_out, "[%s] %7s %s ", elapsed, level_labels[level], loc);
     fwrite(msg, 1, msglen, ziti_debug_out);
     fputc('\n', ziti_debug_out);
 }
 
-static void uv_mbed_logger(const char *level, const char *file, unsigned int line, const char *msg) {
+static void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg) {
     ziti_logger(level, file, line, NULL, msg);
 }
 

@@ -40,17 +40,17 @@ enum DebugLevel {
 };
 
 #define ZITI_LOG(level, fmt, ...) do { \
-if (level <= ziti_debug_level) { ziti_logger(#level, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
+if (level <= ziti_debug_level) { ziti_logger(level, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
 } while(0)
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef void (*log_writer)(const char *level, const char *loc, const char *msg, size_t msglen);
+typedef void (*log_writer)(int level, const char *loc, const char *msg, size_t msglen);
 
 ZITI_FUNC extern void
-ziti_logger(const char *level, const char *file, unsigned int line, const char *func, const char *fmt, ...);
+ziti_logger(int level, const char *file, unsigned int line, const char *func, const char *fmt, ...);
 
 ZITI_FUNC extern void init_debug(uv_loop_t *loop);
 
