@@ -224,13 +224,12 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
     else {
         if (status < 0) {
             ZITI_LOG(ERROR, "ch[%d] failed to connect status[%d](%s)", ch->id, status, uv_strerror(status));
-            model_map_remove(&ch->ctx->channels, ch->ingress);
         }
         else if (conn->conn_req && conn->conn_req->failed) {
             ZITI_LOG(DEBUG, "request already timed out or closed");
         }
         else { // first channel to connect
-            ZITI_LOG(DEBUG, "selected ch[%s] status[%d] for conn_id[%d]", ch->ingress, status, conn->conn_id);
+            ZITI_LOG(DEBUG, "selected ch[%s] status[%d] for conn_id[%d]", ch->name, status, conn->conn_id);
 
             conn->channel = ch;
             ziti_channel_start_connection(conn);
@@ -262,7 +261,8 @@ static void connect_timeout(uv_timer_t *timer) {
     else {
         ZITI_LOG(ERROR, "timeout for connection[%d] in unexpected state[%d]", conn->conn_id, conn->state);
     }
-    uv_close((uv_handle_t *) timer, NULL);
+    uv_close((uv_handle_t *) timer, free_handle);
+    conn->conn_req->conn_timeout = NULL;
 }
 
 static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, struct ziti_conn *conn) {
@@ -299,7 +299,7 @@ static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, s
     }
 
     if (best_ch) {
-        ZITI_LOG(DEBUG, "selected ch[%s] for best latency(%ldms)", best_ch->ingress, best_ch->latency);
+        ZITI_LOG(DEBUG, "selected ch[%s] for best latency(%ldms)", best_ch->name, best_ch->latency);
         on_channel_connected(best_ch, conn, ZITI_OK);
     }
 
@@ -538,10 +538,16 @@ static void ziti_disconnect_async(uv_async_t *ar) {
 
 int ziti_disconnect(struct ziti_conn *conn) {
     NEWP(ar, uv_async_t);
-    uv_async_init(conn->channel->ctx->loop, ar, ziti_disconnect_async);
-    ar->data = conn;
-    conn->disconnector = ar;
-    return uv_async_send(conn->disconnector);
+    if (conn->channel) {
+        uv_async_init(conn->channel->ctx->loop, ar, ziti_disconnect_async);
+        ar->data = conn;
+        conn->disconnector = ar;
+        return uv_async_send(conn->disconnector);
+    }
+    else {
+        conn->state = Closed;
+    }
+    return ZITI_OK;
 }
 
 static void crypto_wr_cb(ziti_connection conn, ssize_t status, void *ctx) {
