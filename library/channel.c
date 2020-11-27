@@ -575,7 +575,11 @@ static void reconnect_channel(ziti_channel_t *ch) {
     uv_timer_init(ch->ctx->loop, t);
     t->data = ch;
 
-    unsigned int backoff = rand() % MIN(ch->reconnect_count, MAX_BACKOFF);
+    int count = ch->reconnect_count;
+    if (count > MAX_BACKOFF) {
+        count = MAX_BACKOFF;
+    }
+    unsigned int backoff = rand() % count;
 
     uint64_t timeout = (1U << backoff) * BACKOFF_TIME;
     ZITI_LOG(INFO, "ch[%d] reconnecting in %ld ms (attempt = %d)", ch->id, timeout, ch->reconnect_count);
