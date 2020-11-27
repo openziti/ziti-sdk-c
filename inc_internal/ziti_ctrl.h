@@ -73,15 +73,17 @@ void ziti_ctrl_pr_post_domain(ziti_controller *ctrl, char *id, char *domain,
                               void (*cb)(void *, ziti_error *, void *),
                               void *ctx);
 
-void ziti_ctrl_pr_post_mac(ziti_controller *ctrl, char *id, char **mac_addresses, int num_addresses,
+void ziti_ctrl_pr_post_mac(ziti_controller *ctrl, const char *id, char **mac_addresses, int num_addresses,
                            void (*cb)(void *, ziti_error *, void *),
                            void *ctx);
 
-void ziti_ctrl_pr_post_os(ziti_controller *ctrl, char *id, char *os_type, char *os_version, char *os_build,
+void ziti_ctrl_pr_post_os(ziti_controller *ctrl, const char *id, const char *os_type, const char *os_version,
+                          const char *os_build,
                           void (*cb)(void *, ziti_error *, void *),
                           void *ctx);
 
-void ziti_ctrl_pr_post_process(ziti_controller *ctrl, char *id, bool is_running, char *sha_512_hash, char **signers,
+void ziti_ctrl_pr_post_process(ziti_controller *ctrl, const char *id, bool is_running, const char *sha_512_hash,
+                               char **signers,
                                int num_signers,
                                void (*cb)(void *, ziti_error *, void *),
                                void *ctx);

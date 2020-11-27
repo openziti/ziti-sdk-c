@@ -39,12 +39,12 @@ extern "C" {
 /**
 * Flag indicating service `Dial` permission
 */
-#define ZITI_CAN_DIAL 1
+#define ZITI_CAN_DIAL 1U
 
 /**
 * Flag indicating service `Bind` permission
 */
-#define ZITI_CAN_BIND 2
+#define ZITI_CAN_BIND 2U
 
 /**
  * The default timeout in milliseconds for connections and write operations to succeed.
@@ -222,7 +222,7 @@ typedef void(*ziti_pr_process_cb)(ziti_context ztx, char *id, char *path, bool i
  *
  * @see ziti_pr_process_cb
  */
-typedef void (*ziti_pq_process_cb)(ziti_context ztx, char *id, char *path,
+typedef void (*ziti_pq_process_cb)(ziti_context ztx, const char *id, const char *path,
                                    ziti_pr_process_cb response_cb);
 
 /**

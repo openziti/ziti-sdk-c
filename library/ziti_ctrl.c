@@ -549,7 +549,7 @@ void ziti_ctrl_pr_post_domain(ziti_controller *ctrl, char *id, char *domain,
     ziti_pr_domain_req domain_req = {
             .id = id,
             .domain = domain,
-            .typeId = PC_DOMAIN_TYPE,
+            .typeId = (char *) PC_DOMAIN_TYPE,
     };
 
     char *body = malloc(1024);
@@ -560,7 +560,7 @@ void ziti_ctrl_pr_post_domain(ziti_controller *ctrl, char *id, char *domain,
     ziti_pr_post(ctrl, body, body_len, cb, ctx);
 }
 
-void ziti_ctrl_pr_post_mac(ziti_controller *ctrl, char *id, char **mac_addresses, int num_addresses,
+void ziti_ctrl_pr_post_mac(ziti_controller *ctrl, const char *id, char **mac_addresses, int num_addresses,
                            void (*cb)(void *, ziti_error *, void *),
                            void *ctx) {
 
@@ -570,8 +570,8 @@ void ziti_ctrl_pr_post_mac(ziti_controller *ctrl, char *id, char **mac_addresses
     memcpy(addresses, mac_addresses, (num_addresses) * arr_size);
 
     ziti_pr_mac_req mac_req = {
-            .id = id,
-            .typeId = PC_MAC_TYPE,
+            .id = (char *) id,
+            .typeId = (char *) PC_MAC_TYPE,
             .mac_addresses = addresses,
     };
 
@@ -585,15 +585,16 @@ void ziti_ctrl_pr_post_mac(ziti_controller *ctrl, char *id, char **mac_addresses
     free(addresses);
 }
 
-void ziti_ctrl_pr_post_os(ziti_controller *ctrl, char *id, char *os_type, char *os_version, char *os_build,
+void ziti_ctrl_pr_post_os(ziti_controller *ctrl, const char *id, const char *os_type, const char *os_version,
+                          const char *os_build,
                           void (*cb)(void *, ziti_error *, void *),
                           void *ctx) {
     ziti_pr_os_req os_req = {
-            .id = id,
-            .typeId = PC_OS_TYPE,
-            .type = os_type,
-            .version = os_version,
-            .build = os_build
+            .id = (char *) id,
+            .typeId = (char *) PC_OS_TYPE,
+            .type = (char *) os_type,
+            .version = (char *) os_version,
+            .build = (char *) os_build
     };
 
     char *body = malloc(1024);
@@ -604,7 +605,8 @@ void ziti_ctrl_pr_post_os(ziti_controller *ctrl, char *id, char *os_type, char *
     ziti_pr_post(ctrl, body, body_len, cb, ctx);
 }
 
-void ziti_ctrl_pr_post_process(ziti_controller *ctrl, char *id, bool is_running, char *sha_512_hash, char **signers,
+void ziti_ctrl_pr_post_process(ziti_controller *ctrl, const char *id, bool is_running, const char *sha_512_hash,
+                               char **signers,
                                int num_signers,
                                void (*cb)(void *, ziti_error *, void *),
                                void *ctx) {
@@ -614,10 +616,10 @@ void ziti_ctrl_pr_post_process(ziti_controller *ctrl, char *id, bool is_running,
     memcpy(null_term_signers, signers, num_signers * arr_size);
 
     ziti_pr_process_req process_req = {
-            .id = id,
-            .typeId = PC_PROCESS_TYPE,
+            .id = (char *) id,
+            .typeId = (char *) PC_PROCESS_TYPE,
             .is_running = is_running,
-            .hash = sha_512_hash,
+            .hash = (char *) sha_512_hash,
             .signers = null_term_signers,
     };
 
