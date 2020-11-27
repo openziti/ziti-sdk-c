@@ -8,6 +8,8 @@ jobs:
   build:
 
     runs-on: ${{ matrix.os }}
+    env:
+      BUILD_NUMBER: ${{ github.run_number }}
     strategy:
       matrix:
         os:
@@ -19,12 +21,12 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 0
-      - name: make build dir
-        run: cmake -E make_directory ${{runner.workspace}}/build
-      - name: configure cmake
-        run: cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-      - name: build
-        run: cmake --build ${{runner.workspace}}/build
+      - name: setup/build CMake
+        run: |
+          echo "BUILD_NUMBER = ${BUILD_NUMBER}"
+          cmake -E make_directory ${{runner.workspace}}/build
+          cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+          cmake --build ${{runner.workspace}}/build
       - name: test
         working-directory: ${{runner.workspace}}/build
         run: ctest -VV --no-compress-output
