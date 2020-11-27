@@ -242,6 +242,7 @@ void on_ziti_connect(ziti_connection conn, int status) {
     else {
         ZITI_LOG(ERROR, "ziti connect failed: %s(%d)", ziti_errorstr(status), status);
         uv_close((uv_handle_t *) clt, close_cb);
+        ziti_close(&conn);
     }
 }
 

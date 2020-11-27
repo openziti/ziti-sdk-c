@@ -61,12 +61,15 @@ enum conn_state {
     Accepting,
     Timedout,
     CloseWrite,
+    Disconnected,
     Closed
 };
 
 typedef struct ziti_channel {
     struct ziti_ctx *ctx;
-    char *ingress;
+    char *name;
+    char *host;
+    int port;
 
     uint32_t id;
     char token[UUID_STR_LEN];
@@ -76,6 +79,7 @@ typedef struct ziti_channel {
     uv_timer_t latency_timer;
 
     enum conn_state state;
+    uint reconnect_count;
 
     struct ch_conn_req **conn_reqs;
     int conn_reqs_n;

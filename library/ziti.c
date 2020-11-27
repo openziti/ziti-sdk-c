@@ -351,7 +351,7 @@ void ziti_dump(ziti_context ztx) {
     ziti_channel_t *ch;
     const char *url;
     MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
-        printf("ch[%d](%s)\n", ch->id, url);
+        printf("ch[%d](%s) %s\n", ch->id, url, ch->state == Disconnected ? "Disconnected" : "");
     }
 
     printf("\n==================\nConnections:\n");
@@ -360,7 +360,7 @@ void ziti_dump(ziti_context ztx) {
         printf("conn[%d]: state[%d] service[%s] using ch[%d] %s\n",
                conn->conn_id, conn->state, conn->service,
                conn->channel ? conn->channel->id : -1,
-               conn->channel ? conn->channel->ingress : "(none)");
+               conn->channel ? conn->channel->name : "(none)");
     }
 }
 
