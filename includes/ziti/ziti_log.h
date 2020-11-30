@@ -40,23 +40,32 @@ enum DebugLevel {
 };
 
 #define ZITI_LOG(level, fmt, ...) do { \
-if (level <= ziti_debug_level) { ziti_logger(level, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
+if (level <= ziti_log_level) { ziti_logger(level, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
 } while(0)
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#define ZITI_LOG_DEFAULT_LEVEL (-1)
+
 typedef void (*log_writer)(int level, const char *loc, const char *msg, size_t msglen);
 
 ZITI_FUNC extern void
 ziti_logger(int level, const char *file, unsigned int line, const char *func, const char *fmt, ...);
 
-ZITI_FUNC extern void init_debug(uv_loop_t *loop);
+// call once
+// use ZITI_LOG_DEFAULT_LEVEL to use default(INFO)/ZITI_LOG env var
+// pass logger = NULL to use default output
+ZITI_FUNC extern void ziti_log_init(uv_loop_t *loop, int level, log_writer logger);
 
-ZITI_FUNC extern void ziti_set_log(log_writer log, uv_loop_t *loop);
+ZITI_FUNC extern void ziti_log_set_logger(log_writer logger);
 
-ZITI_FUNC extern int ziti_debug_level;
+// use ZITI_LOG_DEFAULT_LEVEL to reset to default(INFO) or ZITI_LOG env var
+ZITI_FUNC extern void ziti_log_set_level(int level);
+
+// don't use directly
+ZITI_FUNC extern int ziti_log_level;
 
 #ifdef __cplusplus
 }

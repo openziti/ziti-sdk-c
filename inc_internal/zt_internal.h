@@ -39,11 +39,6 @@ limitations under the License.
 #endif
 
 
-#if _WIN32
-#define uint unsigned int
-#endif
-
-
 typedef struct ziti_channel ziti_channel_t;
 
 typedef void (*reply_cb)(void *ctx, message *m);
@@ -79,7 +74,7 @@ typedef struct ziti_channel {
     uv_timer_t latency_timer;
 
     enum conn_state state;
-    uint reconnect_count;
+    uint32_t reconnect_count;
 
     struct ch_conn_req **conn_reqs;
     int conn_reqs_n;
@@ -93,8 +88,6 @@ typedef struct ziti_channel {
 
     LIST_HEAD(con_list, msg_receiver) receivers;
     LIST_HEAD(waiter, waiter_s) waiters;
-
-    LIST_ENTRY(ziti_channel) next;
 } ziti_channel_t;
 
 struct ziti_write_req_s {

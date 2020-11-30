@@ -33,10 +33,6 @@ limitations under the License.
 #endif
 #endif
 
-#if _WIN32
-#define strncasecmp _strnicmp
-#endif
-
 static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, void *req);
 
 static void enroll_cb(ziti_enrollment_resp *er, ziti_error *err, void *ctx);
@@ -90,7 +86,7 @@ static int check_cert_required(enroll_cfg *ecfg) {
 }
 
 int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx) {
-    init_debug(loop);
+    ziti_log_init(loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 
     uv_timeval64_t start_time;
     uv_gettimeofday(&start_time);
@@ -115,7 +111,7 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
     ecfg->private_key = opts->enroll_key;
 
     TRY(ziti, load_jwt(opts->jwt, ecfg, &ecfg->zejh, &ecfg->zej));
-    if (DEBUG <= ziti_debug_level) {
+    if (DEBUG <= ziti_log_level) {
         dump_ziti_enrollment_jwt_header(ecfg->zejh, 0);
         dump_ziti_enrollment_jwt(ecfg->zej, 0);
     }
