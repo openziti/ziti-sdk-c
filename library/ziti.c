@@ -41,10 +41,6 @@ limitations under the License.
 #endif
 #endif
 
-#if _WIN32
-#define strncasecmp _strnicmp
-#endif
-
 static const char *ALL_CONFIG_TYPES[] = {
         "all",
         NULL
@@ -180,7 +176,7 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
 }
 
 int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
-    init_debug(loop);
+    ziti_log_init(loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     metrics_init(loop, 5);
 
     uv_timeval64_t start_time;

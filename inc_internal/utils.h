@@ -29,6 +29,27 @@ limitations under the License.
 extern "C" {
 #endif
 
+#if _WIN32
+
+#    if !defined(strncasecmp)
+#    define strncasecmp _strnicmp
+#    endif
+
+#    if !defined(strcasecmp)
+#    define strcasecmp _stricmp
+#    endif
+
+#    if !defined(MIN)
+#    define MIN(a,b) ((a)<(b) ? (a) : (b))
+#    endif
+
+#    if !defined(MAX)
+#    define MAX(a,b) ((a) > (b) ? (a) : (b))
+#    endif
+
+    typedef unsigned int uint;
+#endif
+
 extern const char *ziti_get_build_version(int verbose);
 
 extern const char *ziti_git_branch();

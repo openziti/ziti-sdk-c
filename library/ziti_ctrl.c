@@ -21,13 +21,6 @@ limitations under the License.
 #include <ziti_ctrl.h>
 #include <uv_mbed/um_http.h>
 
-#if _WIN32
-
-#define strcasecmp _stricmp
-#define strncasecmp _strnicmp
-
-#endif
-
 #define DEFAULT_PAGE_SIZE 25
 
 const char *const PC_DOMAIN_TYPE = "DOMAIN";

@@ -100,11 +100,11 @@ macro(PUBCOMP comp)
     add_dependencies(publish ${comp}-pub)
 endmacro(PUBCOMP)
 
-# use prefix length to trim path for logging, see inc_internal/utils.h __FILENAME__
+# use prefix length to trim path for logging, see utils.c
 if (CMAKE_GENERATOR STREQUAL "Ninja" AND CMAKE_BINARY_DIR MATCHES "${CMAKE_SOURCE_DIR}")
     # if CMAKE_BINARY_DIR is inside CMAKE_SOURCE_DIR Ninja uses relative paths which screws logging of the filename
-    # so we just trim the first "../" here, this is not always correct but will show proper file
-    set(SOURCE_PATH_SIZE 3)
+    # so we just leave it be -- it shows enough information to find the source
+    set(SOURCE_PATH_SIZE 0)
 else()
     string(LENGTH "${CMAKE_SOURCE_DIR}/" SOURCE_PATH_SIZE)
 endif()

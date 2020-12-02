@@ -1,6 +1,6 @@
 #if ($HEADER_COMMENTS)
 /*
-Copyright (c) $YEAR Netfoundry, Inc.
+Copyright (c) $YEAR NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

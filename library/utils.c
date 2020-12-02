@@ -99,13 +99,9 @@ const char* ziti_git_commit() {
     return to_str(ZITI_COMMIT);
 }
 
-int ziti_debug_level = INFO;
+int ziti_log_level = ZITI_LOG_DEFAULT_LEVEL;
 static FILE *ziti_debug_out;
 static bool log_initialized = false;
-
-#if _WIN32
-#define strcasecmp _stricmp
-#endif
 
 const char *(*get_elapsed)();
 
@@ -126,15 +122,45 @@ static char elapsed_buffer[32];
 static uint64_t clock_offset;
 
 static uv_prepare_t log_flusher;
-static log_writer logger = default_log_writer;
+static log_writer logger = NULL;
+static void init_debug(uv_loop_t *loop);
 
-void ziti_set_log(log_writer log_func, uv_loop_t *loop) {
+void ziti_log_init(uv_loop_t *loop, int level, log_writer log_func) {
     init_debug(loop);
-    uv_mbed_set_debug(ziti_debug_level, uv_mbed_logger);
-    logger = log_func;
+
+    if (level == ZITI_LOG_DEFAULT_LEVEL)
+        level = ziti_log_level; // in case it was set before
+
+    ziti_log_set_level(level);
+
+    if (log_func == NULL) {
+        // keep the logger if it was already set
+        ziti_log_set_logger(logger ? logger : default_log_writer);
+    } else {
+        ziti_log_set_logger(log_func);
+    }
 }
 
-void init_debug(uv_loop_t *loop) {
+void ziti_log_set_level(int level) {
+    if (level == ZITI_LOG_DEFAULT_LEVEL) {
+        char *lvl = getenv("ZITI_LOG");
+        if (lvl != NULL) {
+            ziti_log_level = (int) strtol(lvl, NULL, 10);
+        } else {
+            ziti_log_level = INFO;
+        }
+    } else {
+        ziti_log_level = level;
+    }
+
+    uv_mbed_set_debug(ziti_log_level, uv_mbed_logger);
+}
+
+void ziti_log_set_logger(log_writer log) {
+    logger = log;
+}
+
+static void init_debug(uv_loop_t *loop) {
     if (log_initialized) {
         return;
     }
@@ -145,12 +171,8 @@ void init_debug(uv_loop_t *loop) {
     }
     ts_loop = loop;
     log_initialized = true;
-    char *level = getenv("ZITI_LOG");
-    if (level != NULL) {
-        ziti_debug_level = (int) strtol(level, NULL, 10);
-    }
+    ziti_log_set_level(ziti_log_level);
     ziti_debug_out = stderr;
-    uv_mbed_set_debug(ziti_debug_level, uv_mbed_logger);
 
     starttime = uv_now(loop);
     uv_timeval64_t clock;
@@ -172,10 +194,10 @@ void ziti_logger(int level, const char *file, unsigned int line, const char *fun
     va_start(argp, fmt);
     char location[128];
     if (func && func[0]) {
-        snprintf(location, sizeof(location), "%s:%d %s()", file, line, func);
+        snprintf(location, sizeof(location), "%s:%d %s()", file + SOURCE_PATH_SIZE, line, func);
     }
     else {
-        snprintf(location, sizeof(location), "%s:%d", file, line);
+        snprintf(location, sizeof(location), "%s:%d", file + SOURCE_PATH_SIZE, line);
     }
 
     int len = vsnprintf(logbuf, loglinelen, fmt, argp);
@@ -258,7 +280,7 @@ int lt_zero(int v) { return v < 0; }
 int non_zero(int v) { return v != 0; }
 
 void hexDump (char *desc, void *addr, int len) {
-    if (DEBUG > ziti_debug_level) return;
+    if (DEBUG > ziti_log_level) return;
     ZITI_LOG(DEBUG, " ");
     int i;
     unsigned char buffLine[17];
