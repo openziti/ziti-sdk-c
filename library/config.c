@@ -33,6 +33,10 @@ int load_config_file(const char *filename, ziti_config **cfg) {
     }
 
     FILE *file = fopen(filename, "r");
+    if (file == NULL) {
+        ZITI_LOG(ERROR, "%s - %s", filename, strerror(errno));
+        return ZITI_CONFIG_NOT_FOUND;
+    }
 
     size_t config_len = (size_t) stats.st_size;
     char *config = malloc(config_len);
