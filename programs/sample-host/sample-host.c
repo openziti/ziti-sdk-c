@@ -43,6 +43,7 @@ static ssize_t on_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
     }
     else if (len == ZITI_EOF) {
         printf("client disconnected\n");
+        ziti_close(&clt);
     }
     else {
         fprintf(stderr, "error: %zd(%s)", len, ziti_errorstr(len));

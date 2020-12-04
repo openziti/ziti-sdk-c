@@ -32,6 +32,7 @@ static const int MAX_CONNECT_RETRY = 3;
 struct ziti_conn_req {
     const char *session_type;
     char *service_id;
+    ziti_net_session *session;
     ziti_conn_cb cb;
     ziti_dial_opts *dial_opts;
     ziti_listen_opts *listen_opts;
@@ -104,6 +105,11 @@ static void free_ziti_listen_opts(ziti_listen_opts *ln_opts) {
 static void free_conn_req(struct ziti_conn_req *r) {
     if (r->conn_timeout != NULL) {
         uv_close((uv_handle_t *) r->conn_timeout, free_handle);
+    }
+
+    if (r->session_type == TYPE_BIND && r->session) {
+        free_ziti_net_session(r->session);
+        FREE(r->session);
     }
 
     free_ziti_dial_opts(r->dial_opts);
@@ -351,16 +357,20 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
         complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
     }
     else {
-        ziti_net_session *existing = model_map_get(&ztx->sessions, req->service_id);
-        // this happen with concurrent connection requests for the same service (common with browsers)
-        if (existing) {
-            ZITI_LOG(INFO, "found session[%s] for service[%s]", existing->id, conn->service);
-            free_ziti_net_session(s);
-            free(s);
-        } else {
-            ZITI_LOG(INFO, "got session[%s] for service[%s]", s->id, conn->service);
-            s->service_id = strdup(req->service_id);
-            model_map_set(&ztx->sessions, s->service_id, s);
+        req->session = s;
+        s->service_id = strdup(req->service_id);
+        if (req->session_type == TYPE_DIAL) {
+            ziti_net_session *existing = model_map_get(&ztx->sessions, req->service_id);
+            // this happen with concurrent connection requests for the same service (common with browsers)
+            if (existing) {
+                ZITI_LOG(INFO, "found session[%s] for service[%s]", existing->id, conn->service);
+                free_ziti_net_session(s);
+                free(s);
+                req->session = existing;
+            } else {
+                ZITI_LOG(INFO, "got session[%s] for service[%s]", s->id, conn->service);
+                model_map_set(&ztx->sessions, s->service_id, s);
+            }
         }
         ziti_connect_async(ar);
     }
@@ -373,8 +383,6 @@ static void ziti_connect_async(uv_async_t *ar) {
     struct ziti_conn_req *req = conn->conn_req;
     struct ziti_ctx *ztx = conn->ziti_ctx;
     uv_loop_t *loop = ar->loop;
-
-    const ziti_net_session *net_session = NULL;
 
     // find service
     if (req->service_id == NULL) {
@@ -390,9 +398,11 @@ static void ziti_connect_async(uv_async_t *ar) {
     }
 
     ziti_send_posture_data(ztx);
+    if (req->session == NULL && req->session_type == TYPE_DIAL) {
+        req->session = model_map_get(&ztx->sessions, req->service_id);
+    }
 
-    net_session = model_map_get(&ztx->sessions, req->service_id);
-    if (net_session == NULL || strcmp(net_session->session_type, req->session_type) != 0) {
+    if (req->session == NULL) {
         ZITI_LOG(DEBUG, "requesting '%s' session for service[%s]", req->session_type, conn->service);
         ziti_ctrl_get_net_session(&ztx->controller, req->service_id, req->session_type, connect_get_net_session_cb, ar);
         return;
@@ -403,8 +413,8 @@ static void ziti_connect_async(uv_async_t *ar) {
         req->conn_timeout->data = conn;
         uv_timer_start(req->conn_timeout, connect_timeout, conn->timeout, 0);
 
-        ZITI_LOG(DEBUG, "starting connection for service[%s] with session[%s]", conn->service, net_session->id);
-        ziti_connect(ztx, net_session, conn);
+        ZITI_LOG(DEBUG, "starting %s connection for service[%s] with session[%s]", req->session_type, conn->service, req->session->id);
+        ziti_connect(ztx, req->session, conn);
     }
 
     uv_close((uv_handle_t *) ar, free_handle);
