@@ -325,7 +325,7 @@ static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) 
         complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
     }
     else {
-        ZITI_LOG(INFO, "got service[%s] id[%s]", s->name, s->id);
+        ZITI_LOG(DEBUG, "got service[%s] id[%s]", s->name, s->id);
         for (int i = 0; s->permissions[i] != NULL; i++) {
             if (strcmp(s->permissions[i], "Dial") == 0) {
                  s->perm_flags |= ZITI_CAN_DIAL;
@@ -363,12 +363,12 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
             ziti_net_session *existing = model_map_get(&ztx->sessions, req->service_id);
             // this happen with concurrent connection requests for the same service (common with browsers)
             if (existing) {
-                ZITI_LOG(INFO, "found session[%s] for service[%s]", existing->id, conn->service);
+                ZITI_LOG(DEBUG, "found session[%s] for service[%s]", existing->id, conn->service);
                 free_ziti_net_session(s);
                 free(s);
                 req->session = existing;
             } else {
-                ZITI_LOG(INFO, "got session[%s] for service[%s]", s->id, conn->service);
+                ZITI_LOG(DEBUG, "got session[%s] for service[%s]", s->id, conn->service);
                 model_map_set(&ztx->sessions, s->service_id, s);
             }
         }
