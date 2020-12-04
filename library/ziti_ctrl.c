@@ -22,6 +22,8 @@ limitations under the License.
 #include <uv_mbed/um_http.h>
 
 #define DEFAULT_PAGE_SIZE 25
+#define ZITI_CTRL_KEEPALIVE -1
+#define ZITI_CTRL_TIMEOUT 10000
 
 const char *const PC_DOMAIN_TYPE = "DOMAIN";
 const char *const PC_OS_TYPE = "OS";
@@ -260,7 +262,8 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_context *tls) {
     um_http_init(loop, &ctrl->client, url);
     um_http_set_ssl(&ctrl->client, tls);
-    um_http_idle_keepalive(&ctrl->client, 0);
+    um_http_idle_keepalive(&ctrl->client, ZITI_CTRL_KEEPALIVE);
+    um_http_connect_timeout(&ctrl->client, ZITI_CTRL_TIMEOUT);
     um_http_header(&ctrl->client, "Accept", "application/json");
     ctrl->session = NULL;
 

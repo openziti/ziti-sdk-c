@@ -625,7 +625,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
             uv_timer_stop(&ztx->refresh_timer);
         }
 
-    } else {
+    } else if (err) {
         if (ztx->session) {
             ZITI_LOG(WARN, "failed to refresh: %s[%d]", err->code, errCode);
             if (strcmp(err->code, "UNAUTHORIZED") == 0) {
@@ -646,6 +646,8 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
 
             model_map_clear(&ztx->services, (_free_f) free_ziti_service);
         }
+    } else {
+        ZITI_LOG(ERROR, "%s: no session or error received", ziti_errorstr(ZITI_WTF));
     }
 
     if (init_req->init_cb) {
