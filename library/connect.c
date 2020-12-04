@@ -345,15 +345,23 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
     if (err != NULL) {
-        ZITI_LOG(ERROR, "failed to load service[%s]: %s(%s)", conn->service, err->code, err->message);
+        ZITI_LOG(ERROR, "failed to get session for service[%s]: %s(%s)", conn->service, err->code, err->message);
     }
     if (s == NULL) {
         complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
     }
     else {
-        ZITI_LOG(INFO, "got session[%s] for service[%s]", s->id, conn->service);
-        s->service_id = strdup(req->service_id);
-        model_map_set(&ztx->sessions, s->service_id, s);
+        ziti_net_session *existing = model_map_get(&ztx->sessions, req->service_id);
+        // this happen with concurrent connection requests for the same service (common with browsers)
+        if (existing) {
+            ZITI_LOG(INFO, "found session[%s] for service[%s]", existing->id, conn->service);
+            free_ziti_net_session(s);
+            free(s);
+        } else {
+            ZITI_LOG(INFO, "got session[%s] for service[%s]", s->id, conn->service);
+            s->service_id = strdup(req->service_id);
+            model_map_set(&ztx->sessions, s->service_id, s);
+        }
         ziti_connect_async(ar);
     }
 
@@ -659,7 +667,6 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
         return;
     }
 
-    plain_text = malloc(msg->header.body_len);
     if (conn->encrypted) {
         PREP(crypto);
         // first message is expected to be peer crypto header
@@ -673,6 +680,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
             unsigned long long plain_len;
             unsigned char tag;
             if (msg->header.body_len > 0) {
+                plain_text = malloc(msg->header.body_len - crypto_secretstream_xchacha20poly1305_ABYTES);
                 ZITI_LOG(VERBOSE, "conn[%d] decrypting %d bytes", conn->conn_id, msg->header.body_len);
                 TRY(crypto, crypto_secretstream_xchacha20poly1305_pull(&conn->crypt_i,
                                                                        plain_text, &plain_len, &tag,
@@ -691,6 +699,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
         }
     }
     else if (msg->header.body_len > 0) {
+        plain_text = malloc(msg->header.body_len);
         memcpy(plain_text, msg->body, msg->header.body_len);
         buffer_append(conn->inbound, plain_text, msg->header.body_len);
         metrics_rate_update(&conn->ziti_ctx->down_rate, msg->header.body_len);
