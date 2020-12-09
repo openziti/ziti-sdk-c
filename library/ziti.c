@@ -220,7 +220,7 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     uv_unref((uv_handle_t *) &ctx->connect_async);
 
     ziti_ctrl_init(loop, &ctx->controller, options->controller, ctx->tlsCtx);
-    ziti_ctrl_get_version(&ctx->controller, version_cb, &ctx->controller);
+    ziti_ctrl_get_version(&ctx->controller, version_cb, ctx);
 
     uv_timer_init(loop, &ctx->session_timer);
     uv_unref((uv_handle_t *) &ctx->session_timer);
@@ -242,8 +242,6 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     init_req->init_ctx = init_ctx;
     init_req->ztx = ctx;
     ziti_ctrl_login(&ctx->controller, ctx->opts->config_types, session_cb, init_req);
-
-    posture_init(ctx, 20);
 
     CATCH(ziti) {
         return ERR(ziti);
@@ -492,9 +490,12 @@ static void session_refresh(uv_timer_t *t) {
 }
 
 static void ziti_re_auth(ziti_context ztx) {
-    ZITI_LOG(WARN, "starting to re-auth");
+    ZITI_LOG(WARN, "starting to re-auth with ctlr[%s]", ztx->opts->controller);
     uv_timer_stop(&ztx->refresh_timer);
     uv_timer_stop(&ztx->session_timer);
+    if (ztx->posture_checks) {
+        uv_timer_stop(&ztx->posture_checks->timer);
+    }
     free_ziti_session(ztx->session);
     FREE(ztx->session);
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
@@ -506,7 +507,8 @@ static void ziti_re_auth(ziti_context ztx) {
 
 static void update_services(ziti_service_array services, ziti_error *error, ziti_context ztx) {
     if (error) {
-        ZITI_LOG(ERROR, "failed to get service updates err[%s/%s]", error->code, error->message);
+        ZITI_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
+                 ztx->opts->controller);
         if (strcmp(error->code, "UNAUTHORIZED") == 0) {
             ZITI_LOG(WARN, "API session is no longer valid. Trying to re-auth");
             ziti_re_auth(ztx);
@@ -621,10 +623,13 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
             ZITI_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
             uv_timer_start(&ztx->refresh_timer, services_refresh, 0, ztx->opts->refresh_interval * 1000);
-        } else if (ztx->opts->refresh_interval == 0) {
+        }
+        else if (ztx->opts->refresh_interval == 0) {
             ZITI_LOG(DEBUG, "refresh_interval not specified");
             uv_timer_stop(&ztx->refresh_timer);
         }
+
+        posture_init(ztx, 20);
 
     } else if (err) {
         if (ztx->session) {
@@ -635,7 +640,8 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
                 uv_timer_start(&ztx->session_timer, session_refresh, 5 * 1000, 0);
             }
         } else {
-            ZITI_LOG(ERROR, "failed to login: %s[%d](%s)", err->code, errCode, err->message);
+            ZITI_LOG(ERROR, "failed to authenticate with ctrl[%s]: %s[%d](%s)", ztx->opts->controller, err->code,
+                     errCode, err->message);
 
             if (ztx->opts->service_cb) {
                 const char *name;
@@ -669,15 +675,15 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
 }
 
 static void version_cb(ziti_version *v, ziti_error *err, void *ctx) {
-    ziti_controller *ctrl = ctx;
+    ziti_context ztx = ctx;
     if (err != NULL) {
-        ZITI_LOG(ERROR, "failed to get controller version from %s:%s %s(%s)",
-                 ctrl->client.host, ctrl->client.port, err->code, err->message);
+        ZITI_LOG(ERROR, "failed to get controller version from %s %s(%s)",
+                 ztx->opts->controller, err->code, err->message);
         free_ziti_error(err);
         FREE(err);
     } else {
-        ZITI_LOG(INFO, "connected to controller %s:%s version %s(%s %s)",
-                 ctrl->client.host, ctrl->client.port, v->version, v->revision, v->build_date);
+        ZITI_LOG(INFO, "connected to controller %s version %s(%s %s)",
+                 ztx->opts->controller, v->version, v->revision, v->build_date);
         free_ziti_version(v);
         FREE(v);
     }
