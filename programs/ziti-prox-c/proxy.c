@@ -39,7 +39,18 @@ static char *config = NULL;
 static int report_metrics = -1;
 static uv_timer_t report_timer;
 static ziti_context ziti;
-static uv_signal_t sig;
+
+static void signal_cb(uv_signal_t *s, int signum);
+
+static struct sig_handlers {
+    uv_signal_t sig;
+    int signum;
+    uv_signal_cb cb;
+} signals[] = {
+        {.signum = SIGINT, .cb = signal_cb},
+        {.signum = SIGTERM, .cb = signal_cb},
+        {.signum = SIGUSR1, .cb = signal_cb},
+};
 
 struct listener {
     const char *service_name;
@@ -71,6 +82,12 @@ static void close_server_cb(uv_handle_t *h) {
     ZITI_LOG(DEBUG, "listener closed for %s", l->service_name);
 }
 
+static void shutdown_timer_cb(uv_timer_t *t) {
+    uv_loop_t *l = t->loop;
+
+    uv_print_active_handles(l, stderr);
+}
+
 static void process_stop(uv_loop_t *loop, listener_l *listeners) {
     PREPF(uv, uv_strerror);
 
@@ -82,11 +99,17 @@ static void process_stop(uv_loop_t *loop, listener_l *listeners) {
         }
     }
 
+    // shutdown diagnostics
+    uv_timer_t *shutdown_timer = malloc(sizeof(uv_timer_t));
+    uv_timer_init(loop, shutdown_timer);
+    uv_timer_start(shutdown_timer, shutdown_timer_cb, 5000, 0);
+    uv_unref((uv_handle_t *) shutdown_timer);
+
     // try to cleanup
     ziti_shutdown(ziti);
     uv_loop_close(loop);
 
-    CATCH(uv);
+    CATCH(uv) {}
     ZITI_LOG(INFO, "exiting");
 }
 
@@ -122,6 +145,7 @@ static void signal_cb(uv_signal_t *s, int signum) {
             break;
 
         default:
+            ZITI_LOG(INFO, "signal[%d/%s] received", signum, strsignal(signum));
             break;
     }
 }
@@ -452,8 +476,6 @@ void run(int argc, char **argv) {
 
     ziti_init_opts(&opts, loop, &listeners);
 
-    TRY(uv, uv_signal_init(loop, &sig));
-    sig.data = &listeners;
 
 #if __unix__ || __unix
     // prevent termination when running under valgrind
@@ -462,11 +484,12 @@ void run(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
 #endif
 
-    TRY(uv, uv_signal_start(&sig, signal_cb, SIGINT));
-    TRY(uv, uv_signal_start(&sig, signal_cb, SIGTERM));
-    TRY(uv, uv_signal_start(&sig, signal_cb, SIGUSR1));
-
-    uv_unref((uv_handle_t *) &sig);
+    for (int i = 0; i < sizeof(signals) / sizeof(signals[0]); i++) {
+        TRY(uv, uv_signal_init(loop, &signals[i].sig));
+        signals[i].sig.data = &listeners;
+        TRY(uv, uv_signal_start(&signals[i].sig, signals[i].cb, signals[i].signum));
+        uv_unref((uv_handle_t *) &signals[i].sig);
+    }
 
     const ziti_version *ver = ziti_get_version();
     ZITI_LOG(INFO, "built with SDK version %s(%s)[%s]", ver->version, ver->revision, ver->build_date);
@@ -474,7 +497,7 @@ void run(int argc, char **argv) {
     if (report_metrics > 0) {
         uv_timer_init(loop, &report_timer);
         uv_timer_start(&report_timer, reporter_cb, report_metrics * 1000, report_metrics * 1000);
-        uv_unref((uv_handle_t*)&report_timer);
+        uv_unref((uv_handle_t *) &report_timer);
     }
     ZITI_LOG(INFO, "starting event loop");
     uv_run(loop, UV_RUN_DEFAULT);

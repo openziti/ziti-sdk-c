@@ -756,9 +756,20 @@ void connect_reply_cb(void *ctx, message *msg) {
         case ContentTypeStateClosed:
             if (strncmp(INVALID_SESSION, (const char *) msg->body, msg->header.body_len) == 0) {
                 ZITI_LOG(WARN, "conn[%d] session for service[%s] became invalid", conn->conn_id, conn->service);
-                ziti_net_session *s = model_map_remove(&conn->ziti_ctx->sessions, req->service_id);
-                free_ziti_net_session(s);
-                free(s);
+                if (strcmp(TYPE_DIAL, conn->conn_req->session_type) == 0) {
+                    ziti_net_session *s = model_map_get(&conn->ziti_ctx->sessions, req->service_id);
+                    if (s != req->session) {
+                        // already removed or different one
+                        // req reference is no longer valid
+                        req->session = NULL;
+                    }
+                    else if (s == req->session) {
+                        model_map_remove(&conn->ziti_ctx->sessions, req->service_id);
+                    }
+                }
+                free_ziti_net_session(req->session);
+                FREE(req->session);
+
                 ziti_channel_rem_receiver(conn->channel, conn->conn_id);
                 conn->channel = NULL;
                 restart_connect(conn);

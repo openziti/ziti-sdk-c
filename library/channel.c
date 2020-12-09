@@ -125,7 +125,10 @@ void ziti_close_cb(uv_handle_t *h) {
 int ziti_channel_close(ziti_channel_t *ch) {
     int r = 0;
     if (ch->state != Closed) {
+        ZITI_LOG(INFO, "closing ch[%d](%s)", ch->id, ch->name);
         r = uv_mbed_close(&ch->connection, ziti_close_cb);
+        uv_timer_stop(&ch->latency_timer);
+        uv_close((uv_handle_t *) &ch->latency_timer, NULL);
         ch->state = Closed;
     }
     return r;
@@ -584,6 +587,7 @@ static void reconnect_channel(ziti_channel_t *ch) {
     uint64_t timeout = (1U << backoff) * BACKOFF_TIME;
     ZITI_LOG(INFO, "ch[%d] reconnecting in %ld ms (attempt = %d)", ch->id, timeout, ch->reconnect_count);
     uv_timer_start(t, reconnect_cb, timeout, 0);
+    uv_unref((uv_handle_t *) t);
 }
 
 static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
@@ -598,8 +602,6 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
         uv_timer_stop(&ch->latency_timer);
     }
 
-    // model_map_remove(&ztx->channels, ch->name);
-
     while (!LIST_EMPTY(&ch->receivers)) {
         struct msg_receiver *con = LIST_FIRST(&ch->receivers);
         LIST_REMOVE(con, _next);
@@ -607,7 +609,9 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
         free(con);
     }
 
-    reconnect_channel(ch);
+    if (ch->state != Closed) {
+        reconnect_channel(ch);
+    }
 }
 
 static void on_write(uv_write_t *req, int status) {
