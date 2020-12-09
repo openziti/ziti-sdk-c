@@ -37,11 +37,6 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
 
 static void enroll_cb(ziti_enrollment_resp *er, ziti_error *err, void *ctx);
 
-static void async_connects(uv_async_t *ar) {
-    ziti_context ztx = ar->data;
-    ziti_process_connect_reqs(ztx);
-}
-
 int verify_controller_jwt(tls_cert cert, void *ctx) {
     ZITI_LOG(INFO, "verifying JWT signature");
 
