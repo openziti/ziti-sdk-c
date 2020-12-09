@@ -1025,12 +1025,6 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     return ZITI_OK;
 }
 
-int ziti_process_connect_reqs(ziti_context ztx) {
-    ZITI_LOG(WARN, "TODO");
-
-    return ZITI_OK;
-}
-
 static int send_fin_message(ziti_connection conn) {
     ziti_channel_t *ch = conn->channel;
     int32_t conn_id = htole32(conn->conn_id);
