@@ -64,7 +64,7 @@ struct query_info {
 };
 
 void ziti_send_posture_data(struct ziti_ctx *ztx) {
-    ZITI_LOG(DEBUG, "starting to send posture data");
+    ZITI_LOG(VERBOSE, "starting to send posture data");
 
     NEWP(domainInfo, struct query_info);
     NEWP(osInfo, struct query_info);
@@ -162,12 +162,11 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
 
     model_map_clear(&processes, NULL);
 
-    ZITI_LOG(DEBUG, "done sending posture data, free");
     free(domainInfo);
     free(osInfo);
     free(macInfo);
     //no free(procInfo), free'ed in map
-    ZITI_LOG(DEBUG, "done sending posture data");
+    ZITI_LOG(VERBOSE, "done sending posture data");
 }
 
 static void ziti_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac) {
