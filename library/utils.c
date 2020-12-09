@@ -201,10 +201,13 @@ void ziti_logger(int level, const char *file, unsigned int line, const char *fun
     }
 
     int len = vsnprintf(logbuf, loglinelen, fmt, argp);
+    va_end(argp);
     if (len > loglinelen) {
         loglinelen = len + 1;
         logbuf = realloc(logbuf, loglinelen);
+        va_start(argp, fmt);
         vsnprintf(logbuf, loglinelen, fmt, argp);
+        va_end(argp);
     }
 
     if (logger) { logger(level, location, logbuf, len); }
