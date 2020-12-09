@@ -180,7 +180,6 @@ struct ziti_ctx {
     model_map channels;
     LIST_HEAD(conns, ziti_conn) connections;
 
-    uv_async_t connect_async;
     uint32_t conn_seq;
 
     /* options */
@@ -197,8 +196,6 @@ struct ziti_ctx {
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-int ziti_process_connect_reqs(ziti_context ztx);
 
 int ziti_close_channels(ziti_context ztx);
 

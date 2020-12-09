@@ -59,6 +59,8 @@ static void version_cb(ziti_version *v, ziti_error *err, void *ctx);
 
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx);
 
+static void ziti_init_async(uv_async_t *ar);
+
 static void grim_reaper(uv_prepare_t *p);
 
 #define CONN_STATES(XX) \
@@ -130,7 +132,6 @@ static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout
 
 static void async_connects(uv_async_t *ar) {
     ziti_context ztx = ar->data;
-    ziti_process_connect_reqs(ztx);
 }
 
 int load_tls(ziti_config *cfg, tls_context **ctx) {
@@ -179,16 +180,6 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     ziti_log_init(loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     metrics_init(loop, 5);
 
-    uv_timeval64_t start_time;
-    uv_gettimeofday(&start_time);
-
-    char time_str[32];
-    ziti_fmt_time(time_str, sizeof(time_str), &start_time);
-
-    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
-             ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
-             time_str, start_time.tv_usec / 1000);
-
     PREP(ziti);
 
     if (options->config == NULL && (options->controller == NULL || options->tls == NULL)) {
@@ -216,10 +207,44 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     ctx->loop = loop;
     ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
 
-    uv_async_init(loop, &ctx->connect_async, async_connects);
-    uv_unref((uv_handle_t *) &ctx->connect_async);
+    NEWP(init_req, struct ziti_init_req);
+    init_req->init_cb = options->init_cb;
+    init_req->init_ctx = init_ctx;
+    init_req->ztx = ctx;
 
-    ziti_ctrl_init(loop, &ctx->controller, options->controller, ctx->tlsCtx);
+    NEWP(async_init_req, uv_async_t);
+    uv_async_init(loop, async_init_req, ziti_init_async);
+    async_init_req->data = init_req;
+
+    uv_async_send(async_init_req);
+
+    CATCH(ziti) {
+        return ERR(ziti);
+    }
+
+    return ZITI_OK;
+}
+
+static void ziti_init_async(uv_async_t *ar) {
+    struct ziti_init_req *init_req = ar->data;
+
+    ziti_context ctx = init_req->ztx;
+    uv_loop_t *loop = ar->loop;
+
+    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
+
+    uv_timeval64_t start_time;
+    uv_gettimeofday(&start_time);
+
+    char time_str[32];
+    ziti_fmt_time(time_str, sizeof(time_str), &start_time);
+
+    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
+             ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
+             time_str, start_time.tv_usec / 1000);
+
+
+    ziti_ctrl_init(loop, &ctx->controller, ctx->opts->controller, ctx->tlsCtx);
     ziti_ctrl_get_version(&ctx->controller, version_cb, ctx);
 
     uv_timer_init(loop, &ctx->session_timer);
@@ -237,17 +262,7 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     uv_unref((uv_handle_t *) &ctx->reaper);
     uv_prepare_start(&ctx->reaper, grim_reaper);
 
-    NEWP(init_req, struct ziti_init_req);
-    init_req->init_cb = options->init_cb;
-    init_req->init_ctx = init_ctx;
-    init_req->ztx = ctx;
     ziti_ctrl_login(&ctx->controller, ctx->opts->config_types, session_cb, init_req);
-
-    CATCH(ziti) {
-        return ERR(ziti);
-    }
-
-    return ZITI_OK;
 }
 
 int ziti_init(const char *config, uv_loop_t *loop, ziti_init_cb init_cb, void *init_ctx) {
@@ -290,6 +305,7 @@ int ziti_shutdown(ziti_context ztx) {
     ZITI_LOG(INFO, "Ziti is shutting down");
 
     free_ziti_session(ztx->session);
+    free(ztx->session);
     ztx->session = NULL;
 
     uv_timer_stop(&ztx->refresh_timer);
