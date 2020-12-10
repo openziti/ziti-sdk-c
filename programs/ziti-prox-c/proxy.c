@@ -420,20 +420,19 @@ static void service_check_cb(ziti_context ztx, ziti_service *service, int status
     }
 }
 
-static void on_ziti_init(ziti_context ztx, int status, void *ctx) {
-    PREPF(ziti, ziti_errorstr);
-    TRY(ziti, status);
-    CATCH(ziti) {
-        exit(status);
+static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
+    if (event->type == ZitiContextEvent) {
+        if (event->event.ctx.ctrl_status == ZITI_OK) {
+            const ziti_version *ctrl_ver = ziti_get_controller_version(ztx);
+            const ziti_identity *proxy_id = ziti_get_identity(ztx);
+            ZITI_LOG(INFO, "controller version = %s(%s)[%s]", ctrl_ver->version, ctrl_ver->revision, ctrl_ver->build_date);
+            ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, ziti_get_controller(ztx));
+            ziti = ztx;
+        } else {
+            ZITI_LOG(ERROR, "Failed to connect to controller: %s", event->event.ctx.err);
+        }
     }
-    const ziti_version *ctrl_ver = ziti_get_controller_version(ztx);
-    const ziti_identity *proxy_id = ziti_get_identity(ztx);
-    ZITI_LOG(INFO, "controller version = %s(%s)[%s]", ctrl_ver->version, ctrl_ver->revision, ctrl_ver->build_date);
-    ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, ziti_get_controller(ztx));
-
-    ziti = ztx;
 }
-
 
 char* pxoxystrndup(const char* s, int n);
 const char *my_configs[] = {
@@ -466,10 +465,11 @@ void run(int argc, char **argv) {
 
     ziti_options opts = {
             .config = config,
-            .init_cb = on_ziti_init,
+            .events = ZitiContextEvent,
+            .event_cb = on_ziti_event,
             .service_cb = service_check_cb,
             .refresh_interval = 600,
-            .ctx = &listeners,
+            .app_ctx = &listeners,
             .config_types = my_configs,
             .metrics_type = INSTANT,
     };

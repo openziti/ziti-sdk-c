@@ -30,6 +30,7 @@ limitations under the License.
 #include "externs.h"
 #include "ziti_model.h"
 #include "enums.h"
+#include "ziti_events.h"
 
 
 #ifdef __cplusplus
@@ -225,6 +226,8 @@ typedef void(*ziti_pr_process_cb)(ziti_context ztx, char *id, char *path, bool i
 typedef void (*ziti_pq_process_cb)(ziti_context ztx, const char *id, const char *path,
                                    ziti_pr_process_cb response_cb);
 
+typedef void (*ziti_event_cb)(ziti_context ztx, const ziti_event_t *event, void *app_ctx);
+
 /**
  * @brief ziti_context initialization options
  *
@@ -236,7 +239,11 @@ typedef struct ziti_options_s {
     tls_context *tls;
 
     const char **config_types;
+
+    /*! \deprecated */
     ziti_init_cb init_cb;
+
+    /*! \deprecated */
     ziti_service_cb service_cb;
 
     long refresh_interval; //the duration in seconds between checking for updates from the controller
@@ -244,13 +251,15 @@ typedef struct ziti_options_s {
 
     int router_keepalive;
 
-    void *ctx;
-
     //posture query cbs
     ziti_pq_mac_cb pq_mac_cb;
     ziti_pq_os_cb pq_os_cb;
     ziti_pq_process_cb pq_process_cb;
     ziti_pq_domain_cb pq_domain_cb;
+
+    void *app_ctx;
+    unsigned int events;
+    ziti_event_cb event_cb;
 } ziti_options;
 
 typedef struct ziti_enroll_opts_s {

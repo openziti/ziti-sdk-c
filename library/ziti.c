@@ -437,6 +437,12 @@ int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb
     return ziti_write_req(req);
 }
 
+static void ziti_send_event(ziti_context ztx, const ziti_event_t *e) {
+    if ((ztx->opts->events & e->type) && ztx->opts->event_cb) {
+        ztx->opts->event_cb(ztx, e, ztx->opts->app_ctx);
+    }
+}
+
 struct service_req_s {
     struct ziti_ctx *ztx;
     char *service;
@@ -564,7 +570,7 @@ static void update_services(ziti_service_array services, ziti_error *error, ziti
             ZITI_LOG(DEBUG, "service[%s] is not longer available", model_map_it_key(it));
             s = model_map_it_value(it);
             if (ztx->opts->service_cb != NULL) {
-                ztx->opts->service_cb(ztx, s, ZITI_SERVICE_UNAVAILABLE, ztx->opts->ctx);
+                ztx->opts->service_cb(ztx, s, ZITI_SERVICE_UNAVAILABLE, ztx->opts->app_ctx);
             }
             ziti_net_session *session = model_map_remove(&ztx->sessions, s->id);
             if (session) {
@@ -584,7 +590,7 @@ static void update_services(ziti_service_array services, ziti_error *error, ziti
         name = model_map_it_key(it);
         model_map_set(&ztx->services, name, s);
         if (ztx->opts->service_cb != NULL) {
-            ztx->opts->service_cb(ztx, s, ZITI_OK, ztx->opts->ctx);
+            ztx->opts->service_cb(ztx, s, ZITI_OK, ztx->opts->app_ctx);
         }
         it = model_map_it_remove(it);
     }
@@ -597,7 +603,7 @@ static void update_services(ziti_service_array services, ziti_error *error, ziti
 
         ziti_service *old = model_map_set(&ztx->services, name, s);
         if (ztx->opts->service_cb != NULL) {
-            ztx->opts->service_cb(ztx, s, ZITI_OK, ztx->opts->ctx);
+            ztx->opts->service_cb(ztx, s, ZITI_OK, ztx->opts->app_ctx);
         }
 
         free_ziti_service(old);
@@ -620,13 +626,25 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     ztx->loop_thread = uv_thread_self();
 
     int errCode = err ? code_to_error(err->code) : ZITI_OK;
+    ziti_event_t ev = {
+            .type = ZitiContextEvent,
+            .event.ctx = {
+                    .ctrl_status = ZITI_OK,
+                    .err = NULL,
+            }};
 
     if (session) {
         ZITI_LOG(DEBUG, "%s successfully => api_session[%s]", ztx->session ? "refreshed" : "logged in", session->id);
-        free_ziti_session(ztx->session);
-        FREE(ztx->session);
 
+        ziti_session *old_session = ztx->session;
         ztx->session = session;
+
+        if (old_session == NULL) {
+            ziti_send_event(ztx, &ev);
+        }
+        free_ziti_session(old_session);
+        FREE(old_session);
+
 
         if (session->expires) {
             uv_timeval64_t now;
@@ -659,11 +677,15 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
             ZITI_LOG(ERROR, "failed to authenticate with ctrl[%s]: %s[%d](%s)", ztx->opts->controller, err->code,
                      errCode, err->message);
 
+            ev.event.ctx.ctrl_status = ZITI_CONTROLLER_UNAVAILABLE;
+            ev.event.ctx.err = err->message;
+            ziti_send_event(ztx, &ev);
+
             if (ztx->opts->service_cb) {
                 const char *name;
                 ziti_service *srv;
                 MODEL_MAP_FOREACH(name, srv, &ztx->services) {
-                    ztx->opts->service_cb(ztx, srv, ZITI_SERVICE_UNAVAILABLE, ztx->opts->ctx);
+                    ztx->opts->service_cb(ztx, srv, ZITI_SERVICE_UNAVAILABLE, ztx->opts->app_ctx);
                 }
             }
 

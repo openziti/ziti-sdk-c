@@ -4,7 +4,8 @@ set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/enums.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_src.h
-)
+        ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_events.h
+        )
 
 SET(ZITI_SRC_FILES
         utils.c
