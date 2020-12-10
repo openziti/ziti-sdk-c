@@ -91,16 +91,6 @@ target_compile_definitions(ziti_dll PUBLIC
 )
 
 if (WIN32)
-    if(MINGW)   
-        #on server 2016 msvcrt.dll does not process %z formatting
-        #that can lead to a crash if the string format is something like: %zd(%s)
-        target_compile_definitions(ziti PUBLIC
-            __USE_MINGW_ANSI_STDIO=1
-        )
-        target_compile_definitions(ziti_dll PUBLIC
-            __USE_MINGW_ANSI_STDIO=1
-        )
-    endif()
     # on windows GDI defines ERROR which conflicts with the SDK declaration of DEBUG_LEVELS in utils.h
     target_compile_definitions(ziti     PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
     target_compile_definitions(ziti_dll PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
