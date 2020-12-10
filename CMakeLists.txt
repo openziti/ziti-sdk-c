@@ -22,6 +22,11 @@ message("")
 message("using ${CMAKE_GENERATOR}")
 
 if (WIN32)
+    if(MINGW)
+        #on server 2016 msvcrt.dll does not process %z formatting
+        #that can lead to a crash if the string format is something like: %zd(%s)
+        add_compile_definitions(__USE_MINGW_ANSI_STDIO=1)
+    endif()
     set(CMAKE_INSTALL_LIBDIR lib)
     set(CMAKE_INSTALL_INCLUDEDIR include)
     if(NOT CMAKE_INSTALL_PREFIX)
