@@ -21,7 +21,7 @@
 
 //on server 2016 msvcrt.dll does not process %z formatting
 //that can lead to a crash if the string format is something like: %zd(%s)
-#define __USE_MINGW_ANSI_STDIO
+#define __USE_MINGW_ANSI_STDIO 1
 
 #define _to_str(x) #x
 #define to_str(x) _to_str(x)
