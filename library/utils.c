@@ -119,7 +119,6 @@ static uv_loop_t *ts_loop;
 static uint64_t starttime;
 static uint64_t last_update;
 static char elapsed_buffer[32];
-static uint64_t clock_offset;
 
 static uv_prepare_t log_flusher;
 static log_writer logger = NULL;
@@ -175,9 +174,6 @@ static void init_debug(uv_loop_t *loop) {
     ziti_debug_out = stderr;
 
     starttime = uv_now(loop);
-    uv_timeval64_t clock;
-    uv_gettimeofday(&clock);
-    clock_offset = (clock.tv_sec * 1000 + clock.tv_usec / 1000) - starttime; // in millis
 
     uv_prepare_init(loop, &log_flusher);
     uv_unref((uv_handle_t *) &log_flusher);
@@ -242,20 +238,18 @@ static const char *get_utc_time() {
     uint64_t now = uv_now(ts_loop);
     if (now > last_update) {
         last_update = now;
-        uint64_t realtime = clock_offset + now;
-        time_t time = realtime / 1000; // seconds
-        time_t millis = realtime % 1000;
-        struct tm *tm = gmtime(&time);
 
-        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%04d-%02d-%02dT%02d:%02d:%02d.%03ldZ",
+        uv_timeval64_t ts;
+        uv_gettimeofday(&ts);
+        struct tm *tm = gmtime(&ts.tv_sec);
+
+        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
                  1900 + tm->tm_year, tm->tm_mon + 1, tm->tm_mday,
-                 tm->tm_hour, tm->tm_min, tm->tm_sec, millis
+                 tm->tm_hour, tm->tm_min, tm->tm_sec, ts.tv_usec / 1000
                  );
     }
     return elapsed_buffer;
 }
-
-static char errbuf[1024];
 
 void ziti_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
     buf->base = (char *) malloc(suggested_size);
