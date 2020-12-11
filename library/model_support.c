@@ -966,6 +966,10 @@ static struct model_map_entry *find_map_entry(model_map *m, const char *key, uin
     return NULL;
 }
 
+size_t model_map_size(model_map *m) {
+    return m->impl ? m->impl->size : 0;
+}
+
 void *model_map_set(model_map *m, const char *key, void *val) {
     if (m->impl == NULL) {
         m->impl = calloc(1, sizeof(struct model_impl_s));

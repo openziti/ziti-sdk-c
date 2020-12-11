@@ -38,7 +38,6 @@ limitations under the License.
 static char *config = NULL;
 static int report_metrics = -1;
 static uv_timer_t report_timer;
-static ziti_context ziti;
 
 static void signal_cb(uv_signal_t *s, int signum);
 
@@ -52,14 +51,20 @@ static struct sig_handlers {
         {.signum = SIGUSR1, .cb = signal_cb},
 };
 
+struct proxy_app_ctx {
+    model_map listeners;
+    ziti_context ziti;
+};
+
 struct listener {
     const char *service_name;
     int port;
     uv_tcp_t server;
-    LIST_ENTRY(listener) next;
+    struct proxy_app_ctx *app_ctx;
+    //LIST_ENTRY(listener) next;
 };
 
-typedef LIST_HEAD(listeners, listener) listener_l;
+// typedef LIST_HEAD(listeners, listener) listener_l;
 
 struct client {
     struct sockaddr_in addr;
@@ -88,12 +93,13 @@ static void shutdown_timer_cb(uv_timer_t *t) {
     uv_print_active_handles(l, stderr);
 }
 
-static void process_stop(uv_loop_t *loop, listener_l *listeners) {
+static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     PREPF(uv, uv_strerror);
 
     // shutdown listeners
     struct listener *l;
-    LIST_FOREACH(l, listeners, next) {
+    const char *name;
+    MODEL_MAP_FOREACH(name, l, &app_ctx->listeners) {
         if (uv_is_active((const uv_handle_t *) &l->server)) {
             uv_close((uv_handle_t *) &l->server, close_server_cb);
         }
@@ -106,26 +112,27 @@ static void process_stop(uv_loop_t *loop, listener_l *listeners) {
     uv_unref((uv_handle_t *) shutdown_timer);
 
     // try to cleanup
-    ziti_shutdown(ziti);
+    ziti_shutdown(app_ctx->ziti);
     uv_loop_close(loop);
 
     CATCH(uv) {}
     ZITI_LOG(INFO, "exiting");
 }
 
-static void debug_dump(listener_l *listeners) {
+static void debug_dump(struct proxy_app_ctx *app_ctx) {
     struct listener *l;
-
-    LIST_FOREACH(l, listeners, next) {
+    const char *name;
+    MODEL_MAP_FOREACH(name, l, &app_ctx->listeners) {
         printf("listening for service[%s] on port[%d]\n", l->service_name, l->port);
     }
-    ziti_dump(ziti);
+    ziti_dump(app_ctx->ziti);
 }
 
 static void reporter_cb(uv_timer_t *t) {
     double up, down;
-    if (ziti != NULL) {
-        ziti_get_transfer_rates(ziti, &up, &down);
+    struct proxy_app_ctx *app_ctx = t->data;
+    if (app_ctx->ziti != NULL) {
+        ziti_get_transfer_rates(app_ctx->ziti, &up, &down);
         ZITI_LOG(INFO, "transfer rates: up=%lf down=%lf", up, down);
     }
 }
@@ -353,7 +360,7 @@ static void on_client(uv_stream_t *server, int status) {
              clt->addr_s, l->service_name, l->port);
 
     PREPF(ziti, ziti_errorstr);
-    TRY(ziti, ziti_conn_init(ziti, &clt->ziti_conn, c));
+    TRY(ziti, ziti_conn_init(l->app_ctx->ziti, &clt->ziti_conn, c));
     TRY(ziti, ziti_dial(clt->ziti_conn, l->service_name, on_ziti_connect, on_ziti_data));
     c->data = clt;
 
@@ -410,27 +417,48 @@ static void update_listener(ziti_service *service, int status, struct listener *
 }
 
 static void service_check_cb(ziti_context ztx, ziti_service *service, int status, void *ctx) {
-    listener_l *listeners = ctx;
-
-    struct listener *l = NULL;
-    LIST_FOREACH(l, listeners, next) {
-        if (strcmp(l->service_name, service->name) == 0) {
-            update_listener(service, status, l);
-        }
+    struct proxy_app_ctx *app_ctx = ctx;
+    ZITI_LOG(DEBUG, "service[%s]: %s", service->name, ziti_errorstr(status));
+    struct listener *l = model_map_get(&app_ctx->listeners, service->name);
+    if (l) {
+        update_listener(service, status, l);
     }
 }
 
-static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
-    if (event->type == ZitiContextEvent) {
-        if (event->event.ctx.ctrl_status == ZITI_OK) {
-            const ziti_version *ctrl_ver = ziti_get_controller_version(ztx);
-            const ziti_identity *proxy_id = ziti_get_identity(ztx);
-            ZITI_LOG(INFO, "controller version = %s(%s)[%s]", ctrl_ver->version, ctrl_ver->revision, ctrl_ver->build_date);
-            ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, ziti_get_controller(ztx));
-            ziti = ztx;
-        } else {
-            ZITI_LOG(ERROR, "Failed to connect to controller: %s", event->event.ctx.err);
-        }
+static void on_ziti_event(ziti_context ztx, const ziti_event_t *event, void *ctx) {
+    struct proxy_app_ctx *app_ctx = ctx;
+    switch (event->type) {
+
+        case ZitiContextEvent:
+            if (event->event.ctx.ctrl_status == ZITI_OK) {
+                const ziti_version *ctrl_ver = ziti_get_controller_version(ztx);
+                const ziti_identity *proxy_id = ziti_get_identity(ztx);
+                ZITI_LOG(INFO, "controller version = %s(%s)[%s]", ctrl_ver->version, ctrl_ver->revision,
+                         ctrl_ver->build_date);
+                ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, ziti_get_controller(ztx));
+                app_ctx->ziti = ztx;
+            }
+            else {
+                ZITI_LOG(ERROR, "Failed to connect to controller: %s", event->event.ctx.err);
+            }
+            break;
+
+        case ZitiServiceEvent:
+            if (event->event.service.removed != NULL) {
+                for (ziti_service **sp = event->event.service.removed; *sp != NULL; sp++) {
+                    service_check_cb(ztx, *sp, ZITI_SERVICE_UNAVAILABLE, app_ctx);
+                }
+            }
+
+            if (event->event.service.added != NULL) {
+                for (ziti_service **sp = event->event.service.added; *sp != NULL; sp++) {
+                    service_check_cb(ztx, *sp, ZITI_OK, app_ctx);
+                }
+            }
+            break;
+
+        default:
+            break;
     }
 }
 
@@ -446,7 +474,7 @@ void run(int argc, char **argv) {
     NEWP(loop, uv_loop_t);
     uv_loop_init(loop);
 
-    listener_l listeners = LIST_HEAD_INITIALIZER(listeners);
+    struct proxy_app_ctx app_ctx = {0};
     for (int i = 0; i < argc; i++) {
 
         char *p = strchr(argv[i], ':');
@@ -455,26 +483,26 @@ void run(int argc, char **argv) {
         NEWP(l, struct listener);
         l->service_name = service_name;
         l->port = (int) strtol(p + 1, NULL, 10);
+        l->app_ctx = &app_ctx;
 
         TRY(uv, uv_tcp_init(loop, &l->server));
 
         l->server.data = l;
 
-        LIST_INSERT_HEAD(&listeners, l, next);
+        model_map_set(&app_ctx.listeners, service_name, l);
     }
 
     ziti_options opts = {
             .config = config,
-            .events = ZitiContextEvent,
+            .events = ZitiContextEvent|ZitiServiceEvent,
             .event_cb = on_ziti_event,
-            .service_cb = service_check_cb,
-            .refresh_interval = 600,
-            .app_ctx = &listeners,
+            .refresh_interval = 60,
+            .app_ctx = &app_ctx,
             .config_types = my_configs,
             .metrics_type = INSTANT,
     };
 
-    ziti_init_opts(&opts, loop, &listeners);
+    ziti_init_opts(&opts, loop, &app_ctx);
 
 
 #if __unix__ || __unix
@@ -486,7 +514,7 @@ void run(int argc, char **argv) {
 
     for (int i = 0; i < sizeof(signals) / sizeof(signals[0]); i++) {
         TRY(uv, uv_signal_init(loop, &signals[i].sig));
-        signals[i].sig.data = &listeners;
+        signals[i].sig.data = &app_ctx;
         TRY(uv, uv_signal_start(&signals[i].sig, signals[i].cb, signals[i].signum));
         uv_unref((uv_handle_t *) &signals[i].sig);
     }
@@ -496,6 +524,7 @@ void run(int argc, char **argv) {
 
     if (report_metrics > 0) {
         uv_timer_init(loop, &report_timer);
+        report_timer.data = &app_ctx;
         uv_timer_start(&report_timer, reporter_cb, report_metrics * 1000, report_metrics * 1000);
         uv_unref((uv_handle_t *) &report_timer);
     }

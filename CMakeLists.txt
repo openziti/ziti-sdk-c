@@ -7,6 +7,8 @@ project(ziti-sdk
         LANGUAGES C CXX
         )
 
+add_compile_definitions(FOO=bar)
+
 option(ZITI_BUILD_PROGRAMS "Build programs." ON)
 option(ZITI_BUILD_TESTS "Build tests." ON)
 

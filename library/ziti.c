@@ -541,13 +541,24 @@ static void update_services(ziti_service_array services, ziti_error *error, ziti
     ZITI_LOG(VERBOSE, "processing service updates");
 
     model_map updates = {0};
-    model_map changes = {0};
 
-    for (int idx = 0; services[idx] != NULL; idx++) {
+    int idx;
+    for (idx = 0; services[idx] != NULL; idx++) {
         set_service_flags(services[idx]);
         model_map_set(&updates, services[idx]->name, services[idx]);
     }
     free(services);
+
+    size_t current_size = model_map_size(&ztx->services);
+    size_t chIdx = 0, addIdx = 0, remIdx = 0;
+    ziti_event_t ev = {
+            .type = ZitiServiceEvent,
+            .event.service = {
+                    .removed = calloc(current_size + 1, sizeof(ziti_service *)),
+                    .changed = calloc(current_size + 1, sizeof(ziti_service *)),
+                    .added = calloc(idx + 1, sizeof(ziti_service *)),
+            }
+    };
 
     const char *name;
     ziti_service *s;
@@ -557,7 +568,7 @@ static void update_services(ziti_service_array services, ziti_error *error, ziti
 
         if (updt != NULL) {
             if (cmp_ziti_service(updt, model_map_it_value(it)) != 0) {
-                model_map_set(&changes, model_map_it_key(it), updt);
+                ev.event.service.changed[chIdx++] = updt;
             } else {
                 // no changes detected, just discard it
                 free_ziti_service(updt);
@@ -569,17 +580,14 @@ static void update_services(ziti_service_array services, ziti_error *error, ziti
             // service was removed
             ZITI_LOG(DEBUG, "service[%s] is not longer available", model_map_it_key(it));
             s = model_map_it_value(it);
-            if (ztx->opts->service_cb != NULL) {
-                ztx->opts->service_cb(ztx, s, ZITI_SERVICE_UNAVAILABLE, ztx->opts->app_ctx);
-            }
+            ev.event.service.removed[remIdx++] = s;
+
             ziti_net_session *session = model_map_remove(&ztx->sessions, s->id);
             if (session) {
                 free_ziti_net_session(session);
                 free(session);
             }
             it = model_map_it_remove(it);
-            free_ziti_service(s);
-            free(s);
         }
     }
 
@@ -587,30 +595,46 @@ static void update_services(ziti_service_array services, ziti_error *error, ziti
     it = model_map_iterator(&updates);
     while (it != NULL) {
         s = model_map_it_value(it);
-        name = model_map_it_key(it);
-        model_map_set(&ztx->services, name, s);
-        if (ztx->opts->service_cb != NULL) {
-            ztx->opts->service_cb(ztx, s, ZITI_OK, ztx->opts->app_ctx);
-        }
+        ev.event.service.added[addIdx++] = s;
         it = model_map_it_remove(it);
     }
 
     // process updates
-    it = model_map_iterator(&changes);
-    while (it != NULL) {
-        s = model_map_it_value(it);
-        name = model_map_it_key(it);
-
-        ziti_service *old = model_map_set(&ztx->services, name, s);
+    for (idx = 0; ev.event.service.changed[idx] != NULL; idx++) {
+        s = ev.event.service.changed[idx];
+        ziti_service *old = model_map_set(&ztx->services, s->name, s);
         if (ztx->opts->service_cb != NULL) {
             ztx->opts->service_cb(ztx, s, ZITI_OK, ztx->opts->app_ctx);
         }
 
         free_ziti_service(old);
         FREE(old);
-        it = model_map_it_remove(it);
     }
 
+    // process additions
+    for (idx = 0; ev.event.service.added[idx] != NULL; idx++) {
+        s = ev.event.service.added[idx];
+        model_map_set(&ztx->services, s->name, s);
+        if (ztx->opts->service_cb != NULL) {
+            ztx->opts->service_cb(ztx, s, ZITI_OK, ztx->opts->app_ctx);
+        }
+    }
+
+    ziti_send_event(ztx, &ev);
+
+    // cleanup
+    for (idx = 0; ev.event.service.removed[idx] != NULL; idx++) {
+        s = ev.event.service.removed[idx];
+        if (ztx->opts->service_cb != NULL) {
+            ztx->opts->service_cb(ztx, s, ZITI_SERVICE_UNAVAILABLE, ztx->opts->app_ctx);
+        }
+        free_ziti_service(s);
+        free(s);
+    }
+
+    free(ev.event.service.removed);
+    free(ev.event.service.added);
+    free(ev.event.service.changed);
 
     model_map_clear(&updates, NULL);
 }
@@ -681,14 +705,32 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
             ev.event.ctx.err = err->message;
             ziti_send_event(ztx, &ev);
 
+            ziti_event_t service_event = {
+                    .type = ZitiServiceEvent,
+                    .event.service = {
+                            .removed = calloc(model_map_size(&ztx->services) + 1, sizeof(ziti_service*)),
+                            .added = NULL,
+                            .changed = NULL,
+                    }
+            };
+
+            const char *name;
+            ziti_service *srv;
+            size_t idx = 0;
+            MODEL_MAP_FOREACH(name, srv, &ztx->services) {
+                service_event.event.service.removed[idx++] = srv;
+            }
+
+            ziti_send_event(ztx, &service_event);
+
             if (ztx->opts->service_cb) {
-                const char *name;
-                ziti_service *srv;
-                MODEL_MAP_FOREACH(name, srv, &ztx->services) {
-                    ztx->opts->service_cb(ztx, srv, ZITI_SERVICE_UNAVAILABLE, ztx->opts->app_ctx);
+                ziti_service **srvp;
+                for (srvp = service_event.event.service.removed; *srvp != NULL; srvp++) {
+                    ztx->opts->service_cb(ztx, *srvp, ZITI_SERVICE_UNAVAILABLE, ztx->opts->app_ctx);
                 }
             }
 
+            FREE(service_event.event.service.removed);
             model_map_clear(&ztx->services, (_free_f) free_ziti_service);
         }
     } else {

@@ -34,11 +34,13 @@ struct ziti_context_event {
 };
 
 struct ziti_router_event {
-// TODO
+    int TODO; // shut up windows
 };
 
 struct ziti_service_event {
-// TODO
+    ziti_service_array removed;
+    ziti_service_array changed;
+    ziti_service_array added;
 };
 
 typedef struct ziti_event_s {
