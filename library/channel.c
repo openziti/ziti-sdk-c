@@ -21,6 +21,7 @@ limitations under the License.
 #include "zt_internal.h"
 #include "utils.h"
 #include "endian_internal.h"
+#include "win32_compat.h"
 
 #ifndef MAXHOSTNAMELEN
 #define MAXHOSTNAMELEN 255
