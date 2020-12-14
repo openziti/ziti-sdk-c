@@ -457,6 +457,21 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event, void *ctx
             }
             break;
 
+        case ZitiRouterEvent:
+            switch (event->event.router.status){
+                case EdgeRouterConnected:
+                    ZITI_LOG(INFO, "ziti connected to edge router %s\nversion = %s", event->event.router.name, event->event.router.version);
+                    break;
+                case EdgeRouterDisconnected:
+                    ZITI_LOG(INFO, "ziti disconnected from edge router %s", event->event.router.name);
+                    break;
+                case EdgeRouterRemoved:
+                    ZITI_LOG(INFO, "ziti removed edge router %s", event->event.router.name);
+                    break;
+                case EdgeRouterUnavailable:
+                    ZITI_LOG(INFO, "edge router %s is not available", event->event.router.name);
+                    break;
+            }
         default:
             break;
     }
@@ -494,7 +509,7 @@ void run(int argc, char **argv) {
 
     ziti_options opts = {
             .config = config,
-            .events = ZitiContextEvent|ZitiServiceEvent,
+            .events = ZitiContextEvent|ZitiServiceEvent|ZitiRouterEvent,
             .event_cb = on_ziti_event,
             .refresh_interval = 60,
             .app_ctx = &app_ctx,

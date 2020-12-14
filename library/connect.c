@@ -557,7 +557,7 @@ static void ziti_disconnect_async(uv_async_t *ar) {
 int ziti_disconnect(struct ziti_conn *conn) {
     NEWP(ar, uv_async_t);
     if (conn->channel) {
-        uv_async_init(conn->channel->ctx->loop, ar, ziti_disconnect_async);
+        uv_async_init(conn->ziti_ctx->loop, ar, ziti_disconnect_async);
         ar->data = conn;
         conn->disconnector = ar;
         return uv_async_send(conn->disconnector);

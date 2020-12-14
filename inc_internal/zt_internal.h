@@ -47,6 +47,8 @@ typedef void (*send_cb)(int status, void *ctx);
 
 typedef void (*ch_connect_cb)(ziti_channel_t *ch, void *ctx, int status);
 
+typedef void (*ch_notify_state)(ziti_channel_t *ch, ziti_router_status status, void *ctx);
+
 enum conn_state {
     Initial,
     Connecting,
@@ -61,8 +63,10 @@ enum conn_state {
 };
 
 typedef struct ziti_channel {
+    uv_loop_t *loop;
     struct ziti_ctx *ctx;
     char *name;
+    char *version;
     char *host;
     int port;
 
@@ -88,6 +92,9 @@ typedef struct ziti_channel {
 
     LIST_HEAD(con_list, msg_receiver) receivers;
     LIST_HEAD(waiter, waiter_s) waiters;
+
+    ch_notify_state notify_cb;
+    void *notify_ctx;
 } ziti_channel_t;
 
 struct ziti_write_req_s {
@@ -196,6 +203,8 @@ struct ziti_ctx {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
 
 int ziti_close_channels(ziti_context ztx);
 

@@ -66,9 +66,10 @@ struct msg_receiver {
     LIST_ENTRY(msg_receiver) _next;
 };
 
-int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch) {
+static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t id, tls_context *tls) {
     ch->ctx = ctx;
-    ch->id = ctx->ch_counter++;
+    ch->loop = ctx->loop;
+    ch->id = id;
     ch->msg_seq = -1;
 
     char hostname[MAXHOSTNAMELEN];
@@ -90,18 +91,22 @@ int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch) {
     LIST_INIT(&ch->receivers);
     LIST_INIT(&ch->waiters);
 
-    uv_mbed_init(ctx->loop, &ch->connection, ctx->tlsCtx);
+    uv_mbed_init(ch->loop, &ch->connection, tls);
     uv_mbed_keepalive(&ch->connection, true, 60);
     uv_mbed_nodelay(&ch->connection, true);
     ch->connection._stream.data = ch;
+
+    ch->notify_cb = ziti_on_channel_event;
+    ch->notify_ctx = ctx;
     return 0;
 }
 
 void ziti_channel_free(ziti_channel_t* ch) {
     free(ch->conn_reqs);
     free_buffer(ch->incoming);
-    free(ch->name);
-    free(ch->host);
+    FREE(ch->name);
+    FREE(ch->version);
+    FREE(ch->host);
 }
 
 int ziti_close_channels(struct ziti_ctx *ziti) {
@@ -186,7 +191,7 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
     }
 
     ch = calloc(1, sizeof(ziti_channel_t));
-    ziti_channel_init(ztx, ch);
+    ziti_channel_init(ztx, ch, ztx->ch_counter++, ztx->tlsCtx);
     ch->name = strdup(ch_name);
     ZITI_LOG(INFO, "opening new channel for ingress[%s] ch[%d]", ch->name, ch->id);
 
@@ -201,7 +206,7 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
 
     ch->host = strdup(host);
     ch->port = ingress.port;
-    model_map_set(&ch->ctx->channels, ch->name, ch);
+    model_map_set(&ztx->channels, ch->name, ch);
 
     uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
     req->data = ch;
@@ -305,7 +310,7 @@ int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_
     wr->ch = ch;
 
     NEWP(async_req, uv_async_t);
-    uv_async_init(ch->ctx->loop, async_req, async_write);
+    uv_async_init(ch->loop, async_req, async_write);
     async_req->data = wr;
 
     // Guard against write requests coming on a thread different from our loop
@@ -467,7 +472,7 @@ static void latency_reply_cb(void *ctx, message *reply) {
     uint64_t ts;
     if (reply->header.content == ContentTypeResultType &&
         message_get_uint64_header(reply, LatencyProbeTime, &ts)) {
-        ch->latency = uv_now(ch->ctx->loop) - ts;
+        ch->latency = uv_now(ch->loop) - ts;
         ZITI_LOG(VERBOSE, "ch[%d](%s) latency is now %ld", ch->id, ch->name, ch->latency);
     } else {
         ZITI_LOG(WARN, "invalid latency probe result ct[%d]", reply->header.content);
@@ -506,11 +511,15 @@ static void hello_reply_cb(void *ctx, message *msg) {
         ZITI_LOG(INFO, "ch[%d](%s) connected. EdgeRouter version: %.*s",
                  ch->id, ch->name, (int) erVersionLen, erVersion);
         ch->state = Connected;
+        FREE(ch->version);
+        ch->version = strndup(erVersion, erVersionLen);
+        ch->notify_cb(ch, EdgeRouterConnected, ch->notify_ctx);
     }
     else {
         ZITI_LOG(ERROR, "channel[%d] connect rejected: %d %*s", ch->id, success, msg->header.body_len, msg->body);
         ch->state = Closed;
         cb_code = ZITI_GATEWAY_UNAVAILABLE;
+        ch->notify_cb(ch, EdgeRouterUnavailable, ch->notify_ctx);
     }
 
     for (int i = 0; i < ch->conn_reqs_n; i++) {
@@ -522,8 +531,8 @@ static void hello_reply_cb(void *ctx, message *msg) {
 
     if (success) {
         // initial latency
-        ch->latency = uv_now(ch->ctx->loop) - ch->latency;
-        uv_timer_init(ch->ctx->loop, &ch->latency_timer);
+        ch->latency = uv_now(ch->loop) - ch->latency;
+        uv_timer_init(ch->loop, &ch->latency_timer);
         ch->latency_timer.data = ch;
         uv_unref((uv_handle_t *) &ch->latency_timer);
         uv_timer_start(&ch->latency_timer, send_latency_probe, 0, 60 * 1000);
@@ -541,7 +550,7 @@ static void send_hello(ziti_channel_t *ch) {
                     .value = ch->ctx->session->token
             }
     };
-    ch->latency = uv_now(ch->ctx->loop);
+    ch->latency = uv_now(ch->loop);
     ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 1, ch->token, strlen(ch->token), hello_reply_cb, ch);
 }
 
@@ -566,7 +575,7 @@ static void reconnect_cb(uv_timer_t *t) {
 
     ch->state = Connecting;
 
-    uv_mbed_init(ch->ctx->loop, &ch->connection, ch->ctx->tlsCtx);
+    uv_mbed_init(ch->loop, &ch->connection, ch->connection.tls);
     ch->connection._stream.data = ch;
     uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
     uv_close((uv_handle_t *) t, (uv_close_cb) free);
@@ -575,7 +584,7 @@ static void reconnect_cb(uv_timer_t *t) {
 static void reconnect_channel(ziti_channel_t *ch) {
     ch->reconnect_count++;
     uv_timer_t *t = malloc(sizeof(uv_timer_t));
-    uv_timer_init(ch->ctx->loop, t);
+    uv_timer_init(ch->loop, t);
     t->data = ch;
 
     int count = ch->reconnect_count;
@@ -591,10 +600,9 @@ static void reconnect_channel(ziti_channel_t *ch) {
 }
 
 static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
-    ziti_context ztx = ch->ctx;
-
     if (ch->state != Closed) {
         ch->state = Disconnected;
+        ch->notify_cb(ch, EdgeRouterDisconnected, ch->notify_ctx);
     }
 
     ch->latency = UINT64_MAX;

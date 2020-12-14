@@ -24,9 +24,16 @@ extern "C" {
 
 typedef enum {
     ZitiContextEvent = 1,
-    ZitiEdgeRouterEvent = 1 << 1,
+    ZitiRouterEvent = 1 << 1,
     ZitiServiceEvent = 1 << 2,
 } ziti_event_type;
+
+typedef enum {
+    EdgeRouterConnected,
+    EdgeRouterDisconnected,
+    EdgeRouterRemoved,
+    EdgeRouterUnavailable,
+} ziti_router_status;
 
 struct ziti_context_event {
     int ctrl_status;
@@ -34,7 +41,9 @@ struct ziti_context_event {
 };
 
 struct ziti_router_event {
-    int TODO; // shut up windows
+    ziti_router_status status;
+    const char* name;
+    const char* version;
 };
 
 struct ziti_service_event {

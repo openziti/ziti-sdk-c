@@ -796,3 +796,16 @@ static void grim_reaper(uv_prepare_t *p) {
         ZITI_LOG(INFO, "reaped %d closed (out of %d total) connections", count, total);
     }
 }
+
+void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx) {
+    ziti_event_t ev = {
+            .type = ZitiRouterEvent,
+            .event.router = {
+                    .name = ch->name,
+                    .version = ch->version,
+                    .status = status,
+            }
+    };
+
+    ziti_send_event(ztx, &ev);
+}
