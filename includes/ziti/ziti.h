@@ -226,6 +226,17 @@ typedef void(*ziti_pr_process_cb)(ziti_context ztx, char *id, char *path, bool i
 typedef void (*ziti_pq_process_cb)(ziti_context ztx, const char *id, const char *path,
                                    ziti_pr_process_cb response_cb);
 
+/**
+ * \brief Ziti Event callback.
+ *
+ * This callback is invoked when certain changes happen for a given ziti context.
+ * Subscription to events is managed by setting desired types on `ziti_options.events` field.
+ *
+ * \see ziti_event_type
+ * \see ziti_event_t
+ * \see ziti_options.event_cb
+ * \see ziti_options.events
+ */
 typedef void (*ziti_event_cb)(ziti_context ztx, const ziti_event_t *event, void *app_ctx);
 
 /**
@@ -240,10 +251,10 @@ typedef struct ziti_options_s {
 
     const char **config_types;
 
-    /*! \deprecated */
+    /*! \deprecated use #event_cb*/
     ziti_init_cb init_cb;
 
-    /*! \deprecated */
+    /*! \deprecated use #event_cb*/
     ziti_service_cb service_cb;
 
     long refresh_interval; //the duration in seconds between checking for updates from the controller
@@ -258,7 +269,15 @@ typedef struct ziti_options_s {
     ziti_pq_domain_cb pq_domain_cb;
 
     void *app_ctx;
+
+    /**
+     * \brief subscribed event types.
+     */
     unsigned int events;
+
+    /**
+     * \brief callback invoked is response to subscribed events.
+     */
     ziti_event_cb event_cb;
 } ziti_options;
 

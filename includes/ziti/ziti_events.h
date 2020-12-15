@@ -22,12 +22,23 @@ limitations under the License.
 extern "C" {
 #endif
 
+/**
+ * \brief Ziti Event Types.
+ *
+ * \see ziti_event_t
+ * \see ziti_options.events
+ */
 typedef enum {
     ZitiContextEvent = 1,
     ZitiRouterEvent = 1 << 1,
     ZitiServiceEvent = 1 << 2,
 } ziti_event_type;
 
+/**
+ * \brief Ziti Edge Router status.
+ *
+ * \see ziti_router_event
+ */
 typedef enum {
     EdgeRouterConnected,
     EdgeRouterDisconnected,
@@ -35,23 +46,53 @@ typedef enum {
     EdgeRouterUnavailable,
 } ziti_router_status;
 
+/**
+ * \brief Context event.
+ *
+ * Informational event to notify app about issues communicating with Ziti controller.
+ */
 struct ziti_context_event {
     int ctrl_status;
     const char *err;
 };
 
+/**
+ * \brief Edge Router Event.
+ *
+ * Informational event to notify app about status of edge router connections.
+ */
 struct ziti_router_event {
     ziti_router_status status;
     const char* name;
     const char* version;
 };
 
+/**
+ * \brief Ziti Service Status event.
+ *
+ * Event notifying app about service access changes.
+ * Each fiels is a NULL-terminated array of `ziti_service*`.
+ *
+ * \see ziti_service
+ */
 struct ziti_service_event {
+
+    /** Services no longer available in the Ziti Context */
     ziti_service_array removed;
+
+    /** Modified services -- name, permissions, configs, etc */
     ziti_service_array changed;
+
+    /** Newly available services in the Ziti Context */
     ziti_service_array added;
 };
 
+/**
+ * \brief Object passed to `ziti_options.event_cb`.
+ *
+ * \note event data becomes invalid as soon as callback returns.
+ * App must copy data if it's needed for further processing.
+ */
 typedef struct ziti_event_s {
     ziti_event_type type;
     union {
