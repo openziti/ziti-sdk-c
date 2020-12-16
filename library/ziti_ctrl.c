@@ -22,7 +22,7 @@ limitations under the License.
 #include <uv_mbed/um_http.h>
 
 #define DEFAULT_PAGE_SIZE 25
-#define ZITI_CTRL_KEEPALIVE -1
+#define ZITI_CTRL_KEEPALIVE 0
 #define ZITI_CTRL_TIMEOUT 10000
 
 const char *const PC_DOMAIN_TYPE = "DOMAIN";
