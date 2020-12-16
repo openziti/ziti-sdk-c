@@ -284,6 +284,11 @@ extern void *ziti_app_ctx(ziti_context ztx) {
 }
 
 
+extern void* ziti_app_ctx(ziti_context ztx) {
+    return ztx->opts->ctx;
+}
+
+
 const char *ziti_get_controller(ziti_context ztx) {
     return ztx->opts->controller;
 }
@@ -762,6 +767,27 @@ static void version_cb(ziti_version *v, ziti_error *err, void *ctx) {
         free_ziti_version(v);
         FREE(v);
     }
+}
+
+void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session) {
+    if (session == NULL) {
+        return;
+    }
+
+    if (strcmp(TYPE_DIAL, session->session_type) == 0) {
+        ziti_net_session *s = model_map_get(&ztx->sessions, session->service_id);
+        if (s != session) {
+            // already removed or different one
+            // passed reference is no longer valid
+            session = NULL;
+        }
+        else if (s == session) {
+            model_map_remove(&ztx->sessions, session->service_id);
+        }
+    }
+
+    free_ziti_net_session(session);
+    FREE(session);
 }
 
 static const ziti_version sdk_version = {

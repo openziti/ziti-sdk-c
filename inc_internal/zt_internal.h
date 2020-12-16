@@ -38,6 +38,8 @@ limitations under the License.
 #define UUID_STR_LEN 37
 #endif
 
+#define TYPE_DIAL "Dial"
+#define TYPE_BIND "Bind"
 
 typedef struct ziti_channel ziti_channel_t;
 
@@ -204,6 +206,8 @@ struct ziti_ctx {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session);
 
 void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
 
