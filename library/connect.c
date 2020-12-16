@@ -460,10 +460,16 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
     return uv_async_send(async_cr);
 }
 
+extern ziti_context ziti_conn_context(ziti_connection conn) {
+    return conn->ziti_ctx;
+}
+
 int ziti_dial(ziti_connection conn, const char *service, ziti_conn_cb conn_cb, ziti_data_cb data_cb) {
     return ziti_dial_with_options(conn, service, NULL, conn_cb, data_cb);
 }
-int ziti_dial_with_options(ziti_connection conn, const char *service, ziti_dial_opts *dial_opts, ziti_conn_cb conn_cb, ziti_data_cb data_cb) {
+
+int ziti_dial_with_options(ziti_connection conn, const char *service, ziti_dial_opts *dial_opts, ziti_conn_cb conn_cb,
+                           ziti_data_cb data_cb) {
     return do_ziti_dial(conn, service, dial_opts, conn_cb, data_cb);
 }
 

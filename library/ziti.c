@@ -275,6 +275,11 @@ int ziti_init(const char *config, uv_loop_t *loop, ziti_init_cb init_cb, void *i
     return ziti_init_opts(opts, loop, init_ctx);
 }
 
+extern void *ziti_app_ctx(ziti_context ztx) {
+    return ztx->opts->app_ctx;
+}
+
+
 const char *ziti_get_controller(ziti_context ztx) {
     return ztx->opts->controller;
 }

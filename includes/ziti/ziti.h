@@ -462,6 +462,15 @@ ZITI_FUNC
 extern int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx);
 
 /**
+ * @brief returns ziti_options.app_ctx for the given Ziti context.
+ *
+ * @param ztx
+ * @return application context that was used during ziti_init
+ */
+ZITI_FUNC
+extern void *ziti_app_ctx(ziti_context ztx);
+
+/**
  * @brief return SDK version
  * @return SDK version
  */
@@ -558,6 +567,15 @@ extern void ziti_dump(ziti_context ztx);
  */
 ZITI_FUNC
 extern int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data);
+
+/**
+ * @brief Return Ziti context for given connection.
+ *
+ * @param conn ziti connection
+ * @return ziti context connection belongs to
+ */
+ZITI_FUNC
+extern ziti_context ziti_conn_context(ziti_connection conn);
 
 /**
  * @brief Retrieves any custom data associated with the given #ziti_connection.
