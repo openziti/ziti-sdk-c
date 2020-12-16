@@ -168,6 +168,7 @@ struct ziti_ctx {
 
     tls_context *tlsCtx;
 
+    int ctrl_status;
     ziti_session *session;
 
     // map<name,ziti_service>

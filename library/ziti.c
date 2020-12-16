@@ -48,6 +48,7 @@ static const char *ALL_CONFIG_TYPES[] = {
 
 struct ziti_init_req {
     ziti_context ztx;
+    bool login;
     int init_status;
     ziti_init_cb init_cb;
     void *init_ctx;
@@ -206,6 +207,7 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     ctx->tlsCtx = options->tls;
     ctx->loop = loop;
     ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
+    ctx->ctrl_status = ZITI_WTF;
 
     NEWP(init_req, struct ziti_init_req);
     init_req->init_cb = options->init_cb;
@@ -248,7 +250,6 @@ static void ziti_init_async(uv_async_t *ar) {
     ziti_ctrl_get_version(&ctx->controller, version_cb, ctx);
 
     uv_timer_init(loop, &ctx->session_timer);
-    uv_unref((uv_handle_t *) &ctx->session_timer);
     ctx->session_timer.data = ctx;
 
     uv_timer_init(loop, &ctx->refresh_timer);
@@ -262,6 +263,11 @@ static void ziti_init_async(uv_async_t *ar) {
     uv_unref((uv_handle_t *) &ctx->reaper);
     uv_prepare_start(&ctx->reaper, grim_reaper);
 
+    ZITI_LOG(INFO, "using metrics interval: %d", (int) ctx->opts->metrics_type);
+    metrics_rate_init(&ctx->up_rate, ctx->opts->metrics_type);
+    metrics_rate_init(&ctx->down_rate, ctx->opts->metrics_type);
+
+    init_req->login = true;
     ziti_ctrl_login(&ctx->controller, ctx->opts->config_types, session_cb, init_req);
 }
 
@@ -529,6 +535,7 @@ static void ziti_re_auth(ziti_context ztx) {
 
     NEWP(init_req, struct ziti_init_req);
     init_req->ztx = ztx;
+    init_req->login = true;
     ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, session_cb, init_req);
 }
 
@@ -668,9 +675,6 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         ziti_session *old_session = ztx->session;
         ztx->session = session;
 
-        if (old_session == NULL) {
-            ziti_send_event(ztx, &ev);
-        }
         free_ziti_session(old_session);
         FREE(old_session);
 
@@ -695,64 +699,60 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         posture_init(ztx, 20);
 
     } else if (err) {
-        if (ztx->session) {
-            ZITI_LOG(WARN, "failed to refresh: %s[%d]", err->code, errCode);
-            if (strcmp(err->code, "UNAUTHORIZED") == 0) {
+        ev.event.ctx.ctrl_status = errCode;
+        ev.event.ctx.err = err->message;
+        ZITI_LOG(WARN, "failed to get session from ctrl[%s] %s[%d] %s",
+                 ztx->opts->controller, err->code, errCode, err->message);
+
+        if (errCode == ZITI_NOT_AUTHORIZED) {
+            if (ztx->session || !init_req->login) {
+                // previously successfully logged in
+                // maybe just session expired
+                // just try to re-auth
                 ziti_re_auth(ztx);
-            } else {
-                uv_timer_start(&ztx->session_timer, session_refresh, 5 * 1000, 0);
+                errCode = ztx->ctrl_status; // do not trigger event yet
             }
-        } else {
-            ZITI_LOG(ERROR, "failed to authenticate with ctrl[%s]: %s[%d](%s)", ztx->opts->controller, err->code,
-                     errCode, err->message);
+            else {
+                // cannot login or re-auth -- identity no longer valid
+                // notify service removal, and state
+                ZITI_LOG(ERROR, "identity[%s] cannot authenticate with ctrl[%s]", ztx->opts->config,
+                         ztx->opts->controller);
+                ziti_event_t service_event = {
+                        .type = ZitiServiceEvent,
+                        .event.service = {
+                                .removed = calloc(model_map_size(&ztx->services) + 1, sizeof(ziti_service *)),
+                                .added = NULL,
+                                .changed = NULL,
+                        }
+                };
 
-            ev.event.ctx.ctrl_status = ZITI_CONTROLLER_UNAVAILABLE;
-            ev.event.ctx.err = err->message;
-            ziti_send_event(ztx, &ev);
-
-            ziti_event_t service_event = {
-                    .type = ZitiServiceEvent,
-                    .event.service = {
-                            .removed = calloc(model_map_size(&ztx->services) + 1, sizeof(ziti_service*)),
-                            .added = NULL,
-                            .changed = NULL,
-                    }
-            };
-
-            const char *name;
-            ziti_service *srv;
-            size_t idx = 0;
-            MODEL_MAP_FOREACH(name, srv, &ztx->services) {
-                service_event.event.service.removed[idx++] = srv;
-            }
-
-            ziti_send_event(ztx, &service_event);
-
-            if (ztx->opts->service_cb) {
-                ziti_service **srvp;
-                for (srvp = service_event.event.service.removed; *srvp != NULL; srvp++) {
-                    ztx->opts->service_cb(ztx, *srvp, ZITI_SERVICE_UNAVAILABLE, ztx->opts->app_ctx);
+                const char *name;
+                ziti_service *srv;
+                size_t idx = 0;
+                MODEL_MAP_FOREACH(name, srv, &ztx->services) {
+                    service_event.event.service.removed[idx++] = srv;
                 }
-            }
 
-            FREE(service_event.event.service.removed);
-            model_map_clear(&ztx->services, (_free_f) free_ziti_service);
+                ziti_send_event(ztx, &service_event);
+                model_map_clear(&ztx->services, (_free_f) free_ziti_service);
+
+                uv_timer_stop(&ztx->session_timer);
+                uv_timer_stop(&ztx->refresh_timer);
+                uv_timer_stop(&ztx->posture_checks->timer);
+            }
         }
-    } else {
+        else {
+            uv_timer_start(&ztx->session_timer, session_refresh, 5 * 1000, 0);
+        }
+
+    }
+    else {
         ZITI_LOG(ERROR, "%s: no session or error received", ziti_errorstr(ZITI_WTF));
     }
 
-    if (init_req->init_cb) {
-        if (errCode == ZITI_OK) {
-            rate_type rate = ztx->opts->metrics_type;
-
-            ZITI_LOG(INFO, "using metrics interval: %d", (int) rate);
-
-            metrics_rate_init(&ztx->up_rate, rate);
-            metrics_rate_init(&ztx->down_rate, rate);
-        }
-
-        init_req->init_cb(ztx, errCode, init_req->init_ctx);
+    if (ztx->ctrl_status != errCode) {
+        ztx->ctrl_status = errCode;
+        ziti_send_event(ztx, &ev);
     }
 
     free_ziti_error(err);
