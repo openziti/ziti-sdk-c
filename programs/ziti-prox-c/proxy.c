@@ -425,8 +425,8 @@ static void service_check_cb(ziti_context ztx, ziti_service *service, int status
     }
 }
 
-static void on_ziti_event(ziti_context ztx, const ziti_event_t *event, void *ctx) {
-    struct proxy_app_ctx *app_ctx = ctx;
+static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
+    struct proxy_app_ctx *app_ctx = ziti_app_ctx(ztx);
     switch (event->type) {
 
         case ZitiContextEvent:

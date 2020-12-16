@@ -83,25 +83,6 @@ typedef struct ziti_ctx *ziti_context;
 typedef struct ziti_conn *ziti_connection;
 
 /**
- * @brief Ziti Edge identity context init callback.
- *
- * This callback is invoked on the conclusion of the ziti_init() function. The result of the
- * ziti_init() function may be an error condition so it is important to verify the provided
- * status code in this callback.
- *
- * This callback also has the Ziti Edge identity context supplied. This context should be
- * stored as it is required in most Ziti C SDK function invocations and when no longer needed
- * this handle will need to be passed back to the Ziti C SDK so any resources may be freed.
- *
- * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
- * @param status #ZITI_OK or an error code
- * @param init_ctx custom data passed via ziti_init()
- *
- * @see ziti_init(), ZITI_ERRORS
- */
-typedef void (*ziti_init_cb)(ziti_context ztx, int status, void *init_ctx);
-
-/**
  * @brief Service status callback.
  *
  * This callback is invoked on the conclusion of ziti_service_available(). The result of the function
@@ -237,7 +218,7 @@ typedef void (*ziti_pq_process_cb)(ziti_context ztx, const char *id, const char 
  * \see ziti_options.event_cb
  * \see ziti_options.events
  */
-typedef void (*ziti_event_cb)(ziti_context ztx, const ziti_event_t *event, void *app_ctx);
+typedef void (*ziti_event_cb)(ziti_context ztx, const ziti_event_t *event);
 
 /**
  * @brief ziti_context initialization options
@@ -250,12 +231,6 @@ typedef struct ziti_options_s {
     tls_context *tls;
 
     const char **config_types;
-
-    /*! \deprecated use #event_cb*/
-    ziti_init_cb init_cb;
-
-    /*! \deprecated use #event_cb*/
-    ziti_service_cb service_cb;
 
     long refresh_interval; //the duration in seconds between checking for updates from the controller
     rate_type metrics_type; //an enum describing the metrics to collect
@@ -432,8 +407,9 @@ extern int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb e
  *
  * @param config location of identity configuration
  * @param loop libuv event loop
- * @param init_cb callback to be called when initialization is complete
- * @param init_ctx additional context to be passed into #ziti_init_cb callback
+ * @param event_cb callback to be called for subscribed events
+ * @param events event subscriptions, should be composed of `ziti_event_type` values
+ * @param app_ctx additional context to be passed into #ziti_init_cb callback
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  *
@@ -441,8 +417,7 @@ extern int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb e
  * @deprecated
  */
 ZITI_FUNC
-extern int ziti_init(const char *config, uv_loop_t *loop, ziti_init_cb init_cb, void *init_ctx);
-
+extern int ziti_init(const char *config, uv_loop_t *loop, ziti_event_cb evnt_cb, int events, void *app_ctx);
 
 /**
  * @brief Initialize Ziti Edge identity context with the provided options.

@@ -50,8 +50,6 @@ struct ziti_init_req {
     ziti_context ztx;
     bool login;
     int init_status;
-    ziti_init_cb init_cb;
-    void *init_ctx;
 };
 
 int code_to_error(const char *code);
@@ -210,8 +208,6 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
     ctx->ctrl_status = ZITI_WTF;
 
     NEWP(init_req, struct ziti_init_req);
-    init_req->init_cb = options->init_cb;
-    init_req->init_ctx = init_ctx;
     init_req->ztx = ctx;
 
     NEWP(async_init_req, uv_async_t);
@@ -271,14 +267,16 @@ static void ziti_init_async(uv_async_t *ar) {
     ziti_ctrl_login(&ctx->controller, ctx->opts->config_types, session_cb, init_req);
 }
 
-int ziti_init(const char *config, uv_loop_t *loop, ziti_init_cb init_cb, void *init_ctx) {
+int ziti_init(const char *config, uv_loop_t *loop, ziti_event_cb event_cb, int events, void *app_ctx) {
 
     NEWP(opts, ziti_options);
     opts->config = config;
-    opts->init_cb = init_cb;
+    opts->events = events;
+    opts->event_cb = event_cb;
+    opts->app_ctx = app_ctx;
     opts->config_types = ALL_CONFIG_TYPES;
 
-    return ziti_init_opts(opts, loop, init_ctx);
+    return ziti_init_opts(opts, loop, app_ctx);
 }
 
 extern void *ziti_app_ctx(ziti_context ztx) {
@@ -450,7 +448,7 @@ int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb
 
 static void ziti_send_event(ziti_context ztx, const ziti_event_t *e) {
     if ((ztx->opts->events & e->type) && ztx->opts->event_cb) {
-        ztx->opts->event_cb(ztx, e, ztx->opts->app_ctx);
+        ztx->opts->event_cb(ztx, e);
     }
 }
 
@@ -615,10 +613,6 @@ static void update_services(ziti_service_array services, ziti_error *error, ziti
     for (idx = 0; ev.event.service.changed[idx] != NULL; idx++) {
         s = ev.event.service.changed[idx];
         ziti_service *old = model_map_set(&ztx->services, s->name, s);
-        if (ztx->opts->service_cb != NULL) {
-            ztx->opts->service_cb(ztx, s, ZITI_OK, ztx->opts->app_ctx);
-        }
-
         free_ziti_service(old);
         FREE(old);
     }
@@ -627,9 +621,6 @@ static void update_services(ziti_service_array services, ziti_error *error, ziti
     for (idx = 0; ev.event.service.added[idx] != NULL; idx++) {
         s = ev.event.service.added[idx];
         model_map_set(&ztx->services, s->name, s);
-        if (ztx->opts->service_cb != NULL) {
-            ztx->opts->service_cb(ztx, s, ZITI_OK, ztx->opts->app_ctx);
-        }
     }
 
     ziti_send_event(ztx, &ev);
@@ -637,9 +628,6 @@ static void update_services(ziti_service_array services, ziti_error *error, ziti
     // cleanup
     for (idx = 0; ev.event.service.removed[idx] != NULL; idx++) {
         s = ev.event.service.removed[idx];
-        if (ztx->opts->service_cb != NULL) {
-            ztx->opts->service_cb(ztx, s, ZITI_SERVICE_UNAVAILABLE, ztx->opts->app_ctx);
-        }
         free_ziti_service(s);
         free(s);
     }
@@ -738,7 +726,9 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
 
                 uv_timer_stop(&ztx->session_timer);
                 uv_timer_stop(&ztx->refresh_timer);
-                uv_timer_stop(&ztx->posture_checks->timer);
+                if (ztx->posture_checks != NULL) {
+                    uv_timer_stop(&ztx->posture_checks->timer);
+                }
             }
         }
         else {
