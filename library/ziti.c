@@ -62,27 +62,6 @@ static void ziti_init_async(uv_async_t *ar);
 
 static void grim_reaper(uv_prepare_t *p);
 
-#define CONN_STATES(XX) \
-XX(Initial)\
-    XX(Connecting)\
-    XX(Connected)\
-    XX(Binding)\
-    XX(Bound)\
-    XX(Accepting) \
-    XX(Closed)
-
-static const char* strstate(enum conn_state st) {
-#define state_case(s) case s: return #s;
-
-    switch (st) {
-
-        CONN_STATES(state_case)
-
-        default: return "<unknown>";
-    }
-#undef state_case
-}
-
 static size_t parse_ref(const char *val, const char **res) {
     size_t len = 0;
     *res = NULL;
@@ -283,12 +262,6 @@ extern void *ziti_app_ctx(ziti_context ztx) {
     return ztx->opts->app_ctx;
 }
 
-
-extern void* ziti_app_ctx(ziti_context ztx) {
-    return ztx->opts->ctx;
-}
-
-
 const char *ziti_get_controller(ziti_context ztx) {
     return ztx->opts->controller;
 }
@@ -376,17 +349,18 @@ void ziti_dump(ziti_context ztx) {
     ziti_channel_t *ch;
     const char *url;
     MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
-        printf("ch[%d](%s) %s\n", ch->id, url, ch->state == Disconnected ? "Disconnected" : "");
+        printf("ch[%d](%s) %s\n", ch->id, url, ziti_channel_is_connected(ch) ? "" : "Disconnected");
     }
 
     printf("\n==================\nConnections:\n");
     ziti_connection conn;
     LIST_FOREACH(conn, &ztx->connections, next) {
-        printf("conn[%d]: state[%d] service[%s] using ch[%d] %s\n",
-               conn->conn_id, conn->state, conn->service,
+        printf("conn[%d]: state[%s] service[%s] using ch[%d] %s\n",
+               conn->conn_id, ziti_conn_state(conn), conn->service,
                conn->channel ? conn->channel->id : -1,
                conn->channel ? conn->channel->name : "(none)");
     }
+    printf("\n==================\n\n");
 }
 
 int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {
@@ -395,7 +369,7 @@ int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {
     c->ziti_ctx = ztx;
     c->data = data;
     c->channel = NULL;
-    c->state = Initial;
+//    c->state = Initial;
     c->timeout = ctx->ziti_timeout;
     c->edge_msg_seq = 1;
     c->conn_id = ztx->conn_seq++;
@@ -420,36 +394,6 @@ const char *ziti_conn_source_identity(ziti_connection conn) {
     return conn != NULL ? conn->source_identity : NULL;
 }
 
-int ziti_close(ziti_connection *conn) {
-    struct ziti_conn *c = *conn;
-
-    if (c != NULL) {
-        ziti_disconnect(c);
-    }
-
-    *conn = NULL;
-
-    return ZITI_OK;
-}
-
-int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx) {
-    if (conn->state != Connected) {
-        ZITI_LOG(ERROR, "attempted write on conn[%d] in invalid state[%d]", conn->conn_id, conn->state);
-        write_cb(conn, ZITI_INVALID_STATE, write_ctx);
-        return ZITI_INVALID_STATE;
-    }
-
-    NEWP(req, struct ziti_write_req_s);
-    req->conn = conn;
-    req->buf = data;
-    req->len = length;
-    req->cb = write_cb;
-    req->ctx = write_ctx;
-
-    metrics_rate_update(&conn->ziti_ctx->up_rate, length);
-
-    return ziti_write_req(req);
-}
 
 static void ziti_send_event(ziti_context ztx, const ziti_event_t *e) {
     if ((ztx->opts->events & e->type) && ztx->opts->event_cb) {
@@ -542,7 +486,8 @@ static void ziti_re_auth(ziti_context ztx) {
     ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, session_cb, init_req);
 }
 
-static void update_services(ziti_service_array services, ziti_error *error, ziti_context ztx) {
+static void update_services(ziti_service_array services, ziti_error *error, void *ctx) {
+    ziti_context ztx = ctx;
     if (error) {
         ZITI_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
                  ztx->opts->controller);
@@ -769,13 +714,13 @@ static void version_cb(ziti_version *v, ziti_error *err, void *ctx) {
     }
 }
 
-void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session) {
+void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, const char* type) {
     if (session == NULL) {
         return;
     }
 
-    if (strcmp(TYPE_DIAL, session->session_type) == 0) {
-        ziti_net_session *s = model_map_get(&ztx->sessions, session->service_id);
+    if (strcmp(TYPE_DIAL, type) == 0) {
+        ziti_net_session *s = model_map_get(&ztx->sessions, service_id);
         if (s != session) {
             // already removed or different one
             // passed reference is no longer valid
@@ -814,7 +759,7 @@ static void grim_reaper(uv_prepare_t *p) {
         count += close_conn_internal(try_close);
     }
     if (count > 0) {
-        ZITI_LOG(INFO, "reaped %d closed (out of %d total) connections", count, total);
+        ZITI_LOG(DEBUG, "reaped %d closed (out of %d total) connections", count, total);
     }
 }
 

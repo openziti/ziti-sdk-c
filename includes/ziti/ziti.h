@@ -379,6 +379,15 @@ typedef void (*ziti_write_cb)(ziti_connection conn, ssize_t status, void *write_
 typedef void (*ziti_enroll_cb)(ziti_config *cfg, int status, char *err_message, void *enroll_ctx);
 
 /**
+ * @brief Callback called after connection was closed.
+ *
+ * @param conn connection that was closed
+ *
+ * @see ziti_close()
+ */
+typedef void (*ziti_close_cb)(ziti_connection conn);
+
+/**
  * @brief Performs a Ziti enrollment.
  * 
  * This function is used to enroll a Ziti Edge identity. The Ziti C SDK is based around the [libuv](http://libuv.org/)
@@ -689,12 +698,16 @@ extern int ziti_accept(ziti_connection clt, ziti_conn_cb cb, ziti_data_cb data_c
  * When no longer needed a [connection](#ziti_connection) should be closed to gracefully disconnect. This
  * function should be invoked after any status is returned which indicates an error situation.
  *
+ * This method ensures initiates disconnect(if needed) and release all associated resources.
+ * After close_cb() is called ziti_connection handle is no longer valid.
+ *
  * @param conn the #ziti_connection to be closed
+ * @param close_cb callback called after connection is closed
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
 ZITI_FUNC
-extern int ziti_close(ziti_connection *conn);
+extern int ziti_close(ziti_connection conn, ziti_close_cb close_cb);
 
 /**
  * @brief Closes the outgoing (write) side of the given ziti connection.

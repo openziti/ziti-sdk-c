@@ -156,7 +156,7 @@ void zl_close(uv_link_t* link, uv_link_t* source, uv_link_close_cb link_close_cb
     ziti_link_t *zl = (ziti_link_t *)link;
 
     ZITI_LOG(TRACE, "%s", zl->service);
-    ziti_close(&zl->conn);
+    ziti_close(zl->conn, NULL);
     link_close_cb((uv_link_t *) zl);
 }
 
