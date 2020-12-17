@@ -95,7 +95,7 @@ static void on_ws_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
 
 static void init_cb(ziti_context ztx, const ziti_event_t *ev) {
     const char *service = ziti_app_ctx(ztx);
-    NEWP(src, um_http_src_t);
+    NEWP(src, um_src_t);
     ziti_src_init(ztx->loop, src, service, ztx);
 
     NEWP(ws, um_websocket_t);

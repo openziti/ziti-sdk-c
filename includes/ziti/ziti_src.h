@@ -39,7 +39,7 @@ extern "C" {
  * @param svc the name of the service to be dialed
  * @param ztx the initialized ziti_context
  */
-int ziti_src_init(uv_loop_t *l, um_http_src_t *zl, const char *svc, ziti_context ztx);
+int ziti_src_init(uv_loop_t *l, um_src_t *zl, const char *svc, ziti_context ztx);
 
 #ifdef __cplusplus
 }
