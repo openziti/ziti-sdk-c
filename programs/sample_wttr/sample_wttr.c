@@ -35,13 +35,13 @@ ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
     if (len == ZITI_EOF) {
 
         printf("request completed: %s\n", ziti_errorstr(len));
-        ziti_close(&c);
+        ziti_close(c, NULL);
         ziti_shutdown(ziti);
 
     }
     else if (len < 0) {
         fprintf(stderr, "unexpected error: %s\n", ziti_errorstr(len));
-        ziti_close(&c);
+        ziti_close(c, NULL);
         ziti_shutdown(ziti);
     }
     else {
