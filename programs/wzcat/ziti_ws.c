@@ -23,7 +23,7 @@ limitations under the License.
 #include "../../inc_internal/utils.h"
 #include "../../inc_internal/zt_internal.h"
 
-static void init_cb(ziti_context ztx, int status, void *init_ctx);
+static void init_cb(ziti_context ztx, const ziti_event_t *ev);
 
 int main(int argc, char *argv[]) {
     const char *config = argv[1];
@@ -34,7 +34,9 @@ int main(int argc, char *argv[]) {
     ziti_options opts = {
             .config = config,
             .router_keepalive = 15,
-            .init_cb = init_cb,
+            .event_cb = init_cb,
+            .events = ZitiContextEvent,
+            .app_ctx = ws_service,
     };
     ziti_init_opts(&opts, l, ws_service);
 
@@ -91,8 +93,8 @@ static void on_ws_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
     }
 }
 
-static void init_cb(ziti_context ztx, int status, void *init_ctx) {
-    const char* service = init_ctx;
+static void init_cb(ziti_context ztx, const ziti_event_t *ev) {
+    const char *service = ziti_app_ctx(ztx);
     NEWP(src, um_http_src_t);
     ziti_src_init(ztx->loop, src, service, ztx);
 

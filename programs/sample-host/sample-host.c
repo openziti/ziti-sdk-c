@@ -125,7 +125,7 @@ ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
     return len;
 }
 
-static void on_ziti_init(ziti_context ztx, int status, void *ctx) {
+static void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
     ziti = ztx;
     ziti_connection conn;
     ziti_conn_init(ziti, &conn, NULL);
@@ -171,7 +171,7 @@ int main(int argc, char **argv) {
 
     service = argv[3];
 
-    DIE(ziti_init(argv[2], loop, on_ziti_init, NULL));
+    DIE(ziti_init(argv[2], loop, on_ziti_init, ZitiContextEvent, NULL));
 
     // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);

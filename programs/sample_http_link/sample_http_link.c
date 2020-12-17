@@ -57,8 +57,9 @@ void body_cb(um_http_req_t *req, const char *body, ssize_t len) {
     }
 }
 
-void on_ziti_init(ziti_context ztx, int status, void *ctx) {
-    DIE(status);
+void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
+
+    DIE(ev->event.ctx.ctrl_status);
 
     ziti = ztx;
     ziti_src_init(loop, &zs, "httpbin", ziti);
@@ -75,7 +76,7 @@ int main(int argc, char** argv) {
 #endif
 
     loop = uv_default_loop();
-    DIE(ziti_init(argv[1], loop, on_ziti_init, NULL));
+    DIE(ziti_init(argv[1], loop, on_ziti_init, ZitiContextEvent, NULL));
 
     // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);

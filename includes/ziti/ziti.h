@@ -30,6 +30,7 @@ limitations under the License.
 #include "externs.h"
 #include "ziti_model.h"
 #include "enums.h"
+#include "ziti_events.h"
 
 
 #ifdef __cplusplus
@@ -80,25 +81,6 @@ typedef struct ziti_ctx *ziti_context;
  * @see ziti_conn_init(), ziti_close()
  */
 typedef struct ziti_conn *ziti_connection;
-
-/**
- * @brief Ziti Edge identity context init callback.
- *
- * This callback is invoked on the conclusion of the ziti_init() function. The result of the
- * ziti_init() function may be an error condition so it is important to verify the provided
- * status code in this callback.
- *
- * This callback also has the Ziti Edge identity context supplied. This context should be
- * stored as it is required in most Ziti C SDK function invocations and when no longer needed
- * this handle will need to be passed back to the Ziti C SDK so any resources may be freed.
- *
- * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
- * @param status #ZITI_OK or an error code
- * @param init_ctx custom data passed via ziti_init()
- *
- * @see ziti_init(), ZITI_ERRORS
- */
-typedef void (*ziti_init_cb)(ziti_context ztx, int status, void *init_ctx);
 
 /**
  * @brief Service status callback.
@@ -226,6 +208,19 @@ typedef void (*ziti_pq_process_cb)(ziti_context ztx, const char *id, const char 
                                    ziti_pr_process_cb response_cb);
 
 /**
+ * \brief Ziti Event callback.
+ *
+ * This callback is invoked when certain changes happen for a given ziti context.
+ * Subscription to events is managed by setting desired types on `ziti_options.events` field.
+ *
+ * \see ziti_event_type
+ * \see ziti_event_t
+ * \see ziti_options.event_cb
+ * \see ziti_options.events
+ */
+typedef void (*ziti_event_cb)(ziti_context ztx, const ziti_event_t *event);
+
+/**
  * @brief ziti_context initialization options
  *
  * @see ziti_init_opts()
@@ -236,21 +231,29 @@ typedef struct ziti_options_s {
     tls_context *tls;
 
     const char **config_types;
-    ziti_init_cb init_cb;
-    ziti_service_cb service_cb;
 
     long refresh_interval; //the duration in seconds between checking for updates from the controller
     rate_type metrics_type; //an enum describing the metrics to collect
 
     int router_keepalive;
 
-    void *ctx;
-
     //posture query cbs
     ziti_pq_mac_cb pq_mac_cb;
     ziti_pq_os_cb pq_os_cb;
     ziti_pq_process_cb pq_process_cb;
     ziti_pq_domain_cb pq_domain_cb;
+
+    void *app_ctx;
+
+    /**
+     * \brief subscribed event types.
+     */
+    unsigned int events;
+
+    /**
+     * \brief callback invoked is response to subscribed events.
+     */
+    ziti_event_cb event_cb;
 } ziti_options;
 
 typedef struct ziti_enroll_opts_s {
@@ -404,8 +407,9 @@ extern int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb e
  *
  * @param config location of identity configuration
  * @param loop libuv event loop
- * @param init_cb callback to be called when initialization is complete
- * @param init_ctx additional context to be passed into #ziti_init_cb callback
+ * @param event_cb callback to be called for subscribed events
+ * @param events event subscriptions, should be composed of `ziti_event_type` values
+ * @param app_ctx additional context to be passed into #ziti_init_cb callback
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  *
@@ -413,8 +417,7 @@ extern int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb e
  * @deprecated
  */
 ZITI_FUNC
-extern int ziti_init(const char *config, uv_loop_t *loop, ziti_init_cb init_cb, void *init_ctx);
-
+extern int ziti_init(const char *config, uv_loop_t *loop, ziti_event_cb evnt_cb, int events, void *app_ctx);
 
 /**
  * @brief Initialize Ziti Edge identity context with the provided options.
@@ -432,6 +435,15 @@ extern int ziti_init(const char *config, uv_loop_t *loop, ziti_init_cb init_cb, 
  */
 ZITI_FUNC
 extern int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx);
+
+/**
+ * @brief returns ziti_options.app_ctx for the given Ziti context.
+ *
+ * @param ztx
+ * @return application context that was used during ziti_init
+ */
+ZITI_FUNC
+extern void *ziti_app_ctx(ziti_context ztx);
 
 /**
  * @brief return SDK version
@@ -530,6 +542,15 @@ extern void ziti_dump(ziti_context ztx);
  */
 ZITI_FUNC
 extern int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data);
+
+/**
+ * @brief Return Ziti context for given connection.
+ *
+ * @param conn ziti connection
+ * @return ziti context connection belongs to
+ */
+ZITI_FUNC
+extern ziti_context ziti_conn_context(ziti_connection conn);
 
 /**
  * @brief Retrieves any custom data associated with the given #ziti_connection.

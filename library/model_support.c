@@ -694,7 +694,7 @@ static int _cmp_timeval(timestamp *lh, timestamp *rh) {
 
 static int _cmp_string(char **lh, char **rh) {
     null_checks(lh, rh)
-    if (*lh == *rh) { return 0; } // same ptr or both NULL
+    null_checks(*lh, *rh)
 
     return strcmp(*lh, *rh);
 }
@@ -964,6 +964,10 @@ static struct model_map_entry *find_map_entry(model_map *m, const char *key, uin
         }
     }
     return NULL;
+}
+
+size_t model_map_size(model_map *m) {
+    return m->impl ? m->impl->size : 0;
 }
 
 void *model_map_set(model_map *m, const char *key, void *val) {

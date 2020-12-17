@@ -256,6 +256,12 @@ TEST_CASE("model compare", "[model]") {
     b2.num = 45;
     b2.msg = (char *) "this is bar1";
     CHECK(model_cmp(&b1, &b2, &Bar_META) == 0);
+
+    b2.msg = nullptr;
+    CHECK(model_cmp(&b1, &b2, &Bar_META) != 0);
+
+    b1.msg = nullptr;
+    CHECK(model_cmp(&b1, &b2, &Bar_META) == 0);
 }
 
 TEST_CASE("model compare with map", "[model]") {
