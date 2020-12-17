@@ -694,7 +694,7 @@ static int _cmp_timeval(timestamp *lh, timestamp *rh) {
 
 static int _cmp_string(char **lh, char **rh) {
     null_checks(lh, rh)
-    if (*lh == *rh) { return 0; } // same ptr or both NULL
+    null_checks(*lh, *rh)
 
     return strcmp(*lh, *rh);
 }
