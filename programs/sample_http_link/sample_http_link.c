@@ -23,7 +23,7 @@ limitations under the License.
 static uv_loop_t *loop;
 static ziti_context ziti;
 static um_http_t clt;
-static um_http_src_t zs;
+static um_src_t zs;
 
 #define DIE(v) do { \
 int code = (v);\
@@ -63,7 +63,7 @@ void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
 
     ziti = ztx;
     ziti_src_init(loop, &zs, "httpbin", ziti);
-    um_http_init_with_src(loop, &clt, "http://httpbin.org", (um_http_src_t *) &zs);
+    um_http_init_with_src(loop, &clt, "http://httpbin.org", (um_src_t *) &zs);
 
     um_http_req_t *r = um_http_req(&clt, "GET", "/json", resp_cb, NULL);
     r->resp.body_cb = body_cb;
