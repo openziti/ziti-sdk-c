@@ -369,7 +369,6 @@ int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {
     c->ziti_ctx = ztx;
     c->data = data;
     c->channel = NULL;
-//    c->state = Initial;
     c->timeout = ctx->ziti_timeout;
     c->edge_msg_seq = 1;
     c->conn_id = ztx->conn_seq++;

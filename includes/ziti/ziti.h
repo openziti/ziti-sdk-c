@@ -698,8 +698,8 @@ extern int ziti_accept(ziti_connection clt, ziti_conn_cb cb, ziti_data_cb data_c
  * When no longer needed a [connection](#ziti_connection) should be closed to gracefully disconnect. This
  * function should be invoked after any status is returned which indicates an error situation.
  *
- * This method ensures initiates disconnect(if needed) and release all associated resources.
- * After close_cb() is called ziti_connection handle is no longer valid.
+ * This method initiates the disconnect(if needed) and the release all associated resources.
+ * After close_cb() is called, the ziti_connection handle is no longer valid.
  *
  * @param conn the #ziti_connection to be closed
  * @param close_cb callback called after connection is closed
