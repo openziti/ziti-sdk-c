@@ -211,10 +211,12 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
                       uint32_t body_len,
                       struct ziti_write_req_s *ziti_write);
 
-int
+struct waiter_s*
 ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *headers, int nhdrs, const uint8_t *body,
                             uint32_t body_len, reply_cb,
                             void *reply_ctx);
+
+void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter);
 
 int load_config(const char *filename, ziti_config **);
 

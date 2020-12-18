@@ -264,9 +264,18 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
     return uv_mbed_write(req, &ch->connection, &buf, on_channel_send);
 }
 
-int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
-                                uint32_t body_len,
-                                reply_cb rep_cb, void *reply_ctx) {
+void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter) {
+    if (waiter) {
+        LIST_REMOVE(waiter, next);
+        free(waiter);
+    }
+}
+
+struct waiter_s*
+ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
+                            uint32_t body_len,
+                            reply_cb rep_cb, void *reply_ctx) {
+    struct waiter_s *result = NULL;
     header_t header;
     header_init(&header, ch->msg_seq++);
 
@@ -298,6 +307,7 @@ int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_
         w->reply_ctx = reply_ctx;
 
         LIST_INSERT_HEAD(&ch->waiters, w, next);
+        result = w;
     }
 
     NEWP(wr, struct async_write_req);
@@ -316,7 +326,7 @@ int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_
         uv_async_send(async_req);
     }
 
-    return 0;
+    return result;
 }
 
 static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id) {
