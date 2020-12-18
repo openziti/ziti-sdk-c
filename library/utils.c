@@ -153,6 +153,11 @@ void ziti_log_set_level(int level) {
     }
 
     uv_mbed_set_debug(ziti_log_lvl, uv_mbed_logger);
+    if (logger) {
+        char msg[128];
+        int len = snprintf(msg, sizeof(msg), "set log level: ziti_log_lvl=%d &ziti_log_lvl = %p", ziti_log_lvl, &ziti_log_lvl);
+        logger(INFO, "ziti_log_set_level", msg, len);
+    }
 }
 
 int ziti_log_level() {
