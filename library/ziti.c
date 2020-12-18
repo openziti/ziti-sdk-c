@@ -48,6 +48,7 @@ static const char *ALL_CONFIG_TYPES[] = {
 
 struct ziti_init_req {
     ziti_context ztx;
+    bool login;
     int init_status;
     ziti_init_cb init_cb;
     void *init_ctx;
@@ -243,7 +244,7 @@ static void ziti_init_async(uv_async_t *ar) {
              ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
              time_str, start_time.tv_usec / 1000);
 
-
+    init_req->login = true;
     ziti_ctrl_init(loop, &ctx->controller, ctx->opts->controller, ctx->tlsCtx);
     ziti_ctrl_get_version(&ctx->controller, version_cb, ctx);
 
@@ -518,6 +519,7 @@ static void ziti_re_auth(ziti_context ztx) {
 
     NEWP(init_req, struct ziti_init_req);
     init_req->ztx = ztx;
+    init_req->login = true;
     ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, session_cb, init_req);
 }
 
@@ -648,27 +650,43 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         posture_init(ztx, 20);
 
     } else if (err) {
-        if (ztx->session) {
-            ZITI_LOG(WARN, "failed to refresh: %s[%d]", err->code, errCode);
-            if (strcmp(err->code, "UNAUTHORIZED") == 0) {
-                ziti_re_auth(ztx);
-            } else {
-                uv_timer_start(&ztx->session_timer, session_refresh, 5 * 1000, 0);
-            }
-        } else {
-            ZITI_LOG(ERROR, "failed to authenticate with ctrl[%s]: %s[%d](%s)", ztx->opts->controller, err->code,
-                     errCode, err->message);
 
-            if (ztx->opts->service_cb) {
+        ZITI_LOG(WARN, "failed to get session from ctrl[%s] %s[%d] %s",
+                 ztx->opts->controller, err->code, errCode, err->message);
+
+        if (errCode == ZITI_NOT_AUTHORIZED) {
+            if (ztx->session || !init_req->login) {
+                // previously successfully logged in
+                // maybe just session expired
+                // just try to re-auth
+                ziti_re_auth(ztx);
+            }
+            else {
+                // cannot login or re-auth -- identity no longer valid
+                // notify service removal, and state
+                ZITI_LOG(ERROR, "identity[%s] cannot authenticate with ctrl[%s]", ztx->opts->config,
+                         ztx->opts->controller);
                 const char *name;
                 ziti_service *srv;
-                MODEL_MAP_FOREACH(name, srv, &ztx->services) {
-                    ztx->opts->service_cb(ztx, srv, ZITI_SERVICE_UNAVAILABLE, ztx->opts->ctx);
+                size_t idx = 0;
+                if (ztx->opts->service_cb) {
+                    MODEL_MAP_FOREACH(name, srv, &ztx->services) {
+                        ztx->opts->service_cb(ztx, srv, ZITI_SERVICE_UNAVAILABLE, ztx->opts->ctx);
+                    }
+                }
+
+                model_map_clear(&ztx->services, (_free_f) free_ziti_service);
+
+                uv_timer_stop(&ztx->session_timer);
+                uv_timer_stop(&ztx->refresh_timer);
+                if (ztx->posture_checks != NULL) {
+                    uv_timer_stop(&ztx->posture_checks->timer);
                 }
             }
-
-            model_map_clear(&ztx->services, (_free_f) free_ziti_service);
+        } else {
+            uv_timer_start(&ztx->session_timer, session_refresh, 5 * 1000, 0);
         }
+
     } else {
         ZITI_LOG(ERROR, "%s: no session or error received", ziti_errorstr(ZITI_WTF));
     }
