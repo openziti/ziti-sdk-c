@@ -568,17 +568,23 @@ static void async_write(uv_async_t *ar) {
 
 static void reconnect_cb(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
+    ziti_context ztx = ch->ctx;
 
-    ch->msg_seq = 0;
+    if(ztx->session == NULL || ztx->session->token == NULL) {
+        ZITI_LOG(ERROR, "ziti context is not authenticated, delaying re-connect");
+        reconnect_channel(ch);
+    } else {
+        ch->msg_seq = 0;
 
-    uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
-    req->data = ch;
+        uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
+        req->data = ch;
 
-    ch->state = Connecting;
+        ch->state = Connecting;
 
-    uv_mbed_init(ch->ctx->loop, &ch->connection, ch->ctx->tlsCtx);
-    ch->connection._stream.data = ch;
-    uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
+        uv_mbed_init(ch->ctx->loop, &ch->connection, ch->ctx->tlsCtx);
+        ch->connection._stream.data = ch;
+        uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
+    }
     uv_close((uv_handle_t *) t, (uv_close_cb) free);
 }
 
@@ -621,6 +627,7 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
 
     if (ch->state != Closed) {
         reconnect_channel(ch);
+        ziti_force_session_refresh(ztx);
     }
 }
 

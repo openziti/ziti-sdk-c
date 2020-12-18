@@ -506,6 +506,10 @@ static void session_refresh(uv_timer_t *t) {
     ziti_ctrl_current_api_session(&ztx->controller, session_cb, req);
 }
 
+void ziti_force_session_refresh(ziti_context ztx) {
+    uv_timer_start(&ztx->session_timer, session_refresh, 0, 0);
+}
+
 static void ziti_re_auth(ziti_context ztx) {
     ZITI_LOG(WARN, "starting to re-auth with ctlr[%s]", ztx->opts->controller);
     uv_timer_stop(&ztx->refresh_timer);

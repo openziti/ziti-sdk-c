@@ -197,6 +197,8 @@ struct ziti_ctx {
 extern "C" {
 #endif
 
+void ziti_force_session_refresh(ziti_context ztx);
+
 int ziti_close_channels(ziti_context ztx);
 
 int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb, void *ctx);
