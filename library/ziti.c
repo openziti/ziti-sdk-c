@@ -241,7 +241,7 @@ static void ziti_init_async(uv_async_t *ar) {
              ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
              time_str, start_time.tv_usec / 1000);
 
-
+    init_req->login = true;
     ziti_ctrl_init(loop, &ctx->controller, ctx->opts->controller, ctx->tlsCtx);
     ziti_ctrl_get_version(&ctx->controller, version_cb, ctx);
 
@@ -520,6 +520,10 @@ static void session_refresh(uv_timer_t *t) {
     ziti_ctrl_current_api_session(&ztx->controller, session_cb, req);
 }
 
+void ziti_force_session_refresh(ziti_context ztx) {
+    uv_timer_start(&ztx->session_timer, session_refresh, 0, 0);
+}
+
 static void ziti_re_auth(ziti_context ztx) {
     ZITI_LOG(WARN, "starting to re-auth with ctlr[%s]", ztx->opts->controller);
     uv_timer_stop(&ztx->refresh_timer);
@@ -717,7 +721,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
                 const char *name;
                 ziti_service *srv;
                 size_t idx = 0;
-                MODEL_MAP_FOREACH(name, srv, &ztx->services) {
+                    MODEL_MAP_FOREACH(name, srv, &ztx->services) {
                     service_event.event.service.removed[idx++] = srv;
                 }
 
@@ -733,7 +737,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         }
         else {
             uv_timer_start(&ztx->session_timer, session_refresh, 5 * 1000, 0);
-        }
+            }
 
     }
     else {

@@ -270,9 +270,18 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
     return uv_mbed_write(req, &ch->connection, &buf, on_channel_send);
 }
 
-int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
-                                uint32_t body_len,
-                                reply_cb rep_cb, void *reply_ctx) {
+void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter) {
+    if (waiter) {
+        LIST_REMOVE(waiter, next);
+        free(waiter);
+    }
+}
+
+struct waiter_s*
+ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
+                            uint32_t body_len,
+                            reply_cb rep_cb, void *reply_ctx) {
+    struct waiter_s *result = NULL;
     header_t header;
     header_init(&header, ch->msg_seq++);
 
@@ -304,6 +313,7 @@ int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_
         w->reply_ctx = reply_ctx;
 
         LIST_INSERT_HEAD(&ch->waiters, w, next);
+        result = w;
     }
 
     NEWP(wr, struct async_write_req);
@@ -322,7 +332,7 @@ int ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_
         uv_async_send(async_req);
     }
 
-    return 0;
+    return result;
 }
 
 static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id) {
@@ -568,17 +578,23 @@ static void async_write(uv_async_t *ar) {
 
 static void reconnect_cb(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
+    ziti_context ztx = ch->ctx;
 
-    ch->msg_seq = 0;
+    if(ztx->session == NULL || ztx->session->token == NULL) {
+        ZITI_LOG(ERROR, "ziti context is not authenticated, delaying re-connect");
+        reconnect_channel(ch);
+    } else {
+        ch->msg_seq = 0;
 
-    uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
-    req->data = ch;
+        uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
+        req->data = ch;
 
-    ch->state = Connecting;
+        ch->state = Connecting;
 
     uv_mbed_init(ch->loop, &ch->connection, ch->connection.tls);
-    ch->connection._stream.data = ch;
-    uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
+        ch->connection._stream.data = ch;
+        uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
+    }
     uv_close((uv_handle_t *) t, (uv_close_cb) free);
 }
 
@@ -620,6 +636,7 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
 
     if (ch->state != Closed) {
         reconnect_channel(ch);
+        ziti_force_session_refresh(ztx);
     }
 }
 

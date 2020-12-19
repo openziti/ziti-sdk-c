@@ -40,7 +40,7 @@ enum DebugLevel {
 };
 
 #define ZITI_LOG(level, fmt, ...) do { \
-if (level <= ziti_log_level) { ziti_logger(level, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
+if (level <= ziti_log_level()) { ziti_logger(level, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
 } while(0)
 
 #ifdef __cplusplus
@@ -65,7 +65,7 @@ ZITI_FUNC extern void ziti_log_set_logger(log_writer logger);
 ZITI_FUNC extern void ziti_log_set_level(int level);
 
 // don't use directly
-ZITI_FUNC extern int ziti_log_level;
+ZITI_FUNC extern int ziti_log_level();
 
 #ifdef __cplusplus
 }
