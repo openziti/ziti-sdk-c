@@ -71,14 +71,15 @@ XX(Initial)\
     XX(Accepting) \
     XX(Closed)
 
-static const char* strstate(enum conn_state st) {
+static const char *strstate(enum conn_state st) {
 #define state_case(s) case s: return #s;
 
     switch (st) {
 
         CONN_STATES(state_case)
 
-        default: return "<unknown>";
+        default:
+            return "<unknown>";
     }
 #undef state_case
 }
@@ -91,13 +92,11 @@ static size_t parse_ref(const char *val, const char **res) {
             // load file
             *res = val + strlen("file://");
             len = strlen(*res) + 1;
-        }
-        else if (strncmp("pem:", val, 4) == 0) {
+        } else if (strncmp("pem:", val, 4) == 0) {
             // load inline PEM
             *res = val + 4;
             len = strlen(val + 4) + 1;
-        }
-        else {
+        } else {
             *res = val;
             len = strlen(val) + 1;
         }
@@ -112,12 +111,11 @@ static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout
         if (strncasecmp(q, opt, optlen) == 0 && (q[optlen] == '=' || q[optlen] == 0)) {
             const char *val = q + optlen + 1;
             char *end = strchr(val, '&');
-            int vlen = (int)(end == NULL ? strlen(val) : end - val);
+            int vlen = (int) (end == NULL ? strlen(val) : end - val);
             snprintf(out, maxout, "%*.*s", vlen, vlen, val);
             return ZITI_OK;
 
-        }
-        else { // skip to next '&'
+        } else { // skip to next '&'
             q = strchr(q, '&');
             if (q == NULL) {
                 break;
@@ -682,8 +680,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
             ZITI_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
             uv_timer_start(&ztx->refresh_timer, services_refresh, 0, ztx->opts->refresh_interval * 1000);
-        }
-        else if (ztx->opts->refresh_interval == 0) {
+        } else if (ztx->opts->refresh_interval == 0) {
             ZITI_LOG(DEBUG, "refresh_interval not specified");
             uv_timer_stop(&ztx->refresh_timer);
         }
@@ -703,8 +700,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
                 // just try to re-auth
                 ziti_re_auth(ztx);
                 errCode = ztx->ctrl_status; // do not trigger event yet
-            }
-            else {
+            } else {
                 // cannot login or re-auth -- identity no longer valid
                 // notify service removal, and state
                 ZITI_LOG(ERROR, "identity[%s] cannot authenticate with ctrl[%s]", ztx->opts->config,
@@ -721,7 +717,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
                 const char *name;
                 ziti_service *srv;
                 size_t idx = 0;
-                    MODEL_MAP_FOREACH(name, srv, &ztx->services) {
+                MODEL_MAP_FOREACH(name, srv, &ztx->services) {
                     service_event.event.service.removed[idx++] = srv;
                 }
 
@@ -734,13 +730,10 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
                     uv_timer_stop(&ztx->posture_checks->timer);
                 }
             }
-        }
-        else {
+        } else {
             uv_timer_start(&ztx->session_timer, session_refresh, 5 * 1000, 0);
-            }
-
-    }
-    else {
+        }
+    } else {
         ZITI_LOG(ERROR, "%s: no session or error received", ziti_errorstr(ZITI_WTF));
     }
 
