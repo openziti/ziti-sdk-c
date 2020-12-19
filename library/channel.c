@@ -636,7 +636,7 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
 
     if (ch->state != Closed) {
         reconnect_channel(ch);
-        ziti_force_session_refresh(ztx);
+        ziti_force_session_refresh(ch->ctx);
     }
 }
 
