@@ -99,7 +99,7 @@ const char* ziti_git_commit() {
     return to_str(ZITI_COMMIT);
 }
 
-int ziti_log_level = ZITI_LOG_DEFAULT_LEVEL;
+static int ziti_log_lvl = ZITI_LOG_DEFAULT_LEVEL;
 static FILE *ziti_debug_out;
 static bool log_initialized = false;
 
@@ -128,7 +128,7 @@ void ziti_log_init(uv_loop_t *loop, int level, log_writer log_func) {
     init_debug(loop);
 
     if (level == ZITI_LOG_DEFAULT_LEVEL)
-        level = ziti_log_level; // in case it was set before
+        level = ziti_log_lvl; // in case it was set before
 
     ziti_log_set_level(level);
 
@@ -144,15 +144,24 @@ void ziti_log_set_level(int level) {
     if (level == ZITI_LOG_DEFAULT_LEVEL) {
         char *lvl = getenv("ZITI_LOG");
         if (lvl != NULL) {
-            ziti_log_level = (int) strtol(lvl, NULL, 10);
+            ziti_log_lvl = (int) strtol(lvl, NULL, 10);
         } else {
-            ziti_log_level = INFO;
+            ziti_log_lvl = INFO;
         }
     } else {
-        ziti_log_level = level;
+        ziti_log_lvl = level;
     }
 
-    uv_mbed_set_debug(ziti_log_level, uv_mbed_logger);
+    uv_mbed_set_debug(ziti_log_lvl, uv_mbed_logger);
+    if (logger) {
+        char msg[128];
+        int len = snprintf(msg, sizeof(msg), "set log level: ziti_log_lvl=%d &ziti_log_lvl = %p", ziti_log_lvl, &ziti_log_lvl);
+        logger(INFO, "ziti_log_set_level", msg, len);
+    }
+}
+
+int ziti_log_level() {
+    return ziti_log_lvl;
 }
 
 void ziti_log_set_logger(log_writer log) {
@@ -170,7 +179,7 @@ static void init_debug(uv_loop_t *loop) {
     }
     ts_loop = loop;
     log_initialized = true;
-    ziti_log_set_level(ziti_log_level);
+    ziti_log_set_level(ziti_log_lvl);
     ziti_debug_out = stderr;
 
     starttime = uv_now(loop);
@@ -277,7 +286,7 @@ int lt_zero(int v) { return v < 0; }
 int non_zero(int v) { return v != 0; }
 
 void hexDump (char *desc, void *addr, int len) {
-    if (DEBUG > ziti_log_level) return;
+    if (DEBUG > ziti_log_level()) return;
     ZITI_LOG(DEBUG, " ");
     int i;
     unsigned char buffLine[17];

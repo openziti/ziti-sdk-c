@@ -37,6 +37,7 @@ struct ziti_conn_req {
     ziti_dial_opts *dial_opts;
     ziti_listen_opts *listen_opts;
 
+    struct waiter_s *waiter;
     int retry_count;
     uv_timer_t *conn_timeout;
     bool failed;
@@ -126,6 +127,7 @@ int close_conn_internal(struct ziti_conn *conn) {
         }
 
         if (conn->conn_req) {
+            ziti_channel_remove_waiter(conn->channel, conn->conn_req->waiter);
             free_conn_req(conn->conn_req);
         }
 
@@ -758,6 +760,8 @@ void connect_reply_cb(void *ctx, message *msg) {
         uv_timer_stop(req->conn_timeout);
     }
 
+    req->waiter = NULL;
+
     switch (msg->header.content) {
         case ContentTypeStateClosed:
             if (strncmp(INVALID_SESSION, (const char *) msg->body, msg->header.body_len) == 0) {
@@ -948,6 +952,8 @@ int ziti_channel_start_connection(struct ziti_conn *conn) {
             }
             break;
     }
+
+    req->waiter =
     ziti_channel_send_for_reply(ch, content_type, headers, nheaders, conn->token, strlen(conn->token),
                                 connect_reply_cb, conn);
 
