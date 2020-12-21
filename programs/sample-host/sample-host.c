@@ -43,7 +43,7 @@ static ssize_t on_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
     }
     else if (len == ZITI_EOF) {
         printf("client disconnected\n");
-        ziti_close(&clt);
+        ziti_close(clt, NULL);
     }
     else {
         fprintf(stderr, "error: %zd(%s)", len, ziti_errorstr(len));
@@ -82,7 +82,7 @@ static void listen_cb(ziti_connection serv, int status) {
     }
     else {
         printf("ERROR The Byte Counter could not be started: %d(%s)\n", status, ziti_errorstr(status));
-        ziti_close(&serv);
+        ziti_close(serv, NULL);
     }
 }
 
@@ -109,13 +109,13 @@ ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
     if (len == ZITI_EOF) {
 
         printf("request completed: %s\n", ziti_errorstr(len));
-        ziti_close(&c);
+        ziti_close(c, NULL);
         ziti_shutdown(ziti);
 
     }
     else if (len < 0) {
         fprintf(stderr, "unexpected error: %s\n", ziti_errorstr(len));
-        ziti_close(&c);
+        ziti_close(c, NULL);
         ziti_shutdown(ziti);
     }
     else {

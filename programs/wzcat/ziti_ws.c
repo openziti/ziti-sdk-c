@@ -87,8 +87,8 @@ static void on_ws_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
         printf("< %.*s", (int)len, buf->base);
     } else if (len < 0) {
         fprintf(stderr, "=========================\nwebsocket error[%zd]: %s\n", len, ziti_errorstr(len));
-        um_websocket_close(s, (uv_close_cb) free);
-        uv_close(&input, NULL);
+        um_websocket_close((um_websocket_t *) s, (uv_close_cb) free);
+        uv_close((uv_handle_t *) &input, NULL);
         ziti_shutdown(ctx);
     }
 }

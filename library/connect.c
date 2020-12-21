@@ -22,12 +22,34 @@ limitations under the License.
 #include "endian_internal.h"
 #include "win32_compat.h"
 
-static const char *TYPE_BIND = "Bind";
-static const char *TYPE_DIAL = "Dial";
 static const char *INVALID_SESSION = "Invalid Session";
 static const int MAX_CONNECT_RETRY = 3;
 
 #define crypto(func) crypto_secretstream_xchacha20poly1305_##func
+
+#define conn_states(XX) \
+    XX(Initial)\
+    XX(Connecting)\
+    XX(Connected)\
+    XX(Binding)\
+    XX(Bound)\
+    XX(Accepting)\
+    XX(Timedout)\
+    XX(CloseWrite)\
+    XX(Disconnected)\
+    XX(Closed)
+
+enum conn_state {
+#define state_enum(ST) ST,
+    conn_states(state_enum)
+};
+
+static const char* conn_state_str[] = {
+#define state_str(ST) #ST ,
+        conn_states(state_str)
+};
+
+
 
 struct ziti_conn_req {
     const char *session_type;
@@ -37,9 +59,9 @@ struct ziti_conn_req {
     ziti_dial_opts *dial_opts;
     ziti_listen_opts *listen_opts;
 
-    struct waiter_s *waiter;
     int retry_count;
     uv_timer_t *conn_timeout;
+    struct waiter_s *waiter;
     bool failed;
 };
 
@@ -51,10 +73,19 @@ static int send_fin_message(ziti_connection conn);
 
 static void process_edge_message(struct ziti_conn *conn, message *msg, int code);
 
-int ziti_channel_start_connection(struct ziti_conn *conn);
+static int ziti_channel_start_connection(struct ziti_conn *conn);
 
 static void free_handle(uv_handle_t *h) {
     free(h);
+}
+
+const char* ziti_conn_state(ziti_connection conn) {
+    return conn ? conn_state_str[conn->state] : "<NULL>";
+}
+
+static void conn_set_state(struct ziti_conn *conn, enum conn_state state) {
+    ZITI_LOG(VERBOSE, "conn[%d] transitioning %s => %s", conn->conn_id, conn_state_str[conn->state], conn_state_str[state]);
+    conn->state = state;
 }
 
 static ziti_dial_opts *clone_ziti_dial_opts(const ziti_dial_opts *dial_opts) {
@@ -122,6 +153,10 @@ static void free_conn_req(struct ziti_conn_req *r) {
 int close_conn_internal(struct ziti_conn *conn) {
     if (conn->state == Closed && conn->write_reqs == 0) {
         ZITI_LOG(DEBUG, "removing conn_id[%d]", conn->conn_id);
+        if (conn->close_cb) {
+            conn->close_cb(conn);
+        }
+
         if (conn->channel) {
             ziti_channel_rem_receiver(conn->channel, conn->conn_id);
         }
@@ -171,14 +206,14 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
         uv_close((uv_handle_t *) req->timeout, free_handle);
     }
 
+    if (status < 0) {
+        conn_set_state(conn, Disconnected);
+        ZITI_LOG(DEBUG, "conn[%d] is now Disconnected due to write failure: %d", conn->conn_id, status);
+    }
+
     if (req->cb != NULL) {
         if (status == 0) {
             status = req->len;
-        }
-
-        if (status < 0) {
-            conn->state = Closed;
-            ZITI_LOG(TRACE, "connection[%d] state is now Closed", conn->conn_id);
         }
 
         req->cb(conn, status, req->ctx);
@@ -263,7 +298,7 @@ static void connect_timeout(uv_timer_t *timer) {
 
     if (conn->state == Connecting) {
         ZITI_LOG(WARN, "ziti connection timed out");
-        conn->state = Timedout;
+        conn_set_state(conn, Timedout);
         complete_conn_req(conn, ZITI_TIMEOUT);
     }
     else {
@@ -446,8 +481,7 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
     }
 
     conn->data_cb = data_cb;
-    conn->state = Connecting;
-
+    conn_set_state(conn, Connecting);
 
     NEWP(async_cr, uv_async_t);
     uv_async_init(conn->ziti_ctx->loop, async_cr, ziti_connect_async);
@@ -483,8 +517,8 @@ static void ziti_write_timeout(uv_timer_t *t) {
     req->timeout = NULL;
     req->conn = NULL;
 
-    if (conn->state != Closed) {
-        conn->state = Closed;
+    if (conn->state < Disconnected) {
+        conn_set_state(conn, Disconnected);
         req->cb(conn, ZITI_TIMEOUT, req->ctx);
     }
 
@@ -495,7 +529,7 @@ static void ziti_write_async(uv_async_t *ar) {
     struct ziti_write_req_s *req = ar->data;
     struct ziti_conn *conn = req->conn;
 
-    if (conn->state == Closed) {
+    if (conn->state >= Disconnected) {
         ZITI_LOG(WARN, "got write req for closed conn[%d]", conn->conn_id);
         conn->write_reqs--;
 
@@ -539,7 +573,7 @@ int ziti_write_req(struct ziti_write_req_s *req) {
 }
 
 static void ziti_disconnect_cb(ziti_connection conn, ssize_t status, void *ctx) {
-    conn->state = Closed;
+    conn_set_state(conn, conn->close ? Closed : Disconnected);
 }
 
 static void ziti_disconnect_async(uv_async_t *ar) {
@@ -547,6 +581,7 @@ static void ziti_disconnect_async(uv_async_t *ar) {
     switch (conn->state) {
         case Bound:
         case Accepting:
+        case Connecting:
         case Connected:
         case CloseWrite: {
             NEWP(wr, struct ziti_write_req_s);
@@ -558,20 +593,21 @@ static void ziti_disconnect_async(uv_async_t *ar) {
         }
 
         default:
-            ZITI_LOG(DEBUG, "conn[%d] can't send StateClosed in state[%d]", conn->conn_id, conn->state);
+            ZITI_LOG(DEBUG, "conn[%d] can't send StateClosed in state[%s]", conn->conn_id, conn_state_str[conn->state]);
+            ziti_disconnect_cb(conn, 0, NULL);
     }
 }
 
-int ziti_disconnect(struct ziti_conn *conn) {
-    NEWP(ar, uv_async_t);
-    if (conn->channel) {
+static int ziti_disconnect(struct ziti_conn *conn) {
+    if (conn->state < Disconnected) {
+        NEWP(ar, uv_async_t);
         uv_async_init(conn->ziti_ctx->loop, ar, ziti_disconnect_async);
         ar->data = conn;
         conn->disconnector = ar;
         return uv_async_send(conn->disconnector);
     }
     else {
-        conn->state = Closed;
+        conn_set_state(conn, conn->close ? Closed : Disconnected);
     }
     return ZITI_OK;
 }
@@ -579,7 +615,7 @@ int ziti_disconnect(struct ziti_conn *conn) {
 static void crypto_wr_cb(ziti_connection conn, ssize_t status, void *ctx) {
     if (status < 0) {
         ZITI_LOG(ERROR, "crypto header write failed with status[%zd]", status);
-        conn->state = Closed;
+        conn_set_state(conn, Disconnected);
         conn->data_cb(conn, NULL, status);
     }
 }
@@ -642,7 +678,7 @@ static int send_crypto_header(ziti_connection conn) {
 
 static void flush_to_client(uv_check_t *fl) {
     ziti_connection conn = fl->data;
-    if (conn == NULL || conn->state == Closed) {
+    if (conn == NULL || conn->state >= Disconnected) {
         uv_check_stop(fl);
         return;
     }
@@ -680,7 +716,7 @@ static void flush_to_client(uv_check_t *fl) {
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg) {
     uint8_t *plain_text = NULL;
-    if (conn->state == Closed || conn->fin_recv) {
+    if (conn->state >= Disconnected || conn->fin_recv) {
         ZITI_LOG(WARN, "inbound data on closed connection");
         return;
     }
@@ -711,7 +747,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
 
         CATCH(crypto) {
             FREE(plain_text);
-            conn->state = Closed;
+            conn_set_state(conn, Disconnected);
             conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
             return;
         }
@@ -788,7 +824,7 @@ void connect_reply_cb(void *ctx, message *msg) {
                 ZITI_LOG(ERROR, "edge conn_id[%d]: failed to %s, reason=%*.*s",
                          conn->conn_id, conn->state == Binding ? "bind" : "connect",
                          msg->header.body_len, msg->header.body_len, msg->body);
-                conn->state = Closed;
+                conn_set_state(conn, Disconnected);
                 complete_conn_req(conn, ZITI_CONN_CLOSED);
             }
             break;
@@ -800,12 +836,12 @@ void connect_reply_cb(void *ctx, message *msg) {
                 if (rc == ZITI_OK && conn->encrypted) {
                     send_crypto_header(conn);
                 }
-                conn->state = rc == ZITI_OK ? Connected : Closed;
+                conn_set_state(conn, rc == ZITI_OK ? Connected : Disconnected);
                 complete_conn_req(conn, rc);
             }
             else if (conn->state == Binding) {
                 ZITI_LOG(TRACE, "edge conn_id[%d]: bound.", conn->conn_id);
-                conn->state = Bound;
+                conn_set_state(conn, Bound);
                 complete_conn_req(conn, ZITI_OK);
             }
             else if (conn->state == Accepting) {
@@ -813,10 +849,10 @@ void connect_reply_cb(void *ctx, message *msg) {
                 if (conn->encrypted) {
                     send_crypto_header(conn);
                 }
-                conn->state = Connected;
+                conn_set_state(conn, Connected);
                 complete_conn_req(conn, ZITI_OK);
             }
-            else if (conn->state == Closed || conn->state == Timedout) {
+            else if (conn->state >= Timedout) {
                 ZITI_LOG(WARN, "received connect reply for closed/timedout connection[%d]", conn->conn_id);
                 ziti_disconnect(conn);
             }
@@ -828,7 +864,7 @@ void connect_reply_cb(void *ctx, message *msg) {
     }
 }
 
-int ziti_channel_start_connection(struct ziti_conn *conn) {
+static int ziti_channel_start_connection(struct ziti_conn *conn) {
     struct ziti_conn_req *req = conn->conn_req;
     ziti_channel_t *ch = conn->channel;
 
@@ -843,7 +879,7 @@ int ziti_channel_start_connection(struct ziti_conn *conn) {
         case Connecting:
             content_type = ContentTypeConnect;
             break;
-        case Closed:
+        case Disconnected:
             ZITI_LOG(WARN, "channel did not connect in time for connection[%d]. ", conn->conn_id);
             return ZITI_OK;
         default:
@@ -979,7 +1015,7 @@ int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *liste
     }
 
     conn->client_cb = on_clt_cb;
-    conn->state = Binding;
+    conn_set_state(conn, Binding);
 
     NEWP(async_cr, uv_async_t);
     uv_async_init(conn->ziti_ctx->loop, async_cr, ziti_connect_async);
@@ -999,7 +1035,7 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     conn->flusher->data = conn;
     uv_unref((uv_handle_t *) &conn->flusher);
 
-    ziti_channel_add_receiver(ch, conn->conn_id, conn, process_edge_message);
+    ziti_channel_add_receiver(ch, conn->conn_id, conn, (void (*)(void *, message *, int)) process_edge_message);
 
     ZITI_LOG(TRACE, "ch[%d] => Edge Accept conn_id[%d] parent_conn_id[%d]", ch->id, conn->conn_id,
              conn->parent->conn_id);
@@ -1031,10 +1067,31 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     req->cb = cb;
     conn->conn_req = req;
 
-    ziti_channel_send_for_reply(ch, content_type, headers, 3, (const uint8_t *) &clt_conn_id, sizeof(clt_conn_id),
-                                connect_reply_cb, conn);
+    req->waiter = ziti_channel_send_for_reply(
+            ch, content_type, headers, 3,
+            (const uint8_t *) &clt_conn_id, sizeof(clt_conn_id),
+            connect_reply_cb, conn);
 
     return ZITI_OK;
+}
+
+int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx) {
+    if (conn->state != Connected) {
+        ZITI_LOG(ERROR, "attempted write on conn[%d] in invalid state[%d]", conn->conn_id, conn->state);
+        write_cb(conn, ZITI_INVALID_STATE, write_ctx);
+        return ZITI_INVALID_STATE;
+    }
+
+    NEWP(req, struct ziti_write_req_s);
+    req->conn = conn;
+    req->buf = data;
+    req->len = length;
+    req->cb = write_cb;
+    req->ctx = write_ctx;
+
+    metrics_rate_update(&conn->ziti_ctx->up_rate, length);
+
+    return ziti_write_req(req);
 }
 
 static int send_fin_message(ziti_connection conn) {
@@ -1063,11 +1120,22 @@ static int send_fin_message(ziti_connection conn) {
     return ziti_channel_send(ch, ContentTypeData, headers, 3, NULL, 0, wr);
 }
 
+int ziti_close(ziti_connection conn, ziti_close_cb close_cb) {
+    if (conn != NULL) {
+        conn->close = true;
+        conn->close_cb = close_cb;
+        ziti_disconnect(conn);
+    }
+
+    return ZITI_OK;
+}
+
+
 int ziti_close_write(ziti_connection conn) {
-    if (conn->fin_sent || conn->state == Closed) {
+    if (conn->fin_sent || conn->state >= Disconnected) {
         return ZITI_OK;
     }
-    conn->state = CloseWrite;
+    conn_set_state(conn, CloseWrite);
     if (conn->write_reqs == 0) {
         return send_fin_message(conn);
     }
@@ -1078,12 +1146,12 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
 
     if (msg == NULL) {
         ZITI_LOG(DEBUG, "conn[%d] is closed due to err[%d](%s)", conn->conn_id, code, ziti_errorstr(code));
+        conn_set_state(conn, Disconnected);
         if (conn->state == Connected) {
             conn->data_cb(conn, NULL, code);
         } else if (conn->state == Bound) {
             conn->client_cb(conn, NULL, code);
         }
-        conn->state = Closed;
         return;
     }
 
@@ -1097,14 +1165,56 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
 
     switch (msg->header.content) {
         case ContentTypeStateClosed:
-            ZITI_LOG(VERBOSE, "connection status[%d] conn_id[%d] seq[%d]", msg->header.content, conn_id, seq);
-            if (conn->state == Bound) {
-                conn->client_cb(conn, NULL, ZITI_CONN_CLOSED);
+            ZITI_LOG(DEBUG, "connection status[%d] conn_id[%d] seq[%d] err[%.*s]", msg->header.content, conn_id, seq,
+                     msg->header.body_len, msg->body);
+            bool retry_connect = false;
+
+            switch (conn->state) {
+                case Connecting:
+                case Accepting:
+                case Binding: {
+                    if (strncmp(INVALID_SESSION, (const char *) msg->body, msg->header.body_len) == 0) {
+                        ZITI_LOG(WARN, "conn[%d] session for service[%s] became invalid", conn->conn_id, conn->service);
+                        ziti_invalidate_session(conn->ziti_ctx, conn->conn_req->session,
+                                                conn->conn_req->service_id, conn->conn_req->session_type);
+                        conn->conn_req->session = NULL;
+                        retry_connect = true;
+                    }
+                    if (retry_connect) {
+                        ziti_channel_rem_receiver(conn->channel, conn->conn_id);
+                        conn->channel = NULL;
+                        conn_set_state(conn, Connecting);
+                        restart_connect(conn);
+                    } else {
+                        ZITI_LOG(ERROR, "edge conn_id[%d]: failed to %s, reason=%*.*s",
+                                 conn->conn_id, conn->state == Binding ? "bind" : "connect",
+                                 msg->header.body_len, msg->header.body_len, msg->body);
+                        conn_set_state(conn, Disconnected);
+                        complete_conn_req(conn, ZITI_CONN_CLOSED);
+                    }
+                    break;
+                }
+
+                case Bound:
+                    conn_set_state(conn, Disconnected);
+                    conn->client_cb(conn, NULL, ZITI_CONN_CLOSED);
+                    break;
+
+                case Connected:
+                case CloseWrite:
+                    conn_set_state(conn, Disconnected);
+                    conn->data_cb(conn, NULL, ZITI_CONN_CLOSED);
+                    break;
+
+
+                default:
+                    ZITI_LOG(WARN, "unexpected msg for conn[%d] state[%d]", conn->conn_id, conn->state);
+                    conn_set_state(conn, Disconnected);
+                    if (conn->data_cb) {
+                        conn->data_cb(conn, NULL, ZITI_INVALID_STATE);
+                    }
+                    break;
             }
-            else if (conn->state == Connected || conn->state == CloseWrite) {
-                conn->data_cb(conn, NULL, ZITI_CONN_CLOSED);
-            }
-            conn->state = Closed;
             break;
 
         case ContentTypeData:
@@ -1134,7 +1244,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
             if (caller_id_sent) {
                 clt->source_identity = strndup((char *)source_identity, source_identity_sz);
             }
-            clt->state = Accepting;
+            conn_set_state(clt, Accepting);
             clt->parent = conn;
             clt->channel = conn->channel;
             clt->dial_req_seq = msg->header.seq;
@@ -1143,6 +1253,35 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
                 establish_crypto(clt, msg);
             }
             conn->client_cb(conn, clt, ZITI_OK);
+            break;
+
+        case ContentTypeStateConnected:
+            if (conn->state == Connecting) {
+                ZITI_LOG(TRACE, "edge conn_id[%d]: connected.", conn->conn_id);
+                int rc = establish_crypto(conn, msg);
+                if (rc == ZITI_OK && conn->encrypted) {
+                    send_crypto_header(conn);
+                }
+                conn_set_state(conn, rc == ZITI_OK ? Connected : Disconnected);
+                complete_conn_req(conn, rc);
+            }
+            else if (conn->state == Binding) {
+                ZITI_LOG(TRACE, "edge conn_id[%d]: bound.", conn->conn_id);
+                conn_set_state(conn, Bound);
+                complete_conn_req(conn, ZITI_OK);
+            }
+            else if (conn->state == Accepting) {
+                ZITI_LOG(TRACE, "edge conn_id[%d]: accepted.", conn->conn_id);
+                if (conn->encrypted) {
+                    send_crypto_header(conn);
+                }
+                conn_set_state(conn, Connected);
+                complete_conn_req(conn, ZITI_OK);
+            }
+            else if (conn->state >= Timedout) {
+                ZITI_LOG(WARN, "received connect reply for closed/timedout connection[%d]", conn->conn_id);
+                ziti_disconnect(conn);
+            }
             break;
 
         default:

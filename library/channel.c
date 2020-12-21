@@ -30,6 +30,14 @@ limitations under the License.
 #define BACKOFF_TIME 3000 /* 3 seconds */
 #define MAX_BACKOFF 5 /* max reconnection timeout: (1 << 5) * BACKOFF_TIME = 96 seconds */
 
+enum ChannelState {
+    Initial,
+    Connecting,
+    Connected,
+    Disconnected,
+    Closed,
+};
+
 static void reconnect_channel(ziti_channel_t *ch);
 
 static void on_channel_connect_internal(uv_connect_t *req, int status);
@@ -119,7 +127,7 @@ int ziti_close_channels(struct ziti_ctx *ziti) {
     return ZITI_OK;
 }
 
-void ziti_close_cb(uv_handle_t *h) {
+static void close_handle_cb(uv_handle_t *h) {
     uv_mbed_t *mbed = (uv_mbed_t *) h;
     ziti_channel_t *ch = mbed->_stream.data;
 
@@ -132,7 +140,7 @@ int ziti_channel_close(ziti_channel_t *ch) {
     int r = 0;
     if (ch->state != Closed) {
         ZITI_LOG(INFO, "closing ch[%d](%s)", ch->id, ch->name);
-        r = uv_mbed_close(&ch->connection, ziti_close_cb);
+        r = uv_mbed_close(&ch->connection, close_handle_cb);
         uv_timer_stop(&ch->latency_timer);
         uv_close((uv_handle_t *) &ch->latency_timer, NULL);
         ch->state = Closed;
@@ -158,6 +166,10 @@ void ziti_channel_rem_receiver(ziti_channel_t *ch, int id) {
         ZITI_LOG(DEBUG, "ch[%d] removed receiver[%d]", ch->id, id);
         free(r);
     }
+}
+
+bool ziti_channel_is_connected(ziti_channel_t *ch) {
+    return ch->state == Connected;
 }
 
 int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url, ch_connect_cb cb, void *cb_ctx) {

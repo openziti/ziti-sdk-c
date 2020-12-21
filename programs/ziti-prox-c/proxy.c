@@ -164,6 +164,14 @@ static void close_cb(uv_handle_t *h) {
     free(h);
 }
 
+static void on_ziti_close(ziti_connection conn) {
+    uv_stream_t *tcp = ziti_conn_data(conn);
+    struct client *clt = tcp->data;
+    ZITI_LOG(INFO, "ziti connection closed for clt[%s]", clt->addr_s);
+    clt->closed = true;
+    uv_close((uv_handle_t *) tcp, close_cb);
+}
+
 static void on_client_write(uv_write_t *req, int status) {
     uv_stream_t *s = req->handle;
     struct client *client = s->data;
@@ -175,7 +183,7 @@ static void on_client_write(uv_write_t *req, int status) {
                 ZITI_LOG(WARN, "write failed: [%d/%s](%s) -- closing client[%s]", status,
                          uv_err_name(status), uv_strerror(status), client->addr_s);
                 client->write_done = true;
-                ziti_close(&client->ziti_conn);
+                ziti_close(client->ziti_conn, on_ziti_close);
                 break;
             }
             default:
@@ -231,10 +239,7 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         clt->read_done = true;
         if (clt->write_done) {
             ZITI_LOG(DEBUG, "closing client[%s]", clt->addr_s);
-            ziti_conn_set_data(clt->ziti_conn, NULL);
-            ziti_close(&clt->ziti_conn);
-            clt->closed = true;
-            uv_close((uv_handle_t *) stream, close_cb);
+            ziti_close(clt->ziti_conn, on_ziti_close);
         }
         else {
             ziti_close_write(clt->ziti_conn);
@@ -246,8 +251,7 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         ZITI_LOG(DEBUG, "connection closed %s [%zd/%s](%s)",
                  clt->addr_s, nread, uv_err_name(nread), uv_strerror(nread));
 
-        ziti_conn_set_data(clt->ziti_conn, NULL);
-        ziti_close(&clt->ziti_conn);
+        ziti_close(clt->ziti_conn, on_ziti_close);
 
         uv_read_stop(stream);
         uv_close((uv_handle_t *) stream, close_cb);
@@ -273,7 +277,7 @@ void on_ziti_connect(ziti_connection conn, int status) {
     else {
         ZITI_LOG(ERROR, "ziti connect failed: %s(%d)", ziti_errorstr(status), status);
         uv_close((uv_handle_t *) clt, close_cb);
-        ziti_close(&conn);
+        ziti_close(conn, on_ziti_close);
     }
 }
 
@@ -294,7 +298,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
     if (!uv_is_active((const uv_handle_t *) clt)) {
         c->closed = true;
         ZITI_LOG(DEBUG, "tcp side of client[%s] is closed", c->addr_s);
-        ziti_close(&c->ziti_conn);
+        ziti_close(c->ziti_conn, on_ziti_close);
         return UV_ECONNABORTED;
     }
 

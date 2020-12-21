@@ -38,6 +38,8 @@ limitations under the License.
 #define UUID_STR_LEN 37
 #endif
 
+#define TYPE_DIAL "Dial"
+#define TYPE_BIND "Bind"
 
 typedef struct ziti_channel ziti_channel_t;
 
@@ -49,18 +51,8 @@ typedef void (*ch_connect_cb)(ziti_channel_t *ch, void *ctx, int status);
 
 typedef void (*ch_notify_state)(ziti_channel_t *ch, ziti_router_status status, void *ctx);
 
-enum conn_state {
-    Initial,
-    Connecting,
-    Connected,
-    Binding,
-    Bound,
-    Accepting,
-    Timedout,
-    CloseWrite,
-    Disconnected,
-    Closed
-};
+typedef int ch_state;
+typedef int conn_state;
 
 typedef struct ziti_channel {
     uv_loop_t *loop;
@@ -77,7 +69,7 @@ typedef struct ziti_channel {
     uint64_t latency;
     uv_timer_t latency_timer;
 
-    enum conn_state state;
+    ch_state state;
     uint32_t reconnect_count;
 
     struct ch_conn_req **conn_reqs;
@@ -122,9 +114,11 @@ struct ziti_conn {
     ziti_channel_t *channel;
     ziti_data_cb data_cb;
     ziti_client_cb client_cb;
-    enum conn_state state;
+    ziti_close_cb close_cb;
+    conn_state state;
     bool fin_sent;
     bool fin_recv;
+    bool close;
     int timeout;
 
     buffer *inbound;
@@ -205,11 +199,15 @@ struct ziti_ctx {
 extern "C" {
 #endif
 
+void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, const char *type);
+
 void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
 
 void ziti_force_session_refresh(ziti_context ztx);
 
 int ziti_close_channels(ziti_context ztx);
+
+bool ziti_channel_is_connected(ziti_channel_t *ch);
 
 int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb, void *ctx);
 
@@ -243,11 +241,11 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg);
 
 int ziti_write_req(struct ziti_write_req_s *req);
 
-int ziti_disconnect(struct ziti_conn *conn);
-
 void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, int status);
 
 int close_conn_internal(struct ziti_conn *conn);
+
+const char* ziti_conn_state(ziti_connection conn);
 
 int establish_crypto(ziti_connection conn, message *msg);
 
