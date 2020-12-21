@@ -186,6 +186,7 @@ TEST_CASE("test string escape", "[model]") {
 XX(bar, json, none, bar, __VA_ARGS__) \
 XX(ok, bool, none, ok, __VA_ARGS__)
 
+#undef MODEL_API
 #define MODEL_API static
 DECLARE_MODEL(Baz, baz_model)
 IMPL_MODEL(Baz, baz_model)

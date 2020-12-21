@@ -988,7 +988,9 @@ static int ziti_channel_start_connection(struct ziti_conn *conn) {
             }
             break;
     }
-    req->waiter = ziti_channel_send_for_reply(ch, content_type, headers, nheaders, conn->token, strlen(conn->token),
+
+    req->waiter =
+    ziti_channel_send_for_reply(ch, content_type, headers, nheaders, conn->token, strlen(conn->token),
                                 connect_reply_cb, conn);
 
     return ZITI_OK;

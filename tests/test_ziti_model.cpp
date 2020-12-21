@@ -22,7 +22,9 @@ limitations under the License.
 #define timegm(v) _mkgmtime(v)
 #define gmtime(v) _gmtime32(v)
 #else
-#define _GNU_SOURCE //add time.h include after defining _GNU_SOURCE
+#   ifndef _GNU_SOURCE
+#      define _GNU_SOURCE //add time.h include after defining _GNU_SOURCE
+#   endif
 #include <time.h>
 #endif
 

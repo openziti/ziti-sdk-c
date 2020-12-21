@@ -203,6 +203,8 @@ void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const 
 
 void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
 
+void ziti_force_session_refresh(ziti_context ztx);
+
 int ziti_close_channels(ziti_context ztx);
 
 bool ziti_channel_is_connected(ziti_channel_t *ch);

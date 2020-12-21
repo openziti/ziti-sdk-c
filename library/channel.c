@@ -110,7 +110,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     return 0;
 }
 
-void ziti_channel_free(ziti_channel_t* ch) {
+void ziti_channel_free(ziti_channel_t *ch) {
     free(ch->conn_reqs);
     free_buffer(ch->incoming);
     FREE(ch->name);
@@ -180,8 +180,7 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
 
         if (ch->state == Connected) {
             cb(ch, cb_ctx, ZITI_OK);
-        }
-        else if (ch->state == Connecting || ch->state == Initial) {
+        } else if (ch->state == Connecting || ch->state == Initial) {
             // not connected yet, add to the callbacks
             if (cb != NULL) {
                 NEWP(r, struct ch_conn_req);
@@ -189,14 +188,12 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
                 r->ctx = cb_ctx;
                 ch->conn_reqs[ch->conn_reqs_n++] = r;
             }
-        }
-        else if (ch->state == Disconnected) {
+        } else if (ch->state == Disconnected) {
             if (cb) {
                 cb(ch, cb_ctx, UV_ENOTCONN);
             }
             return ZITI_GATEWAY_UNAVAILABLE;
-        }
-        else {
+        } else {
             ZITI_LOG(ERROR, "should not be here: %s", ziti_errorstr(ZITI_WTF));
             return ZITI_WTF;
         }
@@ -289,10 +286,11 @@ void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter) {
     }
 }
 
-struct waiter_s* ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
-                                uint32_t body_len,
-                                reply_cb rep_cb, void *reply_ctx) {
-    struct waiter_s* result = NULL;
+struct waiter_s *
+ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
+                            uint32_t body_len,
+                            reply_cb rep_cb, void *reply_ctx) {
+    struct waiter_s *result = NULL;
     header_t header;
     header_init(&header, ch->msg_seq++);
 
@@ -338,8 +336,7 @@ struct waiter_s* ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t conten
     // Guard against write requests coming on a thread different from our loop
     if (uv_thread_self() == ch->ctx->loop_thread) {
         async_write(async_req);
-    }
-    else {
+    } else {
         uv_async_send(async_req);
     }
 
@@ -373,6 +370,7 @@ static bool is_edge(int32_t content) {
             return false;
     }
 }
+
 static void dispatch_message(ziti_channel_t *ch, message *m) {
     struct waiter_s *w = NULL;
 
@@ -404,20 +402,17 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
 
         if (!has_conn_id) {
             ZITI_LOG(ERROR, "ch[%d] received message without conn_id ct[%d]", ch->id, m->header.content);
-        }
-        else {
+        } else {
             struct msg_receiver *conn = find_receiver(ch, conn_id);
             if (conn == NULL) {
                 ZITI_LOG(DEBUG, "ch[%d] received message for unknown connection conn_id[%d] ct[%d]",
                          ch->id, conn_id, m->header.content);
-            }
-            else {
+            } else {
                 conn->receive(conn->receiver, m, ZITI_OK);
             }
         }
-    }
-    else {
-        ZITI_LOG(WARN, "ch[%d] unsupported content type [%d]", ch->id,  m->header.content);
+    } else {
+        ZITI_LOG(WARN, "ch[%d] unsupported content type [%d]", ch->id, m->header.content);
     }
 }
 
@@ -434,7 +429,7 @@ static void process_inbound(ziti_channel_t *ch) {
             uint8_t header_buf[HEADER_SIZE];
             int header_read = 0;
 
-            while(header_read < HEADER_SIZE) {
+            while (header_read < HEADER_SIZE) {
                 len = buffer_get_next(ch->incoming, HEADER_SIZE - header_read, &ptr);
                 memcpy(header_buf + header_read, ptr, len);
                 header_read += len;
@@ -536,8 +531,7 @@ static void hello_reply_cb(void *ctx, message *msg) {
         FREE(ch->version);
         ch->version = strndup(erVersion, erVersionLen);
         ch->notify_cb(ch, EdgeRouterConnected, ch->notify_ctx);
-    }
-    else {
+    } else {
         ZITI_LOG(ERROR, "channel[%d] connect rejected: %d %*s", ch->id, success, msg->header.body_len, msg->body);
         ch->state = Closed;
         cb_code = ZITI_GATEWAY_UNAVAILABLE;
@@ -558,8 +552,7 @@ static void hello_reply_cb(void *ctx, message *msg) {
         ch->latency_timer.data = ch;
         uv_unref((uv_handle_t *) &ch->latency_timer);
         uv_timer_start(&ch->latency_timer, send_latency_probe, 0, 60 * 1000);
-    }
-    else {
+    } else {
         reconnect_channel(ch);
     }
 }
@@ -589,17 +582,23 @@ static void async_write(uv_async_t *ar) {
 
 static void reconnect_cb(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
+    ziti_context ztx = ch->ctx;
 
-    ch->msg_seq = 0;
+    if (ztx->session == NULL || ztx->session->token == NULL) {
+        ZITI_LOG(ERROR, "ziti context is not authenticated, delaying re-connect");
+        reconnect_channel(ch);
+    } else {
+        ch->msg_seq = 0;
 
-    uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
-    req->data = ch;
+        uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
+        req->data = ch;
 
-    ch->state = Connecting;
+        ch->state = Connecting;
 
-    uv_mbed_init(ch->loop, &ch->connection, ch->connection.tls);
-    ch->connection._stream.data = ch;
-    uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
+        uv_mbed_init(ch->loop, &ch->connection, ch->connection.tls);
+        ch->connection._stream.data = ch;
+        uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
+    }
     uv_close((uv_handle_t *) t, (uv_close_cb) free);
 }
 
@@ -641,6 +640,7 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
 
     if (ch->state != Closed) {
         reconnect_channel(ch);
+        ziti_force_session_refresh(ch->ctx);
     }
 }
 
@@ -684,12 +684,10 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
                 on_channel_close(ch, len);
 
         }
-    }
-    else if (len == 0) {
+    } else if (len == 0) {
         // sometimes SSL message has no payload
         free(buf->base);
-    }
-    else {
+    } else {
         ZITI_LOG(TRACE, "ch[%d] on_data [len=%zd]", ch->id, len);
         if (len > 0) {
             buffer_append(ch->incoming, buf->base, (uint32_t) len);
@@ -710,8 +708,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             uv_mbed_keepalive(mbed, 1, ch->ctx->opts->router_keepalive);
         }
         send_hello(ch);
-    }
-    else {
+    } else {
         ZITI_LOG(ERROR, "ch[%d] failed to connect[%s] [status=%d]", ch->id, ch->name, status);
 
         for (int i = 0; i < ch->conn_reqs_n; i++) {
