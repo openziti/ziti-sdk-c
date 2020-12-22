@@ -30,9 +30,9 @@ typedef struct ziti_link_s {
 } ziti_link_t;
 
 // connect and release method for um_http custom source link
-static int ziti_src_connect(um_http_src_t *src, const char *, const char *, um_http_src_connect_cb cb, void *conn_ctx);
+static int ziti_src_connect(um_src_t *src, const char *, const char *, um_src_connect_cb cb, void *conn_ctx);
 
-static void ziti_src_release(um_http_src_t *src);
+static void ziti_src_release(um_src_t *src);
 
 // uv_link methods
 static int zl_read_start(uv_link_t *l);
@@ -65,7 +65,7 @@ static const uv_link_methods_t ziti_link_methods = {
         .read_cb_override = NULL
 };
 
-int ziti_src_init(uv_loop_t *l, um_http_src_t *st, const char *svc, ziti_context ztx) {
+int ziti_src_init(uv_loop_t *l, um_src_t *st, const char *svc, ziti_context ztx) {
     st->loop = l;
     st->connect = ziti_src_connect;
     st->connect_cb = NULL;
@@ -81,7 +81,7 @@ int ziti_src_init(uv_loop_t *l, um_http_src_t *st, const char *svc, ziti_context
 }
 
 static int
-ziti_src_connect(um_http_src_t *src, const char *h, const char *p, um_http_src_connect_cb cb, void *conn_ctx) {
+ziti_src_connect(um_src_t *src, const char *h, const char *p, um_src_connect_cb cb, void *conn_ctx) {
     ziti_link_t *zl = (ziti_link_t *) src->link;
 
     ZITI_LOG(TRACE, "service %s", zl->service);
@@ -95,20 +95,20 @@ ziti_src_connect(um_http_src_t *src, const char *h, const char *p, um_http_src_c
     return ziti_dial(zl->conn, zl->service, zlnf_conn_cb, zlnf_data_cb);
 }
 
-static void ziti_src_release(um_http_src_t *src) {
-    ziti_link_t *zl = (ziti_link_t *)src->link;
+static void ziti_src_release(um_src_t *src) {
+    ziti_link_t *zl = (ziti_link_t *) src->link;
     free(zl->service);
     free(src->link);
 }
 
 static void zlnf_conn_cb(ziti_connection conn, int status) {
-    um_http_src_t *src = (um_http_src_t *) ziti_conn_data(conn);
+    um_src_t *src = (um_src_t *) ziti_conn_data(conn);
     src->connect_cb(src, status, src->connect_ctx);
 }
 
 //static void link_close_cb(uv_link_t *l) {}
 static ssize_t zlnf_data_cb(ziti_connection conn, uint8_t *data, ssize_t length) {
-    um_http_src_t *src = (um_http_src_t *) ziti_conn_data(conn);
+    um_src_t *src = (um_src_t *) ziti_conn_data(conn);
     uv_buf_t read_buf;
 
     if (length == ZITI_EOF) {
