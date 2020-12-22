@@ -55,8 +55,8 @@ jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_
 
     int rc = jsmn_parse(parser, json, len, toks, tok_cap);
     while (rc == JSMN_ERROR_NOMEM) {
-        toks = realloc(toks,(tok_cap *= 2) * sizeof(jsmntok_t));
-        ZITI_LOG(VERBOSE, "reallocating token array, new size = %zd", tok_cap);
+        toks = realloc(toks, (tok_cap *= 2) * sizeof(jsmntok_t));
+        ZITI_LOG(TRACE, "reallocating token array, new size = %zd", tok_cap);
         rc = jsmn_parse(parser, json, len, toks, tok_cap);
     }
 
