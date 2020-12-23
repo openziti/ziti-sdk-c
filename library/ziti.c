@@ -54,6 +54,8 @@ struct ziti_init_req {
 
 int code_to_error(const char *code);
 
+static void services_refresh(uv_timer_t *t);
+
 static void version_cb(ziti_version *v, ziti_error *err, void *ctx);
 
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx);
@@ -461,8 +463,14 @@ static void session_refresh(uv_timer_t *t) {
     struct ziti_init_req *req = calloc(1, sizeof(struct ziti_init_req));
     req->ztx = ztx;
 
-    ZITI_LOG(DEBUG, "refreshing API session");
-    ziti_ctrl_current_api_session(&ztx->controller, session_cb, req);
+    if (ztx->session) {
+        ZITI_LOG(DEBUG, "refreshing API session");
+        ziti_ctrl_current_api_session(&ztx->controller, session_cb, req);
+    }
+    else {
+        ZITI_LOG(DEBUG, "requesting new API session");
+        ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, session_cb, req);
+    }
 }
 
 void ziti_force_session_refresh(ziti_context ztx) {
@@ -498,6 +506,11 @@ static void update_services(ziti_service_array services, ziti_error *error, void
         return;
     }
 
+    // schedule next refresh
+    if (ztx->opts->refresh_interval > 0) {
+        ZITI_LOG(VERBOSE, "scheduling service refresh %ld seconds from now", ztx->opts->refresh_interval);
+        uv_timer_start(&ztx->refresh_timer, services_refresh, ztx->opts->refresh_interval * 1000, 0);
+    }
     ZITI_LOG(VERBOSE, "processing service updates");
 
     model_map updates = {0};
@@ -627,7 +640,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
 
         if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
             ZITI_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
-            uv_timer_start(&ztx->refresh_timer, services_refresh, 0, ztx->opts->refresh_interval * 1000);
+            services_refresh(&ztx->refresh_timer);
         } else if (ztx->opts->refresh_interval == 0) {
             ZITI_LOG(DEBUG, "refresh_interval not specified");
             uv_timer_stop(&ztx->refresh_timer);
@@ -681,6 +694,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         } else {
             uv_timer_start(&ztx->session_timer, session_refresh, 5 * 1000, 0);
         }
+
     } else {
         ZITI_LOG(ERROR, "%s: no session or error received", ziti_errorstr(ZITI_WTF));
     }
