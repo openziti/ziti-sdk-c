@@ -66,8 +66,12 @@ typedef struct ziti_channel {
     char token[UUID_STR_LEN];
     uv_mbed_t connection;
 
+    // dual purpose timer:
+    // - reconnect timeout if not connected
+    // - latency timeout if connected
+    uv_timer_t timer;
+
     uint64_t latency;
-    uv_timer_t latency_timer;
 
     ch_state state;
     uint32_t reconnect_count;

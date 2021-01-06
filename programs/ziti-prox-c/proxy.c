@@ -160,16 +160,22 @@ static void signal_cb(uv_signal_t *s, int signum) {
 static void close_cb(uv_handle_t *h) {
     struct client *clt = h->data;
     ZITI_LOG(DEBUG, "client connection closed for %s", clt->addr_s);
+    if (clt->ziti_conn) {
+        ziti_conn_set_data(clt->ziti_conn, NULL);
+    }
     free(clt);
     free(h);
 }
 
 static void on_ziti_close(ziti_connection conn) {
     uv_stream_t *tcp = ziti_conn_data(conn);
-    struct client *clt = tcp->data;
-    ZITI_LOG(INFO, "ziti connection closed for clt[%s]", clt->addr_s);
-    clt->closed = true;
-    uv_close((uv_handle_t *) tcp, close_cb);
+    if (tcp) {
+        struct client *clt = tcp->data;
+        clt->ziti_conn = NULL;
+        ZITI_LOG(INFO, "ziti connection closed for clt[%s]", clt->addr_s);
+        clt->closed = true;
+        uv_close((uv_handle_t *) tcp, close_cb);
+    }
 }
 
 static void on_client_write(uv_write_t *req, int status) {

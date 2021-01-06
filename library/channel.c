@@ -38,7 +38,25 @@ enum ChannelState {
     Closed,
 };
 
-static void reconnect_channel(ziti_channel_t *ch);
+static __always_inline const char *ch_state_str(ziti_channel_t *ch) {
+    switch (ch->state) {
+        case Initial:
+            return to_str(Initial);
+        case Connecting:
+            return to_str(Connecting);
+        case Connected:
+            return to_str(Connected);
+        case Disconnected:
+            return to_str(Disconnected);
+        case Closed:
+            return to_str(Closed);
+    }
+    return "unexpected";
+}
+
+static void reconnect_channel(ziti_channel_t *ch, bool now);
+
+static void reconnect_cb(uv_timer_t *t);
 
 static void on_channel_connect_internal(uv_connect_t *req, int status);
 
@@ -105,6 +123,10 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     uv_mbed_nodelay(&ch->connection, true);
     ch->connection._stream.data = ch;
 
+    uv_timer_init(ch->loop, &ch->timer);
+    ch->timer.data = ch;
+    uv_unref((uv_handle_t *) &ch->timer);
+
     ch->notify_cb = ziti_on_channel_event;
     ch->notify_ctx = ctx;
     return 0;
@@ -141,8 +163,8 @@ int ziti_channel_close(ziti_channel_t *ch) {
     if (ch->state != Closed) {
         ZITI_LOG(INFO, "closing ch[%d](%s)", ch->id, ch->name);
         r = uv_mbed_close(&ch->connection, close_handle_cb);
-        uv_timer_stop(&ch->latency_timer);
-        uv_close((uv_handle_t *) &ch->latency_timer, NULL);
+        uv_timer_stop(&ch->timer);
+        uv_close((uv_handle_t *) &ch->timer, NULL);
         ch->state = Closed;
     }
     return r;
@@ -172,35 +194,8 @@ bool ziti_channel_is_connected(ziti_channel_t *ch) {
     return ch->state == Connected;
 }
 
-int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url, ch_connect_cb cb, void *cb_ctx) {
-    ziti_channel_t *ch = model_map_get(&ztx->channels, ch_name);
-
-    if (ch != NULL) {
-        ZITI_LOG(DEBUG, "existing channel found for ingress[%s]", url);
-
-        if (ch->state == Connected) {
-            cb(ch, cb_ctx, ZITI_OK);
-        } else if (ch->state == Connecting || ch->state == Initial) {
-            // not connected yet, add to the callbacks
-            if (cb != NULL) {
-                NEWP(r, struct ch_conn_req);
-                r->cb = cb;
-                r->ctx = cb_ctx;
-                ch->conn_reqs[ch->conn_reqs_n++] = r;
-            }
-        } else if (ch->state == Disconnected) {
-            if (cb) {
-                cb(ch, cb_ctx, UV_ENOTCONN);
-            }
-            return ZITI_GATEWAY_UNAVAILABLE;
-        } else {
-            ZITI_LOG(ERROR, "should not be here: %s", ziti_errorstr(ZITI_WTF));
-            return ZITI_WTF;
-        }
-        return ZITI_OK;
-    }
-
-    ch = calloc(1, sizeof(ziti_channel_t));
+static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, const char *url) {
+    ziti_channel_t *ch = calloc(1, sizeof(ziti_channel_t));
     ziti_channel_init(ztx, ch, ztx->ch_counter++, ztx->tlsCtx);
     ch->name = strdup(ch_name);
     ZITI_LOG(INFO, "opening new channel for ingress[%s] ch[%d]", ch->name, ch->id);
@@ -217,20 +212,43 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
     ch->host = strdup(host);
     ch->port = ingress.port;
     model_map_set(&ztx->channels, ch->name, ch);
+    return ch;
+}
 
-    uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
-    req->data = ch;
+int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url, ch_connect_cb cb, void *cb_ctx) {
+    ziti_channel_t *ch = model_map_get(&ztx->channels, ch_name);
 
-    if (cb != NULL) {
-        NEWP(r, struct ch_conn_req);
-        r->cb = cb;
-        r->ctx = cb_ctx;
-        ch->conn_reqs[ch->conn_reqs_n++] = r;
+    if (ch != NULL) {
+        ZITI_LOG(DEBUG, "existing channel[%d/%s] found for ingress[%s]", ch->id, ch_state_str(ch), url);
+    }
+    else {
+        ch = new_ziti_channel(ztx, ch_name, url);
     }
 
-    ch->state = Connecting;
+    switch (ch->state) {
+        case Connected:
+            cb(ch, cb_ctx, ZITI_OK);
+            break;
 
-    uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
+        case Initial:
+        case Connecting:
+        case Disconnected:
+            if (cb != NULL) {
+                NEWP(r, struct ch_conn_req);
+                r->cb = cb;
+                r->ctx = cb_ctx;
+                ch->conn_reqs[ch->conn_reqs_n++] = r;
+            }
+
+            break;
+        default:
+            ZITI_LOG(ERROR, "should not be here: %s", ziti_errorstr(ZITI_WTF));
+            return ZITI_WTF;
+    }
+
+    if (ch->state == Initial || ch->state == Disconnected) {
+        reconnect_channel(ch, true);
+    }
     return ZITI_OK;
 }
 
@@ -548,12 +566,9 @@ static void hello_reply_cb(void *ctx, message *msg) {
     if (success) {
         // initial latency
         ch->latency = uv_now(ch->loop) - ch->latency;
-        uv_timer_init(ch->loop, &ch->latency_timer);
-        ch->latency_timer.data = ch;
-        uv_unref((uv_handle_t *) &ch->latency_timer);
-        uv_timer_start(&ch->latency_timer, send_latency_probe, 0, 60 * 1000);
+        uv_timer_start(&ch->timer, send_latency_probe, 0, 60 * 1000);
     } else {
-        reconnect_channel(ch);
+        reconnect_channel(ch, false);
     }
 }
 
@@ -586,7 +601,7 @@ static void reconnect_cb(uv_timer_t *t) {
 
     if (ztx->session == NULL || ztx->session->token == NULL) {
         ZITI_LOG(ERROR, "ziti context is not authenticated, delaying re-connect");
-        reconnect_channel(ch);
+        reconnect_channel(ch, false);
     } else {
         ch->msg_seq = 0;
 
@@ -599,25 +614,20 @@ static void reconnect_cb(uv_timer_t *t) {
         ch->connection._stream.data = ch;
         uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
     }
-    uv_close((uv_handle_t *) t, (uv_close_cb) free);
 }
 
-static void reconnect_channel(ziti_channel_t *ch) {
-    ch->reconnect_count++;
-    uv_timer_t *t = malloc(sizeof(uv_timer_t));
-    uv_timer_init(ch->loop, t);
-    t->data = ch;
-
-    int count = ch->reconnect_count;
-    if (count > MAX_BACKOFF) {
-        count = MAX_BACKOFF;
+static void reconnect_channel(ziti_channel_t *ch, bool now) {
+    uint64_t timeout = 0;
+    if (!now) {
+        int count = ++ch->reconnect_count;
+        if (count > MAX_BACKOFF) {
+            count = MAX_BACKOFF;
+        }
+        unsigned int backoff = rand() % count;
+        timeout = (1U << backoff) * BACKOFF_TIME;
+        ZITI_LOG(INFO, "ch[%d] reconnecting in %ld ms (attempt = %d)", ch->id, timeout, ch->reconnect_count);
     }
-    unsigned int backoff = rand() % count;
-
-    uint64_t timeout = (1U << backoff) * BACKOFF_TIME;
-    ZITI_LOG(INFO, "ch[%d] reconnecting in %ld ms (attempt = %d)", ch->id, timeout, ch->reconnect_count);
-    uv_timer_start(t, reconnect_cb, timeout, 0);
-    uv_unref((uv_handle_t *) t);
+    uv_timer_start(&ch->timer, reconnect_cb, timeout, 0);
 }
 
 static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
@@ -627,8 +637,8 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
     }
 
     ch->latency = UINT64_MAX;
-    if (uv_is_active((const uv_handle_t *) &ch->latency_timer)) {
-        uv_timer_stop(&ch->latency_timer);
+    if (uv_is_active((const uv_handle_t *) &ch->timer)) {
+        uv_timer_stop(&ch->timer);
     }
 
     while (!LIST_EMPTY(&ch->receivers)) {
@@ -638,8 +648,9 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
         free(con);
     }
 
+    uv_mbed_free(&ch->connection);
     if (ch->state != Closed) {
-        reconnect_channel(ch);
+        reconnect_channel(ch, false);
         ziti_force_session_refresh(ch->ctx);
     }
 }
@@ -719,7 +730,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
         }
         ch->conn_reqs_n = 0;
         ch->state = Disconnected;
-        reconnect_channel(ch);
+        reconnect_channel(ch, false);
     }
     free(req);
 }
