@@ -38,7 +38,7 @@ enum ChannelState {
     Closed,
 };
 
-static __always_inline const char *ch_state_str(ziti_channel_t *ch) {
+static inline const char *ch_state_str(ziti_channel_t *ch) {
     switch (ch->state) {
         case Initial:
             return to_str(Initial);
