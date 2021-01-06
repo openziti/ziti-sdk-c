@@ -521,7 +521,7 @@ void run(int argc, char **argv) {
             .metrics_type = INSTANT,
     };
 
-    ziti_init_opts(&opts, loop, &app_ctx);
+    ziti_init_opts(&opts, loop);
 
 
 #if __unix__ || __unix

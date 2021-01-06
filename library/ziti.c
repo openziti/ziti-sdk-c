@@ -153,7 +153,7 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
     return ZITI_OK;
 }
 
-int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx) {
+int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
     ziti_log_init(loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     metrics_init(loop, 5);
 
@@ -254,7 +254,7 @@ int ziti_init(const char *config, uv_loop_t *loop, ziti_event_cb event_cb, int e
     opts->app_ctx = app_ctx;
     opts->config_types = ALL_CONFIG_TYPES;
 
-    return ziti_init_opts(opts, loop, app_ctx);
+    return ziti_init_opts(opts, loop);
 }
 
 extern void *ziti_app_ctx(ziti_context ztx) {

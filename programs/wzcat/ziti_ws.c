@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
             .events = ZitiContextEvent,
             .app_ctx = ws_service,
     };
-    ziti_init_opts(&opts, l, ws_service);
+    ziti_init_opts(&opts, l);
 
     uv_run(l, UV_RUN_DEFAULT);
 
