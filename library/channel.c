@@ -219,7 +219,7 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
     ziti_channel_t *ch = model_map_get(&ztx->channels, ch_name);
 
     if (ch != NULL) {
-        ZITI_LOG(DEBUG, "existing channel[%d/%s] found for ingress[%s]", ch->id, ch_state_str(ch), url);
+        ZITI_LOG(DEBUG, "existing ch[%d](%s) found for ingress[%s]", ch->id, ch_state_str(ch), url);
     }
     else {
         ch = new_ziti_channel(ztx, ch_name, url);
@@ -590,8 +590,8 @@ static void async_write(uv_async_t *ar) {
 
     NEWP(req, uv_write_t);
     req->data = wr;
-    uv_mbed_write(req, &wr->ch->connection, &wr->buf, on_write);
-
+    int rc = uv_mbed_write(req, &wr->ch->connection, &wr->buf, on_write);
+    ZITI_LOG(INFO, "rc = %d", rc);
     uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 }
 
@@ -612,6 +612,7 @@ static void reconnect_cb(uv_timer_t *t) {
 
         uv_mbed_init(ch->loop, &ch->connection, ch->connection.tls);
         ch->connection._stream.data = ch;
+        ZITI_LOG(DEBUG, "connecting ch[%d] to %s:%d", ch->id, ch->host, ch->port);
         uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
     }
 }
@@ -626,6 +627,9 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
         unsigned int backoff = rand() % count;
         timeout = (1U << backoff) * BACKOFF_TIME;
         ZITI_LOG(INFO, "ch[%d] reconnecting in %ld ms (attempt = %d)", ch->id, timeout, ch->reconnect_count);
+    }
+    else {
+        ZITI_LOG(INFO, "ch[%d] reconnecting NOW", ch->id);
     }
     uv_timer_start(&ch->timer, reconnect_cb, timeout, 0);
 }

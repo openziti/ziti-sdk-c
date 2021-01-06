@@ -162,6 +162,7 @@ static void close_cb(uv_handle_t *h) {
     ZITI_LOG(DEBUG, "client connection closed for %s", clt->addr_s);
     if (clt->ziti_conn) {
         ziti_conn_set_data(clt->ziti_conn, NULL);
+        ziti_close(clt->ziti_conn, NULL);
     }
     free(clt);
     free(h);
