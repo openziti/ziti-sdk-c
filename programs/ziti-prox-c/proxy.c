@@ -337,6 +337,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         if (clt != NULL) {
             ZITI_LOG(DEBUG, "ziti connection closed with [%zd](%s)", len, ziti_errorstr(len));
             ziti_conn_set_data(conn, NULL);
+            ziti_close(conn, NULL);
             c->ziti_conn = NULL;
             if (!c->closed) {
                 c->closed = true;

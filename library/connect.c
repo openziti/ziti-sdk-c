@@ -1165,7 +1165,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
 
     switch (msg->header.content) {
         case ContentTypeStateClosed:
-            ZITI_LOG(DEBUG, "connection status[%d] conn_id[%d] seq[%d] err[%.*s]", msg->header.content, conn_id, seq,
+            ZITI_LOG(DEBUG, "connection status[%X] conn_id[%d] seq[%d] err[%.*s]", msg->header.content, conn_id, seq,
                      msg->header.body_len, msg->body);
             bool retry_connect = false;
 

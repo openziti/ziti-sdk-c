@@ -294,7 +294,11 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
     NEWP(req, uv_write_t);
     req->data = ziti_write;
     ziti_write->payload = msg_buf;
-    return uv_mbed_write(req, &ch->connection, &buf, on_channel_send);
+    int rc = uv_mbed_write(req, &ch->connection, &buf, on_channel_send);
+    if (rc != 0) {
+        on_channel_send(req, rc);
+    }
+    return 0;
 }
 
 void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter) {
@@ -591,7 +595,9 @@ static void async_write(uv_async_t *ar) {
     NEWP(req, uv_write_t);
     req->data = wr;
     int rc = uv_mbed_write(req, &wr->ch->connection, &wr->buf, on_write);
-    ZITI_LOG(INFO, "rc = %d", rc);
+    if (rc != 0) {
+        on_write(req, rc);
+    }
     uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 }
 
@@ -613,7 +619,10 @@ static void reconnect_cb(uv_timer_t *t) {
         uv_mbed_init(ch->loop, &ch->connection, ch->connection.tls);
         ch->connection._stream.data = ch;
         ZITI_LOG(DEBUG, "connecting ch[%d] to %s:%d", ch->id, ch->host, ch->port);
-        uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
+        int rc = uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
+        if (rc != 0) {
+            on_channel_connect_internal(req, rc);
+        }
     }
 }
 
