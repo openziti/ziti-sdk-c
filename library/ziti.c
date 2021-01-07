@@ -54,6 +54,8 @@ struct ziti_init_req {
 
 int code_to_error(const char *code);
 
+static void update_ctrl_status(ziti_context ztx, int code, const char *msg);
+
 static void services_refresh(uv_timer_t *t);
 
 static void version_cb(ziti_version *v, ziti_error *err, void *ctx);
@@ -496,21 +498,27 @@ static void ziti_re_auth(ziti_context ztx) {
 
 static void update_services(ziti_service_array services, ziti_error *error, void *ctx) {
     ziti_context ztx = ctx;
-    if (error) {
-        ZITI_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
-                 ztx->opts->controller);
-        if (strcmp(error->code, "UNAUTHORIZED") == 0) {
-            ZITI_LOG(WARN, "API session is no longer valid. Trying to re-auth");
-            ziti_re_auth(ztx);
-        }
-        return;
-    }
 
     // schedule next refresh
     if (ztx->opts->refresh_interval > 0) {
         ZITI_LOG(VERBOSE, "scheduling service refresh %ld seconds from now", ztx->opts->refresh_interval);
         uv_timer_start(&ztx->refresh_timer, services_refresh, ztx->opts->refresh_interval * 1000, 0);
     }
+
+    if (error) {
+        ZITI_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
+                 ztx->opts->controller);
+        if (strcmp(error->code, "UNAUTHORIZED") == 0) {
+            ZITI_LOG(WARN, "API session is no longer valid. Trying to re-auth");
+            ziti_re_auth(ztx);
+        } else {
+            update_ctrl_status(ztx, ZITI_CONTROLLER_UNAVAILABLE, error->message);
+        }
+        return;
+    }
+    update_ctrl_status(ztx, ZITI_OK, NULL);
+
+
     ZITI_LOG(VERBOSE, "processing service updates");
 
     model_map updates = {0};
@@ -613,12 +621,6 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     ztx->loop_thread = uv_thread_self();
 
     int errCode = err ? code_to_error(err->code) : ZITI_OK;
-    ziti_event_t ev = {
-            .type = ZitiContextEvent,
-            .event.ctx = {
-                    .ctrl_status = ZITI_OK,
-                    .err = NULL,
-            }};
 
     if (session) {
         ZITI_LOG(DEBUG, "%s successfully => api_session[%s]", ztx->session ? "refreshed" : "logged in", session->id);
@@ -649,8 +651,6 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         posture_init(ztx, 20);
 
     } else if (err) {
-        ev.event.ctx.ctrl_status = errCode;
-        ev.event.ctx.err = err->message;
         ZITI_LOG(WARN, "failed to get session from ctrl[%s] %s[%d] %s",
                  ztx->opts->controller, err->code, errCode, err->message);
 
@@ -699,13 +699,23 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         ZITI_LOG(ERROR, "%s: no session or error received", ziti_errorstr(ZITI_WTF));
     }
 
-    if (ztx->ctrl_status != errCode) {
-        ztx->ctrl_status = errCode;
-        ziti_send_event(ztx, &ev);
-    }
+    update_ctrl_status(ztx, errCode, err ? err->message : NULL);
 
     free_ziti_error(err);
     FREE(init_req);
+}
+
+static void update_ctrl_status(ziti_context ztx, int errCode, const char* errMsg) {
+    if (ztx->ctrl_status != errCode) {
+        ziti_event_t ev = {
+                .type = ZitiContextEvent,
+                .event.ctx = {
+                        .ctrl_status = errCode,
+                        .err = errMsg,
+                }};
+        ztx->ctrl_status = errCode;
+        ziti_send_event(ztx, &ev);
+    }
 }
 
 static void version_cb(ziti_version *v, ziti_error *err, void *ctx) {
