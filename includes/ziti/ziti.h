@@ -443,7 +443,7 @@ extern int ziti_init(const char *config, uv_loop_t *loop, ziti_event_cb evnt_cb,
  * @see ziti_init()
  */
 ZITI_FUNC
-extern int ziti_init_opts(ziti_options *options, uv_loop_t *loop, void *init_ctx);
+extern int ziti_init_opts(ziti_options *options, uv_loop_t *loop);
 
 /**
  * @brief returns ziti_options.app_ctx for the given Ziti context.

@@ -71,7 +71,7 @@ struct ziti_router_event {
  * \brief Ziti Service Status event.
  *
  * Event notifying app about service access changes.
- * Each fiels is a NULL-terminated array of `ziti_service*`.
+ * Each field is a NULL-terminated array of `ziti_service*`.
  *
  * \see ziti_service
  */
