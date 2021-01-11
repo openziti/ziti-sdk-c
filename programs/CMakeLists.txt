@@ -1,6 +1,7 @@
 
 
 add_subdirectory(ziti-prox-c)
+add_subdirectory(host-proxy)
 
 add_subdirectory(sample_wttr)
 add_subdirectory(sample_http_link)
