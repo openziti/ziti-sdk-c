@@ -1206,13 +1206,14 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
                     conn->data_cb(conn, NULL, ZITI_CONN_CLOSED);
                     break;
 
+                case Disconnected:
+                case Closed:
+                    // no more data_cb is expected
+                    break;
 
                 default:
-                    ZITI_LOG(WARN, "unexpected msg for conn[%d] state[%d]", conn->conn_id, conn->state);
-                    conn_set_state(conn, Disconnected);
-                    if (conn->data_cb) {
-                        conn->data_cb(conn, NULL, ZITI_INVALID_STATE);
-                    }
+                    ZITI_LOG(ERROR, "unexpected msg for conn[%d] state[%s]: %s",
+                             conn->conn_id, ziti_conn_state(conn), ziti_errorstr(ZITI_WTF));
                     break;
             }
             break;
