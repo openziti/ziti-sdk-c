@@ -36,7 +36,7 @@ static void on_client_write(ziti_connection clt, ssize_t status, void *ctx) {
 
 static ssize_t on_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
     if (len > 0) {
-        printf("client sent:\n%.*s", (int) len, data);
+        printf("client sent:%.*s\n", (int) len, data);
         char *reply = malloc(128);
         size_t l = sprintf(reply, "%zd\n", len);
         ziti_write(clt, reply, l, on_client_write, reply);
@@ -58,17 +58,17 @@ static void on_client_connect(ziti_connection clt, int status) {
     }
 }
 
-static void on_client(ziti_connection serv, ziti_connection client, int status) {
+static void on_client(ziti_connection serv, ziti_connection client, int status, ziti_client_ctx *clt_ctx) {
     if (status == ZITI_OK) {
         const char *source_identity = ziti_conn_source_identity(client);
         if (source_identity != NULL) {
             fprintf(stderr, "incoming connection from '%s'\n", source_identity);
-        } else {
+        }
+        else {
             fprintf(stderr, "incoming connection from unidentified client\n");
         }
-        char *app_data = ziti_conn_data(client);
-        if (app_data != NULL) {
-            fprintf(stderr, "got app data '%s'!\n", app_data);
+        if (clt_ctx->app_data != NULL) {
+            fprintf(stderr, "got app data '%.*s'!\n", (int) clt_ctx->app_data_sz, clt_ctx->app_data);
         }
         ziti_accept(client, on_client_connect, on_client_data);
     } else {
@@ -93,14 +93,38 @@ static void on_write(ziti_connection conn, ssize_t status, void *ctx) {
     else {
         printf("request success: %zd bytes sent\n", status);
     }
+
+    if (ctx) {
+        free(ctx);
+    }
+}
+
+static void input_alloc(uv_handle_t *s, size_t len, uv_buf_t *b) {
+    b->base = malloc(len);
+    if (b->base) {
+        b->len = len;
+    }
+}
+
+static void input_read(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
+    ziti_connection conn = s->data;
+
+    if (len > 0) {
+        DIE(ziti_write(conn, b->base, len, on_write, b->base));
+    }
+    else {
+        exit(0);
+    }
 }
 
 void on_connect(ziti_connection conn, int status) {
     DIE(status);
-
-    uint8_t *req = "hello";
-
-    DIE(ziti_write(conn, req, strlen(req), on_write, NULL));
+    uv_loop_t *l = ziti_app_ctx(ziti_conn_context(conn));
+    uv_pipe_t *input = calloc(1, sizeof(uv_pipe_t));
+    uv_pipe_init(l, input, 0);
+    input->data = conn;
+    DIE(uv_pipe_open(input, 0));
+    DIE(uv_read_start((uv_stream_t *) input, input_alloc, input_read));
 }
 
 static size_t total;
@@ -161,7 +185,7 @@ int main(int argc, char **argv) {
     }
     uv_loop_t *loop = uv_default_loop();
 
-    if (strcmp("server", argv[1])) {
+    if (strcmp("server", argv[1]) != 0) {
         printf("Running as client\n");
     }
     else {
@@ -171,7 +195,7 @@ int main(int argc, char **argv) {
 
     service = argv[3];
 
-    DIE(ziti_init(argv[2], loop, on_ziti_init, ZitiContextEvent, NULL));
+    DIE(ziti_init(argv[2], loop, on_ziti_init, ZitiContextEvent, loop));
 
     // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
