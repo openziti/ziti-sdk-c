@@ -336,7 +336,8 @@ typedef void (*ziti_conn_cb)(ziti_connection conn, int status);
  * @param serv hosting connection, initialized with ziti_listen()
  * @param client client connection - generally passed to ziti_accept() in this function
  * @param status #ZITI_OK or error
- * @param ctx object containing application data passed by dialing identity, \see ziti_dial_opts
+ * @param ctx object containing application data passed by dialing identity, \see ziti_dial_opts.
+ *            the reference to this object is only valid for the duration of the callback.
  *
  * @see ziti_listen(), ZITI_ERRORS
  */
