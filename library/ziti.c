@@ -623,6 +623,10 @@ static void check_service_update(ziti_service_update *update, ziti_error *err, v
 
     if (err) { // API not supported - do refresh
         need_update = true;
+        if (err->http_code == 404) {
+            ZITI_LOG(INFO, "Controller does not support /current-api-session/service-updates API");
+            ztx->no_service_updates_api = true;
+        }
     } else if (ztx->last_update == NULL || strcmp(ztx->last_update, update->last_change) != 0) {
         FREE(ztx->last_update);
         ztx->last_update = update->last_change;
@@ -639,7 +643,12 @@ static void check_service_update(ziti_service_update *update, ziti_error *err, v
 
 static void services_refresh(uv_timer_t *t) {
     ziti_context ztx = t->data;
-    ziti_ctrl_get_services_update(&ztx->controller, check_service_update, ztx);
+    if (ztx->no_service_updates_api) {
+        ziti_ctrl_get_services(&ztx->controller, update_services, ztx);
+    }
+    else {
+        ziti_ctrl_get_services_update(&ztx->controller, check_service_update, ztx);
+    }
 }
 
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {

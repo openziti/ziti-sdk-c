@@ -47,6 +47,7 @@ XX(identity, ziti_identity, ptr, identity, __VA_ARGS__) \
 XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__)
 
 #define ZITI_ERROR_MODEL(XX, ...) \
+XX(http_code, int, none, , __VA_ARGS__) \
 XX(code, string, none, code, __VA_ARGS__) \
 XX(message, string, none, message, __VA_ARGS__)
 

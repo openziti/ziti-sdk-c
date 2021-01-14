@@ -237,8 +237,8 @@ static const char *get_elapsed_time() {
     uint64_t now = uv_now(ts_loop);
     if (now > last_update) {
         last_update = now;
-        uint64_t elapsed = now - starttime;
-        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%9ld.%03ld", elapsed / 1000, elapsed % 1000);
+        unsigned long long elapsed = now - starttime;
+        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%9lld.%03lld", (elapsed / 1000), (elapsed % 1000));
     }
     return elapsed_buffer;
 }

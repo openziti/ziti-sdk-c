@@ -177,7 +177,9 @@ struct ziti_ctx {
     // map<service_id,ziti_net_session>
     model_map sessions;
 
+    bool no_service_updates_api; // controller API has no last-update endpoint
     char *last_update;
+
     uv_timer_t session_timer;
     uv_timer_t refresh_timer;
     uv_prepare_t reaper;
