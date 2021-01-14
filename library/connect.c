@@ -1150,7 +1150,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
         if (conn->state == Connected) {
             conn->data_cb(conn, NULL, code);
         } else if (conn->state == Bound) {
-            conn->client_cb(conn, NULL, code);
+            conn->client_cb(conn, NULL, code, NULL);
         }
         return;
     }
@@ -1197,7 +1197,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
 
                 case Bound:
                     conn_set_state(conn, Disconnected);
-                    conn->client_cb(conn, NULL, ZITI_CONN_CLOSED);
+                    conn->client_cb(conn, NULL, ZITI_CONN_CLOSED, NULL);
                     break;
 
                 case Connected:
@@ -1234,16 +1234,16 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
             if (conn->state != Bound) {
                 ZITI_LOG(ERROR, "invalid message received");
             }
-            uint8_t *app_data = NULL;
-            size_t app_data_sz = 0;
-            message_get_bytes_header(msg, AppDataHeader, &app_data, &app_data_sz);
+            ziti_client_ctx clt_ctx = {0};
+            message_get_bytes_header(msg, AppDataHeader, (uint8_t **) &clt_ctx.app_data, &clt_ctx.app_data_sz);
             ziti_connection clt;
-            ziti_conn_init(conn->ziti_ctx, &clt, app_data);
+            ziti_conn_init(conn->ziti_ctx, &clt, NULL);
             uint8_t *source_identity = NULL;
             size_t source_identity_sz = 0;
             bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
             if (caller_id_sent) {
-                clt->source_identity = strndup((char *)source_identity, source_identity_sz);
+                clt->source_identity = strndup((char *) source_identity, source_identity_sz);
+                clt_ctx.caller_id = clt->source_identity;
             }
             conn_set_state(clt, Accepting);
             clt->parent = conn;
@@ -1253,7 +1253,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
             if (conn->encrypted) {
                 establish_crypto(clt, msg);
             }
-            conn->client_cb(conn, clt, ZITI_OK);
+            conn->client_cb(conn, clt, ZITI_OK, &clt_ctx);
             break;
 
         case ContentTypeStateConnected:

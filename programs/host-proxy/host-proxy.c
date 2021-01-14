@@ -207,14 +207,13 @@ static void listen_cb(ziti_connection server, int status) {
     }
 }
 
-static void on_client(ziti_connection server, ziti_connection conn, int status) {
+static void on_client(ziti_connection server, ziti_connection conn, int status, ziti_client_ctx *clt_ctx) {
     if (status == ZITI_OK) {
         host_binding *binding = ziti_conn_data(server);
         struct app_ctx *app = binding->app;
 
-        const char *client_id = ziti_conn_source_identity(conn);
-        printf("accepting connection from <<<%s>>>\n", client_id);
-
+        printf("accepting connection from <<<%s>>>\n", clt_ctx->caller_id);
+        printf("client supplied data: '%.*s'", (int) clt_ctx->app_data_sz, clt_ctx->app_data);
 
         uv_getaddrinfo_t resolve;
         char port[6];

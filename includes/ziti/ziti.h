@@ -269,6 +269,12 @@ typedef struct ziti_dial_opts_s {
     size_t app_data_sz;
 } ziti_dial_opts;
 
+typedef struct ziti_client_ctx_s {
+    char *caller_id;
+    uint8_t *app_data;
+    size_t app_data_sz;
+} ziti_client_ctx;
+
 typedef enum ziti_terminator_precedence_e {
     PRECEDENCE_DEFAULT = 0,
     PRECEDENCE_REQUIRED,
@@ -330,10 +336,12 @@ typedef void (*ziti_conn_cb)(ziti_connection conn, int status);
  * @param serv hosting connection, initialized with ziti_listen()
  * @param client client connection - generally passed to ziti_accept() in this function
  * @param status #ZITI_OK or error
+ * @param ctx object containing application data passed by dialing identity, \see ziti_dial_opts.
+ *            the reference to this object is only valid for the duration of the callback.
  *
  * @see ziti_listen(), ZITI_ERRORS
  */
-typedef void (*ziti_client_cb)(ziti_connection serv, ziti_connection client, int status);
+typedef void (*ziti_client_cb)(ziti_connection serv, ziti_connection client, int status, ziti_client_ctx *ctx);
 
 /**
  * @brief Defines the ziti_listen_cb.
