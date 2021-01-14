@@ -617,9 +617,29 @@ static void update_services(ziti_service_array services, ziti_error *error, void
     model_map_clear(&updates, NULL);
 }
 
+static void check_service_update(ziti_service_update *update, ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
+    bool need_update = false;
+
+    if (err) { // API not supported - do refresh
+        need_update = true;
+    } else if (ztx->last_update == NULL || strcmp(ztx->last_update, update->last_change) != 0) {
+        FREE(ztx->last_update);
+        ztx->last_update = update->last_change;
+        need_update = true;
+    } else {
+        free_ziti_service_update(update);
+    }
+
+    if (need_update) {
+        ziti_ctrl_get_services(&ztx->controller, update_services, ztx);
+    }
+    FREE(update);
+}
+
 static void services_refresh(uv_timer_t *t) {
     ziti_context ztx = t->data;
-    ziti_ctrl_get_services(&ztx->controller, update_services, ztx);
+    ziti_ctrl_get_services_update(&ztx->controller, check_service_update, ztx);
 }
 
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {

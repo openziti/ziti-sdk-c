@@ -111,6 +111,9 @@ XX(is_running, bool, none, isRunning, __VA_ARGS__) \
 XX(hash, string, none, hash, __VA_ARGS__) \
 XX(signers, string, array, signerFingerprints, __VA_ARGS__)
 
+#define ZITI_SERVICE_UPDATE(XX, ...) \
+XX(last_change, string, none, lastChangedAt, __VA_ARGS__)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -147,6 +150,8 @@ DECLARE_MODEL(ziti_pr_process, ZITI_PR_PROCESS)
 DECLARE_MODEL(ziti_pr_process_req, ZITI_PR_PROCESS_REQ)
 
 DECLARE_MODEL(ziti_pr_domain_req, ZITI_PR_DOMAIN_REQ)
+
+DECLARE_MODEL(ziti_service_update, ZITI_SERVICE_UPDATE)
 
 #ifdef __cplusplus
 }

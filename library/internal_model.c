@@ -79,6 +79,8 @@ IMPL_MODEL(ziti_pr_process_req, ZITI_PR_PROCESS_REQ)
 
 IMPL_MODEL(ziti_pr_domain_req, ZITI_PR_DOMAIN_REQ)
 
+IMPL_MODEL(ziti_service_update, ZITI_SERVICE_UPDATE)
+
 const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type) {
     return (const char *) model_map_get(&service->config, cfg_type);
 }
