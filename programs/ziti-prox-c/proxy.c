@@ -106,10 +106,10 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     }
 
     // shutdown diagnostics
-    uv_timer_t *shutdown_timer = malloc(sizeof(uv_timer_t));
-    uv_timer_init(loop, shutdown_timer);
-    uv_timer_start(shutdown_timer, shutdown_timer_cb, 5000, 0);
-    uv_unref((uv_handle_t *) shutdown_timer);
+    static uv_timer_t shutdown_timer;
+    uv_timer_init(loop, &shutdown_timer);
+    uv_timer_start(&shutdown_timer, shutdown_timer_cb, 5000, 0);
+    uv_unref((uv_handle_t *) &shutdown_timer);
 
     // try to cleanup
     ziti_shutdown(app_ctx->ziti);

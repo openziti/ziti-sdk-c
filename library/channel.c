@@ -121,7 +121,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     uv_mbed_init(ch->loop, &ch->connection, tls);
     uv_mbed_keepalive(&ch->connection, true, 60);
     uv_mbed_nodelay(&ch->connection, true);
-    ch->connection._stream.data = ch;
+    ch->connection.data = ch;
 
     uv_timer_init(ch->loop, &ch->timer);
     ch->timer.data = ch;
@@ -151,7 +151,7 @@ int ziti_close_channels(struct ziti_ctx *ziti) {
 
 static void close_handle_cb(uv_handle_t *h) {
     uv_mbed_t *mbed = (uv_mbed_t *) h;
-    ziti_channel_t *ch = mbed->_stream.data;
+    ziti_channel_t *ch = mbed->data;
 
     uv_mbed_free(mbed);
     ziti_channel_free(ch);
@@ -617,7 +617,7 @@ static void reconnect_cb(uv_timer_t *t) {
         ch->state = Connecting;
 
         uv_mbed_init(ch->loop, &ch->connection, ch->connection.tls);
-        ch->connection._stream.data = ch;
+        ch->connection.data = ch;
         ZITI_LOG(DEBUG, "connecting ch[%d] to %s:%d", ch->id, ch->host, ch->port);
         int rc = uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
         if (rc != 0) {
@@ -688,7 +688,7 @@ static void on_write(uv_write_t *req, int status) {
 
 static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
     uv_mbed_t *mbed = (uv_mbed_t *) s;
-    ziti_channel_t *ch = mbed->_stream.data;
+    ziti_channel_t *ch = mbed->data;
 
     if (len < 0) {
         free(buf->base);
