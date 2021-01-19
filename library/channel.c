@@ -669,6 +669,7 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
 }
 
 static void on_write(uv_write_t *req, int status) {
+    ZITI_LOG(TRACE, "on_write(%p,%d)", req, status);
     struct async_write_req *wr = req->data;
 
     if (status < 0) {

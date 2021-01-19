@@ -532,6 +532,9 @@ extern int ziti_set_timeout(ziti_context ztx, int timeout);
 ZITI_FUNC
 extern int ziti_shutdown(ziti_context ztx);
 
+ZITI_FUNC
+int ziti_ctx_free(ziti_context *ctxp) ;
+
 /**
  * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #ziti_context.
  *

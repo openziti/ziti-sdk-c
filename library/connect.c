@@ -34,8 +34,8 @@ static const int MAX_CONNECT_RETRY = 3;
     XX(Binding)\
     XX(Bound)\
     XX(Accepting)\
-    XX(Timedout)\
     XX(CloseWrite)\
+    XX(Timedout)\
     XX(Disconnected)\
     XX(Closed)
 
@@ -599,7 +599,7 @@ static void ziti_disconnect_async(uv_async_t *ar) {
 }
 
 static int ziti_disconnect(struct ziti_conn *conn) {
-    if (conn->state < Disconnected) {
+    if (conn->state < Timedout) {
         NEWP(ar, uv_async_t);
         uv_async_init(conn->ziti_ctx->loop, ar, ziti_disconnect_async);
         ar->data = conn;
