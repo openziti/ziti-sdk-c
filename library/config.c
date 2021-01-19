@@ -24,6 +24,14 @@ limitations under the License.
 
 const char* ZITI_SDK_CONFIG = "ZITI_SDK_CONFIG";
 
+const char* APP_ID = NULL;
+const char* APP_VERSION = NULL;
+
+void ziti_set_app_info(const char *app_id, const char *app_version) {
+    APP_ID = strdup(app_id);
+    APP_VERSION = strdup(app_version);
+}
+
 int load_config_file(const char *filename, ziti_config **cfg) {
     struct stat stats;
     int s = stat(filename, &stats);
