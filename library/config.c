@@ -28,6 +28,8 @@ const char* APP_ID = NULL;
 const char* APP_VERSION = NULL;
 
 void ziti_set_app_info(const char *app_id, const char *app_version) {
+    FREE(APP_ID);
+    FREE(APP_VERSION);
     APP_ID = strdup(app_id);
     APP_VERSION = strdup(app_version);
 }
