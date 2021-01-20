@@ -27,6 +27,7 @@ limitations under the License.
 #define MAXHOSTNAMELEN 255
 #endif
 
+#define CONNECT_TIMEOUT (20*1000)
 #define LATENCY_TIMEOUT (10*1000)
 #define LATENCY_INTERVAL (60*1000) /* 1 minute */
 #define BACKOFF_TIME 3000 /* 3 seconds */
@@ -648,7 +649,7 @@ static void reconnect_cb(uv_timer_t *t) {
             on_channel_connect_internal(req, rc);
         }
         else {
-            uv_timer_start(&ch->timer, connect_timeout, 20 * 1000, 0);
+            uv_timer_start(&ch->timer, connect_timeout, CONNECT_TIMEOUT, 0);
         }
     }
 }
