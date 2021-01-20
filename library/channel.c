@@ -673,11 +673,9 @@ static void on_write(uv_write_t *req, int status) {
     struct async_write_req *wr = req->data;
 
     if (status < 0) {
-        ZITI_LOG(ERROR, "ch[%d] write failed [status=%d] %s", wr->ch->id, status, uv_strerror(status));
-        uv_mbed_t *mbed = (uv_mbed_t *) req->handle;
-        ziti_channel_t *ch = uv_handle_get_data((const uv_handle_t *) mbed);
+        ziti_channel_t *ch = wr->ch;
+        ZITI_LOG(ERROR, "ch[%d] write failed [status=%d] %s", ch->id, status, uv_strerror(status));
         on_channel_close(ch, status);
-
     }
 
     if (wr != NULL) {
