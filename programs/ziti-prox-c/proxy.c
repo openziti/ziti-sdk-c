@@ -525,6 +525,7 @@ void run(int argc, char **argv) {
             .events = ZitiContextEvent|ZitiServiceEvent|ZitiRouterEvent,
             .event_cb = on_ziti_event,
             .refresh_interval = 60,
+            .router_keepalive = 10,
             .app_ctx = &app_ctx,
             .config_types = my_configs,
             .metrics_type = INSTANT,

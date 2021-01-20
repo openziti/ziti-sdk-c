@@ -119,7 +119,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     LIST_INIT(&ch->waiters);
 
     uv_mbed_init(ch->loop, &ch->connection, tls);
-    uv_mbed_keepalive(&ch->connection, true, 60);
+    uv_mbed_keepalive(&ch->connection, true, ctx->opts->router_keepalive);
     uv_mbed_nodelay(&ch->connection, true);
     ch->connection.data = ch;
 
@@ -238,6 +238,7 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
                 r->cb = cb;
                 r->ctx = cb_ctx;
                 ch->conn_reqs[ch->conn_reqs_n++] = r;
+                ZITI_LOG(TRACE, "ch[%d] outstanding conn_reqs = %d", ch->id, ch->conn_reqs_n);
             }
 
             break;
@@ -732,7 +733,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
         }
         send_hello(ch);
     } else {
-        ZITI_LOG(ERROR, "ch[%d] failed to connect[%s] [status=%d]", ch->id, ch->name, status);
+        ZITI_LOG(ERROR, "ch[%d] failed to connect[%s] [status=%d] conn_reqs[%d]", ch->id, ch->name, status, ch->conn_reqs_n);
 
         for (int i = 0; i < ch->conn_reqs_n; i++) {
             struct ch_conn_req *r = ch->conn_reqs[i];
