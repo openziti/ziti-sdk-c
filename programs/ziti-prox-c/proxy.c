@@ -106,10 +106,10 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     }
 
     // shutdown diagnostics
-    uv_timer_t *shutdown_timer = malloc(sizeof(uv_timer_t));
-    uv_timer_init(loop, shutdown_timer);
-    uv_timer_start(shutdown_timer, shutdown_timer_cb, 5000, 0);
-    uv_unref((uv_handle_t *) shutdown_timer);
+    static uv_timer_t shutdown_timer;
+    uv_timer_init(loop, &shutdown_timer);
+    uv_timer_start(&shutdown_timer, shutdown_timer_cb, 5000, 0);
+    uv_unref((uv_handle_t *) &shutdown_timer);
 
     // try to cleanup
     ziti_shutdown(app_ctx->ziti);
@@ -148,7 +148,6 @@ static void signal_cb(uv_signal_t *s, int signum) {
 
         case SIGUSR1:
             debug_dump(s->data);
-            reporter_cb(&report_timer);
             break;
 
         default:
@@ -175,7 +174,8 @@ static void on_ziti_close(ziti_connection conn) {
         clt->ziti_conn = NULL;
         ZITI_LOG(INFO, "ziti connection closed for clt[%s]", clt->addr_s);
         clt->closed = true;
-        uv_close((uv_handle_t *) tcp, close_cb);
+        if (!uv_is_closing((const uv_handle_t *) tcp))
+            uv_close((uv_handle_t *) tcp, close_cb);
     }
 }
 
@@ -524,6 +524,7 @@ void run(int argc, char **argv) {
             .events = ZitiContextEvent|ZitiServiceEvent|ZitiRouterEvent,
             .event_cb = on_ziti_event,
             .refresh_interval = 60,
+            .router_keepalive = 10,
             .app_ctx = &app_ctx,
             .config_types = my_configs,
             .metrics_type = INSTANT,
@@ -564,6 +565,7 @@ void run(int argc, char **argv) {
     }
 
     ZITI_LOG(INFO, "proxy event loop is done");
+    ziti_ctx_free(&app_ctx.ziti);
     free(loop);
     exit(excode);
 }

@@ -27,6 +27,9 @@ limitations under the License.
 #define MAXHOSTNAMELEN 255
 #endif
 
+#define CONNECT_TIMEOUT (20*1000)
+#define LATENCY_TIMEOUT (10*1000)
+#define LATENCY_INTERVAL (60*1000) /* 1 minute */
 #define BACKOFF_TIME 3000 /* 3 seconds */
 #define MAX_BACKOFF 5 /* max reconnection timeout: (1 << 5) * BACKOFF_TIME = 96 seconds */
 
@@ -66,6 +69,10 @@ static void async_write(uv_async_t *ar);
 
 static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id);
 
+static void on_channel_close(ziti_channel_t *ch, ssize_t code);
+
+static void send_latency_probe(uv_timer_t *t);
+
 struct async_write_req {
     uv_buf_t buf;
     ziti_channel_t *ch;
@@ -82,6 +89,7 @@ struct waiter_s {
 struct ch_conn_req {
     ch_connect_cb cb;
     void *ctx;
+    LIST_ENTRY(ch_conn_req) next;
 };
 
 struct msg_receiver {
@@ -107,8 +115,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
 
     ch->state = Initial;
     // 32 concurrent connect requests for the same channel is probably enough
-    ch->conn_reqs = calloc(32, sizeof(struct ch_conn_req *));
-    ch->conn_reqs_n = 0;
+    LIST_INIT(&ch->conn_reqs);
 
     ch->name = NULL;
     ch->in_next = NULL;
@@ -119,9 +126,9 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     LIST_INIT(&ch->waiters);
 
     uv_mbed_init(ch->loop, &ch->connection, tls);
-    uv_mbed_keepalive(&ch->connection, true, 60);
+    uv_mbed_keepalive(&ch->connection, true, ctx->opts->router_keepalive);
     uv_mbed_nodelay(&ch->connection, true);
-    ch->connection._stream.data = ch;
+    ch->connection.data = ch;
 
     uv_timer_init(ch->loop, &ch->timer);
     ch->timer.data = ch;
@@ -133,7 +140,6 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
 }
 
 void ziti_channel_free(ziti_channel_t *ch) {
-    free(ch->conn_reqs);
     free_buffer(ch->incoming);
     FREE(ch->name);
     FREE(ch->version);
@@ -151,7 +157,7 @@ int ziti_close_channels(struct ziti_ctx *ziti) {
 
 static void close_handle_cb(uv_handle_t *h) {
     uv_mbed_t *mbed = (uv_mbed_t *) h;
-    ziti_channel_t *ch = mbed->_stream.data;
+    ziti_channel_t *ch = mbed->data;
 
     uv_mbed_free(mbed);
     ziti_channel_free(ch);
@@ -237,7 +243,7 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
                 NEWP(r, struct ch_conn_req);
                 r->cb = cb;
                 r->ctx = cb_ctx;
-                ch->conn_reqs[ch->conn_reqs_n++] = r;
+                LIST_INSERT_HEAD(&ch->conn_reqs, r, next);
             }
 
             break;
@@ -513,9 +519,20 @@ static void latency_reply_cb(void *ctx, message *reply) {
         message_get_uint64_header(reply, LatencyProbeTime, &ts)) {
         ch->latency = uv_now(ch->loop) - ts;
         ZITI_LOG(VERBOSE, "ch[%d](%s) latency is now %ld", ch->id, ch->name, ch->latency);
-    } else {
+    }
+    else {
         ZITI_LOG(WARN, "invalid latency probe result ct[%d]", reply->header.content);
     }
+    uv_timer_start(&ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
+}
+
+static void latency_timeout(uv_timer_t *t) {
+    ziti_channel_t *ch = t->data;
+    ziti_channel_remove_waiter(ch, ch->latency_waiter);
+    ch->latency_waiter = NULL;
+    ch->latency = UINT64_MAX;
+
+    on_channel_close(ch, ZITI_TIMEOUT);
 }
 
 static void send_latency_probe(uv_timer_t *t) {
@@ -529,7 +546,9 @@ static void send_latency_probe(uv_timer_t *t) {
             }
     };
 
-    ziti_channel_send_for_reply(ch, ContentTypeLatencyType, headers, 1, NULL, 0, latency_reply_cb, ch);
+    ch->latency_waiter = ziti_channel_send_for_reply(ch, ContentTypeLatencyType,
+                                                     headers, 1, NULL, 0, latency_reply_cb, ch);
+    uv_timer_start(t, latency_timeout, LATENCY_TIMEOUT, 0);
 }
 
 static void hello_reply_cb(void *ctx, message *msg) {
@@ -560,17 +579,17 @@ static void hello_reply_cb(void *ctx, message *msg) {
         ch->notify_cb(ch, EdgeRouterUnavailable, ch->notify_ctx);
     }
 
-    for (int i = 0; i < ch->conn_reqs_n; i++) {
-        struct ch_conn_req *r = ch->conn_reqs[i];
+    while (!LIST_EMPTY(&ch->conn_reqs)) {
+        struct ch_conn_req *r = LIST_FIRST(&ch->conn_reqs);
+        LIST_REMOVE(r, next);
         r->cb(ch, r->ctx, cb_code);
         free(r);
     }
-    ch->conn_reqs_n = 0;
 
     if (success) {
         // initial latency
         ch->latency = uv_now(ch->loop) - ch->latency;
-        uv_timer_start(&ch->timer, send_latency_probe, 0, 60 * 1000);
+        uv_timer_start(&ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
     } else {
         reconnect_channel(ch, false);
     }
@@ -601,6 +620,11 @@ static void async_write(uv_async_t *ar) {
     uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 }
 
+static void connect_timeout(uv_timer_t *t) {
+    ziti_channel_t *ch = t->data;
+    on_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE);
+}
+
 static void reconnect_cb(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
     ziti_context ztx = ch->ctx;
@@ -608,7 +632,8 @@ static void reconnect_cb(uv_timer_t *t) {
     if (ztx->session == NULL || ztx->session->token == NULL) {
         ZITI_LOG(ERROR, "ziti context is not authenticated, delaying re-connect");
         reconnect_channel(ch, false);
-    } else {
+    }
+    else {
         ch->msg_seq = 0;
 
         uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
@@ -617,11 +642,14 @@ static void reconnect_cb(uv_timer_t *t) {
         ch->state = Connecting;
 
         uv_mbed_init(ch->loop, &ch->connection, ch->connection.tls);
-        ch->connection._stream.data = ch;
+        ch->connection.data = ch;
         ZITI_LOG(DEBUG, "connecting ch[%d] to %s:%d", ch->id, ch->host, ch->port);
         int rc = uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
         if (rc != 0) {
             on_channel_connect_internal(req, rc);
+        }
+        else {
+            uv_timer_start(&ch->timer, connect_timeout, CONNECT_TIMEOUT, 0);
         }
     }
 }
@@ -645,8 +673,10 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
 
 static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
     if (ch->state != Closed) {
+        if (ch->state == Connected) {
+            ch->notify_cb(ch, EdgeRouterDisconnected, ch->notify_ctx);
+        }
         ch->state = Disconnected;
-        ch->notify_cb(ch, EdgeRouterDisconnected, ch->notify_ctx);
     }
 
     ch->latency = UINT64_MAX;
@@ -661,7 +691,7 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
         free(con);
     }
 
-    uv_mbed_free(&ch->connection);
+    uv_mbed_close(&ch->connection, NULL);
     if (ch->state != Closed) {
         reconnect_channel(ch, false);
         ziti_force_session_refresh(ch->ctx);
@@ -669,14 +699,13 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
 }
 
 static void on_write(uv_write_t *req, int status) {
+    ZITI_LOG(TRACE, "on_write(%p,%d)", req, status);
     struct async_write_req *wr = req->data;
 
     if (status < 0) {
-        ZITI_LOG(ERROR, "ch[%d] write failed [status=%d] %s", wr->ch->id, status, uv_strerror(status));
-        uv_mbed_t *mbed = (uv_mbed_t *) req->handle;
-        ziti_channel_t *ch = uv_handle_get_data((const uv_handle_t *) mbed);
+        ziti_channel_t *ch = wr->ch;
+        ZITI_LOG(ERROR, "ch[%d] write failed [status=%d] %s", ch->id, status, uv_strerror(status));
         on_channel_close(ch, status);
-
     }
 
     if (wr != NULL) {
@@ -688,7 +717,7 @@ static void on_write(uv_write_t *req, int status) {
 
 static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
     uv_mbed_t *mbed = (uv_mbed_t *) s;
-    ziti_channel_t *ch = mbed->_stream.data;
+    ziti_channel_t *ch = mbed->data;
 
     if (len < 0) {
         free(buf->base);
@@ -735,13 +764,12 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
     } else {
         ZITI_LOG(ERROR, "ch[%d] failed to connect[%s] [status=%d]", ch->id, ch->name, status);
 
-        for (int i = 0; i < ch->conn_reqs_n; i++) {
-            struct ch_conn_req *r = ch->conn_reqs[i];
+        while (!LIST_EMPTY(&ch->conn_reqs)) {
+            struct ch_conn_req *r = LIST_FIRST(&ch->conn_reqs);
+            LIST_REMOVE(r, next);
             r->cb(ch, r->ctx, status);
             free(r);
-            ch->conn_reqs[i] = NULL;
         }
-        ch->conn_reqs_n = 0;
         ch->state = Disconnected;
         reconnect_channel(ch, false);
     }

@@ -533,6 +533,15 @@ ZITI_FUNC
 extern int ziti_shutdown(ziti_context ztx);
 
 /**
+ * @brief Frees memory allocated for the given context and nulls out the handle.
+ *
+ * @param ctxp pointer to Ziti context handle
+ * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ */
+ZITI_FUNC
+int ziti_ctx_free(ziti_context *ctxp) ;
+
+/**
  * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #ziti_context.
  *
  * This function will output debugging information to standard out. The output from this command may
