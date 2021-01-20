@@ -64,7 +64,9 @@ XX(token, string, none, jti, __VA_ARGS__)
 XX(type, string, none, type, __VA_ARGS__) \
 XX(version, string, none, version, __VA_ARGS__) \
 XX(revision, string, none, revision, __VA_ARGS__) \
-XX(branch, string, none, branch, __VA_ARGS__)
+XX(branch, string, none, branch, __VA_ARGS__)   \
+XX(app_id, string, none, appID, __VA_ARGS__)    \
+XX(app_version, string, none, appVersion, __VA_ARGS__)
 
 #define ZITI_ENV_INFO_MODEL(XX, ...) \
 XX(os, string, none, os, __VA_ARGS__) \

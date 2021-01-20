@@ -701,6 +701,7 @@ CommandLine main_cmd = make_command_set("ziti-prox-c",
                                         NULL, main_cmds);
 
 static int process_args(int argc, char *argv[]) {
+    ziti_set_app_info(main_cmd.name, to_str(ZITI_VERSION));
     commandline_run(&main_cmd, argc, argv);
     return 0;
 }

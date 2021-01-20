@@ -304,6 +304,8 @@ void ziti_ctrl_login(
                     .version = (char *) ziti_get_build_version(0),
                     .revision = (char *) ziti_git_commit(),
                     .branch = (char *) ziti_git_branch(),
+                    .app_id = (char *) APP_ID,
+                    .app_version = (char *) APP_VERSION,
             },
             .env_info = {
                     .os = osInfo.sysname,

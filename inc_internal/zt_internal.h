@@ -41,6 +41,9 @@ limitations under the License.
 #define TYPE_DIAL "Dial"
 #define TYPE_BIND "Bind"
 
+extern const char* APP_ID;
+extern const char* APP_VERSION;
+
 typedef struct ziti_channel ziti_channel_t;
 
 typedef void (*reply_cb)(void *ctx, message *m);

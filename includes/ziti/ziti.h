@@ -413,6 +413,14 @@ ZITI_FUNC
 extern int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx);
 
 /**
+ * Provide app information to Ziti SDK.
+ *
+ * App information is reported to Ziti Controller. Supplying this information is optional.
+ */
+ZITI_FUNC
+extern void ziti_set_app_info(const char *app_id, const char *app_version);
+
+/**
  * @brief Initializes a Ziti Edge identity.
  * 
  * This function is used to initialize a Ziti Edge identity. The Ziti C SDK is based around the [libuv](http://libuv.org/)
