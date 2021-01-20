@@ -289,21 +289,28 @@ int ziti_set_timeout(ziti_context ztx, int timeout) {
     return ZITI_OK;
 }
 
-int ziti_shutdown(ziti_context ztx) {
-    ZITI_LOG(INFO, "Ziti is shutting down");
+static void on_logout(void *msg, ziti_error *err, void *arg) {
+    ziti_context ztx = arg;
+    ZITI_LOG(DEBUG, "ctx[%s] logout %s",
+             ztx->session->identity->name, err ? "failed" : "success");
 
     free_ziti_session(ztx->session);
     free(ztx->session);
     ztx->session = NULL;
 
+    ziti_ctrl_close(&ztx->controller);
+}
+
+int ziti_shutdown(ziti_context ztx) {
+    ZITI_LOG(INFO, "Ziti is shutting down");
+
     uv_timer_stop(&ztx->refresh_timer);
     uv_timer_stop(&ztx->session_timer);
     uv_timer_stop(&ztx->posture_checks->timer);
 
-    ziti_ctrl_close(&ztx->controller);
     ziti_close_channels(ztx);
 
-    ziti_ctrl_logout(&ztx->controller, NULL, NULL);
+    ziti_ctrl_logout(&ztx->controller, on_logout, ztx);
     metrics_rate_close(&ztx->up_rate);
     metrics_rate_close(&ztx->down_rate);
 
