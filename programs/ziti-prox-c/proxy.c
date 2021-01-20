@@ -148,7 +148,6 @@ static void signal_cb(uv_signal_t *s, int signum) {
 
         case SIGUSR1:
             debug_dump(s->data);
-            reporter_cb(&report_timer);
             break;
 
         default:

@@ -27,6 +27,8 @@ limitations under the License.
 #define MAXHOSTNAMELEN 255
 #endif
 
+#define LATENCY_TIMEOUT (10*1000)
+#define LATENCY_INTERVAL (60*1000) /* 1 minute */
 #define BACKOFF_TIME 3000 /* 3 seconds */
 #define MAX_BACKOFF 5 /* max reconnection timeout: (1 << 5) * BACKOFF_TIME = 96 seconds */
 
@@ -65,6 +67,10 @@ static void on_write(uv_write_t *req, int status);
 static void async_write(uv_async_t *ar);
 
 static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id);
+
+static void on_channel_close(ziti_channel_t *ch, ssize_t code);
+
+static void send_latency_probe(uv_timer_t *t);
 
 struct async_write_req {
     uv_buf_t buf;
@@ -512,9 +518,20 @@ static void latency_reply_cb(void *ctx, message *reply) {
         message_get_uint64_header(reply, LatencyProbeTime, &ts)) {
         ch->latency = uv_now(ch->loop) - ts;
         ZITI_LOG(VERBOSE, "ch[%d](%s) latency is now %ld", ch->id, ch->name, ch->latency);
-    } else {
+    }
+    else {
         ZITI_LOG(WARN, "invalid latency probe result ct[%d]", reply->header.content);
     }
+    uv_timer_start(&ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
+}
+
+static void latency_timeout(uv_timer_t *t) {
+    ziti_channel_t *ch = t->data;
+    ziti_channel_remove_waiter(ch, ch->latency_waiter);
+    ch->latency_waiter = NULL;
+    ch->latency = UINT64_MAX;
+
+    on_channel_close(ch, ZITI_TIMEOUT);
 }
 
 static void send_latency_probe(uv_timer_t *t) {
@@ -528,7 +545,9 @@ static void send_latency_probe(uv_timer_t *t) {
             }
     };
 
-    ziti_channel_send_for_reply(ch, ContentTypeLatencyType, headers, 1, NULL, 0, latency_reply_cb, ch);
+    ch->latency_waiter = ziti_channel_send_for_reply(ch, ContentTypeLatencyType,
+                                                     headers, 1, NULL, 0, latency_reply_cb, ch);
+    uv_timer_start(t, latency_timeout, LATENCY_TIMEOUT, 0);
 }
 
 static void hello_reply_cb(void *ctx, message *msg) {
@@ -569,7 +588,7 @@ static void hello_reply_cb(void *ctx, message *msg) {
     if (success) {
         // initial latency
         ch->latency = uv_now(ch->loop) - ch->latency;
-        uv_timer_start(&ch->timer, send_latency_probe, 0, 60 * 1000);
+        uv_timer_start(&ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
     } else {
         reconnect_channel(ch, false);
     }
@@ -600,6 +619,11 @@ static void async_write(uv_async_t *ar) {
     uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 }
 
+static void connect_timeout(uv_timer_t *t) {
+    ziti_channel_t *ch = t->data;
+    on_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE);
+}
+
 static void reconnect_cb(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
     ziti_context ztx = ch->ctx;
@@ -607,7 +631,8 @@ static void reconnect_cb(uv_timer_t *t) {
     if (ztx->session == NULL || ztx->session->token == NULL) {
         ZITI_LOG(ERROR, "ziti context is not authenticated, delaying re-connect");
         reconnect_channel(ch, false);
-    } else {
+    }
+    else {
         ch->msg_seq = 0;
 
         uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
@@ -621,6 +646,9 @@ static void reconnect_cb(uv_timer_t *t) {
         int rc = uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
         if (rc != 0) {
             on_channel_connect_internal(req, rc);
+        }
+        else {
+            uv_timer_start(&ch->timer, connect_timeout, 20 * 1000, 0);
         }
     }
 }
@@ -644,8 +672,10 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
 
 static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
     if (ch->state != Closed) {
+        if (ch->state == Connected) {
+            ch->notify_cb(ch, EdgeRouterDisconnected, ch->notify_ctx);
+        }
         ch->state = Disconnected;
-        ch->notify_cb(ch, EdgeRouterDisconnected, ch->notify_ctx);
     }
 
     ch->latency = UINT64_MAX;
@@ -660,7 +690,7 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
         free(con);
     }
 
-    uv_mbed_free(&ch->connection);
+    uv_mbed_close(&ch->connection, NULL);
     if (ch->state != Closed) {
         reconnect_channel(ch, false);
         ziti_force_session_refresh(ch->ctx);
