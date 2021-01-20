@@ -76,9 +76,7 @@ typedef struct ziti_channel {
     ch_state state;
     uint32_t reconnect_count;
 
-    struct ch_conn_req **conn_reqs;
-    int conn_reqs_n;
-
+    LIST_HEAD(conn_reqs, ch_conn_req) conn_reqs;
     uint32_t msg_seq;
 
     buffer *incoming;

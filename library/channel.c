@@ -82,6 +82,7 @@ struct waiter_s {
 struct ch_conn_req {
     ch_connect_cb cb;
     void *ctx;
+    LIST_ENTRY(ch_conn_req) next;
 };
 
 struct msg_receiver {
@@ -107,8 +108,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
 
     ch->state = Initial;
     // 32 concurrent connect requests for the same channel is probably enough
-    ch->conn_reqs = calloc(32, sizeof(struct ch_conn_req *));
-    ch->conn_reqs_n = 0;
+    LIST_INIT(&ch->conn_reqs);
 
     ch->name = NULL;
     ch->in_next = NULL;
@@ -133,7 +133,6 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
 }
 
 void ziti_channel_free(ziti_channel_t *ch) {
-    free(ch->conn_reqs);
     free_buffer(ch->incoming);
     FREE(ch->name);
     FREE(ch->version);
@@ -237,8 +236,7 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
                 NEWP(r, struct ch_conn_req);
                 r->cb = cb;
                 r->ctx = cb_ctx;
-                ch->conn_reqs[ch->conn_reqs_n++] = r;
-                ZITI_LOG(TRACE, "ch[%d] outstanding conn_reqs = %d", ch->id, ch->conn_reqs_n);
+                LIST_INSERT_HEAD(&ch->conn_reqs, r, next);
             }
 
             break;
@@ -561,12 +559,12 @@ static void hello_reply_cb(void *ctx, message *msg) {
         ch->notify_cb(ch, EdgeRouterUnavailable, ch->notify_ctx);
     }
 
-    for (int i = 0; i < ch->conn_reqs_n; i++) {
-        struct ch_conn_req *r = ch->conn_reqs[i];
+    while (!LIST_EMPTY(&ch->conn_reqs)) {
+        struct ch_conn_req *r = LIST_FIRST(&ch->conn_reqs);
+        LIST_REMOVE(r, next);
         r->cb(ch, r->ctx, cb_code);
         free(r);
     }
-    ch->conn_reqs_n = 0;
 
     if (success) {
         // initial latency
@@ -733,15 +731,14 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
         }
         send_hello(ch);
     } else {
-        ZITI_LOG(ERROR, "ch[%d] failed to connect[%s] [status=%d] conn_reqs[%d]", ch->id, ch->name, status, ch->conn_reqs_n);
+        ZITI_LOG(ERROR, "ch[%d] failed to connect[%s] [status=%d]", ch->id, ch->name, status);
 
-        for (int i = 0; i < ch->conn_reqs_n; i++) {
-            struct ch_conn_req *r = ch->conn_reqs[i];
+        while (!LIST_EMPTY(&ch->conn_reqs)) {
+            struct ch_conn_req *r = LIST_FIRST(&ch->conn_reqs);
+            LIST_REMOVE(r, next);
             r->cb(ch, r->ctx, status);
             free(r);
-            ch->conn_reqs[i] = NULL;
         }
-        ch->conn_reqs_n = 0;
         ch->state = Disconnected;
         reconnect_channel(ch, false);
     }
