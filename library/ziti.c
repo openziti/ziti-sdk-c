@@ -636,6 +636,8 @@ static void check_service_update(ziti_service_update *update, ziti_error *err, v
                  ztx->last_update);
         free_ziti_service_update(update);
         need_update = false;
+
+        uv_timer_start(&ztx->refresh_timer, services_refresh, ztx->opts->refresh_interval * 1000, 0);
     }
 
     if (need_update) {
