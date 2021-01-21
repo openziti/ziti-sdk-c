@@ -249,6 +249,10 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
             }
         }
 
+        if (cr.error) {
+            cr.error->http_code = req->resp.code;
+        }
+
         free_resp_meta(&cr.meta);
         FREE(cr.data);
         FREE(resp->body);
@@ -352,6 +356,17 @@ void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, ziti_error *, voi
     resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_logout_cb;
 
     um_http_req(&ctrl->client, "DELETE", "/current-api-session", ctrl_resp_cb, resp);
+}
+
+void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_service_update*, ziti_error*, void*), void *ctx) {
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_service_update_ptr;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    um_http_req(&ctrl->client, "GET", "/current-api-session/service-updates", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service_array, ziti_error *, void *), void *ctx) {
