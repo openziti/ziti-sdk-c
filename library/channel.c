@@ -749,6 +749,13 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
     }
 }
 
+static void on_mbed_close(uv_handle_t *h) {
+    uv_mbed_t *mbed = (uv_mbed_t *) h;
+    ziti_channel_t *ch = mbed->data;
+
+    ZITI_LOG(DEBUG, "connection closed for ch[%d]", ch->id);
+}
+
 static void on_channel_connect_internal(uv_connect_t *req, int status) {
     ziti_channel_t *ch = req->data;
 
@@ -770,6 +777,8 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             r->cb(ch, r->ctx, status);
             free(r);
         }
+
+        uv_mbed_close(&ch->connection, on_mbed_close);
         ch->state = Disconnected;
         reconnect_channel(ch, false);
     }

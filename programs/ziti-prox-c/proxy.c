@@ -172,10 +172,11 @@ static void on_ziti_close(ziti_connection conn) {
     if (tcp) {
         struct client *clt = tcp->data;
         clt->ziti_conn = NULL;
-        ZITI_LOG(INFO, "ziti connection closed for clt[%s]", clt->addr_s);
+        ZITI_LOG(DEBUG, "ziti connection closed for clt[%s]", clt->addr_s);
         clt->closed = true;
-        if (!uv_is_closing((const uv_handle_t *) tcp))
+        if (!uv_is_closing((const uv_handle_t *) tcp)) {
             uv_close((uv_handle_t *) tcp, close_cb);
+        }
     }
 }
 
@@ -336,11 +337,9 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
     else if (len < 0) {
         if (clt != NULL) {
             ZITI_LOG(DEBUG, "ziti connection closed with [%zd](%s)", len, ziti_errorstr(len));
-            ziti_conn_set_data(conn, NULL);
-            ziti_close(conn, NULL);
-            c->ziti_conn = NULL;
             if (!c->closed) {
                 c->closed = true;
+                ZITI_LOG(DEBUG, "closing clt[%s]", c->addr_s);
                 uv_close((uv_handle_t *) clt, close_cb);
             }
         }
