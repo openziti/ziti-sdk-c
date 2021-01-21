@@ -360,7 +360,7 @@ void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, ziti_error *, voi
 
 void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_service_update*, ziti_error*, void*), void *ctx) {
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_service_update;
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_service_update_ptr;
     resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;

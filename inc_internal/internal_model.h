@@ -113,7 +113,7 @@ XX(hash, string, none, hash, __VA_ARGS__) \
 XX(signers, string, array, signerFingerprints, __VA_ARGS__)
 
 #define ZITI_SERVICE_UPDATE(XX, ...) \
-XX(last_change, string, none, lastChangedAt, __VA_ARGS__)
+XX(last_change, string, none, lastChangeAt, __VA_ARGS__)
 
 #ifdef __cplusplus
 extern "C" {

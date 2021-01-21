@@ -619,20 +619,23 @@ static void update_services(ziti_service_array services, ziti_error *error, void
 
 static void check_service_update(ziti_service_update *update, ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
-    bool need_update = false;
+    bool need_update = true;
 
     if (err) { // API not supported - do refresh
-        need_update = true;
         if (err->http_code == 404) {
             ZITI_LOG(INFO, "Controller does not support /current-api-session/service-updates API");
             ztx->no_service_updates_api = true;
         }
-    } else if (ztx->last_update == NULL || strcmp(ztx->last_update, update->last_change) != 0) {
+    }
+    else if (ztx->last_update == NULL || strcmp(ztx->last_update, update->last_change) != 0) {
+        ZITI_LOG(VERBOSE, "ztx last_update = %s", update->last_change);
         FREE(ztx->last_update);
         ztx->last_update = update->last_change;
-        need_update = true;
     } else {
+        ZITI_LOG(VERBOSE, "not updating: last_update is same previous (%s == %s)", update->last_change,
+                 ztx->last_update);
         free_ziti_service_update(update);
+        need_update = false;
     }
 
     if (need_update) {
