@@ -1146,12 +1146,26 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
 
     if (msg == NULL) {
         ZITI_LOG(DEBUG, "conn[%d] is closed due to err[%d](%s)", conn->conn_id, code, ziti_errorstr(code));
+        conn_state st = conn->state;
         conn_set_state(conn, Disconnected);
-        if (conn->state == Connected) {
-            conn->data_cb(conn, NULL, code);
-        } else if (conn->state == Bound) {
-            conn->client_cb(conn, NULL, code, NULL);
+        switch (st) {
+            case Connecting:
+            case Binding:
+            case Accepting:
+                complete_conn_req(conn, code);
+                break;
+            case Bound:
+                conn->client_cb(conn, NULL, code, NULL);
+                break;
+            case Connected:
+            case CloseWrite:
+                conn->data_cb(conn, NULL, code);
+                break;
+            default:
+                ZITI_LOG(WARN, "conn[%d] disconnecting from state[%d]", conn->conn_id, st);
         }
+        ziti_channel_rem_receiver(conn->channel, conn->conn_id);
+        conn->channel = NULL;
         return;
     }
 
