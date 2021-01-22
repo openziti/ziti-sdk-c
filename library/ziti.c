@@ -363,7 +363,13 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     ziti_channel_t *ch;
     const char *url;
     MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
-        printer(ctx, "ch[%d](%s) %s\n", ch->id, url, ziti_channel_is_connected(ch) ? "" : "Disconnected");
+        printer(ctx, "ch[%d](%s) ", ch->id, url);
+        if (ziti_channel_is_connected(ch)) {
+            printer(ctx, "connected [latency=%ld]\n", (long) ch->latency);
+        }
+        else {
+            printer(ctx, "Disconnected\n", (long) ch->latency);
+        }
     }
 
     printer(ctx, "\n==================\nConnections:\n");
@@ -607,7 +613,13 @@ static void update_services(ziti_service_array services, ziti_error *error, void
         model_map_set(&ztx->services, s->name, s);
     }
 
-    ziti_send_event(ztx, &ev);
+    if (addIdx > 0 || remIdx > 0 || chIdx > 0) {
+        ZITI_LOG(DEBUG, "sending service event %d added, %d removed, %d changed", addIdx, remIdx, chIdx);
+        ziti_send_event(ztx, &ev);
+    }
+    else {
+        ZITI_LOG(VERBOSE, "no services added, changed, or removed");
+    }
 
     // cleanup
     for (idx = 0; ev.event.service.removed[idx] != NULL; idx++) {
