@@ -1239,8 +1239,10 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
                     conn_inbound_data_msg(conn, msg);
                     break;
                 default:
-                    ZITI_LOG(WARN, "data[%d bytes] received for connection[%d] in state[%d]",
-                             msg->header.body_len, conn_id, conn->state);
+                    if (msg->header.body_len > 0) {
+                        ZITI_LOG(WARN, "data[%d bytes] received for connection[%d] in state[%d]",
+                                 msg->header.body_len, conn_id, conn->state);
+                    }
             }
             break;
 
