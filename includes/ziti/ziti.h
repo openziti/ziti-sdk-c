@@ -555,10 +555,17 @@ int ziti_ctx_free(ziti_context *ctxp) ;
  * This function will output debugging information to standard out. The output from this command may
  * be useful when submitting issues.
  *
+ * this method is designed to be suitable to use with `fprintf()` like this:
+ * \code
+ *     ziti_dump(ztx, fprintf, stderr);
+ * \endcode
+ *
  * @param ztx the Ziti Edge identity context to print debug information for
+ * @param printer function to be called for output
+ * @param ctx first argument passed into `printer` function
 */
 ZITI_FUNC
-extern void ziti_dump(ziti_context ztx);
+extern void ziti_dump(ziti_context ztx, int (*printer)(void *ctx, const char *fmt, ...), void *ctx);
 
 /**
  * @brief Initializes a connection.

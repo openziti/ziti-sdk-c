@@ -331,44 +331,50 @@ int ziti_ctx_free(ziti_context *ctxp) {
     return ZITI_OK;
 }
 
-void ziti_dump(ziti_context ztx) {
-    printf("\n=================\nSession:\n");
-    printf("Session Info: id[%s] name[%s] api_session[%s]\n",
-           ztx->session->identity->id, ztx->session->identity->name, ztx->session->id);
+void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
+    printer(ctx, "\n=================\nSession:\n");
 
-    printf("\n=================\nServices:\n");
+    if (ztx->session) {
+        printer(ctx, "Session Info: id[%s] name[%s] api_session[%s]\n",
+                ztx->session->identity->id, ztx->session->identity->name, ztx->session->id);
+    }
+    else {
+        printer(ctx, "No Session found\n");
+    }
+
+    printer(ctx, "\n=================\nServices:\n");
     ziti_service *zs;
     const char *name;
     MODEL_MAP_FOREACH(name, zs, &ztx->services) {
 
-        printf("%s: id[%s] perm(dial=%s,bind=%s)\n", zs->name, zs->id,
-               (zs->perm_flags & ZITI_CAN_DIAL ? "true" : "false"),
-               (zs->perm_flags & ZITI_CAN_BIND ? "true" : "false")
+        printer(ctx, "%s: id[%s] perm(dial=%s,bind=%s)\n", zs->name, zs->id,
+                (zs->perm_flags & ZITI_CAN_DIAL ? "true" : "false"),
+                (zs->perm_flags & ZITI_CAN_BIND ? "true" : "false")
         );
     }
 
-    printf("\n==================\nNet Sessions:\n");
+    printer(ctx, "\n==================\nNet Sessions:\n");
     ziti_net_session *it;
     MODEL_MAP_FOREACH(name, it, &ztx->sessions) {
-        printf("%s: service_id[%s]\n", it->id, name);
+        printer(ctx, "%s: service_id[%s]\n", it->id, name);
     }
 
-    printf("\n==================\nChannels:\n");
+    printer(ctx, "\n==================\nChannels:\n");
     ziti_channel_t *ch;
     const char *url;
     MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
-        printf("ch[%d](%s) %s\n", ch->id, url, ziti_channel_is_connected(ch) ? "" : "Disconnected");
+        printer(ctx, "ch[%d](%s) %s\n", ch->id, url, ziti_channel_is_connected(ch) ? "" : "Disconnected");
     }
 
-    printf("\n==================\nConnections:\n");
+    printer(ctx, "\n==================\nConnections:\n");
     ziti_connection conn;
     LIST_FOREACH(conn, &ztx->connections, next) {
-        printf("conn[%d]: state[%s] service[%s] using ch[%d] %s\n",
-               conn->conn_id, ziti_conn_state(conn), conn->service,
-               conn->channel ? conn->channel->id : -1,
-               conn->channel ? conn->channel->name : "(none)");
+        printer(ctx, "conn[%d]: state[%s] service[%s] using ch[%d] %s\n",
+                conn->conn_id, ziti_conn_state(conn), conn->service,
+                conn->channel ? conn->channel->id : -1,
+                conn->channel ? conn->channel->name : "(none)");
     }
-    printf("\n==================\n\n");
+    printer(ctx, "\n==================\n\n");
 }
 
 int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {

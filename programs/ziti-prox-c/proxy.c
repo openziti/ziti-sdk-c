@@ -125,7 +125,7 @@ static void debug_dump(struct proxy_app_ctx *app_ctx) {
     MODEL_MAP_FOREACH(name, l, &app_ctx->listeners) {
         printf("listening for service[%s] on port[%d]\n", l->service_name, l->port);
     }
-    ziti_dump(app_ctx->ziti);
+    ziti_dump(app_ctx->ziti, fprintf, stdout);
 }
 
 static void reporter_cb(uv_timer_t *t) {
