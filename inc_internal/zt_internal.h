@@ -46,7 +46,7 @@ extern const char* APP_VERSION;
 
 typedef struct ziti_channel ziti_channel_t;
 
-typedef void (*reply_cb)(void *ctx, message *m);
+typedef void (*reply_cb)(void *ctx, message *m, int err);
 
 typedef void (*send_cb)(int status, void *ctx);
 

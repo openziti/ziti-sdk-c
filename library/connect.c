@@ -788,7 +788,7 @@ static void restart_connect(struct ziti_conn *conn) {
     ziti_connect_async(ar);
 }
 
-void connect_reply_cb(void *ctx, message *msg) {
+void connect_reply_cb(void *ctx, message *msg, int err) {
     struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
 
@@ -797,6 +797,14 @@ void connect_reply_cb(void *ctx, message *msg) {
     }
 
     req->waiter = NULL;
+    if (err != 0 && msg == NULL) {
+        ZITI_LOG(ERROR, "edge conn_id[%d]: failed to %s, reason=%s",
+                 conn->conn_id, conn->state == Binding ? "bind" : "connect",
+                 uv_strerror(err));
+        conn_set_state(conn, Disconnected);
+        complete_conn_req(conn, ZITI_CONN_CLOSED);
+        return;
+    }
 
     switch (msg->header.content) {
         case ContentTypeStateClosed:
