@@ -277,6 +277,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_
 int ziti_ctrl_close(ziti_controller *ctrl) {
     if (ctrl->session != NULL) {
         FREE(ctrl->session);
+        free_ziti_version(&ctrl->version);
         um_http_close(&ctrl->client);
     }
     return ZITI_OK;

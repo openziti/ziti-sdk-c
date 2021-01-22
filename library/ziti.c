@@ -323,6 +323,10 @@ int ziti_ctx_free(ziti_context *ctxp) {
     }
 
     ziti_posture_checks_free((*ctxp)->posture_checks);
+    model_map_clear(&(*ctxp)->services, free_ziti_service);
+    model_map_clear(&(*ctxp)->sessions, free_ziti_net_session);
+    free_ziti_session((*ctxp)->session);
+    FREE((*ctxp)->session);
 
     free(*ctxp);
     *ctxp = NULL;
