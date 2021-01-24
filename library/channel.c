@@ -514,6 +514,13 @@ static void process_inbound(ziti_channel_t *ch) {
 
 static void latency_reply_cb(void *ctx, message *reply, int err) {
     ziti_channel_t *ch = ctx;
+
+    if (err) {
+        ZITI_LOG(DEBUG, "latency probe was canceled: %d(%s)", err, uv_strerror(err));
+        ch->latency = UINT64_MAX;
+        return;
+    }
+
     uint64_t ts;
     if (reply->header.content == ContentTypeResultType &&
         message_get_uint64_header(reply, LatencyProbeTime, &ts)) {
