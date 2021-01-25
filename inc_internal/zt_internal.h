@@ -186,7 +186,6 @@ struct ziti_ctx {
 
     uv_loop_t *loop;
     uv_thread_t loop_thread;
-    uint32_t ch_counter;
 
     // map<erUrl,ziti_channel>
     model_map channels;

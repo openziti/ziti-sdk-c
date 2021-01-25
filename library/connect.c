@@ -256,7 +256,7 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
         if (c == conn) { break; }
     }
     if (c == NULL) {
-        ZITI_LOG(WARN, "ch[%d] connection(%p) is gone", ch->id, ctx);
+        ZITI_LOG(VERBOSE, "ch[%d] connection(%p) is gone", ch->id, ctx);
         return;
     }
 
