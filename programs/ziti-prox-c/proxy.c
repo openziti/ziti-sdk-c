@@ -41,6 +41,8 @@ static uv_timer_t report_timer;
 
 static void signal_cb(uv_signal_t *s, int signum);
 
+static void on_ziti_close(ziti_connection conn);
+
 static struct sig_handlers {
     uv_signal_t sig;
     int signum;
@@ -53,6 +55,7 @@ static struct sig_handlers {
 
 struct proxy_app_ctx {
     model_map listeners;
+    LIST_HEAD(clients, client) clients;
     ziti_context ziti;
 };
 
@@ -74,6 +77,8 @@ struct client {
     bool write_done;
     int closed;
     size_t inb_reqs;
+
+    LIST_ENTRY(client) next;
 };
 
 static int process_args(int argc, char *argv[]);
@@ -95,6 +100,12 @@ static void shutdown_timer_cb(uv_timer_t *t) {
 
 static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     PREPF(uv, uv_strerror);
+
+    // shutdown clients
+    struct client *clt;
+    LIST_FOREACH(clt, &app_ctx->clients, next) {
+        ziti_close(clt->ziti_conn, on_ziti_close);
+    }
 
     // shutdown listeners
     struct listener *l;
@@ -163,6 +174,7 @@ static void close_cb(uv_handle_t *h) {
         ziti_conn_set_data(clt->ziti_conn, NULL);
         ziti_close(clt->ziti_conn, NULL);
     }
+    LIST_REMOVE(clt, next);
     free(clt);
     free(h);
 }
@@ -281,6 +293,10 @@ void on_ziti_connect(ziti_connection conn, int status) {
 
     if (status == ZITI_OK) {
         uv_read_start(clt, alloc_cb, data_cb);
+        ziti_context ztx = ziti_conn_context(conn);
+        struct proxy_app_ctx *app = ziti_app_ctx(ztx);
+        struct client *c = clt->data;
+        LIST_INSERT_HEAD(&app->clients, c, next);
     }
     else {
         ZITI_LOG(ERROR, "ziti connect failed: %s(%d)", ziti_errorstr(status), status);
