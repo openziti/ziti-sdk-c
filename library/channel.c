@@ -59,6 +59,8 @@ static inline const char *ch_state_str(ziti_channel_t *ch) {
     return "unexpected";
 }
 
+static const char *get_timeout_cb(ziti_channel_t *ch);
+
 static void reconnect_channel(ziti_channel_t *ch, bool now);
 
 static void reconnect_cb(uv_timer_t *t);
@@ -82,7 +84,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err);
 // global channel sequence
 static uint32_t channel_counter = 0;
 
-struct async_write_req {
+struct ch_write_req {
     uv_buf_t buf;
     ziti_channel_t *ch;
 };
@@ -238,8 +240,8 @@ static void check_connecting_state(ziti_channel_t *ch) {
         reset = true;
     }
 
-    if (ch->timer.timer_cb == connect_timeout) {
-        CH_LOG(ERROR, "state check: unexpected callback!");
+    if (ch->timer.timer_cb != connect_timeout) {
+        CH_LOG(ERROR, "state check: unexpected callback(%s)!", get_timeout_cb(ch));
         reset = true;
     }
 
@@ -390,19 +392,15 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
         result = w;
     }
 
-    NEWP(wr, struct async_write_req);
+    NEWP(wr, struct ch_write_req);
     wr->buf = uv_buf_init(msg_buf, msg_size);
     wr->ch = ch;
 
-    NEWP(async_req, uv_async_t);
-    uv_async_init(ch->loop, async_req, async_write);
-    async_req->data = wr;
-
-    // Guard against write requests coming on a thread different from our loop
-    if (uv_thread_self() == ch->ctx->loop_thread) {
-        async_write(async_req);
-    } else {
-        uv_async_send(async_req);
+    NEWP(req, uv_write_t);
+    req->data = wr;
+    int rc = uv_mbed_write(req, &wr->ch->connection, &wr->buf, on_write);
+    if (rc != 0) {
+        on_write(req, rc);
     }
 
     return result;
@@ -667,7 +665,7 @@ static void send_hello(ziti_channel_t *ch) {
 
 static void async_write(uv_async_t *ar) {
 
-    struct async_write_req *wr = ar->data;
+    struct ch_write_req *wr = ar->data;
 
     NEWP(req, uv_write_t);
     req->data = wr;
@@ -764,7 +762,7 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
 
 static void on_write(uv_write_t *req, int status) {
     ZITI_LOG(TRACE, "on_write(%p,%d)", req, status);
-    struct async_write_req *wr = req->data;
+    struct ch_write_req *wr = req->data;
 
     if (status < 0) {
         ziti_channel_t *ch = wr->ch;
@@ -839,4 +837,18 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
         reconnect_channel(ch, false);
     }
     free(req);
+}
+
+#define TIMEOUT_CALLBACKS(XX) \
+XX(latency_timeout) \
+XX(connect_timeout) \
+XX(reconnect_cb)    \
+XX(send_latency_probe)
+
+static const char *get_timeout_cb(ziti_channel_t *ch) {
+#define to_lbl(n) if (ch->timer.timer_cb == (n)) return #n;
+
+    TIMEOUT_CALLBACKS(to_lbl)
+
+    return "unknown";
 }
