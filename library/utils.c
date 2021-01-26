@@ -31,10 +31,6 @@ limitations under the License.
 #define ZITI_VERSION unknown
 #endif
 
-#if !defined(ZITI_BUILDNUM)
-#define ZITI_BUILDNUM <local>
-#endif
-
 #if !defined(ZITI_BRANCH)
 #define ZITI_BRANCH "<no-branch>"
 #define ZITI_COMMIT "<sha>"
@@ -88,7 +84,11 @@ const char *ziti_get_build_version(int verbose) {
                "\n";
 
     }
+#ifdef ZITI_BUILDNUM
     return to_str(ZITI_VERSION) "-" to_str(ZITI_BUILDNUM);
+#else
+    return to_str(ZITI_VERSION);
+#endif
 }
 
 const char* ziti_git_branch() {
