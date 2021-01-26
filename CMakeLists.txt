@@ -46,8 +46,6 @@ enable_testing()
 
 if (DEFINED ENV{BUILD_NUMBER})
     set(ZITI_BUILDNUM $ENV{BUILD_NUMBER})
-else ()
-    set(ZITI_BUILDNUM local)
 endif ()
 
 set(ZITI_VERSION ${PROJECT_VERSION}-${ZITI_BUILDNUM})

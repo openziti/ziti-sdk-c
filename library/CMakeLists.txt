@@ -69,26 +69,29 @@ target_include_directories(ziti     ${ZITI_INCLUDE_DIRS})
 target_include_directories(ziti_dll ${ZITI_INCLUDE_DIRS})
 set_target_properties(ziti_dll PROPERTIES OUTPUT_NAME "ziti")
 
-target_compile_definitions(ziti PUBLIC
-        ZITI_BUILDNUM=${ZITI_BUILDNUM}
+set(ziti_compile_defs
         BUILD_DATE=${BUILD_DATE}
         ZITI_VERSION=${PROJECT_VERSION}
         ZITI_BRANCH=${GIT_BRANCH}
         ZITI_COMMIT=${GIT_COMMIT_HASH}
         SOURCE_PATH_SIZE=${SOURCE_PATH_SIZE}
         PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
+        )
+
+if (ZITI_BUILDNUM)
+    list(APPEND ziti_compile_defs
+            ZITI_BUILDNUM=${ZITI_BUILDNUM}
+            )
+endif()
+
+target_compile_definitions(ziti PUBLIC
+        ${ziti_compile_defs}
 )
 
 target_compile_definitions(ziti_dll PUBLIC
-        ZITI_BUILDNUM=${ZITI_BUILDNUM}
-        BUILD_DATE=${BUILD_DATE}
-        ZITI_VERSION=${PROJECT_VERSION}
-        ZITI_BRANCH=${GIT_BRANCH}
-        ZITI_COMMIT=${GIT_COMMIT_HASH}
-        SOURCE_PATH_SIZE=${SOURCE_PATH_SIZE}
+        ${ziti_compile_defs}
         INTERFACE USING_ZITI_SHARED=1
         PRIVATE BUILDING_ZITI_SHARED=1
-        PRIVATE ZITI_LOG_PREFIX=${PROJECT_NAME}
 )
 
 if (WIN32)
