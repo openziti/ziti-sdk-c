@@ -323,22 +323,29 @@ static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, s
     uint64_t best_latency = UINT64_MAX;
 
     for (er = session->edge_routers; *er != NULL; er++) {
-        size_t ch_name_len = strlen((*er)->name) + strlen((*er)->ingress.tls) + 2;
-        char *ch_name = malloc(ch_name_len);
-        snprintf(ch_name, ch_name_len, "%s@%s", (*er)->name, (*er)->ingress.tls);
-        ziti_channel_t *ch = model_map_get(&ctx->channels, ch_name);
+        if ((*er)->ingress.tls) {
+            size_t ch_name_len = strlen((*er)->name) + strlen((*er)->ingress.tls) + 2;        
+            char *ch_name = malloc(ch_name_len);
+            snprintf(ch_name, ch_name_len, "%s@%s", (*er)->name, (*er)->ingress.tls);
+            ziti_channel_t *ch = model_map_get(&ctx->channels, ch_name);
 
-        if (ch != NULL && ch->state == Connected) {
-            if (ch->latency < best_latency) {
-                best_ch = ch;
-                best_latency = ch->latency;
+            if (ch != NULL && ch->state == Connected) {
+                if (ch->latency < best_latency) {
+                    best_ch = ch;
+                    best_latency = ch->latency;
+                }
             }
+            else {
+                ZITI_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, (*er)->ingress.tls, conn->token);
+                ziti_channel_connect(ctx, ch_name, (*er)->ingress.tls, on_channel_connected, conn);
+            }
+            free(ch_name);
+        } else if ((*er)->ingress.ws) {
+            size_t ch_name_len = strlen((*er)->name) + strlen((*er)->ingress.ws) + 2;
+            char *ch_name = malloc(ch_name_len);
+            snprintf(ch_name, ch_name_len, "%s@%s", (*er)->name, (*er)->ingress.ws);
+            ZITI_LOG(INFO, "IGNORING ch[%s]; Ziti C SDK does not support 'ws' channels", ch_name );
         }
-        else {
-            ZITI_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, (*er)->ingress.tls, conn->token);
-            ziti_channel_connect(ctx, ch_name, (*er)->ingress.tls, on_channel_connected, conn);
-        }
-        free(ch_name);
     }
 
     if (best_ch) {
