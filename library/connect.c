@@ -256,7 +256,7 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
         if (c == conn) { break; }
     }
     if (c == NULL) {
-        ZITI_LOG(WARN, "ch[%d] connection(%p) is gone", ch->id, ctx);
+        ZITI_LOG(VERBOSE, "ch[%d] connection(%p) is gone", ch->id, ctx);
         return;
     }
 
@@ -1086,7 +1086,6 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
 int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx) {
     if (conn->state != Connected) {
         ZITI_LOG(ERROR, "attempted write on conn[%d] in invalid state[%d]", conn->conn_id, conn->state);
-        write_cb(conn, ZITI_INVALID_STATE, write_ctx);
         return ZITI_INVALID_STATE;
     }
 
