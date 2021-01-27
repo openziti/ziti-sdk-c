@@ -341,10 +341,7 @@ static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, s
             }
             free(ch_name);
         } else if ((*er)->ingress.ws) {
-            size_t ch_name_len = strlen((*er)->name) + strlen((*er)->ingress.ws) + 2;
-            char *ch_name = malloc(ch_name_len);
-            snprintf(ch_name, ch_name_len, "%s@%s", (*er)->name, (*er)->ingress.ws);
-            ZITI_LOG(INFO, "IGNORING ch[%s]; Ziti C SDK does not support 'ws' channels", ch_name );
+            ZITI_LOG(INFO, "IGNORING ch[%s@%s]; Ziti C SDK does not support 'ws' channels", (*er)->name, (*er)->ingress.ws );
         }
     }
 
