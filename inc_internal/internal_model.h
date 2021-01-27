@@ -22,7 +22,8 @@ limitations under the License.
 #include "ziti/ziti_model.h"
 
 #define ZITI_INGRESS_MODEL(XX, ...) \
-XX(tls, string, none, tls, __VA_ARGS__)
+XX(tls, string, none, tls, __VA_ARGS__)\
+XX(ws, string, none, ws, __VA_ARGS__)
 
 #define ZITI_EDGE_ROUTER_MODEL(XX, ...)\
 XX(name, string, none, name, __VA_ARGS__)\
