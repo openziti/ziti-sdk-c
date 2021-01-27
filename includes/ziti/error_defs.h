@@ -79,7 +79,13 @@ limitations under the License.
     /** connection was closed */ \
     XX(CONN_CLOSED, "connection is closed")               \
     /** failed posture check */                    \
-    XX(INVALID_POSTURE, "failed posture checek") \
+    XX(INVALID_POSTURE, "failed posture check") \
+    /** attempted to start MFA enrollment when it already has been started or completed */ \
+    XX(MFA_EXISTS, "an MFA enrollment already exists") \
+    /** attempted to use an MFA token that is invalid */ \
+    XX(MFA_INVALID_TOKEN, "the token provided was invalid") \
+    /** attempted to verify or retrieve details of an MFA enrollment that has not been completed */ \
+    XX(MFA_NOT_ENROLLED, "the current identity has not completed MFA enrollment") \
     /** Inspired by the Android SDK: What a Terrible Failure. A condition that should never happen. */ \
     XX(WTF, "WTF: programming error")
 

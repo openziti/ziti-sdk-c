@@ -43,7 +43,8 @@ XX(token, string, none, token, __VA_ARGS__) \
 XX(expires, timestamp, ptr, expiresAt, __VA_ARGS__) \
 XX(updated, timestamp, ptr, updatedAt, __VA_ARGS__) \
 XX(identity, ziti_identity, ptr, identity, __VA_ARGS__) \
-XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__)
+XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__) \
+XX(auth_queries, ziti_auth_query_mfa, array, authQueries, __VA_ARGS__)
 
 #define ZITI_ERROR_MODEL(XX, ...) \
 XX(err, int, none, , __VA_ARGS__) \
@@ -115,6 +116,12 @@ XX(signers, string, array, signerFingerprints, __VA_ARGS__)
 #define ZITI_SERVICE_UPDATE(XX, ...) \
 XX(last_change, string, none, lastChangeAt, __VA_ARGS__)
 
+#define ZITI_MFA_CODE_REQ(XX, ...) \
+XX(code, string, none, code, __VA_ARGS__)
+
+#define ZITI_MFA_RECOVERY_CODES_MODEL(XX, ...) \
+XX(recovery_codes, string, array, recoveryCodes, __VA_ARGS__)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -151,6 +158,10 @@ DECLARE_MODEL(ziti_pr_process_req, ZITI_PR_PROCESS_REQ)
 DECLARE_MODEL(ziti_pr_domain_req, ZITI_PR_DOMAIN_REQ)
 
 DECLARE_MODEL(ziti_service_update, ZITI_SERVICE_UPDATE)
+
+DECLARE_MODEL(ziti_mfa_code_req, ZITI_MFA_CODE_REQ)
+
+DECLARE_MODEL(ziti_mfa_recovery_codes, ZITI_MFA_RECOVERY_CODES_MODEL)
 
 #ifdef __cplusplus
 }

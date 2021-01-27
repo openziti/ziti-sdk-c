@@ -20,6 +20,15 @@ limitations under the License.
 
 #include "model_support.h"
 
+#define ZITI_AUTH_QUERY_MFA_MODEL(XX, ...) \
+XX(type_id, string, none, typeId, __VA_ARGS__) \
+XX(provider, string, none, provider, __VA_ARGS__) \
+XX(http_method, string, none, httpMethod, __VA_ARGS__) \
+XX(http_url, string, none, httpUrl, __VA_ARGS__) \
+XX(min_length, int, none, minLength, __VA_ARGS__) \
+XX(max_length, int, none, maxLength, __VA_ARGS__) \
+XX(format, string, none, format, __VA_ARGS__)
+
 #define ZITI_ID_CFG_MODEL(XX, ...) \
 XX(cert, string, none, cert, __VA_ARGS__) \
 XX(key, string, none, key, __VA_ARGS__) \
@@ -92,6 +101,11 @@ XX(port, int, none, port, __VA_ARGS__) \
 XX(dial_intercepted_port, bool, none, dialInterceptedPort, __VA_ARGS__) \
 XX(listen_options, tag, map, listenOptions, __VA_ARGS__)
 
+#define ZITI_MFA_ENROLLMENT_MODEL(XX, ...) \
+XX(is_verified, bool, none, isVerified, __VA_ARGS__) \
+XX(recovery_codes, string, array, recoveryCodes, __VA_ARGS__) \
+XX(provisioning_url, string, none, provisioningUrl, __VA_ARGS__)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -127,6 +141,10 @@ DECLARE_MODEL(ziti_intercept_cfg_v1, ZITI_INTERCEPT_CFG_V1_MODEL)
 DECLARE_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
 
 DECLARE_MODEL(ziti_host_cfg_v1, ZITI_HOST_CFG_V1_MODEL)
+
+DECLARE_MODEL(ziti_auth_query_mfa, ZITI_AUTH_QUERY_MFA_MODEL)
+
+DECLARE_MODEL(ziti_mfa_enrollment, ZITI_MFA_ENROLLMENT_MODEL)
 
 ZITI_FUNC const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type);
 

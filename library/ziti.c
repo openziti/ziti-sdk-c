@@ -24,11 +24,10 @@ limitations under the License.
 #include "zt_internal.h"
 #include <http_parser.h>
 #include <posture.h>
+#include <auth_queries.h>
 
 #if _WIN32
-
 #include <windows.h>
-
 #endif
 
 #ifndef MAXPATHLEN
@@ -41,7 +40,7 @@ limitations under the License.
 #endif
 #endif
 
-#define ZTX_LOG(lvl,fmt, ...) ZITI_LOG(lvl, "ztx[%d] " fmt, ztx->id, ##__VA_ARGS__)
+#define ZTX_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ztx[%d] " fmt, ztx->id, ##__VA_ARGS__)
 
 static const char *ALL_CONFIG_TYPES[] = {
         "all",
@@ -223,8 +222,8 @@ static void ziti_init_async(uv_async_t *ar) {
     ziti_fmt_time(time_str, sizeof(time_str), &start_time);
 
     ZTX_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
-             ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
-             time_str, start_time.tv_usec / 1000);
+            ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
+            time_str, start_time.tv_usec / 1000);
     ZTX_LOG(INFO, "Loading from config[%s] controller[%s]", ztx->opts->config, ztx->opts->controller);
 
     init_req->login = true;
@@ -298,7 +297,7 @@ int ziti_set_timeout(ziti_context ztx, int timeout) {
 static void on_logout(void *msg, ziti_error *err, void *arg) {
     ziti_context ztx = arg;
     ZTX_LOG(DEBUG, "identity[%s] logout %s",
-             ztx->session->identity->name, err ? "failed" : "success");
+            ztx->session->identity->name, err ? "failed" : "success");
 
     free_ziti_session(ztx->session);
     free(ztx->session);
@@ -330,7 +329,7 @@ int ziti_ctx_free(ziti_context *ctxp) {
     if ((*ctxp)->tlsCtx != NULL) {
         (*ctxp)->tlsCtx->api->free_ctx((*ctxp)->tlsCtx);
     }
-
+    ziti_auth_query_free((*ctxp)->auth_queries);
     ziti_posture_checks_free((*ctxp)->posture_checks);
     model_map_clear(&(*ctxp)->services, free_ziti_service);
     model_map_clear(&(*ctxp)->sessions, free_ziti_net_session);
@@ -359,8 +358,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     if (ztx->session) {
         printer(ctx, "Session Info: id[%s] name[%s] api_session[%s]\n",
                 ztx->session->identity->id, ztx->session->identity->name, ztx->session->id);
-    }
-    else {
+    } else {
         printer(ctx, "No Session found\n");
     }
 
@@ -388,8 +386,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         printer(ctx, "ch[%d](%s) ", ch->id, url);
         if (ziti_channel_is_connected(ch)) {
             printer(ctx, "connected [latency=%ld]\n", (long) ch->latency);
-        }
-        else {
+        } else {
             printer(ctx, "Disconnected\n", (long) ch->latency);
         }
     }
@@ -503,6 +500,7 @@ int ziti_listen_with_options(ziti_connection serv_conn, const char *service, zit
 
 static void session_refresh(uv_timer_t *t) {
     ziti_context ztx = t->data;
+
     struct ziti_init_req *req = calloc(1, sizeof(struct ziti_init_req));
     req->ztx = ztx;
 
@@ -523,8 +521,7 @@ static void session_refresh(uv_timer_t *t) {
     if (login) {
         ZTX_LOG(DEBUG, "requesting new API session");
         ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, session_cb, req);
-    }
-    else {
+    } else {
         ZTX_LOG(DEBUG, "refreshing API session");
         ziti_ctrl_current_api_session(&ztx->controller, session_cb, req);
     }
@@ -562,12 +559,11 @@ static void update_services(ziti_service_array services, ziti_error *error, void
 
     if (error) {
         ZTX_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
-                 ztx->opts->controller);
+                ztx->opts->controller);
         if (error->err == ZITI_NOT_AUTHORIZED) {
             ZTX_LOG(WARN, "API session is no longer valid. Trying to re-auth");
             ziti_re_auth(ztx);
-        }
-        else {
+        } else {
             update_ctrl_status(ztx, ZITI_CONTROLLER_UNAVAILABLE, error->message);
         }
         return;
@@ -653,8 +649,7 @@ static void update_services(ziti_service_array services, ziti_error *error, void
     if (addIdx > 0 || remIdx > 0 || chIdx > 0) {
         ZTX_LOG(DEBUG, "sending service event %d added, %d removed, %d changed", addIdx, remIdx, chIdx);
         ziti_send_event(ztx, &ev);
-    }
-    else {
+    } else {
         ZTX_LOG(VERBOSE, "no services added, changed, or removed");
     }
 
@@ -681,14 +676,13 @@ static void check_service_update(ziti_service_update *update, ziti_error *err, v
             ZTX_LOG(INFO, "Controller does not support /current-api-session/service-updates API");
             ztx->no_service_updates_api = true;
         }
-    }
-    else if (ztx->last_update == NULL || strcmp(ztx->last_update, update->last_change) != 0) {
+    } else if (ztx->last_update == NULL || strcmp(ztx->last_update, update->last_change) != 0) {
         ZTX_LOG(VERBOSE, "ztx last_update = %s", update->last_change);
         FREE(ztx->last_update);
         ztx->last_update = update->last_change;
     } else {
         ZTX_LOG(VERBOSE, "not updating: last_update is same previous (%s == %s)", update->last_change,
-                 ztx->last_update);
+                ztx->last_update);
         free_ziti_service_update(update);
         need_update = false;
 
@@ -703,10 +697,15 @@ static void check_service_update(ziti_service_update *update, ziti_error *err, v
 
 static void services_refresh(uv_timer_t *t) {
     ziti_context ztx = t->data;
+
+    if (ztx->auth_queries->outstanding_auth_queries) {
+        ZITI_LOG(DEBUG, "service refresh stopped, outstanding auth queries");
+        return;
+    }
+
     if (ztx->no_service_updates_api) {
         ziti_ctrl_get_services(&ztx->controller, update_services, ztx);
-    }
-    else {
+    } else {
         ziti_ctrl_get_services_update(&ztx->controller, check_service_update, ztx);
     }
 }
@@ -717,8 +716,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, ziti_error *err, void *c
     if (err) {
         if (err->http_code == 404) {
             ztx->no_current_edge_routers = true;
-        }
-        else {
+        } else {
             ZTX_LOG(ERROR, "failed to get current edge routers: %s/%s", err->code, err->message);
         }
         return;
@@ -752,6 +750,41 @@ static void edge_routers_cb(ziti_edge_router_array ers, ziti_error *err, void *c
     free(ers);
 }
 
+static void session_post_auth_query_cb(ziti_context ztx){
+    ziti_session *session = ztx->session;
+
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+
+    int time_diff = (int) (now.tv_sec - session->updated->tv_sec);
+    if (abs(time_diff) > 10) {
+        ZITI_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
+                 time_diff > 0 ? "ahead" : "behind");
+    }
+
+    if (session->expires) {
+        // adjust expiration to local time if needed
+        session->expires->tv_sec += time_diff;
+        ZTX_LOG(DEBUG, "ziti API session expires in %ld seconds", (long) (session->expires->tv_sec - now.tv_sec));
+        long delay = (session->expires->tv_sec - now.tv_sec) - 10;
+        uv_timer_start(&ztx->session_timer, session_refresh, delay * 1000, 0);
+    }
+
+    if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
+        ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
+        services_refresh(&ztx->refresh_timer);
+    } else if (ztx->opts->refresh_interval == 0) {
+        ZTX_LOG(DEBUG, "refresh_interval not specified");
+        uv_timer_stop(&ztx->refresh_timer);
+    }
+
+    ziti_posture_init(ztx, 20);
+
+    if (!ztx->no_current_edge_routers) {
+        ziti_ctrl_current_edge_routers(&ztx->controller, edge_routers_cb, ztx);
+    }
+}
+
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     struct ziti_init_req *init_req = ctx;
     ziti_context ztx = init_req->ztx;
@@ -768,41 +801,13 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         free_ziti_session(old_session);
         FREE(old_session);
 
-        uv_timeval64_t now;
-        uv_gettimeofday(&now);
+        ziti_auth_query_init(ztx);
 
-        int time_diff = (int) (now.tv_sec - session->updated->tv_sec);
-        if (abs(time_diff) > 10) {
-            ZITI_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
-                     time_diff > 0 ? "ahead" : "behind");
-        }
-
-        if (session->expires) {
-            // adjust expiration to local time if needed
-            session->expires->tv_sec += time_diff;
-            ZTX_LOG(DEBUG, "ziti API session expires in %ld seconds", (long) (session->expires->tv_sec - now.tv_sec));
-            long delay = (session->expires->tv_sec - now.tv_sec) - 10;
-            uv_timer_start(&ztx->session_timer, session_refresh, delay * 1000, 0);
-        }
-
-        if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
-            ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
-            services_refresh(&ztx->refresh_timer);
-        }
-        else if (ztx->opts->refresh_interval == 0) {
-            ZTX_LOG(DEBUG, "refresh_interval not specified");
-            uv_timer_stop(&ztx->refresh_timer);
-        }
-
-        ziti_posture_init(ztx, 20);
-
-        if (!ztx->no_current_edge_routers) {
-            ziti_ctrl_current_edge_routers(&ztx->controller, edge_routers_cb, ztx);
-        }
-
+        //check for additional authentication requirements, pickup in session_post_auth_query_cb
+        ziti_auth_query_process(ztx,session_post_auth_query_cb);
     } else if (err) {
         ZTX_LOG(WARN, "failed to get session from ctrl[%s] %s[%d] %s",
-                 ztx->opts->controller, err->code, errCode, err->message);
+                ztx->opts->controller, err->code, errCode, err->message);
 
         if (errCode == ZITI_NOT_AUTHORIZED) {
             if (ztx->session || !init_req->login) {
@@ -815,7 +820,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
                 // cannot login or re-auth -- identity no longer valid
                 // notify service removal, and state
                 ZTX_LOG(ERROR, "identity[%s] cannot authenticate with ctrl[%s]", ztx->opts->config,
-                         ztx->opts->controller);
+                        ztx->opts->controller);
                 ziti_event_t service_event = {
                         .type = ZitiServiceEvent,
                         .event.service = {
@@ -855,7 +860,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     FREE(init_req);
 }
 
-static void update_ctrl_status(ziti_context ztx, int errCode, const char* errMsg) {
+static void update_ctrl_status(ziti_context ztx, int errCode, const char *errMsg) {
     if (ztx->ctrl_status != errCode) {
         ziti_event_t ev = {
                 .type = ZitiContextEvent,
@@ -872,18 +877,18 @@ static void version_cb(ziti_version *v, ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err != NULL) {
         ZTX_LOG(ERROR, "failed to get controller version from %s %s(%s)",
-                 ztx->opts->controller, err->code, err->message);
+                ztx->opts->controller, err->code, err->message);
         free_ziti_error(err);
         FREE(err);
     } else {
         ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
-                 ztx->opts->controller, v->version, v->revision, v->build_date);
+                ztx->opts->controller, v->version, v->revision, v->build_date);
         free_ziti_version(v);
         FREE(v);
     }
 }
 
-void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, const char* type) {
+void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, const char *type) {
     if (session == NULL) {
         return;
     }
@@ -894,8 +899,7 @@ void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const 
             // already removed or different one
             // passed reference is no longer valid
             session = NULL;
-        }
-        else if (s == session) {
+        } else if (s == session) {
             model_map_remove(&ztx->sessions, session->service_id);
         }
     }

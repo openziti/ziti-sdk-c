@@ -21,6 +21,7 @@ limitations under the License.
 #include <ziti_ctrl.h>
 #include <uv_mbed/um_http.h>
 
+
 #define DEFAULT_PAGE_SIZE 25
 #define ZITI_CTRL_KEEPALIVE 0
 #define ZITI_CTRL_TIMEOUT 15000
@@ -68,7 +69,11 @@ XX(INVALID_AUTHENTICATION, ZITI_NOT_AUTHORIZED)         \
 XX(REQUIRES_CERT_AUTH, ZITI_NOT_AUTHORIZED)             \
 XX(UNAUTHORIZED, ZITI_NOT_AUTHORIZED)                   \
 XX(INVALID_POSTURE, ZITI_INVALID_POSTURE)               \
-XX(INVALID_AUTH, ZITI_NOT_AUTHORIZED)
+XX(INVALID_AUTH, ZITI_NOT_AUTHORIZED)                   \
+XX(MFA_INVALID_TOKEN, ZITI_MFA_INVALID_TOKEN)           \
+XX(MFA_EXISTS, ZITI_MFA_EXISTS)                         \
+XX(MFA_NOT_ENROLLED, ZITI_MFA_NOT_ENROLLED)
+
 
 #define CODE_MATCH(c, err) if (strcmp(code,#c) == 0) return err;
 
@@ -602,3 +607,95 @@ static void ctrl_paging_req(struct ctrl_resp *resp) {
     um_http_req(&resp->ctrl->client, "GET", path, ctrl_resp_cb, resp);
 }
 
+
+
+void ziti_ctrl_login_mfa(ziti_controller *ctrl, char* body, size_t body_len ,void(*cb)(void *, ziti_error *, void *), void *ctx) {
+
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = NULL;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/authenticate/mfa", ctrl_resp_cb, resp);
+    um_http_req_header(req, "Content-Type", "application/json");
+    um_http_req_data(req, body, body_len, free_body_cb);
+}
+
+void ziti_ctrl_post_mfa(ziti_controller *ctrl,void(*cb)(void *, ziti_error *, void *), void *ctx){
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = NULL;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/current-identity/mfa", ctrl_resp_cb, resp);
+    um_http_req_header(req, "Content-Type", "application/json");
+    um_http_req_data(req, NULL, 0, free_body_cb);
+}
+
+void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, ziti_error *, void *), void *ctx) {
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_mfa_enrollment_ptr;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/current-identity/mfa", ctrl_resp_cb, resp);
+    um_http_req_header(req, "Content-Type", "application/json");
+}
+
+void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char* code, void(*cb)(void *, ziti_error *, void *), void *ctx) {
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = NULL;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    um_http_req_t *req = um_http_req(&ctrl->client, "DELETE", "/current-identity/mfa", ctrl_resp_cb, resp);
+    um_http_req_header(req, "Content-Type", "application/json");
+    um_http_req_header(req, "mfa-validation-code", code);
+}
+
+void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char* body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx){
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = NULL;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/current-identity/mfa/verify", ctrl_resp_cb, resp);
+    um_http_req_header(req, "Content-Type", "application/json");
+    um_http_req_data(req, body, body_len, free_body_cb);
+}
+
+void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char* code, void(*cb)(ziti_mfa_recovery_codes *, ziti_error *, void *), void *ctx){
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_mfa_recovery_codes_ptr;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    um_http_req_t *req = um_http_req(&ctrl->client, "GET", "/current-identity/mfa/recovery-codes", ctrl_resp_cb, resp);
+    um_http_req_header(req, "mfa-validation-code", code);
+    um_http_req_header(req, "Content-Type", "application/json");
+}
+
+void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char* body, size_t body_len, void(*cb)(void *,ziti_error *, void *), void *ctx) {
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = NULL;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/current-identity/mfa/recovery-codes", ctrl_resp_cb, resp);
+    um_http_req_header(req, "Content-Type", "application/json");
+    um_http_req_data(req, body, body_len, free_body_cb);
+}
