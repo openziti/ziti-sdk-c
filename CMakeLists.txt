@@ -71,7 +71,7 @@ add_custom_target(publish
         COMMENT "generate publish specs"
         )
 
-if(${GIT_BRANCH} STREQUAL master)
+if(${GIT_BRANCH} STREQUAL main)
     set(PUB_PFX ziti-staging)
 else()
     set(PUB_PFX ziti-snapshot/${GIT_BRANCH})
