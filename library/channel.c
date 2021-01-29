@@ -215,7 +215,7 @@ static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, c
     ziti_channel_t *ch = calloc(1, sizeof(ziti_channel_t));
     ziti_channel_init(ztx, ch, channel_counter++, ztx->tlsCtx);
     ch->name = strdup(ch_name);
-    CH_LOG(INFO, "(%s) new channel for identity[%s]", ch->name, ztx->session->identity->name);
+    CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, ztx->session->identity->name);
 
     struct http_parser_url ingress;
     http_parser_url_init(&ingress);

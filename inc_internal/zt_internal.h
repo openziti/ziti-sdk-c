@@ -166,6 +166,7 @@ struct posture_checks {
 struct ziti_ctx {
     ziti_options *opts;
     ziti_controller controller;
+    uint32_t id;
 
     tls_context *tlsCtx;
 
