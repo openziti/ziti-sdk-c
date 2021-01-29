@@ -41,6 +41,8 @@ limitations under the License.
 #endif
 #endif
 
+#define ZTX_LOG(lvl,fmt, ...) ZITI_LOG(lvl, "ztx[%d] " fmt, ztx->id, ##__VA_ARGS__)
+
 static const char *ALL_CONFIG_TYPES[] = {
         "all",
         NULL
@@ -65,6 +67,8 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx);
 static void ziti_init_async(uv_async_t *ar);
 
 static void grim_reaper(uv_prepare_t *p);
+
+static uint32_t ztx_seq;
 
 static size_t parse_ref(const char *val, const char **res) {
     size_t len = 0;
@@ -206,7 +210,7 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
 static void ziti_init_async(uv_async_t *ar) {
     struct ziti_init_req *init_req = ar->data;
 
-    ziti_context ctx = init_req->ztx;
+    ziti_context ztx = init_req->ztx;
     uv_loop_t *loop = ar->loop;
 
     uv_close((uv_handle_t *) ar, (uv_close_cb) free);
@@ -217,34 +221,35 @@ static void ziti_init_async(uv_async_t *ar) {
     char time_str[32];
     ziti_fmt_time(time_str, sizeof(time_str), &start_time);
 
-    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
+    ZTX_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
              ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
              time_str, start_time.tv_usec / 1000);
+    ZTX_LOG(INFO, "Loading from config[%s] controller[%s]", ztx->opts->config, ztx->opts->controller);
 
     init_req->login = true;
-    ziti_ctrl_init(loop, &ctx->controller, ctx->opts->controller, ctx->tlsCtx);
-    ziti_ctrl_get_version(&ctx->controller, version_cb, ctx);
+    ziti_ctrl_init(loop, &ztx->controller, ztx->opts->controller, ztx->tlsCtx);
+    ziti_ctrl_get_version(&ztx->controller, version_cb, ztx);
 
-    uv_timer_init(loop, &ctx->session_timer);
-    ctx->session_timer.data = ctx;
+    uv_timer_init(loop, &ztx->session_timer);
+    ztx->session_timer.data = ztx;
 
-    uv_timer_init(loop, &ctx->refresh_timer);
-    if (ctx->opts->refresh_interval == 0) {
-        uv_unref((uv_handle_t *) &ctx->refresh_timer);
+    uv_timer_init(loop, &ztx->refresh_timer);
+    if (ztx->opts->refresh_interval == 0) {
+        uv_unref((uv_handle_t *) &ztx->refresh_timer);
     }
-    ctx->refresh_timer.data = ctx;
+    ztx->refresh_timer.data = ztx;
 
-    uv_prepare_init(loop, &ctx->reaper);
-    ctx->reaper.data = ctx;
-    uv_unref((uv_handle_t *) &ctx->reaper);
-    uv_prepare_start(&ctx->reaper, grim_reaper);
+    uv_prepare_init(loop, &ztx->reaper);
+    ztx->reaper.data = ztx;
+    uv_unref((uv_handle_t *) &ztx->reaper);
+    uv_prepare_start(&ztx->reaper, grim_reaper);
 
-    ZITI_LOG(INFO, "using metrics interval: %d", (int) ctx->opts->metrics_type);
-    metrics_rate_init(&ctx->up_rate, ctx->opts->metrics_type);
-    metrics_rate_init(&ctx->down_rate, ctx->opts->metrics_type);
+    ZTX_LOG(DEBUG, "using metrics interval: %d", (int) ztx->opts->metrics_type);
+    metrics_rate_init(&ztx->up_rate, ztx->opts->metrics_type);
+    metrics_rate_init(&ztx->down_rate, ztx->opts->metrics_type);
 
     init_req->login = true;
-    ziti_ctrl_login(&ctx->controller, ctx->opts->config_types, session_cb, init_req);
+    ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, session_cb, init_req);
 }
 
 int ziti_init(const char *config, uv_loop_t *loop, ziti_event_cb event_cb, int events, void *app_ctx) {
@@ -291,7 +296,7 @@ int ziti_set_timeout(ziti_context ztx, int timeout) {
 
 static void on_logout(void *msg, ziti_error *err, void *arg) {
     ziti_context ztx = arg;
-    ZITI_LOG(DEBUG, "ctx[%s] logout %s",
+    ZTX_LOG(DEBUG, "identity[%s] logout %s",
              ztx->session->identity->name, err ? "failed" : "success");
 
     free_ziti_session(ztx->session);
@@ -302,7 +307,7 @@ static void on_logout(void *msg, ziti_error *err, void *arg) {
 }
 
 int ziti_shutdown(ziti_context ztx) {
-    ZITI_LOG(INFO, "Ziti is shutting down");
+    ZTX_LOG(INFO, "Ziti is shutting down");
 
     uv_timer_stop(&ztx->refresh_timer);
     uv_timer_stop(&ztx->session_timer);
@@ -318,6 +323,9 @@ int ziti_shutdown(ziti_context ztx) {
 }
 
 int ziti_ctx_free(ziti_context *ctxp) {
+    if (ctxp == NULL || *ctxp == NULL) return ZITI_OK;
+
+    ziti_context ztx = *ctxp;
     if ((*ctxp)->tlsCtx != NULL) {
         (*ctxp)->tlsCtx->api->free_ctx((*ctxp)->tlsCtx);
     }
@@ -328,14 +336,23 @@ int ziti_ctx_free(ziti_context *ctxp) {
     free_ziti_session((*ctxp)->session);
     FREE((*ctxp)->session);
 
+    ZTX_LOG(INFO, "shutdown is complete\n");
     free(*ctxp);
     *ctxp = NULL;
 
-    ZITI_LOG(INFO, "shutdown is complete\n");
     return ZITI_OK;
 }
 
 void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
+    printer(ctx, "\n=================\nZiti Context:\n");
+    printer(ctx, "ID:\t%d\n", ztx->id);
+    printer(ctx, "Config:\t%s\n", ztx->opts->config);
+    printer(ctx, "Controller:\t%s\n", ztx->opts->controller);
+    printer(ctx, "Config types:\n");
+    for (int i = 0; ztx->opts->config_types && ztx->opts->config_types[i]; i++) {
+        printer(ctx, "\t%s\n", ztx->opts->config_types[i]);
+    }
+
     printer(ctx, "\n=================\nSession:\n");
 
     if (ztx->session) {
@@ -489,11 +506,11 @@ static void session_refresh(uv_timer_t *t) {
     req->ztx = ztx;
 
     if (ztx->session) {
-        ZITI_LOG(DEBUG, "refreshing API session");
+        ZTX_LOG(DEBUG, "refreshing API session");
         ziti_ctrl_current_api_session(&ztx->controller, session_cb, req);
     }
     else {
-        ZITI_LOG(DEBUG, "requesting new API session");
+        ZTX_LOG(DEBUG, "requesting new API session");
         ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, session_cb, req);
     }
 }
@@ -503,7 +520,7 @@ void ziti_force_session_refresh(ziti_context ztx) {
 }
 
 static void ziti_re_auth(ziti_context ztx) {
-    ZITI_LOG(WARN, "starting to re-auth with ctlr[%s]", ztx->opts->controller);
+    ZTX_LOG(WARN, "starting to re-auth with ctlr[%s]", ztx->opts->controller);
     uv_timer_stop(&ztx->refresh_timer);
     uv_timer_stop(&ztx->session_timer);
     if (ztx->posture_checks) {
@@ -524,15 +541,15 @@ static void update_services(ziti_service_array services, ziti_error *error, void
 
     // schedule next refresh
     if (ztx->opts->refresh_interval > 0) {
-        ZITI_LOG(VERBOSE, "scheduling service refresh %ld seconds from now", ztx->opts->refresh_interval);
+        ZTX_LOG(VERBOSE, "scheduling service refresh %ld seconds from now", ztx->opts->refresh_interval);
         uv_timer_start(&ztx->refresh_timer, services_refresh, ztx->opts->refresh_interval * 1000, 0);
     }
 
     if (error) {
-        ZITI_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
+        ZTX_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
                  ztx->opts->controller);
         if (strcmp(error->code, "UNAUTHORIZED") == 0) {
-            ZITI_LOG(WARN, "API session is no longer valid. Trying to re-auth");
+            ZTX_LOG(WARN, "API session is no longer valid. Trying to re-auth");
             ziti_re_auth(ztx);
         } else {
             update_ctrl_status(ztx, ZITI_CONTROLLER_UNAVAILABLE, error->message);
@@ -542,7 +559,7 @@ static void update_services(ziti_service_array services, ziti_error *error, void
     update_ctrl_status(ztx, ZITI_OK, NULL);
 
 
-    ZITI_LOG(VERBOSE, "processing service updates");
+    ZTX_LOG(VERBOSE, "processing service updates");
 
     model_map updates = {0};
 
@@ -582,7 +599,7 @@ static void update_services(ziti_service_array services, ziti_error *error, void
             it = model_map_it_next(it);
         } else {
             // service was removed
-            ZITI_LOG(DEBUG, "service[%s] is not longer available", model_map_it_key(it));
+            ZTX_LOG(DEBUG, "service[%s] is not longer available", model_map_it_key(it));
             s = model_map_it_value(it);
             ev.event.service.removed[remIdx++] = s;
 
@@ -618,11 +635,11 @@ static void update_services(ziti_service_array services, ziti_error *error, void
     }
 
     if (addIdx > 0 || remIdx > 0 || chIdx > 0) {
-        ZITI_LOG(DEBUG, "sending service event %d added, %d removed, %d changed", addIdx, remIdx, chIdx);
+        ZTX_LOG(DEBUG, "sending service event %d added, %d removed, %d changed", addIdx, remIdx, chIdx);
         ziti_send_event(ztx, &ev);
     }
     else {
-        ZITI_LOG(VERBOSE, "no services added, changed, or removed");
+        ZTX_LOG(VERBOSE, "no services added, changed, or removed");
     }
 
     // cleanup
@@ -645,16 +662,16 @@ static void check_service_update(ziti_service_update *update, ziti_error *err, v
 
     if (err) { // API not supported - do refresh
         if (err->http_code == 404) {
-            ZITI_LOG(INFO, "Controller does not support /current-api-session/service-updates API");
+            ZTX_LOG(INFO, "Controller does not support /current-api-session/service-updates API");
             ztx->no_service_updates_api = true;
         }
     }
     else if (ztx->last_update == NULL || strcmp(ztx->last_update, update->last_change) != 0) {
-        ZITI_LOG(VERBOSE, "ztx last_update = %s", update->last_change);
+        ZTX_LOG(VERBOSE, "ztx last_update = %s", update->last_change);
         FREE(ztx->last_update);
         ztx->last_update = update->last_change;
     } else {
-        ZITI_LOG(VERBOSE, "not updating: last_update is same previous (%s == %s)", update->last_change,
+        ZTX_LOG(VERBOSE, "not updating: last_update is same previous (%s == %s)", update->last_change,
                  ztx->last_update);
         free_ziti_service_update(update);
         need_update = false;
@@ -686,7 +703,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     int errCode = err ? code_to_error(err->code) : ZITI_OK;
 
     if (session) {
-        ZITI_LOG(DEBUG, "%s successfully => api_session[%s]", ztx->session ? "refreshed" : "logged in", session->id);
+        ZTX_LOG(DEBUG, "%s successfully => api_session[%s]", ztx->session ? "refreshed" : "logged in", session->id);
 
         ziti_session *old_session = ztx->session;
         ztx->session = session;
@@ -698,23 +715,23 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         if (session->expires) {
             uv_timeval64_t now;
             uv_gettimeofday(&now);
-            ZITI_LOG(DEBUG, "ziti API session expires in %ld seconds", (long) (session->expires->tv_sec - now.tv_sec));
+            ZTX_LOG(DEBUG, "ziti API session expires in %ld seconds", (long) (session->expires->tv_sec - now.tv_sec));
             long delay = (session->expires->tv_sec - now.tv_sec) * 3 / 4;
             uv_timer_start(&ztx->session_timer, session_refresh, delay * 1000, 0);
         }
 
         if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
-            ZITI_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
+            ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
             services_refresh(&ztx->refresh_timer);
         } else if (ztx->opts->refresh_interval == 0) {
-            ZITI_LOG(DEBUG, "refresh_interval not specified");
+            ZTX_LOG(DEBUG, "refresh_interval not specified");
             uv_timer_stop(&ztx->refresh_timer);
         }
 
         posture_init(ztx, 20);
 
     } else if (err) {
-        ZITI_LOG(WARN, "failed to get session from ctrl[%s] %s[%d] %s",
+        ZTX_LOG(WARN, "failed to get session from ctrl[%s] %s[%d] %s",
                  ztx->opts->controller, err->code, errCode, err->message);
 
         if (errCode == ZITI_NOT_AUTHORIZED) {
@@ -727,7 +744,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
             } else {
                 // cannot login or re-auth -- identity no longer valid
                 // notify service removal, and state
-                ZITI_LOG(ERROR, "identity[%s] cannot authenticate with ctrl[%s]", ztx->opts->config,
+                ZTX_LOG(ERROR, "identity[%s] cannot authenticate with ctrl[%s]", ztx->opts->config,
                          ztx->opts->controller);
                 ziti_event_t service_event = {
                         .type = ZitiServiceEvent,
@@ -759,7 +776,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         }
 
     } else {
-        ZITI_LOG(ERROR, "%s: no session or error received", ziti_errorstr(ZITI_WTF));
+        ZTX_LOG(ERROR, "%s: no session or error received", ziti_errorstr(ZITI_WTF));
     }
 
     update_ctrl_status(ztx, errCode, err ? err->message : NULL);
@@ -784,12 +801,12 @@ static void update_ctrl_status(ziti_context ztx, int errCode, const char* errMsg
 static void version_cb(ziti_version *v, ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err != NULL) {
-        ZITI_LOG(ERROR, "failed to get controller version from %s %s(%s)",
+        ZTX_LOG(ERROR, "failed to get controller version from %s %s(%s)",
                  ztx->opts->controller, err->code, err->message);
         free_ziti_error(err);
         FREE(err);
     } else {
-        ZITI_LOG(INFO, "connected to controller %s version %s(%s %s)",
+        ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
                  ztx->opts->controller, v->version, v->revision, v->build_date);
         free_ziti_version(v);
         FREE(v);
@@ -841,7 +858,7 @@ static void grim_reaper(uv_prepare_t *p) {
         count += close_conn_internal(try_close);
     }
     if (count > 0) {
-        ZITI_LOG(DEBUG, "reaped %d closed (out of %d total) connections", count, total);
+        ZTX_LOG(DEBUG, "reaped %d closed (out of %d total) connections", count, total);
     }
 }
 
