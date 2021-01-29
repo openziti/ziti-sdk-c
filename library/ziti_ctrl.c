@@ -563,94 +563,19 @@ void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
     um_http_req_data(req, body, body_len, free_body_cb);
 }
 
-void ziti_ctrl_pr_post_domain(ziti_controller *ctrl, char *id, char *domain,
-                              void (*cb)(void *, ziti_error *, void *),
-                              void *ctx) {
-    ziti_pr_domain_req domain_req = {
-            .id = id,
-            .domain = domain,
-            .typeId = (char *) PC_DOMAIN_TYPE,
-    };
+void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len,
+                  void(*cb)(void *, ziti_error *, void *), void *ctx) {
 
-    char *body = malloc(1024);
-    size_t body_len;
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = NULL;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = (void (*)(void *, ziti_error *, struct ctrl_resp *)) ctrl_default_cb;
 
-    json_from_ziti_pr_domain_req(&domain_req, body, 1024, &body_len);
-
-    ziti_pr_post(ctrl, body, body_len, cb, ctx);
-}
-
-void ziti_ctrl_pr_post_mac(ziti_controller *ctrl, const char *id, char **mac_addresses, int num_addresses,
-                           void (*cb)(void *, ziti_error *, void *),
-                           void *ctx) {
-
-    size_t arr_size = sizeof(char (**));
-    char **addresses = calloc((num_addresses + 1), arr_size);
-
-    memcpy(addresses, mac_addresses, (num_addresses) * arr_size);
-
-    ziti_pr_mac_req mac_req = {
-            .id = (char *) id,
-            .typeId = (char *) PC_MAC_TYPE,
-            .mac_addresses = addresses,
-    };
-
-    char *body = malloc(1024);
-    size_t body_len;
-
-    json_from_ziti_pr_mac_req(&mac_req, body, 1024, &body_len);
-
-    ziti_pr_post(ctrl, body, body_len, cb, ctx);
-
-    free(addresses);
-}
-
-void ziti_ctrl_pr_post_os(ziti_controller *ctrl, const char *id, const char *os_type, const char *os_version,
-                          const char *os_build,
-                          void (*cb)(void *, ziti_error *, void *),
-                          void *ctx) {
-    ziti_pr_os_req os_req = {
-            .id = (char *) id,
-            .typeId = (char *) PC_OS_TYPE,
-            .type = (char *) os_type,
-            .version = (char *) os_version,
-            .build = (char *) os_build
-    };
-
-    char *body = malloc(1024);
-    size_t body_len;
-
-    json_from_ziti_pr_os_req(&os_req, body, 1024, &body_len);
-
-    ziti_pr_post(ctrl, body, body_len, cb, ctx);
-}
-
-void ziti_ctrl_pr_post_process(ziti_controller *ctrl, const char *id, bool is_running, const char *sha_512_hash,
-                               char **signers,
-                               int num_signers,
-                               void (*cb)(void *, ziti_error *, void *),
-                               void *ctx) {
-
-    size_t arr_size = sizeof(char (**));
-    char **null_term_signers = calloc((num_signers + 1), arr_size);
-    memcpy(null_term_signers, signers, num_signers * arr_size);
-
-    ziti_pr_process_req process_req = {
-            .id = (char *) id,
-            .typeId = (char *) PC_PROCESS_TYPE,
-            .is_running = is_running,
-            .hash = (char *) sha_512_hash,
-            .signers = null_term_signers,
-    };
-
-    char *body = malloc(1024);
-    size_t body_len;
-
-    json_from_ziti_pr_process_req(&process_req, body, 1024, &body_len);
-
-    ziti_pr_post(ctrl, body, body_len, cb, ctx);
-
-    free(null_term_signers);
+    um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/posture-response-bulk", ctrl_resp_cb, resp);
+    um_http_req_header(req, "Content-Type", "application/json");
+    um_http_req_data(req, body, body_len, free_body_cb);
 }
 
 static void ctrl_paging_req(struct ctrl_resp *resp) {
@@ -663,3 +588,4 @@ static void ctrl_paging_req(struct ctrl_resp *resp) {
     ZITI_LOG(VERBOSE, "requesting %s", path);
     um_http_req(&resp->ctrl->client, "GET", path, ctrl_resp_cb, resp);
 }
+

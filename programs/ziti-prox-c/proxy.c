@@ -508,6 +508,36 @@ const char *my_configs[] = {
         "all", NULL
 };
 
+static void process_cb(ziti_context ztx, char *id, char *path, ziti_pr_process_cb response_cb) {
+    char sha512[] = "3AF35956A71C2AFEFBFE356F86C9139725EEECB15F0DE7D98557D4D696C434F51FBC2FA5F7543AEF4F5F1AFB83CAA4A43619973BAE52E1F4F92EC10C39B039E8";
+    char* fingerprint1 = "834f29a60152ce36eb54af37ca5f8ec029eccf01";
+    char* fingerprint2 = "123248B9E8B0DD41938018A871A13DD92BED4456";
+    char *prints[2];
+
+    prints[0] = fingerprint1;
+    prints[1] = fingerprint2;
+
+    response_cb(ztx, id, path, true, sha512, prints, 2);
+}
+
+static void os_cb(ziti_context ztx, char *id, ziti_pr_os_cb response_cb) {
+    response_cb(ztx, id, "Windows", "10.0.19041", "");
+}
+
+static void domain_cb(ziti_context ztx, char *id, ziti_pr_domain_cb response_cb) {
+    response_cb(ztx, id, "mycompany.com");
+}
+
+static void mac_cb(ziti_context ztx, char *id, ziti_pr_mac_cb response_cb) {
+    char *address = "E0-42-78-D4-DD-75";
+    char **mac_addresses = malloc(sizeof(char *));
+    mac_addresses[0] = address;
+
+    response_cb(ztx, id, mac_addresses, 1);
+
+    free(mac_addresses);
+}
+
 void run(int argc, char **argv) {
 
     PREPF(uv, uv_strerror);
@@ -542,9 +572,14 @@ void run(int argc, char **argv) {
             .app_ctx = &app_ctx,
             .config_types = my_configs,
             .metrics_type = INSTANT,
+            .pq_process_cb = process_cb,
+            .pq_os_cb = os_cb,
+            .pq_mac_cb = mac_cb,
+            .pq_domain_cb = domain_cb,
     };
 
     ziti_init_opts(&opts, loop);
+
 
 
 #if __unix__ || __unix

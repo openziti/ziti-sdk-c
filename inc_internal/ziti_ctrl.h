@@ -71,24 +71,9 @@ void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, zi
 void ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, const char *csr,
                       void (*cb)(ziti_enrollment_resp *, ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_pr_post_domain(ziti_controller *ctrl, char *id, char *domain,
-                              void (*cb)(void *, ziti_error *, void *),
-                              void *ctx);
+void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_pr_post_mac(ziti_controller *ctrl, const char *id, char **mac_addresses, int num_addresses,
-                           void (*cb)(void *, ziti_error *, void *),
-                           void *ctx);
-
-void ziti_ctrl_pr_post_os(ziti_controller *ctrl, const char *id, const char *os_type, const char *os_version,
-                          const char *os_build,
-                          void (*cb)(void *, ziti_error *, void *),
-                          void *ctx);
-
-void ziti_ctrl_pr_post_process(ziti_controller *ctrl, const char *id, bool is_running, const char *sha_512_hash,
-                               char **signers,
-                               int num_signers,
-                               void (*cb)(void *, ziti_error *, void *),
-                               void *ctx);
+void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,void(*cb)(void *, ziti_error *, void *), void *ctx);
 
 #ifdef __cplusplus
 }
