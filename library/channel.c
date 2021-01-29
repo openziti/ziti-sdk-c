@@ -73,7 +73,7 @@ static void async_write(uv_async_t *ar);
 
 static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id);
 
-static void on_channel_close(ziti_channel_t *ch, ssize_t code);
+static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err);
 
 static void send_latency_probe(uv_timer_t *t);
 
@@ -584,7 +584,7 @@ static void latency_timeout(uv_timer_t *t) {
     ch->latency = UINT64_MAX;
 
     uv_mbed_close(&ch->connection, NULL);
-    on_channel_close(ch, ZITI_TIMEOUT);
+    on_channel_close(ch, ZITI_TIMEOUT, UV_ETIMEDOUT);
 }
 
 static void send_latency_probe(uv_timer_t *t) {
@@ -728,7 +728,7 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
     uv_timer_start(&ch->timer, reconnect_cb, timeout, 0);
 }
 
-static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
+static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
     if (ch->state != Closed) {
         if (ch->state == Connected) {
             ch->notify_cb(ch, EdgeRouterDisconnected, ch->notify_ctx);
@@ -744,18 +744,22 @@ static void on_channel_close(ziti_channel_t *ch, ssize_t code) {
     while (!LIST_EMPTY(&ch->waiters)) {
         struct waiter_s *w = LIST_FIRST(&ch->waiters);
         LIST_REMOVE(w, next);
-        w->cb(w->reply_ctx, NULL, code);
+        w->cb(w->reply_ctx, NULL, ziti_err);
         free(w);
     }
 
     while (!LIST_EMPTY(&ch->receivers)) {
         struct msg_receiver *con = LIST_FIRST(&ch->receivers);
         LIST_REMOVE(con, _next);
-        con->receive(con->receiver, NULL, (int) code);
+        con->receive(con->receiver, NULL, (int) ziti_err);
         free(con);
     }
 
     if (ch->state != Closed) {
+        if (uv_err == UV_EOF) {
+            ZITI_LOG(VERBOSE, "edge router closed connection, trying to refresh session");
+            ziti_force_session_refresh(ch->ctx);
+        }
         reconnect_channel(ch, false);
     }
 }
@@ -767,7 +771,7 @@ static void on_write(uv_write_t *req, int status) {
     if (status < 0) {
         ziti_channel_t *ch = wr->ch;
         CH_LOG(ERROR, "write failed [status=%d] %s", status, uv_strerror(status));
-        on_channel_close(ch, status);
+        on_channel_close(ch, ZITI_CONN_CLOSED, status);
     }
 
     if (wr != NULL) {
@@ -791,12 +795,12 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
             case UV_EPIPE:
                 CH_LOG(INFO, "channel was closed: %d(%s)", (int) len, uv_strerror((int) len));
                 // propagate close
-                on_channel_close(ch, ZITI_CONNABORT);
+                on_channel_close(ch, ZITI_CONNABORT, len);
                 break;
 
             default:
                 CH_LOG(ERROR, "unhandled error on_data rc=%zd (%s)", len, uv_strerror(len));
-                on_channel_close(ch, len);
+                on_channel_close(ch, ZITI_CONNABORT, len);
 
         }
     } else if (len == 0) {
