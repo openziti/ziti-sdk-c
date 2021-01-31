@@ -69,8 +69,6 @@ static void on_channel_connect_internal(uv_connect_t *req, int status);
 
 static void on_write(uv_write_t *req, int status);
 
-static void async_write(uv_async_t *ar);
-
 static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id);
 
 static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err);
@@ -145,7 +143,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     ch->timer.data = ch;
     uv_unref((uv_handle_t *) &ch->timer);
 
-    ch->notify_cb = ziti_on_channel_event;
+    ch->notify_cb = (ch_notify_state) ziti_on_channel_event;
     ch->notify_ctx = ctx;
     return 0;
 }
@@ -651,29 +649,16 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
     }
 }
 
-static void send_hello(ziti_channel_t *ch) {
+static void send_hello(ziti_channel_t *ch, ziti_session *session) {
     hdr_t headers[] = {
             {
                     .header_id = SessionTokenHeader,
-                    .length = strlen(ch->ctx->session->token),
-                    .value = ch->ctx->session->token
+                    .length = strlen(session->token),
+                    .value = (uint8_t *)session->token
             }
     };
     ch->latency = uv_now(ch->loop);
     ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 1, ch->token, strlen(ch->token), hello_reply_cb, ch);
-}
-
-static void async_write(uv_async_t *ar) {
-
-    struct ch_write_req *wr = ar->data;
-
-    NEWP(req, uv_write_t);
-    req->data = wr;
-    int rc = uv_mbed_write(req, &wr->ch->connection, &wr->buf, on_write);
-    if (rc != 0) {
-        on_write(req, rc);
-    }
-    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 }
 
 static void connect_timeout(uv_timer_t *t) {
@@ -819,14 +804,17 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
     ziti_channel_t *ch = req->data;
 
     if (status == 0) {
-        CH_LOG(DEBUG, "connected");
-        ch->reconnect_count = 0;
-        uv_mbed_t *mbed = (uv_mbed_t *) req->handle;
-        uv_mbed_read(mbed, ziti_alloc_cb, on_channel_data);
-        if (ch->ctx->opts->router_keepalive != 0) {
-            uv_mbed_keepalive(mbed, 1, ch->ctx->opts->router_keepalive);
+        if (ch->ctx->session != NULL && ch->ctx->session->token != NULL) {
+            CH_LOG(DEBUG, "connected");
+            uv_mbed_t *mbed = (uv_mbed_t *) req->handle;
+            uv_mbed_read(mbed, ziti_alloc_cb, on_channel_data);
+            ch->reconnect_count = 0;
+            send_hello(ch, ch->ctx->session);
+        } else {
+            CH_LOG(WARN, "session invalidated, while connecting");
+            uv_mbed_close(&ch->connection, NULL);
+            reconnect_channel(ch, false);
         }
-        send_hello(ch);
     } else {
         CH_LOG(ERROR, "failed to connect [%d/%s]", status, uv_strerror(status));
 
