@@ -505,13 +505,27 @@ static void session_refresh(uv_timer_t *t) {
     struct ziti_init_req *req = calloc(1, sizeof(struct ziti_init_req));
     req->ztx = ztx;
 
+    bool login = ztx->session == NULL;
+
     if (ztx->session) {
-        ZTX_LOG(DEBUG, "refreshing API session");
-        ziti_ctrl_current_api_session(&ztx->controller, session_cb, req);
+        uv_timeval64_t now;
+        uv_gettimeofday(&now);
+
+        if (ztx->session->expires->tv_sec < now.tv_sec) {
+            ZTX_LOG(DEBUG, "session expired");
+            free_ziti_session(ztx->session);
+            FREE(ztx->session);
+            login = true;
+        }
     }
-    else {
+
+    if (login) {
         ZTX_LOG(DEBUG, "requesting new API session");
         ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, session_cb, req);
+    }
+    else {
+        ZTX_LOG(DEBUG, "refreshing API session");
+        ziti_ctrl_current_api_session(&ztx->controller, session_cb, req);
     }
 }
 
@@ -712,12 +726,20 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         free_ziti_session(old_session);
         FREE(old_session);
 
+        uv_timeval64_t now;
+        uv_gettimeofday(&now);
+
+        int time_diff = (int) (now.tv_sec - session->updated.tv_sec);
+        if (abs(time_diff) > 10) {
+            ZITI_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
+                     time_diff > 0 ? "ahead" : "behind");
+        }
 
         if (session->expires) {
-            uv_timeval64_t now;
-            uv_gettimeofday(&now);
+            // adjust expiration to local time if needed
+            session->expires->tv_sec += time_diff;
             ZTX_LOG(DEBUG, "ziti API session expires in %ld seconds", (long) (session->expires->tv_sec - now.tv_sec));
-            long delay = (session->expires->tv_sec - now.tv_sec) * 3 / 4;
+            long delay = (session->expires->tv_sec - now.tv_sec) - 10;
             uv_timer_start(&ztx->session_timer, session_refresh, delay * 1000, 0);
         }
 
