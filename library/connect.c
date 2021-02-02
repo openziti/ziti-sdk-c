@@ -283,7 +283,7 @@ static void complete_conn_req(struct ziti_conn *conn, int code) {
     if (conn->conn_req && conn->conn_req->cb) {
         if (code != ZITI_OK) {
             conn_set_state(conn, Disconnected);
-            conn->conn_req->failed = code != ZITI_OK;
+            conn->conn_req->failed = true;
         }
         conn->conn_req->cb(conn, code);
         conn->conn_req->cb = NULL;
@@ -395,9 +395,13 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
 
     if (err != NULL) {
         CONN_LOG(ERROR, "failed to get session for service[%s]: %s(%s)", conn->service, err->code, err->message);
+        if (err->err == ZITI_NOT_AUTHORIZED) {
+            ziti_force_session_refresh(ztx);
+        }
     }
     if (s == NULL) {
         complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
+        uv_close((uv_handle_t *) ar, free_handle);
     }
     else {
         req->session = s;

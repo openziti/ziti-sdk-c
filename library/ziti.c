@@ -548,10 +548,11 @@ static void update_services(ziti_service_array services, ziti_error *error, void
     if (error) {
         ZTX_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
                  ztx->opts->controller);
-        if (strcmp(error->code, "UNAUTHORIZED") == 0) {
+        if (error->err == ZITI_NOT_AUTHORIZED) {
             ZTX_LOG(WARN, "API session is no longer valid. Trying to re-auth");
             ziti_re_auth(ztx);
-        } else {
+        }
+        else {
             update_ctrl_status(ztx, ZITI_CONTROLLER_UNAVAILABLE, error->message);
         }
         return;
@@ -700,7 +701,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     ziti_context ztx = init_req->ztx;
     ztx->loop_thread = uv_thread_self();
 
-    int errCode = err ? code_to_error(err->code) : ZITI_OK;
+    int errCode = err ? err->err : ZITI_OK;
 
     if (session) {
         ZTX_LOG(DEBUG, "%s successfully => api_session[%s]", ztx->session ? "refreshed" : "logged in", session->id);
