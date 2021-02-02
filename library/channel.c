@@ -661,9 +661,16 @@ static void send_hello(ziti_channel_t *ch, ziti_session *session) {
     ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 1, ch->token, strlen(ch->token), hello_reply_cb, ch);
 }
 
+
 static void connect_timeout(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
     CH_LOG(ERROR, "connect timeout", ch->id);
+    ch->state = Disconnected;
+    if (ch->connection.conn_req == NULL) {
+        // diagnostics
+        CH_LOG(WARN, "diagnostics: no conn_req in connect timeout");
+    }
+    reconnect_channel(ch, false);
     uv_mbed_close(&ch->connection, NULL);
 }
 
