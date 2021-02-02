@@ -77,7 +77,9 @@ limitations under the License.
     /** SDK detected invalid cryptographic state of Ziti connection */ \
     XX(CRYPTO_FAIL, "crypto failure") \
     /** connection was closed */ \
-    XX(CONN_CLOSED, "connection is closed") \
+    XX(CONN_CLOSED, "connection is closed")               \
+    /** failed posture check */                    \
+    XX(INVALID_POSTURE, "failed posture checek") \
     /** Inspired by the Android SDK: What a Terrible Failure. A condition that should never happen. */ \
     XX(WTF, "WTF: programming error")
 

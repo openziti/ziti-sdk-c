@@ -64,12 +64,15 @@ int code_to_error(const char *code) {
 XX(CONTROLLER_UNAVAILABLE, ZITI_CONTROLLER_UNAVAILABLE) \
 XX(NO_ROUTABLE_INGRESS_NODES, ZITI_GATEWAY_UNAVAILABLE) \
 XX(NO_EDGE_ROUTERS_AVAILABLE, ZITI_GATEWAY_UNAVAILABLE) \
-XX(INVALID_AUTHENTICATION, ZITI_NOT_AUTHORIZED) \
-XX(REQUIRES_CERT_AUTH, ZITI_NOT_AUTHORIZED)\
-XX(UNAUTHORIZED, ZITI_NOT_AUTHORIZED)\
+XX(INVALID_AUTHENTICATION, ZITI_NOT_AUTHORIZED)         \
+XX(REQUIRES_CERT_AUTH, ZITI_NOT_AUTHORIZED)             \
+XX(UNAUTHORIZED, ZITI_NOT_AUTHORIZED)                   \
+XX(INVALID_POSTURE, ZITI_INVALID_POSTURE)               \
 XX(INVALID_AUTH, ZITI_NOT_AUTHORIZED)
 
 #define CODE_MATCH(c, err) if (strcmp(code,#c) == 0) return err;
+
+    if (code == NULL) { return ZITI_OK; }
 
     CODE_MAP(CODE_MATCH)
 
@@ -115,6 +118,7 @@ static void ctrl_resp_cb(um_http_resp_t *r, void *data) {
     resp->status = r->code;
     if (r->code < 0) {
         NEWP(err, ziti_error);
+        err->err = ZITI_CONTROLLER_UNAVAILABLE;
         err->code = strdup("CONTROLLER_UNAVAILABLE");
         err->message = strdup(uv_strerror(r->code));
         ctrl_default_cb(NULL, err, resp);
@@ -211,6 +215,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
             if (rc < 0) {
                 ZITI_LOG(ERROR, "failed to parse controller response of req[%s]", req->path);
                 cr.error = alloc_ziti_error();
+                cr.error->err = ZITI_WTF;
                 cr.error->code = strdup("INVALID_CONTROLLER_RESPONSE");
                 cr.error->message = strdup(req->resp.status);
             }
@@ -250,6 +255,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
         }
 
         if (cr.error) {
+            cr.error->err = code_to_error(cr.error->code);
             cr.error->http_code = req->resp.code;
         }
 
