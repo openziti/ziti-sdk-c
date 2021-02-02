@@ -736,7 +736,9 @@ extern int ziti_accept(ziti_connection clt, ziti_conn_cb cb, ziti_data_cb data_c
  * @param conn the #ziti_connection to be closed
  * @param close_cb callback called after connection is closed
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK
+ *         #ZITI_CONN_CLOSED if connection was already ziti_close() was already called on the given connection
+ *         other #ZITI_ERRORS
  */
 ZITI_FUNC
 extern int ziti_close(ziti_connection conn, ziti_close_cb close_cb);

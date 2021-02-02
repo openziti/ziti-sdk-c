@@ -296,7 +296,6 @@ void on_ziti_connect(ziti_connection conn, int status) {
         ziti_context ztx = ziti_conn_context(conn);
         struct proxy_app_ctx *app = ziti_app_ctx(ztx);
         struct client *c = clt->data;
-        LIST_INSERT_HEAD(&app->clients, c, next);
     }
     else {
         ZITI_LOG(ERROR, "ziti connect failed: %s(%d)", ziti_errorstr(status), status);
@@ -377,7 +376,6 @@ static void on_client(uv_stream_t *server, int status) {
     int len = sizeof(clt->addr);
     TRY(uv, uv_tcp_getpeername(c, (struct sockaddr *) &clt->addr, &len));
     sprintf(clt->addr_s, "%s:%hu", inet_ntoa(clt->addr.sin_addr), ntohs(clt->addr.sin_port));
-
     CATCH(uv) {
         return;
     }
@@ -385,6 +383,7 @@ static void on_client(uv_stream_t *server, int status) {
     struct listener *l = server->data;
     ZITI_LOG(DEBUG, "client connection accepted from %s (%s:%d)",
              clt->addr_s, l->service_name, l->port);
+    LIST_INSERT_HEAD(&l->app_ctx->clients, clt, next);
 
     PREPF(ziti, ziti_errorstr);
     TRY(ziti, ziti_conn_init(l->app_ctx->ziti, &clt->ziti_conn, c));
