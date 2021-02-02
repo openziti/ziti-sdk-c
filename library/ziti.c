@@ -729,7 +729,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         uv_timeval64_t now;
         uv_gettimeofday(&now);
 
-        int time_diff = (int) (now.tv_sec - session->updated.tv_sec);
+        int time_diff = (int) (now.tv_sec - session->updated->tv_sec);
         if (abs(time_diff) > 10) {
             ZITI_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
                      time_diff > 0 ? "ahead" : "behind");
