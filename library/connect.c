@@ -281,7 +281,10 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
 
 static void complete_conn_req(struct ziti_conn *conn, int code) {
     if (conn->conn_req && conn->conn_req->cb) {
-        conn->conn_req->failed = code != ZITI_OK;
+        if (code != ZITI_OK) {
+            conn_set_state(conn, Disconnected);
+            conn->conn_req->failed = code != ZITI_OK;
+        }
         conn->conn_req->cb(conn, code);
         conn->conn_req->cb = NULL;
         if(conn->conn_req->conn_timeout != NULL) {
@@ -581,6 +584,12 @@ static void ziti_disconnect_cb(ziti_connection conn, ssize_t status, void *ctx) 
 
 static void ziti_disconnect_async(uv_async_t *ar) {
     struct ziti_conn *conn = ar->data;
+
+    if (conn->channel == NULL) {
+        CONN_LOG(DEBUG, "no channel -- no disconnect");
+        ziti_disconnect_cb(conn, 0, NULL);
+    }
+
     switch (conn->state) {
         case Bound:
         case Accepting:
@@ -602,6 +611,11 @@ static void ziti_disconnect_async(uv_async_t *ar) {
 }
 
 static int ziti_disconnect(struct ziti_conn *conn) {
+    if (conn->disconnector) {
+        CONN_LOG(DEBUG, "already disconnecting");
+        return ZITI_OK;
+    }
+
     if (conn->state < Timedout) {
         NEWP(ar, uv_async_t);
         uv_async_init(conn->ziti_ctx->loop, ar, ziti_disconnect_async);
@@ -1125,13 +1139,13 @@ static int send_fin_message(ziti_connection conn) {
 }
 
 int ziti_close(ziti_connection conn, ziti_close_cb close_cb) {
-    if (conn != NULL) {
-        conn->close = true;
-        conn->close_cb = close_cb;
-        ziti_disconnect(conn);
-    }
 
-    return ZITI_OK;
+    if (conn == NULL) return ZITI_INVALID_STATE;
+    if (conn->close) return ZITI_CONN_CLOSED;
+
+    conn->close = true;
+    conn->close_cb = close_cb;
+    return ziti_disconnect(conn);
 }
 
 
