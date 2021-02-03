@@ -661,9 +661,16 @@ static void send_hello(ziti_channel_t *ch, ziti_session *session) {
     ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 1, ch->token, strlen(ch->token), hello_reply_cb, ch);
 }
 
+
 static void connect_timeout(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
     CH_LOG(ERROR, "connect timeout", ch->id);
+    ch->state = Disconnected;
+    if (ch->connection.conn_req == NULL) {
+        // diagnostics
+        CH_LOG(WARN, "diagnostics: no conn_req in connect timeout");
+    }
+    reconnect_channel(ch, false);
     uv_mbed_close(&ch->connection, NULL);
 }
 
@@ -755,7 +762,7 @@ static void on_write(uv_write_t *req, int status) {
 
     if (status < 0) {
         ziti_channel_t *ch = wr->ch;
-        CH_LOG(ERROR, "write failed [status=%d] %s", status, uv_strerror(status));
+        CH_LOG(ERROR, "write failed [%d/%s]", status, uv_strerror(status));
         on_channel_close(ch, ZITI_CONN_CLOSED, status);
     }
 
@@ -778,13 +785,13 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
             case UV_ECONNABORTED:
             case UV_ECONNREFUSED:
             case UV_EPIPE:
-                CH_LOG(INFO, "channel was closed: %d(%s)", (int) len, uv_strerror((int) len));
+                CH_LOG(INFO, "channel was closed [%zd/%s]", len, uv_strerror(len));
                 // propagate close
                 on_channel_close(ch, ZITI_CONNABORT, len);
                 break;
 
             default:
-                CH_LOG(ERROR, "unhandled error on_data rc=%zd (%s)", len, uv_strerror(len));
+                CH_LOG(ERROR, "unhandled error on_data [%zd/%s]", len, uv_strerror(len));
                 on_channel_close(ch, ZITI_CONNABORT, len);
 
         }

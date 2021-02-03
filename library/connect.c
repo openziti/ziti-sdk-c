@@ -265,7 +265,7 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
     }
     else {
         if (status < 0) {
-            ZITI_LOG(ERROR, "ch[%d] failed to connect status[%d](%s)", ch->id, status, uv_strerror(status));
+            ZITI_LOG(ERROR, "ch[%d] failed to connect [%d/%s]", ch->id, status, uv_strerror(status));
         }
         else if (conn->conn_req && conn->conn_req->failed) {
             CONN_LOG(DEBUG, "request already timed out or closed");
@@ -817,7 +817,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
 
     req->waiter = NULL;
     if (err != 0 && msg == NULL) {
-        CONN_LOG(ERROR, "failed to %s, reason=%s", conn->state == Binding ? "bind" : "connect", uv_strerror(err));
+        CONN_LOG(ERROR, "failed to %s [%d/%s]", conn->state == Binding ? "bind" : "connect", err, uv_strerror(err));
         conn_set_state(conn, Disconnected);
         complete_conn_req(conn, ZITI_CONN_CLOSED);
         return;
