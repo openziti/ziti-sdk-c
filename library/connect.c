@@ -75,11 +75,13 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
 
 static int ziti_channel_start_connection(struct ziti_conn *conn);
 
+static int ziti_disconnect(ziti_connection conn);
+
 static void free_handle(uv_handle_t *h) {
     free(h);
 }
 
-const char* ziti_conn_state(ziti_connection conn) {
+const char *ziti_conn_state(ziti_connection conn) {
     return conn ? conn_state_str[conn->state] : "<NULL>";
 }
 
@@ -282,7 +284,7 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
 static void complete_conn_req(struct ziti_conn *conn, int code) {
     if (conn->conn_req && conn->conn_req->cb) {
         if (code != ZITI_OK) {
-            conn_set_state(conn, Disconnected);
+            conn_set_state(conn, code == ZITI_TIMEOUT ? Timedout : Disconnected);
             conn->conn_req->failed = true;
         }
         conn->conn_req->cb(conn, code);
@@ -300,8 +302,9 @@ static void connect_timeout(uv_timer_t *timer) {
 
     if (conn->state == Connecting) {
         CONN_LOG(WARN, "ziti connection timed out");
-        conn_set_state(conn, Timedout);
         complete_conn_req(conn, ZITI_TIMEOUT);
+        ziti_disconnect(conn);
+
     }
     else {
         CONN_LOG(ERROR, "timeout in unexpected state[%s]", ziti_conn_state(conn));
@@ -599,7 +602,8 @@ static void ziti_disconnect_async(uv_async_t *ar) {
         case Accepting:
         case Connecting:
         case Connected:
-        case CloseWrite: {
+        case CloseWrite:
+        case Timedout: {
             NEWP(wr, struct ziti_write_req_s);
             wr->conn = conn;
             wr->cb = ziti_disconnect_cb;
@@ -620,7 +624,7 @@ static int ziti_disconnect(struct ziti_conn *conn) {
         return ZITI_OK;
     }
 
-    if (conn->state < Timedout) {
+    if (conn->state <= Timedout) {
         NEWP(ar, uv_async_t);
         uv_async_init(conn->ziti_ctx->loop, ar, ziti_disconnect_async);
         ar->data = conn;

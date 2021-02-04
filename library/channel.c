@@ -312,7 +312,7 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
     header_t header;
     header_init(&header, ch->msg_seq++);
 
-    CH_LOG(TRACE, "=> ct[%x] seq[%d] len[%d]", content, header.seq, body_len);
+    CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", content, header.seq, body_len);
     header.content = content;
     header.body_len = body_len;
 
@@ -359,7 +359,7 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
     header_t header;
     header_init(&header, ch->msg_seq++);
 
-    CH_LOG(TRACE, "=> ct[%x] seq[%d] len[%d]", ch->id, content, header.seq, body_len);
+    CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", ch->id, content, header.seq, body_len);
     header.content = content;
     header.body_len = body_len;
 
@@ -464,7 +464,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
             return;
         }
 
-        CH_LOG(ERROR, "received unexpected message[ct=%X] in Connecting state", m->header.content);
+        CH_LOG(ERROR, "received unexpected message ct[%04X] in Connecting state", m->header.content);
     }
 
     if (is_edge(m->header.content)) {
@@ -472,18 +472,19 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
         bool has_conn_id = message_get_int32_header(m, ConnIdHeader, &conn_id);
 
         if (!has_conn_id) {
-            CH_LOG(ERROR, "received message without conn_id ct[%d]", m->header.content);
+            CH_LOG(ERROR, "received message without conn_id ct[%04X]", m->header.content);
         }
         else {
             struct msg_receiver *conn = find_receiver(ch, conn_id);
             if (conn == NULL) {
-                CH_LOG(DEBUG, "received message for unknown connection conn_id[%d] ct[%d]", conn_id, m->header.content);
+                CH_LOG(DEBUG, "received message for unknown connection conn_id[%d] ct[%04X]", conn_id,
+                       m->header.content);
             } else {
                 conn->receive(conn->receiver, m, ZITI_OK);
             }
         }
     } else {
-        CH_LOG(WARN, "unsupported content type [%d]", m->header.content);
+        CH_LOG(WARN, "unsupported content type [%04X]", m->header.content);
     }
 }
 
@@ -519,7 +520,7 @@ static void process_inbound(ziti_channel_t *ch) {
 
             ch->in_body_offset = 0;
 
-            CH_LOG(TRACE, "<= ct[%x] seq[%d] len[%d] hdrs[%d]", ch->in_next->header.content,
+            CH_LOG(TRACE, "<= ct[%04X] seq[%d] len[%d] hdrs[%d]", ch->in_next->header.content,
                    ch->in_next->header.seq,
                    ch->in_next->header.body_len, ch->in_next->header.headers_len);
         }
@@ -570,7 +571,7 @@ static void latency_reply_cb(void *ctx, message *reply, int err) {
         CH_LOG(VERBOSE, "latency is now %ld", ch->latency);
     }
     else {
-        CH_LOG(WARN, "invalid latency probe result ct[%d]", reply->header.content);
+        CH_LOG(WARN, "invalid latency probe result ct[%04X]", reply->header.content);
     }
     uv_timer_start(&ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
 }
@@ -611,7 +612,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         message_get_bool_header(msg, ResultSuccessHeader, &success);
     }
     else if (msg) {
-        CH_LOG(ERROR, "unexpected Hello response ct[%x]", msg->header.content);
+        CH_LOG(ERROR, "unexpected Hello response ct[%04X]", msg->header.content);
         cb_code = ZITI_GATEWAY_UNAVAILABLE;
     }
     else {
