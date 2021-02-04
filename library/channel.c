@@ -30,8 +30,8 @@ limitations under the License.
 #define CONNECT_TIMEOUT (20*1000)
 #define LATENCY_TIMEOUT (10*1000)
 #define LATENCY_INTERVAL (60*1000) /* 1 minute */
-#define BACKOFF_TIME 3000 /* 3 seconds */
-#define MAX_BACKOFF 5 /* max reconnection timeout: (1 << 5) * BACKOFF_TIME = 96 seconds */
+#define BACKOFF_TIME 5000 /* 5 seconds */
+#define MAX_BACKOFF 5 /* max reconnection timeout: (1 << MAX_BACKOFF) * BACKOFF_TIME = 160 seconds */
 
 #define CH_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ch[%d] " fmt, ch->id, ##__VA_ARGS__)
 
@@ -706,12 +706,13 @@ static void reconnect_cb(uv_timer_t *t) {
 static void reconnect_channel(ziti_channel_t *ch, bool now) {
     uint64_t timeout = 0;
     if (!now) {
-        int count = ++ch->reconnect_count;
-        if (count > MAX_BACKOFF) {
-            count = MAX_BACKOFF;
-        }
-        unsigned int backoff = rand() % count;
-        timeout = (1U << backoff) * BACKOFF_TIME;
+        ch->reconnect_count++;
+        int backoff = MIN(ch->reconnect_count, MAX_BACKOFF);
+
+        uint32_t random;
+        uv_random(ch->loop, NULL, &random, sizeof(random), 0, NULL);
+
+        timeout = random % ((1U << backoff) * BACKOFF_TIME);
         CH_LOG(INFO, "reconnecting in %ld ms (attempt = %d)", timeout, ch->reconnect_count);
     }
     else {
