@@ -301,7 +301,12 @@ static void connect_timeout(uv_timer_t *timer) {
     struct ziti_conn *conn = timer->data;
 
     if (conn->state == Connecting) {
-        CONN_LOG(WARN, "ziti connection timed out");
+        if (conn->channel == NULL) {
+            CONN_LOG(WARN, "connect timeout: no suitable edge router");
+        }
+        else {
+            CONN_LOG(WARN, "connect timeout: failed to establish connection in %d seconds", conn->timeout);
+        }
         complete_conn_req(conn, ZITI_TIMEOUT);
         ziti_disconnect(conn);
 
@@ -499,7 +504,7 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
     NEWP(async_cr, uv_async_t);
     uv_async_init(conn->ziti_ctx->loop, async_cr, ziti_connect_async);
 
-    conn->flusher = calloc(1, sizeof(uv_async_t));
+    conn->flusher = calloc(1, sizeof(uv_check_t));
     uv_check_init(conn->ziti_ctx->loop, conn->flusher);
     conn->flusher->data = conn;
     uv_unref((uv_handle_t *) conn->flusher);
