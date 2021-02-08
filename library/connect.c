@@ -1056,6 +1056,32 @@ int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *liste
     return uv_async_send(async_cr);
 }
 
+static void rebind_cb(ziti_connection conn, int status) {
+    if (status == ZITI_OK) {
+        CONN_LOG(DEBUG, "re-bound successfully");
+    } else {
+        CONN_LOG(DEBUG, "failed to re-bind [%d/%s]", status, ziti_errorstr(status));
+        conn->client_cb(conn, NULL, status, NULL);
+    }
+}
+
+// reset connection and Bind again with same options
+static void ziti_rebind(ziti_connection conn) {
+    const char *service = conn->service;
+    struct ziti_conn_req *req = conn->conn_req;
+    ziti_listen_opts *opts = req->listen_opts;
+
+    conn->channel = NULL;
+
+    CONN_LOG(DEBUG, "rebinding to service[%s]", service);
+
+    ziti_bind(conn, service, opts, rebind_cb, conn->client_cb);
+
+    FREE(service);
+    free_conn_req(req);
+
+}
+
 int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
 
     ziti_channel_t *ch = conn->parent->channel;
@@ -1176,6 +1202,12 @@ int ziti_close_write(ziti_connection conn) {
 static void process_edge_message(struct ziti_conn *conn, message *msg, int code) {
 
     if (msg == NULL) {
+        if (conn->state == Bound) {
+            CONN_LOG(DEBUG, "binding lost due to failed channel [%d/%s]", code, ziti_errorstr(code));
+            ziti_rebind(conn);
+            return;
+        }
+
         CONN_LOG(DEBUG, "closed due to err[%d](%s)", code, ziti_errorstr(code));
         conn_state st = conn->state;
         conn_set_state(conn, Disconnected);
@@ -1184,9 +1216,6 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
             case Binding:
             case Accepting:
                 complete_conn_req(conn, code);
-                break;
-            case Bound:
-                conn->client_cb(conn, NULL, code, NULL);
                 break;
             case Connected:
             case CloseWrite:

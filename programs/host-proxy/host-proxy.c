@@ -240,6 +240,8 @@ static void on_client(ziti_connection server, ziti_connection conn, int status, 
 
         uv_freeaddrinfo(resolve.addrinfo);
         ziti_conn_set_data(hc->ziti_conn, hc);
+    } else {
+        fprintf(stderr, "hosting error: %d(%s)\n", status, ziti_errorstr(status));
     }
 }
 
