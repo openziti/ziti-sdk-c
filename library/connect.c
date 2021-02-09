@@ -77,6 +77,8 @@ static int ziti_channel_start_connection(struct ziti_conn *conn);
 
 static int ziti_disconnect(ziti_connection conn);
 
+static void restart_connect(struct ziti_conn *conn);
+
 static void free_handle(uv_handle_t *h) {
     free(h);
 }
@@ -402,13 +404,14 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
     if (err != NULL) {
-        CONN_LOG(ERROR, "failed to get session for service[%s]: %s(%s)", conn->service, err->code, err->message);
         if (err->err == ZITI_NOT_AUTHORIZED) {
             ziti_force_session_refresh(ztx);
+            restart_connect(conn);
         }
-    }
-    if (s == NULL) {
-        complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
+        else {
+            CONN_LOG(ERROR, "failed to get session for service[%s]: %s(%s)", conn->service, err->code, err->message);
+            complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
+        }
         uv_close((uv_handle_t *) ar, free_handle);
     }
     else {
