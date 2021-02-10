@@ -21,6 +21,8 @@ limitations under the License.
 #define NANOS(s) ((s) * 1e9)
 #define MILLIS(s) ((s) * 1000)
 
+const int NO_TIMEOUTS = -1;
+
 static void ticker_cb(uv_timer_t *t);
 
 static void ziti_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac);
@@ -49,20 +51,6 @@ extern void posture_init(struct ziti_ctx *ztx, long interval_secs) {
         pc->must_send = false;
         pc->bulk_supported = false;
         ztx->posture_checks = pc;
-
-        char *version = strdup(ztx->controller.version.version);
-        memmove(version, version + 1, strlen(version)); //remove prefix v
-
-        char *majorStr = strtok(version, ".");
-
-        if (majorStr != NULL) {
-            int major = atoi(majorStr);
-            pc->must_send_every_time = (major != 0 && major < 19); // 0 == local dev
-        }
-
-        ZITI_LOG(DEBUG, "posture checks must_send_very_time = %s", pc->must_send_every_time ? "true" : "false");
-
-        FREE(version)
     }
 
     if (!uv_is_active((uv_handle_t *) &ztx->posture_checks->timer)) {
@@ -189,6 +177,10 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
 
 
     if (domainInfo->query != NULL) {
+        if(domainInfo->query->timeout == NO_TIMEOUTS){
+            ztx->posture_checks->must_send_every_time = false;
+        }
+
         if (ztx->opts->pq_domain_cb != NULL) {
             ztx->opts->pq_domain_cb(ztx, domainInfo->query->id, ziti_handle_domain);
         } else {
@@ -198,6 +190,10 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
     }
 
     if (macInfo->query != NULL) {
+        if(macInfo->query->timeout == NO_TIMEOUTS){
+            ztx->posture_checks->must_send_every_time = false;
+        }
+
         if (ztx->opts->pq_mac_cb != NULL) {
             ztx->opts->pq_mac_cb(ztx, macInfo->query->id, ziti_handle_mac);
         } else {
@@ -207,6 +203,10 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
     }
 
     if (osInfo->query != NULL) {
+        if(osInfo->query->timeout == NO_TIMEOUTS){
+            ztx->posture_checks->must_send_every_time = false;
+        }
+
         if (ztx->opts->pq_os_cb != NULL) {
             ztx->opts->pq_os_cb(ztx, osInfo->query->id, ziti_handle_os);
         } else {
@@ -221,6 +221,9 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
 
         if (ztx->opts->pq_process_cb != NULL) {
             MODEL_MAP_FOREACH(path, info, &processes) {
+                if(info->query->timeout == NO_TIMEOUTS){
+                    ztx->posture_checks->must_send_every_time = false;
+                }
                 ztx->opts->pq_process_cb(ztx, info->query->id, path, ziti_handle_process);
             }
         } else {
