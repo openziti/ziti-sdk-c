@@ -41,8 +41,8 @@ limitations under the License.
 #define TYPE_DIAL "Dial"
 #define TYPE_BIND "Bind"
 
-extern const char* APP_ID;
-extern const char* APP_VERSION;
+extern const char *APP_ID;
+extern const char *APP_VERSION;
 
 typedef struct ziti_channel ziti_channel_t;
 
@@ -161,6 +161,16 @@ struct process {
 struct posture_checks {
     uv_timer_t timer;
     double interval;
+
+    // map<type/process_path,response>
+    model_map *previous_responses;
+
+    // map<type/process_path,response>
+    model_map *current_responses;
+
+    char *previous_session_id;
+    bool must_send;
+    bool must_send_every_time;
 };
 
 struct ziti_ctx {
@@ -179,6 +189,8 @@ struct ziti_ctx {
     model_map sessions;
 
     bool no_service_updates_api; // controller API has no last-update endpoint
+    bool no_bulk_posture_response_api; // controller API does not support bulk posture response submission
+
     char *last_update;
 
     uv_timer_t session_timer;
@@ -231,7 +243,7 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
                       uint32_t body_len,
                       struct ziti_write_req_s *ziti_write);
 
-struct waiter_s*
+struct waiter_s *
 ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *headers, int nhdrs, const uint8_t *body,
                             uint32_t body_len, reply_cb,
                             void *reply_ctx);
@@ -255,7 +267,7 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
 
 int close_conn_internal(struct ziti_conn *conn);
 
-const char* ziti_conn_state(ziti_connection conn);
+const char *ziti_conn_state(ziti_connection conn);
 
 int establish_crypto(ziti_connection conn, message *msg);
 
