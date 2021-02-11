@@ -49,7 +49,7 @@ extern void posture_init(struct ziti_ctx *ztx, long interval_secs) {
         pc->previous_session_id = NULL;
         pc->must_send_every_time = true;
         pc->must_send = false;
-        pc->bulk_supported = false;
+        pc->bulk_supported = true;
         ztx->posture_checks = pc;
     }
 
@@ -285,7 +285,6 @@ static void ziti_pr_post_bulk_cb(void *obj, ziti_error *err, void *ctx) {
         ztx->posture_checks->must_send = true; //error, must try again
         if (err->http_code == 404) {
             ztx->posture_checks->bulk_supported = false;
-
         }
     } else {
         ztx->posture_checks->must_send = false; //did not error, can skip submissions
