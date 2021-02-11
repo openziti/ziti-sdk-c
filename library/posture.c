@@ -49,7 +49,6 @@ extern void posture_init(struct ziti_ctx *ztx, long interval_secs) {
         pc->previous_session_id = NULL;
         pc->must_send_every_time = true;
         pc->must_send = false;
-        pc->bulk_supported = true;
         ztx->posture_checks = pc;
     }
 
@@ -284,7 +283,7 @@ static void ziti_pr_post_bulk_cb(void *obj, ziti_error *err, void *ctx) {
         ZITI_LOG(ERROR, "error during bulk posture response submission (%d) %s", err->http_code, err->message);
         ztx->posture_checks->must_send = true; //error, must try again
         if (err->http_code == 404) {
-            ztx->posture_checks->bulk_supported = false;
+            ztx->no_bulk_posture_response_api = true;
         }
     } else {
         ztx->posture_checks->must_send = false; //did not error, can skip submissions
@@ -305,10 +304,10 @@ static void ziti_pr_post_cb(void *obj, ziti_error *err, void *ctx) {
 }
 
 static void ziti_send_pr(ziti_context ztx) {
-    if (ztx->posture_checks->bulk_supported) {
-        ziti_send_pr_bulk(ztx);
-    } else {
+    if (ztx->no_bulk_posture_response_api) {
         ziti_send_pr_individually(ztx);
+    } else {
+        ziti_send_pr_bulk(ztx);
     }
 }
 

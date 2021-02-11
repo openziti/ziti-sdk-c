@@ -170,7 +170,6 @@ struct posture_checks {
 
     char *previous_session_id;
     bool must_send;
-    bool bulk_supported;
     bool must_send_every_time;
 };
 
@@ -190,6 +189,8 @@ struct ziti_ctx {
     model_map sessions;
 
     bool no_service_updates_api; // controller API has no last-update endpoint
+    bool no_bulk_posture_response_api; // controller API does not support bulk posture response submission
+
     char *last_update;
 
     uv_timer_t session_timer;
