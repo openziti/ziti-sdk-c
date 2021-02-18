@@ -212,6 +212,7 @@ static void ziti_init_async(uv_async_t *ar) {
 
     ziti_context ztx = init_req->ztx;
     uv_loop_t *loop = ar->loop;
+    ztx->id = ztx_seq++;
 
     uv_close((uv_handle_t *) ar, (uv_close_cb) free);
 
