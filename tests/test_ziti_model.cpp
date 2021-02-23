@@ -69,8 +69,8 @@ TEST_CASE("multi-edge-router session", "[model]") {
     REQUIRE(s->edge_routers[1] != nullptr);
     REQUIRE(s->edge_routers[2] == nullptr);
 
-    REQUIRE(strcmp(s->edge_routers[1]->ingress.tls, "tls://ec2-18-188-224-88.us-east-2.compute.amazonaws.com:3022") ==
-            0);
+    const char *tls = (const char*)model_map_get(&s->edge_routers[1]->ingress, "tls");
+    REQUIRE_THAT(tls, Catch::Matches("tls://ec2-18-188-224-88.us-east-2.compute.amazonaws.com:3022"));
 
     free_ziti_net_session(s);
     free(s);
