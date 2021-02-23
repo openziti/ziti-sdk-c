@@ -390,6 +390,20 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service_array
     ctrl_paging_req(resp);
 }
 
+void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void (*cb)(ziti_edge_router_array, ziti_error *, void *),
+                                    void *ctx) {
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_edge_router_array;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    resp->paging = true;
+    resp->base_path = "/current-identity/edge-routers";
+    ctrl_paging_req(resp);
+}
+
 void
 ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb)(ziti_service *, ziti_error *, void *),
                       void *ctx) {

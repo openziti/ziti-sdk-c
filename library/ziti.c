@@ -711,6 +711,43 @@ static void services_refresh(uv_timer_t *t) {
     }
 }
 
+static void edge_routers_cb(ziti_edge_router_array ers, ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
+
+    if (err) {
+        if (err->http_code == 404) {
+            ztx->no_current_edge_routers = true;
+        }
+        else {
+            ZTX_LOG(ERROR, "failed to get current edge routers: %s/%s", err->code, err->message);
+        }
+        return;
+    }
+
+    if (ers == NULL) {
+        ZTX_LOG(INFO, "no edge routers found");
+        return;
+    }
+
+    ziti_edge_router **erp = ers;
+    while (*erp) {
+        ziti_edge_router *er = *erp;
+        const char *tls = model_map_get(&er->protocols, "tls");
+
+        size_t ch_name_len = strlen(er->name) + strlen(tls) + 2;
+        char *ch_name = malloc(ch_name_len);
+        snprintf(ch_name, ch_name_len, "%s@%s", er->name, tls);
+        ZTX_LOG(TRACE, "connecting to %s(%s)", er->name, tls);
+        ziti_channel_connect(ztx, ch_name, tls, NULL, NULL);
+        free(ch_name);
+
+        free_ziti_edge_router(er);
+        free(er);
+        erp++;
+    }
+    free(ers);
+}
+
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     struct ziti_init_req *init_req = ctx;
     ziti_context ztx = init_req->ztx;
@@ -747,12 +784,17 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
         if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
             ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
             services_refresh(&ztx->refresh_timer);
-        } else if (ztx->opts->refresh_interval == 0) {
+        }
+        else if (ztx->opts->refresh_interval == 0) {
             ZTX_LOG(DEBUG, "refresh_interval not specified");
             uv_timer_stop(&ztx->refresh_timer);
         }
 
         posture_init(ztx, 20);
+
+        if (!ztx->no_current_edge_routers) {
+            ziti_ctrl_current_edge_routers(&ztx->controller, edge_routers_cb, ztx);
+        }
 
     } else if (err) {
         ZTX_LOG(WARN, "failed to get session from ctrl[%s] %s[%d] %s",

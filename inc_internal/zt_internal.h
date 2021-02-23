@@ -190,6 +190,7 @@ struct ziti_ctx {
 
     bool no_service_updates_api; // controller API has no last-update endpoint
     bool no_bulk_posture_response_api; // controller API does not support bulk posture response submission
+    bool no_current_edge_routers;
 
     char *last_update;
 
