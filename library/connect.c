@@ -335,10 +335,15 @@ static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, s
     uint64_t best_latency = UINT64_MAX;
 
     for (er = session->edge_routers; *er != NULL; er++) {
-        if ((*er)->ingress.tls) {
-            size_t ch_name_len = strlen((*er)->name) + strlen((*er)->ingress.tls) + 2;        
+        const char *tls = model_map_get(&(*er)->protocols, "tls");
+        if (tls == NULL) {
+            tls = model_map_get(&(*er)->ingress, "tls");
+        }
+
+        if (tls) {
+            size_t ch_name_len = strlen((*er)->name) + strlen(tls) + 2;
             char *ch_name = malloc(ch_name_len);
-            snprintf(ch_name, ch_name_len, "%s@%s", (*er)->name, (*er)->ingress.tls);
+            snprintf(ch_name, ch_name_len, "%s@%s", (*er)->name, tls);
             ziti_channel_t *ch = model_map_get(&ctx->channels, ch_name);
 
             if (ch != NULL && ch->state == Connected) {
@@ -348,12 +353,10 @@ static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, s
                 }
             }
             else {
-                CONN_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, (*er)->ingress.tls, conn->token);
-                ziti_channel_connect(ctx, ch_name, (*er)->ingress.tls, on_channel_connected, conn);
+                CONN_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, tls, conn->token);
+                ziti_channel_connect(ctx, ch_name, tls, on_channel_connected, conn);
             }
             free(ch_name);
-        } else if ((*er)->ingress.ws) {
-            ZITI_LOG(DEBUG, "IGNORING ch[%s@%s]; Ziti C SDK does not support 'ws' channels", (*er)->name, (*er)->ingress.ws );
         }
     }
 
