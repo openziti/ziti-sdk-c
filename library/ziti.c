@@ -734,12 +734,16 @@ static void edge_routers_cb(ziti_edge_router_array ers, ziti_error *err, void *c
         ziti_edge_router *er = *erp;
         const char *tls = model_map_get(&er->protocols, "tls");
 
-        size_t ch_name_len = strlen(er->name) + strlen(tls) + 2;
-        char *ch_name = malloc(ch_name_len);
-        snprintf(ch_name, ch_name_len, "%s@%s", er->name, tls);
-        ZTX_LOG(TRACE, "connecting to %s(%s)", er->name, tls);
-        ziti_channel_connect(ztx, ch_name, tls, NULL, NULL);
-        free(ch_name);
+        if (tls) {
+            size_t ch_name_len = strlen(er->name) + strlen(tls) + 2;
+            char *ch_name = malloc(ch_name_len);
+            snprintf(ch_name, ch_name_len, "%s@%s", er->name, tls);
+            ZTX_LOG(TRACE, "connecting to %s(%s)", er->name, tls);
+            ziti_channel_connect(ztx, ch_name, tls, NULL, NULL);
+            free(ch_name);
+        } else {
+            ZTX_LOG(DEBUG, "edge router %s does not have TLS edge listener", er->name);
+        }
 
         free_ziti_edge_router(er);
         free(er);
