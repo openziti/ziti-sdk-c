@@ -11,8 +11,8 @@ FetchContent_MakeAvailable(uv-mbed)
 
 
 FetchContent_Declare(subcommand
-        GIT_REPOSITORY https://github.com/dimitri/subcommands.c.git
-        GIT_TAG master
+        GIT_REPOSITORY https://github.com/openziti/subcommands.c.git
+        GIT_TAG main
         )
 FetchContent_GetProperties(subcommand)
 if (NOT subcommand_POPULATED)
