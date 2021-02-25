@@ -89,12 +89,12 @@ static void ziti_pr_free_responses(struct pr_info *info) {
 }
 
 void ziti_send_posture_data(struct ziti_ctx *ztx) {
-    ZITI_LOG(VERBOSE, "starting to send posture data");
-
-    if (ztx->session->id == NULL) {
-        ZITI_LOG(DEBUG, "no session id, aborting posture checks");
+    if (ztx->session == NULL || ztx->session->id == NULL) {
+        ZITI_LOG(DEBUG, "no session, can't submit posture checks");
+        return;
     }
 
+    ZITI_LOG(VERBOSE, "starting to send posture data");
     bool new_session_id = ztx->posture_checks->previous_session_id == NULL || strcmp(ztx->posture_checks->previous_session_id, ztx->session->id) != 0;
 
     if(new_session_id || ztx->posture_checks->must_send_every_time) {
