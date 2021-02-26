@@ -163,7 +163,7 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
     ziti_log_init(loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     metrics_init(loop, 5);
 
-    PREP(ziti);
+    PREPF(ziti, ziti_errorstr);
 
     if (options->config == NULL && (options->controller == NULL || options->tls == NULL)) {
         ZITI_LOG(ERROR, "config or controller/tls has to be set");
