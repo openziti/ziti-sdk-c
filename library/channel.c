@@ -270,7 +270,9 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
 
     switch (ch->state) {
         case Connected:
-            cb(ch, cb_ctx, ZITI_OK);
+            if (cb) {
+                cb(ch, cb_ctx, ZITI_OK);
+            }
             break;
 
         case Initial:
