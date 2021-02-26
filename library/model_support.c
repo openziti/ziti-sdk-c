@@ -67,12 +67,12 @@ jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_
         *ntok = 0;
     } else {
         *ntok = rc;
-    }
-    if (*ntok == tok_cap) {
-        toks = realloc(toks, (tok_cap + 1) * sizeof(jsmntok_t));
-    }
-    toks[*ntok].type = JSMN_UNDEFINED;
 
+        if (*ntok == tok_cap) {
+            toks = realloc(toks, (tok_cap + 1) * sizeof(jsmntok_t));
+        }
+        toks[*ntok].type = JSMN_UNDEFINED;
+    }
     return toks;
 }
 
