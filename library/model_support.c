@@ -34,6 +34,12 @@ limitations under the License.
 #include <time.h>
 #endif
 
+#define RUNE_MASK 0b00111111
+#define RUNE_B1 0b10000000
+#define RUNE_B2 0b11000000
+#define RUNE_B3 0b11100000
+#define RUNE_B4 0b11110000
+
 #define null_checks(lh, rh) \
     if (lh == rh) { return 0; } \
     if (lh == NULL) { return -1; } \
@@ -615,6 +621,39 @@ static int _parse_string(char **val, const char *json, jsmntok_t *tok) {
                     case '"':
                         *out++ = '"';
                         break;
+                    case 'u': {
+                        uint32_t rune = 0;
+                        for (int i = 0; i<4; i++) {
+                            uint8_t c = *++in;
+                            if (c >= '0' && c <= '9') {
+                                rune = (rune << 4) + (c - '0');
+                            } else if (c >= 'a' && c <= 'f') {
+                                rune = (rune << 4) + (c - 'a' + 10);
+                            } else if (c >= 'A' && c <= 'F') {
+                                rune = (rune << 4) + (c - 'A' + 10);
+                            } else {
+                                ZITI_LOG(ERROR, "invalid '\\u' escape");
+                                return -1;
+                            }
+                        }
+
+                        if (rune < (1<<7) - 1) {
+                            *out++ = (uint8_t)rune;
+                        } else if (rune < (1<<11) - 1) {
+                            *out++ = (uint8_t) ( (RUNE_B2) | (rune >> 6) );
+                            *out++ = (uint8_t) ( RUNE_B1 | (rune & RUNE_MASK) );
+                        } else if (rune < (1<<16) - 1) {
+                            *out++ = (uint8_t) ( RUNE_B3 | (rune >> 12) );
+                            *out++ = (uint8_t) ( RUNE_B1 | ((rune >> 6) & RUNE_MASK));
+                            *out++ = (uint8_t) ( RUNE_B1 | (rune & RUNE_MASK) );
+                        } else {
+                            *out++ = (uint8_t) ( RUNE_B4 | (rune >> 18) );
+                            *out++ = (uint8_t) ( RUNE_B1 | ((rune >> 12) & RUNE_MASK) );
+                            *out++ = (uint8_t) ( RUNE_B1 | ((rune >> 6) & RUNE_MASK));
+                            *out++ = (uint8_t) ( RUNE_B1 | (rune & RUNE_MASK) );
+                        }
+                        break;
+                    }
                     default:
                         *out++ = *in;
                         ZITI_LOG(ERROR, "unhandled escape seq '\\%c'", *in);
@@ -771,9 +810,11 @@ static int _int_json(int *v, int indent, char *json, size_t max, size_t *len) {
     return rc;
 }
 
-static int _string_json(const char *s, int indent, char *json, size_t max, size_t *len) {
+static int _string_json(const char *str, int indent, char *json, size_t max, size_t *len) {
+    static char hex[] = "0123456789abcdef";
 
-    char *j = json;
+    unsigned char *s = str;
+    unsigned char *j = json;
 
     *j++ = '"';
     while (*s != '\0') {
@@ -803,12 +844,21 @@ static int _string_json(const char *s, int indent, char *json, size_t max, size_
                 *j++ = '"';
                 break;
             default:
-                *j++ = *s;
+                if (*s < ' ') {
+                    *j++ = '\\';
+                    *j++ = 'u';
+                    *j++ = '0';
+                    *j++ = '0';
+                    *j++ = hex[*s >> 4];
+                    *j++ = hex[*s & 0xF];
+                } else {
+                    *j++ = *s;
+                }
         }
         s++;
     }
     *j++ = '"';
-    *len = j - json;
+    *len = j - (unsigned char*)json;
     return 0;
 }
 
