@@ -507,3 +507,30 @@ TEST_CASE("parse-json-u-escape", "[model]") {
     CHECK(rc == 0);
     CHECK_THAT(json_out, Catch::Matchers::Contains("\"hello\\u000cабвгд!\""));
 }
+
+TEST_CASE("parse-bad-json-escapes", "[model]") {
+    const char *json[] = {
+            // short u escape
+            "{"
+            "\"bar\":{"
+            "\"msg\":\"hello\\u00C\\u0430\\u0431\\u0432\\u0433\\u0434!\""
+            "}"
+            "}",
+            // invalid char in u string
+            "{"
+            "\"bar\":{"
+            "\"msg\":\"hello\\u00OC\\u0430\\u0431\\u0432\\u0433\\u0434!\""
+            "}"
+            "}",
+            // short escape at the end
+            "{\"bar\":{"
+            "\"msg\":\"hello\\u000C\\u0430\\u0431\\u0432\\u0433\\u\""
+            "}}",
+            nullptr
+        };
+    for (int i = 0; json[i] != nullptr; i++) {
+        Foo foo;
+        CHECK(parse_Foo(&foo, json[i], strlen(json[i])) < 0);
+    }
+
+}
