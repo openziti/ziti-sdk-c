@@ -185,7 +185,7 @@ int model_parse(void *obj, const char *json, size_t len, type_meta *meta) {
     return res > 0 ? 0 : res;
 }
 
-int model_to_json(void *obj, type_meta *meta, int indent, char *buf, size_t maxlen, size_t *len) {
+int model_to_json(const void *obj, type_meta *meta, int indent, char *buf, size_t maxlen, size_t *len) {
     char *p = buf;
     *p++ = '{';
     *p++ = '\n';
@@ -198,7 +198,7 @@ int model_to_json(void *obj, type_meta *meta, int indent, char *buf, size_t maxl
         void **f_addr = (void **) ((char *) obj + fm->offset);
         void *f_ptr = fm->mod == none_mod ? f_addr : (void *) (*f_addr);
 
-        if (fm->meta == get_string_meta) {
+        if (fm->meta == get_string_meta || fm->meta == get_json_meta) {
             f_ptr = (void *) (*f_addr);
         }
 
