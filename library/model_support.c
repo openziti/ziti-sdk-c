@@ -49,10 +49,6 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
 
 static int model_map_compare(model_map *lh, model_map *rh, type_meta *m);
 
-void model_dump(void *obj, int off, type_meta *meta) {
-    // TODO
-}
-
 jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_t *ntok) {
     size_t tok_cap = 256;
     jsmn_init(parser);
@@ -82,7 +78,7 @@ jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_
     return toks;
 }
 
-int model_cmp(void *lh, void *rh, type_meta *meta) {
+int model_cmp(const void *lh, const void *rh, type_meta *meta) {
     null_checks(lh, rh)
 
     int rc = 0;
@@ -714,7 +710,7 @@ static int _parse_timeval(timestamp *t, const char *json, jsmntok_t *tok) {
 }
 
 
-static int _cmp_bool(bool *lh, bool *rh) {
+static int _cmp_bool(const bool *lh, const bool *rh) {
     null_checks(lh, rh)
     if (*lh == *rh) { return 0; }
     if (!*lh) { return -1; }

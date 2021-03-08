@@ -72,7 +72,6 @@ MODEL_API void free_##type##_array(array(type) *ap);\
 MODEL_API int parse_##type(ptr(type) v, const char* json, size_t len);\
 MODEL_API int parse_##type##_ptr(ptr(type) *p, const char* json, size_t len);\
 MODEL_API int parse_##type##_array(array(type) *a, const char* json, size_t len);\
-MODEL_API void dump_##type(type *v, int); \
 MODEL_API int json_from_##type(const ptr(type) v, char *buf, size_t maxlen, size_t *len);
 
 #define gen_field_meta(n, memtype, modifier, p, partype) {\
@@ -106,7 +105,6 @@ ptr(type) alloc_##type() { return (ptr(type))calloc(1, sizeof(type)); } \
 int cmp_##type(const type *lh, const type *rh) { return model_cmp(lh, rh, &type##_META); }\
 void free_##type(type *v) { model_free(v, &type##_META); } \
 void free_##type##_array(array(type) *ap) { model_free_array((void***)ap, &type##_META); }\
-void dump_##type(type *v, int off) { model_dump(v, off, &type##_META);} \
 MODEL_API int json_from_##type(const ptr(type) v, char *json, size_t maxlen, size_t *len)\
 { return model_to_json(v, &type##_META, 0, json, maxlen, len); }
 
@@ -141,7 +139,7 @@ typedef int (*_parse_f)(void *obj, const char *json, void *tok);
 typedef int (*_to_json_f)(const void *obj, int indent, char *json, size_t max, size_t *len);
 
 typedef void (*_free_f)(void *obj);
-typedef int (*_cmp_f)(void *lh, void *rh);
+typedef int (*_cmp_f)(const void *lh, const void *rh);
 
 typedef struct type_meta {
     const char *name;
@@ -158,9 +156,7 @@ ZITI_FUNC void model_free(void *obj, type_meta *meta);
 
 ZITI_FUNC void model_free_array(void ***ap, type_meta *meta);
 
-ZITI_FUNC void model_dump(void *obj, int off, type_meta *meta);
-
-ZITI_FUNC int model_cmp(void *lh, void *rh, type_meta *meta);
+ZITI_FUNC int model_cmp(const void *lh, const void *rh, type_meta *meta);
 
 ZITI_FUNC int model_parse(void *obj, const char *json, size_t len, type_meta *meta);
 
