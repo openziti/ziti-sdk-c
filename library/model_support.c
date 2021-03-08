@@ -950,6 +950,37 @@ static void _free_tag(tag *t) {
     }
 }
 
+struct generic_enum_s {
+    const char* (*name)(int v);
+    int (*value_of)(const char* n);
+    int (*value_ofn)(const char* s, size_t len);
+};
+
+int parse_enum(void *ptr, const char *json, void *tok, const void *enum_type) {
+    const struct generic_enum_s *en = enum_type;
+    int *enum_p = ptr;
+    jsmntok_t *token = tok;
+
+    if (token->type == JSMN_STRING) {
+        *enum_p = en->value_ofn(json + token->start, token->end - token->start);
+    } else {
+        return -1;
+    }
+    return 0;
+}
+
+int json_enum(const void *ptr, char *json, size_t max, size_t *len, const void *enum_type) {
+    int en_val = *(int*)ptr;
+    const struct generic_enum_s *en = enum_type;
+    int rc = snprintf(json, max, "\"%s\"", en->name(en_val));
+    if (rc > 0) {
+        *len = rc;
+        return 0;
+    }
+    return rc;
+}
+
+
 struct model_map_entry {
     char *key;
     uint32_t key_hash;

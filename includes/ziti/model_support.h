@@ -19,12 +19,12 @@ limitations under the License.
 #define ZITI_SDK_MODEL_SUPPORT_H
 
 #ifndef __cplusplus
-
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
-
 #endif
+
+#include <string.h>
 
 #include "externs.h"
 
@@ -233,6 +233,75 @@ typedef struct {
 } tag;
 
 ZITI_FUNC type_meta *get_tag_meta();
+
+ZITI_FUNC int parse_enum(void *ptr, const char *json, void *tok, const void *enum_type);
+ZITI_FUNC int json_enum(const void *ptr, char *json, size_t max, size_t *len, const void *enum_type);
+
+#define mk_enum(v,t) t##_##v,
+#define enum_field(v,t) const t v;
+
+#define DECLARE_ENUM(Enum, Values) \
+enum Enum {                             \
+Values(mk_enum, Enum)                   \
+Enum##_Unknown = -1,                    \
+};                                 \
+typedef enum Enum Enum;\
+struct Enum##_s { \
+const char* (*name)(int v);                       \
+Enum (*value_of)(const char* n);                  \
+Enum (*value_ofn)(const char* s, size_t n);       \
+Values(enum_field, Enum)                          \
+};                                 \
+MODEL_API type_meta* get_##Enum##_meta();\
+extern const struct Enum##_s Enum##s;
+
+#define EVAL(...) __VA_ARGS__
+#define EVAL1(...) EVAL(EVAL(EVAL(__VA_ARGS__)))
+
+#define call_f(f,args) f args
+#define enum_value_of1(v, t, s, n) if(strncmp(s,#v,n) == 0){return (t)t##s.v;}
+#define enum_value_of(v,...) call_f(enum_value_of1, (v, __VA_ARGS__))
+
+#define enum_case(v,t)  case t##_##v: return #v;
+#define enum_field_val(v,t) .v = t##_##v,
+#define IMPL_ENUM(Enum, Values) \
+static const char* Enum##_name(int v) { \
+switch (v) { \
+Values(enum_case,Enum)\
+default: return "unknown " #Enum; \
+}                                \
+}\
+Enum Enum##_value_ofn(const char* s, size_t n) {\
+Values(enum_value_of, Enum, s, n)  \
+return Enum##_Unknown;          \
+}                               \
+Enum Enum##_value_of(const char* s) {\
+return Enum##_value_ofn(s, strlen(s));     \
+}                               \
+                                \
+const struct Enum##_s Enum##s = {  \
+.name = Enum##_name,            \
+.value_of = Enum##_value_of,    \
+.value_ofn = Enum##_value_ofn,    \
+Values(enum_field_val,Enum)\
+};                              \
+static int cmp_##Enum(const ptr(Enum) lh, const ptr(Enum) rh) { \
+return get_int_meta()->comparer(lh, rh);               \
+};\
+static int parse_##Enum(ptr(Enum) e, const char* json, void *tok) {     \
+return parse_enum(e, json, tok, &Enum##s);                              \
+}\
+static int Enum##_json(const ptr(Enum) e, int indent, char *json, size_t max, size_t *len) {     \
+return json_enum(e, json, max, len, &Enum##s);                              \
+}\
+static type_meta Enum##_meta = {\
+        .size = sizeof(int), \
+        .comparer = (_cmp_f) cmp_##Enum, \
+        .parser = (_parse_f) parse_##Enum, \
+        .jsonifier = (_to_json_f) Enum##_json, \
+        };           \
+type_meta* get_##Enum##_meta() { return &Enum##_meta; }\
+
 
 #if __cplusplus
 }
