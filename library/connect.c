@@ -307,7 +307,7 @@ static void connect_timeout(uv_timer_t *timer) {
             CONN_LOG(WARN, "connect timeout: no suitable edge router");
         }
         else {
-            CONN_LOG(WARN, "connect timeout: failed to establish connection in %d seconds", conn->timeout);
+            CONN_LOG(WARN, "failed to establish connection in %d milliseconds", conn->timeout);
         }
         complete_conn_req(conn, ZITI_TIMEOUT);
         ziti_disconnect(conn);
