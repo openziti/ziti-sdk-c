@@ -63,8 +63,6 @@ TEST_CASE("multi-edge-router session", "[model]") {
     ziti_net_session *s;
     int rc = parse_ziti_net_session_ptr(&s, ns, (int) strlen(ns));
 
-    dump_ziti_net_session(s, 0);
-
     REQUIRE(s->edge_routers[0] != nullptr);
     REQUIRE(s->edge_routers[1] != nullptr);
     REQUIRE(s->edge_routers[2] == nullptr);
@@ -232,7 +230,6 @@ TEST_CASE("parse-services-array", "[model]") {
 
     for (idx = 0, s = services; *s != nullptr; s++, idx++) {
         printf("service #%d: %s\n", idx, (*s)->name);
-        dump_ziti_service(services[idx], 2);
     }
     REQUIRE(idx == 3);
     REQUIRE(services[idx] == nullptr);

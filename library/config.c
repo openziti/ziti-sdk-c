@@ -59,6 +59,7 @@ int load_config_file(const char *filename, ziti_config **cfg) {
     ziti_config *c;
     if (parse_ziti_config_ptr(&c, config, config_len) != 0) {
         free_ziti_config(c);
+        free(config);
         FREE(c);
         return ZITI_INVALID_CONFIG;
     }

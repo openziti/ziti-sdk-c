@@ -106,10 +106,6 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
     ecfg->private_key = opts->enroll_key;
 
     TRY(ziti, load_jwt(opts->jwt, ecfg, &ecfg->zejh, &ecfg->zej));
-    if (DEBUG <= ziti_log_level()) {
-        dump_ziti_enrollment_jwt_header(ecfg->zejh, 0);
-        dump_ziti_enrollment_jwt(ecfg->zej, 0);
-    }
     TRY(ziti, check_cert_required(ecfg));
 
     NEWP(ctrl, ziti_controller);
