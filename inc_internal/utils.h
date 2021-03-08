@@ -65,7 +65,7 @@ typedef int *(*cond_error_t)(int);
 
 #define NEWP(var, type) type *var = calloc(1, sizeof(type))
 #define VAL_OR_ELSE(v, def) ((v) != NULL ? (v) : (def))
-#define FREE(v) if ((v) != NULL) { free(v); (v) = NULL; }
+#define FREE(v) if ((v) != NULL) { free((void*)v); (v) = NULL; }
 
 #define FMT(ex) _##ex##_fmt
 #define COND(ex) _##ex##_cond

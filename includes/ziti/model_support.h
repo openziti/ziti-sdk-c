@@ -255,7 +255,13 @@ Values(enum_field, Enum)                          \
 MODEL_API type_meta* get_##Enum##_meta();\
 extern const struct Enum##_s Enum##s;
 
-#define enum_value_of(v,t,s,n) if (strncmp(s,#v,n) == 0) return (t)t##s.v;
+#define EVAL(...) __VA_ARGS__
+#define EVAL1(...) EVAL(EVAL(EVAL(__VA_ARGS__)))
+
+#define call_f(f,args) f args
+#define enum_value_of1(v, t, s, n) if(strncmp(s,#v,n) == 0){return (t)t##s.v;}
+#define enum_value_of(v,...) call_f(enum_value_of1, (v, __VA_ARGS__))
+
 #define enum_case(v,t)  case t##_##v: return #v;
 #define enum_field_val(v,t) .v = t##_##v,
 #define IMPL_ENUM(Enum, Values) \
