@@ -6,6 +6,7 @@ add_executable(all_tests
         test_jwt.cpp
         model_tests.cpp
         test_metrics.cpp
+        enum_tests.cpp
         map_tests.cpp)
 if (WIN32)
     set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
