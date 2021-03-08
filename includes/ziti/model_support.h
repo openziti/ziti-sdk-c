@@ -280,7 +280,7 @@ const struct Enum##_s Enum##s = {  \
 Values(enum_field_val,Enum)\
 };                              \
 static int cmp_##Enum(const ptr(Enum) lh, const ptr(Enum) rh) { \
-return *rh - *lh;               \
+return get_int_meta()->comparer(lh, rh);               \
 };\
 static int parse_##Enum(ptr(Enum) e, const char* json, void *tok) {     \
 return parse_enum(e, json, tok, &Enum##s);                              \

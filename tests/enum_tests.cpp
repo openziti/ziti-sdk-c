@@ -65,3 +65,17 @@ TEST_CASE("enum to json", "[model]") {
 
     REQUIRE_THAT(json, Catch::Contains("\"state\":\"Bad\""));
 }
+
+TEST_CASE("enum compare", "[model]") {
+    FooWithEnum f1,f2;
+    f1.name = (char*)"awesome";
+    f2.name = f1.name;
+    f1.state = States.Bad;
+    f2.state = States.Bad;
+
+    CHECK(cmp_FooWithEnum(&f1, &f2) == 0);
+
+    f2.state = States.Good;
+    CHECK(cmp_FooWithEnum(&f1, &f2) > 0);
+    CHECK(cmp_FooWithEnum(&f2, &f1) < 0);
+}
