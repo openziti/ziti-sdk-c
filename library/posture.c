@@ -22,8 +22,8 @@ limitations under the License.
 
 const int NO_TIMEOUTS = -1;
 
-const bool IS_ERRORED = TRUE;
-const bool IS_NOT_ERRORED = FALSE;
+const bool IS_ERRORED = true;
+const bool IS_NOT_ERRORED = false;
 
 struct query_info {
     ziti_service *service;
@@ -399,7 +399,7 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
         }
     }
 
-    strncat(body, "]", 1);
+    strcat(body, "]");
 
     ZITI_LOG(DEBUG, "sending posture responses [%d]", obj_count);
     ZITI_LOG(TRACE, "bulk posture response: %s", body);
