@@ -23,11 +23,31 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif
-void posture_init(struct ziti_ctx *ztx, long interval_secs);
+
+struct posture_checks {
+    uv_timer_t timer;
+    double interval;
+
+    // map<type/process_path,response>
+    model_map *previous_responses;
+
+    // map<type/process_path,response>
+    model_map *current_responses;
+
+
+    // map<type/process_path, is errored
+    model_map *error_states;
+
+    char *previous_session_id;
+    bool must_send;
+    bool must_send_every_time;
+};
+
+void ziti_posture_init(ziti_context ztx, long interval_secs);
 
 void ziti_posture_checks_free(struct posture_checks *pcs);
 
-void ziti_send_posture_data(struct ziti_ctx *ztx);
+void ziti_send_posture_data(ziti_context ztx);
 
 #ifdef __cplusplus
 }

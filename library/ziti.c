@@ -794,7 +794,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
             uv_timer_stop(&ztx->refresh_timer);
         }
 
-        posture_init(ztx, 20);
+        ziti_posture_init(ztx, 20);
 
         if (!ztx->no_current_edge_routers) {
             ziti_ctrl_current_edge_routers(&ztx->controller, edge_routers_cb, ztx);

@@ -15,7 +15,6 @@ limitations under the License.
 */
 
 #include "posture.h"
-
 #include <utils.h>
 
 #define NANOS(s) ((s) * 1e9)
@@ -23,53 +22,8 @@ limitations under the License.
 
 const int NO_TIMEOUTS = -1;
 
-static void ticker_cb(uv_timer_t *t);
-
-static void ziti_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac);
-
-static void ziti_handle_domain(ziti_context ztx, char *id, char *domain);
-
-static void ziti_handle_os(ziti_context ztx, const char *id, char *os_type, char *os_version, char *os_build);
-
-static void ziti_send_pr(ziti_context ztx);
-
-static void ziti_send_pr_bulk(ziti_context ztx);
-
-static void ziti_send_pr_individually(ziti_context ztx);
-
-static void
-ziti_handle_process(ziti_context ztx, const char *id, char *path, bool is_running, char *sha_512_hash, char **signers,
-                    int num_signers);
-
-extern void posture_init(struct ziti_ctx *ztx, long interval_secs) {
-    if (ztx->posture_checks == NULL) {
-        NEWP(pc, struct posture_checks);
-
-        pc->interval = (double) interval_secs;
-        pc->previous_session_id = NULL;
-        pc->must_send_every_time = true;
-        pc->must_send = false;
-        ztx->posture_checks = pc;
-    }
-
-    if (!uv_is_active((uv_handle_t *) &ztx->posture_checks->timer)) {
-        uv_timer_init(ztx->loop, &ztx->posture_checks->timer);
-        ztx->posture_checks->timer.data = ztx;
-        uv_timer_start(&ztx->posture_checks->timer, ticker_cb, MILLIS(interval_secs), MILLIS(interval_secs));
-        uv_unref((uv_handle_t *) &ztx->posture_checks->timer);
-    }
-}
-
-extern void ziti_posture_checks_free(struct posture_checks *pcs) {
-    model_map_clear(pcs->previous_responses, NULL);
-    model_map_clear(pcs->current_responses, NULL);
-    FREE(pcs);
-}
-
-static void ticker_cb(uv_timer_t *t) {
-    struct ziti_ctx *ztx = t->data;
-    ziti_send_posture_data(ztx);
-}
+const bool IS_ERRORED = TRUE;
+const bool IS_NOT_ERRORED = FALSE;
 
 struct query_info {
     ziti_service *service;
@@ -77,18 +31,95 @@ struct query_info {
     ziti_posture_query *query;
 };
 
-struct pr_info {
+struct pr_info_s {
+    char *id;
     char *obj;
     int length;
     bool should_send;
-    bool errored;
-} pr_info;
+};
 
-static void ziti_pr_free_responses(struct pr_info *info) {
-    FREE(info->obj);
+typedef struct pr_info_s pr_info;
+
+struct pr_cb_ctx_s {
+    ziti_context ztx;
+    pr_info *info;
+};
+
+typedef struct pr_cb_ctx_s pr_cb_ctx;
+
+
+static void ziti_pr_ticker_cb(uv_timer_t *t);
+
+static void ziti_pr_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac);
+
+static void ziti_pr_handle_domain(ziti_context ztx, char *id, char *domain);
+
+static void ziti_pr_handle_os(ziti_context ztx, char *id, char *os_type, char *os_version, char *os_build);
+
+static void ziti_pr_handle_process(ziti_context ztx, char *id, char *path, bool is_running, char *sha_512_hash, char **signers, int num_signers);
+
+static void ziti_pr_send(ziti_context ztx);
+
+static void ziti_pr_send_bulk(ziti_context ztx);
+
+static void ziti_pr_send_individually(ziti_context ztx);
+
+static bool ziti_pr_is_info_errored(ziti_context ztx, char *id);
+
+static void ziti_pr_free_pr_info_members(pr_info *info) {
+    FREE(info->id)
+    FREE(info->obj)
 }
 
-void ziti_send_posture_data(struct ziti_ctx *ztx) {
+
+static void ziti_pr_free_pr_info(pr_info *info) {
+    ziti_pr_free_pr_info_members(info);
+    FREE(info)
+}
+
+static void ziti_pr_free_pr_cb_ctx(pr_cb_ctx *ctx) {
+    ziti_pr_free_pr_info(ctx->info);
+    FREE(ctx)
+}
+
+extern void ziti_posture_init(ziti_context ztx, long interval_secs) {
+    if (ztx->posture_checks == NULL) {
+        NEWP(pc, struct posture_checks);
+
+        pc->interval = (double) interval_secs;
+        pc->previous_session_id = NULL;
+        pc->must_send_every_time = true;
+        pc->must_send = false;
+
+        NEWP(error_states, struct model_map);
+        pc->error_states = error_states;
+
+        ztx->posture_checks = pc;
+    }
+
+    if (!uv_is_active((uv_handle_t *) &ztx->posture_checks->timer)) {
+        uv_timer_init(ztx->loop, &ztx->posture_checks->timer);
+        ztx->posture_checks->timer.data = ztx;
+        uv_timer_start(&ztx->posture_checks->timer, ziti_pr_ticker_cb, MILLIS(interval_secs), MILLIS(interval_secs));
+        uv_unref((uv_handle_t *) &ztx->posture_checks->timer);
+    }
+}
+
+extern void ziti_posture_checks_free(struct posture_checks *pcs) {
+    if (pcs != NULL) {
+        model_map_clear(pcs->previous_responses, (_free_f) ziti_pr_free_pr_info_members);
+        model_map_clear(pcs->current_responses, (_free_f) ziti_pr_free_pr_info_members);
+        model_map_clear(pcs->error_states, NULL);
+        FREE(pcs)
+    }
+}
+
+static void ziti_pr_ticker_cb(uv_timer_t *t) {
+    struct ziti_ctx *ztx = t->data;
+    ziti_send_posture_data(ztx);
+}
+
+void ziti_send_posture_data(ziti_context ztx) {
     if (ztx->session == NULL || ztx->session->id == NULL) {
         ZITI_LOG(DEBUG, "no session, can't submit posture checks");
         return;
@@ -97,7 +128,7 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
     ZITI_LOG(VERBOSE, "starting to send posture data");
     bool new_session_id = ztx->posture_checks->previous_session_id == NULL || strcmp(ztx->posture_checks->previous_session_id, ztx->session->id) != 0;
 
-    if(new_session_id || ztx->posture_checks->must_send_every_time) {
+    if (new_session_id || ztx->posture_checks->must_send_every_time) {
         ZITI_LOG(DEBUG, "posture checks either never sent or session changed, must_send = true");
         ztx->posture_checks->must_send = true;
         FREE(ztx->posture_checks->previous_session_id)
@@ -107,7 +138,6 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
         ztx->posture_checks->must_send = false;
     }
 
-
     NEWP(domainInfo, struct query_info);
     NEWP(osInfo, struct query_info);
     NEWP(macInfo, struct query_info);
@@ -115,7 +145,7 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
     struct query_info *procInfo = NULL;
     struct model_map processes = {NULL};
 
-    const char *name;
+    __attribute__((unused)) const char *name;
     ziti_service *service;
 
     //loop over the services and determine the query types that need responses
@@ -166,7 +196,7 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
 
     //free previous responses, set current responses to an empty map
     if (ztx->posture_checks->previous_responses != NULL) {
-        model_map_clear(ztx->posture_checks->previous_responses, (_free_f) ziti_pr_free_responses);
+        model_map_clear(ztx->posture_checks->previous_responses, (_free_f) ziti_pr_free_pr_info_members);
     }
 
     ztx->posture_checks->previous_responses = ztx->posture_checks->current_responses;
@@ -176,12 +206,12 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
 
 
     if (domainInfo->query != NULL) {
-        if(domainInfo->query->timeout == NO_TIMEOUTS){
+        if (domainInfo->query->timeout == NO_TIMEOUTS) {
             ztx->posture_checks->must_send_every_time = false;
         }
 
         if (ztx->opts->pq_domain_cb != NULL) {
-            ztx->opts->pq_domain_cb(ztx, domainInfo->query->id, ziti_handle_domain);
+            ztx->opts->pq_domain_cb(ztx, domainInfo->query->id, ziti_pr_handle_domain);
         } else {
             ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_DOMAIN_TYPE,
                      domainInfo->service->name, domainInfo->query_set->policy_id, domainInfo->query->id);
@@ -189,12 +219,12 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
     }
 
     if (macInfo->query != NULL) {
-        if(macInfo->query->timeout == NO_TIMEOUTS){
+        if (macInfo->query->timeout == NO_TIMEOUTS) {
             ztx->posture_checks->must_send_every_time = false;
         }
 
         if (ztx->opts->pq_mac_cb != NULL) {
-            ztx->opts->pq_mac_cb(ztx, macInfo->query->id, ziti_handle_mac);
+            ztx->opts->pq_mac_cb(ztx, macInfo->query->id, ziti_pr_handle_mac);
         } else {
             ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_MAC_TYPE,
                      macInfo->service->name, macInfo->query_set->policy_id, macInfo->query->id);
@@ -202,12 +232,12 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
     }
 
     if (osInfo->query != NULL) {
-        if(osInfo->query->timeout == NO_TIMEOUTS){
+        if (osInfo->query->timeout == NO_TIMEOUTS) {
             ztx->posture_checks->must_send_every_time = false;
         }
 
         if (ztx->opts->pq_os_cb != NULL) {
-            ztx->opts->pq_os_cb(ztx, osInfo->query->id, ziti_handle_os);
+            ztx->opts->pq_os_cb(ztx, osInfo->query->id, ziti_pr_handle_os);
         } else {
             ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_OS_TYPE,
                      osInfo->service->name, osInfo->query_set->policy_id, osInfo->query->id);
@@ -220,10 +250,10 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
 
         if (ztx->opts->pq_process_cb != NULL) {
             MODEL_MAP_FOREACH(path, info, &processes) {
-                if(info->query->timeout == NO_TIMEOUTS){
+                if (info->query->timeout == NO_TIMEOUTS) {
                     ztx->posture_checks->must_send_every_time = false;
                 }
-                ztx->opts->pq_process_cb(ztx, info->query->id, path, ziti_handle_process);
+                ztx->opts->pq_process_cb(ztx, info->query->id, path, ziti_pr_handle_process);
             }
         } else {
             ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_PROCESS_TYPE,
@@ -236,48 +266,48 @@ void ziti_send_posture_data(struct ziti_ctx *ztx) {
     free(domainInfo);
     free(osInfo);
     free(macInfo);
-    //no free(procInfo), free'ed in model_map_clear which calls free on values
+    //no free(procInfo), freed in model_map_clear which calls free on values
 
-    ziti_send_pr(ztx);
+    ziti_pr_send(ztx);
 }
 
 static void ziti_collect_pr(ziti_context ztx, const char *pr_obj_key, char *pr_obj, int pr_obj_len) {
-    struct pr_info *current_info = malloc(sizeof(pr_info));
+    NEWP(current_info, pr_info);
 
     current_info->obj = pr_obj;
     current_info->length = pr_obj_len;
     current_info->should_send = true;
-    current_info->errored = false;
+    current_info->id = strdup(pr_obj_key);
 
     //selectively send if we don't have to send every time, we have previous responses to calculate against, and we aren't being forced to send
     if (!ztx->posture_checks->must_send_every_time && ztx->posture_checks->previous_responses != NULL && ztx->posture_checks->must_send == false) {
-        struct pr_info *prev_info;
+        pr_info *prev_info;
         prev_info = model_map_get(ztx->posture_checks->previous_responses, pr_obj_key);
 
         if (prev_info != NULL) {
-            if (prev_info->errored) {
+            if (ziti_pr_is_info_errored(ztx, prev_info->id)) {
                 current_info->should_send = true;
             } else {
                 int info_cmp = strcmp(prev_info->obj, pr_obj); //assumes obj marshaling is deterministic
 
-                if (info_cmp == 0) { //same so don't sendd
+                if (info_cmp == 0) { //same so don't send
                     current_info->should_send = false;
                 } else {
-                    ZITI_LOG(DEBUG, "will send pr, comparison result for pr objects %d != 0, objects: %s -and- %s",
+                    ZITI_LOG(TRACE, "will send pr, comparison result for pr objects %d != 0, objects: %s -and- %s",
                              info_cmp, prev_info->obj, pr_obj);
                 }
             }
         } else {
-            ZITI_LOG(DEBUG, "will send pr, prev object is null: %s", pr_obj);
+            ZITI_LOG(TRACE, "will send pr, prev object is null: %s", pr_obj);
         }
     } else {
-        ZITI_LOG(DEBUG, "will send pr, must_send == true or no previous responses: %s", pr_obj);
+        ZITI_LOG(TRACE, "will send pr, must_send == true or no previous responses: %s", pr_obj);
     }
 
     model_map_set(ztx->posture_checks->current_responses, pr_obj_key, current_info);
 }
 
-static void ziti_pr_post_bulk_cb(void *obj, ziti_error *err, void *ctx) {
+static void ziti_pr_post_bulk_cb(__attribute__((unused)) void *empty, ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err != NULL) {
         ZITI_LOG(ERROR, "error during bulk posture response submission (%d) %s", err->http_code, err->message);
@@ -285,38 +315,60 @@ static void ziti_pr_post_bulk_cb(void *obj, ziti_error *err, void *ctx) {
         if (err->http_code == 404) {
             ztx->no_bulk_posture_response_api = true;
         }
+        FREE(err)
     } else {
         ztx->posture_checks->must_send = false; //did not error, can skip submissions
         ZITI_LOG(DEBUG, "done with bulk posture response submission");
     }
 }
 
-static void ziti_pr_post_cb(void *obj, ziti_error *err, void *ctx) {
-    struct pr_info *info = ctx;
+static void ziti_pr_set_info_errored(ziti_context ztx, char *id) {
+    model_map_set(ztx->posture_checks->error_states, id, (void *) &IS_ERRORED);
+}
+
+static void ziti_pr_set_info_success(ziti_context ztx, char *id) {
+    model_map_set(ztx->posture_checks->error_states, id, (void *) &IS_NOT_ERRORED);
+}
+
+static bool ziti_pr_is_info_errored(ziti_context ztx, char *id) {
+    bool *is_errored = model_map_get(ztx->posture_checks->error_states, id);
+    if (is_errored == NULL) {
+        return false;
+    }
+
+    return *is_errored;
+}
+
+static void ziti_pr_post_cb(__attribute__((unused)) void *empty, ziti_error *err, void *ctx) {
+    pr_cb_ctx *pr_ctx = ctx;
 
     if (err != NULL) {
         ZITI_LOG(ERROR, "error during individual posture response submission (%d) %s - object: %s", err->http_code,
-                 err->message, info->obj);
-        info->errored = true;
+                 err->message, pr_ctx->info->obj);
+        ziti_pr_set_info_errored(pr_ctx->ztx, pr_ctx->info->id);
+        FREE(err)
     } else {
-        ZITI_LOG(DEBUG, "done with one pr response submission, object: %s", info->obj);
+        ZITI_LOG(TRACE, "done with one pr response submission, object: %s", pr_ctx->info->obj);
+        ziti_pr_set_info_success(pr_ctx->ztx, pr_ctx->info->id);
     }
+
+    ziti_pr_free_pr_cb_ctx(ctx);
 }
 
-static void ziti_send_pr(ziti_context ztx) {
+static void ziti_pr_send(ziti_context ztx) {
     if (ztx->no_bulk_posture_response_api) {
-        ziti_send_pr_individually(ztx);
+        ziti_pr_send_individually(ztx);
     } else {
-        ziti_send_pr_bulk(ztx);
+        ziti_pr_send_bulk(ztx);
     }
 }
 
-static void ziti_send_pr_bulk(ziti_context ztx) {
+static void ziti_pr_send_bulk(ziti_context ztx) {
     int body_len = 0;
     int obj_count = 0;
 
-    const char *key;
-    const struct pr_info *info;
+    __attribute__((unused)) const char *key;
+    const pr_info *info;
     MODEL_MAP_FOREACH(key, info, ztx->posture_checks->current_responses) {
         if (info->should_send) {
             obj_count++;
@@ -355,21 +407,29 @@ static void ziti_send_pr_bulk(ziti_context ztx) {
     ziti_pr_post_bulk(&ztx->controller, body, strlen(body), ziti_pr_post_bulk_cb, ztx);
 }
 
-static void ziti_send_pr_individually(ziti_context ztx) {
+static void ziti_pr_send_individually(ziti_context ztx) {
 
-    const char *key;
-    const struct pr_info *info;
+    __attribute__((unused)) const char *key;
+    const pr_info *info;
 
     MODEL_MAP_FOREACH(key, info, ztx->posture_checks->current_responses) {
         if (info->should_send) {
             char *body = strdup(info->obj);
-            ziti_pr_post(&ztx->controller, body, info->length, ziti_pr_post_cb, info);
+
+            NEWP(new_info, pr_info);
+            memcpy(new_info, info, sizeof(pr_info));
+
+            NEWP(cb_ctx, pr_cb_ctx);
+            cb_ctx->info = new_info;
+            cb_ctx->ztx = ztx;
+
+            ziti_pr_post(&ztx->controller, body, info->length, ziti_pr_post_cb, cb_ctx);
         }
     }
 }
 
 
-static void ziti_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac) {
+static void ziti_pr_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac) {
     size_t arr_size = sizeof(char (**));
     char **addresses = calloc((num_mac + 1), arr_size);
 
@@ -391,7 +451,7 @@ static void ziti_handle_mac(ziti_context ztx, char *id, char **mac_addresses, in
     free(addresses);
 }
 
-static void ziti_handle_domain(ziti_context ztx, char *id, char *domain) {
+static void ziti_pr_handle_domain(ziti_context ztx, char *id, char *domain) {
     ziti_pr_domain_req domain_req = {
             .id = id,
             .domain = domain,
@@ -406,7 +466,7 @@ static void ziti_handle_domain(ziti_context ztx, char *id, char *domain) {
     ziti_collect_pr(ztx, PC_DOMAIN_TYPE, obj, obj_len);
 }
 
-static void ziti_handle_os(ziti_context ztx, const char *id, char *os_type, char *os_version, char *os_build) {
+static void ziti_pr_handle_os(ziti_context ztx, char *id, char *os_type, char *os_version, char *os_build) {
     ziti_pr_os_req os_req = {
             .id = (char *) id,
             .typeId = (char *) PC_OS_TYPE,
@@ -424,9 +484,8 @@ static void ziti_handle_os(ziti_context ztx, const char *id, char *os_type, char
 }
 
 
-static void
-ziti_handle_process(ziti_context ztx, const char *id, char *path, bool is_running, char *sha_512_hash, char **signers,
-                    int num_signers) {
+static void ziti_pr_handle_process(ziti_context ztx, char *id, char *path, bool is_running, char *sha_512_hash, char **signers,
+                                   int num_signers) {
 
     size_t arr_size = sizeof(char (**));
     char **null_term_signers = calloc((num_signers + 1), arr_size);
@@ -449,5 +508,3 @@ ziti_handle_process(ziti_context ztx, const char *id, char *path, bool is_runnin
 
     ziti_collect_pr(ztx, path, obj, obj_len);
 }
-
-
