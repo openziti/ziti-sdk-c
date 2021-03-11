@@ -107,9 +107,21 @@ extern void ziti_posture_init(ziti_context ztx, long interval_secs) {
 
 extern void ziti_posture_checks_free(struct posture_checks *pcs) {
     if (pcs != NULL) {
-        model_map_clear(pcs->previous_responses, (_free_f) ziti_pr_free_pr_info_members);
-        model_map_clear(pcs->current_responses, (_free_f) ziti_pr_free_pr_info_members);
-        model_map_clear(pcs->error_states, NULL);
+        if(pcs->previous_responses != NULL) {
+            model_map_clear(pcs->previous_responses, (_free_f) ziti_pr_free_pr_info_members);
+            FREE(pcs->previous_responses)
+        }
+
+        if(pcs->current_responses != NULL) {
+            model_map_clear(pcs->current_responses, (_free_f) ziti_pr_free_pr_info_members);
+            FREE(pcs->current_responses)
+        }
+
+        if(pcs->error_states != NULL) {
+            model_map_clear(pcs->error_states, NULL);
+            FREE(pcs->error_states)
+        }
+
         FREE(pcs)
     }
 }
@@ -197,6 +209,7 @@ void ziti_send_posture_data(ziti_context ztx) {
     //free previous responses, set current responses to an empty map
     if (ztx->posture_checks->previous_responses != NULL) {
         model_map_clear(ztx->posture_checks->previous_responses, (_free_f) ziti_pr_free_pr_info_members);
+        FREE(ztx->posture_checks->previous_responses)
     }
 
     ztx->posture_checks->previous_responses = ztx->posture_checks->current_responses;
