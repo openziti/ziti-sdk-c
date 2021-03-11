@@ -47,6 +47,8 @@ void ziti_posture_init(ziti_context ztx, long interval_secs);
 
 void ziti_posture_checks_free(struct posture_checks *pcs);
 
+void ziti_posture_checks_shutdown(struct posture_checks *pcs) ;
+
 void ziti_send_posture_data(ziti_context ztx);
 
 #ifdef __cplusplus

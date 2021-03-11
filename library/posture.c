@@ -82,7 +82,7 @@ static void ziti_pr_free_pr_cb_ctx(pr_cb_ctx *ctx) {
     FREE(ctx)
 }
 
-extern void ziti_posture_init(ziti_context ztx, long interval_secs) {
+void ziti_posture_init(ziti_context ztx, long interval_secs) {
     if (ztx->posture_checks == NULL) {
         NEWP(pc, struct posture_checks);
 
@@ -105,8 +105,16 @@ extern void ziti_posture_init(ziti_context ztx, long interval_secs) {
     }
 }
 
-extern void ziti_posture_checks_free(struct posture_checks *pcs) {
+void ziti_posture_checks_shutdown(struct posture_checks *pcs) {
+    if(pcs != NULL) {
+        uv_timer_stop(&pcs->timer);
+    }
+}
+
+void ziti_posture_checks_free(struct posture_checks *pcs) {
     if (pcs != NULL) {
+        ziti_posture_checks_shutdown(pcs);
+
         if(pcs->previous_responses != NULL) {
             model_map_clear(pcs->previous_responses, (_free_f) ziti_pr_free_pr_info_members);
             FREE(pcs->previous_responses)
