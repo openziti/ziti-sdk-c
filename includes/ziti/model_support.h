@@ -295,13 +295,15 @@ static int Enum##_json(const ptr(Enum) e, int indent, char *json, size_t max, si
 return json_enum(e, json, max, len, &Enum##s);                              \
 }\
 static type_meta Enum##_meta = {\
-        .size = sizeof(int), \
+        .name = #Enum,        \
+        .size = sizeof(Enum), \
+        .field_count = 0,     \
+        .fields = NULL,       \
         .comparer = (_cmp_f) cmp_##Enum, \
         .parser = (_parse_f) parse_##Enum, \
         .jsonifier = (_to_json_f) Enum##_json, \
         };           \
 type_meta* get_##Enum##_meta() { return &Enum##_meta; }\
-
 
 #if __cplusplus
 }
