@@ -327,9 +327,8 @@ void ziti_ctrl_login(
             .config_types = (string_array) cfg_types,
     };
 
-    char *body = malloc(1024);
     size_t body_len;
-    json_from_ziti_auth_req(&authreq, body, 1024, &body_len);
+    char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_session_ptr;

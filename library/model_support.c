@@ -186,7 +186,7 @@ int model_parse(void *obj, const char *json, size_t len, type_meta *meta) {
 
 static int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf, int indent, int flags);
 
-char *model_to_json2(const void *obj, const type_meta *meta, int flags, size_t *len) {
+char *model_to_json(const void *obj, const type_meta *meta, int flags, size_t *len) {
     write_buf_t json;
     write_buf_init(&json);
     char *result = NULL;
@@ -299,8 +299,6 @@ int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf,
     write_buf_append(buf, "}");
     return 0;
 }
-
-
 
 void model_free_array(void ***ap, type_meta *meta) {
     if (ap == NULL || *ap == NULL) { return; }
@@ -808,7 +806,7 @@ static int string_to_json(const char *str, write_buf_t *buf, int indent, int fla
     static char hex[] = "0123456789abcdef";
 
     write_buf_append(buf, "\"");
-    const char *s = str;
+    const unsigned char *s = (const unsigned char *) str;
 
     while (*s != '\0') {
         switch (*s) {

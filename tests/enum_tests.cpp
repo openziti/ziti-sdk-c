@@ -56,14 +56,15 @@ TEST_CASE("parse enum", "[model]") {
 
 TEST_CASE("enum to json", "[model]") {
     FooWithEnum f;
-    f.name = (char*)"awesome foo";
+    f.name = (char *) "awesome foo";
     f.state = States.Bad;
 
-    char json[128];
-    size_t len;
-    REQUIRE(json_from_FooWithEnum(&f, json, 128, &len) == 0);
+    char *json = FooWithEnum_to_json(&f, 0, nullptr);
+
+    REQUIRE(json);
 
     REQUIRE_THAT(json, Catch::Contains("\"state\":\"Bad\""));
+    free(json);
 }
 
 TEST_CASE("enum compare", "[model]") {

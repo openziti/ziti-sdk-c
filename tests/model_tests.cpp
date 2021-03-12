@@ -104,10 +104,9 @@ TEST_CASE("new model tests") {
 
     checkBar1(bar);
 
-    char json[1024];
-    size_t jsonlen;
-    CHECK(json_from_Bar(&bar, json, sizeof(json), &jsonlen) == 0);
+    char *json = Bar_to_json(&bar, 0, nullptr);
     std::cout << json << std::endl;
+    free(json);
     free_Bar(&bar);
 }
 
@@ -129,10 +128,9 @@ TEST_CASE("embedded struct") {
     checkBar1(*foo.bar_arr[0]);
     checkBar2(*foo.bar_arr[1]);
 
-    char json1[1024];
-    size_t jsonlen;
-    CHECK(json_from_Foo(&foo, json1, sizeof(json1), &jsonlen) == 0);
+    char *json1 = Foo_to_json(&foo, 0, NULL);
     std::cout << json1 << std::endl;
+    free(json1);
     free_Foo(&foo);
 }
 
@@ -352,11 +350,9 @@ TEST_CASE("model with string map", "[model]") {
     CHECK_THAT((const char *) model_map_get(&obj.tags, "ok"), Equals("true"));
     CHECK_THAT((const char *) model_map_get(&obj.tags, "msg"), Equals("hello\nworld!"));
 
-    char buf[1024];
-    size_t json_len;
-    REQUIRE(json_from_tagged(&obj, buf, 1024, &json_len) == 0);
+    char *buf = tagged_to_json(&obj, NULL, nullptr);
 
-    printf("%.*s", (int) json_len, buf);
+    printf("%s", buf);
     free_tagged(&obj);
 }
 
@@ -491,22 +487,21 @@ TEST_CASE("map compare", "[model]") {
 }
 
 TEST_CASE("parse-json-u-escape", "[model]") {
-        const char *json = "{"
-        "\"bar\":{"
-        "\"msg\":\"hello\\u000C\\u0430\\u0431\\u0432\\u0433\\u0434!\""
-        "}"
-        "}";
+    const char *json = "{"
+                       "\"bar\":{"
+                       "\"msg\":\"hello\\u000C\\u0430\\u0431\\u0432\\u0433\\u0434!\""
+                       "}"
+                       "}";
     Foo foo;
     REQUIRE(parse_Foo(&foo, json, strlen(json)) == 0);
 
     CHECK_THAT(foo.bar.msg, Catch::Matchers::Equals("hello\u000cабвгд!"));
 
-    char json_out[1024];
-    size_t outlen;
-    int rc = json_from_Foo(&foo, json_out, sizeof(json_out), &outlen);
-
-    CHECK(rc == 0);
+    size_t json_len;
+    char *json_out = Foo_to_json(&foo, 0, &json_len);
+    CHECK(json_len == strlen(json_out));
     CHECK_THAT(json_out, Catch::Matchers::Contains("\"hello\\u000cабвгд!\""));
+    free(json_out);
 }
 
 TEST_CASE("parse-bad-json-escapes", "[model]") {

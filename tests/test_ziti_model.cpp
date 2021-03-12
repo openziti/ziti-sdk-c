@@ -624,11 +624,10 @@ TEST_CASE("identity tags", "[model]") {
     REQUIRE(t->type == tag_number);
     REQUIRE(t->num_value == 42);
 
-    char buf[1024];
-    size_t l;
-    json_from_ziti_identity(&id, buf, 1024, &l);
+    char *js = ziti_identity_to_json(&id, 0, NULL);
 
-    printf("%.*s", (int)l, buf);
+    printf("%s", js);
+    free(js);
 
     free_ziti_identity(&id);
 }

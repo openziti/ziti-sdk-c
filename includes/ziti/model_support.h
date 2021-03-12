@@ -72,8 +72,7 @@ MODEL_API void free_##type##_array(array(type) *ap);\
 MODEL_API int parse_##type(ptr(type) v, const char* json, size_t len);\
 MODEL_API int parse_##type##_ptr(ptr(type) *p, const char* json, size_t len);\
 MODEL_API int parse_##type##_array(array(type) *a, const char* json, size_t len); \
-MODEL_API char* type##_to_json(const ptr(type) v, int flags, size_t *len);\
-MODEL_API int json_from_##type(const ptr(type) v, char *buf, size_t maxlen, size_t *len);
+MODEL_API char* type##_to_json(const ptr(type) v, int flags, size_t *len);
 
 #define gen_field_meta(n, memtype, modifier, p, partype) {\
 .name = #n, \
@@ -106,9 +105,7 @@ ptr(type) alloc_##type() { return (ptr(type))calloc(1, sizeof(type)); } \
 int cmp_##type(const type *lh, const type *rh) { return model_cmp(lh, rh, &type##_META); }\
 void free_##type(type *v) { model_free(v, &type##_META); } \
 void free_##type##_array(array(type) *ap) { model_free_array((void***)ap, &type##_META); }                      \
-char* type##_to_json(const ptr(type) v, int flags, size_t *len) { return model_to_json2(v, &type##_META, flags, len); }\
-int json_from_##type(const ptr(type) v, char *json, size_t maxlen, size_t *len)\
-{ return -1; }
+char* type##_to_json(const ptr(type) v, int flags, size_t *len) { return model_to_json(v, &type##_META, flags, len); }
 
 
 #ifdef __cplusplus
@@ -164,8 +161,7 @@ ZITI_FUNC int model_parse(void *obj, const char *json, size_t len, type_meta *me
 
 ZITI_FUNC int model_parse_array(void ***arp, const char *json, size_t len, type_meta *meta);
 
-ZITI_FUNC int model_to_json(const void *obj, type_meta *meta, int indent, char *buf, size_t maxlen, size_t *len);
-ZITI_FUNC char *model_to_json2(const void *obj, const type_meta *meta, int flags, size_t *len);
+ZITI_FUNC char *model_to_json(const void *obj, const type_meta *meta, int flags, size_t *len);
 
 ZITI_FUNC extern type_meta *get_bool_meta();
 

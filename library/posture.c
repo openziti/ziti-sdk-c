@@ -467,10 +467,8 @@ static void ziti_pr_handle_mac(ziti_context ztx, char *id, char **mac_addresses,
             .mac_addresses = addresses,
     };
 
-    char *obj = malloc(1024);
     size_t obj_len;
-
-    json_from_ziti_pr_mac_req(&mac_req, obj, 1024, &obj_len);
+    char *obj = ziti_pr_mac_req_to_json(&mac_req, 0, &obj_len);
 
     ziti_collect_pr(ztx, PC_MAC_TYPE, obj, obj_len);
 
@@ -484,10 +482,8 @@ static void ziti_pr_handle_domain(ziti_context ztx, char *id, char *domain) {
             .typeId = (char *) PC_DOMAIN_TYPE,
     };
 
-    char *obj = malloc(1024);
     size_t obj_len;
-
-    json_from_ziti_pr_domain_req(&domain_req, obj, 1024, &obj_len);
+    char *obj = ziti_pr_domain_req_to_json(&domain_req, 0, &obj_len);
 
     ziti_collect_pr(ztx, PC_DOMAIN_TYPE, obj, obj_len);
 }
@@ -501,10 +497,8 @@ static void ziti_pr_handle_os(ziti_context ztx, char *id, char *os_type, char *o
             .build = (char *) os_build
     };
 
-    char *obj = malloc(1024);
     size_t obj_len;
-
-    json_from_ziti_pr_os_req(&os_req, obj, 1024, &obj_len);
+    char *obj = ziti_pr_os_req_to_json(&os_req, 0, &obj_len);
 
     ziti_collect_pr(ztx, PC_OS_TYPE, obj, obj_len);
 }
@@ -525,10 +519,8 @@ static void ziti_pr_handle_process(ziti_context ztx, char *id, char *path, bool 
             .signers = null_term_signers,
     };
 
-    char *obj = malloc(1024);
     size_t obj_len;
-
-    json_from_ziti_pr_process_req(&process_req, obj, 1024, &obj_len);
+    char *obj = ziti_pr_process_req_to_json(&process_req, 0, &obj_len);
 
     free(null_term_signers);
 
