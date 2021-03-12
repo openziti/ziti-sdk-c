@@ -25,7 +25,6 @@ jobs:
           fetch-depth: 0
       - name: setup/build CMake
         run: |
-          c++ -v
           echo "BUILD_NUMBER = ${BUILD_NUMBER}"
           cmake -E make_directory ${{runner.workspace}}/build
           cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build
