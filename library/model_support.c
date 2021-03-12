@@ -945,15 +945,12 @@ int parse_enum(void *ptr, const char *json, void *tok, const void *enum_type) {
     return 0;
 }
 
-int json_enum(const void *ptr, char *json, size_t max, size_t *len, const void *enum_type) {
+int json_enum(const void *ptr, void *bufp, int indent, int flags, const void *enum_type) {
+    write_buf_t *buf = bufp;
     int en_val = *(int*)ptr;
     const struct generic_enum_s *en = enum_type;
-    int rc = snprintf(json, max, "\"%s\"", en->name(en_val));
-    if (rc > 0) {
-        *len = rc;
-        return 0;
-    }
-    return rc;
+
+    return string_to_json(en->name(en_val), buf, indent, flags);
 }
 
 

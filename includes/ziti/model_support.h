@@ -234,7 +234,7 @@ typedef struct {
 ZITI_FUNC type_meta *get_tag_meta();
 
 ZITI_FUNC int parse_enum(void *ptr, const char *json, void *tok, const void *enum_type);
-ZITI_FUNC int json_enum(const void *ptr, char *json, size_t max, size_t *len, const void *enum_type);
+ZITI_FUNC int json_enum(const void *ptr, void *buf, int indent, int flags, const void *enum_type);
 
 #define mk_enum(v,t) t##_##v,
 #define enum_field(v,t) const t v;
@@ -290,8 +290,8 @@ return get_int_meta()->comparer(lh, rh);               \
 static int parse_##Enum(ptr(Enum) e, const char* json, void *tok) {     \
 return parse_enum(e, json, tok, &Enum##s);                              \
 }\
-static int Enum##_json(const ptr(Enum) e, int indent, char *json, size_t max, size_t *len) {     \
-return json_enum(e, json, max, len, &Enum##s);                              \
+static int Enum##_json(const ptr(Enum) e, void *buf, int indent, int flags) {     \
+return json_enum(e, buf, indent, flags, &Enum##s);                              \
 }\
 static type_meta Enum##_meta = {\
         .name = #Enum,        \
