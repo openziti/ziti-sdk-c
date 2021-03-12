@@ -24,6 +24,7 @@ limitations under the License.
 #include <jsmn.h>
 
 #include <ziti/model_support.h>
+#include <buffer.h>
 #include <utils.h>
 
 #if _WIN32
@@ -33,7 +34,6 @@ limitations under the License.
 #define _GNU_SOURCE //add time.h include after defining _GNU_SOURCE
 
 #include <time.h>
-#include <buffer.h>
 
 #endif
 
