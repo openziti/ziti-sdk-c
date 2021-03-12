@@ -86,6 +86,9 @@ void ziti_posture_init(ziti_context ztx, long interval_secs) {
     if (ztx->posture_checks == NULL) {
         NEWP(pc, struct posture_checks);
 
+        NEWP(timer, uv_timer_t);
+
+        pc->timer = timer;
         pc->interval = (double) interval_secs;
         pc->previous_session_id = NULL;
         pc->must_send_every_time = true;
@@ -97,23 +100,22 @@ void ziti_posture_init(ziti_context ztx, long interval_secs) {
         ztx->posture_checks = pc;
     }
 
-    if (!uv_is_active((uv_handle_t *) &ztx->posture_checks->timer)) {
-        uv_timer_init(ztx->loop, &ztx->posture_checks->timer);
-        ztx->posture_checks->timer.data = ztx;
-        uv_timer_start(&ztx->posture_checks->timer, ziti_pr_ticker_cb, MILLIS(interval_secs), MILLIS(interval_secs));
-        uv_unref((uv_handle_t *) &ztx->posture_checks->timer);
+    if (!uv_is_active((uv_handle_t *) ztx->posture_checks->timer)) {
+        uv_timer_init(ztx->loop, ztx->posture_checks->timer);
+        ztx->posture_checks->timer->data = ztx;
+        uv_timer_start(ztx->posture_checks->timer, ziti_pr_ticker_cb, MILLIS(interval_secs), MILLIS(interval_secs));
+        uv_unref((uv_handle_t *) ztx->posture_checks->timer);
     }
 }
 
-void ziti_posture_checks_shutdown(struct posture_checks *pcs) {
-    if(pcs != NULL) {
-        uv_timer_stop(&pcs->timer);
-    }
+static void ziti_posture_checks_timer_free(uv_handle_t *handle) {
+    FREE(handle)
 }
 
 void ziti_posture_checks_free(struct posture_checks *pcs) {
     if (pcs != NULL) {
-        ziti_posture_checks_shutdown(pcs);
+        uv_timer_stop(pcs->timer);
+        uv_close((uv_handle_t *) pcs->timer, ziti_posture_checks_timer_free);
 
         if(pcs->previous_responses != NULL) {
             model_map_clear(pcs->previous_responses, (_free_f) ziti_pr_free_pr_info_members);

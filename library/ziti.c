@@ -312,8 +312,7 @@ int ziti_shutdown(ziti_context ztx) {
 
     uv_timer_stop(&ztx->refresh_timer);
     uv_timer_stop(&ztx->session_timer);
-
-    ziti_posture_checks_shutdown(ztx->posture_checks);
+    uv_timer_stop(ztx->posture_checks->timer);
 
     ziti_close_channels(ztx);
 

@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 struct posture_checks {
-    uv_timer_t timer;
+    uv_timer_t *timer;
     double interval;
 
     // map<type/process_path,response>
@@ -46,8 +46,6 @@ struct posture_checks {
 void ziti_posture_init(ziti_context ztx, long interval_secs);
 
 void ziti_posture_checks_free(struct posture_checks *pcs);
-
-void ziti_posture_checks_shutdown(struct posture_checks *pcs) ;
 
 void ziti_send_posture_data(ziti_context ztx);
 
