@@ -350,7 +350,7 @@ TEST_CASE("model with string map", "[model]") {
     CHECK_THAT((const char *) model_map_get(&obj.tags, "ok"), Equals("true"));
     CHECK_THAT((const char *) model_map_get(&obj.tags, "msg"), Equals("hello\nworld!"));
 
-    char *buf = tagged_to_json(&obj, NULL, nullptr);
+    char *buf = tagged_to_json(&obj, 0, nullptr);
 
     printf("%s", buf);
     free_tagged(&obj);
