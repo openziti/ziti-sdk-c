@@ -528,5 +528,10 @@ TEST_CASE("parse-bad-json-escapes", "[model]") {
         Foo foo;
         CHECK(parse_Foo(&foo, json[i], strlen(json[i])) < 0);
     }
+}
 
+TEST_CASE("null to JSON", "[model]") {
+    char *json = Foo_to_json(nullptr, 0, nullptr);
+
+    CHECK(json == nullptr);
 }

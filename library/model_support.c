@@ -187,6 +187,11 @@ int model_parse(void *obj, const char *json, size_t len, type_meta *meta) {
 static int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf, int indent, int flags);
 
 char *model_to_json(const void *obj, const type_meta *meta, int flags, size_t *len) {
+    if (obj == NULL) {
+        if (len) *len = 0;
+        return NULL;
+    }
+
     write_buf_t json;
     write_buf_init(&json);
     char *result = NULL;
