@@ -442,6 +442,9 @@ static void ziti_pr_send_individually(ziti_context ztx) {
             NEWP(new_info, pr_info);
             memcpy(new_info, info, sizeof(pr_info));
 
+            new_info->id = strdup(info->id);
+            new_info->obj = strdup(info->obj);
+
             NEWP(cb_ctx, pr_cb_ctx);
             cb_ctx->info = new_info;
             cb_ctx->ztx = ztx;
