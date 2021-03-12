@@ -31,7 +31,10 @@ limitations under the License.
 #define timegm(v) _mkgmtime(v)
 #else
 #define _GNU_SOURCE //add time.h include after defining _GNU_SOURCE
+
 #include <time.h>
+#include <buffer.h>
+
 #endif
 
 #define RUNE_MASK 0b00111111
@@ -41,9 +44,9 @@ limitations under the License.
 #define RUNE_B4 0b11110000
 
 #define null_checks(lh, rh) \
-    if (lh == rh) { return 0; } \
-    if (lh == NULL) { return -1; } \
-    if (rh == NULL) { return 1; }
+    if ((lh) == (rh)) { return 0; } \
+    if ((lh) == NULL) { return -1; } \
+    if ((rh) == NULL) { return 1; }
 
 static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *meta);
 
@@ -181,12 +184,25 @@ int model_parse(void *obj, const char *json, size_t len, type_meta *meta) {
     return res > 0 ? 0 : res;
 }
 
-int model_to_json(const void *obj, type_meta *meta, int indent, char *buf, size_t maxlen, size_t *len) {
-    char *p = buf;
-    *p++ = '{';
-    *p++ = '\n';
+static int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf, int indent, int flags);
+
+char *model_to_json2(const void *obj, const type_meta *meta, int flags, size_t *len) {
+    write_buf_t json;
+    write_buf_init(&json);
+    char *result = NULL;
+    if (write_model_to_buf(obj, meta, &json, 0, flags) == 0) {
+        result = write_buf_to_string(&json, len);
+    }
+    write_buf_free(&json);
+    return result;
+}
+
+int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf, int indent, int flags) {
     int rc = 0;
+
+    write_buf_append(buf, "{");
     char *last_coma = NULL;
+    bool comma = false;
     for (int i = 0; rc == 0 && i < meta->field_count; i++) {
         field_meta *fm = meta->fields + i;
         type_meta *ftm = fm->meta();
@@ -202,102 +218,89 @@ int model_to_json(const void *obj, type_meta *meta, int indent, char *buf, size_
             continue;
         }
 
-
-        if (f_ptr != NULL) {
-            for (int j = 0; j <= indent; j++, *p++ = '\t') {}
-            *p++ = '"';
-            strcpy(p, fm->path);
-            p += strlen(fm->path);
-            *p++ = '"';
-            *p++ = ':';
+        if (comma) {
+            write_buf_append(buf, ",");
         }
+        write_buf_append(buf, "\n");
+
+        for (int j = 0; j <= indent; j++) { write_buf_append(buf, "\t"); }
+        write_buf_append(buf, "\"");
+        write_buf_append(buf, fm->path);
+        write_buf_append(buf, "\":");
 
         if (fm->mod == none_mod || fm->mod == ptr_mod) {
             size_t flen;
             if (ftm->jsonifier) {
-                ftm->jsonifier(f_ptr, indent + 1, p, buf + maxlen - p, &flen);
+                ftm->jsonifier(f_ptr, buf, indent + 1, flags);
             }
             else {
-                model_to_json(f_ptr, ftm, indent + 1, p, buf + maxlen - p, &flen);
+                write_model_to_buf(f_ptr, ftm, buf, indent + 1, flags);
             }
-            p += flen;
         }
         else if (fm->mod == map_mod) {
             indent++;
             model_map *map = (model_map *) f_addr;
             const char *k;
             void *v;
-            *p++ = '{';
-            char *comma = p;
-            *p++ = '\n';
-            size_t ellen;
+            write_buf_append(buf, "{");
+            bool need_comma = false;
             MODEL_MAP_FOREACH(k, v, map) {
-                for (int j = 0; j <= indent; j++, *p++ = '\t') {}
-                *p++ = '"';
-                strcpy(p, k);
-                p += strlen(k);
-                *p++ = '"';
-                *p++ = ':';
-                if (ftm->jsonifier) {
-                    ftm->jsonifier(v, indent + 1, p, buf + maxlen - p, &ellen);
+                if (need_comma) {
+                    write_buf_append(buf, ",\n");
                 }
                 else {
-                    model_to_json(v, ftm, indent + 1, p, buf + maxlen - p, &ellen);
+                    write_buf_append(buf, "\n");
                 }
-                p += ellen;
-                comma = p;
-                *p++ = ',';
-                *p++ = '\n';
+                for (int j = 0; j <= indent; j++) { write_buf_append(buf, "\t"); }
+                write_buf_append(buf, "\"");
+                write_buf_append(buf, k);
+                write_buf_append(buf, "\":");
+                if (ftm->jsonifier) {
+                    ftm->jsonifier(v, buf, indent + 1, flags);
+                }
+                else {
+                    write_model_to_buf(v, ftm, buf, indent + 1, flags);
+                }
+                need_comma = true;
             }
-            if (comma != NULL) {
-                p = comma;
-            }
-            *p++ = '}';
+            write_buf_append(buf, "}");
             indent--;
         }
         else if (fm->mod == array_mod) {
             void **arr = (void **) (*f_addr);
 
             int idx = 0;
-            *p++ = '[';
+            write_buf_append(buf, "[");
             for (idx = 0; rc == 0; idx++) {
                 f_ptr = arr[idx];
                 if (f_ptr == NULL) { break; }
                 if (idx > 0) {
-                    *p++ = ',';
+                    write_buf_append(buf, ",");
                 }
 
                 size_t ellen;
                 if (ftm->jsonifier) {
-                    rc = ftm->jsonifier(f_ptr, indent + 1, p, buf + maxlen - p, &ellen);
+                    rc = ftm->jsonifier(f_ptr, buf, indent + 1, flags);
                 }
                 else {
-                    rc = model_to_json(f_ptr, ftm, indent + 1, p, buf + maxlen - p, &ellen);
+                    rc = write_model_to_buf(f_ptr, ftm, buf, indent + 1, flags);
                 }
-                p += ellen;
             }
-
-            *p++ = ']';
+            write_buf_append(buf, "]");
         }
         else {
             ZITI_LOG(ERROR, "unsupported mod[%d] for field[%s]", fm->mod, fm->name);
             return -1;
         }
-        *p++ = ',';
-        last_coma = p - 1;
-        *p++ = '\n';
+        comma = true;
     }
-    if (last_coma != NULL) {
-        p = last_coma;
-        *p++ = '\n';
-    }
-
-    for (int j = 0; j < indent; j++, *p++ = '\t') {}
-    *p++ = '}';
-    *p = '\0';
-    *len = p - buf;
+    write_buf_append(buf, "\n");
+    for (int j = 0; j < indent; j++) { write_buf_append(buf, "\t"); }
+    write_buf_append(buf, "}");
     return 0;
 }
+
+
 
 void model_free_array(void ***ap, type_meta *meta) {
     if (ap == NULL || *ap == NULL) { return; }
@@ -785,112 +788,88 @@ static int _cmp_map(model_map *lh, model_map *rh) {
     return rc;
 }
 
-static int _bool_json(bool *v, int indent, char *json, size_t max, size_t *len) {
-    if (*v) {
-        strcpy(json, "true");
-        *len = 4;
-    }
-    else {
-        strcpy(json, "false");
-        *len = 5;
-    }
+static int bool_to_json(bool *v, write_buf_t *buf, int indent, int flags) {
+    write_buf_append(buf, *v ? "true" : "false");
     return 0;
 }
 
-static int _int_json(int *v, int indent, char *json, size_t max, size_t *len) {
-    int rc = snprintf(json, max, "%d", *v);
+static int int_to_json(const int *v, write_buf_t *buf, int indent, int flags) {
+
+    char b[16];
+    int rc = snprintf(b, sizeof(b), "%d", *v);
     if (rc > 0) {
-        *len = rc;
+        write_buf_append(buf, b);
         return 0;
     }
     return rc;
 }
 
-static int _string_json(const char *str, int indent, char *json, size_t max, size_t *len) {
+static int string_to_json(const char *str, write_buf_t *buf, int indent, int flags) {
     static char hex[] = "0123456789abcdef";
 
-    unsigned char *s = str;
-    unsigned char *j = json;
+    write_buf_append(buf, "\"");
+    const char *s = str;
 
-    *j++ = '"';
     while (*s != '\0') {
         switch (*s) {
             case '\n':
-                *j++ = '\\';
-                *j++ = 'n';
+                write_buf_append(buf, "\\n");
                 break;
             case '\b':
-                *j++ = '\\';
-                *j++ = 'b';
+                write_buf_append(buf, "\\b");
                 break;
             case '\r':
-                *j++ = '\\';
-                *j++ = 'r';
+                write_buf_append(buf, "\\r");
                 break;
             case '\t':
-                *j++ = '\\';
-                *j++ = 't';
+                write_buf_append(buf, "\\t");
                 break;
             case '\\':
-                *j++ = '\\';
-                *j++ = '\\';
+                write_buf_append(buf, "\\\\");
                 break;
             case '"':
-                *j++ = '\\';
-                *j++ = '"';
+                write_buf_append(buf, "\\\"");
                 break;
             default:
                 if (*s < ' ') {
-                    *j++ = '\\';
-                    *j++ = 'u';
-                    *j++ = '0';
-                    *j++ = '0';
-                    *j++ = hex[*s >> 4];
-                    *j++ = hex[*s & 0xF];
+                    write_buf_append_byte(buf, '\\');
+                    write_buf_append(buf, "u00");
+                    write_buf_append_byte(buf, hex[*s >> 4]);
+                    write_buf_append_byte(buf, hex[*s & 0xF]);
                 } else {
-                    *j++ = *s;
+                    write_buf_append_byte(buf, *s);
                 }
         }
         s++;
     }
-    *j++ = '"';
-    *len = j - (unsigned char*)json;
+    write_buf_append_byte(buf, '"');
     return 0;
 }
 
-static int _tag_json(tag *t, int indent, char *json, size_t max, size_t *len) {
+static int tag_to_json(tag *t, write_buf_t *buf, int indent, int flags) {
     int rc;
     switch (t->type) {
         case tag_null:
-            rc = snprintf(json, max, "null");
+            rc = write_buf_append(buf, "null");
             break;
         case tag_bool:
-            rc = snprintf(json, max, t->bool_value ? "true" : "false");
+            rc = write_buf_append(buf, t->bool_value ? "true" : "false");
             break;
         case tag_number:
-            rc = snprintf(json, max, "%d", t->num_value);
+            rc = int_to_json(&t->num_value, buf, indent, flags);
             break;
         case tag_string:
-            return _string_json(t->string_value, indent, json, max, len);
+            return string_to_json(t->string_value, buf, indent, flags);
             break;
     }
-    if (rc > 0) {
-        *len = rc;
-        return 0;
-    }
     return rc;
 }
 
-static int _json_json(const char *s, int indent, char *json, size_t max, size_t *len) {
-    int rc = snprintf(json, max, "%s", s);
-    if (rc > 0) {
-        *len = rc;
-        return 0;
-    }
-    return rc;
+static int json_to_json(const char *s, write_buf_t *buf, int indent, int flags) {
+    return write_buf_append(buf, s);
 }
 
-static int _timeval_json(timestamp *t, int indent, char *json, size_t max, size_t *len) {
+static int timeval_to_json(timestamp *t, write_buf_t *buf, int indent, int flags) {
     struct tm tm2;
 #if _WIN32
     _gmtime32_s(&tm2, &t->tv_sec);
@@ -898,38 +877,37 @@ static int _timeval_json(timestamp *t, int indent, char *json, size_t max, size_
     gmtime_r(&t->tv_sec, &tm2);
 #endif
 
-    int rc = snprintf(json, max, "\"%04d-%02d-%02dT%02d:%02d:%02d.%06ldZ\"",
+    char json[32];
+    int rc = snprintf(json, sizeof(json), "\"%04d-%02d-%02dT%02d:%02d:%02d.%06ldZ\"",
                       tm2.tm_year + 1900, tm2.tm_mon + 1, tm2.tm_mday,
                       tm2.tm_hour, tm2.tm_min, tm2.tm_sec, t->tv_usec);
-    *len = rc;
-    return 0;
+
+    return write_buf_append(buf, json);
 }
 
-#define mk_indent(p, indent) do { for (int j=0; j < (indent); j++, *p++ = '\t'); } while(0)
+#define mk_indent(b, indent) do { for (int j=0; j < (indent); j++) write_buf_append(b, "\t"); } while(0)
 
-static int _map_json(model_map *map, int indent, char *json, size_t max, size_t *len) {
-    char *p = json;
-    *p++ = '{';
+static int map_to_json(model_map *map, write_buf_t *buf, int indent, int flags) {
+    write_buf_append(buf, "{");
 
     const char *key;
     const char *val;
     size_t l;
-    char *last_coma = NULL;
+    bool comma = false;
     MODEL_MAP_FOREACH(key, val, map) {
-        *p++ = '\n';
-        mk_indent(p, indent + 1);
-        _string_json(key, indent, p, json + max - p, &l);
-        p += l;
-        *p++ = ':';
-        _json_json(val, indent, p, json + max - p, &l);
-        p += l;
-        *p++ = ',';
-        last_coma = p - 1;
+        if (comma) {
+            write_buf_append(buf, ",");
+        }
+        write_buf_append(buf, "\n");
+        mk_indent(buf, indent + 1);
+        string_to_json(key, buf, indent, flags);
+        write_buf_append(buf, ":");
+
+        json_to_json(val, buf, indent, flags);
+        comma = true;
     }
-    if (last_coma) { *last_coma = '\n'; }
-    mk_indent(p, indent);
-    *p++ = '}';
-    *len = p - json;
+    mk_indent(buf, indent);
+    write_buf_append(buf, "}");
     return 0;
 }
 
@@ -1234,7 +1212,7 @@ static type_meta bool_META = {
         .size = sizeof(bool),
         .comparer = (_cmp_f) _cmp_bool,
         .parser = (_parse_f) (_parse_bool),
-        .jsonifier = (_to_json_f) (_bool_json),
+        .jsonifier = (_to_json_f) (bool_to_json),
         .destroyer = _free_noop,
 };
 
@@ -1242,7 +1220,7 @@ static type_meta int_META = {
         .size = sizeof(int),
         .comparer = (_cmp_f) _cmp_int,
         .parser = (_parse_f) _parse_int,
-        .jsonifier = (_to_json_f) _int_json,
+        .jsonifier = (_to_json_f) int_to_json,
         .destroyer = _free_noop,
 };
 
@@ -1250,7 +1228,7 @@ static type_meta string_META = {
         .size = sizeof(char *),
         .comparer = (_cmp_f) _cmp_string,
         .parser = (_parse_f) _parse_string,
-        .jsonifier = (_to_json_f) _string_json,
+        .jsonifier = (_to_json_f) string_to_json,
         .destroyer = (_free_f) _free_string,
 };
 
@@ -1258,7 +1236,7 @@ static type_meta timestamp_META = {
         .size = sizeof(struct timeval),
         .comparer = (_cmp_f) _cmp_timeval,
         .parser = (_parse_f) _parse_timeval,
-        .jsonifier = (_to_json_f) _timeval_json,
+        .jsonifier = (_to_json_f) timeval_to_json,
         .destroyer = (_free_f) _free_noop,
 };
 
@@ -1266,7 +1244,7 @@ static type_meta json_META = {
         .size = sizeof(char *),
         .comparer = (_cmp_f) _cmp_string,
         .parser = (_parse_f) _parse_json,
-        .jsonifier = (_to_json_f) _json_json,
+        .jsonifier = (_to_json_f) json_to_json,
         .destroyer = (_free_f) _free_string,
 };
 
@@ -1274,7 +1252,7 @@ static type_meta map_META = {
         .size = sizeof(model_map),
         .comparer = (_cmp_f) _cmp_map,
         .parser = (_parse_f) _parse_map,
-        .jsonifier = (_to_json_f) _map_json,
+        .jsonifier = (_to_json_f) map_to_json,
         .destroyer = (_free_f) _free_map,
 };
 
@@ -1282,7 +1260,7 @@ static type_meta tag_META = {
         .size = sizeof(tag),
         .comparer = (_cmp_f) _cmp_tag,
         .parser = (_parse_f) _parse_tag,
-        .jsonifier = (_to_json_f) _tag_json,
+        .jsonifier = (_to_json_f) tag_to_json,
         .destroyer = (_free_f) _free_tag,
 
 };
