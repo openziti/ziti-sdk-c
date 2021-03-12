@@ -29,6 +29,7 @@ limitations under the License.
 #include "ziti_ctrl.h"
 #include "metrics.h"
 #include "edge_protocol.h"
+#include "posture.h"
 
 #include <sodium.h>
 
@@ -156,21 +157,6 @@ struct process {
     char *sha_512_hash;
     char **signers;
     int num_signers;
-};
-
-struct posture_checks {
-    uv_timer_t timer;
-    double interval;
-
-    // map<type/process_path,response>
-    model_map *previous_responses;
-
-    // map<type/process_path,response>
-    model_map *current_responses;
-
-    char *previous_session_id;
-    bool must_send;
-    bool must_send_every_time;
 };
 
 struct ziti_ctx {
