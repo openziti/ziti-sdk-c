@@ -28,6 +28,16 @@ limitations under the License.
 
 #include "externs.h"
 
+#if !defined(__DEFINED_ssize_t) && !defined(__ssize_t_defined)
+#if _WIN32
+typedef intptr_t ssize_t;
+#define __DEFINED_ssize_t
+#define __ssize_t_defined
+#else
+#include <unistd.h>
+#endif
+#endif
+
 /**
  * set of macros to help generate struct and function for our model;
  *
@@ -74,7 +84,7 @@ MODEL_API void free_##type##_array(array(type) *ap);\
 MODEL_API int parse_##type(ptr(type) v, const char* json, size_t len);\
 MODEL_API int parse_##type##_ptr(ptr(type) *p, const char* json, size_t len);\
 MODEL_API int parse_##type##_array(array(type) *a, const char* json, size_t len); \
-/** write to fixeb buffer */                                 \
+/** write to fixed buffer */                                 \
 MODEL_API ssize_t type##_to_json_r(const ptr(type) v, int flags, char *outbuf, size_t max); \
 MODEL_API char* type##_to_json(const ptr(type) v, int flags, size_t *len);
 
@@ -261,9 +271,6 @@ Values(enum_field, Enum)                          \
 };                                 \
 MODEL_API type_meta* get_##Enum##_meta();\
 extern const struct Enum##_s Enum##s;
-
-#define EVAL(...) __VA_ARGS__
-#define EVAL1(...) EVAL(EVAL(EVAL(__VA_ARGS__)))
 
 #define call_f(f,args) f args
 #define enum_value_of1(v, t, s, n) if(strncmp(s,#v,n) == 0){return (t)t##s.v;}
