@@ -384,10 +384,17 @@ TEST_CASE("map of objects", "[model]") {
     CHECK_THAT(b1->msg, Equals("this is a message"));
 
     char *js = MapOfObjects_to_json(&m, MODEL_JSON_COMPACT, nullptr);
-
     std::cout << js << std::endl;
-
     free(js);
+
+    char small_buf[16];
+    ssize_t outlen = MapOfObjects_to_json_r(&m, 0, small_buf, sizeof(small_buf));
+    CHECK(outlen == -1);
+
+    char big_buf[1024];
+    outlen = MapOfObjects_to_json_r(&m, 0, big_buf, sizeof(big_buf));
+    CHECK(outlen > 0);
+    std::cout << std::string(big_buf, outlen) << std::endl;
 
     free_MapOfObjects(&m);
 }

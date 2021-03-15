@@ -202,21 +202,42 @@ char *model_to_json(const void *obj, const type_meta *meta, int flags, size_t *l
     return result;
 }
 
+ssize_t model_to_json_r(const void *obj, const type_meta *meta, int flags, char *outbuf, size_t max) {
+    if (obj == NULL) {
+        return 0;
+    }
+
+    write_buf_t json;
+    write_buf_init_fixed(&json, outbuf, max);
+    ssize_t result = -1;
+    if (write_model_to_buf(obj, meta, &json, 0, flags) == 0) {
+        result = write_buf_size(&json);
+    }
+    write_buf_free(&json);
+    return result;
+}
+
+
 #define PRETTY_INDENT(b,ind)  do { \
-for (int j = 0; (flags & MODEL_JSON_COMPACT) == 0 && j <= (ind); j++) write_buf_append_byte(b, '\t'); \
+for (int j = 0; (flags & MODEL_JSON_COMPACT) == 0 && j <= (ind); j++) BUF_APPEND_B(b, '\t'); \
 } while(0)
 
 #define PRETTY_NL(b) do { \
-if ((flags & MODEL_JSON_COMPACT) == 0) write_buf_append_byte(b, '\n'); \
+if ((flags & MODEL_JSON_COMPACT) == 0) BUF_APPEND_B(b, '\n'); \
 } while(0)
 
-int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf, int indent, int flags) {
-    int rc = 0;
 
-    write_buf_append(buf, "{");
+#define BUF_APPEND_B(b,s) CHECK_APPEND(write_buf_append_byte(b,s))
+#define BUF_APPEND_S(b,s) CHECK_APPEND(write_buf_append(b,s))
+
+#define CHECK_APPEND(op) do { int res = (op); if (res != 0) return res; } while(0)
+
+int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf, int indent, int flags) {
+
+    BUF_APPEND_S(buf, "{");
     char *last_coma = NULL;
     bool comma = false;
-    for (int i = 0; rc == 0 && i < meta->field_count; i++) {
+    for (int i = 0; i < meta->field_count; i++) {
         field_meta *fm = meta->fields + i;
         type_meta *ftm = fm->meta();
 
@@ -232,23 +253,23 @@ int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf,
         }
 
         if (comma) {
-            write_buf_append(buf, ",");
+            BUF_APPEND_S(buf, ",");
         }
         PRETTY_NL(buf);
 
         PRETTY_INDENT(buf, indent);
 
-        write_buf_append(buf, "\"");
-        write_buf_append(buf, fm->path);
-        write_buf_append(buf, "\":");
+        BUF_APPEND_B(buf, '\"');
+        BUF_APPEND_S(buf, fm->path);
+        BUF_APPEND_S(buf, "\":");
 
         if (fm->mod == none_mod || fm->mod == ptr_mod) {
             size_t flen;
             if (ftm->jsonifier) {
-                ftm->jsonifier(f_ptr, buf, indent + 1, flags);
+                CHECK_APPEND(ftm->jsonifier(f_ptr, buf, indent + 1, flags));
             }
             else {
-                write_model_to_buf(f_ptr, ftm, buf, indent + 1, flags);
+                CHECK_APPEND(write_model_to_buf(f_ptr, ftm, buf, indent + 1, flags));
             }
         }
         else if (fm->mod == map_mod) {
@@ -256,50 +277,50 @@ int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf,
             model_map *map = (model_map *) f_addr;
             const char *k;
             void *v;
-            write_buf_append(buf, "{");
+            BUF_APPEND_B(buf, '{');
             bool need_comma = false;
             MODEL_MAP_FOREACH(k, v, map) {
                 if (need_comma) {
-                    write_buf_append(buf, ",");
+                    BUF_APPEND_B(buf, ',');
                 }
                 PRETTY_NL(buf);
                 PRETTY_INDENT(buf, indent);
 
-                write_buf_append(buf, "\"");
-                write_buf_append(buf, k);
-                write_buf_append(buf, "\":");
+                BUF_APPEND_B(buf, '\"');
+                BUF_APPEND_S(buf, k);
+                BUF_APPEND_S(buf, "\":");
                 if (ftm->jsonifier) {
-                    ftm->jsonifier(v, buf, indent + 1, flags);
+                    CHECK_APPEND(ftm->jsonifier(v, buf, indent + 1, flags));
                 }
                 else {
-                    write_model_to_buf(v, ftm, buf, indent + 1, flags);
+                    CHECK_APPEND(write_model_to_buf(v, ftm, buf, indent + 1, flags));
                 }
                 need_comma = true;
             }
-            write_buf_append(buf, "}");
+            BUF_APPEND_B(buf, '}');
             indent--;
         }
         else if (fm->mod == array_mod) {
             void **arr = (void **) (*f_addr);
 
             int idx = 0;
-            write_buf_append(buf, "[");
-            for (idx = 0; rc == 0; idx++) {
+            BUF_APPEND_B(buf, '[');
+            for (idx = 0; true; idx++) {
                 f_ptr = arr[idx];
                 if (f_ptr == NULL) { break; }
                 if (idx > 0) {
-                    write_buf_append(buf, ",");
+                    BUF_APPEND_B(buf, ',');
                 }
 
                 size_t ellen;
                 if (ftm->jsonifier) {
-                    rc = ftm->jsonifier(f_ptr, buf, indent + 1, flags);
+                    CHECK_APPEND(ftm->jsonifier(f_ptr, buf, indent + 1, flags));
                 }
                 else {
-                    rc = write_model_to_buf(f_ptr, ftm, buf, indent + 1, flags);
+                    CHECK_APPEND(write_model_to_buf(f_ptr, ftm, buf, indent + 1, flags));
                 }
             }
-            write_buf_append(buf, "]");
+            BUF_APPEND_B(buf, ']');
         }
         else {
             ZITI_LOG(ERROR, "unsupported mod[%d] for field[%s]", fm->mod, fm->name);
@@ -309,7 +330,7 @@ int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf,
     }
     PRETTY_NL(buf);
     PRETTY_INDENT(buf, indent);
-    write_buf_append(buf, "}");
+    BUF_APPEND_B(buf, '}');
     return 0;
 }
 
@@ -800,8 +821,7 @@ static int _cmp_map(model_map *lh, model_map *rh) {
 }
 
 static int bool_to_json(bool *v, write_buf_t *buf, int indent, int flags) {
-    write_buf_append(buf, *v ? "true" : "false");
-    return 0;
+    return write_buf_append(buf, *v ? "true" : "false");
 }
 
 static int int_to_json(const int *v, write_buf_t *buf, int indent, int flags) {
@@ -809,8 +829,7 @@ static int int_to_json(const int *v, write_buf_t *buf, int indent, int flags) {
     char b[16];
     int rc = snprintf(b, sizeof(b), "%d", *v);
     if (rc > 0) {
-        write_buf_append(buf, b);
-        return 0;
+        return write_buf_append(buf, b);
     }
     return rc;
 }
@@ -818,42 +837,42 @@ static int int_to_json(const int *v, write_buf_t *buf, int indent, int flags) {
 static int string_to_json(const char *str, write_buf_t *buf, int indent, int flags) {
     static char hex[] = "0123456789abcdef";
 
-    write_buf_append(buf, "\"");
+    BUF_APPEND_B(buf, '\"');
     const unsigned char *s = (const unsigned char *) str;
 
     while (*s != '\0') {
         switch (*s) {
             case '\n':
-                write_buf_append(buf, "\\n");
+                BUF_APPEND_S(buf, "\\n");
                 break;
             case '\b':
-                write_buf_append(buf, "\\b");
+                BUF_APPEND_S(buf, "\\b");
                 break;
             case '\r':
-                write_buf_append(buf, "\\r");
+                BUF_APPEND_S(buf, "\\r");
                 break;
             case '\t':
-                write_buf_append(buf, "\\t");
+                BUF_APPEND_S(buf, "\\t");
                 break;
             case '\\':
-                write_buf_append(buf, "\\\\");
+                BUF_APPEND_S(buf, "\\\\");
                 break;
             case '"':
-                write_buf_append(buf, "\\\"");
+                BUF_APPEND_S(buf, "\\\"");
                 break;
             default:
                 if (*s < ' ') {
-                    write_buf_append_byte(buf, '\\');
-                    write_buf_append(buf, "u00");
-                    write_buf_append_byte(buf, hex[*s >> 4]);
-                    write_buf_append_byte(buf, hex[*s & 0xF]);
+                    BUF_APPEND_B(buf, '\\');
+                    BUF_APPEND_S(buf, "u00");
+                    BUF_APPEND_B(buf, hex[*s >> 4]);
+                    BUF_APPEND_B(buf, hex[*s & 0xF]);
                 } else {
-                    write_buf_append_byte(buf, *s);
+                    BUF_APPEND_B(buf, *s);
                 }
         }
         s++;
     }
-    write_buf_append_byte(buf, '"');
+    BUF_APPEND_B(buf, '"');
     return 0;
 }
 
@@ -897,7 +916,7 @@ static int timeval_to_json(timestamp *t, write_buf_t *buf, int indent, int flags
 }
 
 static int map_to_json(model_map *map, write_buf_t *buf, int indent, int flags) {
-    write_buf_append(buf, "{");
+    BUF_APPEND_B(buf, '{');
 
     const char *key;
     const char *val;
@@ -905,18 +924,18 @@ static int map_to_json(model_map *map, write_buf_t *buf, int indent, int flags) 
     bool comma = false;
     MODEL_MAP_FOREACH(key, val, map) {
         if (comma) {
-            write_buf_append(buf, ",");
+            BUF_APPEND_B(buf, ',');
         }
         PRETTY_NL(buf);
         PRETTY_INDENT(buf, indent + 1);
         string_to_json(key, buf, indent, flags);
-        write_buf_append(buf, ":");
+        BUF_APPEND_B(buf, ':');
 
         json_to_json(val, buf, indent, flags);
         comma = true;
     }
     PRETTY_INDENT(buf, indent);
-    write_buf_append(buf, "}");
+    BUF_APPEND_B(buf, '}');
     return 0;
 }
 

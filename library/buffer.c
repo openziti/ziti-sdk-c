@@ -24,6 +24,7 @@ limitations under the License.
 #include <sys/param.h>
 #endif
 #include <uv_mbed/queue.h>
+#include <stdbool.h>
 
 #include "buffer.h"
 
@@ -53,6 +54,7 @@ buffer *new_buffer() {
 }
 
 void free_buffer(buffer* b) {
+    if (b == NULL) return;
     while (!STAILQ_EMPTY(&b->chunks)) {
         chunk_t *chunk = STAILQ_FIRST(&b->chunks);
         STAILQ_REMOVE_HEAD(&b->chunks, next);
@@ -118,21 +120,38 @@ void buffer_append(buffer* b, uint8_t *buf, size_t len) {
 }
 
 size_t buffer_available(buffer *b) {
-    return b->available;
+    return b ? b->available : 0;
 }
 
 #define WRITE_BUF_CHUNK_SIZE 1024
 
 void write_buf_init(write_buf_t *wb) {
-    wb->chunk = malloc(WRITE_BUF_CHUNK_SIZE);
+    wb->fixed = false;
+    wb->chunk_size = WRITE_BUF_CHUNK_SIZE;
+    wb->chunk = malloc(wb->chunk_size);
     wb->buf = new_buffer();
     wb->wp = wb->chunk;
 }
 
+void write_buf_init_fixed(write_buf_t *wb, char *outbuf, size_t max) {
+    wb->fixed = true;
+    wb->chunk = (uint8_t *)outbuf;
+    wb->wp = wb->chunk;
+    wb->chunk_size = max;
+    wb->buf = NULL;
+}
+
+size_t write_buf_size(write_buf_t *wb) {
+    return buffer_available(wb->buf) + (wb->wp - wb->chunk);
+}
+
 int write_buf_append_byte(write_buf_t *wb, char c) {
-    if (wb->wp - wb->chunk >= WRITE_BUF_CHUNK_SIZE) {
+    if (wb->wp - wb->chunk >= wb->chunk_size) {
+
+        if (wb->fixed) return -1;
+
         buffer_append(wb->buf, wb->chunk, wb->wp - wb->chunk);
-        wb->chunk = malloc(WRITE_BUF_CHUNK_SIZE);
+        wb->chunk = malloc(wb->chunk_size);
         wb->wp = wb->chunk;
     }
     *wb->wp++ = c;
@@ -143,11 +162,13 @@ int write_buf_append(write_buf_t *wb, const char *str) {
     const char *s = str;
 
     copy:
-    while (*s != '\0' && wb->wp < wb->chunk + WRITE_BUF_CHUNK_SIZE) { *wb->wp++ = *s++; }
+    while (*s != '\0' && wb->wp < wb->chunk + wb->chunk_size) { *wb->wp++ = *s++; }
 
     if (*s != 0) {
+        if (wb->fixed) return -1;
+
         buffer_append(wb->buf, wb->chunk, wb->wp - wb->chunk);
-        wb->chunk = malloc(WRITE_BUF_CHUNK_SIZE);
+        wb->chunk = malloc(wb->chunk_size);
         wb->wp = wb->chunk;
         goto copy;
     }
@@ -177,7 +198,8 @@ char *write_buf_to_string(write_buf_t *wb, size_t *outlen) {
 
 void write_buf_free(write_buf_t *wb) {
     wb->wp = NULL;
-    FREE(wb->chunk);
+    if (!wb->fixed) FREE(wb->chunk);
+    wb->chunk = NULL;
     free_buffer(wb->buf);
     wb->buf = NULL;
 }

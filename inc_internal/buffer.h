@@ -47,14 +47,18 @@ size_t buffer_available(buffer *);
 
 struct write_buf_s {
     buffer *buf;
+    bool fixed;
+    size_t chunk_size;
     uint8_t *chunk;
     uint8_t *wp;
 };
 typedef struct write_buf_s write_buf_t;
 
 void write_buf_init(write_buf_t *wb);
+void write_buf_init_fixed(write_buf_t *wb, char *outbuf, size_t max);
 int write_buf_append(write_buf_t *wb, const char *str);
 int write_buf_append_byte(write_buf_t *wb, char c);
+size_t write_buf_size(write_buf_t *wb);
 char *write_buf_to_string(write_buf_t *wb, size_t *outlen);
 void write_buf_free(write_buf_t *wb);
 
