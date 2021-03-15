@@ -52,6 +52,8 @@ limitations under the License.
 
 #define MODEL_API
 
+#define MODEL_JSON_COMPACT 0x1
+
 #define none(t) t
 #define ptr(t)  t*
 #define array(t) t##_array

@@ -383,7 +383,7 @@ TEST_CASE("map of objects", "[model]") {
 
     CHECK_THAT(b1->msg, Equals("this is a message"));
 
-    char *js = MapOfObjects_to_json(&m, 0, nullptr);
+    char *js = MapOfObjects_to_json(&m, MODEL_JSON_COMPACT, nullptr);
 
     std::cout << js << std::endl;
 

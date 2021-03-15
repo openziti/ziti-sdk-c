@@ -202,6 +202,14 @@ char *model_to_json(const void *obj, const type_meta *meta, int flags, size_t *l
     return result;
 }
 
+#define PRETTY_INDENT(b,ind)  do { \
+for (int j = 0; (flags & MODEL_JSON_COMPACT) == 0 && j <= (ind); j++) write_buf_append_byte(b, '\t'); \
+} while(0)
+
+#define PRETTY_NL(b) do { \
+if ((flags & MODEL_JSON_COMPACT) == 0) write_buf_append_byte(b, '\n'); \
+} while(0)
+
 int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf, int indent, int flags) {
     int rc = 0;
 
@@ -226,9 +234,10 @@ int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf,
         if (comma) {
             write_buf_append(buf, ",");
         }
-        write_buf_append(buf, "\n");
+        PRETTY_NL(buf);
 
-        for (int j = 0; j <= indent; j++) { write_buf_append(buf, "\t"); }
+        PRETTY_INDENT(buf, indent);
+
         write_buf_append(buf, "\"");
         write_buf_append(buf, fm->path);
         write_buf_append(buf, "\":");
@@ -251,12 +260,11 @@ int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf,
             bool need_comma = false;
             MODEL_MAP_FOREACH(k, v, map) {
                 if (need_comma) {
-                    write_buf_append(buf, ",\n");
+                    write_buf_append(buf, ",");
                 }
-                else {
-                    write_buf_append(buf, "\n");
-                }
-                for (int j = 0; j <= indent; j++) { write_buf_append(buf, "\t"); }
+                PRETTY_NL(buf);
+                PRETTY_INDENT(buf, indent);
+
                 write_buf_append(buf, "\"");
                 write_buf_append(buf, k);
                 write_buf_append(buf, "\":");
@@ -299,8 +307,8 @@ int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf,
         }
         comma = true;
     }
-    write_buf_append(buf, "\n");
-    for (int j = 0; j < indent; j++) { write_buf_append(buf, "\t"); }
+    PRETTY_NL(buf);
+    PRETTY_INDENT(buf, indent);
     write_buf_append(buf, "}");
     return 0;
 }
@@ -486,7 +494,7 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
     tok++;
     while (children != 0) {
         if (tok->type != JSMN_STRING) {
-            ZITI_LOG(ERROR, "parsing[%s] error: unexpected token starting at `%.*s'\n", meta->name, 20, json + tok->start);
+            ZITI_LOG(ERROR, "parsing[%s] error: unexpected token starting at `%.*s'", meta->name, 20, json + tok->start);
             return -1;
         }
         field_meta *fm = NULL;
@@ -888,8 +896,6 @@ static int timeval_to_json(timestamp *t, write_buf_t *buf, int indent, int flags
     return write_buf_append(buf, json);
 }
 
-#define mk_indent(b, indent) do { for (int j=0; j < (indent); j++) write_buf_append(b, "\t"); } while(0)
-
 static int map_to_json(model_map *map, write_buf_t *buf, int indent, int flags) {
     write_buf_append(buf, "{");
 
@@ -901,15 +907,15 @@ static int map_to_json(model_map *map, write_buf_t *buf, int indent, int flags) 
         if (comma) {
             write_buf_append(buf, ",");
         }
-        write_buf_append(buf, "\n");
-        mk_indent(buf, indent + 1);
+        PRETTY_NL(buf);
+        PRETTY_INDENT(buf, indent + 1);
         string_to_json(key, buf, indent, flags);
         write_buf_append(buf, ":");
 
         json_to_json(val, buf, indent, flags);
         comma = true;
     }
-    mk_indent(buf, indent);
+    PRETTY_INDENT(buf, indent);
     write_buf_append(buf, "}");
     return 0;
 }
@@ -1181,7 +1187,7 @@ static int _parse_map(model_map *m, const char *json, jsmntok_t *tok) {
     tok++;
     for (int i = 0; i < children; i++) {
         if (tok->type != JSMN_STRING) {
-            ZITI_LOG(ERROR, "parsing[map] error: unexpected token starting at `%.*s'\n", 20, json + tok->start);
+            ZITI_LOG(ERROR, "parsing[map] error: unexpected token starting at `%.*s'", 20, json + tok->start);
             return -1;
         }
         const char *key = json + tok->start;
