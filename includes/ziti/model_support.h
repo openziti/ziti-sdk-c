@@ -28,6 +28,16 @@ limitations under the License.
 
 #include "externs.h"
 
+#if !defined(__DEFINED_ssize_t) && !defined(__ssize_t_defined)
+#if _WIN32
+typedef intptr_t ssize_t;
+#define __DEFINED_ssize_t
+#define __ssize_t_defined
+#else
+#include <unistd.h>
+#endif
+#endif
+
 /**
  * set of macros to help generate struct and function for our model;
  *
@@ -52,6 +62,8 @@ limitations under the License.
 
 #define MODEL_API
 
+#define MODEL_JSON_COMPACT 0x1
+
 #define none(t) t
 #define ptr(t)  t*
 #define array(t) t##_array
@@ -71,8 +83,10 @@ MODEL_API int cmp_##type(const type *lh, const type *rh); \
 MODEL_API void free_##type##_array(array(type) *ap);\
 MODEL_API int parse_##type(ptr(type) v, const char* json, size_t len);\
 MODEL_API int parse_##type##_ptr(ptr(type) *p, const char* json, size_t len);\
-MODEL_API int parse_##type##_array(array(type) *a, const char* json, size_t len);\
-MODEL_API int json_from_##type(const ptr(type) v, char *buf, size_t maxlen, size_t *len);
+MODEL_API int parse_##type##_array(array(type) *a, const char* json, size_t len); \
+/** write to fixed buffer */                                 \
+MODEL_API ssize_t type##_to_json_r(const ptr(type) v, int flags, char *outbuf, size_t max); \
+MODEL_API char* type##_to_json(const ptr(type) v, int flags, size_t *len);
 
 #define gen_field_meta(n, memtype, modifier, p, partype) {\
 .name = #n, \
@@ -104,9 +118,10 @@ int parse_##type##_array(array(type) *a, const char *json, size_t len) { return 
 ptr(type) alloc_##type() { return (ptr(type))calloc(1, sizeof(type)); } \
 int cmp_##type(const type *lh, const type *rh) { return model_cmp(lh, rh, &type##_META); }\
 void free_##type(type *v) { model_free(v, &type##_META); } \
-void free_##type##_array(array(type) *ap) { model_free_array((void***)ap, &type##_META); }\
-MODEL_API int json_from_##type(const ptr(type) v, char *json, size_t maxlen, size_t *len)\
-{ return model_to_json(v, &type##_META, 0, json, maxlen, len); }
+void free_##type##_array(array(type) *ap) { model_free_array((void***)ap, &type##_META); }                      \
+MODEL_API ssize_t type##_to_json_r(const ptr(type) v, int flags, char *outbuf, size_t max) {                    \
+return model_to_json_r(v, &type##_META, flags, outbuf, max); } \
+char* type##_to_json(const ptr(type) v, int flags, size_t *len) { return model_to_json(v, &type##_META, flags, len); }
 
 
 #ifdef __cplusplus
@@ -136,7 +151,7 @@ typedef struct field_meta {
 
 typedef int (*_parse_f)(void *obj, const char *json, void *tok);
 
-typedef int (*_to_json_f)(const void *obj, int indent, char *json, size_t max, size_t *len);
+typedef int (*_to_json_f)(const void *obj, void *buf, int indent, int flags);
 
 typedef void (*_free_f)(void *obj);
 typedef int (*_cmp_f)(const void *lh, const void *rh);
@@ -162,7 +177,9 @@ ZITI_FUNC int model_parse(void *obj, const char *json, size_t len, type_meta *me
 
 ZITI_FUNC int model_parse_array(void ***arp, const char *json, size_t len, type_meta *meta);
 
-ZITI_FUNC int model_to_json(const void *obj, type_meta *meta, int indent, char *buf, size_t maxlen, size_t *len);
+ZITI_FUNC char *model_to_json(const void *obj, const type_meta *meta, int flags, size_t *len);
+
+ZITI_FUNC ssize_t model_to_json_r(const void *obj, const type_meta *meta, int flags, char *outbuf, size_t max);
 
 ZITI_FUNC extern type_meta *get_bool_meta();
 
@@ -235,7 +252,7 @@ typedef struct {
 ZITI_FUNC type_meta *get_tag_meta();
 
 ZITI_FUNC int parse_enum(void *ptr, const char *json, void *tok, const void *enum_type);
-ZITI_FUNC int json_enum(const void *ptr, char *json, size_t max, size_t *len, const void *enum_type);
+ZITI_FUNC int json_enum(const void *ptr, void *buf, int indent, int flags, const void *enum_type);
 
 #define mk_enum(v,t) t##_##v,
 #define enum_field(v,t) const t v;
@@ -254,9 +271,6 @@ Values(enum_field, Enum)                          \
 };                                 \
 MODEL_API type_meta* get_##Enum##_meta();\
 extern const struct Enum##_s Enum##s;
-
-#define EVAL(...) __VA_ARGS__
-#define EVAL1(...) EVAL(EVAL(EVAL(__VA_ARGS__)))
 
 #define call_f(f,args) f args
 #define enum_value_of1(v, t, s, n) if(strncmp(s,#v,n) == 0){return (t)t##s.v;}
@@ -291,8 +305,8 @@ return get_int_meta()->comparer(lh, rh);               \
 static int parse_##Enum(ptr(Enum) e, const char* json, void *tok) {     \
 return parse_enum(e, json, tok, &Enum##s);                              \
 }\
-static int Enum##_json(const ptr(Enum) e, int indent, char *json, size_t max, size_t *len) {     \
-return json_enum(e, json, max, len, &Enum##s);                              \
+static int Enum##_json(const ptr(Enum) e, void *buf, int indent, int flags) {     \
+return json_enum(e, buf, indent, flags, &Enum##s);                              \
 }\
 static type_meta Enum##_meta = {\
         .name = #Enum,        \

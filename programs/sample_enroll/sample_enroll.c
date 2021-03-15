@@ -37,22 +37,22 @@ const char *output_file;
 static int write_identity_file(ziti_config *cfg) {
     FILE *f;
 
-    char output_buf[16000];
     size_t len;
-    json_from_ziti_config(cfg, output_buf, sizeof(output_buf), &len);
+    char *output_buf = ziti_config_to_json(cfg, 0, &len);
 
     if ((f = fopen(output_file, "wb")) == NULL) {
         return (-1);
     }
 
+    int rc = ZITI_OK;
     if (fwrite(output_buf, 1, len, f) != len) {
-        fclose(f);
-        return (-1);
+        rc = -1;
     }
 
+    free(output_buf);
     fclose( f );
 
-    return( ZITI_OK );
+    return rc;
 }
 
 void on_ziti_enroll(ziti_config *cfg, int status, char *err_message, void *ctx) {

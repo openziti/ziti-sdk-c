@@ -104,10 +104,9 @@ TEST_CASE("new model tests") {
 
     checkBar1(bar);
 
-    char json[1024];
-    size_t jsonlen;
-    CHECK(json_from_Bar(&bar, json, sizeof(json), &jsonlen) == 0);
+    char *json = Bar_to_json(&bar, 0, nullptr);
     std::cout << json << std::endl;
+    free(json);
     free_Bar(&bar);
 }
 
@@ -129,10 +128,9 @@ TEST_CASE("embedded struct") {
     checkBar1(*foo.bar_arr[0]);
     checkBar2(*foo.bar_arr[1]);
 
-    char json1[1024];
-    size_t jsonlen;
-    CHECK(json_from_Foo(&foo, json1, sizeof(json1), &jsonlen) == 0);
+    char *json1 = Foo_to_json(&foo, 0, NULL);
     std::cout << json1 << std::endl;
+    free(json1);
     free_Foo(&foo);
 }
 
@@ -164,11 +162,10 @@ TEST_CASE("test skipped fields") {
     REQUIRE(foo.barp->isOK);
     REQUIRE_THAT(foo.barp->msg, Catch::Matchers::Equals("hello world!"));
 
-    char json1[1024];
     size_t jsonlen;
-    CHECK(json_from_Foo(&foo, json1, sizeof(json1), &jsonlen) == 0);
+    char *json1 = Foo_to_json(&foo, 0, &jsonlen);
     std::cout << json1 << std::endl;
-
+    free(json1);
     free_Foo(&foo);
 }
 
@@ -180,6 +177,9 @@ TEST_CASE("test string escape", "[model]") {
     Bar bar;
     REQUIRE(parse_Bar(&bar, json, strlen(json)) == 0);
     REQUIRE_THAT(bar.msg, Equals("\thello\n\"world\"!"));
+
+    char *jsonout = Bar_to_json(&bar, 0, NULL);
+    std::cout << jsonout << std::endl;
 }
 
 #define baz_model(XX, ...) \
@@ -227,11 +227,10 @@ TEST_CASE("model map test", "[model]") {
     CHECK_THAT((const char *) model_map_get(&o.map, "num"), Equals("42"));
     CHECK_THAT((const char *) model_map_get(&o.map, "errors"), Equals(R"(["error1", "error2"])"));
 
-    char j[1024];
-    size_t jlen;
-    json_from_ObjMap(&o, j, sizeof(j), &jlen);
+    char *j = ObjMap_to_json(&o, 0, NULL);
 
     std::cout << j << std::endl;
+    free(j);
 
     model_map_clear(&o.map, nullptr);
 }
@@ -351,11 +350,9 @@ TEST_CASE("model with string map", "[model]") {
     CHECK_THAT((const char *) model_map_get(&obj.tags, "ok"), Equals("true"));
     CHECK_THAT((const char *) model_map_get(&obj.tags, "msg"), Equals("hello\nworld!"));
 
-    char buf[1024];
-    size_t json_len;
-    REQUIRE(json_from_tagged(&obj, buf, 1024, &json_len) == 0);
+    char *buf = tagged_to_json(&obj, 0, nullptr);
 
-    printf("%.*s", (int) json_len, buf);
+    printf("%s", buf);
     free_tagged(&obj);
 }
 
@@ -386,11 +383,18 @@ TEST_CASE("map of objects", "[model]") {
 
     CHECK_THAT(b1->msg, Equals("this is a message"));
 
-    char buf[1024];
-    size_t json_len;
-    REQUIRE(json_from_MapOfObjects(&m, buf, 1024, &json_len) == 0);
+    char *js = MapOfObjects_to_json(&m, MODEL_JSON_COMPACT, nullptr);
+    std::cout << js << std::endl;
+    free(js);
 
-    printf("%.*s", (int) json_len, buf);
+    char small_buf[16];
+    ssize_t outlen = MapOfObjects_to_json_r(&m, 0, small_buf, sizeof(small_buf));
+    CHECK(outlen == -1);
+
+    char big_buf[1024];
+    outlen = MapOfObjects_to_json_r(&m, 0, big_buf, sizeof(big_buf));
+    CHECK(outlen > 0);
+    std::cout << std::string(big_buf, outlen) << std::endl;
 
     free_MapOfObjects(&m);
 }
@@ -490,22 +494,21 @@ TEST_CASE("map compare", "[model]") {
 }
 
 TEST_CASE("parse-json-u-escape", "[model]") {
-        const char *json = "{"
-        "\"bar\":{"
-        "\"msg\":\"hello\\u000C\\u0430\\u0431\\u0432\\u0433\\u0434!\""
-        "}"
-        "}";
+    const char *json = "{"
+                       "\"bar\":{"
+                       "\"msg\":\"hello\\u000C\\u0430\\u0431\\u0432\\u0433\\u0434!\""
+                       "}"
+                       "}";
     Foo foo;
     REQUIRE(parse_Foo(&foo, json, strlen(json)) == 0);
 
     CHECK_THAT(foo.bar.msg, Catch::Matchers::Equals("hello\u000cабвгд!"));
 
-    char json_out[1024];
-    size_t outlen;
-    int rc = json_from_Foo(&foo, json_out, sizeof(json_out), &outlen);
-
-    CHECK(rc == 0);
+    size_t json_len;
+    char *json_out = Foo_to_json(&foo, 0, &json_len);
+    CHECK(json_len == strlen(json_out));
     CHECK_THAT(json_out, Catch::Matchers::Contains("\"hello\\u000cабвгд!\""));
+    free(json_out);
 }
 
 TEST_CASE("parse-bad-json-escapes", "[model]") {
@@ -532,5 +535,10 @@ TEST_CASE("parse-bad-json-escapes", "[model]") {
         Foo foo;
         CHECK(parse_Foo(&foo, json[i], strlen(json[i])) < 0);
     }
+}
 
+TEST_CASE("null to JSON", "[model]") {
+    char *json = Foo_to_json(nullptr, 0, nullptr);
+
+    CHECK(json == nullptr);
 }
