@@ -117,7 +117,7 @@ return rc;\
 int parse_##type##_array(array(type) *a, const char *json, size_t len) { return model_parse_array((void***)a, json, len, &type##_META); }\
 ptr(type) alloc_##type() { return (ptr(type))calloc(1, sizeof(type)); } \
 int cmp_##type(const type *lh, const type *rh) { return model_cmp(lh, rh, &type##_META); }\
-void free_##type(type *v) { model_free(v, &type##_META); } \
+void free_##type(ptr(type) v) { model_free(v, &type##_META); } \
 void free_##type##_array(array(type) *ap) { model_free_array((void***)ap, &type##_META); }                      \
 MODEL_API ssize_t type##_to_json_r(const ptr(type) v, int flags, char *outbuf, size_t max) {                    \
 return model_to_json_r(v, &type##_META, flags, outbuf, max); } \
@@ -202,19 +202,19 @@ typedef struct model_map {
     struct model_impl_s *impl;
 } model_map;
 
-ZITI_FUNC size_t model_map_size(model_map *map);
+ZITI_FUNC size_t model_map_size(const model_map *map);
 
 ZITI_FUNC void *model_map_set(model_map *map, const char *key, void *val);
 
-ZITI_FUNC void *model_map_get(model_map *map, const char *key);
+ZITI_FUNC void *model_map_get(const model_map *map, const char *key);
 
 ZITI_FUNC void *model_map_remove(model_map *map, const char *key);
 
 ZITI_FUNC void model_map_clear(model_map *map, _free_f val_free_func);
 
-ZITI_FUNC model_map_iter model_map_iterator(model_map *map);
+ZITI_FUNC model_map_iter model_map_iterator(const model_map *map);
 
-ZITI_FUNC const char *model_map_it_key(model_map_iter *it);
+ZITI_FUNC const char *model_map_it_key(const model_map_iter *it);
 
 ZITI_FUNC void *model_map_it_value(model_map_iter it);
 
