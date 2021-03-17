@@ -123,7 +123,7 @@ int model_cmp(const void *lh, const void *rh, type_meta *meta) {
                     if (rf_ptr == NULL && lf_ptr == NULL) { break; }
 
                     if (ftm->comparer) {
-                        if (fm->meta == get_string_meta) {
+                        if (fm->meta() == get_string_meta()) {
                             rc = ftm->comparer(&lf_ptr, &rf_ptr);
                         }
                         else {
@@ -244,7 +244,7 @@ int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf,
         void **f_addr = (void **) ((char *) obj + fm->offset);
         void *f_ptr = fm->mod == none_mod ? f_addr : (void *) (*f_addr);
 
-        if (fm->meta == get_string_meta || fm->meta == get_json_meta) {
+        if (ftm == get_string_meta() || ftm == get_json_meta()) {
             f_ptr = (void *) (*f_addr);
         }
 
@@ -373,7 +373,7 @@ void model_free(void *obj, type_meta *meta) {
             if (arr != NULL) {
                 for (int idx = 0; arr[idx] != NULL; idx++) {
                     f_ptr = arr + idx;
-                    if (fm->meta == get_string_meta) {
+                    if (fm->meta() == get_string_meta()) {
                         model_free(f_ptr, fm->meta());
                     }
                     else {
@@ -392,7 +392,7 @@ void model_free(void *obj, type_meta *meta) {
             while (it != NULL) {
                 const char *k = model_map_it_key(it);
                 void *v = model_map_it_value(it);
-                if (fm->meta == get_string_meta || fm->meta == get_json_meta) {
+                if (fm->meta() == get_string_meta() || fm->meta() == get_json_meta()) {
                     fm->meta()->destroyer(&v);
                 }
                 else if (fm->meta()->destroyer) {
@@ -406,7 +406,7 @@ void model_free(void *obj, type_meta *meta) {
                 it = model_map_it_remove(it);
             }
 
-            if (fm->meta == get_string_meta) {
+            if (fm->meta() == get_string_meta()) {
                 ff = free;
             }
             else {
