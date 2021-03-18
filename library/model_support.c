@@ -972,7 +972,7 @@ int parse_enum(void *ptr, const char *json, void *tok, const void *enum_type) {
     } else {
         return -1;
     }
-    return 0;
+    return 1;
 }
 
 int json_enum(const void *ptr, void *bufp, int indent, int flags, const void *enum_type) {
