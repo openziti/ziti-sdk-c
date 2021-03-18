@@ -50,7 +50,7 @@ limitations under the License.
 
 static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *meta);
 
-static int model_map_compare(model_map *lh, model_map *rh, type_meta *m);
+static int model_map_compare(const model_map *lh, const model_map *rh, type_meta *m);
 
 jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_t *ntok) {
     size_t tok_cap = 256;
@@ -123,7 +123,7 @@ int model_cmp(const void *lh, const void *rh, type_meta *meta) {
                     if (rf_ptr == NULL && lf_ptr == NULL) { break; }
 
                     if (ftm->comparer) {
-                        if (fm->meta == get_string_meta) {
+                        if (fm->meta() == get_string_meta()) {
                             rc = ftm->comparer(&lf_ptr, &rf_ptr);
                         }
                         else {
@@ -244,7 +244,7 @@ int write_model_to_buf(const void *obj, const type_meta *meta, write_buf_t *buf,
         void **f_addr = (void **) ((char *) obj + fm->offset);
         void *f_ptr = fm->mod == none_mod ? f_addr : (void *) (*f_addr);
 
-        if (fm->meta == get_string_meta || fm->meta == get_json_meta) {
+        if (ftm == get_string_meta() || ftm == get_json_meta()) {
             f_ptr = (void *) (*f_addr);
         }
 
@@ -373,7 +373,7 @@ void model_free(void *obj, type_meta *meta) {
             if (arr != NULL) {
                 for (int idx = 0; arr[idx] != NULL; idx++) {
                     f_ptr = arr + idx;
-                    if (fm->meta == get_string_meta) {
+                    if (fm->meta() == get_string_meta()) {
                         model_free(f_ptr, fm->meta());
                     }
                     else {
@@ -392,7 +392,7 @@ void model_free(void *obj, type_meta *meta) {
             while (it != NULL) {
                 const char *k = model_map_it_key(it);
                 void *v = model_map_it_value(it);
-                if (fm->meta == get_string_meta || fm->meta == get_json_meta) {
+                if (fm->meta() == get_string_meta() || fm->meta() == get_json_meta()) {
                     fm->meta()->destroyer(&v);
                 }
                 else if (fm->meta()->destroyer) {
@@ -406,7 +406,7 @@ void model_free(void *obj, type_meta *meta) {
                 it = model_map_it_remove(it);
             }
 
-            if (fm->meta == get_string_meta) {
+            if (fm->meta() == get_string_meta()) {
                 ff = free;
             }
             else {
@@ -972,7 +972,7 @@ int parse_enum(void *ptr, const char *json, void *tok, const void *enum_type) {
     } else {
         return -1;
     }
-    return 0;
+    return 1;
 }
 
 int json_enum(const void *ptr, void *bufp, int indent, int flags, const void *enum_type) {
@@ -1030,7 +1030,7 @@ static void map_resize_table(model_map* m) {
     }
 }
 
-static struct model_map_entry *find_map_entry(model_map *m, const char *key, uint32_t *hash_out) {
+static struct model_map_entry *find_map_entry(const model_map *m, const char *key, uint32_t *hash_out) {
     uint32_t kh = key_hash(key);
     if (hash_out) {
         *hash_out = kh;
@@ -1046,7 +1046,7 @@ static struct model_map_entry *find_map_entry(model_map *m, const char *key, uin
     return NULL;
 }
 
-size_t model_map_size(model_map *m) {
+size_t model_map_size(const model_map *m) {
     return m->impl ? m->impl->size : 0;
 }
 
@@ -1084,8 +1084,8 @@ void *model_map_set(model_map *m, const char *key, void *val) {
     return NULL;
 }
 
-void* model_map_get(model_map *m, const char* key) {
-    if (m->impl == NULL) {
+void* model_map_get(const model_map *m, const char* key) {
+    if (m == NULL || m->impl == NULL) {
         return NULL;
     }
 
@@ -1128,12 +1128,12 @@ void model_map_clear(model_map *map, _free_f free_func) {
     FREE(map->impl);
 }
 
-model_map_iter model_map_iterator(model_map *m) {
+model_map_iter model_map_iterator(const model_map *m) {
     if (m->impl == NULL) { return NULL; }
     return LIST_FIRST(&m->impl->entries);
 }
 
-const char *model_map_it_key(model_map_iter *it) {
+const char *model_map_it_key(const model_map_iter *it) {
     return it != NULL ? ((struct model_map_entry *) it)->key : NULL;
 }
 
@@ -1158,7 +1158,7 @@ model_map_iter model_map_it_remove(model_map_iter it) {
     return next;
 }
 
-static int model_map_compare(model_map *lh, model_map *rh, type_meta *m) {
+static int model_map_compare(const model_map *lh, const model_map *rh, type_meta *m) {
     null_checks(lh, rh)
 
     int rc = 0;
