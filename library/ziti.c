@@ -66,6 +66,8 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx);
 
 static void ziti_init_async(uv_async_t *ar);
 
+static void ziti_re_auth(ziti_context ztx);
+
 static void grim_reaper(uv_prepare_t *p);
 
 static uint32_t ztx_seq;
@@ -503,8 +505,6 @@ int ziti_listen_with_options(ziti_connection serv_conn, const char *service, zit
 
 static void session_refresh(uv_timer_t *t) {
     ziti_context ztx = t->data;
-    struct ziti_init_req *req = calloc(1, sizeof(struct ziti_init_req));
-    req->ztx = ztx;
 
     bool login = ztx->session == NULL;
 
@@ -521,10 +521,10 @@ static void session_refresh(uv_timer_t *t) {
     }
 
     if (login) {
-        ZTX_LOG(DEBUG, "requesting new API session");
-        ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, session_cb, req);
-    }
-    else {
+        ziti_re_auth(ztx);
+    } else {
+        struct ziti_init_req *req = calloc(1, sizeof(struct ziti_init_req));
+        req->ztx = ztx;
         ZTX_LOG(DEBUG, "refreshing API session");
         ziti_ctrl_current_api_session(&ztx->controller, session_cb, req);
     }
@@ -539,11 +539,12 @@ static void ziti_re_auth(ziti_context ztx) {
     uv_timer_stop(&ztx->refresh_timer);
     uv_timer_stop(&ztx->session_timer);
     if (ztx->posture_checks) {
-        uv_timer_stop(&ztx->posture_checks->timer);
+        uv_timer_stop(ztx->posture_checks->timer);
     }
     free_ziti_session(ztx->session);
     FREE(ztx->session);
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
+    FREE(ztx->last_update);
 
     NEWP(init_req, struct ziti_init_req);
     init_req->ztx = ztx;
@@ -838,7 +839,7 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
                 uv_timer_stop(&ztx->session_timer);
                 uv_timer_stop(&ztx->refresh_timer);
                 if (ztx->posture_checks != NULL) {
-                    uv_timer_stop(&ztx->posture_checks->timer);
+                    uv_timer_stop(ztx->posture_checks->timer);
                 }
             }
         } else {
