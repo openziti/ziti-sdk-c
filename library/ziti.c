@@ -706,12 +706,6 @@ static void check_service_update(ziti_service_update *update, ziti_error *err, v
 
 static void services_refresh(uv_timer_t *t) {
     ziti_context ztx = t->data;
-    
-    if (ztx->auth_queries->outstanding_auth_queries) {
-        ZITI_LOG(DEBUG, "service refresh stopped, outstanding auth queries");
-        return;
-    }
-    
     if (ztx->no_service_updates_api) {
         ziti_ctrl_get_services(&ztx->controller, update_services, ztx);
     }
@@ -767,7 +761,14 @@ static void session_post_auth_query_cb(ziti_context ztx){
     uv_timeval64_t now;
     uv_gettimeofday(&now);
 
-    int time_diff = (int) (now.tv_sec - session->updated->tv_sec);
+    int time_diff;
+    if (session->cached_last_activity_at) {
+        ZITI_LOG(TRACE, "API supports cached_last_activity_at");
+        time_diff = (int) (now.tv_sec - session->cached_last_activity_at->tv_sec);
+    } else {
+        ZITI_LOG(TRACE, "API doesn't support cached_last_activity_at - using updated");
+        time_diff = (int) (now.tv_sec - session->updated->tv_sec);
+    }
     if (abs(time_diff) > 10) {
         ZITI_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
                  time_diff > 0 ? "ahead" : "behind");
