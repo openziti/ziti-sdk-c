@@ -706,6 +706,12 @@ static void check_service_update(ziti_service_update *update, ziti_error *err, v
 
 static void services_refresh(uv_timer_t *t) {
     ziti_context ztx = t->data;
+    
+    if (ztx->auth_queries->outstanding_auth_queries) {
+        ZITI_LOG(DEBUG, "service refresh stopped, outstanding auth queries");
+        return;
+    }
+    
     if (ztx->no_service_updates_api) {
         ziti_ctrl_get_services(&ztx->controller, update_services, ztx);
     }
