@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#ifndef ZITI_SDK_POSTURE_H
-#define ZITI_SDK_POSTURE_H
+#ifndef ZITI_SDK_AUTH_QUERIES_H
+#define ZITI_SDK_AUTH_QUERIES_H
 
 #include <uv.h>
 #include "zt_internal.h"
@@ -24,33 +24,22 @@ limitations under the License.
 extern "C" {
 #endif
 
-struct posture_checks {
-    uv_timer_t *timer;
-    double interval;
+#include "zt_internal.h"
+#include <utils.h>
 
-    // map<type/process_path,response>
-    model_map *previous_responses;
-
-    // map<type/process_path,response>
-    model_map *current_responses;
-
-    // map<type/process_path, is errored
-    model_map *error_states;
-
-    char *previous_session_id;
-    bool must_send;
-    bool must_send_every_time;
+struct auth_queries {
+    bool outstanding_auth_queries;
+    bool awaiting_mfa_cb;
 };
 
-void ziti_posture_init(ziti_context ztx, long interval_secs);
+extern void ziti_auth_query_init(struct ziti_ctx *ztx);
+extern void ziti_auth_query_free(struct auth_queries* aq);
 
-void ziti_posture_checks_free(struct posture_checks *pcs);
-
-void ziti_send_posture_data(ziti_context ztx);
+void ziti_auth_query_process(ziti_context ztx, void(*cb)(ziti_context ztx));
 
 #ifdef __cplusplus
 }
 #endif
 
 
-#endif //ZITI_SDK_POSTURE_H
+#endif //ZITI_SDK_AUTH_QUERIES_H

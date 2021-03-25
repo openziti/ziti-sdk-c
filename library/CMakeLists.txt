@@ -24,6 +24,7 @@ SET(ZITI_SRC_FILES
         ziti_src.c
         metrics.c
         posture.c
+        auth_queries.c
 )
 
 SET(ZITI_INCLUDE_DIRS

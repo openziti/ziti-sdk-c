@@ -208,15 +208,48 @@ typedef void (*ziti_pq_process_cb)(ziti_context ztx, const char *id, const char 
                                    ziti_pr_process_cb response_cb);
 
 /**
- * \brief Ziti Event callback.
+ * @brief MFA authentication status callback.
+ *
+ * This callback is invoked after the ziti_ar_mfa_cb is invoked during MFA authentication.
+ * It should be used to observe the result of the MFA submission and to prompt the user to try
+ * again or give up.
+ *
+ * @see ziti_service_available(), ZITI_ERRORS
+ */
+typedef void (*ziti_ar_mfa_status_cb)(ziti_context ztx, void* mfa_ctx, int status, void* ctx);
+
+/**
+ * @brief Callback to supply the Ziti SDK with an MFA TOTP/recovery token for authentication.
+ *
+ * The Ziti SDK caller should receive this call back when MFA authentication is required. The
+ * ziti_aq_mfa_cb that is registered via `ziti_options.aq_mfa_cb` will be invoked and receive
+ * this `ziti_ar_mfa_cb` as a callback to supply the user entered token. Additionally,
+ * when `ziti_ar_mfa_cb` is invoked a `ziti_ar_mfa_status_cb` may be invoked to receive the result of the code
+ * submission.
+ */
+typedef void (*ziti_ar_mfa_cb)(ziti_context ztx, void* mfa_ctx, char* code, ziti_ar_mfa_status_cb ar_mfa_status_cb, void* ctx);
+
+/**
+ *  @brief Auth Query for MFA authentication
+ *
+ *  This callback is invoked by the Ziti SDK when an authenticating identity requires MFA.
+ *  The callback is responsible for inspecting the authentication query, interacting with the MFA
+ *  service, user, and invoking the provided done callback.
+ *
+ */
+typedef void (*ziti_aq_mfa_cb)(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb);
+
+
+/**
+ * @brief Ziti Event callback.
  *
  * This callback is invoked when certain changes happen for a given ziti context.
  * Subscription to events is managed by setting desired types on `ziti_options.events` field.
  *
- * \see ziti_event_type
- * \see ziti_event_t
- * \see ziti_options.event_cb
- * \see ziti_options.events
+ * @see ziti_event_type
+ * @see ziti_event_t
+ * @see ziti_options.event_cb
+ * @see ziti_options.events
  */
 typedef void (*ziti_event_cb)(ziti_context ztx, const ziti_event_t *event);
 
@@ -243,6 +276,9 @@ typedef struct ziti_options_s {
     ziti_pq_process_cb pq_process_cb;
     ziti_pq_domain_cb pq_domain_cb;
 
+    //mfa cbs
+    ziti_aq_mfa_cb aq_mfa_cb;
+
     void *app_ctx;
 
     /**
@@ -255,6 +291,12 @@ typedef struct ziti_options_s {
      */
     ziti_event_cb event_cb;
 } ziti_options;
+
+typedef struct ziti_init_req_s {
+    ziti_context ztx;
+    bool login;
+    int init_status;
+} ziti_init_req;
 
 typedef struct ziti_enroll_opts_s {
     const char *jwt;
@@ -547,7 +589,7 @@ extern int ziti_shutdown(ziti_context ztx);
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
 ZITI_FUNC
-int ziti_ctx_free(ziti_context *ctxp) ;
+int ziti_ctx_free(ziti_context *ctxp);
 
 /**
  * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #ziti_context.
@@ -781,6 +823,132 @@ extern int ziti_close_write(ziti_connection conn);
  */
 ZITI_FUNC
 extern int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx);
+
+/**
+ * @brief Callback called after ziti_mfa_enroll()
+ *
+ * This function is invoked after a call to ziti_mfa_enroll. It will contain either
+ * a status error or an mfa_enrollment struct that will be free'ed after the call
+ * back finishes.
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param status an error code or #ZITI_OK
+ * @param mfa_enrollment contents of the mfa enrollment or NULL if status is an error
+ * @param ctx additional context to be passed into #ziti_mfa_enroll_cb callback
+ *
+ */
+typedef void (*ziti_mfa_enroll_cb)(ziti_context ztx, int status, ziti_mfa_enrollment *mfa_enrollment, void *ctx);
+
+/**
+ * @brief Generic callback called after various MFA functions
+ *
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param status an error code or #ZITI_OK
+ * @param ctx additional context to be passed into the original mfa call
+ */
+typedef void (*ziti_mfa_cb)(ziti_context ztx, int status, void *ctx);
+
+
+/**
+ * @brief Callback called after ziti_mfa_get_recovery_codes() and ziti_mfa_new_recovery_codes()
+ *
+ * This function is invoked after a call to get or regenerate mfa recovery codes.
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param status an error code or #ZITI_OK
+ * @param recovery_codes null terminated array of recovery codes
+ * @param ctx additional context to be passed into to the original call
+ *
+ */
+typedef void (*ziti_mfa_recovery_codes_cb)(ziti_context ztx, int status, char **recovery_codes, void *ctx);
+
+/**
+ * @brief Attempts to initialize MFA enrollment
+ *
+ * Attempts to initialize enrollment. On success or failure the supplied enroll_cb
+ * will be called with relevant status information. The supplied ztx must be have
+ * passed a primary authentication mechanism (cert, updb, etc).
+ *
+ * An error status will be returned if the request fails, #ZITI_OK is expected on success.
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param ziti_mfa_enroll_cb callback to receive MFA enrollment initialization status
+ * @param ctx additional context to be passed into the enroll_cb callback
+ */
+ZITI_FUNC
+extern void ziti_mfa_enroll(ziti_context ztx, ziti_mfa_enroll_cb enroll_cb, void *ctx);
+
+/**
+ * @brief Attempts to remove MFA
+ *
+ * Attempts to remove MFA. On success or failure the supplied remove_cb
+ * will be called with relevant status information. The supplied ztx must
+ * be fully authenticated.
+ *
+ * An error status will be returned if the request fails, #ZITI_OK is expected on success.
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param code a TOTP or recovery code, may be empty string for MFA enrollments that have not completed via ziti_mfa_verify
+ * @param remove_cb callback to receive MFA removal status
+ * @param ctx additional context to be passed into the remove_cb callback
+ */
+ZITI_FUNC
+extern void ziti_mfa_remove(ziti_context ztx, char *code, ziti_mfa_cb remove_cb, void *ctx);
+
+/**
+ * @brief Attempts to verify MFA enrollment
+ *
+ * Attempts to verify MFA enrollment. On success or failure the supplied verify_cb
+ * will be called with relevant status information. The supplied ztx must
+ * be authenticated. After verification, MFA enrollment is complete.
+ *
+ * An error status will be returned if the request fails, #ZITI_OK is expected on success.
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param code a valid TOTP code, must not be a recovery code
+ * @param remove_cb callback to receive MFA verify status
+ * @param ctx additional context to be passed into the verify_cb callback
+ *
+ * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ */
+ZITI_FUNC
+extern void ziti_mfa_verify(ziti_context ztx, char *code, ziti_mfa_cb verify_cb, void *ctx);
+
+
+/**
+ * @brief Attempts to retrieve the current recovery codes for the identity
+ *
+ * Attempts to retrieve the recovery codes for the current identity. On success or failure the supplied get_cb
+ * will be called with relevant status information. The supplied ztx must be fully authenticated.
+ *
+ * An error status will be returned if the request fails, #ZITI_OK is expected on success.
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param code a TOTP code, may be empty string for MFA enrollments that have not completed vi ziti_mfa_verify
+ * @param remove_cb callback to receive the result status
+ * @param ctx additional context to be passed into the get_cb callback
+ */
+ZITI_FUNC
+extern void ziti_mfa_get_recovery_codes(ziti_context ztx, char *code, ziti_mfa_recovery_codes_cb get_cb, void *ctx);
+
+/**
+ * @brief Attempts to generate new recovery codes and retrieve the new recovery codes for MFA
+ *
+ * Attempts to generate new recovery codes. All previous codes will become invalid and replaced with the new
+ * recovery codes. On success or failure the supplied get_cb will be called with relevant status information.
+ * The supplied ztx must be fully authenticated.
+ *
+ * An error status will be returned if the request fails, #ZITI_OK is expected on success.
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param code a TOTP code
+ * @param new_cb callback to receive the result status
+ * @param ctx additional context to be passed into the get_cb callback
+ */
+ZITI_FUNC
+extern void ziti_mfa_new_recovery_codes(ziti_context ztx, char *code, ziti_mfa_recovery_codes_cb new_cb, void *ctx);
+
 
 #ifdef __cplusplus
 }

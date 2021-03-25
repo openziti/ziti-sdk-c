@@ -76,9 +76,27 @@ void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, zi
 void ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, const char *csr,
                       void (*cb)(ziti_enrollment_resp *, ziti_error *, void *), void *ctx);
 
+//Posture
 void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx);
 
 void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,void(*cb)(void *, ziti_error *, void *), void *ctx);
+
+
+//MFA
+void ziti_ctrl_login_mfa(ziti_controller *ctrl, char* body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx);
+
+void ziti_ctrl_post_mfa(ziti_controller *ctrl,void(*cb)(void *, ziti_error *, void *), void *ctx);
+
+void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, ziti_error *, void *), void *ctx);
+
+void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char* code, void(*cb)(void*, ziti_error *, void *), void *ctx);
+
+void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char* body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx);
+
+void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char* code, void(*cb)(ziti_mfa_recovery_codes *, ziti_error *, void *), void *ctx);
+
+void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char* body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx);
+
 
 #ifdef __cplusplus
 }

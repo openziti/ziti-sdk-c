@@ -202,6 +202,9 @@ struct ziti_ctx {
 
     /* posture check support */
     struct posture_checks *posture_checks;
+
+    /* auth query (MFA) support */
+    struct auth_queries *auth_queries;
 };
 
 #ifdef __cplusplus
