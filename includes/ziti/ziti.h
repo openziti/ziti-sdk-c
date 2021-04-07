@@ -949,6 +949,23 @@ extern void ziti_mfa_get_recovery_codes(ziti_context ztx, char *code, ziti_mfa_r
 ZITI_FUNC
 extern void ziti_mfa_new_recovery_codes(ziti_context ztx, char *code, ziti_mfa_recovery_codes_cb new_cb, void *ctx);
 
+/**
+ * @brief Aborts an MFA authentication and frees the associated resources
+ *
+ * When an MFA authentication query is being processed it will have an `mfa_ctx` associated with it.
+ * The `mfa_ctx` will remain allocated till it provides a valid authentication response (i.e. the status
+ * callback receives no error) or `ziti_mfa_abort()` is called.
+ *
+ * If no status callback is defined for MFA processing, the MFA resources will
+ * be automatically freed on error.
+ *
+ * On successful MFA authentication response, the MFA resources will be automatically
+ * freed and calling this function should not occur.
+ *
+ * @param mfa_ctx the mfa_ctx provided during MFA authentication query processing
+ */
+ZITI_FUNC
+extern void ziti_mfa_abort(void *mfa_ctx);
 
 #ifdef __cplusplus
 }

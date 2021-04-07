@@ -258,14 +258,14 @@ void ziti_auth_query_mfa_auth_internal_cb(void *empty, ziti_error *err, void *ct
     if (err != NULL) {
         ZITI_LOG(ERROR, "error during MFA auth call: %d - %s - %s", err->http_code, err->code, err->message);
 
-
-
         if(mfa_ctx->status_cb != NULL) {
             mfa_ctx->status_cb(ztx, mfa_ctx, err->err, mfa_ctx->status_ctx);
         } else {
             ZITI_LOG(WARN, "no mfa status callback provided, mfa failed, status was: %d", err->err);
+            //only free if there is no status handler, if there is a status handler it is up to the
+            //status handler to try again (submit another mfa code, or call ziti_mfa_abort()
+            FREE(ctx)
         }
-        FREE(ctx)
         FREE(err)
         return;
     } else {
@@ -280,6 +280,10 @@ void ziti_auth_query_mfa_auth_internal_cb(void *empty, ziti_error *err, void *ct
         mfa_ctx->cb(ztx);
         FREE(ctx)
     }
+}
+
+void ziti_mfa_abort(void *mfa_ctx) {
+        FREE(mfa_ctx)
 }
 
 void ziti_mfa_get_recovery_codes_internal_cb(ziti_mfa_recovery_codes *rc, ziti_error *err, void *ctx) {

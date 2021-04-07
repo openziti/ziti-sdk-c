@@ -37,6 +37,7 @@ extern void ziti_auth_query_free(struct auth_queries* aq);
 
 void ziti_auth_query_process(ziti_context ztx, void(*cb)(ziti_context ztx));
 
+
 #ifdef __cplusplus
 }
 #endif
