@@ -102,6 +102,7 @@ XX(allowed_addresses, string, array, allowedAddresses, __VA_ARGS__) \
 XX(port, int, none, port, __VA_ARGS__) \
 XX(forward_port, bool, none, forwardPort, __VA_ARGS__) \
 XX(allowed_port_ranges, ziti_port_range, array, allowedPortRanges, __VA_ARGS__) \
+XX(allowed_source_addresses, string, array, allowedSourceAddresses, __VA_ARGS__) \
 XX(listen_options, tag, map, listenOptions, __VA_ARGS__)
 
 #define ZITI_MFA_ENROLLMENT_MODEL(XX, ...) \
