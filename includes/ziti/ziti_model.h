@@ -61,6 +61,7 @@ XX(timeout, int, none, timeout, __VA_ARGS__)
 #define ZITI_POSTURE_QUERY_SET_MODEL(XX, ...) \
 XX(policy_id, string, none, policyId, __VA_ARGS__) \
 XX(is_passing, bool, none, isPassing, __VA_ARGS__) \
+XX(policy_type, string, none, policyType, __VA_ARGS__) \
 XX(posture_queries, ziti_posture_query, array, postureQueries, __VA_ARGS__)
 
 #define ZITI_SERVICE_MODEL(XX, ...) \
