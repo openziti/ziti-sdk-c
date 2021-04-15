@@ -48,8 +48,6 @@ if (DEFINED ENV{BUILD_NUMBER})
     set(ZITI_BUILDNUM $ENV{BUILD_NUMBER})
 endif ()
 
-set(ZITI_VERSION ${PROJECT_VERSION}-${ZITI_BUILDNUM})
-
 link_directories(${CMAKE_BINARY_DIR}/lib)
 
 add_subdirectory(deps)
@@ -67,41 +65,6 @@ elseif (WIN32)
 endif ()
 
 include(CPack)
-add_custom_target(publish
-        COMMENT "generate publish specs"
-        )
-
-if(${GIT_BRANCH} STREQUAL main)
-    set(PUB_PFX ziti-staging)
-else()
-    set(PUB_PFX ziti-snapshot/${GIT_BRANCH})
-endif()
-
-set(PUB_OPTS --apikey=$ENV{JFROG_API_KEY} --url https://netfoundry.jfrog.io/netfoundry --build-name=ziti --build-number=${ZITI_VERSION})
-string(TOLOWER ${CMAKE_SYSTEM_NAME} PUB_OS)
-string(TOLOWER ${CMAKE_SYSTEM_PROCESSOR} PUB_ARCH)
-
-if(${PUB_ARCH} STREQUAL "x86_64" )
-    set(PUB_ARCH "amd64")
-endif()
-
-macro(PUBCOMP comp)
-    set(${comp}_PUB_PATH ${PUB_PFX}/${comp}/${PUB_ARCH}/${PUB_OS}/${ZITI_VERSION}/${comp}.${archive_sfx})
-    set(${comp}_PUB_PROPS "version=${ZITI_VERSION}\;name=${comp}\;arch=${PUB_ARCH}\;os=${PUB_OS}\;branch=${GIT_BRANCH}")
-
-    add_custom_target(${comp}-pub
-            BYPRODUCTS ${CMAKE_BINARY_DIR}/${comp}-pub-spec.json
-            DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${comp}-${ZITI_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx}
-            COMMAND echo "{"
-            \"target\": \"${${comp}_PUB_PATH}\",
-            \"pattern\": \"${CMAKE_CURRENT_BINARY_DIR}/${comp}-${ZITI_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx}\",
-            \"props\": \"${${comp}_PUB_PROPS}\"
-            "}" > ${CMAKE_BINARY_DIR}/${comp}-pub-spec.json
-            VERBATIM
-            )
-
-    add_dependencies(publish ${comp}-pub)
-endmacro(PUBCOMP)
 
 # use prefix length to trim path for logging, see utils.c
 if (CMAKE_GENERATOR STREQUAL "Ninja" AND CMAKE_BINARY_DIR MATCHES "${CMAKE_SOURCE_DIR}")
@@ -115,9 +78,7 @@ endif()
 add_subdirectory(library)
 
 if (ZITI_BUILD_PROGRAMS)
-    if (NOT ${PUB_OS} STREQUAL "ios")
-        add_subdirectory(programs)
-    endif ()
+    add_subdirectory(programs)
 endif ()
 
 if (ZITI_BUILD_TESTS)
