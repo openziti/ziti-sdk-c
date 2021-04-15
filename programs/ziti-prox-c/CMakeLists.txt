@@ -1,4 +1,3 @@
-project(ziti-prox-c)
 
 add_executable(ziti-prox-c proxy.c)
 
@@ -10,7 +9,7 @@ endif()
 target_link_libraries(ziti-prox-c PUBLIC ziti subcommand)
 target_include_directories(ziti-prox-c PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 
-set(ZITI_ARCHIVE_NAME "ziti-prox-c-${ZITI_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx}")
+set(ZITI_ARCHIVE_NAME "ziti-prox-c-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx}")
 set(ZITI_EXECUTABLE_NAME "ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}")
 if (UNIX)
     add_custom_target(ziti-prox-c-pack
@@ -25,6 +24,3 @@ else()
         COMMAND zip "${ZITI_ARCHIVE_NAME}" "${PROJECT_BINARY_DIR}/${CMAKE_BUILD_TYPE_INIT}/${ZITI_EXECUTABLE_NAME}"
     )
 endif()
-
-#add_dependencies(publish ${ZITI_ARCHIVE_NAME})
-PUBCOMP(ziti-prox-c)
