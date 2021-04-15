@@ -10,7 +10,6 @@ target_link_libraries(ziti-prox-c PUBLIC ziti subcommand)
 target_include_directories(ziti-prox-c PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 
 set(ZITI_ARCHIVE_NAME "ziti-prox-c-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx}")
-message(${ZITI_ARCHIVE_NAME})
 set(ZITI_EXECUTABLE_NAME "ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}")
 if (UNIX)
     add_custom_target(ziti-prox-c-pack
