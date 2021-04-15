@@ -108,7 +108,8 @@ XX(hash, string, none, hash, __VA_ARGS__) \
 XX(signer, string, none, signerFingerprint, __VA_ARGS__)
 
 #define ZITI_PR_PROCESS_REQ(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__) \
+XX(id, string, none, id, __VA_ARGS__)\
+XX(path, string, none, path, __VA_ARGS__) \
 XX(typeId, string, none, typeId, __VA_ARGS__) \
 XX(is_running, bool, none, isRunning, __VA_ARGS__) \
 XX(hash, string, none, hash, __VA_ARGS__) \
