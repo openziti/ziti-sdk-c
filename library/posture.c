@@ -280,7 +280,7 @@ void ziti_send_posture_data(ziti_context ztx) {
             }
         } else {
             ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_PROCESS_TYPE,
-                     osInfo->service->name, osInfo->query_set->policy_id, osInfo->query->id);
+                     procInfo->service->name, procInfo->query_set->policy_id, procInfo->query->id);
         }
     }
 
