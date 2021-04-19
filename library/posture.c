@@ -513,6 +513,7 @@ static void ziti_pr_handle_process(ziti_context ztx, char *id, char *path, bool 
 
     ziti_pr_process_req process_req = {
             .id = (char *) id,
+            .path = path,
             .typeId = (char *) PC_PROCESS_TYPE,
             .is_running = is_running,
             .hash = (char *) sha_512_hash,
