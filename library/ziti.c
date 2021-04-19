@@ -369,12 +369,18 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     printer(ctx, "\n=================\nServices:\n");
     ziti_service *zs;
     const char *name;
+    const char *cfg;
+    const char *cfg_json;
     MODEL_MAP_FOREACH(name, zs, &ztx->services) {
 
         printer(ctx, "%s: id[%s] perm(dial=%s,bind=%s)\n", zs->name, zs->id,
                 (zs->perm_flags & ZITI_CAN_DIAL ? "true" : "false"),
                 (zs->perm_flags & ZITI_CAN_BIND ? "true" : "false")
         );
+
+        MODEL_MAP_FOREACH(cfg, cfg_json, &zs->config) {
+            printer(ctx, "\tconfig[%s]=%s\n", cfg, cfg_json);
+        }
     }
 
     printer(ctx, "\n==================\nNet Sessions:\n");
