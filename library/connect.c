@@ -1081,7 +1081,9 @@ static void rebind_cb(ziti_connection conn, int status) {
     } else {
         conn->conn_req->retry_count++;
         int backoff_count = MIN(conn->conn_req->retry_count, 5);
-        long backoff_time = random() % (backoff_count * 5000);
+        uint32_t random;
+        uv_random(conn->ziti_ctx->loop, NULL, &random, sizeof(random), 0, NULL);
+        long backoff_time = random % (backoff_count * 5000);
         CONN_LOG(DEBUG, "failed to re-bind[%d/%s], retrying in %ldms", status, ziti_errorstr(status), backoff_time);
         if (conn->conn_req->conn_timeout == NULL) {
             conn->conn_req->conn_timeout = calloc(1, sizeof(uv_timer_t));
