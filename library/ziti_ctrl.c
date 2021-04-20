@@ -29,6 +29,7 @@ limitations under the License.
 const char *const PC_DOMAIN_TYPE = "DOMAIN";
 const char *const PC_OS_TYPE = "OS";
 const char *const PC_PROCESS_TYPE = "PROCESS";
+const char *const PC_PROCESS_MULTI_TYPE = "PROCESS_MULTI";
 const char *const PC_MAC_TYPE = "MAC";
 
 #undef MODEL_API
@@ -224,8 +225,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
                 cr.error->err = ZITI_WTF;
                 cr.error->code = strdup("INVALID_CONTROLLER_RESPONSE");
                 cr.error->message = strdup(req->resp.status);
-            }
-            else if (resp->body_parse_func && cr.data != NULL) {
+            } else if (resp->body_parse_func && cr.data != NULL) {
                 if (resp->body_parse_func(&resp_obj, cr.data, strlen(cr.data)) != 0) {
                     ZITI_LOG(ERROR, "error parsing result of req[%s]", req->path);
                 }
@@ -370,7 +370,7 @@ void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, ziti_error *, voi
     um_http_req(&ctrl->client, "DELETE", "/current-api-session", ctrl_resp_cb, resp);
 }
 
-void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_service_update*, ziti_error*, void*), void *ctx) {
+void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_service_update *, ziti_error *, void *), void *ctx) {
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_service_update_ptr;
     resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
@@ -583,7 +583,7 @@ void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
 }
 
 void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len,
-                  void(*cb)(void *, ziti_error *, void *), void *ctx) {
+                       void(*cb)(void *, ziti_error *, void *), void *ctx) {
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
@@ -609,8 +609,7 @@ static void ctrl_paging_req(struct ctrl_resp *resp) {
 }
 
 
-
-void ziti_ctrl_login_mfa(ziti_controller *ctrl, char* body, size_t body_len ,void(*cb)(void *, ziti_error *, void *), void *ctx) {
+void ziti_ctrl_login_mfa(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx) {
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
@@ -624,7 +623,7 @@ void ziti_ctrl_login_mfa(ziti_controller *ctrl, char* body, size_t body_len ,voi
     um_http_req_data(req, body, body_len, free_body_cb);
 }
 
-void ziti_ctrl_post_mfa(ziti_controller *ctrl,void(*cb)(void *, ziti_error *, void *), void *ctx){
+void ziti_ctrl_post_mfa(ziti_controller *ctrl, void(*cb)(void *, ziti_error *, void *), void *ctx) {
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
     resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
@@ -649,7 +648,7 @@ void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, z
     um_http_req_header(req, "Content-Type", "application/json");
 }
 
-void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char* code, void(*cb)(void *, ziti_error *, void *), void *ctx) {
+void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char *code, void(*cb)(void *, ziti_error *, void *), void *ctx) {
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
     resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
@@ -662,7 +661,7 @@ void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char* code, void(*cb)(void *, z
     um_http_req_header(req, "mfa-validation-code", code);
 }
 
-void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char* body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx){
+void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx) {
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
     resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
@@ -675,7 +674,7 @@ void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char* body, size_t body_le
     um_http_req_data(req, body, body_len, free_body_cb);
 }
 
-void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char* code, void(*cb)(ziti_mfa_recovery_codes *, ziti_error *, void *), void *ctx){
+void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char *code, void(*cb)(ziti_mfa_recovery_codes *, ziti_error *, void *), void *ctx) {
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_mfa_recovery_codes_ptr;
     resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
@@ -688,7 +687,7 @@ void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char* code, void(*c
     um_http_req_header(req, "Content-Type", "application/json");
 }
 
-void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char* body, size_t body_len, void(*cb)(void *,ziti_error *, void *), void *ctx) {
+void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx) {
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
     resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;

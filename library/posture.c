@@ -209,6 +209,24 @@ void ziti_send_posture_data(ziti_context ztx) {
                             procInfo = newProcInfo;
                         }
                     }
+                } else if (strcmp(query->query_type, PC_PROCESS_MULTI_TYPE) == 0){
+                    int processIdx = 0;
+                    while(query->processes[processIdx] != NULL) {
+                        ziti_process* process = query->processes[processIdx];
+
+                        void *curVal = model_map_get(&processes, process->path);
+                        if (curVal == NULL) {
+                            NEWP(newProcInfo, struct query_info);
+                            newProcInfo->query_set = set;
+                            newProcInfo->query = query;
+                            newProcInfo->service = service;
+                            model_map_set(&processes, query->process->path, newProcInfo);
+                            if (procInfo == NULL) {
+                                procInfo = newProcInfo;
+                            }
+                        }
+                        processIdx++;
+                    }
                 }
                 queryIdx++;
             }
