@@ -56,7 +56,7 @@ XX(id, string, none, id, __VA_ARGS__) \
 XX(is_passing, bool, none, isPassing, __VA_ARGS__) \
 XX(query_type, string, none, queryType, __VA_ARGS__) \
 XX(process, ziti_process, ptr, process, __VA_ARGS__) \
-XX(processes, ziti_process, array, processes, __VA_ARGS__)                                          \
+XX(processes, ziti_process, array, processes, __VA_ARGS__) \
 XX(timeout, int, none, timeout, __VA_ARGS__)
 
 #define ZITI_POSTURE_QUERY_SET_MODEL(XX, ...) \
