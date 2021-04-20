@@ -1080,7 +1080,7 @@ static void rebind_cb(ziti_connection conn, int status) {
         conn->client_cb(conn, NULL, status, NULL);
     } else {
         conn->conn_req->retry_count++;
-        int backoff_count = MIN(conn->conn_req->retry_count, 5);
+        int backoff_count = 1 << MIN(conn->conn_req->retry_count, 5);
         uint32_t random;
         uv_random(conn->ziti_ctx->loop, NULL, &random, sizeof(random), 0, NULL);
         long backoff_time = random % (backoff_count * 5000);
