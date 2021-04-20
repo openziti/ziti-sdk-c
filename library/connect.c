@@ -289,11 +289,11 @@ static void complete_conn_req(struct ziti_conn *conn, int code) {
             conn_set_state(conn, code == ZITI_TIMEOUT ? Timedout : Disconnected);
             conn->conn_req->failed = true;
         }
-        conn->conn_req->cb(conn, code);
-        conn->conn_req->cb = NULL;
         if(conn->conn_req->conn_timeout != NULL) {
             uv_timer_stop(conn->conn_req->conn_timeout);
         }
+        conn->conn_req->cb(conn, code);
+        conn->conn_req->cb = NULL;
     } else {
         CONN_LOG(WARN, "connection attempt was already completed");
     }
@@ -410,10 +410,12 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
         if (err->err == ZITI_NOT_AUTHORIZED) {
             ziti_force_session_refresh(ztx);
             restart_connect(conn);
-        }
-        else {
+        } else {
+            if (err->err == ZITI_NOT_FOUND) {
+                err->err = ZITI_SERVICE_UNAVAILABLE;
+            }
             CONN_LOG(ERROR, "failed to get session for service[%s]: %s(%s)", conn->service, err->code, err->message);
-            complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
+            complete_conn_req(conn, err->err);
         }
         uv_close((uv_handle_t *) ar, free_handle);
     }
@@ -1062,12 +1064,33 @@ int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *liste
     return uv_async_send(async_cr);
 }
 
+static void ziti_rebind(ziti_connection conn);
+
+static void rebind_delay_cb(uv_timer_t *t) {
+    ziti_connection conn = t->data;
+    ziti_rebind(conn);
+}
+
 static void rebind_cb(ziti_connection conn, int status) {
     if (status == ZITI_OK) {
+        conn->conn_req->retry_count = 0;
         CONN_LOG(DEBUG, "re-bound successfully");
-    } else {
-        CONN_LOG(DEBUG, "failed to re-bind [%d/%s]", status, ziti_errorstr(status));
+    } else if (status == ZITI_SERVICE_UNAVAILABLE) {
+        CONN_LOG(WARN, "failed to re-bind [%d/%s]", status, ziti_errorstr(status));
         conn->client_cb(conn, NULL, status, NULL);
+    } else {
+        conn->conn_req->retry_count++;
+        int backoff_count = 1 << MIN(conn->conn_req->retry_count, 5);
+        uint32_t random;
+        uv_random(conn->ziti_ctx->loop, NULL, &random, sizeof(random), 0, NULL);
+        long backoff_time = random % (backoff_count * 5000);
+        CONN_LOG(DEBUG, "failed to re-bind[%d/%s], retrying in %ldms", status, ziti_errorstr(status), backoff_time);
+        if (conn->conn_req->conn_timeout == NULL) {
+            conn->conn_req->conn_timeout = calloc(1, sizeof(uv_timer_t));
+            uv_timer_init(conn->ziti_ctx->loop, conn->conn_req->conn_timeout);
+            conn->conn_req->conn_timeout->data = conn;
+        }
+        uv_timer_start(conn->conn_req->conn_timeout, rebind_delay_cb, backoff_time, 0);
     }
 }
 
@@ -1075,6 +1098,7 @@ static void rebind_cb(ziti_connection conn, int status) {
 static void ziti_rebind(ziti_connection conn) {
     const char *service = conn->service;
     struct ziti_conn_req *req = conn->conn_req;
+    int count = req->retry_count;
     ziti_listen_opts *opts = req->listen_opts;
 
     conn->channel = NULL;
@@ -1082,6 +1106,7 @@ static void ziti_rebind(ziti_connection conn) {
     CONN_LOG(DEBUG, "rebinding to service[%s]", service);
 
     ziti_bind(conn, service, opts, rebind_cb, conn->client_cb);
+    conn->conn_req->retry_count = count;
 
     FREE(service);
     free_conn_req(req);
@@ -1276,7 +1301,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
 
                 case Bound:
                     conn_set_state(conn, Disconnected);
-                    conn->client_cb(conn, NULL, ZITI_CONN_CLOSED, NULL);
+                    ziti_rebind(conn);
                     break;
 
                 case Connected:

@@ -86,6 +86,8 @@ limitations under the License.
     XX(MFA_INVALID_TOKEN, "the token provided was invalid") \
     /** attempted to verify or retrieve details of an MFA enrollment that has not been completed */ \
     XX(MFA_NOT_ENROLLED, "the current identity has not completed MFA enrollment") \
+    /** not found, usually indicates stale reference or permission */    \
+    XX(NOT_FOUND, "entity no longer exists or is no longer accessible") \
     /** Inspired by the Android SDK: What a Terrible Failure. A condition that should never happen. */ \
     XX(WTF, "WTF: programming error")
 
