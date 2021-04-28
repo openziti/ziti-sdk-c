@@ -161,6 +161,15 @@ static void ctrl_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *re
         resp->ctrl->version.version = strdup(v->version);
         resp->ctrl->version.revision = strdup(v->revision);
         resp->ctrl->version.build_date = strdup(v->build_date);
+
+        if (v->api_versions) {
+            api_path *path = model_map_get(&v->api_versions->edge, "v1");
+            if (path) {
+                um_http_set_path_prefix(&resp->ctrl->client, path->path);
+            } else {
+                ZITI_LOG(WARN, "controller did not provide expected(v1) API version path");
+            }
+        }
     }
     ctrl_default_cb(v, e, resp);
 }

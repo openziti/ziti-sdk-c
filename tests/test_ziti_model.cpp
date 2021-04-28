@@ -631,3 +631,28 @@ TEST_CASE("identity tags", "[model]") {
 
     free_ziti_identity(&id);
 }
+
+TEST_CASE("parse-ctrl-version", "[model]") {
+    const char *json = R"( {
+        "apiVersions": {
+            "edge": {
+                "v1": {
+                    "path": "/edge/v1"
+                }
+            }
+        },
+        "buildDate": "2021-04-23 18:09:47",
+        "revision": "fe826ed2ec0c",
+        "runtimeVersion": "go1.16.3",
+        "version": "v0.19.12"
+    })";
+
+    ziti_version ver;
+    REQUIRE(parse_ziti_version(&ver, json, strlen(json)) == 0);
+    REQUIRE(ver.api_versions != nullptr);
+    auto v1Path = (api_path *)model_map_get(&ver.api_versions->edge, "v1");
+    REQUIRE(v1Path);
+    REQUIRE_THAT(v1Path->path, Catch::Equals("/edge/v1"));
+
+    free_ziti_version(&ver);
+}

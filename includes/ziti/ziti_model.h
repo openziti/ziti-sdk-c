@@ -38,10 +38,17 @@ XX(ca, string, none, ca, __VA_ARGS__)
 XX(controller_url, string, none, ztAPI, __VA_ARGS__) \
 XX(id, ziti_id_cfg, none, id, __VA_ARGS__)
 
+#define ZITI_API_PATH_MODEL(XX, ...) \
+XX(path, string, none, path, __VA_ARGS__)
+
+#define ZITI_API_VERSIONS_MODEL(XX, ...) \
+XX(edge, api_path, map, edge, __VA_ARGS__)
+
 #define ZITI_VERSION_MODEL(XX, ...) \
 XX(version, string, none, version, __VA_ARGS__) \
 XX(revision, string, none, revision, __VA_ARGS__) \
-XX(build_date, string, none, buildDate, __VA_ARGS__)
+XX(build_date, string, none, buildDate, __VA_ARGS__) \
+XX(api_versions, ziti_api_versions, ptr, apiVersions, __VA_ARGS__)
 
 #define ZITI_IDENTITY_MODEL(XX, ...) \
 XX(id, string, none, id, __VA_ARGS__) \
@@ -120,6 +127,10 @@ extern "C" {
 #undef MODEL_API
 #endif
 #define MODEL_API ZITI_FUNC
+
+DECLARE_MODEL(api_path, ZITI_API_PATH_MODEL)
+
+DECLARE_MODEL(ziti_api_versions, ZITI_API_VERSIONS_MODEL)
 
 DECLARE_MODEL(ziti_version, ZITI_VERSION_MODEL)
 
