@@ -17,6 +17,24 @@ limitations under the License.
 #include "posture.h"
 #include <utils.h>
 
+#if _WIN32
+#include <winnt.h>
+
+// provided by libuv
+typedef NTSTATUS (NTAPI *sRtlGetVersion)
+        (PRTL_OSVERSIONINFOW lpVersionInformation);
+extern sRtlGetVersion pRtlGetVersion;
+
+#pragma comment(lib, "netapi32.lib")
+extern DWORD NetGetJoinInformation (
+        LPCWSTR               lpServer,
+        LPWSTR                *lpNameBuffer,
+        uint32_t              *BufferType);
+extern DWORD NetApiBufferFree(
+        _Frees_ptr_opt_ LPVOID Buffer
+);
+#endif
+
 #define NANOS(s) ((s) * 1e9)
 #define MILLIS(s) ((s) * 1000)
 
@@ -52,9 +70,9 @@ static void ziti_pr_ticker_cb(uv_timer_t *t);
 
 static void ziti_pr_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac);
 
-static void ziti_pr_handle_domain(ziti_context ztx, char *id, char *domain);
+static void ziti_pr_handle_domain(ziti_context ztx, const char *id, const char *domain);
 
-static void ziti_pr_handle_os(ziti_context ztx, char *id, char *os_type, char *os_version, char *os_build);
+static void ziti_pr_handle_os(ziti_context ztx, const char *id, const char *os_type, const char *os_version, const char *os_build);
 
 static void ziti_pr_handle_process(ziti_context ztx, char *id, char *path, bool is_running, char *sha_512_hash, char **signers, int num_signers);
 
@@ -65,6 +83,10 @@ static void ziti_pr_send_bulk(ziti_context ztx);
 static void ziti_pr_send_individually(ziti_context ztx);
 
 static bool ziti_pr_is_info_errored(ziti_context ztx, char *id);
+
+static void default_pq_os(ziti_context ztx, const char *id, ziti_pr_os_cb response_cb);
+static void default_pq_mac(ziti_context ztx, const char *id, ziti_pr_mac_cb response_cb);
+static void default_pq_domain(ziti_context ztx, const char* id, ziti_pr_domain_cb cb);
 
 static void ziti_pr_free_pr_info_members(pr_info *info) {
     FREE(info->id)
@@ -254,8 +276,9 @@ void ziti_send_posture_data(ziti_context ztx) {
         if (ztx->opts->pq_domain_cb != NULL) {
             ztx->opts->pq_domain_cb(ztx, domainInfo->query->id, ziti_pr_handle_domain);
         } else {
-            ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_DOMAIN_TYPE,
+            ZITI_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_DOMAIN_TYPE,
                      domainInfo->service->name, domainInfo->query_set->policy_id, domainInfo->query->id);
+            default_pq_domain(ztx, domainInfo->query->id, ziti_pr_handle_domain);
         }
     }
 
@@ -267,8 +290,9 @@ void ziti_send_posture_data(ziti_context ztx) {
         if (ztx->opts->pq_mac_cb != NULL) {
             ztx->opts->pq_mac_cb(ztx, macInfo->query->id, ziti_pr_handle_mac);
         } else {
-            ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_MAC_TYPE,
+            ZITI_LOG(DEBUG, "using default %s cb for: service %s, policy: %s, check: %s", PC_MAC_TYPE,
                      macInfo->service->name, macInfo->query_set->policy_id, macInfo->query->id);
+            default_pq_mac(ztx, macInfo->query->id, ziti_pr_handle_mac);
         }
     }
 
@@ -280,8 +304,9 @@ void ziti_send_posture_data(ziti_context ztx) {
         if (ztx->opts->pq_os_cb != NULL) {
             ztx->opts->pq_os_cb(ztx, osInfo->query->id, ziti_pr_handle_os);
         } else {
-            ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_OS_TYPE,
+            ZITI_LOG(DEBUG, "using default %s cb for: service %s, policy: %s, check: %s", PC_OS_TYPE,
                      osInfo->service->name, osInfo->query_set->policy_id, osInfo->query->id);
+            default_pq_os(ztx, osInfo->query->id, ziti_pr_handle_os);
         }
     }
 
@@ -493,10 +518,10 @@ static void ziti_pr_handle_mac(ziti_context ztx, char *id, char **mac_addresses,
     free(addresses);
 }
 
-static void ziti_pr_handle_domain(ziti_context ztx, char *id, char *domain) {
+static void ziti_pr_handle_domain(ziti_context ztx, const char *id, const char *domain) {
     ziti_pr_domain_req domain_req = {
-            .id = id,
-            .domain = domain,
+            .id = (char*)id,
+            .domain = (char*) domain,
             .typeId = (char *) PC_DOMAIN_TYPE,
     };
 
@@ -506,7 +531,7 @@ static void ziti_pr_handle_domain(ziti_context ztx, char *id, char *domain) {
     ziti_collect_pr(ztx, PC_DOMAIN_TYPE, obj, obj_len);
 }
 
-static void ziti_pr_handle_os(ziti_context ztx, char *id, char *os_type, char *os_version, char *os_build) {
+static void ziti_pr_handle_os(ziti_context ztx, const char *id, const char *os_type, const char *os_version, const char *os_build) {
     ziti_pr_os_req os_req = {
             .id = (char *) id,
             .typeId = (char *) PC_OS_TYPE,
@@ -544,4 +569,91 @@ static void ziti_pr_handle_process(ziti_context ztx, char *id, char *path, bool 
     free(null_term_signers);
 
     ziti_collect_pr(ztx, path, obj, obj_len);
+}
+
+static void default_pq_os(ziti_context ztx, const char *id, ziti_pr_os_cb response_cb) {
+    const char *os;
+    const char *ver;
+    const char *build;
+#if _WIN32
+    OSVERSIONINFOEXW os_info = {0};
+    os_info.dwOSVersionInfoSize = sizeof(os_info);
+    if (pRtlGetVersion) {
+        pRtlGetVersion((PRTL_OSVERSIONINFOW) &os_info);
+    } else {
+        /* Silence GetVersionEx() deprecation warning. */
+#pragma warning(suppress : 4996)
+        GetVersionExW(&os_info);
+    }
+
+    switch (os_info.wProductType) {
+        case 1: os = "windows";
+            break;
+        case 2:
+        case 3: os = "windowsserver";
+            break;
+        default:
+            os = "<unknown windows type>";
+    }
+    char winver[16];
+    sprintf_s(winver, 16, "%d.%d.%d", os_info.dwMajorVersion, os_info.dwMinorVersion, os_info.dwBuildNumber);
+    ver = winver;
+    build = "ununsed";
+#elif
+    uv_utsname_t uname;
+    uv_os_uname(&uname);
+
+    os = uname.sysname;
+    ver = uname.version;
+    build = uname.release;
+#endif
+
+    response_cb(ztx, id, os, ver, build);
+}
+
+static void default_pq_mac(ziti_context ztx, const char *id, ziti_pr_mac_cb response_cb) {
+    static char hex[] = "0123456789abcdef";
+
+    uv_interface_address_t *info;
+    int count;
+    uv_interface_addresses(&info, &count);
+
+
+    int addr_size = sizeof(info[0].phys_addr);
+
+    char **addresses = calloc(count, sizeof(char*));
+    for (int i = 0; i < count; i++) {
+        addresses[i] = malloc(addr_size*3);
+        char *p = addresses[i];
+        for (int j = 0; j < addr_size; j++) {
+            char b = info[i].phys_addr[j];
+            if (j > 0) *p++ = ':';
+            *p++ = hex[b >> 4];
+            *p++ = hex[b & 0xf];
+        }
+        *p = 0;
+    }
+
+    response_cb(ztx, id, addresses, count);
+    for (int i = 0; i < count; i++) {
+        free(addresses[i]);
+    }
+    free(addresses);
+    uv_free_interface_addresses(info, count);
+}
+
+
+
+static void default_pq_domain(ziti_context ztx, const char* id, ziti_pr_domain_cb cb) {
+#if _WIN32
+    uint32_t status;
+    LPWSTR buf;
+    NetGetJoinInformation(NULL, &buf, &status);
+    char domain[256];
+    sprintf_s(domain, sizeof(domain), "%ls", buf);
+    cb(ztx, id, domain);
+    NetApiBufferFree(buf);
+#else
+    cb(ztx, id, "");
+#endif
 }
