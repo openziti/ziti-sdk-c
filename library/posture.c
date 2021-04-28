@@ -599,7 +599,7 @@ static void default_pq_os(ziti_context ztx, const char *id, ziti_pr_os_cb respon
     sprintf_s(winver, 16, "%d.%d.%d", os_info.dwMajorVersion, os_info.dwMinorVersion, os_info.dwBuildNumber);
     ver = winver;
     build = "ununsed";
-#elif
+#else
     uv_utsname_t uname;
     uv_os_uname(&uname);
 
