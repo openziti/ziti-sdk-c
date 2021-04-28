@@ -38,10 +38,17 @@ XX(ca, string, none, ca, __VA_ARGS__)
 XX(controller_url, string, none, ztAPI, __VA_ARGS__) \
 XX(id, ziti_id_cfg, none, id, __VA_ARGS__)
 
+#define ZITI_API_PATH_MODEL(XX, ...) \
+XX(path, string, none, path, __VA_ARGS__)
+
+#define ZITI_API_VERSIONS_MODEL(XX, ...) \
+XX(edge, api_path, map, edge, __VA_ARGS__)
+
 #define ZITI_VERSION_MODEL(XX, ...) \
 XX(version, string, none, version, __VA_ARGS__) \
 XX(revision, string, none, revision, __VA_ARGS__) \
-XX(build_date, string, none, buildDate, __VA_ARGS__)
+XX(build_date, string, none, buildDate, __VA_ARGS__) \
+XX(api_versions, ziti_api_versions, ptr, apiVersions, __VA_ARGS__)
 
 #define ZITI_IDENTITY_MODEL(XX, ...) \
 XX(id, string, none, id, __VA_ARGS__) \
@@ -96,11 +103,15 @@ XX(port, int, none, port, __VA_ARGS__)
 
 #define ZITI_HOST_CFG_V1_MODEL(XX, ...) \
 XX(protocol, string, none, protocol, __VA_ARGS__) \
-XX(dial_intercepted_protocol, bool, none, dialInterceptedProtocol, __VA_ARGS__) \
+XX(forward_protocol, bool, none, forwardProtocol, __VA_ARGS__) \
+XX(allowed_protocols, string, array, allowedProtocols, __VA_ARGS__) \
 XX(address, string, none, address, __VA_ARGS__) \
-XX(dial_intercepted_address, bool, none, dialInterceptedAddress, __VA_ARGS__) \
+XX(forward_address, bool, none, forwardAddress, __VA_ARGS__) \
+XX(allowed_addresses, string, array, allowedAddresses, __VA_ARGS__) \
 XX(port, int, none, port, __VA_ARGS__) \
-XX(dial_intercepted_port, bool, none, dialInterceptedPort, __VA_ARGS__) \
+XX(forward_port, bool, none, forwardPort, __VA_ARGS__) \
+XX(allowed_port_ranges, ziti_port_range, array, allowedPortRanges, __VA_ARGS__) \
+XX(allowed_source_addresses, string, array, allowedSourceAddresses, __VA_ARGS__) \
 XX(listen_options, tag, map, listenOptions, __VA_ARGS__)
 
 #define ZITI_MFA_ENROLLMENT_MODEL(XX, ...) \
@@ -117,6 +128,10 @@ extern "C" {
 #undef MODEL_API
 #endif
 #define MODEL_API ZITI_FUNC
+
+DECLARE_MODEL(api_path, ZITI_API_PATH_MODEL)
+
+DECLARE_MODEL(ziti_api_versions, ZITI_API_VERSIONS_MODEL)
 
 DECLARE_MODEL(ziti_version, ZITI_VERSION_MODEL)
 
