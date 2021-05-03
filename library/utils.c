@@ -331,3 +331,18 @@ void ziti_fmt_time(char* time_str, size_t time_str_sz, uv_timeval64_t* tv) {
         strftime(time_str, time_str_sz, "%FT%T", start_tm);
     }
 }
+
+void hexify(const uint8_t *bin, size_t bin_len, char sep, char **buf) {
+    static char hex[] = "0123456789abcdef";
+    size_t out_size = sep ? bin_len * 3 : bin_len * 2 + 1;
+    char *out = malloc(out_size);
+    char *p = out;
+    for (int i = 0; i < bin_len; i++) {
+        unsigned char b = bin[i];
+        if (sep && i > 0) *p++ = sep;
+        *p++ = hex[b >> 4];
+        *p++ = hex[b & 0xf];
+    }
+    *p = 0;
+    *buf = out;
+}
