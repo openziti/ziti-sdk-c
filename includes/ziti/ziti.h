@@ -189,7 +189,7 @@ typedef void (*ziti_pq_os_cb)(ziti_context ztx, const char *id, ziti_pr_os_cb re
  *
  *  @see ziti_pq_process_cb()
  */
-typedef void(*ziti_pr_process_cb)(ziti_context ztx, char *id, char *path, bool is_running, char *sha_512_hash,
+typedef void(*ziti_pr_process_cb)(ziti_context ztx, const char *id, const char *path, bool is_running, const char *sha_512_hash,
                                   char **signers, int num_signers);
 
 /**
