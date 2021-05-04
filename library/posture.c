@@ -677,6 +677,7 @@ static void default_pq_process(ziti_context ztx, const char *id, const char *pat
     int rc = uv_fs_stat(ztx->loop, &file, path, NULL);
     if (rc != 0) {
         cb(ztx, id, path, is_running, NULL, NULL, 0);
+        return;
     }
 
     is_running = check_running(ztx->loop, path);
