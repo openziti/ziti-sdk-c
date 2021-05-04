@@ -794,6 +794,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
     }
 
 #else
+    uv_utsname_t uname;
     uv_os_uname(&uname);
     ZITI_LOG(WARN, "not implemented on %s", uname.sysname);
 #endif
