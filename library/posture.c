@@ -38,6 +38,8 @@ extern DWORD NetGetJoinInformation (
 extern DWORD NetApiBufferFree(
         _Frees_ptr_opt_ LPVOID Buffer
 );
+#elif __APPLE__ && __MACH__
+#include <libproc.h>
 #endif
 
 #define NANOS(s) ((s) * 1e9)
@@ -795,6 +797,21 @@ static bool check_running(uv_loop_t *loop, const char *path) {
         }
     }
 
+#elif __APPLE__ && __MACH__
+    int n_pids = proc_listallpids(NULL, 0);
+    unsigned long pids_sz = sizeof(pid_t) * (unsigned long)n_pids;
+    pid_t * pids = calloc(1, pids_sz);
+    proc_listallpids(pids, (int)pids_sz);
+    char proc_path[PROC_PIDPATHINFO_MAXSIZE];
+    for (int i=0; i < n_pids; i++) {
+        if (pids[i] == 0) continue;
+        proc_pidpath(pids[i], proc_path, sizeof(proc_path)); // returns strlen(proc_path)
+        if (strncasecmp(proc_path, path, sizeof(proc_path)) == 0) {
+            result = true;
+            break;
+        }
+    }
+    free(pids);
 #else
     uv_utsname_t uname;
     uv_os_uname(&uname);
