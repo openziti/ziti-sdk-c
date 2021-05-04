@@ -73,7 +73,7 @@ typedef struct pr_cb_ctx_s pr_cb_ctx;
 
 static void ziti_pr_ticker_cb(uv_timer_t *t);
 
-static void ziti_pr_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac);
+static void ziti_pr_handle_mac(ziti_context ztx, const char *id, char **mac_addresses, int num_mac);
 
 static void ziti_pr_handle_domain(ziti_context ztx, const char *id, const char *domain);
 
@@ -96,8 +96,10 @@ static void default_pq_domain(ziti_context ztx, const char* id, ziti_pr_domain_c
 static void default_pq_process(ziti_context ztx, const char *id, const char *path, ziti_pr_process_cb cb);
 
 static char** get_signers(const char *path, int *signers_count);
+
 static int hash_sha512(uv_loop_t *loop, const char *path, unsigned char **out_buf, size_t *out_len);
-static bool check_running(const char *path);
+
+static bool check_running(uv_loop_t *loop, const char *path);
 
 static void ziti_pr_free_pr_info_members(pr_info *info) {
     FREE(info->id)
@@ -510,7 +512,7 @@ static void ziti_pr_send_individually(ziti_context ztx) {
 }
 
 
-static void ziti_pr_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac) {
+static void ziti_pr_handle_mac(ziti_context ztx, const char *id, char **mac_addresses, int num_mac) {
     size_t arr_size = sizeof(char (**));
     char **addresses = calloc((num_mac + 1), arr_size);
 
@@ -677,7 +679,7 @@ static void default_pq_process(ziti_context ztx, const char *id, const char *pat
         cb(ztx, id, path, is_running, NULL, NULL, 0);
     }
 
-    is_running = check_running(path);
+    is_running = check_running(ztx->loop, path);
 
     if (hash_sha512(ztx->loop, path, &digest, &digest_len) == 0) {
         hexify(digest, digest_len, 0, &sha512_hash);
@@ -697,80 +699,53 @@ static void default_pq_process(ziti_context ztx, const char *id, const char *pat
 }
 
 static int hash_sha512(uv_loop_t *loop, const char *path, unsigned char **out_buf, size_t *out_len) {
-    unsigned long digest_size;
+    size_t digest_size = crypto_hash_sha512_bytes();
     unsigned char *digest = NULL;
-
-#if _WIN32
-    BCRYPT_HASH_HANDLE hash_h = NULL;
-    BCRYPT_ALG_HANDLE alg = NULL;
-    PBYTE hasher = NULL;
-    ULONG hasher_size;
-    DWORD data;
-    uv_buf_t buf = {0};
-
-    DWORD rc;
-    uv_fs_t ft;
-    uv_file file = uv_fs_open(loop, &ft, path, UV_FS_O_RDONLY, 0, NULL);
-
-    if (file < 0) return -1;
+    int rc = 0;
 
 #define CHECK(op) do{ rc = (op); if (rc != 0) { \
 ZITI_LOG(ERROR, "failed hashing op[" #op "]: %d", rc); \
 goto cleanup;                                   \
 } }while(0)
 
-    CHECK(BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA512_ALGORITHM, NULL, 0));
-    CHECK(BCryptGetProperty(alg, BCRYPT_OBJECT_LENGTH, (PUCHAR) &hasher_size, sizeof(hasher_size), &data, 0));
-    CHECK(BCryptGetProperty(alg, BCRYPT_HASH_LENGTH, (PUCHAR) &digest_size, sizeof(digest_size), &data, 0));
+    uv_fs_t ft;
+    uv_file file = uv_fs_open(loop, &ft, path, UV_FS_O_RDONLY, 0, NULL);
 
-    hasher = calloc(1, hasher_size);
-
-    CHECK(BCryptCreateHash(alg, &hash_h, hasher, hasher_size, NULL, 0, 0));
-
-    buf = uv_buf_init(malloc(64 * 1024), 64 * 1024);
+    if (file < 0) { return -1; }
+    uv_buf_t buf = uv_buf_init(malloc(64 * 1024), 64 * 1024);
     int64_t offset = 0;
+    crypto_hash_sha512_state sha512;
+    crypto_hash_sha512_init(&sha512);
 
     // hash data
-    while(true) {
+    while (true) {
         int read = uv_fs_read(loop, &ft, file, &buf, 1, offset, NULL);
-        if (read == 0)
+        if (read == 0) {
             break;
+        }
 
         if (read < 0) {
-            rc = ERROR_READ_FAULT;
+            rc = -1;
             goto cleanup;
         }
 
         offset += read;
-        CHECK(BCryptHashData(hash_h, (PUCHAR)buf.base, read, 0));
+        CHECK(crypto_hash_sha512_update(&sha512, (uint8_t *) buf.base, read));
     }
-
-    digest = calloc(1, digest_size);
-    CHECK(BCryptFinishHash(hash_h, digest, digest_size, 0));
+    digest = malloc(digest_size);
+    CHECK(crypto_hash_sha512_final(&sha512, digest));
 
     *out_buf = digest;
     *out_len = digest_size;
 
     cleanup:
-    if (rc != 0) {
-        ZITI_LOG(ERROR, "hashing failed: %d", rc);
-    }
-    if (hasher) free(hasher);
-    if (buf.base) free(buf.base);
-    if (rc != 0 && digest) free(digest);
+    if (rc != 0) FREE(digest);
+    uv_fs_close(loop, &ft, file, NULL);
 
-    BCryptDestroyHash(hash_h);
-    BCryptCloseAlgorithmProvider(alg, 0);
-
-    return rc == 0 ? 0 : -1;
-#undef CHECK
-#else
-    ZITI_LOG(ERROR, "IMPLEMENT ME!");
-#endif
-    return -1;
+    return rc;
 }
 
-static bool check_running (const char *path) {
+static bool check_running(uv_loop_t *loop, const char *path) {
     bool result = false;
 #if _WIN32
     HANDLE sh = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -799,10 +774,28 @@ static bool check_running (const char *path) {
     }
     CloseHandle(sh);
 
+#elif __linux || __linux__
+
+    uv_fs_t fs_proc;
+    uv_fs_scandir(loop, &fs_proc, "/proc", 0, NULL);
+    uv_dirent_t de;
+    uv_fs_t ex;
+    char proc_path[128];
+    while (!result && uv_fs_scandir_next(&fs_proc, &de) != UV_EOF) {
+        if (de.type == UV_DIRENT_DIR) {
+            snprintf(proc_path, sizeof(proc_path), "/proc/%s/exe", de.name);
+            if (uv_fs_readlink(loop, &ex, proc_path, NULL) == 0) {
+                if (strcmp((const char *) ex.ptr, path) == 0) {
+                    result = true;
+                }
+                free(ex.ptr);
+            }
+        }
+    }
+
 #else
-
-    ZITI_LOG(ERROR, "IMPLEMENT ME!");
-
+    uv_os_uname(&uname);
+    ZITI_LOG(WARN, "not implemented on %s", uname.sysname);
 #endif
     return result;
 }
