@@ -303,7 +303,7 @@ void ziti_send_posture_data(ziti_context ztx) {
         if (ztx->opts->pq_mac_cb != NULL) {
             ztx->opts->pq_mac_cb(ztx, macInfo->query->id, ziti_pr_handle_mac);
         } else {
-            ZITI_LOG(DEBUG, "using default %s cb for: service %s, policy: %s, check: %s", PC_MAC_TYPE,
+            ZITI_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_MAC_TYPE,
                      macInfo->service->name, macInfo->query_set->policy_id, macInfo->query->id);
             default_pq_mac(ztx, macInfo->query->id, ziti_pr_handle_mac);
         }
@@ -317,7 +317,7 @@ void ziti_send_posture_data(ziti_context ztx) {
         if (ztx->opts->pq_os_cb != NULL) {
             ztx->opts->pq_os_cb(ztx, osInfo->query->id, ziti_pr_handle_os);
         } else {
-            ZITI_LOG(DEBUG, "using default %s cb for: service %s, policy: %s, check: %s", PC_OS_TYPE,
+            ZITI_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_OS_TYPE,
                      osInfo->service->name, osInfo->query_set->policy_id, osInfo->query->id);
             default_pq_os(ztx, osInfo->query->id, ziti_pr_handle_os);
         }
@@ -330,7 +330,7 @@ void ziti_send_posture_data(ziti_context ztx) {
         ziti_pq_process_cb proc_cb = ztx->opts->pq_process_cb;
         if (proc_cb == NULL) {
             proc_cb = default_pq_process;
-            ZITI_LOG(DEBUG, "using default %s cb  for: service %s, policy: %s, check: %s", PC_PROCESS_TYPE,
+            ZITI_LOG(VERBOSE, "using default %s cb  for: service %s, policy: %s, check: %s", PC_PROCESS_TYPE,
                      procInfo->service->name, procInfo->query_set->policy_id, procInfo->query->id);
         }
         MODEL_MAP_FOREACH(path, info, &processes) {
