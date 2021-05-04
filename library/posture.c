@@ -750,8 +750,9 @@ static bool check_running(uv_loop_t *loop, const char *path) {
     bool result = false;
 #if _WIN32
     HANDLE sh = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (sh == NULL) {
-        ZITI_LOG(ERROR, "failed: %d", GetLastError());
+    if (sh == INVALID_HANDLE_VALUE) {
+        ZITI_LOG(ERROR, "failed to get process list: %d", GetLastError());
+        return result;
     }
     PROCESSENTRY32W entry = {
             .dwSize = sizeof(PROCESSENTRY32W)
