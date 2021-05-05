@@ -263,6 +263,8 @@ int establish_crypto(ziti_connection conn, message *msg);
 
 void ziti_fmt_time(char *time_str, size_t time_str_len, uv_timeval64_t *tv);
 
+void hexify(const uint8_t *bin, size_t bin_len, char sep, char **buf);
+
 #ifdef __cplusplus
 }
 #endif

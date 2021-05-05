@@ -106,7 +106,7 @@ typedef void (*ziti_service_cb)(ziti_context ztx, ziti_service *, int status, vo
  *
  * @see ziti_pq_mac_cb()
  */
-typedef void (*ziti_pr_mac_cb)(ziti_context ztx, char *id, char **mac_addresses, int num_mac);
+typedef void (*ziti_pr_mac_cb)(ziti_context ztx, const char *id, char **mac_addresses, int num_mac);
 
 /**
  * @brief Posture Query for MAC addresses callback
@@ -117,7 +117,7 @@ typedef void (*ziti_pr_mac_cb)(ziti_context ztx, char *id, char **mac_addresses,
  *
  * @see ziti_pr_mac_cb
  */
-typedef void (*ziti_pq_mac_cb)(ziti_context ztx, char *id, ziti_pr_mac_cb response_cb);
+typedef void (*ziti_pq_mac_cb)(ziti_context ztx, const char *id, ziti_pr_mac_cb response_cb);
 
 /**
  * @brief Posture response Domain callback
@@ -130,7 +130,7 @@ typedef void (*ziti_pq_mac_cb)(ziti_context ztx, char *id, ziti_pr_mac_cb respon
  *
  *  @see ziti_pq_domain_cb()
  */
-typedef void (*ziti_pr_domain_cb)(ziti_context ztx, char *id, char *domain);
+typedef void (*ziti_pr_domain_cb)(ziti_context ztx, const char *id, const char *domain);
 
 /**
  *  @brief Posture Query for Domain callback
@@ -143,7 +143,7 @@ typedef void (*ziti_pr_domain_cb)(ziti_context ztx, char *id, char *domain);
  *
  * @see ziti_pr_domain_cb
  */
-typedef void (*ziti_pq_domain_cb)(ziti_context ztx, char *id, ziti_pr_domain_cb response_cb);
+typedef void (*ziti_pq_domain_cb)(ziti_context ztx, const char *id, ziti_pr_domain_cb response_cb);
 
 /**
  * @brief Posture response OS callback
@@ -158,7 +158,7 @@ typedef void (*ziti_pq_domain_cb)(ziti_context ztx, char *id, ziti_pr_domain_cb 
  *
  * @see ziti_pq_os_cb()
  */
-typedef void (*ziti_pr_os_cb)(ziti_context ztx, char *id, char *os_type, char *os_version, char *os_build);
+typedef void (*ziti_pr_os_cb)(ziti_context ztx, const char *id, const char *os_type, const char *os_version, const char *os_build);
 
 /**
  *  @brief Posture Query for OS callback
@@ -171,7 +171,7 @@ typedef void (*ziti_pr_os_cb)(ziti_context ztx, char *id, char *os_type, char *o
  *
  * @see ziti_pr_os_cb
  */
-typedef void (*ziti_pq_os_cb)(ziti_context ztx, char *id, ziti_pr_os_cb response_cb);
+typedef void (*ziti_pq_os_cb)(ziti_context ztx, const char *id, ziti_pr_os_cb response_cb);
 
 
 /**
@@ -189,7 +189,7 @@ typedef void (*ziti_pq_os_cb)(ziti_context ztx, char *id, ziti_pr_os_cb response
  *
  *  @see ziti_pq_process_cb()
  */
-typedef void(*ziti_pr_process_cb)(ziti_context ztx, char *id, char *path, bool is_running, char *sha_512_hash,
+typedef void(*ziti_pr_process_cb)(ziti_context ztx, const char *id, const char *path, bool is_running, const char *sha_512_hash,
                                   char **signers, int num_signers);
 
 /**

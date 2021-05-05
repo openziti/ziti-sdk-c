@@ -17,6 +17,31 @@ limitations under the License.
 #include "posture.h"
 #include <utils.h>
 
+#if _WIN32
+#include <winnt.h>
+#include <wincrypt.h>
+#include <bcrypt.h>
+#include <tlhelp32.h>
+
+#pragma comment(lib, "netapi32.lib")
+#pragma comment(lib, "bcrypt.lib")
+
+// provided by libuv
+typedef NTSTATUS (NTAPI *sRtlGetVersion)
+        (PRTL_OSVERSIONINFOW lpVersionInformation);
+extern sRtlGetVersion pRtlGetVersion;
+
+extern DWORD NetGetJoinInformation (
+        LPCWSTR               lpServer,
+        LPWSTR                *lpNameBuffer,
+        uint32_t              *BufferType);
+extern DWORD NetApiBufferFree(
+        _Frees_ptr_opt_ LPVOID Buffer
+);
+#elif __APPLE__ && __MACH__
+#include <libproc.h>
+#endif
+
 #define NANOS(s) ((s) * 1e9)
 #define MILLIS(s) ((s) * 1000)
 
@@ -50,13 +75,14 @@ typedef struct pr_cb_ctx_s pr_cb_ctx;
 
 static void ziti_pr_ticker_cb(uv_timer_t *t);
 
-static void ziti_pr_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac);
+static void ziti_pr_handle_mac(ziti_context ztx, const char *id, char **mac_addresses, int num_mac);
 
-static void ziti_pr_handle_domain(ziti_context ztx, char *id, char *domain);
+static void ziti_pr_handle_domain(ziti_context ztx, const char *id, const char *domain);
 
-static void ziti_pr_handle_os(ziti_context ztx, char *id, char *os_type, char *os_version, char *os_build);
+static void ziti_pr_handle_os(ziti_context ztx, const char *id, const char *os_type, const char *os_version, const char *os_build);
 
-static void ziti_pr_handle_process(ziti_context ztx, char *id, char *path, bool is_running, char *sha_512_hash, char **signers, int num_signers);
+static void ziti_pr_handle_process(ziti_context ztx, const char *id, const char *path,
+                                   bool is_running, const char *sha_512_hash, char **signers, int num_signers);
 
 static void ziti_pr_send(ziti_context ztx);
 
@@ -65,6 +91,17 @@ static void ziti_pr_send_bulk(ziti_context ztx);
 static void ziti_pr_send_individually(ziti_context ztx);
 
 static bool ziti_pr_is_info_errored(ziti_context ztx, char *id);
+
+static void default_pq_os(ziti_context ztx, const char *id, ziti_pr_os_cb response_cb);
+static void default_pq_mac(ziti_context ztx, const char *id, ziti_pr_mac_cb response_cb);
+static void default_pq_domain(ziti_context ztx, const char* id, ziti_pr_domain_cb cb);
+static void default_pq_process(ziti_context ztx, const char *id, const char *path, ziti_pr_process_cb cb);
+
+static char** get_signers(const char *path, int *signers_count);
+
+static int hash_sha512(uv_loop_t *loop, const char *path, unsigned char **out_buf, size_t *out_len);
+
+static bool check_running(uv_loop_t *loop, const char *path);
 
 static void ziti_pr_free_pr_info_members(pr_info *info) {
     FREE(info->id)
@@ -254,8 +291,9 @@ void ziti_send_posture_data(ziti_context ztx) {
         if (ztx->opts->pq_domain_cb != NULL) {
             ztx->opts->pq_domain_cb(ztx, domainInfo->query->id, ziti_pr_handle_domain);
         } else {
-            ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_DOMAIN_TYPE,
+            ZITI_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_DOMAIN_TYPE,
                      domainInfo->service->name, domainInfo->query_set->policy_id, domainInfo->query->id);
+            default_pq_domain(ztx, domainInfo->query->id, ziti_pr_handle_domain);
         }
     }
 
@@ -267,8 +305,9 @@ void ziti_send_posture_data(ziti_context ztx) {
         if (ztx->opts->pq_mac_cb != NULL) {
             ztx->opts->pq_mac_cb(ztx, macInfo->query->id, ziti_pr_handle_mac);
         } else {
-            ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_MAC_TYPE,
+            ZITI_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_MAC_TYPE,
                      macInfo->service->name, macInfo->query_set->policy_id, macInfo->query->id);
+            default_pq_mac(ztx, macInfo->query->id, ziti_pr_handle_mac);
         }
     }
 
@@ -280,8 +319,9 @@ void ziti_send_posture_data(ziti_context ztx) {
         if (ztx->opts->pq_os_cb != NULL) {
             ztx->opts->pq_os_cb(ztx, osInfo->query->id, ziti_pr_handle_os);
         } else {
-            ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_OS_TYPE,
+            ZITI_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_OS_TYPE,
                      osInfo->service->name, osInfo->query_set->policy_id, osInfo->query->id);
+            default_pq_os(ztx, osInfo->query->id, ziti_pr_handle_os);
         }
     }
 
@@ -289,16 +329,17 @@ void ziti_send_posture_data(ziti_context ztx) {
         const char *path;
         struct query_info *info;
 
-        if (ztx->opts->pq_process_cb != NULL) {
-            MODEL_MAP_FOREACH(path, info, &processes) {
-                if (info->query->timeout == NO_TIMEOUTS) {
-                    ztx->posture_checks->must_send_every_time = false;
-                }
-                ztx->opts->pq_process_cb(ztx, info->query->id, path, ziti_pr_handle_process);
-            }
-        } else {
-            ZITI_LOG(DEBUG, "%s cb not set requested for: service %s, policy: %s, check: %s", PC_PROCESS_TYPE,
+        ziti_pq_process_cb proc_cb = ztx->opts->pq_process_cb;
+        if (proc_cb == NULL) {
+            proc_cb = default_pq_process;
+            ZITI_LOG(VERBOSE, "using default %s cb  for: service %s, policy: %s, check: %s", PC_PROCESS_TYPE,
                      procInfo->service->name, procInfo->query_set->policy_id, procInfo->query->id);
+        }
+        MODEL_MAP_FOREACH(path, info, &processes) {
+            if (info->query->timeout == NO_TIMEOUTS) {
+                ztx->posture_checks->must_send_every_time = false;
+            }
+            proc_cb(ztx, info->query->id, path, ziti_pr_handle_process);
         }
     }
 
@@ -312,11 +353,11 @@ void ziti_send_posture_data(ziti_context ztx) {
     ziti_pr_send(ztx);
 }
 
-static void ziti_collect_pr(ziti_context ztx, const char *pr_obj_key, char *pr_obj, int pr_obj_len) {
+static void ziti_collect_pr(ziti_context ztx, const char *pr_obj_key, char *pr_obj, size_t pr_obj_len) {
     NEWP(current_info, pr_info);
 
     current_info->obj = pr_obj;
-    current_info->length = pr_obj_len;
+    current_info->length = (int)pr_obj_len;
     current_info->should_send = true;
     current_info->id = strdup(pr_obj_key);
 
@@ -473,7 +514,7 @@ static void ziti_pr_send_individually(ziti_context ztx) {
 }
 
 
-static void ziti_pr_handle_mac(ziti_context ztx, char *id, char **mac_addresses, int num_mac) {
+static void ziti_pr_handle_mac(ziti_context ztx, const char *id, char **mac_addresses, int num_mac) {
     size_t arr_size = sizeof(char (**));
     char **addresses = calloc((num_mac + 1), arr_size);
 
@@ -488,15 +529,15 @@ static void ziti_pr_handle_mac(ziti_context ztx, char *id, char **mac_addresses,
     size_t obj_len;
     char *obj = ziti_pr_mac_req_to_json(&mac_req, 0, &obj_len);
 
-    ziti_collect_pr(ztx, PC_MAC_TYPE, obj, obj_len);
+    ziti_collect_pr(ztx, PC_MAC_TYPE, obj, (int)obj_len);
 
     free(addresses);
 }
 
-static void ziti_pr_handle_domain(ziti_context ztx, char *id, char *domain) {
+static void ziti_pr_handle_domain(ziti_context ztx, const char *id, const char *domain) {
     ziti_pr_domain_req domain_req = {
-            .id = id,
-            .domain = domain,
+            .id = (char*)id,
+            .domain = (char*) domain,
             .typeId = (char *) PC_DOMAIN_TYPE,
     };
 
@@ -506,7 +547,7 @@ static void ziti_pr_handle_domain(ziti_context ztx, char *id, char *domain) {
     ziti_collect_pr(ztx, PC_DOMAIN_TYPE, obj, obj_len);
 }
 
-static void ziti_pr_handle_os(ziti_context ztx, char *id, char *os_type, char *os_version, char *os_build) {
+static void ziti_pr_handle_os(ziti_context ztx, const char *id, const char *os_type, const char *os_version, const char *os_build) {
     ziti_pr_os_req os_req = {
             .id = (char *) id,
             .typeId = (char *) PC_OS_TYPE,
@@ -522,7 +563,8 @@ static void ziti_pr_handle_os(ziti_context ztx, char *id, char *os_type, char *o
 }
 
 
-static void ziti_pr_handle_process(ziti_context ztx, char *id, char *path, bool is_running, char *sha_512_hash, char **signers,
+static void ziti_pr_handle_process(ziti_context ztx, const char *id, const char *path,
+                                   bool is_running, const char *sha_512_hash, char **signers,
                                    int num_signers) {
 
     size_t arr_size = sizeof(char (**));
@@ -531,7 +573,7 @@ static void ziti_pr_handle_process(ziti_context ztx, char *id, char *path, bool 
 
     ziti_pr_process_req process_req = {
             .id = (char *) id,
-            .path = path,
+            .path = (char *) path,
             .typeId = (char *) PC_PROCESS_TYPE,
             .is_running = is_running,
             .hash = (char *) sha_512_hash,
@@ -544,4 +586,290 @@ static void ziti_pr_handle_process(ziti_context ztx, char *id, char *path, bool 
     free(null_term_signers);
 
     ziti_collect_pr(ztx, path, obj, obj_len);
+}
+
+static void default_pq_os(ziti_context ztx, const char *id, ziti_pr_os_cb response_cb) {
+    const char *os;
+    const char *ver;
+    const char *build;
+#if _WIN32
+    OSVERSIONINFOEXW os_info = {0};
+    os_info.dwOSVersionInfoSize = sizeof(os_info);
+    if (pRtlGetVersion) {
+        pRtlGetVersion((PRTL_OSVERSIONINFOW) &os_info);
+    } else {
+        /* Silence GetVersionEx() deprecation warning. */
+#pragma warning(suppress : 4996)
+        GetVersionExW(&os_info);
+    }
+
+    switch (os_info.wProductType) {
+        case 1: os = "windows";
+            break;
+        case 2:
+        case 3: os = "windowsserver";
+            break;
+        default:
+            os = "<unknown windows type>";
+    }
+    char winver[16];
+    sprintf_s(winver, 16, "%d.%d.%d", os_info.dwMajorVersion, os_info.dwMinorVersion, os_info.dwBuildNumber);
+    ver = winver;
+    build = "ununsed";
+#else
+    uv_utsname_t uname;
+    uv_os_uname(&uname);
+
+    os = uname.sysname;
+    ver = uname.version;
+    build = uname.release;
+#endif
+
+    response_cb(ztx, id, os, ver, build);
+}
+
+static void default_pq_mac(ziti_context ztx, const char *id, ziti_pr_mac_cb response_cb) {
+
+    uv_interface_address_t *info;
+    int count;
+    uv_interface_addresses(&info, &count);
+
+
+    int addr_size = sizeof(info[0].phys_addr);
+
+    char **addresses = calloc(count, sizeof(char*));
+    for (int i = 0; i < count; i++) {
+        hexify((const uint8_t *)info[i].phys_addr, addr_size, ':', &addresses[i]);
+    }
+
+    response_cb(ztx, id, addresses, count);
+    for (int i = 0; i < count; i++) {
+        free(addresses[i]);
+    }
+    free(addresses);
+    uv_free_interface_addresses(info, count);
+}
+
+
+
+static void default_pq_domain(ziti_context ztx, const char* id, ziti_pr_domain_cb cb) {
+#if _WIN32
+    uint32_t status;
+    LPWSTR buf;
+    NetGetJoinInformation(NULL, &buf, &status);
+    char domain[256];
+    sprintf_s(domain, sizeof(domain), "%ls", buf);
+    cb(ztx, id, domain);
+    NetApiBufferFree(buf);
+#else
+    cb(ztx, id, "");
+#endif
+}
+
+static void default_pq_process(ziti_context ztx, const char *id, const char *path, ziti_pr_process_cb cb) {
+    bool is_running = false;
+
+    unsigned char *digest;
+    size_t digest_len;
+    char *sha512_hash = NULL;
+    char **signers = NULL;
+    int signers_count = 0;
+
+    uv_fs_t file;
+    int rc = uv_fs_stat(ztx->loop, &file, path, NULL);
+    if (rc != 0) {
+        cb(ztx, id, path, is_running, NULL, NULL, 0);
+        return;
+    }
+
+    is_running = check_running(ztx->loop, path);
+
+    if (hash_sha512(ztx->loop, path, &digest, &digest_len) == 0) {
+        hexify(digest, digest_len, 0, &sha512_hash);
+        ZITI_LOG(VERBOSE, "file(%s) hash = %s", path, sha512_hash);
+    }
+    signers = get_signers(path, &signers_count);
+
+    cb(ztx, id, path, is_running, sha512_hash, signers, signers_count);
+
+    if (sha512_hash) free(sha512_hash);
+    if (signers) {
+        for (int i = 0; i < signers_count; i++) {
+            free(signers[i]);
+        }
+        free(signers);
+    }
+}
+
+static int hash_sha512(uv_loop_t *loop, const char *path, unsigned char **out_buf, size_t *out_len) {
+    size_t digest_size = crypto_hash_sha512_bytes();
+    unsigned char *digest = NULL;
+    int rc = 0;
+
+#define CHECK(op) do{ rc = (op); if (rc != 0) { \
+ZITI_LOG(ERROR, "failed hashing op[" #op "]: %d", rc); \
+goto cleanup;                                   \
+} }while(0)
+
+    uv_fs_t ft;
+    uv_file file = uv_fs_open(loop, &ft, path, UV_FS_O_RDONLY, 0, NULL);
+
+    if (file < 0) { return -1; }
+    uv_buf_t buf = uv_buf_init(malloc(64 * 1024), 64 * 1024);
+    int64_t offset = 0;
+    crypto_hash_sha512_state sha512;
+    crypto_hash_sha512_init(&sha512);
+
+    // hash data
+    while (true) {
+        int read = uv_fs_read(loop, &ft, file, &buf, 1, offset, NULL);
+        if (read == 0) {
+            break;
+        }
+
+        if (read < 0) {
+            rc = -1;
+            goto cleanup;
+        }
+
+        offset += read;
+        CHECK(crypto_hash_sha512_update(&sha512, (uint8_t *) buf.base, read));
+    }
+    digest = malloc(digest_size);
+    CHECK(crypto_hash_sha512_final(&sha512, digest));
+
+    *out_buf = digest;
+    *out_len = digest_size;
+
+    cleanup:
+    if (rc != 0) FREE(digest);
+    uv_fs_close(loop, &ft, file, NULL);
+
+    return rc;
+}
+
+static bool check_running(uv_loop_t *loop, const char *path) {
+    bool result = false;
+#if _WIN32
+    HANDLE sh = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (sh == INVALID_HANDLE_VALUE) {
+        ZITI_LOG(ERROR, "failed to get process list: %d", GetLastError());
+        return result;
+    }
+    PROCESSENTRY32W entry = {
+            .dwSize = sizeof(PROCESSENTRY32W)
+    };
+
+    char fullPath[1024];
+    DWORD fullPathSize;
+
+    for (BOOL ret = Process32FirstW(sh, &entry); ret; ret = Process32NextW(sh, &entry)) {
+        HANDLE ph = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, entry.th32ProcessID);
+        if (ph == NULL) {
+            continue;
+        }
+        fullPathSize = sizeof(fullPath);
+        QueryFullProcessImageNameA(ph, 0, fullPath, &fullPathSize);
+
+        if (strnicmp(path, fullPath, fullPathSize) == 0) {
+            result = true;
+            break;
+        }
+    }
+    CloseHandle(sh);
+
+#elif __linux || __linux__
+
+    uv_fs_t fs_proc;
+    uv_fs_scandir(loop, &fs_proc, "/proc", 0, NULL);
+    uv_dirent_t de;
+    uv_fs_t ex;
+    char proc_path[128];
+    while (!result && uv_fs_scandir_next(&fs_proc, &de) != UV_EOF) {
+        if (de.type == UV_DIRENT_DIR) {
+            snprintf(proc_path, sizeof(proc_path), "/proc/%s/exe", de.name);
+            if (uv_fs_readlink(loop, &ex, proc_path, NULL) == 0) {
+                if (strcmp((const char *) ex.ptr, path) == 0) {
+                    result = true;
+                }
+                free(ex.ptr);
+            }
+        }
+    }
+
+#elif __APPLE__ && __MACH__
+    int n_pids = proc_listallpids(NULL, 0);
+    unsigned long pids_sz = sizeof(pid_t) * (unsigned long)n_pids;
+    pid_t * pids = calloc(1, pids_sz);
+    proc_listallpids(pids, (int)pids_sz);
+    char proc_path[PROC_PIDPATHINFO_MAXSIZE];
+    for (int i=0; i < n_pids; i++) {
+        if (pids[i] == 0) continue;
+        proc_pidpath(pids[i], proc_path, sizeof(proc_path)); // returns strlen(proc_path)
+        if (strncasecmp(proc_path, path, sizeof(proc_path)) == 0) {
+            result = true;
+            break;
+        }
+    }
+    free(pids);
+#else
+    uv_utsname_t uname;
+    uv_os_uname(&uname);
+    ZITI_LOG(WARN, "not implemented on %s", uname.sysname);
+#endif
+    return result;
+}
+
+char** get_signers(const char *path, int *signers_count) {
+    char ** result = NULL;
+#if _WIN32
+    WCHAR filename[MAX_PATH];
+    HCERTSTORE hStore = NULL;
+    HCRYPTMSG hMsg = NULL;
+    PCCERT_CONTEXT pCertContext = NULL;
+    BOOL res;
+    DWORD dwEncoding, dwContentType, dwFormatType;
+
+    size_t conv;
+    mbstowcs_s(&conv, filename, MAX_PATH, path, MAX_PATH);
+
+    res = CryptQueryObject(CERT_QUERY_OBJECT_FILE,
+                           filename,
+                           CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED_EMBED,
+                           CERT_QUERY_FORMAT_FLAG_BINARY,
+                           0,
+                           &dwEncoding,
+                           &dwContentType,
+                           &dwFormatType,
+                           &hStore,
+                           &hMsg,
+                           NULL);
+
+    if (!res) return NULL;
+
+    result = calloc(16, sizeof(char*));
+    int idx = 0;
+    pCertContext = CertEnumCertificatesInStore(hStore, NULL);
+    while (pCertContext != NULL) {
+        BYTE sha1[20];
+        char *hex;
+        DWORD size = sizeof(sha1);
+        BOOL rc = CertGetCertificateContextProperty(pCertContext, CERT_SHA1_HASH_PROP_ID, sha1, &size);
+        if (!rc) {
+            ZITI_LOG(WARN, "failed to get cert[%d] sig: %d", idx, GetLastError());
+            continue;
+        } else {
+            hexify(sha1, sizeof(sha1), 0, &hex);
+            ZITI_LOG(VERBOSE, "%s cert[%d] sig = %s", path, idx, hex);
+
+        }
+        pCertContext = CertEnumCertificatesInStore(hStore, pCertContext);
+        result[idx++] = hex;
+    }
+    *signers_count = idx;
+
+#else
+    *signers_count = 0;
+#endif
+    return result;
 }
