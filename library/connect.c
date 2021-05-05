@@ -320,15 +320,22 @@ static void connect_timeout(uv_timer_t *timer) {
     conn->conn_req->conn_timeout = NULL;
 }
 
-static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, struct ziti_conn *conn) {
-    conn->token = session->token;
-    conn->channel = NULL;
+static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, struct ziti_conn *conn) {
+    // verify ziti context is still authorized
+    if (ztx->session == NULL) {
+        CONN_LOG(ERROR, "ziti context is not authenticated, cannot connect to service[%s]", conn->service);
+        complete_conn_req(conn, ZITI_INVALID_STATE);
+        return ZITI_INVALID_STATE;
+    }
 
     if (session->edge_routers == NULL) {
         CONN_LOG(ERROR, "no edge routers available for service[%s] session[%s]", conn->service, session->id);
         complete_conn_req(conn, ZITI_GATEWAY_UNAVAILABLE);
         return ZITI_GATEWAY_UNAVAILABLE;
     }
+
+    conn->token = session->token;
+    conn->channel = NULL;
 
     ziti_edge_router **er;
     ziti_channel_t *best_ch = NULL;
@@ -344,7 +351,7 @@ static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, s
             size_t ch_name_len = strlen((*er)->name) + strlen(tls) + 2;
             char *ch_name = malloc(ch_name_len);
             snprintf(ch_name, ch_name_len, "%s@%s", (*er)->name, tls);
-            ziti_channel_t *ch = model_map_get(&ctx->channels, ch_name);
+            ziti_channel_t *ch = model_map_get(&ztx->channels, ch_name);
 
             if (ch != NULL && ch->state == Connected) {
                 if (ch->latency < best_latency) {
@@ -354,7 +361,7 @@ static int ziti_connect(struct ziti_ctx *ctx, const ziti_net_session *session, s
             }
             else {
                 CONN_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, tls, conn->token);
-                ziti_channel_connect(ctx, ch_name, tls, on_channel_connected, conn);
+                ziti_channel_connect(ztx, ch_name, tls, on_channel_connected, conn);
             }
             free(ch_name);
         }
