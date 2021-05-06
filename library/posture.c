@@ -59,7 +59,6 @@ struct query_info {
 struct pr_info_s {
     char *id;
     char *obj;
-    size_t length;
     bool should_send;
     bool pending;
     bool obsolete;
@@ -385,14 +384,13 @@ static void ziti_collect_pr(ziti_context ztx, const char *pr_obj_key, char *pr_o
         if (changed) {
             FREE(current_info->obj);
             current_info->obj = pr_obj;
-            current_info->length = pr_obj_len;
         } else {
             free(pr_obj);
         }
 
         current_info->should_send = ztx->posture_checks->must_send_every_time || ziti_pr_is_info_errored(ztx, current_info->id) || changed;
     } else {
-        ZITI_LOG(WARN, "respose info not found, posture check obsolete? id[%d]", pr_obj_key);
+        ZITI_LOG(WARN, "response info not found, posture check obsolete? id[%d]", pr_obj_key);
         free(pr_obj);
     }
 }
@@ -521,7 +519,7 @@ static void ziti_pr_send_individually(ziti_context ztx) {
             cb_ctx->info = new_info;
             cb_ctx->ztx = ztx;
 
-            ziti_pr_post(&ztx->controller, body, info->length, ziti_pr_post_cb, cb_ctx);
+            ziti_pr_post(&ztx->controller, body, strlen(body), ziti_pr_post_cb, cb_ctx);
             info->should_send = false;
         }
     }
