@@ -499,6 +499,7 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
     ZITI_LOG(TRACE, "bulk posture response: %s", body);
 
     ziti_pr_post_bulk(&ztx->controller, body, body_len, ziti_pr_post_bulk_cb, ztx);
+    write_buf_free(&buf);
 }
 
 static void ziti_pr_send_individually(ziti_context ztx) {
@@ -679,39 +680,64 @@ static void default_pq_domain(ziti_context ztx, const char* id, ziti_pr_domain_c
 #endif
 }
 
+struct process_work {
+    uv_work_t w;
+    char *id;
+    char *path;
+    ziti_context ztx;
+    ziti_pr_process_cb cb;
+
+    bool is_running;
+    char *sha512;
+    char **signers;
+    int num_signers;
+};
+
+static void process_check_work(uv_work_t *w);
+
+static void process_check_done(uv_work_t *w, int status) {
+    struct process_work *pcw = container_of(w, struct process_work, w);
+    pcw->cb(pcw->ztx, pcw->id, pcw->path, pcw->is_running, pcw->sha512, pcw->signers, pcw->num_signers);
+    free(pcw->id);
+    free(pcw->path);
+    FREE(pcw->sha512);
+    if (pcw->signers) {
+        for (int i = 0; i < pcw->num_signers; i++) {
+            free(pcw->signers[i]);
+        }
+        free(pcw->signers);
+    }
+    free(pcw);
+}
+
 static void default_pq_process(ziti_context ztx, const char *id, const char *path, ziti_pr_process_cb cb) {
-    bool is_running = false;
+    NEWP(wr, struct process_work);
+    wr->id = strdup(id);
+    wr->path = strdup(path);
+    wr->cb = cb;
+    wr->ztx = ztx;
+    uv_queue_work(ztx->loop, &wr->w, process_check_work, process_check_done);
+}
+
+static void process_check_work(uv_work_t *w) {
+    struct process_work *pcw = container_of(w, struct process_work, w);
+    const char *path = pcw->path;
 
     unsigned char *digest;
     size_t digest_len;
-    char *sha512_hash = NULL;
-    char **signers = NULL;
-    int signers_count = 0;
-
     uv_fs_t file;
-    int rc = uv_fs_stat(ztx->loop, &file, path, NULL);
+    int rc = uv_fs_stat(w->loop, &file, path, NULL);
     if (rc != 0) {
-        cb(ztx, id, path, is_running, NULL, NULL, 0);
         return;
     }
 
-    is_running = check_running(ztx->loop, path);
-
-    if (hash_sha512(ztx->loop, path, &digest, &digest_len) == 0) {
-        hexify(digest, digest_len, 0, &sha512_hash);
-        ZITI_LOG(VERBOSE, "file(%s) hash = %s", path, sha512_hash);
+    pcw->is_running = check_running(w->loop, path);
+    if (hash_sha512(w->loop, path, &digest, &digest_len) == 0) {
+        hexify(digest, digest_len, 0, &pcw->sha512);
+        ZITI_LOG(VERBOSE, "file(%s) hash = %s", path, pcw->sha512);
+        free(digest);
     }
-    signers = get_signers(path, &signers_count);
-
-    cb(ztx, id, path, is_running, sha512_hash, signers, signers_count);
-
-    if (sha512_hash) free(sha512_hash);
-    if (signers) {
-        for (int i = 0; i < signers_count; i++) {
-            free(signers[i]);
-        }
-        free(signers);
-    }
+    pcw->signers = get_signers(path, &pcw->num_signers);
 }
 
 static int hash_sha512(uv_loop_t *loop, const char *path, unsigned char **out_buf, size_t *out_len) {
