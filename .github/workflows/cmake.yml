@@ -49,7 +49,7 @@ jobs:
         if: runner.os == 'Windows' && matrix.upload != 'false'
         run: 7z a -tzip ziti-prox-c-${{ runner.os }}.zip ${{runner.workspace}}/build/programs/ziti-prox-c/Debug/ziti-prox-c.exe
       - name: upload artifacts
-        if: matrix.upload != "false"
+        if: matrix.upload != 'false'
         uses: actions/upload-artifact@v2
         with:
           name: ziti-prox-c-${{ runner.os }}
