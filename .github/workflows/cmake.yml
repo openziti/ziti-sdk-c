@@ -17,7 +17,15 @@ jobs:
         os:
           - ubuntu-18.04
           - macOS-latest
-          - windows-latest
+        opts: [""]
+
+        include:
+          - os: windows-latest
+            opts: -G "CodeBlocks - MinGW Makefiles"
+            upload: "false"
+
+          - os: windows-latest
+            opts: ""
 
     steps:
       - uses: actions/checkout@v2
@@ -27,7 +35,7 @@ jobs:
         run: |
           echo "BUILD_NUMBER = ${BUILD_NUMBER}"
           cmake -E make_directory ${{runner.workspace}}/build
-          cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+          cmake ${{ matrix.opts }} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
           cmake --build ${{runner.workspace}}/build
       - name: test
         working-directory: ${{runner.workspace}}/build
@@ -38,9 +46,10 @@ jobs:
         if: runner.os != 'Windows'
         run: 7z a -tzip ziti-prox-c-${{ runner.os }}.zip ${{runner.workspace}}/build/programs/ziti-prox-c/ziti-prox-c
       - name: zip artifacts (WIN)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.upload != 'false'
         run: 7z a -tzip ziti-prox-c-${{ runner.os }}.zip ${{runner.workspace}}/build/programs/ziti-prox-c/Debug/ziti-prox-c.exe
       - name: upload artifacts
+        if: matrix.upload != 'false'
         uses: actions/upload-artifact@v2
         with:
           name: ziti-prox-c-${{ runner.os }}

@@ -36,7 +36,7 @@ extern DWORD NetGetJoinInformation (
         LPWSTR                *lpNameBuffer,
         uint32_t              *BufferType);
 extern DWORD NetApiBufferFree(
-        _Frees_ptr_opt_ LPVOID Buffer
+        LPVOID Buffer
 );
 #elif __APPLE__ && __MACH__
 #include <libproc.h>
