@@ -24,7 +24,7 @@ jobs:
             opts: -G "CodeBlocks - MinGW Makefiles"
 
           - os: windows-latest
-            opts: -G "CodeBlocks - NMake Makefiles"
+            opts: ""
 
     steps:
       - uses: actions/checkout@v2
@@ -34,7 +34,7 @@ jobs:
         run: |
           echo "BUILD_NUMBER = ${BUILD_NUMBER}"
           cmake -E make_directory ${{runner.workspace}}/build
-          cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+          cmake ${{ matrix.opts }} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
           cmake --build ${{runner.workspace}}/build
       - name: test
         working-directory: ${{runner.workspace}}/build
