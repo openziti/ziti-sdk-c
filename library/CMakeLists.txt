@@ -100,8 +100,8 @@ if (WIN32)
     target_compile_definitions(ziti     PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
     target_compile_definitions(ziti_dll PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
 
-    target_link_libraries(ziti     PUBLIC crypt32)
-    target_link_libraries(ziti_dll PUBLIC crypt32)
+    target_link_libraries(ziti     PUBLIC crypt32 netapi32)
+    target_link_libraries(ziti_dll PUBLIC crypt32 netapi32)
 endif()
 
 set(includedir ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR})

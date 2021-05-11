@@ -17,7 +17,14 @@ jobs:
         os:
           - ubuntu-18.04
           - macOS-latest
-          - windows-latest
+        opts: [""]
+
+        include:
+          - os: windows-latest
+            opts: -G "CodeBlocks - MinGW Makefiles"
+
+          - os: windows-latest
+            opts: -G "CodeBlocks - NMake Makefiles"
 
     steps:
       - uses: actions/checkout@v2
