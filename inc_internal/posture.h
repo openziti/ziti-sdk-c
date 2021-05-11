@@ -29,13 +29,10 @@ struct posture_checks {
     double interval;
 
     // map<type/process_path,response>
-    model_map *previous_responses;
-
-    // map<type/process_path,response>
-    model_map *current_responses;
+    model_map responses;
 
     // map<type/process_path, is errored
-    model_map *error_states;
+    model_map error_states;
 
     char *previous_session_id;
     bool must_send;
