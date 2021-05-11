@@ -22,7 +22,7 @@ jobs:
         include:
           - os: windows-latest
             opts: -G "CodeBlocks - MinGW Makefiles"
-            upload: false
+            upload: "false"
 
           - os: windows-latest
             opts: ""
