@@ -22,6 +22,9 @@ limitations under the License.
 #include <wincrypt.h>
 #include <bcrypt.h>
 #include <tlhelp32.h>
+#include <lmcons.h>
+#include <lmapibuf.h>
+#include <lmjoin.h>
 
 #pragma comment(lib, "netapi32.lib")
 #pragma comment(lib, "bcrypt.lib")
@@ -31,13 +34,6 @@ typedef NTSTATUS (NTAPI *sRtlGetVersion)
         (PRTL_OSVERSIONINFOW lpVersionInformation);
 extern sRtlGetVersion pRtlGetVersion;
 
-extern DWORD NetGetJoinInformation (
-        LPCWSTR               lpServer,
-        LPWSTR                *lpNameBuffer,
-        uint32_t              *BufferType);
-extern DWORD NetApiBufferFree(
-        LPVOID Buffer
-);
 #elif __APPLE__ && __MACH__
 #include <libproc.h>
 #endif
