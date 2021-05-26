@@ -508,14 +508,34 @@ struct mfa_work {
 
 void mfa_response_cb(ziti_context ztx, void *mfa_ctx, int status, void *ctx);
 
+void prompt_stdin(char *buffer, size_t buflen) {
+    if (fgets(buffer, buflen, stdin) != 0) {
+        size_t len = strlen(buffer);
+        if (len > 0 && buffer[len - 1] == '\n') {
+            buffer[len - 1] = '\0';
+        } else {
+            int ch;
+            while ((ch = getc(stdin)) != EOF && ch != '\n');
+        }
+    }
+}
+
 void mfa_prompt(struct mfa_work *mfa_wr) {
     uv_sleep(250);
-    char code[512];
+    char code[9] = "";
     printf("\nPlease provide your current MFA token: ");
     fflush(stdout);
-    gets(code);
 
-    mfa_wr->response_cb(mfa_wr->ztx, mfa_wr->mfa_ctx, code, mfa_response_cb, mfa_wr);
+    prompt_stdin(code, 9);
+
+    if (strlen(code) > 0) {
+        mfa_wr->response_cb(mfa_wr->ztx, mfa_wr->mfa_ctx, code, mfa_response_cb, mfa_wr);
+    } else {
+        ZITI_LOG(ERROR, "no mfa token provided, exiting");
+        exit(1);
+    };
+
+
 }
 
 void mfa_response_cb(ziti_context ztx, void *mfa_ctx, int status, void *ctx) {
