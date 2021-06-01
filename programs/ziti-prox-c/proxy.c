@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 #define _GNU_SOURCE
+
 #include <uv.h>
 
 #include <stdlib.h>
@@ -221,8 +222,7 @@ static void alloc_cb(uv_handle_t *h, size_t suggested_size, uv_buf_t *buf) {
     if (clt->inb_reqs < MAX_WRITES) {
         buf->len = suggested_size > MAX_PROXY_PAYLOAD ? MAX_PROXY_PAYLOAD : suggested_size;
         buf->base = malloc(buf->len);
-    }
-    else {
+    } else {
         ZITI_LOG(VERBOSE, "maximum outstanding writes reached clt[%s]", clt->addr_s);
         buf->base = NULL;
         buf->len = 0;
@@ -239,8 +239,7 @@ static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
                 uv_close((uv_handle_t *) stream, close_cb);
                 clt->closed = true;
             }
-        }
-        else {
+        } else {
             clt->inb_reqs--;
         }
     }
@@ -252,22 +251,19 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
     ZITI_LOG(TRACE, "client[%s]: nread[%zd]", clt->addr_s, nread);
     if (nread == UV_ENOBUFS) {
         ZITI_LOG(VERBOSE, "client[%s] is throttled", clt->addr_s);
-    }
-    else if (nread == UV_EOF) {
+    } else if (nread == UV_EOF) {
         ZITI_LOG(DEBUG, "connection %s sent FIN write_done=%d, read_done=%d", clt->addr_s, clt->write_done,
                  clt->read_done);
         clt->read_done = true;
         if (clt->write_done) {
             ZITI_LOG(DEBUG, "closing client[%s]", clt->addr_s);
             ziti_close(clt->ziti_conn, on_ziti_close);
-        }
-        else {
+        } else {
             ziti_close_write(clt->ziti_conn);
             uv_read_stop(stream);
         }
         free(buf->base);
-    }
-    else if (nread < 0) {
+    } else if (nread < 0) {
         ZITI_LOG(DEBUG, "connection closed %s [%zd/%s](%s)",
                  clt->addr_s, nread, uv_err_name(nread), uv_strerror(nread));
 
@@ -277,11 +273,9 @@ static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
         uv_close((uv_handle_t *) stream, close_cb);
         clt->closed = true;
         free(buf->base);
-    }
-    else if (clt->closed) {
+    } else if (clt->closed) {
         free(buf->base);
-    }
-    else {
+    } else {
         clt->inb_reqs += 1;
         ziti_write(clt->ziti_conn, buf->base, nread, on_ziti_write, buf->base);
     }
@@ -296,8 +290,7 @@ void on_ziti_connect(ziti_connection conn, int status) {
         ziti_context ztx = ziti_conn_context(conn);
         struct proxy_app_ctx *app = ziti_app_ctx(ztx);
         struct client *c = clt->data;
-    }
-    else {
+    } else {
         ZITI_LOG(ERROR, "ziti connect failed: %s(%d)", ziti_errorstr(status), status);
         uv_close((uv_handle_t *) clt, close_cb);
         ziti_close(conn, on_ziti_close);
@@ -334,22 +327,19 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
         ZITI_LOG(TRACE, "writing %zd bytes to [%s] wqs[%zd]", len, c->addr_s, clt->write_queue_size);
         uv_write(req, (uv_stream_t *) clt, &buf, 1, on_client_write);
         return len;
-    }
-    else if (len == ZITI_EOF) {
+    } else if (len == ZITI_EOF) {
         ZITI_LOG(DEBUG, "ziti sent EOF to[%s] write_done=%d, read_done=%d", c->addr_s, c->write_done, c->read_done);
         if (c->read_done) {
             if (!c->closed) {
                 c->closed = true;
                 uv_close((uv_handle_t *) clt, close_cb);
             }
-        }
-        else {
+        } else {
             uv_shutdown_t *sr = calloc(1, sizeof(uv_shutdown_t));
             uv_shutdown(sr, (uv_stream_t *) clt, tcp_shutdown_cb);
             c->write_done = true;
         }
-    }
-    else if (len < 0) {
+    } else if (len < 0) {
         if (clt != NULL) {
             ZITI_LOG(DEBUG, "ziti connection closed with [%zd](%s)", len, ziti_errorstr(len));
             if (!c->closed) {
@@ -367,7 +357,7 @@ ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
 static void on_client(uv_stream_t *server, int status) {
     PREPF(uv, uv_err_name);
 
-    NEWP(c,uv_tcp_t);
+    NEWP(c, uv_tcp_t);
 
     TRY(uv, uv_tcp_init(server->loop, c));
     TRY(uv, uv_accept(server, (uv_stream_t *) c));
@@ -426,13 +416,11 @@ static void update_listener(ziti_service *service, int status, struct listener *
                                          (int (*)(void *, const char *, size_t)) parse_ziti_client_cfg_v1);
         if (rc != 0) {
             ZITI_LOG(ERROR, "failed to parse client intercept");
-        }
-        else {
+        } else {
             ZITI_LOG(INFO, "should intercepting %s:%d", intercept.hostname, intercept.port);
             free_ziti_client_cfg_v1(&intercept);
         }
-    }
-    else {
+    } else {
         ZITI_LOG(WARN, "service %s is not available. stopping listener[%d]", l->service_name, l->port);
         uv_close((uv_handle_t *) &l->server, on_listener_close);
     }
@@ -463,8 +451,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                          ctrl_ver->build_date);
                 ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, ziti_get_controller(ztx));
                 app_ctx->ziti = ztx;
-            }
-            else {
+            } else {
                 ZITI_LOG(ERROR, "Failed to connect to controller: %s", event->event.ctx.err);
             }
             break;
@@ -484,7 +471,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             break;
 
         case ZitiRouterEvent:
-            switch (event->event.router.status){
+            switch (event->event.router.status) {
                 case EdgeRouterConnected:
                     ZITI_LOG(INFO, "ziti connected to edge router %s\nversion = %s", event->event.router.name, event->event.router.version);
                     break;
@@ -503,10 +490,84 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     }
 }
 
-char* pxoxystrndup(const char* s, int n);
+char *pxoxystrndup(const char *s, int n);
+
 const char *my_configs[] = {
         "all", NULL
 };
+
+uv_loop_t *global_loop;
+
+struct mfa_work {
+    uv_work_t w;
+    ziti_context ztx;
+    ziti_auth_query_mfa *aq_mfa;
+    ziti_ar_mfa_cb response_cb;
+    void *mfa_ctx;
+};
+
+void mfa_response_cb(ziti_context ztx, void *mfa_ctx, int status, void *ctx);
+
+void prompt_stdin(char *buffer, size_t buflen) {
+    if (fgets(buffer, buflen, stdin) != 0) {
+        size_t len = strlen(buffer);
+        if (len > 0 && buffer[len - 1] == '\n') {
+            buffer[len - 1] = '\0';
+        } else {
+            int ch;
+            while ((ch = getc(stdin)) != EOF && ch != '\n');
+        }
+    }
+}
+
+void mfa_prompt(struct mfa_work *mfa_wr) {
+    uv_sleep(250);
+    char code[9] = "";
+    printf("\nPlease provide your current MFA token: ");
+    fflush(stdout);
+
+    prompt_stdin(code, 9);
+
+    if (strlen(code) > 0) {
+        mfa_wr->response_cb(mfa_wr->ztx, mfa_wr->mfa_ctx, code, mfa_response_cb, mfa_wr);
+    } else {
+        ZITI_LOG(ERROR, "no mfa token provided, exiting");
+        exit(1);
+    };
+
+
+}
+
+void mfa_response_cb(ziti_context ztx, void *mfa_ctx, int status, void *ctx) {
+    struct mfa_work *mfa_wr = ctx;
+    ZITI_LOG(INFO, "mfa response status: %d", status);
+
+    if (status != ZITI_OK) {
+        ZITI_LOG(ERROR, "invalid MFA token provided, exiting");
+        exit(1);
+    }
+}
+
+void mfa_worker(uv_work_t *req) {
+    struct mfa_work *mfa_wr = req->data;
+    mfa_prompt(mfa_wr);
+}
+
+void mfa_worker_done(uv_work_t *req, int status) {
+    FREE(req);
+}
+
+void mfa_cb(ziti_context ztx, void *mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb) {
+    NEWP(mfa_wr, struct mfa_work);
+    mfa_wr->ztx = ztx;
+    mfa_wr->mfa_ctx = mfa_ctx;
+    mfa_wr->aq_mfa = aq_mfa;
+    mfa_wr->response_cb = response_cb;
+    mfa_wr->w.data = mfa_wr;
+
+    uv_queue_work(global_loop, &mfa_wr->w, mfa_worker, mfa_worker_done);
+}
+
 
 void run(int argc, char **argv) {
 
@@ -514,12 +575,13 @@ void run(int argc, char **argv) {
 
     NEWP(loop, uv_loop_t);
     uv_loop_init(loop);
+    global_loop = loop;
 
     struct proxy_app_ctx app_ctx = {0};
     for (int i = 0; i < argc; i++) {
 
         char *p = strchr(argv[i], ':');
-        char* service_name = pxoxystrndup(argv[i], p - argv[i]);
+        char *service_name = pxoxystrndup(argv[i], p - argv[i]);
 
         NEWP(l, struct listener);
         l->service_name = service_name;
@@ -535,13 +597,14 @@ void run(int argc, char **argv) {
 
     ziti_options opts = {
             .config = config,
-            .events = ZitiContextEvent|ZitiServiceEvent|ZitiRouterEvent,
+            .events = ZitiContextEvent | ZitiServiceEvent | ZitiRouterEvent,
             .event_cb = on_ziti_event,
             .refresh_interval = 60,
             .router_keepalive = 10,
             .app_ctx = &app_ctx,
             .config_types = my_configs,
             .metrics_type = INSTANT,
+            .aq_mfa_cb = mfa_cb
     };
 
     ziti_init_opts(&opts, loop);
@@ -595,10 +658,10 @@ CommandLine main_cmd;
 
 int run_opts(int argc, char **argv) {
     static struct option long_options[] = {
-            {"debug",  optional_argument, NULL, 'd'},
-            {"config", required_argument, NULL, 'c'},
+            {"debug",   optional_argument, NULL, 'd'},
+            {"config",  required_argument, NULL, 'c'},
             {"metrics", optional_argument, NULL, 'm'},
-            {NULL, 0,                     NULL, 0}
+            {NULL,      0,                 NULL, 0}
     };
 
     int c, option_index, errors = 0;
@@ -614,8 +677,7 @@ int run_opts(int argc, char **argv) {
                 debug_set = true;
                 if (optarg) {
                     debug_level = (int) strtol(optarg, NULL, 10);
-                }
-                else {
+                } else {
                     debug_level++;
                 }
                 break;
@@ -662,10 +724,11 @@ void usage(int argc, char **argv) {
 }
 
 static int ver_verbose = 0;
+
 int version_opts(int argc, char **argv) {
     static struct option long_options[] = {
             {"verbose", no_argument, NULL, 'v'},
-            {NULL, 0, NULL, 0}
+            {NULL,      0,           NULL, 0}
     };
 
     int c, option_index, errors = 0;
@@ -720,12 +783,11 @@ static int process_args(int argc, char *argv[]) {
     return 0;
 }
 
-char* pxoxystrndup(const char* s, int n)
-{
+char *pxoxystrndup(const char *s, int n) {
     size_t len = strnlen(s, n);
-    char* new = (char*)malloc(len + 1);
+    char *new = (char *) malloc(len + 1);
     if (new == NULL)
         return NULL;
     new[len] = '\0';
-    return (char*)memcpy(new, s, len);
+    return (char *) memcpy(new, s, len);
 }

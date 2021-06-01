@@ -542,7 +542,7 @@ void ziti_force_session_refresh(ziti_context ztx) {
     uv_timer_start(&ztx->session_timer, session_refresh, 0, 0);
 }
 
-static void ziti_re_auth(ziti_context ztx) {
+void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_session *, ziti_error *, void *), void* ctx) {
     ZTX_LOG(WARN, "starting to re-auth with ctlr[%s]", ztx->opts->controller);
     uv_timer_stop(&ztx->refresh_timer);
     uv_timer_stop(&ztx->session_timer);
@@ -554,10 +554,15 @@ static void ziti_re_auth(ziti_context ztx) {
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
     FREE(ztx->last_update);
 
+    ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, cb, ctx);
+}
+
+static void ziti_re_auth(ziti_context ztx) {
     NEWP(init_req, struct ziti_init_req);
     init_req->ztx = ztx;
     init_req->login = true;
-    ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, session_cb, init_req);
+
+    ziti_re_auth_with_cb(ztx, session_cb, init_req);
 }
 
 static void update_services(ziti_service_array services, ziti_error *error, void *ctx) {
