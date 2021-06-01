@@ -120,7 +120,16 @@ static ssize_t zlnf_data_cb(ziti_connection conn, uint8_t *data, ssize_t length)
         uv_link_propagate_read_cb(src->link, length, NULL);
     }
     else {
-        uv_link_propagate_alloc_cb(src->link, length, &read_buf);
+        ZITI_LOG(VERBOSE, "propagating read %zd bytes", length);
+        uv_link_propagate_alloc_cb(src->link, 64 * 1024, &read_buf);
+        if (read_buf.len == 0 || read_buf.base == NULL) {
+            // client cannot accept any data ATM (UV_ENOBUFS)
+            return 0;
+        }
+
+        if (length > read_buf.len) {
+            length = (ssize_t) read_buf.len;
+        }
         memcpy(read_buf.base, data, length);
         uv_link_propagate_read_cb(src->link, length, &read_buf);
     }
@@ -130,7 +139,7 @@ static ssize_t zlnf_data_cb(ziti_connection conn, uint8_t *data, ssize_t length)
 
 static void zlnf_write_cb(ziti_connection conn, ssize_t status, void *ctx) {
     struct zl_write_req_s *req = ctx;
-    req->cb((uv_link_t *) req->zl, status, req->arg);
+    req->cb((uv_link_t *) req->zl, (int) status, req->arg);
     free(req);
 }
 

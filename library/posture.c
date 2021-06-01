@@ -448,9 +448,6 @@ static void ziti_pr_send(ziti_context ztx) {
 }
 
 static void ziti_pr_send_bulk(ziti_context ztx) {
-    write_buf_t buf;
-    write_buf_init(&buf);
-
     size_t body_len = 0;
     char *body;
 
@@ -469,6 +466,8 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
         return; //nothing to send
     }
 
+    write_buf_t buf;
+    write_buf_init(&buf);
     write_buf_append_byte(&buf, '[');
 
     bool needs_comma = false;
