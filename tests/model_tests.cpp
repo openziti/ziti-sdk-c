@@ -96,7 +96,7 @@ static void checkBar2(const Bar &bar) {
     CHECK(bar.codes == nullptr);
 }
 
-TEST_CASE("new model tests") {
+TEST_CASE("new model tests", "[model]") {
     const char *bar_json = BAR1;
     Bar bar;
 
@@ -110,7 +110,47 @@ TEST_CASE("new model tests") {
     free_Bar(&bar);
 }
 
-TEST_CASE("embedded struct") {
+TEST_CASE("parse null", "[model]") {
+    const char *json = "{"
+                       "\"barp\":null,"
+                       "\"bara\":null"
+                       "}";
+    Foo foo;
+    REQUIRE(parse_Foo(&foo, json, strlen(json)) == 0);
+
+    REQUIRE(foo.barp == nullptr);
+
+    REQUIRE(foo.bar_arr == nullptr);
+
+    char *json1 = Foo_to_json(&foo, 0, NULL);
+    std::cout << json1 << std::endl;
+    free(json1);
+    free_Foo(&foo);
+}
+
+TEST_CASE("parse null in the middle", "[model]") {
+    const char *json = "{"
+                       "\"bar\":" BAR1 ","
+                       "\"barp\": null,"
+                       "\"bara\": [" BAR1 "," BAR2 "]"
+                       "}";
+    Foo foo;
+    REQUIRE(parse_Foo(&foo, json, strlen(json)) == 0);
+    checkBar1(foo.bar);
+
+    REQUIRE(foo.barp == nullptr);
+
+    REQUIRE(foo.bar_arr != nullptr);
+    CHECK(foo.bar_arr[2] == nullptr);
+    checkBar1(*foo.bar_arr[0]);
+    checkBar2(*foo.bar_arr[1]);
+
+    char *json1 = Foo_to_json(&foo, 0, NULL);
+    std::cout << json1 << std::endl;
+    free(json1);
+    free_Foo(&foo);
+}
+TEST_CASE("embedded struct", "[model]") {
     const char *json = "{"
                        "\"bar\":" BAR1 ","
                        "\"barp\": " BAR2 ","
@@ -134,7 +174,7 @@ TEST_CASE("embedded struct") {
     free_Foo(&foo);
 }
 
-TEST_CASE("test skipped fields") {
+TEST_CASE("test skipped fields", "[model]") {
     const char *json = R"({
         "bar":{
             "num":42,
