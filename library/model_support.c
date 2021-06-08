@@ -528,21 +528,22 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
         tokens_processed++;
 
         int rc;
-        if (fm != NULL) {
+        tok++;
+        if (tok->type == JSMN_PRIMITIVE && json[tok->start] == 'n') {
             tok++;
+            tokens_processed++;
+        } else if (fm != NULL) {
             void *field = (char *) obj + fm->offset;
             if (fm->mod == array_mod) {
                 rc = parse_array(field, json, tok, fm->meta());
-            }
-            else if (fm->mod == map_mod) {
+            } else if (fm->mod == map_mod) {
                 rc = parse_map(field, json, tok, fm->meta());
             }
             else {
                 char *memobj = NULL;
                 if (fm->mod == none_mod) {
                     memobj = (char *) (field);
-                }
-                else if (fm->mod == ptr_mod) {
+                } else if (fm->mod == ptr_mod) {
                     memobj = (char *) calloc(1, fm->meta()->size);
                     *(char **) field = memobj;
                 }
@@ -553,8 +554,7 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
 
                 if (fm->meta()->parser != NULL) {
                     rc = fm->meta()->parser(memobj, json, tok);
-                }
-                else {
+                } else {
                     rc = parse_obj(memobj, json, tok, fm->meta());
                 }
             }
@@ -563,9 +563,7 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
             }
             tok += rc;
             tokens_processed += rc;
-        }
-        else {
-            tok++;
+        } else {
             int end = tok->end;
             while (tok->type != JSMN_UNDEFINED && tok->start <= end) {
                 tok++;
