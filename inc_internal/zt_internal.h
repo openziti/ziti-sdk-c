@@ -168,6 +168,7 @@ struct ziti_ctx {
 
     int ctrl_status;
     ziti_session *session;
+    ziti_identity_data *identity_data;
 
     // map<name,ziti_service>
     model_map services;
