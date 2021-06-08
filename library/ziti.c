@@ -303,6 +303,8 @@ static void on_logout(void *msg, ziti_error *err, void *arg) {
     ZTX_LOG(DEBUG, "identity[%s] logout %s",
              ztx->session->identity->name, err ? "failed" : "success");
 
+    free_ziti_identity_data(ztx->identity_data);
+    FREE(ztx->identity_data);
     free_ziti_session(ztx->session);
     free(ztx->session);
     ztx->session = NULL;
