@@ -53,6 +53,8 @@ ziti_ctrl_login(ziti_controller *ctrl, const char **cfg_types, void (*login_cb)(
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session *, ziti_error *, void *), void *ctx);
 
+void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_data *, ziti_error *, void *), void *ctx);
+
 void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void(*cb)(ziti_edge_router_array, ziti_error *, void *),
                                     void *ctx);
 
