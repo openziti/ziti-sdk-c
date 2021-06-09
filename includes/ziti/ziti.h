@@ -609,6 +609,13 @@ int ziti_ctx_free(ziti_context *ctxp);
 ZITI_FUNC
 extern void ziti_dump(ziti_context ztx, int (*printer)(void *ctx, const char *fmt, ...), void *ctx);
 
+ZITI_FUNC
+const char *ziti_get_appdata_raw(ziti_context ztx, const char *key);
+
+ZITI_FUNC
+int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
+                     int (*parse_func)(void *, const char *, size_t));
+
 /**
  * @brief Initializes a connection.
  *

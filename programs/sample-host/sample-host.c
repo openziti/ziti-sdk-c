@@ -157,8 +157,8 @@ static void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
         ziti_listen_opts listen_opts = {
 //                .identity = "itsamee",
                 .bind_using_edge_identity = false,
-                .terminator_precedence = PRECEDENCE_REQUIRED,
-                .terminator_cost = 10,
+//                .terminator_precedence = PRECEDENCE_REQUIRED,
+//                .terminator_cost = 10,
         };
         ziti_listen_with_options(conn, service, &listen_opts, listen_cb, on_client);
     }

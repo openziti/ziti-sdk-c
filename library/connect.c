@@ -79,6 +79,9 @@ static int ziti_disconnect(ziti_connection conn);
 
 static void restart_connect(struct ziti_conn *conn);
 
+static uint16_t get_terminator_cost(ziti_listen_opts *opts, const char *service, ziti_context ztx);
+static uint8_t get_terminator_precedence(ziti_listen_opts *opts, const char *service, ziti_context ztx);
+
 static void free_handle(uv_handle_t *h) {
     free(h);
 }
@@ -1005,6 +1008,9 @@ static int ziti_channel_start_connection(struct ziti_conn *conn) {
             if (req->listen_opts != NULL) {
                 ziti_listen_opts *opts = req->listen_opts;
                 char *identity = opts->identity;
+                int term_cost = get_terminator_cost(opts, conn->conn_req->service_id, conn->ziti_ctx);
+                int term_prec = get_terminator_precedence(opts, conn->conn_req->service_id, conn->ziti_ctx);
+
                 if (opts->bind_using_edge_identity) {
                     if (opts->identity != NULL) {
                         CONN_LOG(WARN,
@@ -1019,15 +1025,15 @@ static int ziti_channel_start_connection(struct ziti_conn *conn) {
                     headers[nheaders].length = strlen(identity);
                     nheaders++;
                 }
-                if (opts->terminator_cost > 0) {
-                    int32_t cost = htole32(opts->terminator_cost);
+                if (term_cost > 0) {
+                    int32_t cost = htole32(term_cost);
                     headers[nheaders].header_id = CostHeader;
                     headers[nheaders].value = (uint8_t *) &cost;
                     headers[nheaders].length = sizeof(cost);
                     nheaders++;
                 }
-                if (opts->terminator_precedence != PRECEDENCE_DEFAULT) {
-                    int32_t precedence = htole32(opts->terminator_precedence);
+                if (term_prec != PRECEDENCE_DEFAULT) {
+                    int32_t precedence = htole32(term_prec);
                     headers[nheaders].header_id = PrecedenceHeader;
                     headers[nheaders].value = (uint8_t *) &precedence;
                     headers[nheaders].length = sizeof(precedence);
@@ -1400,4 +1406,32 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
         default:
             CONN_LOG(ERROR, "received unexpected content_type[%d]", msg->header.content);
     }
+}
+
+static uint16_t get_terminator_cost(ziti_listen_opts *opts, const char *service, ziti_context ztx) {
+    if (opts->terminator_cost > 0) return opts->terminator_cost;
+
+    if (ztx->identity_data) {
+        int *cp = model_map_get(&ztx->identity_data->service_hosting_costs, service);
+        if (cp) return (uint16_t )*cp;
+
+        return (uint16_t)ztx->identity_data->default_hosting_cost;
+    }
+
+    return 0;
+}
+static uint8_t get_terminator_precedence(ziti_listen_opts *opts, const char *service, ziti_context ztx) {
+    if (opts->terminator_precedence > 0) return opts->terminator_precedence;
+
+    if (ztx->identity_data) {
+        const char *precedence = model_map_get(&ztx->identity_data->service_hosting_precendences, service);
+        precedence = precedence ? precedence : ztx->identity_data->default_hosting_precendence;
+
+        if (precedence) {
+            if (strcmp("failed", precedence) == 0) return  PRECEDENCE_FAILED;
+            if (strcmp("required", precedence) == 0) return PRECEDENCE_REQUIRED;
+        }
+    }
+
+    return PRECEDENCE_DEFAULT;
 }

@@ -303,6 +303,8 @@ static void on_logout(void *msg, ziti_error *err, void *arg) {
     ZTX_LOG(DEBUG, "identity[%s] logout %s",
              ztx->session->identity->name, err ? "failed" : "success");
 
+    free_ziti_identity_data(ztx->identity_data);
+    FREE(ztx->identity_data);
     free_ziti_session(ztx->session);
     free(ztx->session);
     ztx->session = NULL;
@@ -346,6 +348,26 @@ int ziti_ctx_free(ziti_context *ctxp) {
 
     return ZITI_OK;
 }
+
+const char *ziti_get_appdata_raw(ziti_context ztx, const char *key) {
+    if (ztx->identity_data == NULL) return NULL;
+
+    return model_map_get(&ztx->identity_data->app_data, key);
+}
+
+int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
+                     int (*parse_func)(void *, const char *, size_t)) {
+    const char *app_data_json = ziti_get_appdata_raw(ztx, key);
+
+    if (app_data_json == NULL) return ZITI_NOT_FOUND;
+
+    if(parse_func(data, app_data_json, strlen(app_data_json)) != 0) {
+        return ZITI_INVALID_CONFIG;
+    }
+
+    return ZITI_OK;
+}
+
 
 void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
     printer(ctx, "\n=================\nZiti Context:\n");
@@ -814,6 +836,18 @@ static void session_post_auth_query_cb(ziti_context ztx){
     }
 }
 
+static void update_identity_data(ziti_identity_data *data, ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
+
+    if (err) {
+        ZITI_LOG(ERROR, "failed to get identity_data: %s[%d]", err->message, err->code);
+    } else {
+        free_ziti_identity_data(ztx->identity_data);
+        FREE(ztx->identity_data);
+        ztx->identity_data = data;
+    }
+}
+
 static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
     struct ziti_init_req *init_req = ctx;
     ziti_context ztx = init_req->ztx;
@@ -829,6 +863,8 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
 
         free_ziti_session(old_session);
         FREE(old_session);
+
+        ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
 
         ziti_auth_query_init(ztx);
 

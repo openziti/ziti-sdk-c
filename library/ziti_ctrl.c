@@ -229,42 +229,46 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
         } else {
             int rc = parse_api_resp(&cr, resp->body, resp->received);
             if (rc < 0) {
-                ZITI_LOG(ERROR, "failed to parse controller response of req[%s]", req->path);
+                ZITI_LOG(ERROR, "failed to parse controller response for req[%s]>>>\n%.*s", req->path, (int)(resp->received), resp->body);
                 cr.error = alloc_ziti_error();
                 cr.error->err = ZITI_WTF;
                 cr.error->code = strdup("INVALID_CONTROLLER_RESPONSE");
                 cr.error->message = strdup(req->resp.status);
             } else if (resp->body_parse_func && cr.data != NULL) {
                 if (resp->body_parse_func(&resp_obj, cr.data, strlen(cr.data)) != 0) {
-                    ZITI_LOG(ERROR, "error parsing result of req[%s]", req->path);
-                }
+                    ZITI_LOG(ERROR, "error parsing response data for req[%s]>>>\n%s", req->path, cr.data);
+                    cr.error = alloc_ziti_error();
+                    cr.error->err = ZITI_INVALID_STATE;
+                    cr.error->code = strdup("INVALID_CONTROLLER_RESPONSE");
+                    cr.error->message = strdup("unexpected response JSON");
+                } else {
+                    if (resp->paging) {
+                        bool last_page = cr.meta.pagination.total <= cr.meta.pagination.offset + cr.meta.pagination.limit;
+                        if (cr.meta.pagination.total > resp->total) {
+                            resp->total = cr.meta.pagination.total;
+                            resp->resp_array = realloc(resp->resp_array, (resp->total + 1) * sizeof(void *));
+                        }
+                        // empty result
+                        if (resp->resp_array == NULL) {
+                            resp->resp_array = calloc(1, sizeof(void *));
+                        }
 
-                if (resp->paging) {
-                    bool last_page = cr.meta.pagination.total <= cr.meta.pagination.offset + cr.meta.pagination.limit;
-                    if (cr.meta.pagination.total > resp->total) {
-                        resp->total = cr.meta.pagination.total;
-                        resp->resp_array = realloc(resp->resp_array, (resp->total + 1) * sizeof(void *));
-                    }
-                    // empty result
-                    if (resp->resp_array == NULL) {
-                        resp->resp_array = calloc(1, sizeof(void *));
-                    }
+                        void **chunk = resp_obj;
+                        while (*chunk != NULL) {
+                            resp->resp_array[resp->recd++] = *chunk++;
+                        }
+                        resp->resp_array[resp->recd] = NULL;
+                        FREE(resp_obj);
+                        resp->received = 0;
+                        FREE(resp->body);
 
-                    void **chunk = resp_obj;
-                    while (*chunk != NULL) {
-                        resp->resp_array[resp->recd++] = *chunk++;
+                        free_api_resp(&cr);
+                        if (!last_page) {
+                            ctrl_paging_req(resp);
+                            return;
+                        }
+                        resp_obj = resp->resp_array;
                     }
-                    resp->resp_array[resp->recd] = NULL;
-                    FREE(resp_obj);
-                    resp->received = 0;
-                    FREE(resp->body);
-
-                    free_api_resp(&cr);
-                    if (!last_page) {
-                        ctrl_paging_req(resp);
-                        return;
-                    }
-                    resp_obj = resp->resp_array;
                 }
             }
         }
@@ -355,6 +359,17 @@ void ziti_ctrl_login(
     um_http_req_t *req = um_http_req(&ctrl->client, "POST", "/authenticate?method=cert", ctrl_resp_cb, resp);
     um_http_req_header(req, "Content-Type", "application/json");
     um_http_req_data(req, body, body_len, free_body_cb);
+}
+
+void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_data *, ziti_error *, void *), void *ctx) {
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_identity_data_ptr;
+    resp->resp_cb = (void (*)(void *, ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    um_http_req(&ctrl->client, "GET", "/current-identity", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session *, ziti_error *, void *), void *ctx) {
