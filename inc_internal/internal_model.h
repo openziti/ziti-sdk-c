@@ -27,7 +27,7 @@ XX(name, string, none, name, __VA_ARGS__) \
 XX(app_data, json, map, appData, __VA_ARGS__) \
 XX(default_hosting_precendence, string, none, defaultHostingPrecendence, __VA_ARGS__) \
 XX(default_hosting_cost, int, none, defaultHostingCost, __VA_ARGS__)                  \
-XX(service_hosting_precendences, string, map, serviceHostingPrecendences, __VA_ARGS__)\
+XX(service_hosting_precendences, string, map, serviceHostingPrecedences, __VA_ARGS__)\
 XX(service_hosting_costs, int, map, serviceHostingCosts, __VA_ARGS__)
 
 #define ZITI_EDGE_ROUTER_MODEL(XX, ...)\
