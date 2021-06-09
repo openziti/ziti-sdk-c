@@ -52,8 +52,7 @@ XX(api_versions, ziti_api_versions, ptr, apiVersions, __VA_ARGS__)
 
 #define ZITI_IDENTITY_MODEL(XX, ...) \
 XX(id, string, none, id, __VA_ARGS__) \
-XX(name, string, none, name, __VA_ARGS__)\
-XX(tags, tag, map, tags, __VA_ARGS__)
+XX(name, string, none, name, __VA_ARGS__)
 
 #define ZITI_PROCESS_MODEL(XX, ...) \
 XX(path, string, none, path, __VA_ARGS__)
