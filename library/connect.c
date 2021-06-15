@@ -679,6 +679,7 @@ int establish_crypto(ziti_connection conn, message *msg) {
             return ZITI_CRYPTO_FAIL;
         }
         else {
+            CONN_LOG(VERBOSE, "encryption not set up: peer_key_sent[%d] conn->encrypted[%d]", (int)peer_key_sent, (int)conn->encrypted);
             // service is not required to be encrypted and hosting side did not send the key
             return ZITI_OK;
         }
@@ -1096,7 +1097,7 @@ static void rebind_cb(ziti_connection conn, int status) {
         int backoff_count = 1 << MIN(conn->conn_req->retry_count, 5);
         uint32_t random;
         uv_random(conn->ziti_ctx->loop, NULL, &random, sizeof(random), 0, NULL);
-        long backoff_time = random % (backoff_count * 5000);
+        long backoff_time = (long)(random % (backoff_count * 5000));
         CONN_LOG(DEBUG, "failed to re-bind[%d/%s], retrying in %ldms", status, ziti_errorstr(status), backoff_time);
         if (conn->conn_req->conn_timeout == NULL) {
             conn->conn_req->conn_timeout = calloc(1, sizeof(uv_timer_t));
@@ -1266,7 +1267,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
                 conn->data_cb(conn, NULL, code);
                 break;
             default:
-                CONN_LOG(WARN, "disconnecting from state[%d]", conn->conn_id, st);
+                CONN_LOG(WARN, "disconnecting from state[%d]", st);
         }
         ziti_channel_rem_receiver(conn->channel, conn->conn_id);
         conn->channel = NULL;

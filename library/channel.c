@@ -176,7 +176,7 @@ static void close_handle_cb(uv_handle_t *h) {
 int ziti_channel_close(ziti_channel_t *ch) {
     int r = 0;
     if (ch->state != Closed) {
-        CH_LOG(INFO, "closing", ch->id, ch->name);
+        CH_LOG(INFO, "closing(%s)", ch->name);
         r = uv_mbed_close(&ch->connection, close_handle_cb);
         uv_timer_stop(&ch->timer);
         uv_close((uv_handle_t *) &ch->timer, NULL);
@@ -361,7 +361,7 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
     header_t header;
     header_init(&header, ch->msg_seq++);
 
-    CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", ch->id, content, header.seq, body_len);
+    CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", content, header.seq, body_len);
     header.content = content;
     header.body_len = body_len;
 
@@ -456,7 +456,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
             return;
         }
 
-        CH_LOG(ERROR, "could not find waiter for reply_to = %d", ch->id, reply_to);
+        CH_LOG(ERROR, "could not find waiter for reply_to = %d", reply_to);
     }
 
     if (ch->state == Connecting) {
@@ -667,7 +667,7 @@ static void send_hello(ziti_channel_t *ch, ziti_session *session) {
 
 static void connect_timeout(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
-    CH_LOG(ERROR, "connect timeout", ch->id);
+    CH_LOG(ERROR, "connect timeout");
     ch->state = Disconnected;
     if (ch->connection.conn_req == NULL) {
         // diagnostics
