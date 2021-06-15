@@ -542,7 +542,7 @@ static void process_inbound(ziti_channel_t *ch) {
             ch->in_body_offset += len;
 
             if (ch->in_body_offset == total) {
-                CH_LOG(TRACE, "message is complete seq[%d] ct[%X]", ch->in_next->header.seq,
+                CH_LOG(TRACE, "message is complete seq[%d] ct[%04X]", ch->in_next->header.seq,
                        ch->in_next->header.content);
 
                 dispatch_message(ch, ch->in_next);

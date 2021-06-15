@@ -1279,7 +1279,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
     bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
     bool has_conn_id = message_get_int32_header(msg, ConnIdHeader, &conn_id);
 
-    CONN_LOG(TRACE, "<= ct[%X] edge_seq[%d] body[%d]", msg->header.content, seq, msg->header.body_len);
+    CONN_LOG(TRACE, "<= ct[%04X] edge_seq[%d] body[%d]", msg->header.content, seq, msg->header.body_len);
 
     switch (msg->header.content) {
         case ContentTypeStateClosed:
