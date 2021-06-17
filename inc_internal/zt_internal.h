@@ -266,7 +266,7 @@ void ziti_fmt_time(char *time_str, size_t time_str_len, uv_timeval64_t *tv);
 
 void hexify(const uint8_t *bin, size_t bin_len, char sep, char **buf);
 
-void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_session *, ziti_error *, void *), void* ctx);
+void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_session *, const ziti_error *, void *), void *ctx);
 
 #ifdef __cplusplus
 }
