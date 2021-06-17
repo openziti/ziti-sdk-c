@@ -378,7 +378,7 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
     return 0;
 }
 
-static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) {
+static void connect_get_service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
     uv_async_t *ar = ctx;
     struct ziti_conn *conn = ar->data;
     struct ziti_conn_req *req = conn->conn_req;
@@ -406,11 +406,9 @@ static void connect_get_service_cb(ziti_service* s, ziti_error *err, void *ctx) 
         conn->encrypted = s->encryption;
         ziti_connect_async(ar);
     }
-
-    free_ziti_error(err);
 }
 
-static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, void *ctx) {
+static void connect_get_net_session_cb(ziti_net_session *s, const ziti_error *err, void *ctx) {
     uv_async_t *ar = ctx;
     struct ziti_conn *conn = ar->data;
     struct ziti_conn_req *req = conn->conn_req;
@@ -421,11 +419,9 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
             ziti_force_session_refresh(ztx);
             restart_connect(conn);
         } else {
-            if (err->err == ZITI_NOT_FOUND) {
-                err->err = ZITI_SERVICE_UNAVAILABLE;
-            }
+            int e = err->err == ZITI_NOT_FOUND ? ZITI_SERVICE_UNAVAILABLE : err->err;
             CONN_LOG(ERROR, "failed to get session for service[%s]: %s(%s)", conn->service, err->code, err->message);
-            complete_conn_req(conn, err->err);
+            complete_conn_req(conn, e);
         }
         uv_close((uv_handle_t *) ar, free_handle);
     }
@@ -447,8 +443,6 @@ static void connect_get_net_session_cb(ziti_net_session * s, ziti_error *err, vo
         }
         ziti_connect_async(ar);
     }
-
-    free_ziti_error(err);
 }
 
 static void ziti_connect_async(uv_async_t *ar) {
