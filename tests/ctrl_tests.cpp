@@ -27,26 +27,31 @@ template <class T>
 class resp_capture {
 public:
     T *resp;
-    ziti_error *error;
-    resp_capture() { resp = nullptr; error = nullptr;}
+    ziti_error error;
+    resp_capture() { resp = nullptr;
+        memset(&error, 0, sizeof(error));}
+
+    void set_error(const ziti_error * e) {
+        error.message = strdup(e->message);
+        error.code = strdup(e->code);
+        error.err = e->err;
+        error.http_code = e->http_code;
+    }
 
     ~resp_capture() {
-        if (error != nullptr) {
-            free_ziti_error(error);
-            error = nullptr;
-        }
+        free_ziti_error(&error);
     }
 };
 
-template <class T> void resp_cb(T* r, ziti_error *err, void* ctx) {
+template <class T> void resp_cb(T* r, const ziti_error *err, void* ctx) {
     auto *rc = static_cast<resp_capture<T> *>(ctx);
-    rc->error = err;
+    rc->set_error(err);
     rc->resp = r;
 }
 
-auto logout_cb = [](void*, ziti_error* err, void* ctx) {
+auto logout_cb = [](void*, const ziti_error* err, void* ctx) {
     auto logout = static_cast<resp_capture<const char> *>(ctx);
-    logout->error = err;
+    logout->set_error(err);
     logout->resp = "logout called";
 };
 
@@ -62,8 +67,8 @@ TEST_CASE("invalid_controller", "[controller][GH-44]") {
         uv_run(loop, UV_RUN_DEFAULT);
 
         THEN("callback with proper error") {
-            REQUIRE(version.error != nullptr);
-            REQUIRE_THAT(version.error->code, Equals("CONTROLLER_UNAVAILABLE"));
+            REQUIRE(version.error.err != 0);
+            REQUIRE_THAT(version.error.code, Equals("CONTROLLER_UNAVAILABLE"));
         }
     }
 
@@ -106,11 +111,11 @@ TEST_CASE("controller_test","[integ]") {
         uv_run(loop, UV_RUN_DEFAULT);
 
         THEN("should get version") {
-            REQUIRE(version.error == nullptr);
+            REQUIRE(version.error.err == 0);
             REQUIRE(version.resp != nullptr);
         }
         AND_THEN("login should get session") {
-            REQUIRE(session.error == nullptr);
+            REQUIRE(session.error.err == 0);
             REQUIRE(session.resp != nullptr);
             REQUIRE(ctrl.session != nullptr);
         }
@@ -123,8 +128,8 @@ TEST_CASE("controller_test","[integ]") {
         uv_run(loop, UV_RUN_DEFAULT);
         THEN("should get error") {
             REQUIRE(service.resp == nullptr);
-            REQUIRE(service.error != nullptr);
-            REQUIRE_THAT(service.error->code, Equals("UNAUTHORIZED"));
+            REQUIRE(service.error.err != 0);
+            REQUIRE_THAT(service.error.code, Equals("UNAUTHORIZED"));
         }
     }
 
@@ -136,7 +141,7 @@ TEST_CASE("controller_test","[integ]") {
 
         int rc = uv_run(loop, UV_RUN_DEFAULT);
         THEN("should NOT get non-existent service") {
-            REQUIRE(service2.error == nullptr);
+            REQUIRE(service2.error.err == 0);
             REQUIRE(service2.resp == nullptr);
         }
     }
@@ -153,7 +158,7 @@ TEST_CASE("controller_test","[integ]") {
         } r;
         r.c = &ctrl;
 
-        auto serv_cb = [](ziti_service *s, ziti_error* e, void* ctx) {
+        auto serv_cb = [](ziti_service *s, const ziti_error* e, void* ctx) {
             auto *re = static_cast<struct uber_resp_s *>(ctx);
             resp_cb(s, e, &re->service);
             if (e == nullptr) {
@@ -167,17 +172,17 @@ TEST_CASE("controller_test","[integ]") {
 
         int rc = uv_run(loop, UV_RUN_DEFAULT);
         THEN("should get service") {
-            REQUIRE(r.service.error == nullptr);
+            REQUIRE(r.service.error.err == 0);
             REQUIRE(r.service.resp != nullptr);
             REQUIRE_THAT(r.service.resp->name, Equals("wttr.in"));
         }
         AND_THEN("should get network session") {
-            REQUIRE(r.ns.error == nullptr);
+            REQUIRE(r.ns.error.err == 0);
             REQUIRE(r.ns.resp != nullptr);
             REQUIRE(r.ns.resp->token != nullptr);
         }
         AND_THEN("logout should succeed") {
-            REQUIRE(r.logout.error == nullptr);
+            REQUIRE(r.logout.error.err == 0);
             REQUIRE_THAT(r.logout.resp, Equals("logout called"));
         }
 
