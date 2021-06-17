@@ -33,9 +33,9 @@ limitations under the License.
 #endif
 #endif
 
-static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, void *req);
+static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *err, void *req);
 
-static void enroll_cb(ziti_enrollment_resp *er, ziti_error *err, void *ctx);
+static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *ctx);
 
 int verify_controller_jwt(tls_cert cert, void *ctx) {
     ZITI_LOG(INFO, "verifying JWT signature");
@@ -131,7 +131,7 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
     return ERR(ziti);
 }
 
-static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, void *req) {
+static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *err, void *req) {
     ZITI_LOG(DEBUG, "base64_encoded_pkcs7 is: %s", base64_encoded_pkcs7);
 
     int ziti_err;
@@ -213,7 +213,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, ziti_error *err, voi
     }
 }
 
-static void enroll_cb(ziti_enrollment_resp *er, ziti_error *err, void *enroll_ctx) {
+static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enroll_ctx) {
     struct ziti_enroll_req *enroll_req = enroll_ctx;
     ziti_controller *ctrl = enroll_req->controller;
 
@@ -224,8 +224,6 @@ static void enroll_cb(ziti_enrollment_resp *er, ziti_error *err, void *enroll_ct
         if (enroll_req->enroll_cb) {
             enroll_req->enroll_cb(NULL, ZITI_JWT_INVALID, err->code, enroll_req->external_enroll_ctx);
         }
-
-        free_ziti_error(err);
     }
     else {
         ZITI_LOG(DEBUG, "successfully enrolled with controller %s:%s",

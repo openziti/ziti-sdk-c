@@ -921,7 +921,6 @@ static void session_cb(ziti_session *session, ziti_error *err, void *ctx) {
 
     update_ctrl_status(ztx, errCode, err ? err->message : NULL);
 
-    free_ziti_error(err);
     FREE(init_req);
 }
 
@@ -943,8 +942,6 @@ static void version_cb(ziti_version *v, ziti_error *err, void *ctx) {
     if (err != NULL) {
         ZTX_LOG(ERROR, "failed to get controller version from %s %s(%s)",
                  ztx->opts->controller, err->code, err->message);
-        free_ziti_error(err);
-        FREE(err);
     } else {
         ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
                  ztx->opts->controller, v->version, v->revision, v->build_date);

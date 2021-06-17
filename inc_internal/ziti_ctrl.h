@@ -45,61 +45,61 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctlr, const char *url, tls_
 
 int ziti_ctrl_close(ziti_controller *ctrl);
 
-void ziti_ctrl_get_version(ziti_controller *ctrl, void (*ver_cb)(ziti_version *, ziti_error *, void *), void *ctx);
+void ziti_ctrl_get_version(ziti_controller *ctrl, void (*ver_cb)(ziti_version *, const ziti_error *, void *), void *ctx);
 
 void
-ziti_ctrl_login(ziti_controller *ctrl, const char **cfg_types, void (*login_cb)(ziti_session *, ziti_error *, void *),
+ziti_ctrl_login(ziti_controller *ctrl, const char **cfg_types, void (*login_cb)(ziti_session *, const ziti_error *, void *),
                 void *ctx);
 
-void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session *, ziti_error *, void *), void *ctx);
+void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_data *, ziti_error *, void *), void *ctx);
+void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_data *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void(*cb)(ziti_edge_router_array, ziti_error *, void *),
+void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void(*cb)(ziti_edge_router_array, const ziti_error *, void *),
                                     void *ctx);
 
-void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, ziti_error *, void *), void *ctx);
+void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_service_update *, ziti_error *, void *),
+void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_service_update *, const ziti_error *, void *),
                                    void *ctx);
 
-void ziti_ctrl_get_services(ziti_controller *ctrl, void (*srv_cb)(ziti_service_array, ziti_error *, void *), void *ctx);
+void ziti_ctrl_get_services(ziti_controller *ctrl, void (*srv_cb)(ziti_service_array, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name,
-                           void (*srv_cb)(ziti_service *, ziti_error *, void *), void *ctx);
+                           void (*srv_cb)(ziti_service *, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_get_net_session(
         ziti_controller *ctrl, const char *service_id, const char *type,
-        void (*cb)(ziti_net_session *, ziti_error *, void *), void *ctx);
+        void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_get_sessions(
-        ziti_controller *ctrl, void (*cb)(ziti_net_session **, ziti_error *, void *), void *ctx);
+        ziti_controller *ctrl, void (*cb)(ziti_net_session **, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, ziti_error *, void *), void *ctx);
+void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, const char *csr,
-                      void (*cb)(ziti_enrollment_resp *, ziti_error *, void *), void *ctx);
+                      void (*cb)(ziti_enrollment_resp *, const ziti_error *, void *), void *ctx);
 
 //Posture
-void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx);
+void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 
-void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,void(*cb)(void *, ziti_error *, void *), void *ctx);
+void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 
 
 //MFA
-void ziti_ctrl_login_mfa(ziti_controller *ctrl, char* body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx);
+void ziti_ctrl_login_mfa(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_post_mfa(ziti_controller *ctrl,void(*cb)(void *, ziti_error *, void *), void *ctx);
+void ziti_ctrl_post_mfa(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, ziti_error *, void *), void *ctx);
+void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char* code, void(*cb)(void*, ziti_error *, void *), void *ctx);
+void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char *code, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char* body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx);
+void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char* code, void(*cb)(ziti_mfa_recovery_codes *, ziti_error *, void *), void *ctx);
+void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char *code, void(*cb)(ziti_mfa_recovery_codes *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char* body, size_t body_len, void(*cb)(void *, ziti_error *, void *), void *ctx);
+void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 
 
 #ifdef __cplusplus

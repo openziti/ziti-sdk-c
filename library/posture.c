@@ -391,7 +391,7 @@ static void ziti_collect_pr(ziti_context ztx, const char *pr_obj_key, char *pr_o
     }
 }
 
-static void ziti_pr_post_bulk_cb(__attribute__((unused)) void *empty, ziti_error *err, void *ctx) {
+static void ziti_pr_post_bulk_cb(__attribute__((unused)) void *empty, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err != NULL) {
         ZITI_LOG(ERROR, "error during bulk posture response submission (%d) %s", err->http_code, err->message);
@@ -399,7 +399,6 @@ static void ziti_pr_post_bulk_cb(__attribute__((unused)) void *empty, ziti_error
         if (err->http_code == 404) {
             ztx->no_bulk_posture_response_api = true;
         }
-        FREE(err)
     } else {
         ztx->posture_checks->must_send = false; //did not error, can skip submissions
         ZITI_LOG(DEBUG, "done with bulk posture response submission");
@@ -423,14 +422,13 @@ static bool ziti_pr_is_info_errored(ziti_context ztx, const char *id) {
     return *is_errored;
 }
 
-static void ziti_pr_post_cb(__attribute__((unused)) void *empty, ziti_error *err, void *ctx) {
+static void ziti_pr_post_cb(__attribute__((unused)) void *empty, const ziti_error *err, void *ctx) {
     pr_cb_ctx *pr_ctx = ctx;
 
     if (err != NULL) {
         ZITI_LOG(ERROR, "error during individual posture response submission (%d) %s - object: %s", err->http_code,
                  err->message, pr_ctx->info->obj);
         ziti_pr_set_info_errored(pr_ctx->ztx, pr_ctx->info->id);
-        FREE(err)
     } else {
         ZITI_LOG(TRACE, "done with one pr response submission, object: %s", pr_ctx->info->obj);
         ziti_pr_set_info_success(pr_ctx->ztx, pr_ctx->info->id);
