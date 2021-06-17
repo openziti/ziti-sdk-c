@@ -101,19 +101,19 @@ static int hash_sha512(uv_loop_t *loop, const char *path, unsigned char **out_bu
 static bool check_running(uv_loop_t *loop, const char *path);
 
 static void ziti_pr_free_pr_info_members(pr_info *info) {
-    FREE(info->id)
-    FREE(info->obj)
+    FREE(info->id);
+    FREE(info->obj);
 }
 
 
 static void ziti_pr_free_pr_info(pr_info *info) {
     ziti_pr_free_pr_info_members(info);
-    FREE(info)
+    FREE(info);
 }
 
 static void ziti_pr_free_pr_cb_ctx(pr_cb_ctx *ctx) {
     ziti_pr_free_pr_info(ctx->info);
-    FREE(ctx)
+    FREE(ctx);
 }
 
 void ziti_posture_init(ziti_context ztx, long interval_secs) {
@@ -140,7 +140,7 @@ void ziti_posture_init(ziti_context ztx, long interval_secs) {
 }
 
 static void ziti_posture_checks_timer_free(uv_handle_t *handle) {
-    FREE(handle)
+    FREE(handle);
 }
 
 void ziti_posture_checks_free(struct posture_checks *pcs) {
@@ -150,7 +150,7 @@ void ziti_posture_checks_free(struct posture_checks *pcs) {
 
         model_map_clear(&pcs->responses, (_free_f) ziti_pr_free_pr_info_members);
         model_map_clear(&pcs->error_states, NULL);
-        FREE(pcs)
+        FREE(pcs);
     }
 }
 
@@ -181,7 +181,7 @@ void ziti_send_posture_data(ziti_context ztx) {
     if (new_session_id || ztx->posture_checks->must_send_every_time) {
         ZITI_LOG(DEBUG, "posture checks either never sent or session changed, must_send = true");
         ztx->posture_checks->must_send = true;
-        FREE(ztx->posture_checks->previous_session_id)
+        FREE(ztx->posture_checks->previous_session_id);
         ztx->posture_checks->previous_session_id = strdup(ztx->session->id);
     } else {
         ZITI_LOG(DEBUG, "posture checks using standard logic to submit, must_send = false");
