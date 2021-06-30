@@ -40,6 +40,7 @@ typedef enum {
  * \see ziti_router_event
  */
 typedef enum {
+    EdgeRouterAdded,
     EdgeRouterConnected,
     EdgeRouterDisconnected,
     EdgeRouterRemoved,
@@ -63,8 +64,9 @@ struct ziti_context_event {
  */
 struct ziti_router_event {
     ziti_router_status status;
-    const char* name;
-    const char* version;
+    const char *name;
+    const char *address;
+    const char *version;
 };
 
 /**

@@ -262,6 +262,7 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
     }
     else {
         ch = new_ziti_channel(ztx, ch_name, url);
+        ch->notify_cb(ch, EdgeRouterAdded, ch->notify_ctx);
     }
 
     if (ch->state == Connecting) {

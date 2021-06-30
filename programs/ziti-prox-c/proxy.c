@@ -472,8 +472,11 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
 
         case ZitiRouterEvent:
             switch (event->event.router.status) {
+                case EdgeRouterAdded:
+                    ZITI_LOG(INFO, "ziti added edge router %s address=%s", event->event.router.name, event->event.router.address);
+                    break;
                 case EdgeRouterConnected:
-                    ZITI_LOG(INFO, "ziti connected to edge router %s\nversion = %s", event->event.router.name, event->event.router.version);
+                    ZITI_LOG(INFO, "ziti connected to edge router %s, version = %s", event->event.router.name, event->event.router.version);
                     break;
                 case EdgeRouterDisconnected:
                     ZITI_LOG(INFO, "ziti disconnected from edge router %s", event->event.router.name);

@@ -994,6 +994,7 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_c
             .type = ZitiRouterEvent,
             .event.router = {
                     .name = ch->name,
+                    .address = ch->host,
                     .version = ch->version,
                     .status = status,
             }
