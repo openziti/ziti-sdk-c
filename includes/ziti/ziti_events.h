@@ -32,6 +32,7 @@ typedef enum {
     ZitiContextEvent = 1,
     ZitiRouterEvent = 1 << 1,
     ZitiServiceEvent = 1 << 2,
+    ZitiMfaAuthEvent = 1 << 3,
 } ziti_event_type;
 
 /**
@@ -90,6 +91,18 @@ struct ziti_service_event {
 };
 
 /**
+ * \brief Ziti Authentication Query MFA Event
+ *
+ * Event notifying the app that an active API Session requires
+ * its identity's current MFA one-time-code (TOTP) to be
+ * submitted. All MFA codes can be provided via
+ * `ziti_mfa_auth(...)`
+ */
+struct ziti_mfa_auth_event {
+    ziti_auth_query_mfa *auth_query_mfa;
+};
+
+/**
  * \brief Object passed to `ziti_options.event_cb`.
  *
  * \note event data becomes invalid as soon as callback returns.
@@ -101,6 +114,7 @@ typedef struct ziti_event_s {
         struct ziti_context_event ctx;
         struct ziti_router_event router;
         struct ziti_service_event service;
+        struct ziti_mfa_auth_event mfa_auth_event;
     } event;
 } ziti_event_t;
 

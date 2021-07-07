@@ -31,6 +31,7 @@ const char *const PC_OS_TYPE = "OS";
 const char *const PC_PROCESS_TYPE = "PROCESS";
 const char *const PC_PROCESS_MULTI_TYPE = "PROCESS_MULTI";
 const char *const PC_MAC_TYPE = "MAC";
+const char *const PC_ENDPOINT_STATE_TYPE = "ENDPOINT_STATE";
 
 #undef MODEL_API
 #define MODEL_API static

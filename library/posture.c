@@ -731,6 +731,22 @@ static void process_check_work(uv_work_t *w) {
     pcw->signers = get_signers(path, &pcw->num_signers);
 }
 
+void ziti_endpoint_state_change(ziti_context ztx, bool woken, bool unlocked) {
+    if(woken || unlocked) {
+        ziti_pr_endpoint_state_req state_req = {
+                .typeId = (char *) PC_ENDPOINT_STATE_TYPE,
+                .unlocked = unlocked,
+                .woken = woken
+        };
+
+        size_t obj_len;
+
+        char *obj = ziti_pr_endpoint_state_req_to_json(&state_req, 0, &obj_len);
+
+        ziti_pr_post(&ztx->controller, obj, obj_len, NULL, NULL);
+    }
+}
+
 static int hash_sha512(uv_loop_t *loop, const char *path, unsigned char **out_buf, size_t *out_len) {
     size_t digest_size = crypto_hash_sha512_bytes();
     unsigned char *digest = NULL;

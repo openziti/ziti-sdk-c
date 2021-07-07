@@ -32,6 +32,7 @@ extern const char* const PC_OS_TYPE;
 extern const char* const PC_PROCESS_TYPE;
 extern const char* const PC_PROCESS_MULTI_TYPE;
 extern const char* const PC_MAC_TYPE;
+extern const char* const PC_ENDPOINT_STATE_TYPE;
 
 
 typedef struct ziti_controller_s {

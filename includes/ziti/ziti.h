@@ -208,39 +208,6 @@ typedef void (*ziti_pq_process_cb)(ziti_context ztx, const char *id, const char 
                                    ziti_pr_process_cb response_cb);
 
 /**
- * @brief MFA authentication status callback.
- *
- * This callback is invoked after the ziti_ar_mfa_cb is invoked during MFA authentication.
- * It should be used to observe the result of the MFA submission and to prompt the user to try
- * again or give up.
- *
- * @see ziti_service_available(), ZITI_ERRORS
- */
-typedef void (*ziti_ar_mfa_status_cb)(ziti_context ztx, void* mfa_ctx, int status, void* ctx);
-
-/**
- * @brief Callback to supply the Ziti SDK with an MFA TOTP/recovery token for authentication.
- *
- * The Ziti SDK caller should receive this call back when MFA authentication is required. The
- * ziti_aq_mfa_cb that is registered via `ziti_options.aq_mfa_cb` will be invoked and receive
- * this `ziti_ar_mfa_cb` as a callback to supply the user entered token. Additionally,
- * when `ziti_ar_mfa_cb` is invoked a `ziti_ar_mfa_status_cb` may be invoked to receive the result of the code
- * submission.
- */
-typedef void (*ziti_ar_mfa_cb)(ziti_context ztx, void* mfa_ctx, char* code, ziti_ar_mfa_status_cb ar_mfa_status_cb, void* ctx);
-
-/**
- *  @brief Auth Query for MFA authentication
- *
- *  This callback is invoked by the Ziti SDK when an authenticating identity requires MFA.
- *  The callback is responsible for inspecting the authentication query, interacting with the MFA
- *  service, user, and invoking the provided done callback.
- *
- */
-typedef void (*ziti_aq_mfa_cb)(ziti_context ztx, void* mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb);
-
-
-/**
  * @brief Ziti Event callback.
  *
  * This callback is invoked when certain changes happen for a given ziti context.
@@ -275,9 +242,6 @@ typedef struct ziti_options_s {
     ziti_pq_os_cb pq_os_cb;
     ziti_pq_process_cb pq_process_cb;
     ziti_pq_domain_cb pq_domain_cb;
-
-    //mfa cbs
-    ziti_aq_mfa_cb aq_mfa_cb;
 
     void *app_ctx;
 
@@ -831,6 +795,8 @@ extern int ziti_close_write(ziti_connection conn);
 ZITI_FUNC
 extern int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx);
 
+
+
 /**
  * @brief Callback called after ziti_mfa_enroll()
  *
@@ -957,22 +923,39 @@ ZITI_FUNC
 extern void ziti_mfa_new_recovery_codes(ziti_context ztx, char *code, ziti_mfa_recovery_codes_cb new_cb, void *ctx);
 
 /**
- * @brief Aborts an MFA authentication and frees the associated resources
+ * @brief Attempt to submit an MFA code for evaluation
  *
- * When an MFA authentication query is being processed it will have an `mfa_ctx` associated with it.
- * The `mfa_ctx` will remain allocated till it provides a valid authentication response (i.e. the status
- * callback receives no error) or `ziti_mfa_abort()` is called.
+ * Attempts submit an MFA code for evaluation. This should be done in response to
+ * the `ZitiMfaAuthEvent` event or when posture check timeouts would occur for a
+ * service.
  *
- * If no status callback is defined for MFA processing, the MFA resources will
- * be automatically freed on error.
+ * An error status will be returned if the request fails, #ZITI_OK is expected on success
+ * via the `ziti_mfa_cb` provided.
  *
- * On successful MFA authentication response, the MFA resources will be automatically
- * freed and calling this function should not occur.
- *
- * @param mfa_ctx the mfa_ctx provided during MFA authentication query processing
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param code a TOTP code
+ * @param auth_cb callback to receive the result status
+ * @param ctx additional context to be passed into the callback
  */
 ZITI_FUNC
-extern void ziti_mfa_abort(void *mfa_ctx);
+extern void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb auth_cb, void *ctx);
+
+/**
+ * @brief Alerts that the host running the `ziti_context` has undergone a state change.
+ *
+ * Notifies that the host has undergone a state change: either woke or unlocked.
+ * Being "woke" is defined as the screen dimming/shutting off
+ * Being "unlocked" is defined as having the device unlocked via a security mechanism.
+ *
+ * At one time, a device may be "woken" and "unlocked".
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param woken whether the host device has been woke from sleep/hibernation
+ * @param unlocked whether the host device has been unlocked
+ */
+ZITI_FUNC
+extern void ziti_endpoint_state_change(ziti_context ztx, bool woken, bool unlocked);
+
 
 #ifdef __cplusplus
 }
