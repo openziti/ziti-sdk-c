@@ -125,6 +125,7 @@ XX(hash, string, none, hash, __VA_ARGS__) \
 XX(signers, string, array, signerFingerprints, __VA_ARGS__)
 
 #define ZITI_PR_ENDPOINT_STATE_REQ(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__)\
 XX(typeId, string, none, typeId, __VA_ARGS__) \
 XX(unlocked, bool, none, unlocked, __VA_ARGS__) \
 XX(woken, bool, none, woken, __VA_ARGS__)
