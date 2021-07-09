@@ -168,6 +168,7 @@ struct ziti_ctx {
 
     int ctrl_status;
     ziti_session *session;
+    uv_timeval64_t session_received_at;
     ziti_identity_data *identity_data;
 
     // map<name,ziti_service>
@@ -206,6 +207,7 @@ struct ziti_ctx {
 
     /* auth query (MFA) support */
     struct auth_queries *auth_queries;
+
 };
 
 #ifdef __cplusplus

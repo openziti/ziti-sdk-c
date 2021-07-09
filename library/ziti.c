@@ -461,7 +461,7 @@ const char *ziti_conn_source_identity(ziti_connection conn) {
 }
 
 
-static void ziti_send_event(ziti_context ztx, const ziti_event_t *e) {
+void ziti_send_event(ziti_context ztx, const ziti_event_t *e) {
     if ((ztx->opts->events & e->type) && ztx->opts->event_cb) {
         ztx->opts->event_cb(ztx, e);
     }
@@ -731,7 +731,7 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
 static void services_refresh(uv_timer_t *t) {
     ziti_context ztx = t->data;
     
-    if (ztx->auth_queries->outstanding_auth_queries) {
+    if (ztx->auth_queries->outstanding_auth_query_ctx) {
         ZITI_LOG(DEBUG, "service refresh stopped, outstanding auth queries");
         return;
     }
@@ -787,16 +787,13 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
 static void session_post_auth_query_cb(ziti_context ztx){
     ziti_session *session = ztx->session;
 
-    uv_timeval64_t now;
-    uv_gettimeofday(&now);
-
     int time_diff;
     if (session->cached_last_activity_at) {
         ZITI_LOG(TRACE, "API supports cached_last_activity_at");
-        time_diff = (int) (now.tv_sec - session->cached_last_activity_at->tv_sec);
+        time_diff = (int) (ztx->session_received_at.tv_sec - session->cached_last_activity_at->tv_sec);
     } else {
         ZITI_LOG(TRACE, "API doesn't support cached_last_activity_at - using updated");
-        time_diff = (int) (now.tv_sec - session->updated->tv_sec);
+        time_diff = (int) (ztx->session_received_at.tv_sec - session->updated->tv_sec);
     }
     if (abs(time_diff) > 10) {
         ZITI_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
@@ -806,8 +803,8 @@ static void session_post_auth_query_cb(ziti_context ztx){
     if (session->expires) {
         // adjust expiration to local time if needed
         session->expires->tv_sec += time_diff;
-        ZTX_LOG(DEBUG, "ziti API session expires in %ld seconds", (long) (session->expires->tv_sec - now.tv_sec));
-        long delay = (session->expires->tv_sec - now.tv_sec) - 10;
+        ZTX_LOG(DEBUG, "ziti API session expires in %ld seconds", (long) (session->expires->tv_sec - ztx->session_received_at.tv_sec));
+        long delay = (session->expires->tv_sec - ztx->session_received_at.tv_sec) - 10;
         uv_timer_start(&ztx->session_timer, session_refresh, delay * 1000, 0);
     }
 
@@ -850,6 +847,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
 
         ziti_session *old_session = ztx->session;
         ztx->session = session;
+        uv_gettimeofday(&ztx->session_received_at);
 
         free_ziti_session(old_session);
         FREE(old_session);

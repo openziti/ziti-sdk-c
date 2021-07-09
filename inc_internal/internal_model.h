@@ -124,6 +124,12 @@ XX(is_running, bool, none, isRunning, __VA_ARGS__) \
 XX(hash, string, none, hash, __VA_ARGS__) \
 XX(signers, string, array, signerFingerprints, __VA_ARGS__)
 
+#define ZITI_PR_ENDPOINT_STATE_REQ(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__)\
+XX(typeId, string, none, typeId, __VA_ARGS__) \
+XX(unlocked, bool, none, unlocked, __VA_ARGS__) \
+XX(woken, bool, none, woken, __VA_ARGS__)
+
 #define ZITI_SERVICE_UPDATE(XX, ...) \
 XX(last_change, string, none, lastChangeAt, __VA_ARGS__)
 
@@ -166,6 +172,8 @@ DECLARE_MODEL(ziti_pr_os_req, ZITI_PR_OS_REQ)
 DECLARE_MODEL(ziti_pr_process, ZITI_PR_PROCESS)
 
 DECLARE_MODEL(ziti_pr_process_req, ZITI_PR_PROCESS_REQ)
+
+DECLARE_MODEL(ziti_pr_endpoint_state_req, ZITI_PR_ENDPOINT_STATE_REQ)
 
 DECLARE_MODEL(ziti_pr_domain_req, ZITI_PR_DOMAIN_REQ)
 

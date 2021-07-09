@@ -83,6 +83,7 @@ struct client {
 };
 
 static int process_args(int argc, char *argv[]);
+void mfa_auth_event_handler(ziti_context ztx, ziti_auth_query_mfa *aq_mfa);
 
 int main(int argc, char *argv[]) {
     process_args(argc, argv);
@@ -488,6 +489,10 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                     ZITI_LOG(INFO, "edge router %s is not available", event->event.router.name);
                     break;
             }
+            break;
+        case ZitiMfaAuthEvent:
+            mfa_auth_event_handler(ztx, event->event.mfa_auth_event.auth_query_mfa);
+
         default:
             break;
     }
@@ -505,11 +510,9 @@ struct mfa_work {
     uv_work_t w;
     ziti_context ztx;
     ziti_auth_query_mfa *aq_mfa;
-    ziti_ar_mfa_cb response_cb;
-    void *mfa_ctx;
 };
 
-void mfa_response_cb(ziti_context ztx, void *mfa_ctx, int status, void *ctx);
+void mfa_response_cb(ziti_context ztx, int status, void *ctx);
 
 void prompt_stdin(char *buffer, size_t buflen) {
     if (fgets(buffer, buflen, stdin) != 0) {
@@ -532,7 +535,7 @@ void mfa_prompt(struct mfa_work *mfa_wr) {
     prompt_stdin(code, 9);
 
     if (strlen(code) > 0) {
-        mfa_wr->response_cb(mfa_wr->ztx, mfa_wr->mfa_ctx, code, mfa_response_cb, mfa_wr);
+        ziti_mfa_auth(mfa_wr->ztx, code, mfa_response_cb, mfa_wr);
     } else {
         ZITI_LOG(ERROR, "no mfa token provided, exiting");
         exit(1);
@@ -541,7 +544,7 @@ void mfa_prompt(struct mfa_work *mfa_wr) {
 
 }
 
-void mfa_response_cb(ziti_context ztx, void *mfa_ctx, int status, void *ctx) {
+void mfa_response_cb(ziti_context ztx, int status, void *ctx) {
     struct mfa_work *mfa_wr = ctx;
     ZITI_LOG(INFO, "mfa response status: %d", status);
 
@@ -560,12 +563,10 @@ void mfa_worker_done(uv_work_t *req, int status) {
     FREE(req);
 }
 
-void mfa_cb(ziti_context ztx, void *mfa_ctx, ziti_auth_query_mfa *aq_mfa, ziti_ar_mfa_cb response_cb) {
+void mfa_auth_event_handler(ziti_context ztx, ziti_auth_query_mfa *aq_mfa) {
     NEWP(mfa_wr, struct mfa_work);
     mfa_wr->ztx = ztx;
-    mfa_wr->mfa_ctx = mfa_ctx;
     mfa_wr->aq_mfa = aq_mfa;
-    mfa_wr->response_cb = response_cb;
     mfa_wr->w.data = mfa_wr;
 
     uv_queue_work(global_loop, &mfa_wr->w, mfa_worker, mfa_worker_done);
@@ -600,14 +601,13 @@ void run(int argc, char **argv) {
 
     ziti_options opts = {
             .config = config,
-            .events = ZitiContextEvent | ZitiServiceEvent | ZitiRouterEvent,
+            .events = ZitiContextEvent | ZitiServiceEvent | ZitiRouterEvent | ZitiMfaAuthEvent,
             .event_cb = on_ziti_event,
             .refresh_interval = 60,
             .router_keepalive = 10,
             .app_ctx = &app_ctx,
             .config_types = my_configs,
             .metrics_type = INSTANT,
-            .aq_mfa_cb = mfa_cb
     };
 
     ziti_init_opts(&opts, loop);
