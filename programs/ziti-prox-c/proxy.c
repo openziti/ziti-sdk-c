@@ -560,10 +560,6 @@ void mfa_worker(uv_work_t *req) {
 }
 
 void mfa_worker_done(uv_work_t *req, int status) {
-    //todo: remove, test lines (next 2)
-    struct mfa_work *mfa_wr = req->data;
-    ziti_endpoint_state_change(mfa_wr->ztx, true, false);
-
     FREE(req);
 }
 
