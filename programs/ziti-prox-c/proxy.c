@@ -85,7 +85,7 @@ struct client {
 static int process_args(int argc, char *argv[]);
 void mfa_auth_event_handler(ziti_context ztx, ziti_auth_query_mfa *aq_mfa);
 
-        int main(int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     process_args(argc, argv);
 }
 
@@ -510,7 +510,6 @@ struct mfa_work {
     uv_work_t w;
     ziti_context ztx;
     ziti_auth_query_mfa *aq_mfa;
-    //ziti_mfa_cb response_cb;
 };
 
 void mfa_response_cb(ziti_context ztx, int status, void *ctx);
