@@ -21,10 +21,13 @@ const char *MFA_PROVIDER_ZITI = "ziti";
 
 struct ziti_mfa_auth_ctx_s {
     ziti_context ztx;
+
     ziti_mfa_cb cb;
+    void *cb_ctx;
+
     ziti_auth_query_mfa *auth_query_mfa;
     bool auth_attempted;
-    void *cb_ctx;
+
 };
 
 struct ziti_mfa_enroll_cb_ctx_s {
@@ -153,7 +156,6 @@ void ziti_auth_query_process(ziti_context ztx, void(*cb)(ziti_context)) {
     ziti_mfa_auth_ctx *mfa_auth_ctx = calloc(1, sizeof(ziti_mfa_auth_ctx));
     mfa_auth_ctx->ztx = ztx;
     mfa_auth_ctx->cb = cb;
-    mfa_auth_ctx->cb_ctx;
 
     ZITI_LOG(INFO, "sending auth query mfa authentication event, authentication cannot proceed if not handled");
     ziti_auth_query_mfa_process(mfa_auth_ctx);
@@ -273,9 +275,12 @@ void ziti_mfa_auth_internal_cb(void *empty, const ziti_error *err, void *ctx) {
         }
     } else {
         if (mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx != NULL){
-            mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx->cb(ztx, ZITI_OK, mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx->cb_ctx);
-            FREE(mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx);
+            ziti_mfa_auth_ctx *ctx = mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx;
             mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx = NULL;
+
+            ctx->cb(ztx, ZITI_OK, ctx->cb_ctx);
+
+            FREE(ctx);
         }
 
         if (mfa_auth_ctx->cb != NULL) {
