@@ -664,6 +664,11 @@ static void crypto_wr_cb(ziti_connection conn, ssize_t status, void *ctx) {
 
 int establish_crypto(ziti_connection conn, message *msg) {
 
+    if (conn->state != Connecting && conn->state != Accepting) {
+        CONN_LOG(ERROR, "cannot establish crypto in state[%s]", ziti_conn_state(conn));
+        return ZITI_INVALID_STATE;
+    }
+
     size_t peer_key_len;
     uint8_t *peer_key;
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
@@ -682,22 +687,17 @@ int establish_crypto(ziti_connection conn, message *msg) {
 
     conn->tx = calloc(1, crypto_secretstream_xchacha20poly1305_KEYBYTES);
     conn->rx = calloc(1, crypto_secretstream_xchacha20poly1305_KEYBYTES);
-    int rc;
+    int rc = ZITI_OK;
     if (conn->state == Connecting) {
         rc = crypto_kx_client_session_keys(conn->rx, conn->tx, conn->pk, conn->sk, peer_key);
-    }
-    else if (conn->state == Accepting) {
+    } else if (conn->state == Accepting) {
         rc = crypto_kx_server_session_keys(conn->rx, conn->tx, conn->parent->pk, conn->parent->sk, peer_key);
     }
-    else {
-        CONN_LOG(ERROR, "cannot establish crypto in state[%s]", ziti_conn_state(conn));
-        return ZITI_INVALID_STATE;
-    }
+
     if (rc != 0) {
         CONN_LOG(ERROR, "failed to establish encryption: crypto error");
-        return ZITI_CRYPTO_FAIL;
     }
-    return ZITI_OK;
+    return rc;
 }
 
 static int send_crypto_header(ziti_connection conn) {
@@ -1238,6 +1238,37 @@ int ziti_close_write(ziti_connection conn) {
     return ZITI_OK;
 }
 
+void reject_dial_request(ziti_connection conn, message *req, const char *reason) {
+
+    ziti_channel_t *ch = conn->channel;
+    CONN_LOG(TRACE, "ch[%d] => rejecting Dial request: %s", ch->id, reason);
+
+    uint32_t content_type = ContentTypeDialFailed;
+
+    int32_t conn_id = htole32(conn->conn_id);
+    int32_t msg_seq = htole32(0);
+    int32_t reply_id = htole32(req->header.seq);
+    hdr_t headers[] = {
+            {
+                    .header_id = ConnIdHeader,
+                    .length = sizeof(conn_id),
+                    .value = (uint8_t *) &conn_id
+            },
+            {
+                    .header_id = SeqHeader,
+                    .length = sizeof(msg_seq),
+                    .value = (uint8_t *) &msg_seq
+            },
+            {
+                    .header_id = ReplyForHeader,
+                    .length = sizeof(reply_id),
+                    .value = (uint8_t *) &reply_id
+            },
+    };
+
+    ziti_channel_send(ch, content_type, headers, 3, (const uint8_t *)reason, strlen(reason), NULL);
+}
+
 static void process_edge_message(struct ziti_conn *conn, message *msg, int code) {
 
     if (msg == NULL) {
@@ -1345,26 +1376,33 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
 
         case ContentTypeDial:
             if (conn->state != Bound) {
-                CONN_LOG(ERROR, "invalid message received");
+                CONN_LOG(ERROR, "invalid message received in state[%s]", ziti_conn_state(conn));
+                reject_dial_request(conn, msg, "unexpected dial request");
+                break;
             }
-            ziti_client_ctx clt_ctx = {0};
-            message_get_bytes_header(msg, AppDataHeader, (uint8_t **) &clt_ctx.app_data, &clt_ctx.app_data_sz);
             ziti_connection clt;
             ziti_conn_init(conn->ziti_ctx, &clt, NULL);
-            uint8_t *source_identity = NULL;
-            size_t source_identity_sz = 0;
-            bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
-            if (caller_id_sent) {
-                clt->source_identity = strndup((char *) source_identity, source_identity_sz);
-                clt_ctx.caller_id = clt->source_identity;
-            }
             conn_set_state(clt, Accepting);
             clt->parent = conn;
             clt->channel = conn->channel;
             clt->dial_req_seq = msg->header.seq;
             clt->encrypted = conn->encrypted;
-            if (conn->encrypted) {
-                establish_crypto(clt, msg);
+            int rc = conn->encrypted ? establish_crypto(clt, msg) : ZITI_OK;
+            if (rc != ZITI_OK) {
+                CONN_LOG(ERROR, "failed to establish crypto", ziti_conn_state(conn));
+                reject_dial_request(conn, msg, ziti_errorstr(rc));
+                clt->state = Closed; // put directly into Closed state
+                break;
+            }
+
+            uint8_t *source_identity = NULL;
+            size_t source_identity_sz = 0;
+            ziti_client_ctx clt_ctx = {0};
+            message_get_bytes_header(msg, AppDataHeader, (uint8_t **) &clt_ctx.app_data, &clt_ctx.app_data_sz);
+            bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
+            if (caller_id_sent) {
+                clt->source_identity = strndup((char *) source_identity, source_identity_sz);
+                clt_ctx.caller_id = clt->source_identity;
             }
             conn->client_cb(conn, clt, ZITI_OK, &clt_ctx);
             break;
