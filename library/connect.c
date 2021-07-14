@@ -687,7 +687,7 @@ int establish_crypto(ziti_connection conn, message *msg) {
 
     conn->tx = calloc(1, crypto_secretstream_xchacha20poly1305_KEYBYTES);
     conn->rx = calloc(1, crypto_secretstream_xchacha20poly1305_KEYBYTES);
-    int rc = ZITI_OK;
+    int rc = 0;
     if (conn->state == Connecting) {
         rc = crypto_kx_client_session_keys(conn->rx, conn->tx, conn->pk, conn->sk, peer_key);
     } else if (conn->state == Accepting) {
@@ -696,8 +696,11 @@ int establish_crypto(ziti_connection conn, message *msg) {
 
     if (rc != 0) {
         CONN_LOG(ERROR, "failed to establish encryption: crypto error");
+        FREE(conn->tx);
+        FREE(conn->rx);
+        return ZITI_CRYPTO_FAIL;
     }
-    return rc;
+    return ZITI_OK;
 }
 
 static int send_crypto_header(ziti_connection conn) {
