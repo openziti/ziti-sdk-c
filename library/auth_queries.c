@@ -28,6 +28,7 @@ struct ziti_mfa_auth_ctx_s {
     ziti_auth_query_mfa *auth_query_mfa;
     bool auth_attempted;
 
+    char *code;
 };
 
 struct ziti_mfa_enroll_cb_ctx_s {
@@ -98,6 +99,7 @@ void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb status_cb, vo
     mfa_auth_ctx->cb = status_cb;
     mfa_auth_ctx->cb_ctx = status_ctx;
     mfa_auth_ctx->ztx = ztx;
+    mfa_auth_ctx->code = strdup(code);
 
 
     char *body = ziti_mfa_code_body(code);
@@ -253,6 +255,24 @@ void ziti_mfa_verify(ziti_context ztx, char *code, ziti_mfa_cb verify_cb, void *
     ziti_ctrl_post_mfa_verify(&ztx->controller, body, strlen(body), ziti_mfa_verify_internal_cb, mfa_cb_ctx);
 }
 
+void ziti_mfa_re_auth_internal_cb(ziti_session *session, const ziti_error *err, void *ctx) {
+    ziti_mfa_auth_ctx *mfa_auth_ctx = ctx;
+
+    if (err != NULL) {
+        ZITI_LOG(ERROR, "error during verify MFA call, could not re-authenticate: %d - %s - %s", err->http_code, err->code, err->message);
+        mfa_auth_ctx->cb(mfa_auth_ctx->ztx, err->err, mfa_auth_ctx->cb_ctx);
+    } else {
+        ziti_session *old_session = mfa_auth_ctx->ztx->session;
+        mfa_auth_ctx->ztx->session = session;
+
+        free_ziti_session(old_session);
+        FREE(old_session);
+
+        char *body = ziti_mfa_code_body(mfa_auth_ctx->code);
+        ziti_ctrl_login_mfa(&mfa_auth_ctx->ztx->controller, body, strlen(body), ziti_mfa_auth_internal_cb, mfa_auth_ctx);
+    }
+}
+
 void ziti_mfa_auth_internal_cb(void *empty, const ziti_error *err, void *ctx) {
     ziti_mfa_auth_ctx *mfa_auth_ctx = ctx;
     ziti_context ztx = mfa_auth_ctx->ztx;
@@ -260,7 +280,7 @@ void ziti_mfa_auth_internal_cb(void *empty, const ziti_error *err, void *ctx) {
         if (err->http_code == 401 && !mfa_auth_ctx->auth_attempted) {
             // not authenticated, attempt re-auth once
             mfa_auth_ctx->auth_attempted = true;
-            ziti_re_auth_with_cb(mfa_auth_ctx->ztx, ziti_mfa_auth_internal_cb, mfa_auth_ctx);
+            ziti_re_auth_with_cb(mfa_auth_ctx->ztx, ziti_mfa_re_auth_internal_cb, mfa_auth_ctx);
             return;
         } else {
             ZITI_LOG(ERROR, "error during MFA auth call: %d - %s - %s", err->http_code, err->code, err->message);
@@ -274,12 +294,13 @@ void ziti_mfa_auth_internal_cb(void *empty, const ziti_error *err, void *ctx) {
             return;
         }
     } else {
-        if (mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx != NULL){
+        if (mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx != NULL) {
             ziti_mfa_auth_ctx *ctx = mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx;
             mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx = NULL;
 
             ctx->cb(ztx, ZITI_OK, ctx->cb_ctx);
 
+            FREE(ctx->code);
             FREE(ctx);
         }
 
