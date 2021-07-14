@@ -1390,19 +1390,20 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
             clt->channel = conn->channel;
             clt->dial_req_seq = msg->header.seq;
             clt->encrypted = conn->encrypted;
+            uint8_t *source_identity = NULL;
+            size_t source_identity_sz = 0;
+            bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
             int rc = conn->encrypted ? establish_crypto(clt, msg) : ZITI_OK;
             if (rc != ZITI_OK) {
-                CONN_LOG(ERROR, "failed to establish crypto", ziti_conn_state(conn));
+                CONN_LOG(ERROR, "failed to establish crypto with caller[%.*s]", source_identity_sz,
+                         caller_id_sent ? (char*)source_identity : "");
                 reject_dial_request(conn, msg, ziti_errorstr(rc));
                 clt->state = Closed; // put directly into Closed state
                 break;
             }
 
-            uint8_t *source_identity = NULL;
-            size_t source_identity_sz = 0;
             ziti_client_ctx clt_ctx = {0};
             message_get_bytes_header(msg, AppDataHeader, (uint8_t **) &clt_ctx.app_data, &clt_ctx.app_data_sz);
-            bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
             if (caller_id_sent) {
                 clt->source_identity = strndup((char *) source_identity, source_identity_sz);
                 clt_ctx.caller_id = clt->source_identity;
