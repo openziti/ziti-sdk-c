@@ -338,6 +338,9 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
 
     uv_buf_t buf = uv_buf_init(msg_buf, msg_size);
     NEWP(req, uv_write_t);
+    if (ziti_write == NULL) {
+        ziti_write = calloc(1, sizeof(struct ziti_write_req_s));
+    }
     req->data = ziti_write;
     ziti_write->payload = msg_buf;
     int rc = uv_mbed_write(req, &ch->connection, &buf, on_channel_send);
