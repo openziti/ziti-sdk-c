@@ -701,6 +701,27 @@ static void process_check_done(uv_work_t *w, int status) {
     free(pcw);
 }
 
+bool ziti_service_has_query_with_timeout(ziti_service *service) {
+    ziti_posture_query_set *current_set = service->posture_query_set[0];
+
+    for(int query_set_idx=1; current_set != NULL; query_set_idx++) {
+
+        ziti_posture_query *current_query = current_set->posture_queries[0];
+        for(int posture_query_idx = 1; current_query != NULL; posture_query_idx++){
+
+            if(current_query->timeout != NO_TIMEOUTS) {
+                return true;
+            }
+
+            current_query = current_set->posture_queries[posture_query_idx];
+        }
+
+        current_set = service->posture_query_set[query_set_idx];
+    }
+
+    return false;
+}
+
 static void default_pq_process(ziti_context ztx, const char *id, const char *path, ziti_pr_process_cb cb) {
     NEWP(wr, struct process_work);
     wr->id = strdup(id);

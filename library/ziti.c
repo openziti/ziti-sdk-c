@@ -632,7 +632,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
         ziti_service *updt = model_map_remove(&updates, model_map_it_key(it));
 
         if (updt != NULL) {
-            if (cmp_ziti_service(updt, model_map_it_value(it)) != 0) {
+            if (cmp_ziti_service(updt, model_map_it_value(it)) != 0 || ziti_service_has_query_with_timeout(updt)) {
                 ev.event.service.changed[chIdx++] = updt;
             } else {
                 // no changes detected, just discard it
@@ -833,6 +833,17 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
         FREE(ztx->identity_data);
         ztx->identity_data = data;
     }
+}
+
+void set_session(ziti_context ztx, ziti_session *session) {
+    ziti_session *old_session = ztx->session;
+    ztx->session = session;
+    uv_gettimeofday(&ztx->session_received_at);
+
+    free_ziti_session(old_session);
+    FREE(old_session);
+
+    ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
 }
 
 static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) {
