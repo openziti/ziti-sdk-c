@@ -626,11 +626,18 @@ static void default_pq_os(ziti_context ztx, const char *id, ziti_pr_os_cb respon
     uv_os_uname(&uname);
 
     os = uname.sysname;
-    ver = uname.version;
-    build = uname.release;
+    ver = uname.release;
+    build = uname.version;
 #endif
 
     response_cb(ztx, id, os, ver, build);
+}
+
+static bool non_zero_addr(const char* addr, int addr_size) {
+    for (int i = 0; i < addr_size; i++) {
+        if (addr[i] != 0) return true;
+    }
+    return false;
 }
 
 static void default_pq_mac(ziti_context ztx, const char *id, ziti_pr_mac_cb response_cb) {
@@ -639,19 +646,31 @@ static void default_pq_mac(ziti_context ztx, const char *id, ziti_pr_mac_cb resp
     int count;
     uv_interface_addresses(&info, &count);
 
+    model_map addrs = {0};
 
     int addr_size = sizeof(info[0].phys_addr);
-
-    char **addresses = calloc(count, sizeof(char*));
     for (int i = 0; i < count; i++) {
-        hexify((const uint8_t *)info[i].phys_addr, addr_size, ':', &addresses[i]);
+        if (!info[i].is_internal && non_zero_addr(info[i].phys_addr, addr_size)) {
+            if (model_map_get(&addrs, info[i].name) == NULL) {
+                char *mac;
+                hexify((const uint8_t *)info[i].phys_addr, addr_size, ':', &mac);
+                model_map_set(&addrs, info[i].name, mac);
+            }
+        }
     }
 
-    response_cb(ztx, id, addresses, count);
-    for (int i = 0; i < count; i++) {
-        free(addresses[i]);
+    size_t addr_count = model_map_size(&addrs);
+    char **addresses = calloc(addr_count, sizeof(char*));
+    const char *ifname;
+    char *mac;
+    int idx = 0;
+    MODEL_MAP_FOREACH(ifname, mac, &addrs) {
+        addresses[idx++] = mac;
     }
+
+    response_cb(ztx, id, addresses, (int)addr_count);
     free(addresses);
+    model_map_clear(&addrs, NULL);
     uv_free_interface_addresses(info, count);
 }
 
