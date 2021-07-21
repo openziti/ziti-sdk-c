@@ -784,7 +784,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
     free(ers);
 }
 
-static void session_post_auth_query_cb(ziti_context ztx){
+static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx){
     ziti_session *session = ztx->session;
 
     int time_diff;

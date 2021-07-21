@@ -124,7 +124,7 @@ void ziti_auth_query_mfa_process(ziti_mfa_auth_ctx *mfa_auth_ctx) {
     }
 }
 
-void ziti_auth_query_process(ziti_context ztx, void(*cb)(ziti_context)) {
+void ziti_auth_query_process(ziti_context ztx, void(*cb)(ziti_context, int, void*)) {
     ziti_auth_query_mfa **aq;
 
     ziti_auth_query_mfa *ziti_mfa = NULL;
@@ -138,12 +138,12 @@ void ziti_auth_query_process(ziti_context ztx, void(*cb)(ziti_context)) {
                     ziti_mfa = current_aq;
                 } else {
                     ZITI_LOG(ERROR, "multiple auth queries for [type: %s] [provider: %s], cannot continue", current_aq->type_id, current_aq->provider);
-                    cb(ztx);
+                    cb(ztx, ZITI_OK, NULL);
                     return;
                 }
             } else {
                 ZITI_LOG(ERROR, "could not process authentication query [type: %s] [provider: %s], unknown type or provider", current_aq->type_id, current_aq->provider);
-                cb(ztx); //fail with unsupported auth query
+                cb(ztx, ZITI_WTF, NULL); //fail with unsupported auth query
                 return;
             }
         }
@@ -151,7 +151,7 @@ void ziti_auth_query_process(ziti_context ztx, void(*cb)(ziti_context)) {
 
     if (ziti_mfa == NULL) {
         ztx->auth_queries->outstanding_auth_query_ctx = NULL;
-        cb(ztx); //succeed no mfa to handle
+        cb(ztx, ZITI_OK, NULL); //succeed no mfa to handle
         return;
     }
 
