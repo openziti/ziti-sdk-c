@@ -632,7 +632,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
         ziti_service *updt = model_map_remove(&updates, model_map_it_key(it));
 
         if (updt != NULL) {
-            if (cmp_ziti_service(updt, model_map_it_value(it)) != 0 || ziti_service_has_query_with_timeout(updt)) {
+            if (cmp_ziti_service(updt, model_map_it_value(it)) != 0) {
                 ev.event.service.changed[chIdx++] = updt;
             } else {
                 // no changes detected, just discard it
