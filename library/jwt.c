@@ -20,29 +20,45 @@ limitations under the License.
 #include "internal_model.h"
 #include "ziti_enroll.h"
 
+#define MAX_JWT_LEN 8196
+
 const char* ZITI_SDK_JWT_FILE = "ZITI_SDK_JWT_FILE";
 
 int load_jwt_file(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **zejh, ziti_enrollment_jwt **zej) {
-    ZITI_LOG(DEBUG, "filename is: %s", filename);
 
-    struct stat stats;
-    int s = stat(filename, &stats);
-    if (s == -1) {
-        ZITI_LOG(ERROR, "%s - %s", filename, strerror(errno));
-        return ZITI_JWT_NOT_FOUND;
+    FILE *jwt_input;
+    if (strcmp(filename, "-") == 0) {
+        ZITI_LOG(DEBUG, "reading JWT from standard input");
+        jwt_input = stdin;
+    } else {
+        ZITI_LOG(DEBUG, "reading JWT from file: %s", filename);
+
+        struct stat stats;
+        int s = stat(filename, &stats);
+        if (s == -1) {
+            ZITI_LOG(ERROR, "%s - %s", filename, strerror(errno));
+            return ZITI_JWT_NOT_FOUND;
+        }
+
+        jwt_input = fopen(filename, "r");
+        if (jwt_input == NULL) {
+            ZITI_LOG(ERROR, "failed to open file(%s): %d(%s)", filename, errno, strerror(errno));
+        }
     }
 
-    FILE* file = fopen(filename, "r");
 
-    size_t jwt_file_len = (size_t) stats.st_size;
+    size_t jwt_file_len = (size_t) MAX_JWT_LEN;
     ecfg->raw_jwt = calloc(1, jwt_file_len + 1);
-    size_t rc;
-    if ((rc = fread(ecfg->raw_jwt, 1, jwt_file_len, file)) != jwt_file_len) {
-        ZITI_LOG(WARN, "failed to read JWT file in full [%zd/%zd]: %s(%d)", rc, jwt_file_len, strerror(errno), errno);
+    size_t rc = fread(ecfg->raw_jwt, 1, jwt_file_len, jwt_input);
+    if (rc < 0) {
+        ZITI_LOG(WARN, "failed to read JWT file: %d(%s)", errno, strerror(errno));
+        fclose(jwt_input);
+        return ZITI_JWT_INVALID;
     }
-    fclose(file);
+    jwt_file_len = rc;
+    fclose(jwt_input);
 
-    ZITI_LOG(DEBUG, "jwt file content is: \n%s", ecfg->raw_jwt);
+    ZITI_LOG(DEBUG, "jwt file content is: \n%.*s", jwt_file_len, ecfg->raw_jwt);
 
     const char *dot1 = strchr(ecfg->raw_jwt, '.');
     if (NULL == dot1) {
