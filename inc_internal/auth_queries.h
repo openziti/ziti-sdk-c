@@ -37,7 +37,7 @@ extern void ziti_auth_query_init(struct ziti_ctx *ztx);
 extern void ziti_auth_query_free(struct auth_queries* aq);
 extern void ziti_send_event(ziti_context ztx, const ziti_event_t *e);
 
-void ziti_auth_query_process(ziti_context ztx, void(*cb)(ziti_context ztx));
+void ziti_auth_query_process(ziti_context ztx, void(*cb)(ziti_context ztx, int, void*));
 
 extern void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_session *, const ziti_error *, void *), void *ctx);
 

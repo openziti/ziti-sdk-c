@@ -784,7 +784,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
     free(ers);
 }
 
-static void session_post_auth_query_cb(ziti_context ztx){
+static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx){
     ziti_session *session = ztx->session;
 
     int time_diff;
@@ -833,6 +833,17 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
         FREE(ztx->identity_data);
         ztx->identity_data = data;
     }
+}
+
+void set_session(ziti_context ztx, ziti_session *session) {
+    ziti_session *old_session = ztx->session;
+    ztx->session = session;
+    uv_gettimeofday(&ztx->session_received_at);
+
+    free_ziti_session(old_session);
+    FREE(old_session);
+
+    ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
 }
 
 static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) {

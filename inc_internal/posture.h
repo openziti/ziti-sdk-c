@@ -45,6 +45,8 @@ void ziti_posture_checks_free(struct posture_checks *pcs);
 
 void ziti_send_posture_data(ziti_context ztx);
 
+bool ziti_service_has_query_with_timeout(ziti_service *service);
+
 #ifdef __cplusplus
 }
 #endif
