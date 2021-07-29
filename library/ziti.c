@@ -579,6 +579,22 @@ static void ziti_re_auth(ziti_context ztx) {
 
     ziti_re_auth_with_cb(ztx, session_cb, init_req);
 }
+static void set_posture_query_defaults(ziti_service *service){
+    int posture_set_idx;
+    for(posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
+        int posture_query_idx;
+        for(posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++){
+
+            //if the controller doesn't support
+            if(service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining == NULL) {
+                //free done by model_free
+                int *timeoutRemaining = calloc(1,sizeof(int));
+                *timeoutRemaining = -1;
+                service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining = timeoutRemaining;
+            }
+        }
+    }
+}
 
 static void update_services(ziti_service_array services, const ziti_error *error, void *ctx) {
     ziti_context ztx = ctx;
@@ -611,6 +627,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
     int idx;
     for (idx = 0; services[idx] != NULL; idx++) {
         set_service_flags(services[idx]);
+        set_posture_query_defaults(services[idx]);
         model_map_set(&updates, services[idx]->name, services[idx]);
     }
     free(services);
@@ -730,12 +747,12 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
 
 static void services_refresh(uv_timer_t *t) {
     ziti_context ztx = t->data;
-    
+
     if (ztx->auth_queries->outstanding_auth_query_ctx) {
         ZITI_LOG(DEBUG, "service refresh stopped, outstanding auth queries");
         return;
     }
-    
+
     if (ztx->no_service_updates_api) {
         ziti_ctrl_get_services(&ztx->controller, update_services, ztx);
     }
