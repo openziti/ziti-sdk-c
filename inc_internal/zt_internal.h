@@ -74,7 +74,7 @@ typedef struct ziti_channel {
     // - reconnect timeout if not connected
     // - connect timeout when connecting
     // - latency interval/timeout if connected
-    uv_timer_t timer;
+    uv_timer_t *timer;
 
     uint64_t latency;
     struct waiter_s *latency_waiter;

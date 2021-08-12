@@ -139,9 +139,10 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     uv_mbed_nodelay(&ch->connection, true);
     ch->connection.data = ch;
 
-    uv_timer_init(ch->loop, &ch->timer);
-    ch->timer.data = ch;
-    uv_unref((uv_handle_t *) &ch->timer);
+    ch->timer = calloc(1, sizeof(uv_timer_t));
+    uv_timer_init(ch->loop, ch->timer);
+    ch->timer->data = ch;
+    uv_unref((uv_handle_t *) ch->timer);
 
     ch->notify_cb = (ch_notify_state) ziti_on_channel_event;
     ch->notify_ctx = ctx;
@@ -158,8 +159,14 @@ void ziti_channel_free(ziti_channel_t *ch) {
 int ziti_close_channels(struct ziti_ctx *ziti) {
     ziti_channel_t *ch;
     const char *url;
-    MODEL_MAP_FOREACH(url, ch, &ziti->channels) {
+    model_map_iter it = model_map_iterator(&ziti->channels);
+    while (it != NULL) {
+        url = model_map_it_key(it);
+        ch = model_map_it_value(it);
+
+        ZITI_LOG(DEBUG, "closing channel[%s]", url);
         ziti_channel_close(ch);
+        it = model_map_it_remove(it);
     }
     return ZITI_OK;
 }
@@ -177,10 +184,10 @@ int ziti_channel_close(ziti_channel_t *ch) {
     int r = 0;
     if (ch->state != Closed) {
         CH_LOG(INFO, "closing(%s)", ch->name);
-        r = uv_mbed_close(&ch->connection, close_handle_cb);
-        uv_timer_stop(&ch->timer);
-        uv_close((uv_handle_t *) &ch->timer, NULL);
+        uv_close((uv_handle_t *) ch->timer, (uv_close_cb)free);
+        ch->timer = NULL;
         ch->state = Closed;
+        r = uv_mbed_close(&ch->connection, close_handle_cb);
     }
     return r;
 }
@@ -238,17 +245,17 @@ static void check_connecting_state(ziti_channel_t *ch) {
         reset = true;
     }
 
-    if (ch->timer.timer_cb != connect_timeout) {
+    if (ch->timer->timer_cb != connect_timeout) {
         CH_LOG(ERROR, "state check: unexpected callback(%s)!", get_timeout_cb(ch));
         reset = true;
     }
 
-    if (ch->timer.timeout < uv_now(ch->loop)) {
+    if (ch->timer->timeout < uv_now(ch->loop)) {
         CH_LOG(ERROR, "state check: timer is in the past!");
         reset = true;
     }
 
-    if (ch->timer.timeout - uv_now(ch->loop) > CONNECT_TIMEOUT) {
+    if (ch->timer->timeout - uv_now(ch->loop) > CONNECT_TIMEOUT) {
         CH_LOG(ERROR, "state check: timer is too far into the future!");
         reset = true;
     }
@@ -579,7 +586,7 @@ static void latency_reply_cb(void *ctx, message *reply, int err) {
     else {
         CH_LOG(WARN, "invalid latency probe result ct[%04X]", reply->header.content);
     }
-    uv_timer_start(&ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
+    uv_timer_start(ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
 }
 
 static void latency_timeout(uv_timer_t *t) {
@@ -636,7 +643,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         ch->version = strndup(erVersion, erVersionLen);
         ch->notify_cb(ch, EdgeRouterConnected, ch->notify_ctx);
         ch->latency = uv_now(ch->loop) - ch->latency;
-        uv_timer_start(&ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
+        uv_timer_start(ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
     }
     else {
         if (msg)
@@ -706,12 +713,17 @@ static void reconnect_cb(uv_timer_t *t) {
             on_channel_connect_internal(req, rc);
         }
         else {
-            uv_timer_start(&ch->timer, connect_timeout, CONNECT_TIMEOUT, 0);
+            uv_timer_start(ch->timer, connect_timeout, CONNECT_TIMEOUT, 0);
         }
     }
 }
 
 static void reconnect_channel(ziti_channel_t *ch, bool now) {
+    if (ch->state == Closed) {
+        CH_LOG(DEBUG, "not reconnecting closed channel");
+        return;
+    }
+
     uint64_t timeout = 0;
     if (!now) {
         ch->reconnect_count++;
@@ -726,7 +738,7 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
     else {
         CH_LOG(INFO, "reconnecting NOW");
     }
-    uv_timer_start(&ch->timer, reconnect_cb, timeout, 0);
+    uv_timer_start(ch->timer, reconnect_cb, timeout, 0);
 }
 
 static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
@@ -739,7 +751,7 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
 
     ch->latency = UINT64_MAX;
     if (uv_is_active((const uv_handle_t *) &ch->timer)) {
-        uv_timer_stop(&ch->timer);
+        uv_timer_stop(ch->timer);
     }
 
     while (!LIST_EMPTY(&ch->waiters)) {
@@ -841,8 +853,10 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             free(r);
         }
 
-        ch->state = Disconnected;
-        reconnect_channel(ch, false);
+        if (ch->state != Closed) {
+            ch->state = Disconnected;
+            reconnect_channel(ch, false);
+        }
     }
     free(req);
 }
@@ -854,7 +868,7 @@ XX(reconnect_cb)    \
 XX(send_latency_probe)
 
 static const char *get_timeout_cb(ziti_channel_t *ch) {
-#define to_lbl(n) if (ch->timer.timer_cb == (n)) return #n;
+#define to_lbl(n) if (ch->timer->timer_cb == (n)) return #n;
 
     TIMEOUT_CALLBACKS(to_lbl)
 

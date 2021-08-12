@@ -778,6 +778,13 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
         return;
     }
 
+    model_map curr_routers = {0};
+    const char *er_name;
+    ziti_channel_t *ch;
+    MODEL_MAP_FOREACH(er_name, ch, &ztx->channels) {
+        model_map_set(&curr_routers, er_name, (void*)er_name);
+    }
+
     ziti_edge_router **erp = ers;
     while (*erp) {
         ziti_edge_router *er = *erp;
@@ -789,6 +796,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
             snprintf(ch_name, ch_name_len, "%s@%s", er->name, tls);
             ZTX_LOG(TRACE, "connecting to %s(%s)", er->name, tls);
             ziti_channel_connect(ztx, ch_name, tls, NULL, NULL);
+            model_map_remove(&curr_routers, ch_name);
             free(ch_name);
         } else {
             ZTX_LOG(DEBUG, "edge router %s does not have TLS edge listener", er->name);
@@ -799,6 +807,15 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
         erp++;
     }
     free(ers);
+
+    model_map_iter it = model_map_iterator(&curr_routers);
+    while (it != NULL) {
+        er_name = model_map_it_value(it);
+        ZITI_LOG(INFO, "removing channel[%s]: no longer available", er_name);
+        ch = model_map_remove(&ztx->channels, er_name);
+        ziti_channel_close(ch);
+        it = model_map_it_remove(it);
+    }
 }
 
 static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx){
