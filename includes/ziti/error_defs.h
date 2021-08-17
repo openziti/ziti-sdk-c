@@ -87,7 +87,9 @@ limitations under the License.
     /** attempted to verify or retrieve details of an MFA enrollment that has not been completed */ \
     XX(MFA_NOT_ENROLLED, "the current identity has not completed MFA enrollment") \
     /** not found, usually indicates stale reference or permission */    \
-    XX(NOT_FOUND, "entity no longer exists or is no longer accessible") \
+    XX(NOT_FOUND, "entity no longer exists or is no longer accessible")  \
+    /** operation attempted while ziti_context is not enabled */                    \
+    XX(DISABLED, "ziti context is disabled") \
     /** Inspired by the Android SDK: What a Terrible Failure. A condition that should never happen. */ \
     XX(WTF, "WTF: programming error")
 
