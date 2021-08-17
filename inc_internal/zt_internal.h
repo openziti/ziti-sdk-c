@@ -240,7 +240,7 @@ bool ziti_channel_is_connected(ziti_channel_t *ch);
 
 int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb, void *ctx);
 
-int ziti_channel_close(ziti_channel_t *ch);
+int ziti_channel_close(ziti_channel_t *ch, int err);
 
 void ziti_channel_add_receiver(ziti_channel_t *ch, int id, void *receiver, void (*receive_f)(void *, message *, int));
 

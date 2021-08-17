@@ -180,11 +180,18 @@ static void close_handle_cb(uv_handle_t *h) {
     free(ch);
 }
 
-int ziti_channel_close(ziti_channel_t *ch) {
+int ziti_channel_close(ziti_channel_t *ch, int err) {
     int r = 0;
     if (ch->state != Closed) {
+        struct msg_receiver *rcvr;
+        while (!LIST_EMPTY(&ch->receivers)) {
+            rcvr = LIST_FIRST(&ch->receivers);
+            rcvr->receive(rcvr->receiver, NULL, err); // removes r from ch->receivers
+        }
+
+        ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ctx);
         CH_LOG(INFO, "closing(%s)", ch->name);
-        uv_close((uv_handle_t *) ch->timer, (uv_close_cb)free);
+        uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
         ch->timer = NULL;
         ch->state = Closed;
         r = uv_mbed_close(&ch->connection, close_handle_cb);
