@@ -1276,8 +1276,12 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
 
     if (msg == NULL) {
         if (conn->state == Bound) {
-            CONN_LOG(DEBUG, "binding lost due to failed channel [%d/%s]", code, ziti_errorstr(code));
-            ziti_rebind(conn);
+            if (code == ZITI_DISABLED) {
+                conn->client_cb(conn, NULL, ZITI_DISABLED, NULL);
+            } else {
+                CONN_LOG(DEBUG, "binding lost due to failed channel [%d/%s]", code, ziti_errorstr(code));
+                ziti_rebind(conn);
+            }
             return;
         }
 
