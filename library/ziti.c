@@ -51,7 +51,7 @@ static const char *ALL_CONFIG_TYPES[] = {
 
 struct ziti_init_req {
     ziti_context ztx;
-    bool login;
+    bool start;
     int init_status;
 };
 
@@ -65,11 +65,17 @@ static void version_cb(ziti_version *v, const ziti_error *err, void *ctx);
 
 static void session_cb(ziti_session *session, const ziti_error *err, void *ctx);
 
-static void ziti_init_async(uv_async_t *ar);
+static void ziti_init_async(ziti_context ztx, void *data);
 
 static void ziti_re_auth(ziti_context ztx);
 
 static void grim_reaper(uv_prepare_t *p);
+
+static void ztx_work_async(uv_async_t *ar);
+
+static void ziti_stop_internal(ziti_context ztx, void *data);
+
+static void ziti_start_internal(ziti_context ztx, void *init_req);
 
 static uint32_t ztx_seq;
 
@@ -190,14 +196,14 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
     ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
     ctx->ctrl_status = ZITI_WTF;
 
+    STAILQ_INIT(&ctx->w_queue);
+    uv_async_init(loop, &ctx->w_async, ztx_work_async);
+    ctx->w_async.data = ctx;
+    uv_mutex_init(&ctx->w_lock);
+
     NEWP(init_req, struct ziti_init_req);
-    init_req->ztx = ctx;
-
-    NEWP(async_init_req, uv_async_t);
-    uv_async_init(loop, async_init_req, ziti_init_async);
-    async_init_req->data = init_req;
-
-    uv_async_send(async_init_req);
+    init_req->start = !options->disabled;
+    ziti_queue_work(ctx, ziti_init_async, init_req);
 
     CATCH(ziti) {
         return ERR(ziti);
@@ -206,14 +212,72 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
     return ZITI_OK;
 }
 
-static void ziti_init_async(uv_async_t *ar) {
-    struct ziti_init_req *init_req = ar->data;
+extern bool ziti_is_enabled(ziti_context ztx) {
+    return ztx->enabled;
+}
 
-    ziti_context ztx = init_req->ztx;
-    uv_loop_t *loop = ar->loop;
+extern void ziti_set_enabled(ziti_context ztx, bool enabled) {
+    ziti_queue_work(ztx, enabled ? ziti_start_internal : ziti_stop_internal, NULL);
+}
+
+static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
+
+    free_ziti_session(ztx->session);
+    FREE(ztx->session);
+
+    model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
+    model_map_clear(&ztx->services, (_free_f) free_ziti_service);
+}
+
+static void ziti_stop_internal(ziti_context ztx, void *data) {
+    if (ztx->enabled) {
+        ztx->enabled = false;
+
+        // stop updates
+        uv_timer_stop(&ztx->refresh_timer);
+        uv_timer_stop(&ztx->session_timer);
+        uv_timer_stop(ztx->posture_checks->timer);
+
+        // close all channels
+        ziti_close_channels(ztx, ZITI_DISABLED);
+
+        const char *svc_name;
+        ziti_service *svc;
+        ziti_event_t ev = {0};
+        ev.type = ZitiServiceEvent;
+        ev.event.service.removed = calloc(model_map_size(&ztx->services) + 1, sizeof(ziti_service *));
+        int idx = 0;
+        MODEL_MAP_FOREACH(svc_name, svc, &ztx->services) {
+            ev.event.service.removed[idx++] = svc;
+        }
+
+        ziti_send_event(ztx, &ev);
+        FREE(ev.event.service.removed);
+
+        // logout
+        ziti_ctrl_logout(&ztx->controller, logout_cb, ztx);
+
+        ev.type = ZitiContextEvent;
+        ev.event.ctx.ctrl_status = ZITI_DISABLED;
+
+        ziti_send_event(ztx, &ev);
+    }
+}
+
+static void ziti_start_internal(ziti_context ztx, void *init_req) {
+    if (!ztx->enabled) {
+        ztx->enabled = true;
+        uv_prepare_start(&ztx->reaper, grim_reaper);
+        ziti_ctrl_get_version(&ztx->controller, version_cb, ztx);
+        ziti_re_auth(ztx);
+    }
+}
+
+static void ziti_init_async(ziti_context ztx, void *data) {
     ztx->id = ztx_seq++;
-
-    uv_close((uv_handle_t *) ar, (uv_close_cb) free);
+    uv_loop_t *loop = ztx->w_async.loop;
+    struct ziti_init_req *init_req = data;
 
     uv_timeval64_t start_time;
     uv_gettimeofday(&start_time);
@@ -222,13 +286,11 @@ static void ziti_init_async(uv_async_t *ar) {
     ziti_fmt_time(time_str, sizeof(time_str), &start_time);
 
     ZTX_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
-             ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
-             time_str, start_time.tv_usec / 1000);
+            ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
+            time_str, start_time.tv_usec / 1000);
     ZTX_LOG(INFO, "Loading from config[%s] controller[%s]", ztx->opts->config, ztx->opts->controller);
 
-    init_req->login = true;
     ziti_ctrl_init(loop, &ztx->controller, ztx->opts->controller, ztx->tlsCtx);
-    ziti_ctrl_get_version(&ztx->controller, version_cb, ztx);
 
     uv_timer_init(loop, &ztx->session_timer);
     ztx->session_timer.data = ztx;
@@ -242,14 +304,15 @@ static void ziti_init_async(uv_async_t *ar) {
     uv_prepare_init(loop, &ztx->reaper);
     ztx->reaper.data = ztx;
     uv_unref((uv_handle_t *) &ztx->reaper);
-    uv_prepare_start(&ztx->reaper, grim_reaper);
 
     ZTX_LOG(DEBUG, "using metrics interval: %d", (int) ztx->opts->metrics_type);
     metrics_rate_init(&ztx->up_rate, ztx->opts->metrics_type);
     metrics_rate_init(&ztx->down_rate, ztx->opts->metrics_type);
 
-    init_req->login = true;
-    ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, session_cb, init_req);
+    if (init_req->start) {
+        ziti_start_internal(ztx, NULL);
+    }
+    free(init_req);
 }
 
 int ziti_init(const char *config, uv_loop_t *loop, ziti_event_cb event_cb, int events, void *app_ctx) {
@@ -308,39 +371,36 @@ static void on_logout(void *msg, const ziti_error *err, void *arg) {
     ziti_ctrl_close(&ztx->controller);
 }
 
-int ziti_shutdown(ziti_context ztx) {
-    ZTX_LOG(INFO, "Ziti is shutting down");
+static void free_ztx(uv_handle_t *h) {
+    ziti_context ztx = h->data;
 
-    uv_timer_stop(&ztx->refresh_timer);
-    uv_timer_stop(&ztx->session_timer);
-    uv_timer_stop(ztx->posture_checks->timer);
+    if (ztx->tlsCtx != NULL) {
+        ztx->tlsCtx->api->free_ctx(ztx->tlsCtx);
+    }
+    ziti_auth_query_free(ztx->auth_queries);
+    ziti_posture_checks_free(ztx->posture_checks);
+    model_map_clear(&ztx->services, (_free_f) free_ziti_service);
+    model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
+    free_ziti_session(ztx->session);
+    FREE(ztx->session);
 
-    ziti_close_channels(ztx);
+    ZTX_LOG(INFO, "shutdown is complete\n");
+    free(ztx);
+}
 
-    ziti_ctrl_logout(&ztx->controller, on_logout, ztx);
+static void shutdown_and_free(ziti_context ztx, void *data) {
     metrics_rate_close(&ztx->up_rate);
     metrics_rate_close(&ztx->down_rate);
 
-    return ZITI_OK;
+    uv_prepare_stop(&ztx->reaper);
+    uv_close((uv_handle_t *) &ztx->w_async, free_ztx);
 }
 
-int ziti_ctx_free(ziti_context *ctxp) {
-    if (ctxp == NULL || *ctxp == NULL) { return ZITI_OK; }
+int ziti_shutdown(ziti_context ztx) {
+    ZTX_LOG(INFO, "Ziti is shutting down");
 
-    ziti_context ztx = *ctxp;
-    if ((*ctxp)->tlsCtx != NULL) {
-        (*ctxp)->tlsCtx->api->free_ctx((*ctxp)->tlsCtx);
-    }
-    ziti_auth_query_free((*ctxp)->auth_queries);
-    ziti_posture_checks_free((*ctxp)->posture_checks);
-    model_map_clear(&(*ctxp)->services, (_free_f) free_ziti_service);
-    model_map_clear(&(*ctxp)->sessions, (_free_f) free_ziti_net_session);
-    free_ziti_session((*ctxp)->session);
-    FREE((*ctxp)->session);
-
-    ZTX_LOG(INFO, "shutdown is complete\n");
-    free(*ctxp);
-    *ctxp = NULL;
+    ziti_queue_work(ztx, ziti_stop_internal, NULL);
+    ziti_queue_work(ztx, shutdown_and_free, NULL);
 
     return ZITI_OK;
 }
@@ -368,6 +428,7 @@ int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
 void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
     printer(ctx, "\n=================\nZiti Context:\n");
     printer(ctx, "ID:\t%d\n", ztx->id);
+    printer(ctx, "Enabled:\t%s\n", ziti_is_enabled(ztx) ? "true" : "false");
     printer(ctx, "Config:\t%s\n", ztx->opts->config);
     printer(ctx, "Controller:\t%s\n", ztx->opts->controller);
     printer(ctx, "Config types:\n");
@@ -501,6 +562,8 @@ static void service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
 }
 
 int ziti_service_available(ziti_context ztx, const char *service, ziti_service_cb cb, void *ctx) {
+    if (!ztx->enabled) return ZITI_DISABLED;
+
     ziti_service *s = model_map_get(&ztx->services, service);
     if (s != NULL) {
         cb(ztx, s, ZITI_OK, ctx);
@@ -575,7 +638,7 @@ void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_session *, const ziti
 static void ziti_re_auth(ziti_context ztx) {
     NEWP(init_req, struct ziti_init_req);
     init_req->ztx = ztx;
-    init_req->login = true;
+    init_req->start = true;
 
     ziti_re_auth_with_cb(ztx, session_cb, init_req);
 }
@@ -813,7 +876,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
         er_name = model_map_it_value(it);
         ZITI_LOG(INFO, "removing channel[%s]: no longer available", er_name);
         ch = model_map_remove(&ztx->channels, er_name);
-        ziti_channel_close(ch);
+        ziti_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE);
         it = model_map_it_remove(it);
     }
 }
@@ -908,7 +971,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
                  ztx->opts->controller, err->code, errCode, err->message);
 
         if (errCode == ZITI_NOT_AUTHORIZED) {
-            if (ztx->session || !init_req->login) {
+            if (ztx->session || !init_req->start) {
                 // previously successfully logged in
                 // maybe just session expired
                 // just try to re-auth
@@ -918,7 +981,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
                 // cannot login or re-auth -- identity no longer valid
                 // notify service removal, and state
                 ZTX_LOG(ERROR, "identity[%s] cannot authenticate with ctrl[%s]", ztx->opts->config,
-                         ztx->opts->controller);
+                        ztx->opts->controller);
                 ziti_event_t service_event = {
                         .type = ZitiServiceEvent,
                         .event.service = {
@@ -1021,6 +1084,12 @@ static void grim_reaper(uv_prepare_t *p) {
     int count = 0;
 
     ziti_connection conn = LIST_FIRST(&ztx->connections);
+    if (conn == NULL && !ztx->enabled) {
+        // context disabled and no connections
+        uv_prepare_stop(p);
+        return;
+    }
+
     while (conn != NULL) {
         ziti_connection try_close = conn;
         total++;
@@ -1044,4 +1113,37 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_c
     };
 
     ziti_send_event(ztx, &ev);
+}
+
+static void ztx_work_async(uv_async_t *ar) {
+    ziti_context ztx = ar->data;
+    ztx_work_q work;
+    STAILQ_INIT(&work);
+
+    struct ztx_work_s *w;
+    uv_mutex_lock(&ztx->w_lock);
+    work = ztx->w_queue;
+    STAILQ_INIT(&ztx->w_queue);
+    uv_mutex_unlock(&ztx->w_lock);
+
+    while (!STAILQ_EMPTY(&work)) {
+        w = STAILQ_FIRST(&work);
+        STAILQ_REMOVE_HEAD(&work, _next);
+
+        w->w(ztx, w->w_data);
+
+        free(w);
+    }
+}
+
+void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data) {
+    NEWP(wrk, struct ztx_work_s);
+    wrk->w = w;
+    wrk->w_data = data;
+
+    uv_mutex_trylock(&ztx->w_lock);
+    STAILQ_INSERT_TAIL(&ztx->w_queue, wrk, _next);
+    uv_mutex_unlock(&ztx->w_lock);
+
+    uv_async_send(&ztx->w_async);
 }
