@@ -52,6 +52,7 @@ static struct sig_handlers {
         {.signum = SIGINT, .cb = signal_cb},
         {.signum = SIGTERM, .cb = signal_cb},
         {.signum = SIGUSR1, .cb = signal_cb},
+        {.signum = SIGUSR2, .cb = signal_cb},
 };
 
 struct proxy_app_ctx {
@@ -162,6 +163,12 @@ static void signal_cb(uv_signal_t *s, int signum) {
         case SIGUSR1:
             debug_dump(s->data);
             break;
+
+        case SIGUSR2: {
+            struct proxy_app_ctx *ctx = s->data;
+            ziti_set_enabled(ctx->ziti, !ziti_is_enabled(ctx->ziti));
+            break;
+        }
 
         default:
             ZITI_LOG(INFO, "signal[%d/%s] received", signum, strsignal(signum));
@@ -453,7 +460,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, ziti_get_controller(ztx));
                 app_ctx->ziti = ztx;
             } else {
-                ZITI_LOG(ERROR, "Failed to connect to controller: %s", event->event.ctx.err);
+                ZITI_LOG(ERROR, "controller is not available: %s/%s", ziti_errorstr(event->event.ctx.ctrl_status), event->event.ctx.err);
             }
             break;
 
@@ -645,7 +652,6 @@ void run(int argc, char **argv) {
     }
 
     ZITI_LOG(INFO, "proxy event loop is done");
-    ziti_ctx_free(&app_ctx.ziti);
     free(loop);
     exit(excode);
 }
