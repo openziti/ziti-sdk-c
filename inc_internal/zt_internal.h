@@ -234,7 +234,7 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_c
 
 void ziti_force_session_refresh(ziti_context ztx);
 
-int ziti_close_channels(ziti_context ztx);
+int ziti_close_channels(ziti_context ztx, int err);
 
 bool ziti_channel_is_connected(ziti_channel_t *ch);
 

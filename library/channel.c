@@ -156,7 +156,7 @@ void ziti_channel_free(ziti_channel_t *ch) {
     FREE(ch->host);
 }
 
-int ziti_close_channels(struct ziti_ctx *ziti) {
+int ziti_close_channels(struct ziti_ctx *ziti, int err) {
     ziti_channel_t *ch;
     const char *url;
     model_map_iter it = model_map_iterator(&ziti->channels);
@@ -164,8 +164,8 @@ int ziti_close_channels(struct ziti_ctx *ziti) {
         url = model_map_it_key(it);
         ch = model_map_it_value(it);
 
-        ZITI_LOG(DEBUG, "closing channel[%s]", url);
-        ziti_channel_close(ch);
+        ZITI_LOG(DEBUG, "closing channel[%s]: %s", url, ziti_errorstr(err));
+        ziti_channel_close(ch, err);
         it = model_map_it_remove(it);
     }
     return ZITI_OK;
