@@ -562,6 +562,8 @@ static void service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
 }
 
 int ziti_service_available(ziti_context ztx, const char *service, ziti_service_cb cb, void *ctx) {
+    if (!ztx->enabled) return ZITI_DISABLED;
+
     ziti_service *s = model_map_get(&ztx->services, service);
     if (s != NULL) {
         cb(ztx, s, ZITI_OK, ctx);
