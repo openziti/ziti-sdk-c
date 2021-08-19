@@ -35,7 +35,10 @@ typedef NTSTATUS (NTAPI *sRtlGetVersion)
 extern sRtlGetVersion pRtlGetVersion;
 
 #elif __APPLE__ && __MACH__
-#include <libproc.h>
+   #include <TargetConditionals.h>
+   #if !defined(TARGET_OS_IPHONE) && !defined(TARGET_OS_SIMULATOR)
+      #include <libproc.h>
+   #endif
 #endif
 
 #define NANOS(s) ((s) * 1e9)
@@ -892,7 +895,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
         }
     }
 
-#elif __APPLE__ && __MACH__
+#elif __APPLE__ && __MACH__ && !defined(TARGET_OS_IPHONE) && !defined(TARGET_OS_SIMULATOR)
     int n_pids = proc_listallpids(NULL, 0);
     unsigned long pids_sz = sizeof(pid_t) * (unsigned long)n_pids;
     pid_t * pids = calloc(1, pids_sz);
