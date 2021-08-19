@@ -21,10 +21,9 @@ limitations under the License.
 #include "ziti/model_support.h"
 #include "ziti/ziti_model.h"
 
+// extends ziti_identity
 #define ZITI_IDENTITY_DATA_MODEL(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__) \
-XX(name, string, none, name, __VA_ARGS__) \
-XX(app_data, json, map, appData, __VA_ARGS__) \
+ZITI_IDENTITY_MODEL(XX, __VA_ARGS__) \
 XX(default_hosting_precendence, string, none, defaultHostingPrecendence, __VA_ARGS__) \
 XX(default_hosting_cost, int, none, defaultHostingCost, __VA_ARGS__)                  \
 XX(service_hosting_precendences, string, map, serviceHostingPrecedences, __VA_ARGS__)\

@@ -340,7 +340,15 @@ const ziti_version *ziti_get_controller_version(ziti_context ztx) {
 }
 
 const ziti_identity *ziti_get_identity(ziti_context ztx) {
-    return ztx->session ? ztx->session->identity : NULL;
+    if (ztx->identity_data) {
+        return (const ziti_identity *) ztx->identity_data;
+    }
+
+    if (ztx->session) {
+        return ztx->session->identity;
+    }
+
+    return NULL;
 }
 
 void ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
@@ -357,20 +365,6 @@ int ziti_set_timeout(ziti_context ztx, int timeout) {
     return ZITI_OK;
 }
 
-static void on_logout(void *msg, const ziti_error *err, void *arg) {
-    ziti_context ztx = arg;
-    ZTX_LOG(DEBUG, "identity[%s] logout %s",
-            ztx->session->identity->name, err ? "failed" : "success");
-
-    free_ziti_identity_data(ztx->identity_data);
-    FREE(ztx->identity_data);
-    free_ziti_session(ztx->session);
-    free(ztx->session);
-    ztx->session = NULL;
-
-    ziti_ctrl_close(&ztx->controller);
-}
-
 static void free_ztx(uv_handle_t *h) {
     ziti_context ztx = h->data;
 
@@ -383,6 +377,8 @@ static void free_ztx(uv_handle_t *h) {
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
     free_ziti_session(ztx->session);
     FREE(ztx->session);
+    free_ziti_identity_data(ztx->identity_data);
+    FREE(ztx->identity_data);
 
     ZTX_LOG(INFO, "shutdown is complete\n");
     free(ztx);
@@ -435,12 +431,17 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     for (int i = 0; ztx->opts->config_types && ztx->opts->config_types[i]; i++) {
         printer(ctx, "\t%s\n", ztx->opts->config_types[i]);
     }
+    printer(ctx, "Identity:\t");
+    if (ztx->identity_data) {
+        printer(ctx, "%s[%s]\n", ztx->identity_data->name, ztx->identity_data->id);
+    } else {
+        printer(ctx, "unknown - never logged in\n");
+    }
 
     printer(ctx, "\n=================\nSession:\n");
 
     if (ztx->session) {
-        printer(ctx, "Session Info: id[%s] name[%s] api_session[%s]\n",
-                ztx->session->identity->id, ztx->session->identity->name, ztx->session->id);
+        printer(ctx, "Session Info: api_session[%s]\n", ztx->session->id);
     } else {
         printer(ctx, "No Session found\n");
     }
@@ -930,9 +931,11 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
         FREE(ztx->identity_data);
         ztx->identity_data = data;
     }
+
+    update_ctrl_status(ztx, FIELD_OR_ELSE(err, err, 0), FIELD_OR_NULL(err, message));
 }
 
-void set_session(ziti_context ztx, ziti_session *session) {
+static void set_session(ziti_context ztx, ziti_session *session) {
     ziti_session *old_session = ztx->session;
     ztx->session = session;
     uv_gettimeofday(&ztx->session_received_at);
@@ -953,14 +956,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
     if (session) {
         ZTX_LOG(DEBUG, "%s successfully => api_session[%s]", ztx->session ? "refreshed" : "logged in", session->id);
 
-        ziti_session *old_session = ztx->session;
-        ztx->session = session;
-        uv_gettimeofday(&ztx->session_received_at);
-
-        free_ziti_session(old_session);
-        FREE(old_session);
-
-        ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
+        set_session(ztx, session);
 
         ziti_auth_query_init(ztx);
 
@@ -1011,11 +1007,10 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
             uv_timer_start(&ztx->session_timer, session_refresh, 5 * 1000, 0);
         }
 
+        update_ctrl_status(ztx, errCode, err ? err->message : NULL);
     } else {
         ZTX_LOG(ERROR, "%s: no session or error received", ziti_errorstr(ZITI_WTF));
     }
-
-    update_ctrl_status(ztx, errCode, err ? err->message : NULL);
 
     FREE(init_req);
 }

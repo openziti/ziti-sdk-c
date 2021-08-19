@@ -58,14 +58,18 @@ extern void hexDump(char *desc, void *addr, int len);
 
 
 int lt_zero(int v);
+
 int non_zero(int v);
 
 typedef const char *(*fmt_error_t)(int);
+
 typedef int *(*cond_error_t)(int);
 
 #define NEWP(var, type) type *var = calloc(1, sizeof(type))
 #define VAL_OR_ELSE(v, def) ((v) != NULL ? (v) : (def))
 #define FREE(v)  do { if ((v) != NULL) { free((void*)(v)); (v) = NULL; } } while(0)
+#define FIELD_OR_ELSE(obj, field, def) ((obj) ? ((obj)->field) : (def))
+#define FIELD_OR_NULL(obj, field) FIELD_OR_ELSE(obj, field, NULL)
 
 #define FMT(ex) _##ex##_fmt
 #define COND(ex) _##ex##_cond
