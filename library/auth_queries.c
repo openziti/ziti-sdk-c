@@ -198,6 +198,11 @@ void ziti_mfa_enroll_get_internal_cb(ziti_mfa_enrollment *mfa_enrollment, const 
 }
 
 void ziti_mfa_enroll(ziti_context ztx, ziti_mfa_enroll_cb enroll_cb, void *ctx) {
+    if (!ztx->enabled) {
+        enroll_cb(ztx, ZITI_DISABLED, NULL, ctx);
+        return;
+    }
+
     NEWP(mfa_enroll_cb_ctx, ziti_mfa_enroll_cb_ctx);
 
     mfa_enroll_cb_ctx->ztx = ztx;
@@ -222,6 +227,11 @@ void ziti_mfa_remove_internal_cb(void *empty, const ziti_error *err, void *ctx) 
 }
 
 void ziti_mfa_remove(ziti_context ztx, char *code, ziti_mfa_cb remove_cb, void *ctx) {
+    if (!ztx->enabled) {
+        remove_cb(ztx, ZITI_DISABLED, ctx);
+        return;
+    }
+
     NEWP(mfa_cb_ctx, ziti_mfa_cb_ctx);
     mfa_cb_ctx->ztx = ztx;
     mfa_cb_ctx->cb = remove_cb;
@@ -245,6 +255,11 @@ void ziti_mfa_verify_internal_cb(void *empty, const ziti_error *err, void *ctx) 
 }
 
 void ziti_mfa_verify(ziti_context ztx, char *code, ziti_mfa_cb verify_cb, void *ctx) {
+    if (!ztx->enabled) {
+        verify_cb(ztx, ZITI_DISABLED, ctx);
+        return;
+    }
+
     NEWP(mfa_cb_ctx, ziti_mfa_cb_ctx);
     mfa_cb_ctx->ztx = ztx;
     mfa_cb_ctx->cb = verify_cb;
@@ -330,6 +345,11 @@ void ziti_mfa_get_recovery_codes_internal_cb(ziti_mfa_recovery_codes *rc, const 
 }
 
 void ziti_mfa_get_recovery_codes(ziti_context ztx, char *code, ziti_mfa_recovery_codes_cb get_cb, void *ctx) {
+    if (!ztx->enabled) {
+        get_cb(ztx, ZITI_DISABLED, NULL, ctx);
+        return;
+    }
+
     NEWP(mfa_rc_cb_ctx, ziti_mfa_recovery_codes_cb_ctx);
     mfa_rc_cb_ctx->ztx = ztx;
     mfa_rc_cb_ctx->cb = get_cb;
@@ -354,6 +374,11 @@ void ziti_mfa_post_recovery_codes_internal_cb(void *empty, const ziti_error *err
 }
 
 void ziti_mfa_new_recovery_codes(ziti_context ztx, char *code, ziti_mfa_recovery_codes_cb new_cb, void *ctx) {
+    if (!ztx->enabled) {
+        new_cb(ztx, ZITI_DISABLED, NULL, ctx);
+        return;
+    }
+
     NEWP(mfa_rc_cb_ctx, ziti_mfa_recovery_codes_cb_ctx);
     mfa_rc_cb_ctx->ztx = ztx;
     mfa_rc_cb_ctx->cb = new_cb;

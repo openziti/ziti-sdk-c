@@ -159,6 +159,16 @@ struct process {
     int num_signers;
 };
 
+typedef void (*ztx_work_f)(ziti_context ztx, void *w_ctx);
+
+struct ztx_work_s {
+    ztx_work_f w;
+    void *w_data;
+    STAILQ_ENTRY(ztx_work_s) _next;
+};
+
+typedef STAILQ_HEAD(work_q, ztx_work_s) ztx_work_q;
+
 struct ziti_ctx {
     ziti_options *opts;
     ziti_controller controller;
@@ -166,6 +176,7 @@ struct ziti_ctx {
 
     tls_context *tlsCtx;
 
+    bool enabled;
     int ctrl_status;
     ziti_session *session;
     uv_timeval64_t session_received_at;
@@ -208,6 +219,9 @@ struct ziti_ctx {
     /* auth query (MFA) support */
     struct auth_queries *auth_queries;
 
+    ztx_work_q w_queue;
+    uv_mutex_t w_lock;
+    uv_async_t w_async;
 };
 
 #ifdef __cplusplus
@@ -220,13 +234,13 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_c
 
 void ziti_force_session_refresh(ziti_context ztx);
 
-int ziti_close_channels(ziti_context ztx);
+int ziti_close_channels(ziti_context ztx, int err);
 
 bool ziti_channel_is_connected(ziti_channel_t *ch);
 
 int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb, void *ctx);
 
-int ziti_channel_close(ziti_channel_t *ch);
+int ziti_channel_close(ziti_channel_t *ch, int err);
 
 void ziti_channel_add_receiver(ziti_channel_t *ch, int id, void *receiver, void (*receive_f)(void *, message *, int));
 
@@ -269,6 +283,8 @@ void ziti_fmt_time(char *time_str, size_t time_str_len, uv_timeval64_t *tv);
 void hexify(const uint8_t *bin, size_t bin_len, char sep, char **buf);
 
 void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_session *, const ziti_error *, void *), void *ctx);
+
+void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data);
 
 #ifdef __cplusplus
 }

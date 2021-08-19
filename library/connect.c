@@ -488,6 +488,8 @@ static void ziti_connect_async(uv_async_t *ar) {
 }
 
 static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opts *dial_opts, ziti_conn_cb conn_cb, ziti_data_cb data_cb) {
+    if (!conn->ziti_ctx->enabled) return ZITI_DISABLED;
+
     if (conn->state != Initial) {
         CONN_LOG(ERROR, "can not dial in state[%s]", ziti_conn_state(conn));
         return ZITI_INVALID_STATE;
@@ -1049,6 +1051,8 @@ static int ziti_channel_start_connection(struct ziti_conn *conn) {
 }
 
 int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *listen_opts, ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb) {
+    if (!conn->ziti_ctx->enabled) return ZITI_DISABLED;
+
     NEWP(req, struct ziti_conn_req);
     conn->service = strdup(service);
     conn->conn_req = req;
@@ -1276,8 +1280,12 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
 
     if (msg == NULL) {
         if (conn->state == Bound) {
-            CONN_LOG(DEBUG, "binding lost due to failed channel [%d/%s]", code, ziti_errorstr(code));
-            ziti_rebind(conn);
+            if (code == ZITI_DISABLED) {
+                conn->client_cb(conn, NULL, ZITI_DISABLED, NULL);
+            } else {
+                CONN_LOG(DEBUG, "binding lost due to failed channel [%d/%s]", code, ziti_errorstr(code));
+                ziti_rebind(conn);
+            }
             return;
         }
 

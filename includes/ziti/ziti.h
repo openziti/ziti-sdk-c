@@ -230,6 +230,7 @@ typedef struct ziti_options_s {
     const char *controller;
     tls_context *tls;
 
+    bool disabled; // if true initial state will be disabled
     const char **config_types;
 
     long refresh_interval; //the duration in seconds between checking for updates from the controller
@@ -255,12 +256,6 @@ typedef struct ziti_options_s {
      */
     ziti_event_cb event_cb;
 } ziti_options;
-
-typedef struct ziti_init_req_s {
-    ziti_context ztx;
-    bool login;
-    int init_status;
-} ziti_init_req;
 
 typedef struct ziti_enroll_opts_s {
     const char *jwt;
@@ -468,6 +463,22 @@ ZITI_FUNC
 extern int ziti_init_opts(ziti_options *options, uv_loop_t *loop);
 
 /**
+ * return if context is enabled
+ * @param ztx ziti context
+ * @return
+ */
+ZITI_FUNC
+extern bool ziti_is_enabled(ziti_context ztx);
+
+/**
+ * Enable or disable given Ziti context.
+ * @param ztx
+ * @param enabled
+ */
+ZITI_FUNC
+extern void ziti_set_enabled(ziti_context ztx, bool enabled);
+
+/**
  * @brief returns ziti_options.app_ctx for the given Ziti context.
  *
  * @param ztx
@@ -539,21 +550,12 @@ extern int ziti_set_timeout(ziti_context ztx, int timeout);
 /**
  * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #ziti_context.
  * 
- * @param ztx the Ziti Edge identity context to be shut down
+ * @param ztx the Ziti Edge identity context to be shut down. this reference is not safe to use after this call
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
 ZITI_FUNC
 extern int ziti_shutdown(ziti_context ztx);
-
-/**
- * @brief Frees memory allocated for the given context and nulls out the handle.
- *
- * @param ctxp pointer to Ziti context handle
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
- */
-ZITI_FUNC
-int ziti_ctx_free(ziti_context *ctxp);
 
 /**
  * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #ziti_context.
