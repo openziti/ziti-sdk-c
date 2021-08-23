@@ -50,8 +50,6 @@ limitations under the License.
 
 static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *meta);
 
-static int model_map_compare(const model_map *lh, const model_map *rh, type_meta *m);
-
 jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_t *ntok) {
     size_t tok_cap = 256;
     jsmn_init(parser);
@@ -1156,7 +1154,7 @@ model_map_iter model_map_it_remove(model_map_iter it) {
     return next;
 }
 
-static int model_map_compare(const model_map *lh, const model_map *rh, type_meta *m) {
+int model_map_compare(const model_map *lh, const model_map *rh, type_meta *m) {
     null_checks(lh, rh)
 
     int rc = 0;
