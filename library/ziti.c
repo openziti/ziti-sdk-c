@@ -77,6 +77,8 @@ static void ziti_stop_internal(ziti_context ztx, void *data);
 
 static void ziti_start_internal(ziti_context ztx, void *init_req);
 
+static void set_service_posture_policy_map(ziti_service *service);
+
 static uint32_t ztx_seq;
 
 static size_t parse_ref(const char *val, const char **res) {
@@ -451,6 +453,11 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     const char *name;
     const char *cfg;
     const char *cfg_json;
+
+    const char *pq_set_id;
+    const ziti_posture_query_set *pq_set;
+    const ziti_posture_query *pq;
+
     MODEL_MAP_FOREACH(name, zs, &ztx->services) {
 
         printer(ctx, "%s: id[%s] perm(dial=%s,bind=%s)\n", zs->name, zs->id,
@@ -460,6 +467,16 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
 
         MODEL_MAP_FOREACH(cfg, cfg_json, &zs->config) {
             printer(ctx, "\tconfig[%s]=%s\n", cfg, cfg_json);
+        }
+
+        printer(ctx, "\tposture queries[%d]:", model_map_size(&zs->posture_query_map));
+        MODEL_MAP_FOREACH(pq_set_id, pq_set, &zs->posture_query_map) {
+            printer(ctx, "\t\tposture query set[%s]\n", pq_set_id);
+
+            for(int idx = 0; pq_set->posture_queries[idx] != NULL; idx++) {
+                pq = pq_set->posture_queries[idx];
+                printer(ctx, "\t\t\tquery_id[%s] type[%s] is_passing[%s] timeout[%d] timeoutRemaining[%d]\n", pq->id, pq->query_type, pq->is_passing ? "true":"false", pq->timeout, *pq->timeoutRemaining);
+            }
         }
     }
 
@@ -665,11 +682,73 @@ static void set_posture_query_defaults(ziti_service *service) {
 // and configurations have not been altered. Will return non-0
 // values if they have. This ignores posture query alterations.
 static int is_service_updated(ziti_service *new, ziti_service *old) {
+    //compare updated at, if changed, signal update. Could be name, tags, etc.
     if (strcmp(old->updated_at, new->updated_at) != 0) {
+        ZITI_LOG(VERBOSE, "service [%s] is updated, update_at property changes", new->name);
         return 1;
     }
 
-    return model_map_compare(&old->config, &new->config, get_model_map_meta());
+    //check for config change, find meta
+    type_meta *ziti_service_meta = get_ziti_service_meta();
+    int i = 0;
+    bool is_found = false;
+    for (i = 0; i < ziti_service_meta->field_count; i++) {
+        if (strcmp(ziti_service_meta->fields[i].name, "config") == 0) {
+            is_found = true;
+            break;
+        }
+    }
+
+    if (is_found) {
+        type_meta *config_field_meta = ziti_service_meta->fields[i].meta();
+        if (model_map_compare(&old->config, &new->config, config_field_meta) != 0) {
+            ZITI_LOG(VERBOSE, "service [%s] is updated, config changed", new->name);
+            return 1;
+        }
+    }
+
+    bool posture_queries_changed = false;
+
+    const char* policy_id;
+    const ziti_posture_query_set *new_set;
+    MODEL_MAP_FOREACH(policy_id, new_set, &new->posture_query_map) {
+        ziti_posture_query_set* old_set = model_map_get(&old->posture_query_map, policy_id);
+
+        if (old_set == NULL) {
+            ZITI_LOG(VERBOSE, "service [%s] is updated, new service gained a policy [%s]", new->name, policy_id);
+            posture_queries_changed = true;
+            break;
+        }
+
+        //is_passing states differ
+        if (old_set->is_passing != new_set->is_passing) {
+            ZITI_LOG(VERBOSE, "service [%s] is updated, new service is_passing state differs for policy [%s]", new->name, policy_id);
+            posture_queries_changed = true;
+            break;
+        }
+    }
+
+    //ensure that new didn't lose policies
+
+    const ziti_posture_query_set *old_set;
+    MODEL_MAP_FOREACH(policy_id, old_set, &old->posture_query_map) {
+        ziti_posture_query_set *new_set = model_map_get(&new->posture_query_map, policy_id);
+
+        if (new_set == NULL) {
+            ZITI_LOG(VERBOSE, "service [%s] is updated, new service lost a policy [%s]", new->name, policy_id);
+            posture_queries_changed = true;
+            break;
+        }
+    }
+
+    if (posture_queries_changed) {
+        ZITI_LOG(VERBOSE, "service [%s] is updated, posture query set change", new->name);
+        return 1;
+    }
+
+    ZITI_LOG(VERBOSE, "service [%s] is not updated, default case", new->name);
+    //no change
+    return 0;
 }
 
 static void update_services(ziti_service_array services, const ziti_error *error, void *ctx) {
@@ -703,6 +782,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
     for (idx = 0; services[idx] != NULL; idx++) {
         set_service_flags(services[idx]);
         set_posture_query_defaults(services[idx]);
+        set_service_posture_policy_map(services[idx]);
         model_map_set(&updates, services[idx]->name, services[idx]);
     }
     free(services);
@@ -789,6 +869,25 @@ static void update_services(ziti_service_array services, const ziti_error *error
     free(ev.event.service.changed);
 
     model_map_clear(&updates, NULL);
+}
+
+// set_service_posture_policy_map checks to see if the controller
+// provided posture queries via a map instead of an array. If not,
+// it will convert the old array values into a map. All downstream
+// processing of posture queries assumes the map will be set.
+// The original array, will be NULL.
+static void set_service_posture_policy_map(ziti_service *service) {
+    // no work to do
+    if (service->posture_query_set != NULL && model_map_size(&service->posture_query_map) != 0) {
+        return;
+    }
+
+    for (int idx = 0; service->posture_query_set[idx] != NULL; idx++) {
+        model_map_set(&service->posture_query_map, service->posture_query_set[idx]->policy_id, service->posture_query_set[idx]);
+    }
+
+    //free the array so that subsequent ziti_service_free() calls do not double free on the map and array
+    FREE(service->posture_query_set);
 }
 
 static void check_service_update(ziti_service_update *update, const ziti_error *err, void *ctx) {
