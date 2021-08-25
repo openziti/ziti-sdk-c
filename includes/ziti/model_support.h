@@ -202,6 +202,8 @@ typedef struct model_map {
     struct model_impl_s *impl;
 } model_map;
 
+int model_map_compare(const model_map *lh, const model_map *rh, type_meta *m);
+
 ZITI_FUNC size_t model_map_size(const model_map *map);
 
 ZITI_FUNC void *model_map_set(model_map *map, const char *key, void *val);

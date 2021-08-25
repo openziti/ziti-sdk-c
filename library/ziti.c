@@ -42,7 +42,7 @@ limitations under the License.
 #endif
 #endif
 
-#define ZTX_LOG(lvl,fmt, ...) ZITI_LOG(lvl, "ztx[%d] " fmt, ztx->id, ##__VA_ARGS__)
+#define ZTX_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ztx[%d] " fmt, ztx->id, ##__VA_ARGS__)
 
 static const char *ALL_CONFIG_TYPES[] = {
         "all",
@@ -76,6 +76,8 @@ static void ztx_work_async(uv_async_t *ar);
 static void ziti_stop_internal(ziti_context ztx, void *data);
 
 static void ziti_start_internal(ziti_context ztx, void *init_req);
+
+static void set_service_posture_policy_map(ziti_service *service);
 
 static uint32_t ztx_seq;
 
@@ -413,7 +415,7 @@ int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
 
     if (app_data_json == NULL) return ZITI_NOT_FOUND;
 
-    if(parse_func(data, app_data_json, strlen(app_data_json)) != 0) {
+    if (parse_func(data, app_data_json, strlen(app_data_json)) != 0) {
         return ZITI_INVALID_CONFIG;
     }
 
@@ -451,6 +453,11 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     const char *name;
     const char *cfg;
     const char *cfg_json;
+
+    const char *pq_set_id;
+    const ziti_posture_query_set *pq_set;
+    const ziti_posture_query *pq;
+
     MODEL_MAP_FOREACH(name, zs, &ztx->services) {
 
         printer(ctx, "%s: id[%s] perm(dial=%s,bind=%s)\n", zs->name, zs->id,
@@ -460,6 +467,16 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
 
         MODEL_MAP_FOREACH(cfg, cfg_json, &zs->config) {
             printer(ctx, "\tconfig[%s]=%s\n", cfg, cfg_json);
+        }
+
+        printer(ctx, "\tposture queries[%d]:", model_map_size(&zs->posture_query_map));
+        MODEL_MAP_FOREACH(pq_set_id, pq_set, &zs->posture_query_map) {
+            printer(ctx, "\t\tposture query set[%s]\n", pq_set_id);
+
+            for(int idx = 0; pq_set->posture_queries[idx] != NULL; idx++) {
+                pq = pq_set->posture_queries[idx];
+                printer(ctx, "\t\t\tquery_id[%s] type[%s] is_passing[%s] timeout[%d] timeoutRemaining[%d]\n", pq->id, pq->query_type, pq->is_passing ? "true":"false", pq->timeout, *pq->timeoutRemaining);
+            }
         }
     }
 
@@ -643,21 +660,95 @@ static void ziti_re_auth(ziti_context ztx) {
 
     ziti_re_auth_with_cb(ztx, session_cb, init_req);
 }
-static void set_posture_query_defaults(ziti_service *service){
+
+static void set_posture_query_defaults(ziti_service *service) {
     int posture_set_idx;
-    for(posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
+    for (posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
         int posture_query_idx;
-        for(posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++){
+        for (posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++) {
 
             //if the controller doesn't support
-            if(service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining == NULL) {
+            if (service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining == NULL) {
                 //free done by model_free
-                int *timeoutRemaining = calloc(1,sizeof(int));
+                int *timeoutRemaining = calloc(1, sizeof(int));
                 *timeoutRemaining = -1;
                 service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining = timeoutRemaining;
             }
         }
     }
+}
+
+// is_service_updated returns 0 if the direct service properties
+// and configurations have not been altered. Will return non-0
+// values if they have. This ignores posture query alterations.
+static int is_service_updated(ziti_service *new, ziti_service *old) {
+    //compare updated at, if changed, signal update. Could be name, tags, etc.
+    if (strcmp(old->updated_at, new->updated_at) != 0) {
+        ZITI_LOG(VERBOSE, "service [%s] is updated, update_at property changes", new->name);
+        return 1;
+    }
+
+    //check for config change, find meta
+    type_meta *ziti_service_meta = get_ziti_service_meta();
+    int i = 0;
+    bool is_found = false;
+    for (i = 0; i < ziti_service_meta->field_count; i++) {
+        if (strcmp(ziti_service_meta->fields[i].name, "config") == 0) {
+            is_found = true;
+            break;
+        }
+    }
+
+    if (is_found) {
+        type_meta *config_field_meta = ziti_service_meta->fields[i].meta();
+        if (model_map_compare(&old->config, &new->config, config_field_meta) != 0) {
+            ZITI_LOG(VERBOSE, "service [%s] is updated, config changed", new->name);
+            return 1;
+        }
+    }
+
+    bool posture_queries_changed = false;
+
+    const char* policy_id;
+    const ziti_posture_query_set *new_set;
+    MODEL_MAP_FOREACH(policy_id, new_set, &new->posture_query_map) {
+        ziti_posture_query_set* old_set = model_map_get(&old->posture_query_map, policy_id);
+
+        if (old_set == NULL) {
+            ZITI_LOG(VERBOSE, "service [%s] is updated, new service gained a policy [%s]", new->name, policy_id);
+            posture_queries_changed = true;
+            break;
+        }
+
+        //is_passing states differ
+        if (old_set->is_passing != new_set->is_passing) {
+            ZITI_LOG(VERBOSE, "service [%s] is updated, new service is_passing state differs for policy [%s]", new->name, policy_id);
+            posture_queries_changed = true;
+            break;
+        }
+    }
+
+    //ensure that new didn't lose policies
+
+    const ziti_posture_query_set *old_set;
+    MODEL_MAP_FOREACH(policy_id, old_set, &old->posture_query_map) {
+        ziti_posture_query_set *new_set = model_map_get(&new->posture_query_map, policy_id);
+
+        if (new_set == NULL) {
+            ZITI_LOG(VERBOSE, "service [%s] is updated, new service lost a policy [%s]", new->name, policy_id);
+            posture_queries_changed = true;
+            break;
+        }
+    }
+
+    if (posture_queries_changed) {
+        ZITI_LOG(VERBOSE, "service [%s] is updated, posture query set change", new->name);
+        return 1;
+    }
+
+    ZITI_LOG(VERBOSE, "service [%s] is not updated, default case", new->name);
+    //no change
+    return 0;
 }
 
 static void update_services(ziti_service_array services, const ziti_error *error, void *ctx) {
@@ -671,12 +762,11 @@ static void update_services(ziti_service_array services, const ziti_error *error
 
     if (error) {
         ZTX_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
-                 ztx->opts->controller);
+                ztx->opts->controller);
         if (error->err == ZITI_NOT_AUTHORIZED) {
             ZTX_LOG(WARN, "API session is no longer valid. Trying to re-auth");
             ziti_re_auth(ztx);
-        }
-        else {
+        } else {
             update_ctrl_status(ztx, ZITI_CONTROLLER_UNAVAILABLE, error->message);
         }
         return;
@@ -692,6 +782,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
     for (idx = 0; services[idx] != NULL; idx++) {
         set_service_flags(services[idx]);
         set_posture_query_defaults(services[idx]);
+        set_service_posture_policy_map(services[idx]);
         model_map_set(&updates, services[idx]->name, services[idx]);
     }
     free(services);
@@ -713,7 +804,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
         ziti_service *updt = model_map_remove(&updates, model_map_it_key(it));
 
         if (updt != NULL) {
-            if (cmp_ziti_service(updt, model_map_it_value(it)) != 0) {
+            if (is_service_updated(updt, model_map_it_value(it)) != 0) {
                 ev.event.service.changed[chIdx++] = updt;
             } else {
                 // no changes detected, just discard it
@@ -762,8 +853,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
     if (addIdx > 0 || remIdx > 0 || chIdx > 0) {
         ZTX_LOG(DEBUG, "sending service event %d added, %d removed, %d changed", addIdx, remIdx, chIdx);
         ziti_send_event(ztx, &ev);
-    }
-    else {
+    } else {
         ZTX_LOG(VERBOSE, "no services added, changed, or removed");
     }
 
@@ -779,6 +869,25 @@ static void update_services(ziti_service_array services, const ziti_error *error
     free(ev.event.service.changed);
 
     model_map_clear(&updates, NULL);
+}
+
+// set_service_posture_policy_map checks to see if the controller
+// provided posture queries via a map instead of an array. If not,
+// it will convert the old array values into a map. All downstream
+// processing of posture queries assumes the map will be set.
+// The original array, will be NULL.
+static void set_service_posture_policy_map(ziti_service *service) {
+    // no work to do
+    if (service->posture_query_set != NULL && model_map_size(&service->posture_query_map) != 0) {
+        return;
+    }
+
+    for (int idx = 0; service->posture_query_set[idx] != NULL; idx++) {
+        model_map_set(&service->posture_query_map, service->posture_query_set[idx]->policy_id, service->posture_query_set[idx]);
+    }
+
+    //free the array so that subsequent ziti_service_free() calls do not double free on the map and array
+    FREE(service->posture_query_set);
 }
 
 static void check_service_update(ziti_service_update *update, const ziti_error *err, void *ctx) {
@@ -819,8 +928,7 @@ static void services_refresh(uv_timer_t *t) {
 
     if (ztx->no_service_updates_api) {
         ziti_ctrl_get_services(&ztx->controller, update_services, ztx);
-    }
-    else {
+    } else {
         ziti_ctrl_get_services_update(&ztx->controller, check_service_update, ztx);
     }
 }
@@ -846,7 +954,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
     const char *er_name;
     ziti_channel_t *ch;
     MODEL_MAP_FOREACH(er_name, ch, &ztx->channels) {
-        model_map_set(&curr_routers, er_name, (void*)er_name);
+        model_map_set(&curr_routers, er_name, (void *) er_name);
     }
 
     ziti_edge_router **erp = ers;
@@ -882,8 +990,24 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
     }
 }
 
-static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx){
+static void update_identity_data(ziti_identity_data *data, const ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
+
+    if (err) {
+        ZITI_LOG(ERROR, "failed to get identity_data: %s[%d]", err->message, err->code);
+    } else {
+        free_ziti_identity_data(ztx->identity_data);
+        FREE(ztx->identity_data);
+        ztx->identity_data = data;
+    }
+
+    update_ctrl_status(ztx, FIELD_OR_ELSE(err, err, 0), FIELD_OR_NULL(err, message));
+}
+
+static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) {
     ziti_session *session = ztx->session;
+
+    ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
 
     int time_diff;
     if (session->cached_last_activity_at) {
@@ -921,20 +1045,6 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx){
     }
 }
 
-static void update_identity_data(ziti_identity_data *data, const ziti_error *err, void *ctx) {
-    ziti_context ztx = ctx;
-
-    if (err) {
-        ZITI_LOG(ERROR, "failed to get identity_data: %s[%d]", err->message, err->code);
-    } else {
-        free_ziti_identity_data(ztx->identity_data);
-        FREE(ztx->identity_data);
-        ztx->identity_data = data;
-    }
-
-    update_ctrl_status(ztx, FIELD_OR_ELSE(err, err, 0), FIELD_OR_NULL(err, message));
-}
-
 static void set_session(ziti_context ztx, ziti_session *session) {
     ziti_session *old_session = ztx->session;
     ztx->session = session;
@@ -961,10 +1071,10 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
         ziti_auth_query_init(ztx);
 
         //check for additional authentication requirements, pickup in session_post_auth_query_cb
-        ziti_auth_query_process(ztx,session_post_auth_query_cb);
+        ziti_auth_query_process(ztx, session_post_auth_query_cb);
     } else if (err) {
         ZTX_LOG(WARN, "failed to get session from ctrl[%s] %s[%d] %s",
-                 ztx->opts->controller, err->code, errCode, err->message);
+                ztx->opts->controller, err->code, errCode, err->message);
 
         if (errCode == ZITI_NOT_AUTHORIZED) {
             if (ztx->session || !init_req->start) {
@@ -1052,8 +1162,7 @@ void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const 
             // already removed or different one
             // passed reference is no longer valid
             session = NULL;
-        }
-        else if (s == session) {
+        } else if (s == session) {
             model_map_remove(&ztx->sessions, session->service_id);
         }
     }

@@ -80,7 +80,9 @@ XX(permissions, string, array, permissions, __VA_ARGS__) \
 XX(encryption, bool, none, encryptionRequired, __VA_ARGS__) \
 XX(perm_flags, int, none, NULL, __VA_ARGS__) \
 XX(config, json, map, config, __VA_ARGS__) \
-XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__)
+XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__) \
+XX(posture_query_map, ziti_posture_query_set, map, posturePolicies, __VA_ARGS__) \
+XX(updated_at,string, none, updatedAt, __VA_ARGS__)
 
 #define ZITI_CLIENT_CFG_V1_MODEL(XX, ...) \
 XX(hostname, string, none, hostname, __VA_ARGS__) \
