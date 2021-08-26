@@ -252,7 +252,7 @@ void ziti_send_posture_data(ziti_context ztx) {
                             newProcInfo->query = query;
                             newProcInfo->service = service;
 
-                            model_map_set(&processes, query->process->path, newProcInfo);
+                            model_map_set(&processes, process->path, newProcInfo);
                         }
                         processIdx++;
                     }
