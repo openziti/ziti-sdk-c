@@ -156,15 +156,15 @@ void ziti_channel_free(ziti_channel_t *ch) {
     FREE(ch->host);
 }
 
-int ziti_close_channels(struct ziti_ctx *ziti, int err) {
+int ziti_close_channels(struct ziti_ctx *ztx, int err) {
     ziti_channel_t *ch;
     const char *url;
-    model_map_iter it = model_map_iterator(&ziti->channels);
+    model_map_iter it = model_map_iterator(&ztx->channels);
     while (it != NULL) {
         url = model_map_it_key(it);
         ch = model_map_it_value(it);
 
-        ZITI_LOG(DEBUG, "closing channel[%s]: %s", url, ziti_errorstr(err));
+        ZTX_LOG(DEBUG, "closing channel[%s]: %s", url, ziti_errorstr(err));
         ziti_channel_close(ch, err);
         it = model_map_it_remove(it);
     }
@@ -272,7 +272,7 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
     ziti_channel_t *ch = model_map_get(&ztx->channels, ch_name);
 
     if (ch != NULL) {
-        ZITI_LOG(DEBUG, "existing ch[%d](%s) found for ingress[%s]", ch->id, ch_state_str(ch), url);
+        ZTX_LOG(DEBUG, "existing ch[%d](%s) found for ingress[%s]", ch->id, ch_state_str(ch), url);
     }
     else {
         ch = new_ziti_channel(ztx, ch_name, url);
@@ -749,6 +749,8 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
 }
 
 static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
+    ziti_context ztx = ch->ctx;
+
     if (ch->state != Closed) {
         if (ch->state == Connected) {
             ch->notify_cb(ch, EdgeRouterDisconnected, ch->notify_ctx);
@@ -777,7 +779,7 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
 
     if (ch->state != Closed) {
         if (uv_err == UV_EOF) {
-            ZITI_LOG(VERBOSE, "edge router closed connection, trying to refresh session");
+            ZTX_LOG(VERBOSE, "edge router closed connection, trying to refresh session");
             ziti_force_session_refresh(ch->ctx);
         }
         reconnect_channel(ch, false);

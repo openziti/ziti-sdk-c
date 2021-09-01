@@ -102,7 +102,7 @@ static void default_pq_process(ziti_context ztx, const char *id, const char *pat
 
 static char **get_signers(const char *path, int *signers_count);
 
-static int hash_sha512(uv_loop_t *loop, const char *path, unsigned char **out_buf, size_t *out_len);
+static int hash_sha512(ziti_context ztx, uv_loop_t *loop, const char *path, unsigned char **out_buf, size_t *out_len);
 
 static bool check_running(uv_loop_t *loop, const char *path);
 
@@ -176,20 +176,20 @@ static pr_info *get_resp_info(ziti_context ztx, const char *id) {
 
 void ziti_send_posture_data(ziti_context ztx) {
     if (ztx->session == NULL || ztx->session->id == NULL) {
-        ZITI_LOG(DEBUG, "no session, can't submit posture checks");
+        ZTX_LOG(DEBUG, "no session, can't submit posture checks");
         return;
     }
 
-    ZITI_LOG(VERBOSE, "starting to send posture data");
+    ZTX_LOG(VERBOSE, "starting to send posture data");
     bool new_session_id = ztx->posture_checks->previous_session_id == NULL || strcmp(ztx->posture_checks->previous_session_id, ztx->session->id) != 0;
 
     if (new_session_id || ztx->posture_checks->must_send_every_time) {
-        ZITI_LOG(DEBUG, "posture checks either never sent or session changed, must_send = true");
+        ZTX_LOG(DEBUG, "posture checks either never sent or session changed, must_send = true");
         ztx->posture_checks->must_send = true;
         FREE(ztx->posture_checks->previous_session_id);
         ztx->posture_checks->previous_session_id = strdup(ztx->session->id);
     } else {
-        ZITI_LOG(DEBUG, "posture checks using standard logic to submit, must_send = false");
+        ZTX_LOG(DEBUG, "posture checks using standard logic to submit, must_send = false");
         ztx->posture_checks->must_send = false;
     }
 
@@ -202,7 +202,7 @@ void ziti_send_posture_data(ziti_context ztx) {
     __attribute__((unused)) const char *name;
     ziti_service *service;
 
-    ZITI_LOG(VERBOSE, "checking posture queries on %d service(s)", model_map_size(&ztx->services));
+    ZTX_LOG(VERBOSE, "checking posture queries on %d service(s)", model_map_size(&ztx->services));
 
     //loop over the services and determine the query types that need responses
     //for process queries, save them by process path
@@ -282,7 +282,7 @@ void ziti_send_posture_data(ziti_context ztx) {
             if (ztx->opts->pq_domain_cb != NULL) {
                 ztx->opts->pq_domain_cb(ztx, domainInfo->query->id, ziti_pr_handle_domain);
             } else {
-                ZITI_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_DOMAIN_TYPE,
+                ZTX_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_DOMAIN_TYPE,
                          domainInfo->service->name, domainInfo->query_set->policy_id, domainInfo->query->id);
                 default_pq_domain(ztx, domainInfo->query->id, ziti_pr_handle_domain);
             }
@@ -301,7 +301,7 @@ void ziti_send_posture_data(ziti_context ztx) {
             if (ztx->opts->pq_mac_cb != NULL) {
                 ztx->opts->pq_mac_cb(ztx, macInfo->query->id, ziti_pr_handle_mac);
             } else {
-                ZITI_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_MAC_TYPE,
+                ZTX_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_MAC_TYPE,
                          macInfo->service->name, macInfo->query_set->policy_id, macInfo->query->id);
                 default_pq_mac(ztx, macInfo->query->id, ziti_pr_handle_mac);
             }
@@ -319,7 +319,7 @@ void ziti_send_posture_data(ziti_context ztx) {
             if (ztx->opts->pq_os_cb != NULL) {
                 ztx->opts->pq_os_cb(ztx, osInfo->query->id, ziti_pr_handle_os);
             } else {
-                ZITI_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_OS_TYPE,
+                ZTX_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_OS_TYPE,
                          osInfo->service->name, osInfo->query_set->policy_id, osInfo->query->id);
                 default_pq_os(ztx, osInfo->query->id, ziti_pr_handle_os);
             }
@@ -333,7 +333,7 @@ void ziti_send_posture_data(ziti_context ztx) {
         ziti_pq_process_cb proc_cb = ztx->opts->pq_process_cb;
         if (proc_cb == NULL) {
             proc_cb = default_pq_process;
-            ZITI_LOG(VERBOSE, "using default %s cb  for process queries");
+            ZTX_LOG(VERBOSE, "using default %s cb  for process queries");
         }
         MODEL_MAP_FOREACH(path, info, &processes) {
             if (info->query->timeout == NO_TIMEOUTS) {
@@ -352,7 +352,7 @@ void ziti_send_posture_data(ziti_context ztx) {
     while (it) {
         resp = model_map_it_value(it);
         if (resp->obsolete) {
-            ZITI_LOG(DEBUG, "removing obsolete posture resp[%s],  should_send = %s, pending = %s: %s", resp->id, resp->should_send ? "true" : "false", resp->pending ? "true" : "false", resp->obj);
+            ZTX_LOG(DEBUG, "removing obsolete posture resp[%s],  should_send = %s, pending = %s: %s", resp->id, resp->should_send ? "true" : "false", resp->pending ? "true" : "false", resp->obj);
             it = model_map_it_remove(it);
             ziti_pr_free_pr_info(resp);
         } else {
@@ -386,7 +386,7 @@ static void ziti_collect_pr(ziti_context ztx, const char *pr_obj_key, char *pr_o
 
         current_info->should_send = ztx->posture_checks->must_send_every_time || ziti_pr_is_info_errored(ztx, current_info->id) || changed;
     } else {
-        ZITI_LOG(WARN, "response info not found, posture check obsolete? id[%d]", pr_obj_key);
+        ZTX_LOG(WARN, "response info not found, posture check obsolete? id[%d]", pr_obj_key);
         free(pr_obj);
     }
 }
@@ -394,14 +394,14 @@ static void ziti_collect_pr(ziti_context ztx, const char *pr_obj_key, char *pr_o
 static void ziti_pr_post_bulk_cb(__attribute__((unused)) void *empty, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err != NULL) {
-        ZITI_LOG(ERROR, "error during bulk posture response submission (%d) %s", err->http_code, err->message);
+        ZTX_LOG(ERROR, "error during bulk posture response submission (%d) %s", err->http_code, err->message);
         ztx->posture_checks->must_send = true; //error, must try again
         if (err->http_code == 404) {
             ztx->no_bulk_posture_response_api = true;
         }
     } else {
         ztx->posture_checks->must_send = false; //did not error, can skip submissions
-        ZITI_LOG(DEBUG, "done with bulk posture response submission");
+        ZTX_LOG(DEBUG, "done with bulk posture response submission");
     }
 }
 
@@ -424,13 +424,14 @@ static bool ziti_pr_is_info_errored(ziti_context ztx, const char *id) {
 
 static void ziti_pr_post_cb(__attribute__((unused)) void *empty, const ziti_error *err, void *ctx) {
     pr_cb_ctx *pr_ctx = ctx;
+    ziti_context ztx = pr_ctx->ztx;
 
     if (err != NULL) {
-        ZITI_LOG(ERROR, "error during individual posture response submission (%d) %s - object: %s", err->http_code,
+        ZTX_LOG(ERROR, "error during individual posture response submission (%d) %s - object: %s", err->http_code,
                  err->message, pr_ctx->info->obj);
         ziti_pr_set_info_errored(pr_ctx->ztx, pr_ctx->info->id);
     } else {
-        ZITI_LOG(TRACE, "done with one pr response submission, object: %s", pr_ctx->info->obj);
+        ZTX_LOG(TRACE, "done with one pr response submission, object: %s", pr_ctx->info->obj);
         ziti_pr_set_info_success(pr_ctx->ztx, pr_ctx->info->id);
     }
 
@@ -460,7 +461,7 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
     }
 
     if (!send) {
-        ZITI_LOG(DEBUG, "no change in posture data, not sending");
+        ZTX_LOG(DEBUG, "no change in posture data, not sending");
         return; //nothing to send
     }
 
@@ -472,7 +473,7 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
     int obj_count = 0;
     MODEL_MAP_FOREACH(key, info, &ztx->posture_checks->responses) {
         if (info->should_send) {
-            ZITI_LOG(VERBOSE, "sending posture response [%s], should_send = true: %s", info->id, info->obj);
+            ZTX_LOG(VERBOSE, "sending posture response [%s], should_send = true: %s", info->id, info->obj);
             obj_count++;
             if (needs_comma) {
                 write_buf_append_byte(&buf, ',');
@@ -482,15 +483,15 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
             write_buf_append(&buf, info->obj);
             info->should_send = false;
         } else {
-            ZITI_LOG(VERBOSE, "not sending posture response [%s], should_send = false, pending = %s: %s", info->id, info->pending ? "true" : "false", info->obj);
+            ZTX_LOG(VERBOSE, "not sending posture response [%s], should_send = false, pending = %s: %s", info->id, info->pending ? "true" : "false", info->obj);
         }
     }
 
     write_buf_append_byte(&buf, ']');
 
     body = write_buf_to_string(&buf, &body_len);
-    ZITI_LOG(DEBUG, "sending posture responses [%d]", obj_count);
-    ZITI_LOG(TRACE, "bulk posture response: %s", body);
+    ZTX_LOG(DEBUG, "sending posture responses [%d]", obj_count);
+    ZTX_LOG(TRACE, "bulk posture response: %s", body);
 
     ziti_pr_post_bulk(&ztx->controller, body, body_len, ziti_pr_post_bulk_cb, ztx);
     write_buf_free(&buf);
@@ -757,6 +758,7 @@ static void default_pq_process(ziti_context ztx, const char *id, const char *pat
 
 static void process_check_work(uv_work_t *w) {
     struct process_work *pcw = container_of(w, struct process_work, w);
+    ziti_context ztx = pcw->ztx;
     const char *path = pcw->path;
 
     unsigned char *digest;
@@ -768,17 +770,18 @@ static void process_check_work(uv_work_t *w) {
     }
 
     pcw->is_running = check_running(w->loop, path);
-    if (hash_sha512(w->loop, path, &digest, &digest_len) == 0) {
+    if (hash_sha512(ztx, w->loop, path, &digest, &digest_len) == 0) {
         hexify(digest, digest_len, 0, &pcw->sha512);
-        ZITI_LOG(VERBOSE, "file(%s) hash = %s", path, pcw->sha512);
+        ZTX_LOG(VERBOSE, "file(%s) hash = %s", path, pcw->sha512);
         free(digest);
     }
     pcw->signers = get_signers(path, &pcw->num_signers);
 }
 
 void ziti_endpoint_state_pr_cb(void *unused, const ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
     if (err) {
-        ZITI_LOG(ERROR, "error during endpoint state posture response submission: %d - %s", err->http_code, err->message);
+        ZTX_LOG(ERROR, "error during endpoint state posture response submission: %d - %s", err->http_code, err->message);
     }
 }
 
@@ -796,18 +799,18 @@ void ziti_endpoint_state_change(ziti_context ztx, bool woken, bool unlocked) {
 
         char *obj = ziti_pr_endpoint_state_req_to_json(&state_req, 0, &obj_len);
 
-        ziti_pr_post(&ztx->controller, obj, obj_len, ziti_endpoint_state_pr_cb, NULL);
+        ziti_pr_post(&ztx->controller, obj, obj_len, ziti_endpoint_state_pr_cb, ztx);
     }
 }
 
 
-static int hash_sha512(uv_loop_t *loop, const char *path, unsigned char **out_buf, size_t *out_len) {
+static int hash_sha512(ziti_context ztx, uv_loop_t *loop, const char *path, unsigned char **out_buf, size_t *out_len) {
     size_t digest_size = crypto_hash_sha512_bytes();
     unsigned char *digest = NULL;
     int rc = 0;
 
 #define CHECK(op) do{ rc = (op); if (rc != 0) { \
-ZITI_LOG(ERROR, "failed hashing op[" #op "]: %d", rc); \
+ZTX_LOG(ERROR, "failed hashing op[" #op "]: %d", rc); \
 goto cleanup;                                   \
 } }while(0)
 
