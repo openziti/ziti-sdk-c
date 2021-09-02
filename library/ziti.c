@@ -42,8 +42,6 @@ limitations under the License.
 #endif
 #endif
 
-#define ZTX_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ztx[%d] " fmt, ztx->id, ##__VA_ARGS__)
-
 static const char *ALL_CONFIG_TYPES[] = {
         "all",
         NULL
@@ -681,10 +679,10 @@ static void set_posture_query_defaults(ziti_service *service) {
 // is_service_updated returns 0 if the direct service properties
 // and configurations have not been altered. Will return non-0
 // values if they have. This ignores posture query alterations.
-static int is_service_updated(ziti_service *new, ziti_service *old) {
+static int is_service_updated(ziti_context ztx, ziti_service *new, ziti_service *old) {
     //compare updated at, if changed, signal update. Could be name, tags, etc.
     if (strcmp(old->updated_at, new->updated_at) != 0) {
-        ZITI_LOG(VERBOSE, "service [%s] is updated, update_at property changes", new->name);
+        ZTX_LOG(VERBOSE, "service [%s] is updated, update_at property changes", new->name);
         return 1;
     }
 
@@ -702,12 +700,10 @@ static int is_service_updated(ziti_service *new, ziti_service *old) {
     if (is_found) {
         type_meta *config_field_meta = ziti_service_meta->fields[i].meta();
         if (model_map_compare(&old->config, &new->config, config_field_meta) != 0) {
-            ZITI_LOG(VERBOSE, "service [%s] is updated, config changed", new->name);
+            ZTX_LOG(VERBOSE, "service [%s] is updated, config changed", new->name);
             return 1;
         }
     }
-
-    bool posture_queries_changed = false;
 
     const char* policy_id;
     const ziti_posture_query_set *new_set;
@@ -715,16 +711,14 @@ static int is_service_updated(ziti_service *new, ziti_service *old) {
         ziti_posture_query_set* old_set = model_map_get(&old->posture_query_map, policy_id);
 
         if (old_set == NULL) {
-            ZITI_LOG(VERBOSE, "service [%s] is updated, new service gained a policy [%s]", new->name, policy_id);
-            posture_queries_changed = true;
-            break;
+            ZTX_LOG(VERBOSE, "service [%s] is updated, new service gained a policy [%s]", new->name, policy_id);
+            return 1;
         }
 
         //is_passing states differ
         if (old_set->is_passing != new_set->is_passing) {
-            ZITI_LOG(VERBOSE, "service [%s] is updated, new service is_passing state differs for policy [%s]", new->name, policy_id);
-            posture_queries_changed = true;
-            break;
+            ZTX_LOG(VERBOSE, "service [%s] is updated, new service is_passing state differs for policy [%s]", new->name, policy_id);
+            return 1;
         }
     }
 
@@ -735,18 +729,12 @@ static int is_service_updated(ziti_service *new, ziti_service *old) {
         ziti_posture_query_set *new_set = model_map_get(&new->posture_query_map, policy_id);
 
         if (new_set == NULL) {
-            ZITI_LOG(VERBOSE, "service [%s] is updated, new service lost a policy [%s]", new->name, policy_id);
-            posture_queries_changed = true;
-            break;
+            ZTX_LOG(VERBOSE, "service [%s] is updated, new service lost a policy [%s]", new->name, policy_id);
+            return 1;
         }
     }
 
-    if (posture_queries_changed) {
-        ZITI_LOG(VERBOSE, "service [%s] is updated, posture query set change", new->name);
-        return 1;
-    }
-
-    ZITI_LOG(VERBOSE, "service [%s] is not updated, default case", new->name);
+    ZTX_LOG(VERBOSE, "service [%s] is not updated, default case", new->name);
     //no change
     return 0;
 }
@@ -804,7 +792,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
         ziti_service *updt = model_map_remove(&updates, model_map_it_key(it));
 
         if (updt != NULL) {
-            if (is_service_updated(updt, model_map_it_value(it)) != 0) {
+            if (is_service_updated(ztx, updt, model_map_it_value(it)) != 0) {
                 ev.event.service.changed[chIdx++] = updt;
             } else {
                 // no changes detected, just discard it
@@ -922,7 +910,7 @@ static void services_refresh(uv_timer_t *t) {
     ziti_context ztx = t->data;
 
     if (ztx->auth_queries->outstanding_auth_query_ctx) {
-        ZITI_LOG(DEBUG, "service refresh stopped, outstanding auth queries");
+        ZTX_LOG(DEBUG, "service refresh stopped, outstanding auth queries");
         return;
     }
 
@@ -983,7 +971,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
     model_map_iter it = model_map_iterator(&curr_routers);
     while (it != NULL) {
         er_name = model_map_it_value(it);
-        ZITI_LOG(INFO, "removing channel[%s]: no longer available", er_name);
+        ZTX_LOG(INFO, "removing channel[%s]: no longer available", er_name);
         ch = model_map_remove(&ztx->channels, er_name);
         ziti_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE);
         it = model_map_it_remove(it);
@@ -994,7 +982,7 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
     ziti_context ztx = ctx;
 
     if (err) {
-        ZITI_LOG(ERROR, "failed to get identity_data: %s[%d]", err->message, err->code);
+        ZTX_LOG(ERROR, "failed to get identity_data: %s[%d]", err->message, err->code);
     } else {
         free_ziti_identity_data(ztx->identity_data);
         FREE(ztx->identity_data);
@@ -1011,14 +999,14 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
 
     int time_diff;
     if (session->cached_last_activity_at) {
-        ZITI_LOG(TRACE, "API supports cached_last_activity_at");
+        ZTX_LOG(TRACE, "API supports cached_last_activity_at");
         time_diff = (int) (ztx->session_received_at.tv_sec - session->cached_last_activity_at->tv_sec);
     } else {
-        ZITI_LOG(TRACE, "API doesn't support cached_last_activity_at - using updated");
+        ZTX_LOG(TRACE, "API doesn't support cached_last_activity_at - using updated");
         time_diff = (int) (ztx->session_received_at.tv_sec - session->updated->tv_sec);
     }
     if (abs(time_diff) > 10) {
-        ZITI_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
+        ZTX_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
                  time_diff > 0 ? "ahead" : "behind");
     }
 
