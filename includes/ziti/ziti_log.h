@@ -43,8 +43,6 @@ enum DebugLevel {
 if (level <= ziti_log_level()) { ziti_logger(level, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
 } while(0)
 
-#define ZTX_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ztx[%d] " fmt, ztx->id, ##__VA_ARGS__)
-
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -86,7 +86,7 @@ struct client {
 };
 
 static int process_args(int argc, char *argv[]);
-void mfa_auth_event_handler(ziti_context ztx, ziti_auth_query_mfa *aq_mfa);
+void mfa_auth_event_handler(ziti_context ztx);
 
 int main(int argc, char *argv[]) {
     process_args(argc, argv);
@@ -166,11 +166,11 @@ static void signal_cb(uv_signal_t *s, int signum) {
             debug_dump(s->data);
             break;
 #ifndef _WIN32
-        case SIGUSR2: {
-            struct proxy_app_ctx *ctx = s->data;
-            ziti_set_enabled(ctx->ziti, !ziti_is_enabled(ctx->ziti));
-            break;
-        }
+            case SIGUSR2: {
+                struct proxy_app_ctx *ctx = s->data;
+                ziti_set_enabled(ctx->ziti, !ziti_is_enabled(ctx->ziti));
+                break;
+            }
 #endif
 
         default:
@@ -479,6 +479,24 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                     service_check_cb(ztx, *sp, ZITI_OK, app_ctx);
                 }
             }
+
+            if (event->event.service.changed != NULL) {
+                for (ziti_service **sp = event->event.service.changed; *sp != NULL; sp++) {
+                    ziti_service *service = *sp;
+
+                    const char *policy_id;
+                    ziti_posture_query_set *policy;
+                    MODEL_MAP_FOREACH(policy_id, policy, &service->posture_query_map) {
+                        for (int idx = 0; policy->posture_queries[idx] != NULL; idx++) {
+                            ziti_posture_query *query = policy->posture_queries[idx];
+
+                            if (strcmp(query->query_type, "MFA") == 0 && query->timeoutRemaining != NULL && *query->timeoutRemaining == 0) {
+                                mfa_auth_event_handler(ztx);
+                            }
+                        }
+                    }
+                }
+            }
             break;
 
         case ZitiRouterEvent:
@@ -501,7 +519,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             }
             break;
         case ZitiMfaAuthEvent:
-            mfa_auth_event_handler(ztx, event->event.mfa_auth_event.auth_query_mfa);
+            mfa_auth_event_handler(ztx);
 
         default:
             break;
@@ -519,7 +537,6 @@ uv_loop_t *global_loop;
 struct mfa_work {
     uv_work_t w;
     ziti_context ztx;
-    ziti_auth_query_mfa *aq_mfa;
 };
 
 void mfa_response_cb(ziti_context ztx, int status, void *ctx);
@@ -573,10 +590,9 @@ void mfa_worker_done(uv_work_t *req, int status) {
     FREE(req);
 }
 
-void mfa_auth_event_handler(ziti_context ztx, ziti_auth_query_mfa *aq_mfa) {
+void mfa_auth_event_handler(ziti_context ztx) {
     NEWP(mfa_wr, struct mfa_work);
     mfa_wr->ztx = ztx;
-    mfa_wr->aq_mfa = aq_mfa;
     mfa_wr->w.data = mfa_wr;
 
     uv_queue_work(global_loop, &mfa_wr->w, mfa_worker, mfa_worker_done);

@@ -42,6 +42,8 @@ limitations under the License.
 #define TYPE_DIAL "Dial"
 #define TYPE_BIND "Bind"
 
+#define ZTX_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ztx[%d] " fmt, ztx->id, ##__VA_ARGS__)
+
 extern const char *APP_ID;
 extern const char *APP_VERSION;
 

@@ -316,13 +316,13 @@ void ziti_mfa_auth_internal_cb(void *empty, const ziti_error *err, void *ctx) {
         }
     } else {
         if (mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx != NULL) {
-            ziti_mfa_auth_ctx *ctx = mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx;
+            ziti_mfa_auth_ctx *outstanding_ctx = mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx;
             mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx = NULL;
 
-            ctx->cb(ztx, ZITI_OK, ctx->cb_ctx);
+            outstanding_ctx->cb(ztx, ZITI_OK, outstanding_ctx->cb_ctx);
 
-            FREE(ctx->code);
-            FREE(ctx);
+            FREE(outstanding_ctx->code);
+            FREE(outstanding_ctx);
         }
 
         if (mfa_auth_ctx->cb != NULL) {
