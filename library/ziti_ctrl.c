@@ -534,12 +534,14 @@ ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, c
     if (csr) {
         um_http_req_header(req, "Content-Type", "text/plain");
         um_http_req_data(req, csr, strlen(csr), NULL);
-    } else if (name != NULL) {
-        ziti_identity id = {.name = name};
-        size_t body_len;
-        char *body = ziti_identity_to_json(&id, MODEL_JSON_COMPACT, &body_len);
+    } else {
         um_http_req_header(req, "Content-Type", "application/json");
-        um_http_req_data(req, body, body_len, free_body_cb);
+        if (name != NULL) {
+            ziti_identity id = {.name = name};
+            size_t body_len;
+            char *body = ziti_identity_to_json(&id, MODEL_JSON_COMPACT, &body_len);
+            um_http_req_data(req, body, body_len, free_body_cb);
+        }
     }
 }
 
