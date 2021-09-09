@@ -104,6 +104,7 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
     ecfg->tls->api->set_cert_verify(ecfg->tls, verify_controller_jwt, ecfg);
     ecfg->own_cert = opts->enroll_cert;
     ecfg->private_key = opts->enroll_key;
+    ecfg->name = opts->enroll_name;
 
     TRY(ziti, load_jwt(opts->jwt, ecfg, &ecfg->zejh, &ecfg->zej));
     TRY(ziti, check_cert_required(ecfg));
@@ -201,7 +202,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     enroll_req2->ecfg = enroll_req->ecfg;
 
     ziti_ctrl_enroll(enroll_req2->controller, enroll_req->ecfg->zej->method, enroll_req->ecfg->zej->token,
-                     enroll_req->ecfg->csr_pem, enroll_cb, enroll_req2);
+                     enroll_req->ecfg->csr_pem, enroll_req->ecfg->name, enroll_cb, enroll_req2);
 
     ziti_err = 0;
     CATCH(TLS) {

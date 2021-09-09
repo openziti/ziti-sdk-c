@@ -78,7 +78,7 @@ void ziti_ctrl_get_sessions(
 
 void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, const char *csr,
+void ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, const char *csr, const char *name,
                       void (*cb)(ziti_enrollment_resp *, const ziti_error *, void *), void *ctx);
 
 //Posture

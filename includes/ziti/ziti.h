@@ -261,6 +261,7 @@ typedef struct ziti_enroll_opts_s {
     const char *jwt;
     const char *enroll_key;
     const char *enroll_cert;
+    const char *enroll_name;
 } ziti_enroll_opts;
 
 typedef struct ziti_dial_opts_s {
