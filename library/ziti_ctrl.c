@@ -512,7 +512,7 @@ static void ctrl_enroll_http_cb(um_http_resp_t *http_resp, void *data) {
 }
 
 void
-ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, const char *csr,
+ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, const char *csr, const char *name,
                  void (*cb)(ziti_enrollment_resp *, const ziti_error *, void *),
                  void *ctx) {
     char path[1024];
@@ -531,9 +531,17 @@ ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, c
     resp->ctrl_cb = ctrl_default_cb;
 
     um_http_req_t *req = um_http_req(&ctrl->client, "POST", path, ctrl_enroll_http_cb, resp);
-    um_http_req_header(req, "Content-Type", "text/plain");
     if (csr) {
+        um_http_req_header(req, "Content-Type", "text/plain");
         um_http_req_data(req, csr, strlen(csr), NULL);
+    } else {
+        um_http_req_header(req, "Content-Type", "application/json");
+        if (name != NULL) {
+            ziti_identity id = {.name = name};
+            size_t body_len;
+            char *body = ziti_identity_to_json(&id, MODEL_JSON_COMPACT, &body_len);
+            um_http_req_data(req, body, body_len, free_body_cb);
+        }
     }
 }
 
