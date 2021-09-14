@@ -94,7 +94,7 @@ TEST_CASE("controller_test","[integ]") {
     uv_loop_t *loop = uv_default_loop();
 
     resp_capture<ziti_version> version;
-    resp_capture<ziti_session> session;
+    resp_capture<ziti_api_session> session;
     resp_capture<ziti_service> service;
 
 
@@ -114,7 +114,7 @@ TEST_CASE("controller_test","[integ]") {
             REQUIRE(version.error.err == 0);
             REQUIRE(version.resp != nullptr);
         }
-        AND_THEN("login should get session") {
+        AND_THEN("login should get api session") {
             REQUIRE(session.error.err == 0);
             REQUIRE(session.resp != nullptr);
             REQUIRE(ctrl.session != nullptr);
@@ -146,9 +146,9 @@ TEST_CASE("controller_test","[integ]") {
         }
     }
 
-    WHEN("try to login, get service, and network session") {
+    WHEN("try to login, get service, and session") {
         struct uber_resp_s {
-            resp_capture<ziti_session> session;
+            resp_capture<ziti_api_session> session;
             resp_capture<ziti_service> service;
             resp_capture<ziti_net_session> ns;
 
@@ -176,7 +176,7 @@ TEST_CASE("controller_test","[integ]") {
             REQUIRE(r.service.resp != nullptr);
             REQUIRE_THAT(r.service.resp->name, Equals("wttr.in"));
         }
-        AND_THEN("should get network session") {
+        AND_THEN("should get session") {
             REQUIRE(r.ns.error.err == 0);
             REQUIRE(r.ns.resp != nullptr);
             REQUIRE(r.ns.resp->token != nullptr);
@@ -186,7 +186,7 @@ TEST_CASE("controller_test","[integ]") {
             REQUIRE_THAT(r.logout.resp, Equals("logout called"));
         }
 
-        free_ziti_session(r.session.resp);
+        free_ziti_api_session(r.session.resp);
         free_ziti_service(r.service.resp);
         free_ziti_net_session(r.ns.resp);
     }
@@ -197,7 +197,7 @@ TEST_CASE("controller_test","[integ]") {
 
 
     free_ziti_version(version.resp);
-    free_ziti_session(session.resp);
+    free_ziti_api_session(session.resp);
 
     ziti_ctrl_close(&ctrl);
     uv_run(loop, UV_RUN_DEFAULT);

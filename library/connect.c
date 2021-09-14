@@ -327,7 +327,7 @@ static void connect_timeout(uv_timer_t *timer) {
 
 static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, struct ziti_conn *conn) {
     // verify ziti context is still authorized
-    if (ztx->session == NULL) {
+    if (ztx->api_session == NULL) {
         CONN_LOG(ERROR, "ziti context is not authenticated, cannot connect to service[%s]", conn->service);
         complete_conn_req(conn, ZITI_INVALID_STATE);
         return ZITI_INVALID_STATE;
@@ -959,8 +959,8 @@ static int ziti_channel_start_connection(struct ziti_conn *conn) {
             },
             {
                     .header_id = CallerIdHeader,
-                    .length = strlen(conn->ziti_ctx->session->identity->name),
-                    .value = conn->ziti_ctx->session->identity->name,
+                    .length = strlen(conn->ziti_ctx->api_session->identity->name),
+                    .value = conn->ziti_ctx->api_session->identity->name,
             },
             {
                     .header_id = PublicKeyHeader,
@@ -1019,7 +1019,7 @@ static int ziti_channel_start_connection(struct ziti_conn *conn) {
                                  "listen_opts for service[%s] specifies 'identity' and 'bind_using_edge_identity'; ignoring 'identity'",
                                  conn->service);
                     }
-                    identity = conn->ziti_ctx->session->identity->name;
+                    identity = conn->ziti_ctx->api_session->identity->name;
                 }
                 if (identity != NULL) {
                     headers[nheaders].header_id = TerminatorIdentityHeader;

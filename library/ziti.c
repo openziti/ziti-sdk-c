@@ -61,7 +61,7 @@ static void services_refresh(uv_timer_t *t);
 
 static void version_cb(ziti_version *v, const ziti_error *err, void *ctx);
 
-static void session_cb(ziti_session *session, const ziti_error *err, void *ctx);
+static void session_cb(ziti_api_session *session, const ziti_error *err, void *ctx);
 
 static void ziti_init_async(ziti_context ztx, void *data);
 
@@ -220,11 +220,50 @@ extern void ziti_set_enabled(ziti_context ztx, bool enabled) {
     ziti_queue_work(ztx, enabled ? ziti_start_internal : ziti_stop_internal, NULL);
 }
 
+void ziti_set_auth_started(ziti_context ztx) {
+    ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->api_session_state, ZitiApiSessionStateAuthStarted);
+    free_ziti_api_session(ztx->api_session);
+    FREE(ztx->api_session);
+    ztx->api_session_state = ZitiApiSessionStateAuthStarted;
+}
+
+void ziti_set_unauthenticated(ziti_context ztx) {
+    ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->api_session_state, ZitiApiSessionStateUnauthenticated);
+
+    free_ziti_api_session(ztx->api_session);
+    FREE(ztx->api_session);
+    ztx->api_session_state = ZitiApiSessionStateUnauthenticated;
+}
+
+void ziti_set_partially_authenticated(ziti_context ztx) {
+    ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->api_session_state, ZitiApiSessionStatePartiallyAuthenticated);
+    ztx->api_session_state = ZitiApiSessionStatePartiallyAuthenticated;
+}
+
+void ziti_set_fully_authenticated(ziti_context ztx) {
+    ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->api_session_state, ZitiApiSessionStateFullyAuthenticated);
+    ztx->api_session_state = ZitiApiSessionStateFullyAuthenticated;
+}
+
+static bool is_api_session_expired(ziti_api_session *api_session) {
+    if (api_session == NULL) {
+        return true;
+    }
+
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+
+    if (api_session->expires->tv_sec < now.tv_sec) {
+        return true;
+    }
+
+    return false;
+}
+
 static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
 
-    free_ziti_session(ztx->session);
-    FREE(ztx->session);
+    ziti_set_unauthenticated(ztx);
 
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
     model_map_clear(&ztx->services, (_free_f) free_ziti_service);
@@ -270,6 +309,7 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
         ztx->enabled = true;
         uv_prepare_start(&ztx->reaper, grim_reaper);
         ziti_ctrl_get_version(&ztx->controller, version_cb, ztx);
+        ziti_set_unauthenticated(ztx);
         ziti_re_auth(ztx);
     }
 }
@@ -344,8 +384,8 @@ const ziti_identity *ziti_get_identity(ziti_context ztx) {
         return (const ziti_identity *) ztx->identity_data;
     }
 
-    if (ztx->session) {
-        return ztx->session->identity;
+    if (ztx->api_session) {
+        return ztx->api_session->identity;
     }
 
     return NULL;
@@ -375,8 +415,7 @@ static void free_ztx(uv_handle_t *h) {
     ziti_posture_checks_free(ztx->posture_checks);
     model_map_clear(&ztx->services, (_free_f) free_ziti_service);
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
-    free_ziti_session(ztx->session);
-    FREE(ztx->session);
+    ziti_set_unauthenticated(ztx);
     free_ziti_identity_data(ztx->identity_data);
     FREE(ztx->identity_data);
 
@@ -440,8 +479,8 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
 
     printer(ctx, "\n=================\nSession:\n");
 
-    if (ztx->session) {
-        printer(ctx, "Session Info: api_session[%s]\n", ztx->session->id);
+    if (ztx->api_session) {
+        printer(ctx, "Session Info: \napi_session[%s]\napi_session_state[%d]\n", ztx->api_session->id, ztx->api_session_state);
     } else {
         printer(ctx, "No Session found\n");
     }
@@ -471,9 +510,9 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         MODEL_MAP_FOREACH(pq_set_id, pq_set, &zs->posture_query_map) {
             printer(ctx, "\t\tposture query set[%s]\n", pq_set_id);
 
-            for(int idx = 0; pq_set->posture_queries[idx] != NULL; idx++) {
+            for (int idx = 0; pq_set->posture_queries[idx] != NULL; idx++) {
                 pq = pq_set->posture_queries[idx];
-                printer(ctx, "\t\t\tquery_id[%s] type[%s] is_passing[%s] timeout[%d] timeoutRemaining[%d]\n", pq->id, pq->query_type, pq->is_passing ? "true":"false", pq->timeout, *pq->timeoutRemaining);
+                printer(ctx, "\t\t\tquery_id[%s] type[%s] is_passing[%s] timeout[%d] timeoutRemaining[%d]\n", pq->id, pq->query_type, pq->is_passing ? "true" : "false", pq->timeout, *pq->timeoutRemaining);
             }
         }
     }
@@ -608,27 +647,23 @@ int ziti_listen_with_options(ziti_connection serv_conn, const char *service, zit
 static void session_refresh(uv_timer_t *t) {
     ziti_context ztx = t->data;
 
-    bool login = ztx->session == NULL;
+    bool no_session = ztx->api_session == NULL;
+    bool is_expired = is_api_session_expired(ztx->api_session);
 
-    if (ztx->session) {
-        uv_timeval64_t now;
-        uv_gettimeofday(&now);
-
-        if (ztx->session->expires->tv_sec < now.tv_sec) {
-            ZTX_LOG(DEBUG, "session expired");
-            free_ziti_session(ztx->session);
-            FREE(ztx->session);
-            login = true;
-        }
-    }
-
-    if (login) {
+    if (no_session || is_expired) {
+        ZTX_LOG(DEBUG, "re-auth due to no active session[%s] or session expiration[%s]", no_session ? "TRUE" : "FALSE", is_expired ? "TRUE" : "FALSE");
         ziti_re_auth(ztx);
     } else {
-        struct ziti_init_req *req = calloc(1, sizeof(struct ziti_init_req));
-        req->ztx = ztx;
-        ZTX_LOG(DEBUG, "refreshing API session");
-        ziti_ctrl_current_api_session(&ztx->controller, session_cb, req);
+        // to attempt a refresh the api session needs to be partially or fully authenticated
+        // session_cb will handle transitions to unauthenticated and subsequent re-auths.
+        if (ztx->api_session_state == ZitiApiSessionStatePartiallyAuthenticated || ztx->api_session_state == ZitiApiSessionStateFullyAuthenticated) {
+            struct ziti_init_req *req = calloc(1, sizeof(struct ziti_init_req));
+            req->ztx = ztx;
+            ZTX_LOG(DEBUG, "refreshing api session");
+            ziti_ctrl_current_api_session(&ztx->controller, session_cb, req);
+        } else {
+            ZTX_LOG(VERBOSE, "refreshing api session skipped, waiting for api session state change");
+        }
     }
 }
 
@@ -636,27 +671,61 @@ void ziti_force_session_refresh(ziti_context ztx) {
     uv_timer_start(&ztx->session_timer, session_refresh, 0, 0);
 }
 
-void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_session *, const ziti_error *, void *), void *ctx) {
-    ZTX_LOG(WARN, "starting to re-auth with ctlr[%s]", ztx->opts->controller);
+void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx) {
+    bool is_expired = is_api_session_expired(ztx->api_session);
+
+    ZTX_LOG(WARN, "starting to re-auth with ctlr[%s] api_session_status[%d] api_session_expired[%s]", ztx->opts->controller, ztx->api_session_state, is_expired ? "TRUE" : "FALSE");
+
+    bool is_auth_started = ztx->api_session_state == ZitiApiSessionStateAuthStarted;
+    bool authed_and_not_expired = (ztx->api_session_state == ZitiApiSessionStatePartiallyAuthenticated || ztx->api_session_state == ZitiApiSessionStateFullyAuthenticated) && !is_expired;
+
+    if (is_auth_started || authed_and_not_expired) {
+        ZTX_LOG(VERBOSE, "re-auth aborted, api session state is currently authenticating/authenticated and not expired: api_session_status[%d] api_session_expired[%s]", ztx->api_session_state, is_expired ? "TRUE" : "FALSE");
+
+        NEWP(err, ziti_error);
+        err->err = ZITI_PARTIALLY_AUTHENTICATED;
+
+        cb(NULL, err, ctx);
+
+        FREE(err);
+        return;
+    }
+
+    ziti_set_auth_started(ztx);
+
     uv_timer_stop(&ztx->refresh_timer);
     uv_timer_stop(&ztx->session_timer);
     if (ztx->posture_checks) {
         uv_timer_stop(ztx->posture_checks->timer);
     }
-    free_ziti_session(ztx->session);
-    FREE(ztx->session);
+
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
     FREE(ztx->last_update);
 
     ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, cb, ctx);
 }
 
+/**
+ * `ziti_re_auth` attempts to re-authenticate with the controller. However
+ * this will be ignored if the current `ziti_context` believes it is in a
+ * partially authenticated state. If desired, called `ziti_set_unauthenticated`
+ * to by pass this state.
+ * @param ztx
+ * @param force
+ */
 static void ziti_re_auth(ziti_context ztx) {
-    NEWP(init_req, struct ziti_init_req);
-    init_req->ztx = ztx;
-    init_req->start = true;
+    if (ztx->api_session_state != ZitiApiSessionStateAuthStarted) {
+        ZTX_LOG(DEBUG, "re-auth executing, transitioning to unauthenticated");
+        ziti_set_unauthenticated(ztx);
 
-    ziti_re_auth_with_cb(ztx, session_cb, init_req);
+        NEWP(init_req, struct ziti_init_req);
+        init_req->ztx = ztx;
+        init_req->start = true;
+
+        ziti_re_auth_with_cb(ztx, session_cb, init_req);
+    } else {
+        ZTX_LOG(DEBUG, "re-auth aborted, re-auth already started");
+    }
 }
 
 static void set_posture_query_defaults(ziti_service *service) {
@@ -705,10 +774,10 @@ static int is_service_updated(ziti_context ztx, ziti_service *new, ziti_service 
         }
     }
 
-    const char* policy_id;
+    const char *policy_id;
     const ziti_posture_query_set *new_set;
     MODEL_MAP_FOREACH(policy_id, new_set, &new->posture_query_map) {
-        ziti_posture_query_set* old_set = model_map_get(&old->posture_query_map, policy_id);
+        ziti_posture_query_set *old_set = model_map_get(&old->posture_query_map, policy_id);
 
         if (old_set == NULL) {
             ZTX_LOG(VERBOSE, "service [%s] is updated, new service gained a policy [%s]", new->name, policy_id);
@@ -723,7 +792,6 @@ static int is_service_updated(ziti_context ztx, ziti_service *new, ziti_service 
     }
 
     //ensure that new didn't lose policies
-
     const ziti_posture_query_set *old_set;
     MODEL_MAP_FOREACH(policy_id, old_set, &old->posture_query_map) {
         ziti_posture_query_set *new_set = model_map_get(&new->posture_query_map, policy_id);
@@ -752,8 +820,11 @@ static void update_services(ziti_service_array services, const ziti_error *error
         ZTX_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
                 ztx->opts->controller);
         if (error->err == ZITI_NOT_AUTHORIZED) {
-            ZTX_LOG(WARN, "API session is no longer valid. Trying to re-auth");
+            ZTX_LOG(WARN, "api session is no longer valid. Trying to re-auth");
             ziti_re_auth(ztx);
+        } else if (error->err == ZITI_PARTIALLY_AUTHENTICATED) {
+            ZTX_LOG(VERBOSE, "api session partially authenticated, waiting for api session state change");
+            return;
         } else {
             update_ctrl_status(ztx, ZITI_CONTROLLER_UNAVAILABLE, error->message);
         }
@@ -992,59 +1063,94 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
     update_ctrl_status(ztx, FIELD_OR_ELSE(err, err, 0), FIELD_OR_NULL(err, message));
 }
 
-static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) {
-    ziti_session *session = ztx->session;
+void update_session_data(ziti_api_session *session, const ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
 
-    ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
-
-    int time_diff;
-    if (session->cached_last_activity_at) {
-        ZTX_LOG(TRACE, "API supports cached_last_activity_at");
-        time_diff = (int) (ztx->session_received_at.tv_sec - session->cached_last_activity_at->tv_sec);
-    } else {
-        ZTX_LOG(TRACE, "API doesn't support cached_last_activity_at - using updated");
-        time_diff = (int) (ztx->session_received_at.tv_sec - session->updated->tv_sec);
-    }
-    if (abs(time_diff) > 10) {
-        ZTX_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
-                 time_diff > 0 ? "ahead" : "behind");
+    if (err != NULL) {
+        ZTX_LOG(ERROR, "error refreshing current api session immediately after auth query processing: err[%s]", ziti_errorstr(err->err));
     }
 
-    if (session->expires) {
-        // adjust expiration to local time if needed
-        session->expires->tv_sec += time_diff;
-        ZTX_LOG(DEBUG, "ziti API session expires in %ld seconds", (long) (session->expires->tv_sec - ztx->session_received_at.tv_sec));
-        long delay = (session->expires->tv_sec - ztx->session_received_at.tv_sec) - 10;
-        uv_timer_start(&ztx->session_timer, session_refresh, delay * 1000, 0);
-    }
-
-    if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
-        ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
-        services_refresh(&ztx->refresh_timer);
-    } else if (ztx->opts->refresh_interval == 0) {
-        ZTX_LOG(DEBUG, "refresh_interval not specified");
-        uv_timer_stop(&ztx->refresh_timer);
-    }
-
-    ziti_posture_init(ztx, 20);
-
-    if (!ztx->no_current_edge_routers) {
-        ziti_ctrl_current_edge_routers(&ztx->controller, edge_routers_cb, ztx);
+    if (session) {
+        ziti_set_api_session(ztx, session);
+        ZTX_LOG(DEBUG, "api session after authentication query processing complete");
     }
 }
 
-static void set_session(ziti_context ztx, ziti_session *session) {
-    ziti_session *old_session = ztx->session;
-    ztx->session = session;
+static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) {
+    ZTX_LOG(VERBOSE, "post auth query callback starting with status[%s]", ziti_errorstr(status));
+    if (status == ZITI_OK) {
+        ZTX_LOG(VERBOSE, "transitioning to fully authenticated");
+        ziti_api_session *session = ztx->api_session;
+
+        ziti_set_fully_authenticated(ztx);
+
+        update_ctrl_status(ztx, ZITI_OK, NULL);
+
+        ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
+
+        //if we had auth queries, refresh state to zero out
+        if (session->auth_queries != NULL && *session->auth_queries != NULL) {
+            ziti_ctrl_current_api_session(&ztx->controller, update_session_data, ztx);
+        }
+
+        int time_diff;
+        if (session->cached_last_activity_at) {
+            ZTX_LOG(TRACE, "API supports cached_last_activity_at");
+            time_diff = (int) (ztx->session_received_at.tv_sec - session->cached_last_activity_at->tv_sec);
+        } else {
+            ZTX_LOG(TRACE, "API doesn't support cached_last_activity_at - using updated");
+            time_diff = (int) (ztx->session_received_at.tv_sec - session->updated->tv_sec);
+        }
+        if (abs(time_diff) > 10) {
+            ZTX_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
+                    time_diff > 0 ? "ahead" : "behind");
+        }
+
+        if (session->expires) {
+            // adjust expiration to local time if needed
+            session->expires->tv_sec += time_diff;
+            ZTX_LOG(DEBUG, "ziti api session expires in %ld seconds", (long) (session->expires->tv_sec - ztx->session_received_at.tv_sec));
+            long delay = (session->expires->tv_sec - ztx->session_received_at.tv_sec) - 10;
+            uv_timer_start(&ztx->session_timer, session_refresh, delay * 1000, 0);
+        }
+
+        if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->refresh_timer)) {
+            ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
+            services_refresh(&ztx->refresh_timer);
+        } else if (ztx->opts->refresh_interval == 0) {
+            ZTX_LOG(DEBUG, "refresh_interval not specified");
+            uv_timer_stop(&ztx->refresh_timer);
+        }
+
+        ziti_posture_init(ztx, 20);
+
+        if (!ztx->no_current_edge_routers) {
+            ziti_ctrl_current_edge_routers(&ztx->controller, edge_routers_cb, ztx);
+        }
+    } else {
+        ZTX_LOG(VERBOSE, "transitioning to unauthenticated, unhandled status[%s]", ziti_errorstr(status));
+        ziti_set_unauthenticated(ztx); //disable?
+        update_ctrl_status(ztx, ZITI_NOT_AUTHORIZED, NULL);
+    }
+}
+
+void ziti_set_api_session(ziti_context ztx, ziti_api_session *session) {
+    ziti_api_session *old_session = ztx->api_session;
+    ztx->api_session = session;
     uv_gettimeofday(&ztx->session_received_at);
 
-    free_ziti_session(old_session);
-    FREE(old_session);
+    if (session->auth_queries != NULL && *session->auth_queries != NULL) {
+        ziti_set_partially_authenticated(ztx);
+    } else {
+        ziti_set_fully_authenticated(ztx);
+        ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
+    }
 
-    ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
+    free_ziti_api_session(old_session);
+    FREE(old_session);
 }
 
-static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) {
+static void session_cb(ziti_api_session *session, const ziti_error *err, void *ctx) {
     struct ziti_init_req *init_req = ctx;
     ziti_context ztx = init_req->ztx;
     ztx->loop_thread = uv_thread_self();
@@ -1052,23 +1158,24 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
     int errCode = err ? err->err : ZITI_OK;
 
     if (session) {
-        ZTX_LOG(DEBUG, "%s successfully => api_session[%s]", ztx->session ? "refreshed" : "logged in", session->id);
 
-        set_session(ztx, session);
+        update_ctrl_status(ztx, ZITI_PARTIALLY_AUTHENTICATED, NULL);
+
+        ZTX_LOG(DEBUG, "%s successfully => api_session[%s]", ztx->api_session ? "refreshed" : "logged in", session->id);
+
+        ziti_set_api_session(ztx, session);
 
         ziti_auth_query_init(ztx);
 
         //check for additional authentication requirements, pickup in session_post_auth_query_cb
         ziti_auth_query_process(ztx, session_post_auth_query_cb);
     } else if (err) {
-        ZTX_LOG(WARN, "failed to get session from ctrl[%s] %s[%d] %s",
-                ztx->opts->controller, err->code, errCode, err->message);
+        ZTX_LOG(WARN, "failed to get api session from ctrl[%s] api_session_state[%d] %s[%d] %s",
+                ztx->opts->controller, ztx->api_session_state, err->code, errCode, err->message);
 
         if (errCode == ZITI_NOT_AUTHORIZED) {
-            if (ztx->session || !init_req->start) {
-                // previously successfully logged in
-                // maybe just session expired
-                // just try to re-auth
+            if (ztx->api_session || !init_req->start) {
+                ZTX_LOG(DEBUG, "received NOT_AUTHORIZED attempting re-auth");
                 ziti_re_auth(ztx);
                 errCode = ztx->ctrl_status; // do not trigger event yet
             } else {
@@ -1107,7 +1214,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
 
         update_ctrl_status(ztx, errCode, err ? err->message : NULL);
     } else {
-        ZTX_LOG(ERROR, "%s: no session or error received", ziti_errorstr(ZITI_WTF));
+        ZTX_LOG(ERROR, "%s: no api session or error received", ziti_errorstr(ZITI_WTF));
     }
 
     FREE(init_req);

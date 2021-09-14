@@ -227,7 +227,7 @@ static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, c
     ziti_channel_t *ch = calloc(1, sizeof(ziti_channel_t));
     ziti_channel_init(ztx, ch, channel_counter++, ztx->tlsCtx);
     ch->name = strdup(ch_name);
-    CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, ztx->session->identity->name);
+    CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, ztx->api_session->identity->name);
 
     struct http_parser_url ingress;
     http_parser_url_init(&ingress);
@@ -670,7 +670,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
     }
 }
 
-static void send_hello(ziti_channel_t *ch, ziti_session *session) {
+static void send_hello(ziti_channel_t *ch, ziti_api_session *session) {
     hdr_t headers[] = {
             {
                     .header_id = SessionTokenHeader,
@@ -699,8 +699,8 @@ static void reconnect_cb(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
     ziti_context ztx = ch->ctx;
 
-    if (ztx->session == NULL || ztx->session->token == NULL) {
-        CH_LOG(ERROR, "ziti context is not authenticated, delaying re-connect");
+    if (ztx->api_session == NULL || ztx->api_session->token == NULL || ztx->api_session_state != ZitiApiSessionStateFullyAuthenticated) {
+        CH_LOG(ERROR, "ziti context is not fully authenticated (api_session_state[%d]), delaying re-connect", ztx->api_session_state);
         reconnect_channel(ch, false);
     }
     else {
@@ -779,7 +779,7 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
 
     if (ch->state != Closed) {
         if (uv_err == UV_EOF) {
-            ZTX_LOG(VERBOSE, "edge router closed connection, trying to refresh session");
+            ZTX_LOG(VERBOSE, "edge router closed connection, trying to refresh api session");
             ziti_force_session_refresh(ch->ctx);
         }
         reconnect_channel(ch, false);
@@ -841,14 +841,14 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
     ziti_channel_t *ch = req->data;
 
     if (status == 0) {
-        if (ch->ctx->session != NULL && ch->ctx->session->token != NULL) {
+        if (ch->ctx->api_session != NULL && ch->ctx->api_session->token != NULL) {
             CH_LOG(DEBUG, "connected");
             uv_mbed_t *mbed = (uv_mbed_t *) req->handle;
             uv_mbed_read(mbed, ziti_alloc_cb, on_channel_data);
             ch->reconnect_count = 0;
-            send_hello(ch, ch->ctx->session);
+            send_hello(ch, ch->ctx->api_session);
         } else {
-            CH_LOG(WARN, "session invalidated, while connecting");
+            CH_LOG(WARN, "api session invalidated, while connecting");
             uv_mbed_close(&ch->connection, NULL);
             reconnect_channel(ch, false);
         }
