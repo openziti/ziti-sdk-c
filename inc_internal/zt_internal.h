@@ -190,6 +190,7 @@ struct ziti_ctx {
     int ctrl_status;
 
     ziti_api_session *api_session;
+    uv_timeval64_t api_session_expires_at;
     ziti_api_session_state api_session_state;
 
     uv_timeval64_t session_received_at;
@@ -206,8 +207,8 @@ struct ziti_ctx {
 
     char *last_update;
 
-    uv_timer_t session_timer;
-    uv_timer_t refresh_timer;
+    uv_timer_t api_session_timer;
+    uv_timer_t service_refresh_timer;
     uv_prepare_t reaper;
 
     uv_loop_t *loop;
@@ -245,7 +246,7 @@ void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const 
 
 void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
 
-void ziti_force_session_refresh(ziti_context ztx);
+void ziti_force_api_session_refresh(ziti_context ztx);
 
 int ziti_close_channels(ziti_context ztx, int err);
 

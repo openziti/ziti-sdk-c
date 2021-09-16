@@ -418,7 +418,7 @@ static void connect_get_net_session_cb(ziti_net_session *s, const ziti_error *er
 
     if (err != NULL) {
         if (err->err == ZITI_NOT_AUTHORIZED) {
-            ziti_force_session_refresh(ztx);
+            ziti_force_api_session_refresh(ztx);
             restart_connect(conn);
         } else {
             int e = err->err == ZITI_NOT_FOUND ? ZITI_SERVICE_UNAVAILABLE : err->err;
