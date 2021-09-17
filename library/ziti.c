@@ -283,7 +283,7 @@ void ziti_stop_api_session_refresh(ziti_context ztx) {
     uv_timer_stop(&ztx->api_session_timer);
 }
 
-void ziti_schedule_api_session_refresh(ziti_context ztx, uint64_t timeout_ms){
+void ziti_schedule_api_session_refresh(ziti_context ztx, uint64_t timeout_ms) {
     ZTX_LOG(DEBUG, "ziti_schedule_api_session_refresh: scheduling api session refresh: %ldms", timeout_ms);
     uv_timer_start(&ztx->api_session_timer, api_session_refresh, timeout_ms, 0);
 }
@@ -1128,6 +1128,7 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
         if (!ztx->no_current_edge_routers) {
             ziti_ctrl_current_edge_routers(&ztx->controller, edge_routers_cb, ztx);
         }
+        
     } else {
         ZTX_LOG(VERBOSE, "transitioning to unauthenticated, unhandled status[%s]", ziti_errorstr(status));
         ziti_set_unauthenticated(ztx); //disable?
@@ -1184,9 +1185,8 @@ void ziti_set_api_session(ziti_context ztx, ziti_api_session *session) {
         }
 
         ZTX_LOG(INFO, "api session set, setting api_session_timer to %ds", delay_seconds);
-        ziti_schedule_api_session_refresh(ztx, delay_seconds *1000);
+        ziti_schedule_api_session_refresh(ztx, delay_seconds * 1000);
     }
-
 
 
     if (session->auth_queries != NULL && *session->auth_queries != NULL) {
@@ -1198,6 +1198,8 @@ void ziti_set_api_session(ziti_context ztx, ziti_api_session *session) {
 
     free_ziti_api_session(old_session);
     FREE(old_session);
+
+    ziti_reconnect_old_api_session_channels(ztx);
 }
 
 static void api_session_cb(ziti_api_session *session, const ziti_error *err, void *ctx) {
@@ -1273,6 +1275,7 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
 
 static void update_ctrl_status(ziti_context ztx, int errCode, const char *errMsg) {
     if (ztx->ctrl_status != errCode) {
+        ZTX_LOG(DEBUG, "sending ZitiContextEvent code[%d] msg[%s]", errCode, errMsg);
         ziti_event_t ev = {
                 .type = ZitiContextEvent,
                 .event.ctx = {
@@ -1281,6 +1284,8 @@ static void update_ctrl_status(ziti_context ztx, int errCode, const char *errMsg
                 }};
         ztx->ctrl_status = errCode;
         ziti_send_event(ztx, &ev);
+    } else {
+        ZTX_LOG(DEBUG, "not sending, already in status, ZitiContextEvent code[%d] msg[%s]", errCode, errMsg);
     }
 }
 

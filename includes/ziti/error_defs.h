@@ -77,8 +77,8 @@ limitations under the License.
     /** SDK detected invalid cryptographic state of Ziti connection */ \
     XX(CRYPTO_FAIL, "crypto failure") \
     /** connection was closed */ \
-    XX(CONN_CLOSED, "connection is closed")               \
-    /** failed posture check */                    \
+    XX(CONN_CLOSED, "connection is closed") \
+    /** failed posture check */ \
     XX(INVALID_POSTURE, "failed posture check") \
     /** attempted to start MFA enrollment when it already has been started or completed */ \
     XX(MFA_EXISTS, "an MFA enrollment already exists") \
@@ -86,12 +86,14 @@ limitations under the License.
     XX(MFA_INVALID_TOKEN, "the token provided was invalid") \
     /** attempted to verify or retrieve details of an MFA enrollment that has not been completed */ \
     XX(MFA_NOT_ENROLLED, "the current identity has not completed MFA enrollment") \
-    /** not found, usually indicates stale reference or permission */    \
-    XX(NOT_FOUND, "entity no longer exists or is no longer accessible")  \
-    /** operation attempted while ziti_context is not enabled */                    \
-    XX(DISABLED, "ziti context is disabled")              \
-    /** returned when authentication is attempted but there is an existing api session waiting for auth queries to pass */                    \
-    XX(PARTIALLY_AUTHENTICATED, "api session is partially authenticated, waiting for auth query resolution") \
+    /** not found, usually indicates stale reference or permission */ \
+    XX(NOT_FOUND, "entity no longer exists or is no longer accessible") \
+    /** operation attempted while ziti_context is not enabled */  \
+    XX(DISABLED, "ziti context is disabled") \
+    /** returned when authentication is attempted but there is an existing api session waiting for auth queries to pass */ \
+    XX(PARTIALLY_AUTHENTICATED, "api session is partially authenticated, waiting for auth query resolution")               \
+    /** provided to channels being closed due to them being out of sync with the current ztx api_session */ \
+    XX(NEW_API_SESSION, "a new api session was detected") \
     /** Inspired by the Android SDK: What a Terrible Failure. A condition that should never happen. */ \
     XX(WTF, "WTF: programming error") \
 

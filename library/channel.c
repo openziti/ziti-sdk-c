@@ -171,6 +171,33 @@ int ziti_close_channels(struct ziti_ctx *ztx, int err) {
     return ZITI_OK;
 }
 
+/**
+ * ziti_reconnect_old_api_session_channels reconnects channels if
+ * they connected with an old api session id
+ * @param ztx - the ziti context to operate on
+ * @return ZITI_OK or an error code
+ */
+int ziti_reconnect_old_api_session_channels(struct ziti_ctx *ztx) {
+    ziti_channel_t *ch;
+    const char *url;
+    model_map_iter it = model_map_iterator(&ztx->channels);
+
+    while (it != NULL) {
+        url = model_map_it_key(it);
+        ch = model_map_it_value(it);
+
+        if (strcmp(ch->api_session_id, ztx->api_session->id) != 0) {
+            ZTX_LOG(DEBUG, "reconnecting old api session channel[%s]: %s", url, ziti_errorstr(ZITI_NEW_API_SESSION));
+            reconnect_channel(ch, true);
+            it = model_map_it_next(it);
+        } else {
+
+        }
+    }
+
+    return ZITI_OK;
+}
+
 static void close_handle_cb(uv_handle_t *h) {
     uv_mbed_t *mbed = (uv_mbed_t *) h;
     ziti_channel_t *ch = mbed->data;
@@ -227,7 +254,7 @@ static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, c
     ziti_channel_t *ch = calloc(1, sizeof(ziti_channel_t));
     ziti_channel_init(ztx, ch, channel_counter++, ztx->tlsCtx);
     ch->name = strdup(ch_name);
-    CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, ztx->api_session->identity->name);
+    CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s] api_session[%s]", ch->name, ztx->id, ztx->api_session->identity->name, ztx->api_session->id);
 
     struct http_parser_url ingress;
     http_parser_url_init(&ingress);
@@ -237,6 +264,10 @@ static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, c
     int hostlen = ingress.field_data[UF_HOST].len;
     int hostoffset = ingress.field_data[UF_HOST].off;
     snprintf(host, sizeof(host), "%*.*s", hostlen, hostlen, url + hostoffset);
+
+    //save the api_session_id that was used to request a session and create this channel
+    memset(ch->api_session_id, '\0', sizeof(ch->api_session_id));
+    strncpy(ch->api_session_id, ztx->api_session->id, strlen(ztx->api_session->id) - 1);
 
     ch->host = strdup(host);
     ch->port = ingress.port;
@@ -273,8 +304,7 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
 
     if (ch != NULL) {
         ZTX_LOG(DEBUG, "existing ch[%d](%s) found for ingress[%s]", ch->id, ch_state_str(ch), url);
-    }
-    else {
+    } else {
         ch = new_ziti_channel(ztx, ch_name, url);
         ch->notify_cb(ch, EdgeRouterAdded, ch->notify_ctx);
     }
@@ -493,8 +523,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
 
         if (!has_conn_id) {
             CH_LOG(ERROR, "received message without conn_id ct[%04X]", m->header.content);
-        }
-        else {
+        } else {
             struct msg_receiver *conn = find_receiver(ch, conn_id);
             if (conn == NULL) {
                 CH_LOG(DEBUG, "received message for unknown connection conn_id[%d] ct[%04X]", conn_id,
@@ -589,8 +618,7 @@ static void latency_reply_cb(void *ctx, message *reply, int err) {
         message_get_uint64_header(reply, LatencyProbeTime, &ts)) {
         ch->latency = uv_now(ch->loop) - ts;
         CH_LOG(VERBOSE, "latency is now %ld", ch->latency);
-    }
-    else {
+    } else {
         CH_LOG(WARN, "invalid latency probe result ct[%04X]", reply->header.content);
     }
     uv_timer_start(ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
@@ -630,12 +658,10 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
 
     if (msg && msg->header.content == ContentTypeResultType) {
         message_get_bool_header(msg, ResultSuccessHeader, &success);
-    }
-    else if (msg) {
+    } else if (msg) {
         CH_LOG(ERROR, "unexpected Hello response ct[%04X]", msg->header.content);
         cb_code = ZITI_GATEWAY_UNAVAILABLE;
-    }
-    else {
+    } else {
         CH_LOG(ERROR, "failed to receive Hello response due to %d(%s)", err, ziti_errorstr(err));
         cb_code = ZITI_GATEWAY_UNAVAILABLE;
     }
@@ -651,8 +677,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         ch->notify_cb(ch, EdgeRouterConnected, ch->notify_ctx);
         ch->latency = uv_now(ch->loop) - ch->latency;
         uv_timer_start(ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
-    }
-    else {
+    } else {
         if (msg)
             CH_LOG(ERROR, "connect rejected: %d %*s", success, msg->header.body_len, msg->body);
 
@@ -675,7 +700,7 @@ static void send_hello(ziti_channel_t *ch, ziti_api_session *session) {
             {
                     .header_id = SessionTokenHeader,
                     .length = strlen(session->token),
-                    .value = (uint8_t *)session->token
+                    .value = (uint8_t *) session->token
             }
     };
     ch->latency = uv_now(ch->loop);
@@ -702,8 +727,7 @@ static void reconnect_cb(uv_timer_t *t) {
     if (ztx->api_session == NULL || ztx->api_session->token == NULL || ztx->api_session_state != ZitiApiSessionStateFullyAuthenticated) {
         CH_LOG(ERROR, "ziti context is not fully authenticated (api_session_state[%d]), delaying re-connect", ztx->api_session_state);
         reconnect_channel(ch, false);
-    }
-    else {
+    } else {
         ch->msg_seq = 0;
 
         uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
@@ -718,8 +742,7 @@ static void reconnect_cb(uv_timer_t *t) {
         int rc = uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
         if (rc != 0) {
             on_channel_connect_internal(req, rc);
-        }
-        else {
+        } else {
             uv_timer_start(ch->timer, connect_timeout, CONNECT_TIMEOUT, 0);
         }
     }
@@ -741,8 +764,7 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
 
         timeout = random % ((1U << backoff) * BACKOFF_TIME);
         CH_LOG(INFO, "reconnecting in %ld ms (attempt = %d)", timeout, ch->reconnect_count);
-    }
-    else {
+    } else {
         CH_LOG(INFO, "reconnecting NOW");
     }
     uv_timer_start(ch->timer, reconnect_cb, timeout, 0);
@@ -846,6 +868,11 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             uv_mbed_t *mbed = (uv_mbed_t *) req->handle;
             uv_mbed_read(mbed, ziti_alloc_cb, on_channel_data);
             ch->reconnect_count = 0;
+
+            //save the api_session_id that was used to request a session and create this channel
+            memset(ch->api_session_id, '\0', sizeof(ch->api_session_id));
+            strncpy(ch->api_session_id, ch->ctx->api_session->id, strlen(ch->ctx->api_session->id) - 1);
+
             send_hello(ch, ch->ctx->api_session);
         } else {
             CH_LOG(WARN, "api session invalidated, while connecting");

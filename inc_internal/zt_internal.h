@@ -77,6 +77,7 @@ typedef struct ziti_channel {
     int port;
 
     uint32_t id;
+    char api_session_id[UUID_STR_LEN];
     char token[UUID_STR_LEN];
     uv_mbed_t connection;
 
@@ -249,6 +250,8 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_c
 void ziti_force_api_session_refresh(ziti_context ztx);
 
 int ziti_close_channels(ziti_context ztx, int err);
+
+int ziti_reconnect_old_api_session_channels(struct ziti_ctx *ztx);
 
 bool ziti_channel_is_connected(ziti_channel_t *ch);
 
