@@ -175,19 +175,19 @@ static pr_info *get_resp_info(ziti_context ztx, const char *id) {
 }
 
 void ziti_send_posture_data(ziti_context ztx) {
-    if (ztx->session == NULL || ztx->session->id == NULL) {
-        ZTX_LOG(DEBUG, "no session, can't submit posture checks");
+    if (ztx->api_session == NULL || ztx->api_session->id == NULL) {
+        ZTX_LOG(DEBUG, "no api_session, can't submit posture checks");
         return;
     }
 
     ZTX_LOG(VERBOSE, "starting to send posture data");
-    bool new_session_id = ztx->posture_checks->previous_session_id == NULL || strcmp(ztx->posture_checks->previous_session_id, ztx->session->id) != 0;
+    bool new_session_id = ztx->posture_checks->previous_session_id == NULL || strcmp(ztx->posture_checks->previous_session_id, ztx->api_session->id) != 0;
 
     if (new_session_id || ztx->posture_checks->must_send_every_time) {
-        ZTX_LOG(DEBUG, "posture checks either never sent or session changed, must_send = true");
+        ZTX_LOG(DEBUG, "posture checks either never sent or api session changed, must_send = true");
         ztx->posture_checks->must_send = true;
         FREE(ztx->posture_checks->previous_session_id);
-        ztx->posture_checks->previous_session_id = strdup(ztx->session->id);
+        ztx->posture_checks->previous_session_id = strdup(ztx->api_session->id);
     } else {
         ZTX_LOG(DEBUG, "posture checks using standard logic to submit, must_send = false");
         ztx->posture_checks->must_send = false;

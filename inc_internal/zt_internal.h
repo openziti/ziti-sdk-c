@@ -47,6 +47,14 @@ limitations under the License.
 extern const char *APP_ID;
 extern const char *APP_VERSION;
 
+typedef enum {
+    ZitiApiSessionStateUnauthenticated = 0, //0
+    ZitiApiSessionStateAuthStarted = 1, //1
+    ZitiApiSessionStatePartiallyAuthenticated = 1 << 1, //2
+    ZitiApiSessionStateFullyAuthenticated = 1 << 2, //4
+} ziti_api_session_state;
+
+
 typedef struct ziti_channel ziti_channel_t;
 
 typedef void (*reply_cb)(void *ctx, message *m, int err);
@@ -180,7 +188,10 @@ struct ziti_ctx {
 
     bool enabled;
     int ctrl_status;
-    ziti_session *session;
+
+    ziti_api_session *api_session;
+    ziti_api_session_state api_session_state;
+
     uv_timeval64_t session_received_at;
     ziti_identity_data *identity_data;
 
@@ -284,9 +295,13 @@ void ziti_fmt_time(char *time_str, size_t time_str_len, uv_timeval64_t *tv);
 
 void hexify(const uint8_t *bin, size_t bin_len, char sep, char **buf);
 
-void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_session *, const ziti_error *, void *), void *ctx);
+void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
 
 void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data);
+
+void ziti_set_api_session(ziti_context ztx, ziti_api_session *session);
+
+void ziti_set_unauthenticated(ziti_context ztx);
 
 #ifdef __cplusplus
 }

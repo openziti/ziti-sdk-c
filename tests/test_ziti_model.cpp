@@ -283,12 +283,12 @@ TEST_CASE("parse-services-array", "[model]") {
     free_ziti_service_array(&services);
 }
 
-TEST_CASE("parse-session", "[model]") {
+TEST_CASE("parse-api-session", "[model]") {
 
     const char *json = "{\n"
                        "        \"_links\": {\n"
                        "            \"self\": {\n"
-                       "                \"href\": \"./current-session\"\n"
+                       "                \"href\": \"./current-api-session\"\n"
                        "            }\n"
                        "        },\n"
                        "        \"createdAt\": \"2019-10-14T14:49:48.340512Z\",\n"
@@ -309,8 +309,8 @@ TEST_CASE("parse-session", "[model]") {
                        "        \"updatedAt\": \"2019-10-14T14:49:48.340512Z\"\n"
                        "    }";
 
-    ziti_session *session;
-    int rc = parse_ziti_session_ptr(&session, json, (int) strlen(json));
+    ziti_api_session *session;
+    int rc = parse_ziti_api_session_ptr(&session, json, (int) strlen(json));
     REQUIRE(rc == 0);
 
     REQUIRE_THAT(session->id, Equals("f0bd2587-1510-455a-96ca-6f1aea1c04f3"));
@@ -325,7 +325,7 @@ TEST_CASE("parse-session", "[model]") {
 
     REQUIRE_THAT(session->identity->name, Equals("Default Admin"));
 
-    free_ziti_session(session);
+    free_ziti_api_session(session);
     free(session);
 }
 

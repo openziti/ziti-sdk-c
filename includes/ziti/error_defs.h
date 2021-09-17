@@ -89,8 +89,11 @@ limitations under the License.
     /** not found, usually indicates stale reference or permission */    \
     XX(NOT_FOUND, "entity no longer exists or is no longer accessible")  \
     /** operation attempted while ziti_context is not enabled */                    \
-    XX(DISABLED, "ziti context is disabled") \
+    XX(DISABLED, "ziti context is disabled")              \
+    /** returned when authentication is attempted but there is an existing api session waiting for auth queries to pass */                    \
+    XX(PARTIALLY_AUTHENTICATED, "api session is partially authenticated, waiting for auth query resolution") \
     /** Inspired by the Android SDK: What a Terrible Failure. A condition that should never happen. */ \
-    XX(WTF, "WTF: programming error")
+    XX(WTF, "WTF: programming error") \
+
 
 #endif //ZT_SDK_ERROR_DEFS_H

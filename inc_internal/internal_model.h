@@ -45,7 +45,7 @@ XX(service_id, string, none, NULL, __VA_ARGS__)
 #define ZITI_PROCESS_MODEL(XX, ...) \
 XX(path, string, none, path, __VA_ARGS__)
 
-#define ZITI_SESSION_MODEL(XX, ...)\
+#define ZITI_API_SESSION_MODEL(XX, ...)\
 XX(id, string, none, id, __VA_ARGS__) \
 XX(token, string, none, token, __VA_ARGS__) \
 XX(expires, timestamp, ptr, expiresAt, __VA_ARGS__) \
@@ -148,7 +148,7 @@ DECLARE_MODEL(ziti_edge_router, ZITI_EDGE_ROUTER_MODEL)
 
 DECLARE_MODEL(ziti_net_session, ZITI_NET_SESSION_MODEL)
 
-DECLARE_MODEL(ziti_session, ZITI_SESSION_MODEL)
+DECLARE_MODEL(ziti_api_session, ZITI_API_SESSION_MODEL)
 
 DECLARE_MODEL(ziti_error, ZITI_ERROR_MODEL)
 

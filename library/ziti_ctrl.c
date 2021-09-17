@@ -177,7 +177,7 @@ static void ctrl_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *re
     ctrl_default_cb(v, e, resp);
 }
 
-static void ctrl_login_cb(ziti_session *s, ziti_error *e, struct ctrl_resp *resp) {
+static void ctrl_login_cb(ziti_api_session *s, ziti_error *e, struct ctrl_resp *resp) {
     if (e) {
         ZITI_LOG(ERROR, "%s(%s)", e->code, e->message);
         FREE(resp->ctrl->session);
@@ -326,7 +326,7 @@ void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ziti_version *, cons
 void ziti_ctrl_login(
         ziti_controller *ctrl,
         const char **cfg_types,
-        void(*cb)(ziti_session *, const ziti_error *, void *),
+        void(*cb)(ziti_api_session *, const ziti_error *, void *),
         void *ctx) {
 
     uv_utsname_t osInfo;
@@ -354,7 +354,7 @@ void ziti_ctrl_login(
     char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_session_ptr;
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_api_session_ptr;
     resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
@@ -376,9 +376,9 @@ void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_d
     um_http_req(&ctrl->client, "GET", "/current-identity", ctrl_resp_cb, resp);
 }
 
-void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_session *, const ziti_error *, void *), void *ctx) {
+void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx) {
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_session_ptr;
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_api_session_ptr;
     resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
