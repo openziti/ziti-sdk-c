@@ -780,7 +780,7 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
     if (ch->state != Closed) {
         if (uv_err == UV_EOF) {
             ZTX_LOG(VERBOSE, "edge router closed connection, trying to refresh api session");
-            ziti_force_session_refresh(ch->ctx);
+            ziti_force_api_session_refresh(ch->ctx);
         }
         reconnect_channel(ch, false);
     }

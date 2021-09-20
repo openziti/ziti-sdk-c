@@ -49,6 +49,7 @@ XX(path, string, none, path, __VA_ARGS__)
 XX(id, string, none, id, __VA_ARGS__) \
 XX(token, string, none, token, __VA_ARGS__) \
 XX(expires, timestamp, ptr, expiresAt, __VA_ARGS__) \
+XX(expireSeconds, int, ptr, expirationSeconds, __VA_ARGS__) \
 XX(updated, timestamp, ptr, updatedAt, __VA_ARGS__) \
 XX(cached_last_activity_at, timestamp, ptr, cachedLastActivityAt, __VA_ARGS__) \
 XX(identity, ziti_identity, ptr, identity, __VA_ARGS__) \
