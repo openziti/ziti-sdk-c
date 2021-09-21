@@ -250,6 +250,11 @@ bool ziti_channel_is_connected(ziti_channel_t *ch) {
     return ch->state == Connected;
 }
 
+static void ziti_channel_set_api_session_id(ziti_channel_t *ch, const char* api_session_id) {
+    memset(ch->api_session_id, '\0', sizeof(ch->api_session_id));
+    strncpy(ch->api_session_id, api_session_id, strlen(api_session_id));
+}
+
 static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, const char *url) {
     ziti_channel_t *ch = calloc(1, sizeof(ziti_channel_t));
     ziti_channel_init(ztx, ch, channel_counter++, ztx->tlsCtx);
@@ -265,9 +270,8 @@ static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, c
     int hostoffset = ingress.field_data[UF_HOST].off;
     snprintf(host, sizeof(host), "%*.*s", hostlen, hostlen, url + hostoffset);
 
-    //save the api_session_id that was used to request a session and create this channel
-    memset(ch->api_session_id, '\0', sizeof(ch->api_session_id));
-    strncpy(ch->api_session_id, ztx->api_session->id, strlen(ztx->api_session->id) - 1);
+    //save the initial API Session before initial connection is attempted
+    ziti_channel_set_api_session_id(ch, ztx->api_session->id);
 
     ch->host = strdup(host);
     ch->port = ingress.port;
@@ -869,9 +873,9 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             uv_mbed_read(mbed, ziti_alloc_cb, on_channel_data);
             ch->reconnect_count = 0;
 
-            //save the api_session_id that was used to request a session and create this channel
-            memset(ch->api_session_id, '\0', sizeof(ch->api_session_id));
-            strncpy(ch->api_session_id, ch->ctx->api_session->id, strlen(ch->ctx->api_session->id) - 1);
+            //ensure that during reconnect the current api session id
+            //used is updated
+            ziti_channel_set_api_session_id(ch, ch->ctx->api_session->id);
 
             send_hello(ch, ch->ctx->api_session);
         } else {

@@ -551,7 +551,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     ziti_channel_t *ch;
     const char *url;
     MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
-        printer(ctx, "ch[%d](%s) ", ch->id, url);
+        printer(ctx, "ch[%d](%s) api_session_id[%s]", ch->id, url, ch->api_session_id);
         if (ziti_channel_is_connected(ch)) {
             printer(ctx, "connected [latency=%ld]\n", (long) ch->latency);
         } else {
@@ -1128,7 +1128,6 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
         if (!ztx->no_current_edge_routers) {
             ziti_ctrl_current_edge_routers(&ztx->controller, edge_routers_cb, ztx);
         }
-        
     } else {
         ZTX_LOG(VERBOSE, "transitioning to unauthenticated, unhandled status[%s]", ziti_errorstr(status));
         ziti_set_unauthenticated(ztx); //disable?
