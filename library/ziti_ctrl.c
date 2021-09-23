@@ -373,7 +373,7 @@ void ziti_ctrl_login(
     um_http_req_data(req, body, body_len, free_body_cb);
 }
 
-void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_data *, const ziti_error *, void *), void *ctx) {
+bool verify_api_session(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if(ctrl->api_session_token == NULL) {
         ziti_error err = {
                 .err = ZITI_NOT_AUTHORIZED,
@@ -381,8 +381,14 @@ void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_d
                 .message = ERROR_MSG_NO_API_SESSION_TOKEN,
         };
         cb(NULL, &err, ctx);
-        return;
+        return false;
     }
+
+    return true;
+}
+
+void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_data *, const ziti_error *, void *), void *ctx) {
+    if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_identity_data_ptr;
@@ -395,15 +401,7 @@ void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_d
 }
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_api_session_ptr;
@@ -416,15 +414,7 @@ void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_ses
 }
 
 void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL; /* no body */
@@ -437,15 +427,7 @@ void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, const ziti_error 
 }
 
 void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_service_update *, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_service_update_ptr;
@@ -458,15 +440,7 @@ void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_servic
 }
 
 void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service_array, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_service_array;
@@ -482,15 +456,7 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service_array
 
 void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void (*cb)(ziti_edge_router_array, const ziti_error *, void *),
                                     void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_edge_router_array;
@@ -507,15 +473,7 @@ void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void (*cb)(ziti_edge_
 void
 ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb)(ziti_service *, const ziti_error *, void *),
                       void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
     char path[1024];
     snprintf(path, sizeof(path), "/services?filter=name=\"%s\"", service_name);
@@ -534,15 +492,7 @@ void ziti_ctrl_get_net_session(
         ziti_controller *ctrl, const char *service_id, const char *type,
         void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx) {
 
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
     char *content = malloc(128);
     size_t len = snprintf(content, 128,
@@ -564,15 +514,7 @@ void ziti_ctrl_get_net_session(
 void ziti_ctrl_get_sessions(
         ziti_controller *ctrl, void (*cb)(ziti_net_session **, const ziti_error *, void *), void *ctx) {
 
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_net_session_array;
@@ -702,15 +644,7 @@ static char *str_array_to_json(const char **arr) {
 
 void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
                   void(*cb)(void *, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
@@ -726,15 +660,7 @@ void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
 
 void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len,
                        void(*cb)(void *, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
@@ -761,15 +687,7 @@ static void ctrl_paging_req(struct ctrl_resp *resp) {
 
 
 void ziti_ctrl_login_mfa(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
@@ -784,15 +702,7 @@ void ziti_ctrl_login_mfa(ziti_controller *ctrl, char *body, size_t body_len, voi
 }
 
 void ziti_ctrl_post_mfa(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
@@ -807,15 +717,7 @@ void ziti_ctrl_post_mfa(ziti_controller *ctrl, void(*cb)(void *, const ziti_erro
 }
 
 void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_mfa_enrollment_ptr;
@@ -829,15 +731,7 @@ void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, c
 }
 
 void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char *code, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
@@ -852,15 +746,7 @@ void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char *code, void(*cb)(void *, c
 }
 
 void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
@@ -875,15 +761,7 @@ void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char *body, size_t body_le
 }
 
 void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char *code, void(*cb)(ziti_mfa_recovery_codes *, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_mfa_recovery_codes_ptr;
@@ -898,15 +776,7 @@ void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char *code, void(*c
 }
 
 void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
-    if(ctrl->api_session_token == NULL) {
-        ziti_error err = {
-                .err = ZITI_NOT_AUTHORIZED,
-                .code = ERROR_CODE_UNAUTHORIZED,
-                .message = ERROR_MSG_NO_API_SESSION_TOKEN,
-        };
-        cb(NULL, &err, ctx);
-        return;
-    }
+    if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = NULL;
