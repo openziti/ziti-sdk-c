@@ -373,7 +373,7 @@ void ziti_ctrl_login(
     um_http_req_data(req, body, body_len, free_body_cb);
 }
 
-bool verify_api_session(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
+static bool verify_api_session(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if(ctrl->api_session_token == NULL) {
         ziti_error err = {
                 .err = ZITI_NOT_AUTHORIZED,
