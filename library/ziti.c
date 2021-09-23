@@ -239,6 +239,8 @@ void ziti_set_unauthenticated(ziti_context ztx) {
     free_ziti_api_session(ztx->api_session);
     FREE(ztx->api_session);
     ztx->api_session_state = ZitiApiSessionStateUnauthenticated;
+
+    ctrl_clear_api_session(&ztx->controller);
 }
 
 void ziti_set_impossible_to_authenticate(ziti_context ztx) {
@@ -247,6 +249,8 @@ void ziti_set_impossible_to_authenticate(ziti_context ztx) {
     free_ziti_api_session(ztx->api_session);
     FREE(ztx->api_session);
     ztx->api_session_state = ZitiApiSessionImpossibleToAuthenticate;
+
+    ctrl_clear_api_session(&ztx->controller);
 }
 
 void ziti_set_partially_authenticated(ziti_context ztx) {
@@ -291,7 +295,7 @@ void ziti_stop_api_session_refresh(ziti_context ztx) {
     uv_timer_stop(&ztx->api_session_timer);
 }
 
-void ziti_schedule_api_session_refresh(ziti_context ztx, uint64_t timeout_ms){
+void ziti_schedule_api_session_refresh(ziti_context ztx, uint64_t timeout_ms) {
     ZTX_LOG(DEBUG, "ziti_schedule_api_session_refresh: scheduling api session refresh: %ldms", timeout_ms);
     uv_timer_start(&ztx->api_session_timer, api_session_refresh, timeout_ms, 0);
 }
@@ -1192,9 +1196,8 @@ void ziti_set_api_session(ziti_context ztx, ziti_api_session *session) {
         }
 
         ZTX_LOG(INFO, "api session set, setting api_session_timer to %ds", delay_seconds);
-        ziti_schedule_api_session_refresh(ztx, delay_seconds *1000);
+        ziti_schedule_api_session_refresh(ztx, delay_seconds * 1000);
     }
-
 
 
     if (session->auth_queries != NULL && *session->auth_queries != NULL) {

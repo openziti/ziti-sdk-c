@@ -117,7 +117,7 @@ TEST_CASE("controller_test","[integ]") {
         AND_THEN("login should get api session") {
             REQUIRE(session.error.err == 0);
             REQUIRE(session.resp != nullptr);
-            REQUIRE(ctrl.session != nullptr);
+            REQUIRE(ctrl.api_session_token != nullptr);
         }
     }
 
