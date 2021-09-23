@@ -240,7 +240,7 @@ void ziti_set_unauthenticated(ziti_context ztx) {
     FREE(ztx->api_session);
     ztx->api_session_state = ZitiApiSessionStateUnauthenticated;
 
-    ctrl_clear_api_session(&ztx->controller);
+    ziti_ctrl_clear_api_session(&ztx->controller);
 }
 
 void ziti_set_impossible_to_authenticate(ziti_context ztx) {
@@ -250,7 +250,7 @@ void ziti_set_impossible_to_authenticate(ziti_context ztx) {
     FREE(ztx->api_session);
     ztx->api_session_state = ZitiApiSessionImpossibleToAuthenticate;
 
-    ctrl_clear_api_session(&ztx->controller);
+    ziti_ctrl_clear_api_session(&ztx->controller);
 }
 
 void ziti_set_partially_authenticated(ziti_context ztx) {

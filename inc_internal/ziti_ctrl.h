@@ -45,7 +45,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctlr, const char *url, tls_
 
 int ziti_ctrl_close(ziti_controller *ctrl);
 
-void ctrl_clear_api_session(ziti_controller *ctrl);
+void ziti_ctrl_clear_api_session(ziti_controller *ctrl);
 
 void ziti_ctrl_get_version(ziti_controller *ctrl, void (*ver_cb)(ziti_version *, const ziti_error *, void *), void *ctx);
 
