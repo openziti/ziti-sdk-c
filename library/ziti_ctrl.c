@@ -177,11 +177,16 @@ static void ctrl_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *re
     ctrl_default_cb(v, e, resp);
 }
 
+void ctrl_clear_api_session(ziti_controller *ctrl){
+    ZITI_LOG(DEBUG, "clearing api session token for ziti_controller");
+    FREE(ctrl->session);
+    um_http_header(&ctrl->client, "zt-session", NULL);
+}
+
 static void ctrl_login_cb(ziti_api_session *s, ziti_error *e, struct ctrl_resp *resp) {
     if (e) {
         ZITI_LOG(ERROR, "%s(%s)", e->code, e->message);
-        FREE(resp->ctrl->session);
-        um_http_header(&resp->ctrl->client, "zt-session", NULL);
+        ctrl_clear_api_session(resp->ctrl);
     }
 
     if (s) {

@@ -241,6 +241,14 @@ void ziti_set_unauthenticated(ziti_context ztx) {
     ztx->api_session_state = ZitiApiSessionStateUnauthenticated;
 }
 
+void ziti_set_impossible_to_authenticate(ziti_context ztx) {
+    ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->api_session_state, ZitiApiSessionImpossibleToAuthenticate);
+
+    free_ziti_api_session(ztx->api_session);
+    FREE(ztx->api_session);
+    ztx->api_session_state = ZitiApiSessionImpossibleToAuthenticate;
+}
+
 void ziti_set_partially_authenticated(ziti_context ztx) {
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->api_session_state, ZitiApiSessionStatePartiallyAuthenticated);
     ztx->api_session_state = ZitiApiSessionStatePartiallyAuthenticated;
@@ -1226,11 +1234,14 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
         if (errCode == ZITI_NOT_AUTHORIZED) {
             if (ztx->api_session || !init_req->start) {
                 ZTX_LOG(DEBUG, "received NOT_AUTHORIZED attempting re-auth");
+                ziti_set_unauthenticated(ztx);
                 ziti_re_auth(ztx);
                 errCode = ztx->ctrl_status; // do not trigger event yet
             } else {
                 // cannot login or re-auth -- identity no longer valid
                 // notify service removal, and state
+                ziti_set_impossible_to_authenticate(ztx);
+
                 ZTX_LOG(ERROR, "identity[%s] cannot authenticate with ctrl[%s]", ztx->opts->config,
                         ztx->opts->controller);
                 ziti_event_t service_event = {
@@ -1260,6 +1271,7 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
             }
         } else {
             ZTX_LOG(DEBUG, "unhandled error, setting api_session_timer to 5s");
+            ziti_set_unauthenticated(ztx);
             ziti_schedule_api_session_refresh(ztx, 5 * 1000);
         }
 

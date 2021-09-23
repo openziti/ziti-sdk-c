@@ -39,7 +39,6 @@ typedef struct ziti_controller_s {
     um_http_t client;
     ziti_version version;
     char *session;
-
 } ziti_controller;
 
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctlr, const char *url, tls_context *tls);
