@@ -38,13 +38,14 @@ extern const char* const PC_ENDPOINT_STATE_TYPE;
 typedef struct ziti_controller_s {
     um_http_t client;
     ziti_version version;
-    char *session;
-
+    char *api_session_token;
 } ziti_controller;
 
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctlr, const char *url, tls_context *tls);
 
 int ziti_ctrl_close(ziti_controller *ctrl);
+
+void ziti_ctrl_clear_api_session(ziti_controller *ctrl);
 
 void ziti_ctrl_get_version(ziti_controller *ctrl, void (*ver_cb)(ziti_version *, const ziti_error *, void *), void *ctx);
 
