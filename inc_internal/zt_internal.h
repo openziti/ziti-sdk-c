@@ -48,10 +48,13 @@ extern const char *APP_ID;
 extern const char *APP_VERSION;
 
 typedef enum {
-    ZitiApiSessionStateUnauthenticated = 0, //0
-    ZitiApiSessionStateAuthStarted = 1, //1
-    ZitiApiSessionStatePartiallyAuthenticated = 1 << 1, //2
-    ZitiApiSessionStateFullyAuthenticated = 1 << 2, //4
+    ZitiApiSessionStateUnauthenticated,
+    ZitiApiSessionStateAuthStarted,
+
+    ZitiApiSessionStatePartiallyAuthenticated,
+    ZitiApiSessionStateFullyAuthenticated,
+
+    ZitiApiSessionImpossibleToAuthenticate,
 } ziti_api_session_state;
 
 
