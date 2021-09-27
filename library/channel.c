@@ -252,7 +252,7 @@ bool ziti_channel_is_connected(ziti_channel_t *ch) {
 
 static void ziti_channel_set_api_session_id(ziti_channel_t *ch, const char* api_session_id) {
     memset(ch->api_session_id, '\0', sizeof(ch->api_session_id));
-    strncpy(ch->api_session_id, api_session_id, strlen(api_session_id));
+    strncpy(ch->api_session_id, api_session_id, strlen(ch->api_session_id));
 }
 
 static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, const char *url) {
