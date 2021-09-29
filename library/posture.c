@@ -419,6 +419,7 @@ static void ziti_pr_post_bulk_cb(ziti_pr_response *pr_resp, const ziti_error *er
     } else {
         ztx->posture_checks->must_send = false; //did not error, can skip submissions
         handle_pr_resp_timer_events(ztx, pr_resp);
+        ziti_services_refresh(&ztx->service_refresh_timer);
         ZTX_LOG(DEBUG, "done with bulk posture response submission");
     }
 
@@ -455,6 +456,7 @@ static void ziti_pr_post_cb(ziti_pr_response *pr_resp, const ziti_error *err, vo
     } else {
         ziti_pr_set_info_success(pr_ctx->ztx, pr_ctx->info->id);
         handle_pr_resp_timer_events(ztx, pr_resp);
+        ziti_services_refresh(&ztx->service_refresh_timer);
         ZTX_LOG(TRACE, "done with one pr response submission, object: %s", pr_ctx->info->obj);
     }
 

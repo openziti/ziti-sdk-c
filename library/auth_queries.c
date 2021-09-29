@@ -314,7 +314,9 @@ void ziti_mfa_auth_internal_cb(void *empty, const ziti_error *err, void *ctx) {
             return;
         }
     } else {
+        bool is_auth = false;
         if (mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx != NULL) {
+            is_auth = true;
             ziti_mfa_auth_ctx *outstanding_ctx = mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx;
             mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx = NULL;
 
@@ -328,6 +330,11 @@ void ziti_mfa_auth_internal_cb(void *empty, const ziti_error *err, void *ctx) {
             mfa_auth_ctx->cb(ztx, ZITI_OK, mfa_auth_ctx->cb_ctx);
         } else {
             ZTX_LOG(WARN, "no mfa status callback provided, mfa was a success, status was: %d", err->err);
+        }
+
+        if(!is_auth){
+            //not authenticating, mfa re-check, refresh services
+            ziti_services_refresh(&ztx->service_refresh_timer);
         }
 
         FREE(ctx);

@@ -61,8 +61,6 @@ int code_to_error(const char *code);
 
 static void update_ctrl_status(ziti_context ztx, int code, const char *msg);
 
-static void services_refresh(uv_timer_t *t);
-
 static void version_cb(ziti_version *v, const ziti_error *err, void *ctx);
 
 static void api_session_cb(ziti_api_session *session, const ziti_error *err, void *ctx);
@@ -880,7 +878,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
     // schedule next refresh
     if (ztx->opts->refresh_interval > 0) {
         ZTX_LOG(VERBOSE, "scheduling service refresh %ld seconds from now", ztx->opts->refresh_interval);
-        uv_timer_start(&ztx->service_refresh_timer, services_refresh, ztx->opts->refresh_interval * 1000, 0);
+        uv_timer_start(&ztx->service_refresh_timer, ziti_services_refresh, ztx->opts->refresh_interval * 1000, 0);
     }
 
     if (error) {
@@ -1036,7 +1034,7 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
         free_ziti_service_update(update);
         need_update = false;
 
-        uv_timer_start(&ztx->service_refresh_timer, services_refresh, ztx->opts->refresh_interval * 1000, 0);
+        uv_timer_start(&ztx->service_refresh_timer, ziti_services_refresh, ztx->opts->refresh_interval * 1000, 0);
     }
 
     if (need_update) {
@@ -1045,7 +1043,7 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
     FREE(update);
 }
 
-static void services_refresh(uv_timer_t *t) {
+void ziti_services_refresh(uv_timer_t *t) {
     ziti_context ztx = t->data;
 
     if (ztx->auth_queries->outstanding_auth_query_ctx) {
@@ -1163,7 +1161,7 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
 
         if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->service_refresh_timer)) {
             ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
-            services_refresh(&ztx->service_refresh_timer);
+            ziti_services_refresh(&ztx->service_refresh_timer);
         } else if (ztx->opts->refresh_interval == 0) {
             ZTX_LOG(DEBUG, "refresh_interval not specified");
             uv_timer_stop(&ztx->service_refresh_timer);

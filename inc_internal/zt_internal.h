@@ -312,6 +312,8 @@ void ziti_set_unauthenticated(ziti_context ztx);
 
 void ziti_force_service_update(ziti_context ztx, const char* service_id);
 
+void ziti_services_refresh(uv_timer_t *t);
+
 #ifdef __cplusplus
 }
 #endif
