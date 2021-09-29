@@ -255,7 +255,7 @@ send_message(struct ziti_conn *conn, uint32_t content, uint8_t *body, uint32_t b
 
 static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
     struct ziti_conn *conn = ctx;
-    ziti_context ztx = conn->ziti_ctx;
+    ziti_context ztx = ch->ctx;
 
     // check if it is still a valid connection
     // connection may be completed and gone by the time this channel gets connected
