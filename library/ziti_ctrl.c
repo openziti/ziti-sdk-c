@@ -643,11 +643,11 @@ static char *str_array_to_json(const char **arr) {
 }
 
 void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
-                  void(*cb)(void *, const ziti_error *, void *), void *ctx) {
+                  void(*cb)(ziti_pr_response *, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = NULL;
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_pr_response;
     resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
@@ -659,11 +659,11 @@ void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
 }
 
 void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len,
-                       void(*cb)(void *, const ziti_error *, void *), void *ctx) {
+                       void(*cb)(ziti_pr_response *, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = NULL;
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_pr_response;
     resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;

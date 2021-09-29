@@ -779,28 +779,56 @@ static void set_posture_query_defaults(ziti_service *service) {
     }
 }
 
+static bool service_posture_check_timeouts_changed(ziti_context ztx, const ziti_posture_query_set *new_set, const ziti_posture_query_set *old_set) {
+    for (int new_idx = 0; new_set->posture_queries[new_idx] != NULL; new_idx++) {
+        for (int old_idx = 0; old_set->posture_queries[old_idx] != NULL; old_idx++) {
+            if (strncmp(old_set->posture_queries[old_idx]->id, new_set->posture_queries[new_idx]->id, strlen(old_set->posture_queries[old_idx]->id)) == 0) {
+                if (old_set->posture_queries[old_idx]->timeout != new_set->posture_queries[new_idx]->timeout) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+void ziti_force_service_update(ziti_context ztx, const char* service_id) {
+    ZTX_LOG(DEBUG, "forcing service[%s] to be reported as updated", service_id);
+    NEWP(val, bool);
+    *val = true;
+    void* old = model_map_set(&ztx->service_forced_updates, service_id, val);
+    FREE(old);
+}
+
 // is_service_updated returns 0 if the direct service properties
 // and configurations have not been altered. Will return non-0
 // values if they have. This ignores posture query alterations.
 static int is_service_updated(ziti_context ztx, ziti_service *new, ziti_service *old) {
-    //compare updated at, if changed, signal update. Could be name, tags, etc.
+    //compare updated at, if changed, signal update
     if (strcmp(old->updated_at, new->updated_at) != 0) {
         ZTX_LOG(VERBOSE, "service [%s] is updated, update_at property changes", new->name);
+        return 1;
+    }
+
+    //check for forced updates
+    if (model_map_get(&ztx->service_forced_updates, new->id) != NULL) {
+        model_map_remove(&ztx->service_forced_updates, new->id);
         return 1;
     }
 
     //check for config change, find meta
     type_meta *ziti_service_meta = get_ziti_service_meta();
     int i = 0;
-    bool is_found = false;
+    bool is_config_found = false;
     for (i = 0; i < ziti_service_meta->field_count; i++) {
         if (strcmp(ziti_service_meta->fields[i].name, "config") == 0) {
-            is_found = true;
+            is_config_found = true;
             break;
         }
     }
 
-    if (is_found) {
+    if (is_config_found) {
         type_meta *config_field_meta = ziti_service_meta->fields[i].meta();
         if (model_map_compare(&old->config, &new->config, config_field_meta) != 0) {
             ZTX_LOG(VERBOSE, "service [%s] is updated, config changed", new->name);
@@ -820,7 +848,12 @@ static int is_service_updated(ziti_context ztx, ziti_service *new, ziti_service 
 
         //is_passing states differ
         if (old_set->is_passing != new_set->is_passing) {
-            ZTX_LOG(VERBOSE, "service [%s] is updated, new service is_passing state differs for policy [%s]", new->name, policy_id);
+            ZTX_LOG(VERBOSE, "service [%s] is updated, new service is_passing state differs for policy [%s], old[%s] new[%s]", new->name, policy_id, old_set->is_passing ? "TRUE" : "FALSE", new_set->is_passing ? "TRUE" : "FALSE");
+            return 1;
+        }
+
+        //if timeouts changed
+        if (service_posture_check_timeouts_changed(ztx, new_set, old_set)) {
             return 1;
         }
     }
@@ -828,9 +861,9 @@ static int is_service_updated(ziti_context ztx, ziti_service *new, ziti_service 
     //ensure that new didn't lose policies
     const ziti_posture_query_set *old_set;
     MODEL_MAP_FOREACH(policy_id, old_set, &old->posture_query_map) {
-        ziti_posture_query_set *new_set = model_map_get(&new->posture_query_map, policy_id);
+        ziti_posture_query_set *new_set_by_old_id = model_map_get(&new->posture_query_map, policy_id);
 
-        if (new_set == NULL) {
+        if (new_set_by_old_id == NULL) {
             ZTX_LOG(VERBOSE, "service [%s] is updated, new service lost a policy [%s]", new->name, policy_id);
             return 1;
         }
@@ -962,6 +995,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
     free(ev.event.service.changed);
 
     model_map_clear(&updates, NULL);
+    model_map_clear(&ztx->service_forced_updates, NULL);
 }
 
 // set_service_posture_policy_map checks to see if the controller

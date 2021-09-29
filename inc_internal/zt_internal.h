@@ -204,6 +204,9 @@ struct ziti_ctx {
     // map<service_id,ziti_net_session>
     model_map sessions;
 
+    // map<service_id,*bool>
+    model_map service_forced_updates;
+
     bool no_service_updates_api; // controller API has no last-update endpoint
     bool no_bulk_posture_response_api; // controller API does not support bulk posture response submission
     bool no_current_edge_routers;
@@ -306,6 +309,8 @@ void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data);
 void ziti_set_api_session(ziti_context ztx, ziti_api_session *session);
 
 void ziti_set_unauthenticated(ziti_context ztx);
+
+void ziti_force_service_update(ziti_context ztx, const char* service_id);
 
 #ifdef __cplusplus
 }

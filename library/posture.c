@@ -391,8 +391,25 @@ static void ziti_collect_pr(ziti_context ztx, const char *pr_obj_key, char *pr_o
     }
 }
 
-static void ziti_pr_post_bulk_cb(__attribute__((unused)) void *empty, const ziti_error *err, void *ctx) {
+static void handle_pr_resp_timer_events(ziti_context ztx, ziti_pr_response *pr_resp){
+    ZTX_LOG(DEBUG, "handle_pr_resp_timer_events: starting");
+    if(pr_resp != NULL && pr_resp->services != NULL) {
+        for(int idx=0;pr_resp->services[idx] != NULL; idx++){
+            NEWP(val, bool);
+            *val = true;
+            ZTX_LOG(DEBUG, "handle_pr_resp_timer_events: forcing service name[%s] id[%s] with timeout[%d] timeoutRemaining[%d]", pr_resp->services[idx]->name, pr_resp->services[idx]->id, *pr_resp->services[idx]->timeout, *pr_resp->services[idx]->timeoutRemaining);
+            ziti_force_service_update(ztx, pr_resp->services[idx]->id);
+        }
+    } else {
+        ZTX_LOG(DEBUG, "handle_pr_resp_timer_events: pr_resp or pr_resp.services was null");
+    }
+}
+
+static void ziti_pr_post_bulk_cb(ziti_pr_response *pr_resp, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
+
+    ZTX_LOG(DEBUG, "ziti_pr_post_bulk_cb: starting");
+
     if (err != NULL) {
         ZTX_LOG(ERROR, "error during bulk posture response submission (%d) %s", err->http_code, err->message);
         ztx->posture_checks->must_send = true; //error, must try again
@@ -401,8 +418,11 @@ static void ziti_pr_post_bulk_cb(__attribute__((unused)) void *empty, const ziti
         }
     } else {
         ztx->posture_checks->must_send = false; //did not error, can skip submissions
+        handle_pr_resp_timer_events(ztx, pr_resp);
         ZTX_LOG(DEBUG, "done with bulk posture response submission");
     }
+
+    FREE(pr_resp);
 }
 
 static void ziti_pr_set_info_errored(ziti_context ztx, const char *id) {
@@ -422,20 +442,24 @@ static bool ziti_pr_is_info_errored(ziti_context ztx, const char *id) {
     return *is_errored;
 }
 
-static void ziti_pr_post_cb(__attribute__((unused)) void *empty, const ziti_error *err, void *ctx) {
+static void ziti_pr_post_cb(ziti_pr_response *pr_resp, const ziti_error *err, void *ctx) {
     pr_cb_ctx *pr_ctx = ctx;
     ziti_context ztx = pr_ctx->ztx;
+
+    ZTX_LOG(DEBUG, "ziti_pr_post_cb: starting");
 
     if (err != NULL) {
         ZTX_LOG(ERROR, "error during individual posture response submission (%d) %s - object: %s", err->http_code,
                  err->message, pr_ctx->info->obj);
         ziti_pr_set_info_errored(pr_ctx->ztx, pr_ctx->info->id);
     } else {
-        ZTX_LOG(TRACE, "done with one pr response submission, object: %s", pr_ctx->info->obj);
         ziti_pr_set_info_success(pr_ctx->ztx, pr_ctx->info->id);
+        handle_pr_resp_timer_events(ztx, pr_resp);
+        ZTX_LOG(TRACE, "done with one pr response submission, object: %s", pr_ctx->info->obj);
     }
 
     ziti_pr_free_pr_cb_ctx(ctx);
+    FREE(pr_resp);
 }
 
 static void ziti_pr_send(ziti_context ztx) {
