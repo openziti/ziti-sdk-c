@@ -85,6 +85,8 @@ struct client {
     LIST_ENTRY(client) next;
 };
 
+uv_loop_t *global_loop;
+
 static int process_args(int argc, char *argv[]);
 void mfa_auth_event_handler(ziti_context ztx);
 
@@ -101,6 +103,14 @@ static void shutdown_timer_cb(uv_timer_t *t) {
     uv_loop_t *l = t->loop;
 
     uv_print_active_handles(l, stderr);
+}
+
+void debug_timer(uv_timer_t *t){
+    ziti_context ztx = t->data;
+
+    ziti_endpoint_state_change(ztx, true, false);
+
+    FREE(t);
 }
 
 static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
@@ -465,6 +475,12 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             } else {
                 ZITI_LOG(ERROR, "controller is not available: %s/%s", ziti_errorstr(event->event.ctx.ctrl_status), event->event.ctx.err);
             }
+            NEWP(timer, uv_timer_t);
+            uv_timer_init(global_loop, timer);
+            timer->data = ztx;
+            uv_timer_start(timer, debug_timer, 15000, 0);
+
+
             break;
 
         case ZitiServiceEvent:
@@ -531,8 +547,6 @@ char *pxoxystrndup(const char *s, int n);
 const char *my_configs[] = {
         "all", NULL
 };
-
-uv_loop_t *global_loop;
 
 struct mfa_work {
     uv_work_t w;

@@ -393,16 +393,21 @@ static void ziti_collect_pr(ziti_context ztx, const char *pr_obj_key, char *pr_o
 
 static void handle_pr_resp_timer_events(ziti_context ztx, ziti_pr_response *pr_resp){
     ZTX_LOG(DEBUG, "handle_pr_resp_timer_events: starting");
+
     if(pr_resp != NULL && pr_resp->services != NULL) {
-        for(int idx=0;pr_resp->services[idx] != NULL; idx++){
+        ziti_service_timer **service_timer;
+        for(service_timer = pr_resp->services; *service_timer != NULL; service_timer++){
             NEWP(val, bool);
             *val = true;
-            ZTX_LOG(DEBUG, "handle_pr_resp_timer_events: forcing service name[%s] id[%s] with timeout[%d] timeoutRemaining[%d]", pr_resp->services[idx]->name, pr_resp->services[idx]->id, *pr_resp->services[idx]->timeout, *pr_resp->services[idx]->timeoutRemaining);
-            ziti_force_service_update(ztx, pr_resp->services[idx]->id);
+            ZTX_LOG(DEBUG, "handle_pr_resp_timer_events: forcing service name[%s] id[%s] with timeout[%d] timeoutRemaining[%d]", (*service_timer)->name, (*service_timer)->id, *(*service_timer)->timeout, *(*service_timer)->timeoutRemaining);
+            ziti_force_service_update(ztx, (*service_timer)->id);
         }
+
     } else {
         ZTX_LOG(DEBUG, "handle_pr_resp_timer_events: pr_resp or pr_resp.services was null");
     }
+
+    ZTX_LOG(DEBUG, "handle_pr_resp_timer_events: done");
 }
 
 static void ziti_pr_post_bulk_cb(ziti_pr_response *pr_resp, const ziti_error *err, void *ctx) {
@@ -804,10 +809,13 @@ static void process_check_work(uv_work_t *w) {
     pcw->signers = get_signers(path, &pcw->num_signers);
 }
 
-void ziti_endpoint_state_pr_cb(void *unused, const ziti_error *err, void *ctx) {
+void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err) {
         ZTX_LOG(ERROR, "error during endpoint state posture response submission: %d - %s", err->http_code, err->message);
+    } else {
+        handle_pr_resp_timer_events(ztx, pr_resp);
+        ziti_services_refresh(&ztx->service_refresh_timer);
     }
 }
 

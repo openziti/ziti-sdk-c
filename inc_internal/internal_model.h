@@ -135,7 +135,7 @@ XX(id, string, none, id, __VA_ARGS__) \
 XX(name, string, none, name, __VA_ARGS__) \
 XX(posture_query_type, string, none, postureQueryType, __VA_ARGS__) \
 XX(timeout, int, ptr, timeout, __VA_ARGS__) \
-XX(timeoutRemaining, int, ptr, timeoutRemaining, __VA_ARGS__) \
+XX(timeoutRemaining, int, ptr, timeoutRemaining, __VA_ARGS__)
 
 #define ZITI_PR_RESPONSE(XX, ...) \
 XX(services, ziti_service_timer, array, services, __VA_ARGS__)

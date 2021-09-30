@@ -647,7 +647,7 @@ void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
     if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_pr_response;
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_pr_response_ptr;
     resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
@@ -663,7 +663,7 @@ void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len,
     if(!verify_api_session(ctrl, cb, ctx)) return;
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_pr_response;
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_pr_response_ptr;
     resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
     resp->ctx = ctx;
     resp->ctrl = ctrl;
