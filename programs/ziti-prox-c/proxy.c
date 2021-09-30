@@ -534,8 +534,6 @@ const char *my_configs[] = {
         "all", NULL
 };
 
-uv_loop_t *global_loop;
-
 struct mfa_work {
     uv_work_t w;
     ziti_context ztx;
