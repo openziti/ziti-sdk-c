@@ -130,6 +130,16 @@ XX(typeId, string, none, typeId, __VA_ARGS__) \
 XX(unlocked, bool, none, unlocked, __VA_ARGS__) \
 XX(woken, bool, none, woken, __VA_ARGS__)
 
+#define ZITI_SERVICE_TIMER(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__) \
+XX(name, string, none, name, __VA_ARGS__) \
+XX(posture_query_type, string, none, postureQueryType, __VA_ARGS__) \
+XX(timeout, int, ptr, timeout, __VA_ARGS__) \
+XX(timeoutRemaining, int, ptr, timeoutRemaining, __VA_ARGS__)
+
+#define ZITI_PR_RESPONSE(XX, ...) \
+XX(services, ziti_service_timer, array, services, __VA_ARGS__)
+
 #define ZITI_SERVICE_UPDATE(XX, ...) \
 XX(last_change, string, none, lastChangeAt, __VA_ARGS__)
 
@@ -182,6 +192,10 @@ DECLARE_MODEL(ziti_service_update, ZITI_SERVICE_UPDATE)
 DECLARE_MODEL(ziti_mfa_code_req, ZITI_MFA_CODE_REQ)
 
 DECLARE_MODEL(ziti_mfa_recovery_codes, ZITI_MFA_RECOVERY_CODES_MODEL)
+
+DECLARE_MODEL(ziti_service_timer, ZITI_SERVICE_TIMER)
+
+DECLARE_MODEL(ziti_pr_response, ZITI_PR_RESPONSE)
 
 #ifdef __cplusplus
 }

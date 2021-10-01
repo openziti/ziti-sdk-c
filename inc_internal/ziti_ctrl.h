@@ -83,9 +83,9 @@ void ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *tok
                       void (*cb)(ziti_enrollment_resp *, const ziti_error *, void *), void *ctx);
 
 //Posture
-void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx);
+void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(ziti_pr_response *, const ziti_error *, void *), void *ctx);
 
-void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx);
+void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(ziti_pr_response *, const ziti_error *, void *), void *ctx);
 
 
 //MFA

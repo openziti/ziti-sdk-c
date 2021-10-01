@@ -32,6 +32,29 @@ limitations under the License.
 
 using Catch::Matchers::Equals;
 
+TEST_CASE("posture response response", "[model]") {
+    const char *json = R"({"services":[{"id":".T9TTXjPYy","name":"net-cat2","postureQueryType":"MFA","timeout":600,"timeoutRemaining":300}]})";
+
+    ziti_pr_response pr_resp;
+    int rc = parse_ziti_pr_response(&pr_resp, json, (int) strlen(json));
+    REQUIRE(rc == 0);
+
+
+    int idx;
+
+    for (idx = 0; pr_resp.services[idx] != nullptr; idx++) {
+
+    }
+    REQUIRE(idx == 1);
+
+
+    REQUIRE_THAT(pr_resp.services[0]->id, Equals(".T9TTXjPYy"));
+    REQUIRE_THAT(pr_resp.services[0]->name, Equals("net-cat2"));
+    REQUIRE_THAT(pr_resp.services[0]->posture_query_type, Equals("MFA"));
+    REQUIRE(*pr_resp.services[0]->timeout == 600);
+    REQUIRE(*pr_resp.services[0]->timeoutRemaining == 300);
+}
+
 TEST_CASE("multi-edge-router session", "[model]") {
 
     const char *ns = "{\n"

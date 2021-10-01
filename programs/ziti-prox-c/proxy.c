@@ -85,6 +85,8 @@ struct client {
     LIST_ENTRY(client) next;
 };
 
+uv_loop_t *global_loop;
+
 static int process_args(int argc, char *argv[]);
 void mfa_auth_event_handler(ziti_context ztx);
 
@@ -531,8 +533,6 @@ char *pxoxystrndup(const char *s, int n);
 const char *my_configs[] = {
         "all", NULL
 };
-
-uv_loop_t *global_loop;
 
 struct mfa_work {
     uv_work_t w;

@@ -85,6 +85,10 @@ IMPL_MODEL(ziti_pr_domain_req, ZITI_PR_DOMAIN_REQ)
 
 IMPL_MODEL(ziti_pr_endpoint_state_req, ZITI_PR_ENDPOINT_STATE_REQ)
 
+IMPL_MODEL(ziti_service_timer, ZITI_SERVICE_TIMER)
+
+IMPL_MODEL(ziti_pr_response, ZITI_PR_RESPONSE)
+
 IMPL_MODEL(ziti_service_update, ZITI_SERVICE_UPDATE)
 
 IMPL_MODEL(ziti_mfa_recovery_codes, ZITI_MFA_RECOVERY_CODES_MODEL)
