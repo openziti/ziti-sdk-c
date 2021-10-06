@@ -496,6 +496,12 @@ int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
 
 void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
     printer(ctx, "\n=================\nZiti Context:\n");
+
+    if(ztx == NULL) {
+        printer(ctx, "ZTX: provided ztx is null, cannot dump");
+        return;
+    }
+
     printer(ctx, "ID:\t%d\n", ztx->id);
     printer(ctx, "Enabled:\t%s\n", ziti_is_enabled(ztx) ? "true" : "false");
     printer(ctx, "Config:\t%s\n", ztx->opts->config);
