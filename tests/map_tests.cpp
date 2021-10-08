@@ -46,7 +46,37 @@ TEST_CASE("model bench", "[model]") {
     for (i = 0; i < 50000; i++) {
         snprintf(key, sizeof(key), "key%d", i);
         void *val = model_map_remove(&m, key);
-        if (val) free(val);
+        if (val) { free(val); }
+    }
+
+    model_map_clear(&m, nullptr);
+}
+
+TEST_CASE("map[long->str] bench", "[model]") {
+    char key[128];
+    model_map m = {nullptr};
+    for (int i = 0; i < 50000; i++) {
+        snprintf(key, sizeof(key), "%d", i);
+        model_map_setl(&m, i, strdup(key));
+    }
+
+    for (int i = 0; i < 50000; i++) {
+        const char *val = static_cast<const char *>(model_map_getl(&m, i));
+        CHECK(i == atol(val));
+    }
+
+    model_map_iter it = model_map_iterator(&m);
+
+    while (it != nullptr) {
+        char *val = static_cast<char *>(model_map_it_value(it));
+        long k = model_map_it_lkey(it);
+        REQUIRE(k == atol(val));
+        if (k % 2 == 0) {
+            free(val);
+            it = model_map_it_remove(it);
+        } else {
+            it = model_map_it_next(it);
+        }
     }
 
     model_map_clear(&m, nullptr);
