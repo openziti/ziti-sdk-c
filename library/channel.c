@@ -106,8 +106,6 @@ struct msg_receiver {
     void *receiver;
 
     void (*receive)(void *receiver, message *m, int code);
-
-    LIST_ENTRY(msg_receiver) _next;
 };
 
 static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t id, tls_context *tls) {
@@ -131,7 +129,6 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     ch->in_body_offset = 0;
     ch->incoming = new_buffer();
 
-    LIST_INIT(&ch->receivers);
     LIST_INIT(&ch->waiters);
 
     uv_mbed_init(ch->loop, &ch->connection, tls);
@@ -202,15 +199,14 @@ void ziti_channel_add_receiver(ziti_channel_t *ch, int id, void *receiver, void 
     r->receiver = receiver;
     r->receive = receive_f;
 
-    LIST_INSERT_HEAD(&ch->receivers, r, _next);
+    model_map_setl(&ch->receivers, r->id, r);
     CH_LOG(DEBUG, "added receiver[%d]", id);
 }
 
 void ziti_channel_rem_receiver(ziti_channel_t *ch, int id) {
-    struct msg_receiver *r = find_receiver(ch, id);
+    struct msg_receiver *r = model_map_removel(&ch->receivers, id);
 
     if (r) {
-        LIST_REMOVE(r, _next);
         CH_LOG(DEBUG, "removed receiver[%d]", id);
         free(r);
     }
@@ -422,13 +418,8 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
 }
 
 static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id) {
-    struct msg_receiver *c;
-    LIST_FOREACH(c, &ch->receivers, _next) {
-        if (c->id == conn_id) {
-            return c;
-        }
-    }
-    return NULL;
+    struct msg_receiver *c = model_map_getl(&ch->receivers, conn_id);
+    return c;
 }
 
 
@@ -767,9 +758,10 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
         free(w);
     }
 
-    while (!LIST_EMPTY(&ch->receivers)) {
-        struct msg_receiver *con = LIST_FIRST(&ch->receivers);
-        LIST_REMOVE(con, _next);
+    model_map_iter it = model_map_iterator(&ch->receivers);
+    while (it != NULL) {
+        struct msg_receiver *con = model_map_it_value(it);
+        it = model_map_it_remove(it);
         con->receive(con->receiver, NULL, (int) ziti_err);
         free(con);
     }

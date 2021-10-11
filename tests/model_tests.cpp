@@ -220,6 +220,8 @@ TEST_CASE("test string escape", "[model]") {
 
     char *jsonout = Bar_to_json(&bar, 0, NULL);
     std::cout << jsonout << std::endl;
+    free(jsonout);
+    free_Bar(&bar);
 }
 
 #define baz_model(XX, ...) \
@@ -325,6 +327,19 @@ TEST_CASE("model compare with map", "[model]") {
     model_map_set(&o2.map, "key1", (void *) "one");
     model_map_set(&o1.map, "key2", (void *) "two");
     CHECK(cmp_ObjMap(&o1, &o2) == 0);
+
+    model_map_iter it = model_map_iterator(&o1.map);
+    while (it != nullptr) {
+        it = model_map_it_remove(it);
+    }
+
+    it = model_map_iterator(&o2.map);
+    while (it != nullptr) {
+        it = model_map_it_remove(it);
+    }
+
+    free_ObjMap(&o1);
+    free_ObjMap(&o2);
 }
 
 TEST_CASE("model compare with array", "[model]") {
@@ -336,6 +351,8 @@ TEST_CASE("model compare with array", "[model]") {
 
     CHECK(cmp_Bar(&bar1, &bar2) == 0);
 
+
+    free(bar1.errors[0]);
     bar1.errors[0] = strdup("changed error");
     CHECK(cmp_Bar(&bar1, &bar2) != 0);
 
@@ -394,6 +411,7 @@ TEST_CASE("model with string map", "[model]") {
 
     printf("%s", buf);
     free_tagged(&obj);
+    free(buf);
 }
 
 #define objmap_model(XX, ...) \
@@ -549,6 +567,7 @@ TEST_CASE("parse-json-u-escape", "[model]") {
     CHECK(json_len == strlen(json_out));
     CHECK_THAT(json_out, Catch::Matchers::Contains("\"hello\\u000cабвгд!\""));
     free(json_out);
+    free_Foo(&foo);
 }
 
 TEST_CASE("parse-bad-json-escapes", "[model]") {

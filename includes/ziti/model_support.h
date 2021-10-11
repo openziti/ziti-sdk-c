@@ -206,17 +206,25 @@ int model_map_compare(const model_map *lh, const model_map *rh, type_meta *m);
 
 ZITI_FUNC size_t model_map_size(const model_map *map);
 
+ZITI_FUNC void *model_map_set_key(model_map *m, const void *key, size_t key_len, void *val);
 ZITI_FUNC void *model_map_set(model_map *map, const char *key, void *val);
+ZITI_FUNC void *model_map_setl(model_map *map, long key, void *val);
 
+ZITI_FUNC void *model_map_get_key(const model_map *map, const void *key, size_t key_len);
 ZITI_FUNC void *model_map_get(const model_map *map, const char *key);
+ZITI_FUNC void *model_map_getl(const model_map *map, long key);
 
+ZITI_FUNC void *model_map_remove_key(model_map *map, const void *key, size_t key_len);
 ZITI_FUNC void *model_map_remove(model_map *map, const char *key);
+ZITI_FUNC void *model_map_removel(model_map *map, long key);
 
 ZITI_FUNC void model_map_clear(model_map *map, _free_f val_free_func);
 
 ZITI_FUNC model_map_iter model_map_iterator(const model_map *map);
 
-ZITI_FUNC const char *model_map_it_key(const model_map_iter *it);
+ZITI_FUNC const char *model_map_it_key(model_map_iter it);
+ZITI_FUNC const void *model_map_it_key_s(model_map_iter it, size_t *key_len);
+ZITI_FUNC long model_map_it_lkey(model_map_iter it);
 
 ZITI_FUNC void *model_map_it_value(model_map_iter it);
 
