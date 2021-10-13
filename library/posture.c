@@ -333,7 +333,7 @@ void ziti_send_posture_data(ziti_context ztx) {
         ziti_pq_process_cb proc_cb = ztx->opts->pq_process_cb;
         if (proc_cb == NULL) {
             proc_cb = default_pq_process;
-            ZTX_LOG(VERBOSE, "using default %s cb  for process queries");
+            ZTX_LOG(VERBOSE, "using default cb for process queries");
         }
         MODEL_MAP_FOREACH(path, info, &processes) {
             if (info->query->timeout == NO_TIMEOUTS) {
