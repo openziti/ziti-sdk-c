@@ -165,8 +165,10 @@ static void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
         return;
     }
 
+#ifndef _WIN32
     sig.data = ztx;
     uv_signal_start(&sig, on_signal, SIGUSR1);
+#endif
 
     ziti = ztx;
     ziti_connection conn;
