@@ -150,6 +150,7 @@ struct ziti_conn {
 
     void *data;
 
+    model_map children;
     struct ziti_conn *parent;
     uint32_t dial_req_seq;
 

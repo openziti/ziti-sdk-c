@@ -158,7 +158,7 @@ static void free_conn_req(struct ziti_conn_req *r) {
 };
 
 int close_conn_internal(struct ziti_conn *conn) {
-    if (conn->state == Closed && conn->write_reqs == 0) {
+    if (conn->state == Closed && conn->write_reqs == 0 && model_map_size(&conn->children) == 0) {
         CONN_LOG(DEBUG, "removing");
         if (conn->close_cb) {
             conn->close_cb(conn);
@@ -171,6 +171,10 @@ int close_conn_internal(struct ziti_conn *conn) {
         if (conn->conn_req) {
             ziti_channel_remove_waiter(conn->channel, conn->conn_req->waiter);
             free_conn_req(conn->conn_req);
+        }
+
+        if (conn->parent) {
+            model_map_removel(&conn->parent->children, conn->conn_id);
         }
 
         LIST_REMOVE(conn, next);
@@ -1396,7 +1400,10 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
             ziti_connection clt;
             ziti_conn_init(conn->ziti_ctx, &clt, NULL);
             conn_set_state(clt, Accepting);
+
             clt->parent = conn;
+            model_map_setl(&conn->children, clt->conn_id, clt);
+
             clt->channel = conn->channel;
             clt->dial_req_seq = msg->header.seq;
             clt->encrypted = conn->encrypted;

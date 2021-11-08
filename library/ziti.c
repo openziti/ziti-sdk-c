@@ -511,7 +511,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         printer(ctx, "unknown - never logged in\n");
     }
 
-    printer(ctx, "\n=================\nSession:\n");
+    printer(ctx, "\n=================\nAPI Session:\n");
 
     if (ztx->api_session) {
         printer(ctx, "Session Info: \napi_session[%s]\napi_session_state[%d]\n", ztx->api_session->id, ztx->api_session_state);
@@ -551,10 +551,10 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         }
     }
 
-    printer(ctx, "\n==================\nNet Sessions:\n");
-    ziti_net_session *it;
-    MODEL_MAP_FOREACH(name, it, &ztx->sessions) {
-        printer(ctx, "%s: service_id[%s]\n", it->id, name);
+    printer(ctx, "\n==================\nSessions:\n");
+    ziti_net_session *sess;
+    MODEL_MAP_FOREACH(name, sess, &ztx->sessions) {
+        printer(ctx, "%s: service_id[%s]\n", sess->id, name);
     }
 
     printer(ctx, "\n==================\nChannels:\n");
@@ -572,10 +572,22 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     printer(ctx, "\n==================\nConnections:\n");
     ziti_connection conn;
     LIST_FOREACH(conn, &ztx->connections, next) {
-        printer(ctx, "conn[%d]: state[%s] service[%s] using ch[%d] %s\n",
-                conn->conn_id, ziti_conn_state(conn), conn->service,
-                conn->channel ? conn->channel->id : -1,
-                conn->channel ? conn->channel->name : "(none)");
+        if (conn->parent == NULL) {
+            printer(ctx, "conn[%d]: state[%s] service[%s] using ch[%d] %s\n",
+                    conn->conn_id, ziti_conn_state(conn), conn->service,
+                    conn->channel ? conn->channel->id : -1,
+                    conn->channel ? conn->channel->name : "(none)");
+
+            model_map_iter it = model_map_iterator(&conn->children);
+            while (it != NULL) {
+                uint32_t child_id = model_map_it_lkey(it);
+                ziti_connection child = model_map_it_value(it);
+                printer(ctx, "\tchild[%d]: state[%s] caller_id[%s]\n",
+                        child_id, ziti_conn_state(child), ziti_conn_source_identity(child)
+                );
+                it = model_map_it_next(it);
+            }
+        }
     }
     printer(ctx, "\n==================\n\n");
 }

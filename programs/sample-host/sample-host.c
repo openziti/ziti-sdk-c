@@ -47,6 +47,7 @@ static ssize_t on_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
     }
     else {
         fprintf(stderr, "error: %zd(%s)", len, ziti_errorstr(len));
+        ziti_close(clt, NULL);
     }
     return len;
 }
@@ -148,8 +149,27 @@ ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
     }
     return len;
 }
+static uv_signal_t sig;
+static void on_signal(uv_signal_t *h, int signal) {
+    ziti_context ztx = h->data;
+    ziti_dump(ztx, fprintf, stdout);
+}
 
 static void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
+    if (ev->type != ZitiContextEvent) return;
+
+    if (ev->event.ctx.ctrl_status == ZITI_PARTIALLY_AUTHENTICATED) return;
+
+    if (ev->event.ctx.ctrl_status != ZITI_OK) {
+        DIE(ev->event.ctx.ctrl_status);
+        return;
+    }
+
+#ifndef _WIN32
+    sig.data = ztx;
+    uv_signal_start(&sig, on_signal, SIGUSR1);
+#endif
+
     ziti = ztx;
     ziti_connection conn;
     ziti_conn_init(ziti, &conn, NULL);
@@ -197,6 +217,7 @@ int main(int argc, char **argv) {
 
     DIE(ziti_init(argv[2], loop, on_ziti_init, ZitiContextEvent, loop));
 
+    uv_signal_init(loop, &sig);
     // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);
 
