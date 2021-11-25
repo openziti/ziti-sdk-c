@@ -81,3 +81,37 @@ TEST_CASE("map[long->str] bench", "[model]") {
 
     model_map_clear(&m, nullptr);
 }
+
+TEST_CASE("remove last element", "[model]") {
+    model_map m = {nullptr};
+    char key[128];
+    for (int i = 0; i < 50; i++) {
+        snprintf(key, sizeof(key), "%d", i);
+        model_map_setl(&m, i, strdup(key));
+    }
+
+    for (int i = 0; i < 50; i++) {
+        auto val = model_map_removel(&m, i);
+        free(val);
+    }
+
+    REQUIRE(m.impl == nullptr);
+}
+
+TEST_CASE("it remove last element", "[model]") {
+    model_map m = {nullptr};
+    char key[128];
+    for (int i = 0; i < 50; i++) {
+        snprintf(key, sizeof(key), "%d", i);
+        model_map_setl(&m, i, strdup(key));
+    }
+
+    auto it = model_map_iterator(&m);
+    while(it != nullptr) {
+        auto val = model_map_it_value(it);
+        it = model_map_it_remove(it);
+        free(val);
+    }
+
+    REQUIRE(m.impl == nullptr);
+}

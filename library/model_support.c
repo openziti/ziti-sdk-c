@@ -987,7 +987,7 @@ struct model_map_entry {
     void *value;
     LIST_ENTRY(model_map_entry) _next;
     LIST_ENTRY(model_map_entry) _tnext;
-    struct model_impl_s *_impl;
+    model_map *_map;
 };
 
 #define ENTRY_KEY(e) ((e)->key_len > sizeof((e)->key) ? (e)->key : &(e)->key)
@@ -1086,7 +1086,7 @@ void *model_map_set_key(model_map *m, const void *key, size_t key_len, void *val
         memcpy(&el->key, key, key_len);
     }
     el->key_hash = kh;
-    el->_impl = m->impl;
+    el->_map = m;
     uint32_t idx = el->key_hash % m->impl->buckets;
 
     entries_t *bucket = m->impl->table + idx;
@@ -1142,6 +1142,11 @@ void *model_map_remove_key(model_map *m, const void *key, size_t key_len) {
         }
         free(el);
         m->impl->size--;
+    }
+
+    if (m->impl->size == 0) {
+        FREE(m->impl->table);
+        FREE(m->impl);
     }
     return val;
 }
@@ -1202,13 +1207,19 @@ model_map_iter model_map_it_remove(model_map_iter it) {
     model_map_iter next = model_map_it_next(it);
     if (it != NULL) {
         struct model_map_entry *e = (struct model_map_entry *) it;
-        e->_impl->size--;
+        e->_map->impl->size--;
         LIST_REMOVE(e, _next);
         LIST_REMOVE(e, _tnext);
         if (e->key_len > sizeof(e->key)) {
             free(e->key);
         }
         free(e);
+
+        // last element removed
+        if (e->_map->impl->size == 0) {
+            FREE(e->_map->impl->table);
+            FREE(e->_map->impl);
+        }
     }
     return next;
 }
