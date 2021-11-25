@@ -53,6 +53,8 @@ TEST_CASE("posture response response", "[model]") {
     REQUIRE_THAT(pr_resp.services[0]->posture_query_type, Equals("MFA"));
     REQUIRE(*pr_resp.services[0]->timeout == 600);
     REQUIRE(*pr_resp.services[0]->timeoutRemaining == 300);
+
+    free_ziti_pr_response(&pr_resp);
 }
 
 TEST_CASE("multi-edge-router session", "[model]") {

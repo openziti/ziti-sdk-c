@@ -1207,7 +1207,8 @@ model_map_iter model_map_it_remove(model_map_iter it) {
     model_map_iter next = model_map_it_next(it);
     if (it != NULL) {
         struct model_map_entry *e = (struct model_map_entry *) it;
-        e->_map->impl->size--;
+        model_map *m = e->_map;
+        m->impl->size--;
         LIST_REMOVE(e, _next);
         LIST_REMOVE(e, _tnext);
         if (e->key_len > sizeof(e->key)) {
@@ -1216,9 +1217,9 @@ model_map_iter model_map_it_remove(model_map_iter it) {
         free(e);
 
         // last element removed
-        if (e->_map->impl->size == 0) {
-            FREE(e->_map->impl->table);
-            FREE(e->_map->impl);
+        if (m->impl->size == 0) {
+            FREE(m->impl->table);
+            FREE(m->impl);
         }
     }
     return next;
