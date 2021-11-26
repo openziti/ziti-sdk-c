@@ -115,9 +115,8 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     }
 
     // shutdown listeners
-    struct listener *l;
-    const char *name;
-    MODEL_MAP_FOREACH(name, l, &app_ctx->listeners) {
+    MODEL_MAP_FOR(it, app_ctx->listeners) {
+        struct listener *l = model_map_it_value(it);
         if (uv_is_active((const uv_handle_t *) &l->server)) {
             uv_close((uv_handle_t *) &l->server, close_server_cb);
         }
@@ -138,9 +137,8 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
 }
 
 static void debug_dump(struct proxy_app_ctx *app_ctx) {
-    struct listener *l;
-    const char *name;
-    MODEL_MAP_FOREACH(name, l, &app_ctx->listeners) {
+    MODEL_MAP_FOR(it, app_ctx->listeners) {
+        struct listener *l = model_map_it_value(it);
         printf("listening for service[%s] on port[%d]\n", l->service_name, l->port);
     }
     ziti_dump(app_ctx->ziti, fprintf, stdout);
@@ -486,9 +484,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 for (ziti_service **sp = event->event.service.changed; *sp != NULL; sp++) {
                     ziti_service *service = *sp;
 
-                    const char *policy_id;
-                    ziti_posture_query_set *policy;
-                    MODEL_MAP_FOREACH(policy_id, policy, &service->posture_query_map) {
+                    MODEL_MAP_FOR(it, service->posture_query_map) {
+                        ziti_posture_query_set *policy = model_map_it_value(it);
                         for (int idx = 0; policy->posture_queries[idx] != NULL; idx++) {
                             ziti_posture_query *query = policy->posture_queries[idx];
 

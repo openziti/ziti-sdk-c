@@ -242,6 +242,7 @@ for (var(e,line) = model_map_iterator(map), k = model_map_it_key(var(e,line)), v
 
 #define MODEL_MAP_FOREACH(k, v, map) MODEL_MAP_FOREACH_l(k, v, map, __LINE__)
 
+#define MODEL_MAP_FOR(it, m) for(model_map_iter it = model_map_iterator(&(m)); (it) != NULL; (it) = model_map_it_next(it))
 
 typedef enum {
     tag_null,
