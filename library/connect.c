@@ -25,7 +25,7 @@ limitations under the License.
 static const char *INVALID_SESSION = "Invalid Session";
 static const int MAX_CONNECT_RETRY = 3;
 
-#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%d.%d] " fmt, conn->ziti_ctx->id, conn->conn_id, ##__VA_ARGS__)
+#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%ud.%ud] " fmt, conn->ziti_ctx->id, conn->conn_id, ##__VA_ARGS__)
 
 #define conn_states(XX) \
     XX(Initial)\
@@ -155,7 +155,7 @@ static void free_conn_req(struct ziti_conn_req *r) {
     free_ziti_listen_opts(r->listen_opts);
     FREE(r->service_id);
     free(r);
-};
+}
 
 int close_conn_internal(struct ziti_conn *conn) {
     if (conn->state == Closed && conn->write_reqs == 0 && model_map_size(&conn->children) == 0) {
@@ -261,7 +261,7 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
     struct ziti_conn *conn = ctx;
     ziti_context ztx = ch->ctx;
 
-    // check if it is still a valid connection
+    // check if it is still a valid connection;
     // connection may be completed and gone by the time this channel gets connected
     struct ziti_conn *c;
     LIST_FOREACH(c, &ch->ctx->connections, next) {
@@ -436,7 +436,7 @@ static void connect_get_net_session_cb(ziti_net_session *s, const ziti_error *er
         s->service_id = strdup(req->service_id);
         if (req->session_type == TYPE_DIAL) {
             ziti_net_session *existing = model_map_get(&ztx->sessions, req->service_id);
-            // this happen with concurrent connection requests for the same service (common with browsers)
+            // this happens with concurrent connection requests for the same service (common with browsers)
             if (existing) {
                 CONN_LOG(DEBUG, "found session[%s] for service[%s]", existing->id, conn->service);
                 free_ziti_net_session(s);
@@ -1412,7 +1412,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
             bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
             int rc = conn->encrypted ? establish_crypto(clt, msg) : ZITI_OK;
             if (rc != ZITI_OK) {
-                CONN_LOG(ERROR, "failed to establish crypto with caller[%.*s]", source_identity_sz,
+                CONN_LOG(ERROR, "failed to establish crypto with caller[%.*s]", (int)source_identity_sz,
                          caller_id_sent ? (char*)source_identity : "");
                 reject_dial_request(conn, msg, ziti_errorstr(rc));
                 clt->state = Closed; // put directly into Closed state
