@@ -80,3 +80,27 @@ TEST_CASE("enum compare", "[model]") {
     CHECK(cmp_FooWithEnum(&f1, &f2) > 0);
     CHECK(cmp_FooWithEnum(&f2, &f1) < 0);
 }
+
+#define ModelWithEnumArray(XX, ...) \
+XX(name, string, none, name, __VA_ARGS__) \
+XX(states, State, array, states, __VA_ARGS__)
+
+DECLARE_MODEL(FooWithEnumArray, ModelWithEnumArray)
+IMPL_MODEL(FooWithEnumArray, ModelWithEnumArray)
+
+TEST_CASE("parse enum array", "[model]") {
+    const char *json = R"({
+"name": "this is a name",
+"states": ["Ugly", "Bad"]
+})";
+
+    FooWithEnumArray f1;
+    REQUIRE(parse_FooWithEnumArray(&f1, json, strlen(json)) == 0);
+
+    CHECK_THAT(f1.name, Catch::Equals("this is a name"));
+    CHECK(*f1.states[0] == States.Ugly);
+    CHECK(*f1.states[1] == States.Bad);
+    CHECK(f1.states[2] == nullptr);
+
+    free_FooWithEnumArray(&f1);
+}
