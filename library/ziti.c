@@ -638,10 +638,10 @@ struct service_req_s {
 
 static void set_service_flags(ziti_service *s) {
     for (int i = 0; s->permissions[i] != NULL; i++) {
-        if (strcmp(s->permissions[i], "Dial") == 0) {
+        if (*s->permissions[i] == ziti_session_types.Dial) {
             s->perm_flags |= ZITI_CAN_DIAL;
         }
-        if (strcmp(s->permissions[i], "Bind") == 0) {
+        if (*s->permissions[i] == ziti_session_types.Bind) {
             s->perm_flags |= ZITI_CAN_BIND;
         }
     }
@@ -1239,7 +1239,7 @@ void ziti_set_api_session(ziti_context ztx, ziti_api_session *session) {
                     API_SESSION_EXPIRATION_TOO_SMALL_SECONDS, API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS);
         }
 
-        ZTX_LOG(INFO, "api session set, setting api_session_timer to %ds", delay_seconds);
+        ZTX_LOG(INFO, "api session set, setting api_session_timer to %lds", delay_seconds);
         ziti_schedule_api_session_refresh(ztx, delay_seconds * 1000);
     }
 
@@ -1356,12 +1356,12 @@ static void version_cb(ziti_version *v, const ziti_error *err, void *ctx) {
     }
 }
 
-void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, const char *type) {
+void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type) {
     if (session == NULL) {
         return;
     }
 
-    if (strcmp(TYPE_DIAL, type) == 0) {
+    if (type == ziti_session_types.Dial) {
         ziti_net_session *s = model_map_get(&ztx->sessions, service_id);
         if (s != session) {
             // already removed or different one

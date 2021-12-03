@@ -25,7 +25,7 @@ limitations under the License.
 static const char *INVALID_SESSION = "Invalid Session";
 static const int MAX_CONNECT_RETRY = 3;
 
-#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%ud.%ud] " fmt, conn->ziti_ctx->id, conn->conn_id, ##__VA_ARGS__)
+#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%u.%u] " fmt, conn->ziti_ctx->id, conn->conn_id, ##__VA_ARGS__)
 
 #define conn_states(XX) \
     XX(Initial)\
@@ -52,7 +52,7 @@ static const char* conn_state_str[] = {
 
 
 struct ziti_conn_req {
-    const char *session_type;
+    ziti_session_type session_type;
     char *service_id;
     ziti_net_session *session;
     ziti_conn_cb cb;
@@ -146,7 +146,7 @@ static void free_conn_req(struct ziti_conn_req *r) {
         uv_close((uv_handle_t *) r->conn_timeout, free_handle);
     }
 
-    if (r->session_type == TYPE_BIND && r->session) {
+    if (r->session_type == ziti_session_types.Bind && r->session) {
         free_ziti_net_session(r->session);
         FREE(r->session);
     }
@@ -399,10 +399,10 @@ static void connect_get_service_cb(ziti_service *s, const ziti_error *err, void 
     else {
         CONN_LOG(DEBUG, "got service[%s] id[%s]", s->name, s->id);
         for (int i = 0; s->permissions[i] != NULL; i++) {
-            if (strcmp(s->permissions[i], "Dial") == 0) {
+            if (*s->permissions[i] == ziti_session_types.Dial) {
                  s->perm_flags |= ZITI_CAN_DIAL;
             }
-            if (strcmp(s->permissions[i], "Bind") == 0) {
+            if (*s->permissions[i] == ziti_session_types.Bind) {
                 s->perm_flags |= ZITI_CAN_BIND;
             }
         }
@@ -434,7 +434,7 @@ static void connect_get_net_session_cb(ziti_net_session *s, const ziti_error *er
     else {
         req->session = s;
         s->service_id = strdup(req->service_id);
-        if (req->session_type == TYPE_DIAL) {
+        if (req->session_type == ziti_session_types.Dial) {
             ziti_net_session *existing = model_map_get(&ztx->sessions, req->service_id);
             // this happens with concurrent connection requests for the same service (common with browsers)
             if (existing) {
@@ -471,13 +471,13 @@ static void ziti_connect_async(uv_async_t *ar) {
     }
 
     ziti_send_posture_data(ztx);
-    if (req->session == NULL && req->session_type == TYPE_DIAL) {
+    if (req->session == NULL && req->session_type == ziti_session_types.Dial) {
         req->session = model_map_get(&ztx->sessions, req->service_id);
     }
 
     if (req->session == NULL) {
-        CONN_LOG(DEBUG, "requesting '%s' session for service[%s]", req->session_type, conn->service);
-        ziti_ctrl_get_net_session(&ztx->controller, req->service_id, req->session_type, connect_get_net_session_cb, ar);
+        CONN_LOG(DEBUG, "requesting '%s' session for service[%s]", ziti_session_types.name(req->session_type), conn->service);
+        ziti_ctrl_get_session(&ztx->controller, req->service_id, req->session_type, connect_get_net_session_cb, ar);
         return;
     }
     else {
@@ -486,7 +486,7 @@ static void ziti_connect_async(uv_async_t *ar) {
         req->conn_timeout->data = conn;
         uv_timer_start(req->conn_timeout, connect_timeout, conn->timeout, 0);
 
-        CONN_LOG(DEBUG, "starting %s connection for service[%s] with session[%s]", req->session_type, conn->service, req->session->id);
+        CONN_LOG(DEBUG, "starting %s connection for service[%s] with session[%s]", ziti_session_types.name(req->session_type), conn->service, req->session->id);
         ziti_connect(ztx, req->session, conn);
     }
 
@@ -505,7 +505,7 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
     conn->service = strdup(service);
     conn->conn_req = req;
 
-    req->session_type = TYPE_DIAL;
+    req->session_type = ziti_session_types.Dial;
     req->cb = conn_cb;
 
     if (dial_opts != NULL) {
@@ -860,7 +860,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
         case ContentTypeStateClosed:
             if (strncmp(INVALID_SESSION, (const char *) msg->body, msg->header.body_len) == 0) {
                 CONN_LOG(WARN, "session for service[%s] became invalid", conn->service);
-                if (strcmp(TYPE_DIAL, conn->conn_req->session_type) == 0) {
+                if (conn->conn_req->session_type == ziti_session_types.Dial) {
                     ziti_net_session *s = model_map_get(&conn->ziti_ctx->sessions, req->service_id);
                     if (s != req->session) {
                         // already removed or different one
@@ -1063,7 +1063,7 @@ int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *liste
     conn->service = strdup(service);
     conn->conn_req = req;
 
-    req->session_type = TYPE_BIND;
+    req->session_type = ziti_session_types.Bind;
     req->cb = listen_cb;
 
     if (listen_opts != NULL) {

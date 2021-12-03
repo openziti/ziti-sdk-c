@@ -260,14 +260,13 @@ TEST_CASE("parse-services-array", "[model]") {
     REQUIRE(services[idx] == nullptr);
 
     REQUIRE_THAT(services[0]->name, Equals("hosting"));
-    REQUIRE_THAT(services[0]->permissions[0], Equals("Bind"));
+    REQUIRE(*services[0]->permissions[0] == ziti_session_types.Bind);
     REQUIRE(services[0]->posture_query_set == nullptr); //missing
 
     REQUIRE(strcmp(services[1]->name, "httpbin") == 0);
-    REQUIRE_THAT(services[1]->permissions[0], Equals("Dial"));
+    REQUIRE(*services[1]->permissions[0] == ziti_session_types.Dial);
 
     REQUIRE(services[1]->posture_query_set == nullptr); //present but null
-
 
     REQUIRE(services[2]->posture_query_set != nullptr); //present
 

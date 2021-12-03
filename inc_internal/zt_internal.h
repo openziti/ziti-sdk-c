@@ -39,10 +39,7 @@ limitations under the License.
 #define UUID_STR_LEN 37
 #endif
 
-#define TYPE_DIAL "Dial"
-#define TYPE_BIND "Bind"
-
-#define ZTX_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ztx[%ud] " fmt, ztx->id, ##__VA_ARGS__)
+#define ZTX_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ztx[%u] " fmt, ztx->id, ##__VA_ARGS__)
 
 extern const char *APP_ID;
 extern const char *APP_VERSION;
@@ -250,7 +247,7 @@ struct ziti_ctx {
 extern "C" {
 #endif
 
-void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, const char *type);
+void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type);
 
 void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
 
