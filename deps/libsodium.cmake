@@ -4,8 +4,9 @@ if (WIN32)
 
     if(CMAKE_C_COMPILER_ID STREQUAL "MSVC")
            FetchContent_Declare (
-		   libsodium
-		   URL	https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-stable-msvc.zip
+                   libsodium
+                   URL	https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-stable-msvc.zip
+                   URL_HASH MD5=19e843821313a1eda081301f1c2452ef
 		   )
            if(CMAKE_EXE_LINKER_FLAGS MATCHES "/machine:x64")
               set(arch "x64")
@@ -23,9 +24,10 @@ if (WIN32)
            message("libsodium = ${libsodium_lib_path}")
     else()
            FetchContent_Declare (
-		   libsodium
-		   URL	https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-stable-mingw.tar.gz
-		   )
+                   libsodium
+                   URL	https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-stable-mingw.tar.gz
+                   URL_HASH MD5=110bbb6ca2322a0c2b3f639432e15cea
+           )
            set(libsodium_include_path libsodium-win64/include)
            set(libsodium_lib_path libsodium-win64/lib/libsodium.a)
 	endif()

@@ -189,7 +189,7 @@ static void init_debug(uv_loop_t *loop) {
     uv_prepare_start(&log_flusher, flush_log);
 }
 
-void ziti_logger(int level, const char *file, unsigned int line, const char *func, const char *fmt, ...) {
+void ziti_logger(int level, const char *file, unsigned int line, const char *func, FORMAT_STRING(const char *fmt), ...) {
     static size_t loglinelen = 1024;
     static char *logbuf;
 
@@ -199,10 +199,10 @@ void ziti_logger(int level, const char *file, unsigned int line, const char *fun
     va_start(argp, fmt);
     char location[128];
     if (func && func[0]) {
-        snprintf(location, sizeof(location), "%s:%d %s()", file + SOURCE_PATH_SIZE, line, func);
+        snprintf(location, sizeof(location), "%s:%ud %s()", file + SOURCE_PATH_SIZE, line, func);
     }
     else {
-        snprintf(location, sizeof(location), "%s:%d", file + SOURCE_PATH_SIZE, line);
+        snprintf(location, sizeof(location), "%s:%ud", file + SOURCE_PATH_SIZE, line);
     }
 
     int len = vsnprintf(logbuf, loglinelen, fmt, argp);
@@ -238,7 +238,7 @@ static const char *get_elapsed_time() {
     if (now > last_update) {
         last_update = now;
         unsigned long long elapsed = now - starttime;
-        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%9lld.%03lld", (elapsed / 1000), (elapsed % 1000));
+        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%9llud.%03llud", (elapsed / 1000), (elapsed % 1000));
     }
     return elapsed_buffer;
 }

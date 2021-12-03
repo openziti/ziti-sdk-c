@@ -47,12 +47,32 @@ if (level <= ziti_log_level()) { ziti_logger(level, __FILE__, __LINE__, __func__
 extern "C" {
 #endif
 
+#if _MSC_VER >= 1400
+# include <sal.h>
+# if _MSC_VER > 1400
+#  define FORMAT_STRING(p) _Printf_format_string_ p
+# else
+#  define FORMAT_STRING(p) __format_string p
+# endif /* FORMAT_STRING */
+#else
+# define FORMAT_STRING(p) p
+#endif /* _MSC_VER */
+
+#ifdef __GNUC__
+#define ziti_printf_args(a, b) __attribute__((__format__ (printf,a,b)))
+#else
+#define ziti_printf_args(a,b)
+#endif
+
 #define ZITI_LOG_DEFAULT_LEVEL (-1)
 
 typedef void (*log_writer)(int level, const char *loc, const char *msg, size_t msglen);
 
 ZITI_FUNC extern void
-ziti_logger(int level, const char *file, unsigned int line, const char *func, const char *fmt, ...);
+ziti_logger(int level, const char *file, unsigned int line, const char *func,
+            FORMAT_STRING(const char *fmt), ...)
+            ziti_printf_args(5,6)
+;
 
 // call once
 // use ZITI_LOG_DEFAULT_LEVEL to use default(INFO)/ZITI_LOG env var
