@@ -102,5 +102,10 @@ TEST_CASE("parse enum array", "[model]") {
     CHECK(*f1.states[1] == States.Bad);
     CHECK(f1.states[2] == nullptr);
 
+    size_t json_len;
+    auto js = FooWithEnumArray_to_json(&f1, 0, &json_len);
+
+    CHECK_THAT(js, Catch::Contains(R"("states":["Ugly","Bad"])"));
+
     free_FooWithEnumArray(&f1);
 }
