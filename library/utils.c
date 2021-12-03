@@ -199,10 +199,10 @@ void ziti_logger(int level, const char *file, unsigned int line, const char *fun
     va_start(argp, fmt);
     char location[128];
     if (func && func[0]) {
-        snprintf(location, sizeof(location), "%s:%ud %s()", file + SOURCE_PATH_SIZE, line, func);
+        snprintf(location, sizeof(location), "%s:%u %s()", file + SOURCE_PATH_SIZE, line, func);
     }
     else {
-        snprintf(location, sizeof(location), "%s:%ud", file + SOURCE_PATH_SIZE, line);
+        snprintf(location, sizeof(location), "%s:%u", file + SOURCE_PATH_SIZE, line);
     }
 
     int len = vsnprintf(logbuf, loglinelen, fmt, argp);
@@ -238,7 +238,7 @@ static const char *get_elapsed_time() {
     if (now > last_update) {
         last_update = now;
         unsigned long long elapsed = now - starttime;
-        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%9llud.%03llud", (elapsed / 1000), (elapsed % 1000));
+        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%9llu.%03llu", (elapsed / 1000), (elapsed % 1000));
     }
     return elapsed_buffer;
 }
