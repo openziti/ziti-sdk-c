@@ -19,23 +19,6 @@ limitations under the License.
 #include <buffer.h>
 #include <iostream>
 
-#define WRITE_BUF(name) struct name { \
-    buffer *buf; \
-    uint8_t *chunk; \
-    uint8_t *wp; \
-}
-
-#define WRITE_BUF_APPEND(b, s, n) do{ \
-    if ((b)->chunk == NULL) {             \
-        (b)->chunk = malloc(16);              \
-        (b)->wp = chunk;\
-    }                               \
-    if ((b)->wp - (b)->chunk + (n) > 16) {\
-        if ((b)->buf == NULL) (b)->buf = new_buffer(); \
-        buffer_append((b)->buf, (b)->chunk, wp - (b)->chunk);\
-    }\
-} while(0)
-
 TEST_CASE("buffer append", "[util]") {
     write_buf_t json_buf;
     write_buf_init(&json_buf);
@@ -55,4 +38,35 @@ TEST_CASE("buffer append", "[util]") {
 
     write_buf_free(&json_buf);
 }
+
+TEST_CASE("buffer fmt", "[util]") {
+    write_buf_t fmt_buf;
+    write_buf_init(&fmt_buf);
+
+    fmt_buf.chunk_size = 160;
+
+    std::string test_str;
+
+    for (int i = 0; i < 1000; i++) {
+        write_buf_fmt(&fmt_buf, "%04d\n", i);
+        char num[16];
+        snprintf(num, 16, "%04d\n", i);
+        test_str += num;
+    }
+
+    size_t size = write_buf_size(&fmt_buf);
+    CHECK(size == test_str.size());
+    CHECK(size == 1000*5);
+
+    size_t len;
+    char *result = write_buf_to_string(&fmt_buf, &len);
+    CHECK(len == test_str.size());
+    CHECK(write_buf_size(&fmt_buf) == 0);
+    CHECK_THAT(result, Catch::Equals(test_str));
+
+    free(result);
+    write_buf_free(&fmt_buf);
+}
+
+
 

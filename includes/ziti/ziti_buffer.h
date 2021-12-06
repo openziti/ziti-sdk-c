@@ -1,5 +1,5 @@
 /*
-Copyright 2019-2020 NetFoundry, Inc.
+Copyright (c) 2021 NetFoundry Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,11 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#ifndef ZITI_SDK_BUFFER_H
-#define ZITI_SDK_BUFFER_H
+#ifndef ZITI_SDK_ZITI_BUFFER_H
+#define ZITI_SDK_ZITI_BUFFER_H
 
 #include <stdint.h>
-#include <ziti/ziti_buffer.h>
+#include "externs.h"
+#include "ziti_log.h"
 
 #if !defined(__DEFINED_ssize_t) && !defined(__ssize_t_defined)
 #if _WIN32
@@ -34,31 +35,20 @@ typedef intptr_t ssize_t;
 extern "C" {
 #endif
 
-typedef struct buffer_s buffer;
+typedef struct write_buf_s write_buf_t;
 
-buffer *new_buffer();
-void free_buffer(buffer *);
+ZITI_FUNC write_buf_t* new_write_buf();
+ZITI_FUNC write_buf_t* new_fixed_write_buf(char *outbuf, size_t max);
+ZITI_FUNC void delete_write_buf(write_buf_t *wb);
 
-void buffer_cleanup(buffer *);
-ssize_t buffer_get_next(buffer *, size_t want, uint8_t **ptr);
-void buffer_push_back(buffer *, size_t);
-void buffer_append(buffer *, uint8_t *buf, size_t len);
-size_t buffer_available(buffer *);
+ZITI_FUNC int write_buf_append(write_buf_t *wb, const char *str);
+ZITI_FUNC int write_buf_append_byte(write_buf_t *wb, char c);
+ZITI_FUNC int write_buf_fmt(write_buf_t *wb, FORMAT_STRING(const char *fmt), ...) ziti_printf_args(2,3);
+ZITI_FUNC size_t write_buf_size(write_buf_t *wb);
+ZITI_FUNC char *write_buf_to_string(write_buf_t *wb, size_t *outlen);
 
-
-struct write_buf_s {
-    buffer *buf;
-    bool fixed;
-    size_t chunk_size;
-    uint8_t *chunk;
-    uint8_t *wp;
-};
-void write_buf_init(write_buf_t *wb);
-void write_buf_init_fixed(write_buf_t *wb, char *outbuf, size_t max);
-void write_buf_free(write_buf_t *wb);
 
 #ifdef __cplusplus
 }
 #endif
-
-#endif //ZITI_SDK_BUFFER_H
+#endif //ZITI_SDK_ZITI_BUFFER_H

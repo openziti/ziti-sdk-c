@@ -25,6 +25,7 @@ limitations under the License.
 #endif
 #include <uv_mbed/queue.h>
 #include <stdbool.h>
+#include <stdarg.h>
 
 #include "buffer.h"
 
@@ -193,6 +194,9 @@ char *write_buf_to_string(write_buf_t *wb, size_t *outlen) {
     if (outlen) {
         *outlen = copied + (wb->wp - wb->chunk);
     }
+    // after copy buffer contents is empty -- reset current chunk
+    wb->wp = wb->chunk;
+    
     return result;
 }
 
@@ -203,3 +207,60 @@ void write_buf_free(write_buf_t *wb) {
     free_buffer(wb->buf);
     wb->buf = NULL;
 }
+
+write_buf_t* new_write_buf() {
+    NEWP(wb, write_buf_t);
+    write_buf_init(wb);
+    return wb;
+}
+
+write_buf_t* new_fixed_write_buf(char *outbuf, size_t max) {
+    NEWP(wb, write_buf_t);
+    write_buf_init_fixed(wb, outbuf, max);
+    return wb;
+}
+
+void delete_write_buf(write_buf_t *wb) {
+    write_buf_free(wb);
+    free(wb);
+}
+
+int write_buf_fmt(write_buf_t *wb, FORMAT_STRING(const char *fmt), ...) {
+    va_list argp;
+    va_start(argp, fmt);
+
+    size_t avail_in_chunk = wb->chunk + wb->chunk_size - wb->wp;
+    int len = vsnprintf((char*)wb->wp, avail_in_chunk, fmt, argp);
+    va_end(argp);
+
+    // fit into current chunk -- nothing else to do
+    if (len < avail_in_chunk) {
+        wb->wp += len;
+        return len;
+    }
+
+    // can't allocate any more memory
+    if (wb->fixed) return -1;
+
+    // current chunk is not empty push into buffer
+    if (wb->chunk != wb->wp) {
+        buffer_append(wb->buf, wb->chunk, wb->wp - wb->chunk);
+        wb->chunk = malloc(wb->chunk_size);
+        wb->wp = wb->chunk;
+    }
+
+    va_start(argp, fmt);
+
+    if (len < wb->chunk_size) {
+        len = vsnprintf((char*)wb->wp, wb->chunk_size, fmt, argp);
+        wb->wp += len;
+    } else {
+        // formatted string won't fit into chunk_size -- add directly to the buffer
+        char *s = malloc(len + 1);
+        len = vsnprintf(s, len + 1, fmt, argp);
+        buffer_append(wb->buf, (uint8_t *)s, len);
+    }
+    va_end(argp);
+    return len;
+}
+
