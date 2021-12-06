@@ -488,8 +488,8 @@ ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb
     um_http_req(&ctrl->client, "GET", path, ctrl_resp_cb, resp);
 }
 
-void ziti_ctrl_get_net_session(
-        ziti_controller *ctrl, const char *service_id, const char *type,
+void ziti_ctrl_get_session(
+        ziti_controller *ctrl, const char *service_id, ziti_session_type type,
         void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx) {
 
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
@@ -497,7 +497,7 @@ void ziti_ctrl_get_net_session(
     char *content = malloc(128);
     size_t len = snprintf(content, 128,
                           "{\"serviceId\": \"%s\", \"type\": \"%s\"}",
-                          service_id, type);
+                          service_id, ziti_session_types.name(type));
 
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
     resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_net_session_ptr;

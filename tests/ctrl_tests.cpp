@@ -162,7 +162,7 @@ TEST_CASE("controller_test","[integ]") {
             auto *re = static_cast<struct uber_resp_s *>(ctx);
             resp_cb(s, e, &re->service);
             if (e == nullptr) {
-                ziti_ctrl_get_net_session(re->c, s->id, "Dial", resp_cb, &re->ns);
+                ziti_ctrl_get_session(re->c, s->id, ziti_session_types.Dial, resp_cb, &re->ns);
             }
             ziti_ctrl_logout(re->c, logout_cb, &re->logout);
 

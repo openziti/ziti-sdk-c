@@ -99,6 +99,8 @@ IMPL_MODEL(ziti_mfa_code_req, ZITI_MFA_CODE_REQ)
 
 IMPL_MODEL(ziti_identity_data, ZITI_IDENTITY_DATA_MODEL)
 
+IMPL_ENUM(ziti_session_type, ZITI_SESSION_TYPE_ENUM)
+
 const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type) {
     return (const char *) model_map_get(&service->config, cfg_type);
 }

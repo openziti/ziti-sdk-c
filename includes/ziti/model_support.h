@@ -273,7 +273,8 @@ enum Enum {                             \
 Values(mk_enum, Enum)                   \
 Enum##_Unknown = -1,                    \
 };                                 \
-typedef enum Enum Enum;\
+typedef enum Enum Enum;            \
+typedef Enum **Enum##_array;         \
 struct Enum##_s { \
 const char* (*name)(int v);                       \
 Enum (*value_of)(const char* n);                  \

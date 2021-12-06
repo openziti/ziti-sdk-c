@@ -20,6 +20,10 @@ limitations under the License.
 
 #include "model_support.h"
 
+#define ZITI_SESSION_TYPE_ENUM(XX, ...) \
+XX(Bind, __VA_ARGS__)                   \
+XX(Dial, __VA_ARGS__)
+
 #define ZITI_AUTH_QUERY_MFA_MODEL(XX, ...) \
 XX(type_id, string, none, typeId, __VA_ARGS__) \
 XX(provider, string, none, provider, __VA_ARGS__) \
@@ -76,7 +80,7 @@ XX(posture_queries, ziti_posture_query, array, postureQueries, __VA_ARGS__)
 #define ZITI_SERVICE_MODEL(XX, ...) \
 XX(id, string, none, id, __VA_ARGS__) \
 XX(name, string, none, name, __VA_ARGS__) \
-XX(permissions, string, array, permissions, __VA_ARGS__) \
+XX(permissions, ziti_session_type, array, permissions, __VA_ARGS__) \
 XX(encryption, bool, none, encryptionRequired, __VA_ARGS__) \
 XX(perm_flags, int, none, NULL, __VA_ARGS__) \
 XX(config, json, map, config, __VA_ARGS__) \
@@ -131,6 +135,8 @@ extern "C" {
 #undef MODEL_API
 #endif
 #define MODEL_API ZITI_FUNC
+
+DECLARE_ENUM(ziti_session_type, ZITI_SESSION_TYPE_ENUM)
 
 DECLARE_MODEL(api_path, ZITI_API_PATH_MODEL)
 

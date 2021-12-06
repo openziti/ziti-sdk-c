@@ -70,8 +70,8 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*srv_cb)(ziti_service_a
 void ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name,
                            void (*srv_cb)(ziti_service *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_get_net_session(
-        ziti_controller *ctrl, const char *service_id, const char *type,
+void ziti_ctrl_get_session(
+        ziti_controller *ctrl, const char *service_id, ziti_session_type type,
         void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_get_sessions(
