@@ -816,6 +816,10 @@ static int _cmp_map(model_map *lh, model_map *rh) {
     return rc;
 }
 
+static int null_to_json(string_buf_t *buf, int indent, int flags) {
+    return string_buf_append(buf, "null");
+}
+
 static int bool_to_json(bool *v, string_buf_t *buf, int indent, int flags) {
     return string_buf_append(buf, *v ? "true" : "false");
 }
@@ -975,6 +979,10 @@ int json_enum(const void *ptr, void *bufp, int indent, int flags, const void *en
     string_buf_t *buf = bufp;
     int en_val = *(int *) ptr;
     const struct generic_enum_s *en = enum_type;
+
+    if (en_val == 0) { // Enum_Unknown
+        return null_to_json(buf, indent, flags);
+    }
 
     return string_to_json(en->name(en_val), buf, indent, flags);
 }

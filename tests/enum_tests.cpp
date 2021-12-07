@@ -30,6 +30,7 @@ IMPL_ENUM(State, States)
 TEST_CASE("test enum", "[model]") {
     State good = States.value_of("Good");
 
+    CHECK(State_Unknown == 0);
     CHECK(good == States.Good);
     CHECK_THAT(States.name(good), Catch::Matches("Good"));
 }
@@ -54,10 +55,45 @@ TEST_CASE("parse enum", "[model]") {
     CHECK(f1.state == States.Ugly);
 }
 
-TEST_CASE("enum to json", "[model]") {
-    FooWithEnum f;
+TEST_CASE("parse null enum", "[model]") {
+    const char *json = R"({
+"name": "this is a name",
+"state": null
+})";
+
+    FooWithEnum f1;
+    REQUIRE(parse_FooWithEnum(&f1, json, strlen(json)) == 0);
+
+    CHECK_THAT(f1.name, Catch::Equals("this is a name"));
+    CHECK(f1.state == 0);
+}
+
+TEST_CASE("default enum", "[model]") {
+    FooWithEnum f = {0};
     f.name = (char *) "awesome foo";
-    f.state = States.Bad;
+
+    CHECK(f.state == State_Unknown);
+
+    char *json = FooWithEnum_to_json(&f, 0, nullptr);
+
+    REQUIRE(json);
+
+    REQUIRE_THAT(json, Catch::Contains("\"state\":null"));
+
+    FooWithEnum f2;
+    REQUIRE(0 == parse_FooWithEnum(&f2, json, strlen(json)));
+    CHECK(f2.state == State_Unknown);
+
+
+    free(json);
+}
+
+TEST_CASE("enum to json", "[model]") {
+    FooWithEnum f = {0};
+    f.name = (char *) "awesome foo";
+    f.state = States.Bad;/**
+ * Declares [Enum] with given [Values]
+ */
 
     char *json = FooWithEnum_to_json(&f, 0, nullptr);
 
