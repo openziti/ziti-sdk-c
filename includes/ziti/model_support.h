@@ -269,13 +269,13 @@ ZITI_FUNC int json_enum(const void *ptr, void *buf, int indent, int flags, const
 #define enum_field(v,t) const t v;
 
 #define DECLARE_ENUM(Enum, Values) \
-enum Enum {                             \
-Values(mk_enum, Enum)                   \
-Enum##_Unknown = -1,                    \
+enum Enum {                        \
+Enum##_Unknown = 0,                \
+Values(mk_enum, Enum)              \
 };                                 \
 typedef enum Enum Enum;            \
-typedef Enum **Enum##_array;         \
-struct Enum##_s { \
+typedef Enum **Enum##_array;       \
+struct Enum##_s {                  \
 const char* (*name)(int v);                       \
 Enum (*value_of)(const char* n);                  \
 Enum (*value_ofn)(const char* s, size_t n);       \
