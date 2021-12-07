@@ -19,28 +19,36 @@ limitations under the License.
 #include <buffer.h>
 #include <iostream>
 
+TEST_CASE("fixed buffer overflow", "[util]") {
+    char b[10];
+    auto buf = new_fixed_string_buf(b, sizeof(b));
+
+    REQUIRE(string_buf_fmt(buf, "This will not fit!") == -1);
+    REQUIRE(string_buf_size(buf) == 0);
+    delete_string_buf(buf);
+}
 
 TEST_CASE("buffer appendn", "[util]") {
-    string_buf_t json_buf;
-    string_buf_init(&json_buf);
+    auto buf = new_string_buf();
 
     std::string test_str;
 
     std::string str("this is a string\n");
     for (int i = 0; i < 10; i++) {
-        string_buf_appendn(&json_buf, str.c_str(), str.size());
+        string_buf_appendn(buf, str.c_str(), str.size());
         test_str += str;
     }
 
-    CHECK(string_buf_size(&json_buf) == test_str.size());
+    CHECK(string_buf_size(buf) == test_str.size());
 
     size_t len;
-    char *result = string_buf_to_string(&json_buf, &len);
+    char *result = string_buf_to_string(buf, &len);
 
     CHECK_THAT(result, Catch::Equals(test_str));
     CHECK(len == test_str.size());
 
-    string_buf_free(&json_buf);
+    delete_string_buf(buf);
+    free(result);
 }
 
 TEST_CASE("buffer append", "[util]") {
@@ -61,6 +69,7 @@ TEST_CASE("buffer append", "[util]") {
     CHECK(len == test_str.size());
 
     string_buf_free(&json_buf);
+    free(result);
 }
 
 TEST_CASE("buffer fmt", "[util]") {
