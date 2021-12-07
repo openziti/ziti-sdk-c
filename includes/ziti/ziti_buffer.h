@@ -37,21 +37,23 @@ extern "C" {
 
 typedef struct string_buf_s string_buf_t;
 
-ZITI_FUNC string_buf_t *new_write_buf();
+ZITI_FUNC string_buf_t *new_string_buf();
 
-ZITI_FUNC string_buf_t *new_fixed_write_buf(char *outbuf, size_t max);
+ZITI_FUNC string_buf_t *new_fixed_string_buf(char *outbuf, size_t max);
 
-ZITI_FUNC void delete_write_buf(string_buf_t *wb);
+ZITI_FUNC void delete_string_buf(string_buf_t *wb);
 
-ZITI_FUNC int write_buf_append(string_buf_t *wb, const char *str);
+ZITI_FUNC int string_buf_append(string_buf_t *wb, const char *str);
 
-ZITI_FUNC int write_buf_append_byte(string_buf_t *wb, char c);
+ZITI_FUNC int string_buf_appendn(string_buf_t *wb, const char *str, size_t len);
 
-ZITI_FUNC int write_buf_fmt(string_buf_t *wb, FORMAT_STRING(const char *fmt), ...) ziti_printf_args(2, 3);
+ZITI_FUNC int string_buf_append_byte(string_buf_t *wb, char c);
 
-ZITI_FUNC size_t write_buf_size(string_buf_t *wb);
+ZITI_FUNC int string_buf_fmt(string_buf_t *wb, FORMAT_STRING(const char *fmt), ...) ziti_printf_args(2, 3);
 
-ZITI_FUNC char *write_buf_to_string(string_buf_t *wb, size_t *outlen);
+ZITI_FUNC size_t string_buf_size(string_buf_t *wb);
+
+ZITI_FUNC char *string_buf_to_string(string_buf_t *wb, size_t *outlen);
 
 
 #ifdef __cplusplus

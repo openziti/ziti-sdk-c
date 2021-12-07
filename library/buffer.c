@@ -126,7 +126,7 @@ size_t buffer_available(buffer *b) {
 
 #define WRITE_BUF_CHUNK_SIZE 1024
 
-void write_buf_init(string_buf_t *wb) {
+void string_buf_init(string_buf_t *wb) {
     wb->fixed = false;
     wb->chunk_size = WRITE_BUF_CHUNK_SIZE;
     wb->chunk = malloc(wb->chunk_size);
@@ -134,7 +134,7 @@ void write_buf_init(string_buf_t *wb) {
     wb->wp = wb->chunk;
 }
 
-void write_buf_init_fixed(string_buf_t *wb, char *outbuf, size_t max) {
+void string_buf_init_fixed(string_buf_t *wb, char *outbuf, size_t max) {
     wb->fixed = true;
     wb->chunk = (uint8_t *) outbuf;
     wb->wp = wb->chunk;
@@ -142,11 +142,11 @@ void write_buf_init_fixed(string_buf_t *wb, char *outbuf, size_t max) {
     wb->buf = NULL;
 }
 
-size_t write_buf_size(string_buf_t *wb) {
+size_t string_buf_size(string_buf_t *wb) {
     return buffer_available(wb->buf) + (wb->wp - wb->chunk);
 }
 
-int write_buf_append_byte(string_buf_t *wb, char c) {
+int string_buf_append_byte(string_buf_t *wb, char c) {
     if (wb->wp - wb->chunk >= wb->chunk_size) {
 
         if (wb->fixed) { return -1; }
@@ -159,7 +159,7 @@ int write_buf_append_byte(string_buf_t *wb, char c) {
     return 0;
 }
 
-int write_buf_append(string_buf_t *wb, const char *str) {
+int string_buf_append(string_buf_t *wb, const char *str) {
     const char *s = str;
 
     copy:
@@ -177,7 +177,7 @@ int write_buf_append(string_buf_t *wb, const char *str) {
     return 0;
 }
 
-char *write_buf_to_string(string_buf_t *wb, size_t *outlen) {
+char *string_buf_to_string(string_buf_t *wb, size_t *outlen) {
     size_t bytes_in_buffer = buffer_available(wb->buf);
     char *result = malloc(bytes_in_buffer + (wb->wp - wb->chunk) + 1);
 
@@ -200,7 +200,7 @@ char *write_buf_to_string(string_buf_t *wb, size_t *outlen) {
     return result;
 }
 
-void write_buf_free(string_buf_t *wb) {
+void string_buf_free(string_buf_t *wb) {
     wb->wp = NULL;
     if (!wb->fixed) FREE(wb->chunk);
     wb->chunk = NULL;
@@ -208,24 +208,24 @@ void write_buf_free(string_buf_t *wb) {
     wb->buf = NULL;
 }
 
-string_buf_t *new_write_buf() {
+string_buf_t *new_string_buf() {
     NEWP(wb, string_buf_t);
-    write_buf_init(wb);
+    string_buf_init(wb);
     return wb;
 }
 
-string_buf_t *new_fixed_write_buf(char *outbuf, size_t max) {
+string_buf_t *new_fixed_string_buf(char *outbuf, size_t max) {
     NEWP(wb, string_buf_t);
-    write_buf_init_fixed(wb, outbuf, max);
+    string_buf_init_fixed(wb, outbuf, max);
     return wb;
 }
 
-void delete_write_buf(string_buf_t *wb) {
-    write_buf_free(wb);
+void delete_string_buf(string_buf_t *wb) {
+    string_buf_free(wb);
     free(wb);
 }
 
-int write_buf_fmt(string_buf_t *wb, FORMAT_STRING(const char *fmt), ...) {
+int string_buf_fmt(string_buf_t *wb, FORMAT_STRING(const char *fmt), ...) {
     va_list argp;
     va_start(argp, fmt);
 

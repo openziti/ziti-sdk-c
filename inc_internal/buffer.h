@@ -54,11 +54,11 @@ struct string_buf_s {
     uint8_t *wp;
 };
 
-void write_buf_init(string_buf_t *wb);
+void string_buf_init(string_buf_t *wb);
 
-void write_buf_init_fixed(string_buf_t *wb, char *outbuf, size_t max);
+void string_buf_init_fixed(string_buf_t *wb, char *outbuf, size_t max);
 
-void write_buf_free(string_buf_t *wb);
+void string_buf_free(string_buf_t *wb);
 
 #ifdef __cplusplus
 }

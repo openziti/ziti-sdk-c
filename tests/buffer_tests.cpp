@@ -21,51 +21,51 @@ limitations under the License.
 
 TEST_CASE("buffer append", "[util]") {
     string_buf_t json_buf;
-    write_buf_init(&json_buf);
+    string_buf_init(&json_buf);
 
     std::string test_str;
 
     for (int i = 0; i < 10; i++) {
-        write_buf_append(&json_buf, "this is a string\n");
+        string_buf_append(&json_buf, "this is a string\n");
         test_str += "this is a string\n";
     }
 
     size_t len;
-    char *result = write_buf_to_string(&json_buf, &len);
+    char *result = string_buf_to_string(&json_buf, &len);
 
     CHECK_THAT(result, Catch::Equals(test_str));
     CHECK(len == test_str.size());
 
-    write_buf_free(&json_buf);
+    string_buf_free(&json_buf);
 }
 
 TEST_CASE("buffer fmt", "[util]") {
     string_buf_t fmt_buf;
-    write_buf_init(&fmt_buf);
+    string_buf_init(&fmt_buf);
 
     fmt_buf.chunk_size = 160;
 
     std::string test_str;
 
     for (int i = 0; i < 1000; i++) {
-        write_buf_fmt(&fmt_buf, "%04d\n", i);
+        string_buf_fmt(&fmt_buf, "%04d\n", i);
         char num[16];
         snprintf(num, 16, "%04d\n", i);
         test_str += num;
     }
 
-    size_t size = write_buf_size(&fmt_buf);
+    size_t size = string_buf_size(&fmt_buf);
     CHECK(size == test_str.size());
-    CHECK(size == 1000*5);
+    CHECK(size == 1000 * 5);
 
     size_t len;
-    char *result = write_buf_to_string(&fmt_buf, &len);
+    char *result = string_buf_to_string(&fmt_buf, &len);
     CHECK(len == test_str.size());
-    CHECK(write_buf_size(&fmt_buf) == 0);
+    CHECK(string_buf_size(&fmt_buf) == 0);
     CHECK_THAT(result, Catch::Equals(test_str));
 
     free(result);
-    write_buf_free(&fmt_buf);
+    string_buf_free(&fmt_buf);
 }
 
 

@@ -191,12 +191,12 @@ char *model_to_json(const void *obj, const type_meta *meta, int flags, size_t *l
     }
 
     string_buf_t json;
-    write_buf_init(&json);
+    string_buf_init(&json);
     char *result = NULL;
     if (write_model_to_buf(obj, meta, &json, 0, flags) == 0) {
-        result = write_buf_to_string(&json, len);
+        result = string_buf_to_string(&json, len);
     }
-    write_buf_free(&json);
+    string_buf_free(&json);
     return result;
 }
 
@@ -206,17 +206,17 @@ ssize_t model_to_json_r(const void *obj, const type_meta *meta, int flags, char 
     }
 
     string_buf_t json;
-    write_buf_init_fixed(&json, outbuf, max);
+    string_buf_init_fixed(&json, outbuf, max);
     ssize_t result = -1;
     if (write_model_to_buf(obj, meta, &json, 0, flags) == 0) {
-        result = write_buf_size(&json);
+        result = string_buf_size(&json);
     }
-    write_buf_free(&json);
+    string_buf_free(&json);
     return result;
 }
 
 
-#define PRETTY_INDENT(b,ind)  do { \
+#define PRETTY_INDENT(b, ind)  do { \
 for (int j = 0; (flags & MODEL_JSON_COMPACT) == 0 && j <= (ind); j++) BUF_APPEND_B(b, '\t'); \
 } while(0)
 
@@ -225,8 +225,8 @@ if ((flags & MODEL_JSON_COMPACT) == 0) BUF_APPEND_B(b, '\n'); \
 } while(0)
 
 
-#define BUF_APPEND_B(b,s) CHECK_APPEND(write_buf_append_byte(b,s))
-#define BUF_APPEND_S(b,s) CHECK_APPEND(write_buf_append(b,s))
+#define BUF_APPEND_B(b, s) CHECK_APPEND(string_buf_append_byte(b,s))
+#define BUF_APPEND_S(b, s) CHECK_APPEND(string_buf_append(b,s))
 
 #define CHECK_APPEND(op) do { int res = (op); if (res != 0) return res; } while(0)
 
@@ -817,7 +817,7 @@ static int _cmp_map(model_map *lh, model_map *rh) {
 }
 
 static int bool_to_json(bool *v, string_buf_t *buf, int indent, int flags) {
-    return write_buf_append(buf, *v ? "true" : "false");
+    return string_buf_append(buf, *v ? "true" : "false");
 }
 
 static int int_to_json(const int *v, string_buf_t *buf, int indent, int flags) {
@@ -825,7 +825,7 @@ static int int_to_json(const int *v, string_buf_t *buf, int indent, int flags) {
     char b[16];
     int rc = snprintf(b, sizeof(b), "%d", *v);
     if (rc > 0) {
-        return write_buf_append(buf, b);
+        return string_buf_append(buf, b);
     }
     return rc;
 }
@@ -876,10 +876,10 @@ static int tag_to_json(tag *t, string_buf_t *buf, int indent, int flags) {
     int rc;
     switch (t->type) {
         case tag_null:
-            rc = write_buf_append(buf, "null");
+            rc = string_buf_append(buf, "null");
             break;
         case tag_bool:
-            rc = write_buf_append(buf, t->bool_value ? "true" : "false");
+            rc = string_buf_append(buf, t->bool_value ? "true" : "false");
             break;
         case tag_number:
             rc = int_to_json(&t->num_value, buf, indent, flags);
@@ -892,7 +892,7 @@ static int tag_to_json(tag *t, string_buf_t *buf, int indent, int flags) {
 }
 
 static int json_to_json(const char *s, string_buf_t *buf, int indent, int flags) {
-    return write_buf_append(buf, s);
+    return string_buf_append(buf, s);
 }
 
 static int timeval_to_json(timestamp *t, string_buf_t *buf, int indent, int flags) {
@@ -908,7 +908,7 @@ static int timeval_to_json(timestamp *t, string_buf_t *buf, int indent, int flag
                       tm2.tm_year + 1900, tm2.tm_mon + 1, tm2.tm_mday,
                       tm2.tm_hour, tm2.tm_min, tm2.tm_sec, t->tv_usec);
 
-    return write_buf_append(buf, json);
+    return string_buf_append(buf, json);
 }
 
 static int map_to_json(model_map *map, string_buf_t *buf, int indent, int flags) {

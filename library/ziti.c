@@ -271,11 +271,11 @@ static bool is_api_session_expired(ziti_context ztx) {
     uv_gettimeofday(&now);
 
     if (ztx->api_session_expires_at.tv_sec < now.tv_sec) {
-        ZTX_LOG(DEBUG, "is_api_session_expired[TRUE] - expires->tv_sec[%d] < now->tv_sec[%d]", ztx->api_session->expires->tv_sec, now.tv_sec);
+        ZTX_LOG(DEBUG, "is_api_session_expired[TRUE] - expires->tv_sec[%ld] < now->tv_sec[%ld]", ztx->api_session->expires->tv_sec, now.tv_sec);
         return true;
     }
 
-    ZTX_LOG(DEBUG, "is_api_session_expired[FALSE] - default case", ztx->api_session->expires->tv_sec, now.tv_sec);
+    ZTX_LOG(DEBUG, "is_api_session_expired[FALSE] - default case");
     return false;
 }
 
@@ -987,7 +987,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
     }
 
     if (addIdx > 0 || remIdx > 0 || chIdx > 0) {
-        ZTX_LOG(DEBUG, "sending service event %d added, %d removed, %d changed", addIdx, remIdx, chIdx);
+        ZTX_LOG(DEBUG, "sending service event %zd added, %zd removed, %zd changed", addIdx, remIdx, chIdx);
         ziti_send_event(ztx, &ev);
     } else {
         ZTX_LOG(VERBOSE, "no services added, changed, or removed");
@@ -1131,7 +1131,7 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
     ziti_context ztx = ctx;
 
     if (err) {
-        ZTX_LOG(ERROR, "failed to get identity_data: %s[%d]", err->message, err->code);
+        ZTX_LOG(ERROR, "failed to get identity_data: %s[%s]", err->message, err->code);
     } else {
         free_ziti_identity_data(ztx->identity_data);
         FREE(ztx->identity_data);
