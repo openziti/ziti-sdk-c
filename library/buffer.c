@@ -159,6 +159,31 @@ int string_buf_append_byte(string_buf_t *wb, char c) {
     return 0;
 }
 
+int string_buf_appendn(string_buf_t *wb, const char *str, size_t len) {
+    const char *s = str;
+
+    size_t chunk_len;
+    size_t copy_len;
+    copy:
+    chunk_len = wb->chunk + wb->chunk_size - wb->wp;
+    copy_len = MIN(chunk_len, len);
+    memcpy(wb->wp, s, copy_len);
+    len -= copy_len;
+    wb->wp += copy_len;
+    s += copy_len;
+
+    if (len > 0) {
+        if (wb->fixed) { return -1; }
+
+        buffer_append(wb->buf, wb->chunk, wb->wp - wb->chunk);
+        wb->chunk = malloc(wb->chunk_size);
+        wb->wp = wb->chunk;
+        goto copy;
+    }
+
+    return 0;
+}
+
 int string_buf_append(string_buf_t *wb, const char *str) {
     const char *s = str;
 

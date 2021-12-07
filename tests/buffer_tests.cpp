@@ -19,6 +19,30 @@ limitations under the License.
 #include <buffer.h>
 #include <iostream>
 
+
+TEST_CASE("buffer appendn", "[util]") {
+    string_buf_t json_buf;
+    string_buf_init(&json_buf);
+
+    std::string test_str;
+
+    std::string str("this is a string\n");
+    for (int i = 0; i < 10; i++) {
+        string_buf_appendn(&json_buf, str.c_str(), str.size());
+        test_str += str;
+    }
+
+    CHECK(string_buf_size(&json_buf) == test_str.size());
+
+    size_t len;
+    char *result = string_buf_to_string(&json_buf, &len);
+
+    CHECK_THAT(result, Catch::Equals(test_str));
+    CHECK(len == test_str.size());
+
+    string_buf_free(&json_buf);
+}
+
 TEST_CASE("buffer append", "[util]") {
     string_buf_t json_buf;
     string_buf_init(&json_buf);
