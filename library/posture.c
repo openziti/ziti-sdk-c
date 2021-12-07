@@ -202,7 +202,7 @@ void ziti_send_posture_data(ziti_context ztx) {
     __attribute__((unused)) const char *name;
     ziti_service *service;
 
-    ZTX_LOG(VERBOSE, "checking posture queries on %d service(s)", model_map_size(&ztx->services));
+    ZTX_LOG(VERBOSE, "checking posture queries on %zd service(s)", model_map_size(&ztx->services));
 
     //loop over the services and determine the query types that need responses
     //for process queries, save them by process path
@@ -386,7 +386,7 @@ static void ziti_collect_pr(ziti_context ztx, const char *pr_obj_key, char *pr_o
 
         current_info->should_send = ztx->posture_checks->must_send_every_time || ziti_pr_is_info_errored(ztx, current_info->id) || changed;
     } else {
-        ZTX_LOG(WARN, "response info not found, posture check obsolete? id[%d]", pr_obj_key);
+        ZTX_LOG(WARN, "response info not found, posture check obsolete? id[%s]", pr_obj_key);
         free(pr_obj);
     }
 }
@@ -496,9 +496,9 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
         return; //nothing to send
     }
 
-    write_buf_t buf;
-    write_buf_init(&buf);
-    write_buf_append_byte(&buf, '[');
+    string_buf_t buf;
+    string_buf_init(&buf);
+    string_buf_append_byte(&buf, '[');
 
     bool needs_comma = false;
     int obj_count = 0;
@@ -507,25 +507,25 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
             ZTX_LOG(VERBOSE, "sending posture response [%s], should_send = true: %s", info->id, info->obj);
             obj_count++;
             if (needs_comma) {
-                write_buf_append_byte(&buf, ',');
+                string_buf_append_byte(&buf, ',');
             } else {
                 needs_comma = true;
             }
-            write_buf_append(&buf, info->obj);
+            string_buf_append(&buf, info->obj);
             info->should_send = false;
         } else {
             ZTX_LOG(VERBOSE, "not sending posture response [%s], should_send = false, pending = %s: %s", info->id, info->pending ? "true" : "false", info->obj);
         }
     }
 
-    write_buf_append_byte(&buf, ']');
+    string_buf_append_byte(&buf, ']');
 
-    body = write_buf_to_string(&buf, &body_len);
+    body = string_buf_to_string(&buf, &body_len);
     ZTX_LOG(DEBUG, "sending posture responses [%d]", obj_count);
     ZTX_LOG(TRACE, "bulk posture response: %s", body);
 
     ziti_pr_post_bulk(&ztx->controller, body, body_len, ziti_pr_post_bulk_cb, ztx);
-    write_buf_free(&buf);
+    string_buf_free(&buf);
 }
 
 static void ziti_pr_send_individually(ziti_context ztx) {
