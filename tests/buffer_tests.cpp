@@ -20,7 +20,7 @@ limitations under the License.
 #include <iostream>
 
 TEST_CASE("buffer append", "[util]") {
-    write_buf_t json_buf;
+    string_buf_t json_buf;
     write_buf_init(&json_buf);
 
     std::string test_str;
@@ -40,7 +40,7 @@ TEST_CASE("buffer append", "[util]") {
 }
 
 TEST_CASE("buffer fmt", "[util]") {
-    write_buf_t fmt_buf;
+    string_buf_t fmt_buf;
     write_buf_init(&fmt_buf);
 
     fmt_buf.chunk_size = 160;

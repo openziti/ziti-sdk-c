@@ -496,7 +496,7 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
         return; //nothing to send
     }
 
-    write_buf_t buf;
+    string_buf_t buf;
     write_buf_init(&buf);
     write_buf_append_byte(&buf, '[');
 

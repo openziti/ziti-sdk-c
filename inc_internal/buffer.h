@@ -46,16 +46,19 @@ void buffer_append(buffer *, uint8_t *buf, size_t len);
 size_t buffer_available(buffer *);
 
 
-struct write_buf_s {
+struct string_buf_s {
     buffer *buf;
     bool fixed;
     size_t chunk_size;
     uint8_t *chunk;
     uint8_t *wp;
 };
-void write_buf_init(write_buf_t *wb);
-void write_buf_init_fixed(write_buf_t *wb, char *outbuf, size_t max);
-void write_buf_free(write_buf_t *wb);
+
+void write_buf_init(string_buf_t *wb);
+
+void write_buf_init_fixed(string_buf_t *wb, char *outbuf, size_t max);
+
+void write_buf_free(string_buf_t *wb);
 
 #ifdef __cplusplus
 }
