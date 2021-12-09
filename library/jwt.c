@@ -24,24 +24,16 @@ limitations under the License.
 
 const char* ZITI_SDK_JWT_FILE = "ZITI_SDK_JWT_FILE";
 
-int parse_jwt_content(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **zejh, ziti_enrollment_jwt **zej) {
+int parse_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **zejh, ziti_enrollment_jwt **zej) {
 
     const char *dot1 = strchr(ecfg->raw_jwt, '.');
     if (NULL == dot1) {
-        if(filename) {
-            ZITI_LOG(ERROR, "%s - lacks a dot", filename);
-        } else {
-            ZITI_LOG(ERROR, "jwt input - lacks a dot");
-        }
+        ZITI_LOG(ERROR, "jwt input lacks a dot");
         return ZITI_JWT_INVALID_FORMAT;
     }
     const char *dot2 = strchr(dot1 + 1, '.');
     if (NULL == dot2) {
-        if(filename) {
-            ZITI_LOG(ERROR, "%s - lacks a second dot", filename);
-        } else {
-            ZITI_LOG(ERROR, "jwt input - lacks a second dot");
-        }
+        ZITI_LOG(ERROR, "jwt input lacks a second dot");
         return ZITI_JWT_INVALID_FORMAT;
     }
     ecfg->jwt_signing_input = (unsigned char *) calloc(1, strlen(ecfg->raw_jwt) + 1);
@@ -111,7 +103,7 @@ int load_jwt_file(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollme
 
     ZITI_LOG(DEBUG, "jwt file content is: \n%.*s", jwt_file_len, ecfg->raw_jwt);
 
-    return parse_jwt_content(filename, ecfg, zejh, zej);
+    return parse_jwt_content(ecfg, zejh, zej);
 }
 
 int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **zejh, ziti_enrollment_jwt **zej) {
@@ -136,5 +128,5 @@ int load_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **zej
 
     ZITI_LOG(DEBUG, "jwt file content is: \n%.*s", strlen(ecfg->raw_jwt), ecfg->raw_jwt);
 
-    return parse_jwt_content(NULL, ecfg, zejh, zej);
+    return parse_jwt_content(ecfg, zejh, zej);
 }
