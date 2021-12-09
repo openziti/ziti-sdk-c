@@ -280,6 +280,8 @@ int load_config(const char *filename, ziti_config **);
 
 int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **, ziti_enrollment_jwt **);
 
+int load_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **zejh, ziti_enrollment_jwt **zej);
+
 int load_tls(ziti_config *cfg, tls_context **tls);
 
 int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *listen_opts, ziti_listen_cb listen_cb,
