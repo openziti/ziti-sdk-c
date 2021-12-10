@@ -486,7 +486,7 @@ int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
 
     if (app_data_json == NULL) return ZITI_NOT_FOUND;
 
-    if (parse_func(data, app_data_json, strlen(app_data_json)) != 0) {
+    if (parse_func(data, app_data_json, strlen(app_data_json)) < 0) {
         return ZITI_INVALID_CONFIG;
     }
 

@@ -49,7 +49,7 @@ TEST_CASE("parse enum", "[model]") {
 })";
 
     FooWithEnum f1;
-    REQUIRE(parse_FooWithEnum(&f1, json, strlen(json)) == 0);
+    REQUIRE(parse_FooWithEnum(&f1, json, strlen(json)) == strlen(json));
 
     CHECK_THAT(f1.name, Catch::Equals("this is a name"));
     CHECK(f1.state == States.Ugly);
@@ -62,7 +62,7 @@ TEST_CASE("parse null enum", "[model]") {
 })";
 
     FooWithEnum f1;
-    REQUIRE(parse_FooWithEnum(&f1, json, strlen(json)) == 0);
+    REQUIRE(parse_FooWithEnum(&f1, json, strlen(json)) == strlen(json));
 
     CHECK_THAT(f1.name, Catch::Equals("this is a name"));
     CHECK(f1.state == 0);
@@ -81,7 +81,7 @@ TEST_CASE("default enum", "[model]") {
     REQUIRE_THAT(json, Catch::Contains("\"state\":null"));
 
     FooWithEnum f2;
-    REQUIRE(0 == parse_FooWithEnum(&f2, json, strlen(json)));
+    REQUIRE(parse_FooWithEnum(&f2, json, strlen(json)) == strlen(json));
     CHECK(f2.state == State_Unknown);
 
 
@@ -131,7 +131,7 @@ TEST_CASE("parse enum array", "[model]") {
 })";
 
     FooWithEnumArray f1;
-    REQUIRE(parse_FooWithEnumArray(&f1, json, strlen(json)) == 0);
+    REQUIRE(parse_FooWithEnumArray(&f1, json, strlen(json)) == strlen(json));
 
     CHECK_THAT(f1.name, Catch::Equals("this is a name"));
     CHECK(*f1.states[0] == States.Ugly);

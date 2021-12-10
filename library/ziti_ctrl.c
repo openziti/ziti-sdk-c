@@ -245,7 +245,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
                 cr.error->code = strdup("INVALID_CONTROLLER_RESPONSE");
                 cr.error->message = strdup(req->resp.status);
             } else if (resp->body_parse_func && cr.data != NULL) {
-                if (resp->body_parse_func(&resp_obj, cr.data, strlen(cr.data)) != 0) {
+                if (resp->body_parse_func(&resp_obj, cr.data, strlen(cr.data)) < 0) {
                     ZITI_LOG(ERROR, "error parsing response data for req[%s]>>>\n%s", req->path, cr.data);
                     cr.error = alloc_ziti_error();
                     cr.error->err = ZITI_INVALID_STATE;

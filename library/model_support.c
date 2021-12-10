@@ -142,35 +142,46 @@ int model_cmp(const void *lh, const void *rh, type_meta *meta) {
 int model_parse_array(void ***arrp, const char *json, size_t len, type_meta *meta) {
     jsmn_parser parser;
     size_t ntoks;
+    int result = -1;
+    int children = 0;
     jsmntok_t *tokens = parse_tokens(&parser, json, len, &ntoks);
+    void **arr = NULL;
     if (tokens == NULL) {
-        return -1;
+        goto done;
     }
 
     jsmntok_t *tok = tokens;
     if (tok->type != JSMN_ARRAY) {
-        FREE(tokens);
-        return -1;
+        goto done;
     }
-
-    int children = tok->size;
-    void **arr = calloc(tokens[0].size + 1, sizeof(void *));
+    result = tokens[0].end;
+    children = tok->size;
+    arr = calloc(tokens[0].size + 1, sizeof(void *));
     tok++;
     for (int i = 0; i < children; i++) {
-        void *el = calloc(1, meta->size);
-        int rc = parse_obj(el, json, tok, meta);
+        arr[i] = calloc(1, meta->size);
+        int rc = parse_obj(arr[i], json, tok, meta);
         if (rc < 0) {
-            model_free(el, meta);
-            FREE(el);
-            FREE(tokens);
-            return rc;
+            result = -1;
+            goto done;
         }
-        arr[i] = el;
         tok += rc;
     }
     *arrp = arr;
+    done:
+    if (result < 0) {
+        if (arr != NULL) {
+            for (int i = 0; i < children; i++) {
+                if (arr[i] != NULL) {
+                    model_free(arr[i], meta);
+                    FREE(arr[i]);
+                }
+            }
+            FREE(arr);
+        }
+    }
     FREE(tokens);
-    return 0;
+    return result;
 }
 
 int model_parse(void *obj, const char *json, size_t len, type_meta *meta) {
@@ -178,8 +189,9 @@ int model_parse(void *obj, const char *json, size_t len, type_meta *meta) {
     size_t ntoks;
     jsmntok_t *tokens = parse_tokens(&parser, json, len, &ntoks);
     int res = tokens != NULL ? parse_obj(obj, json, tokens, meta) : -1;
+    int result = res > 0 ? tokens[0].end : res;
     FREE(tokens);
-    return res > 0 ? 0 : res;
+    return result;
 }
 
 static int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf, int indent, int flags);
