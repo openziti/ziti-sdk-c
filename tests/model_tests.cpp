@@ -100,7 +100,7 @@ TEST_CASE("new model tests", "[model]") {
     const char *bar_json = BAR1;
     Bar bar;
 
-    REQUIRE(parse_Bar(&bar, bar_json, strlen(bar_json)) == 0);
+    REQUIRE(parse_Bar(&bar, bar_json, strlen(bar_json)) == strlen(bar_json));
 
     checkBar1(bar);
 
@@ -116,7 +116,7 @@ TEST_CASE("parse null", "[model]") {
                        "\"bara\":null"
                        "}";
     Foo foo;
-    REQUIRE(parse_Foo(&foo, json, strlen(json)) == 0);
+    REQUIRE(parse_Foo(&foo, json, strlen(json)) == strlen(json));
 
     REQUIRE(foo.barp == nullptr);
 
@@ -135,7 +135,7 @@ TEST_CASE("parse null in the middle", "[model]") {
                        "\"bara\": [" BAR1 "," BAR2 "]"
                        "}";
     Foo foo;
-    REQUIRE(parse_Foo(&foo, json, strlen(json)) == 0);
+    REQUIRE(parse_Foo(&foo, json, strlen(json)) == strlen(json));
     checkBar1(foo.bar);
 
     REQUIRE(foo.barp == nullptr);
@@ -157,7 +157,7 @@ TEST_CASE("embedded struct", "[model]") {
                        "\"bara\": [" BAR1 "," BAR2 "]"
                        "}";
     Foo foo;
-    REQUIRE(parse_Foo(&foo, json, strlen(json)) == 0);
+    REQUIRE(parse_Foo(&foo, json, strlen(json)) == strlen(json));
     checkBar1(foo.bar);
 
     REQUIRE(foo.barp != nullptr);
@@ -191,7 +191,7 @@ TEST_CASE("test skipped fields", "[model]") {
         }
     })";
     Foo foo;
-    REQUIRE(parse_Foo(&foo, json, strlen(json)) == 0);
+    REQUIRE(parse_Foo(&foo, json, strlen(json)) == strlen(json));
 
     REQUIRE(foo.bar.num == 42);
     REQUIRE(foo.bar.isOK);
@@ -215,12 +215,65 @@ TEST_CASE("test string escape", "[model]") {
     })";
 
     Bar bar;
-    REQUIRE(parse_Bar(&bar, json, strlen(json)) == 0);
+    REQUIRE(parse_Bar(&bar, json, strlen(json)) == strlen(json));
     REQUIRE_THAT(bar.msg, Equals("\thello\n\"world\"!"));
 
     char *jsonout = Bar_to_json(&bar, 0, NULL);
     std::cout << jsonout << std::endl;
     free(jsonout);
+    free_Bar(&bar);
+}
+
+TEST_CASE("parse array", "[model]") {
+    const char *json = R"([{
+        "msg":"\thello\n\"world\"!"
+    },
+    {"msg":"Hello again!"}])";
+
+    Bar_array bars = nullptr;
+    int rc = parse_Bar_array(&bars, json, strlen(json));
+    CHECK(rc == strlen(json));
+    CHECK_THAT(bars[0]->msg, Catch::Matches("\thello\n\"world\"!"));
+    CHECK_THAT(bars[1]->msg, Catch::Matches("Hello again!"));
+    free_Bar_array(&bars);
+}
+
+TEST_CASE("parse bad array", "[model]") {
+    const char *json = R"([{
+        "msg":"\thello\n\"world\"!"
+    },
+    {"msg":56}])";
+
+    Bar_array bars = nullptr;
+    int rc = parse_Bar_array(&bars, json, strlen(json));
+    CHECK(rc == -1);
+    CHECK(bars == nullptr);
+}
+
+TEST_CASE("parse 2 objects in string ", "[model]") {
+    const char *json = R"({
+        "msg":"\thello\n\"world\"!"
+    }{"msg":"Hello again!"})";
+
+    Bar bar = {0};
+    int rc = parse_Bar(&bar, json, strlen(json));
+    REQUIRE(rc > 0);
+    CHECK_THAT(bar.msg, Catch::Matches("\thello\n\"world\"!"));
+    free_Bar(&bar);
+
+    rc = parse_Bar(&bar, json + rc, strlen(json) - rc);
+    REQUIRE(rc > 0);
+    CHECK_THAT(bar.msg, Catch::Matches("Hello again!"));
+    free_Bar(&bar);
+}
+
+TEST_CASE("parse incomplete", "[model]") {
+    const char *json = R"({
+        "msg":"\thello\n\"world\"!"
+    )";
+
+    Bar bar = {0};
+    REQUIRE(parse_Bar(&bar, json, strlen(json)) < 0);
     free_Bar(&bar);
 }
 
@@ -239,12 +292,12 @@ TEST_CASE("test raw json", "[model]") {
                        "\"ok\": true"
                        "}";
     Baz baz;
-    REQUIRE(parse_Baz(&baz, json, strlen(json)) == 0);
+    REQUIRE(parse_Baz(&baz, json, strlen(json)) == strlen(json));
     REQUIRE_THAT(baz.bar, Equals(BAR1));
     REQUIRE(baz.ok);
 
     Bar bar;
-    REQUIRE(parse_Bar(&bar, baz.bar, strlen(baz.bar)) == 0);
+    REQUIRE(parse_Bar(&bar, baz.bar, strlen(baz.bar)) == strlen(baz.bar));
     checkBar1(bar);
     free_Bar(&bar);
     free_Baz(&baz);
@@ -264,7 +317,7 @@ TEST_CASE("model map test", "[model]") {
                        "}";
 
     ObjMap o;
-    REQUIRE(parse_ObjMap(&o, json, strlen(json)) == 0);
+    REQUIRE(parse_ObjMap(&o, json, strlen(json)) == strlen(json));
     CHECK(o.ok);
     CHECK_THAT((const char *) model_map_get(&o.map, "num"), Equals("42"));
     CHECK_THAT((const char *) model_map_get(&o.map, "errors"), Equals(R"(["error1", "error2"])"));
@@ -346,8 +399,8 @@ TEST_CASE("model compare with array", "[model]") {
     const char *bar_json = BAR1;
     Bar bar1, bar2;
 
-    REQUIRE(parse_Bar(&bar1, bar_json, strlen(bar_json)) == 0);
-    REQUIRE(parse_Bar(&bar2, bar_json, strlen(bar_json)) == 0);
+    REQUIRE(parse_Bar(&bar1, bar_json, strlen(bar_json)) == strlen(bar_json));
+    REQUIRE(parse_Bar(&bar2, bar_json, strlen(bar_json)) == strlen(bar_json));
 
     CHECK(cmp_Bar(&bar1, &bar2) == 0);
 
@@ -364,7 +417,7 @@ TEST_CASE("model with null array is null") {
     const char *bar_json = BAR_WITH_NULL_CODES_ARRAY;
     Bar bar;
 
-    REQUIRE(parse_Bar(&bar, bar_json, strlen(bar_json)) == 0);
+    REQUIRE(parse_Bar(&bar, bar_json, strlen(bar_json)) == strlen(bar_json));
 
     CHECK(bar.codes == nullptr);
 
@@ -375,7 +428,7 @@ TEST_CASE("model with missing array is null") {
     const char *bar_json = BAR_WITH_MISSING_CODES_ARRAY;
     Bar bar;
 
-    REQUIRE(parse_Bar(&bar, bar_json, strlen(bar_json)) == 0);
+    REQUIRE(parse_Bar(&bar, bar_json, strlen(bar_json)) == strlen(bar_json));
 
     CHECK(bar.codes == nullptr);
 
@@ -400,7 +453,7 @@ TEST_CASE("model with string map", "[model]") {
     })";
 
     tagged obj;
-    REQUIRE(parse_tagged(&obj, json, strlen(json)) == 0);
+    REQUIRE(parse_tagged(&obj, json, strlen(json)) == strlen(json));
 
     const char *num = (const char *) model_map_get(&obj.tags, "num");
     CHECK_THAT(num, Equals("42"));
@@ -429,7 +482,7 @@ TEST_CASE("map of objects", "[model]") {
                        "}}";
 
     MapOfObjects m;
-    REQUIRE(parse_MapOfObjects(&m, json, strlen(json)) == 0);
+    REQUIRE(parse_MapOfObjects(&m, json, strlen(json)) == strlen(json));
 
     Bar *b1 = static_cast<Bar *>(model_map_get(&m.objects, "bar1"));
     Bar *b2 = static_cast<Bar *>(model_map_get(&m.objects, "bar2"));
@@ -558,7 +611,7 @@ TEST_CASE("parse-json-u-escape", "[model]") {
                        "}"
                        "}";
     Foo foo;
-    REQUIRE(parse_Foo(&foo, json, strlen(json)) == 0);
+    REQUIRE(parse_Foo(&foo, json, strlen(json)) == strlen(json));
 
     CHECK_THAT(foo.bar.msg, Catch::Matchers::Equals("hello\u000cабвгд!"));
 

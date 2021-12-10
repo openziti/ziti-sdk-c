@@ -112,7 +112,7 @@ int ziti_service_get_config(ziti_service *service, const char *cfg_type, void *c
         return ZITI_CONFIG_NOT_FOUND;
     }
 
-    if (parser(cfg, cfg_json, strlen(cfg_json)) != 0) {
+    if (parser(cfg, cfg_json, strlen(cfg_json)) < 0) {
         return ZITI_INVALID_CONFIG;
     };
 

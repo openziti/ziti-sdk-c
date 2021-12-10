@@ -37,7 +37,7 @@ TEST_CASE("posture response response", "[model]") {
 
     ziti_pr_response pr_resp;
     int rc = parse_ziti_pr_response(&pr_resp, json, (int) strlen(json));
-    REQUIRE(rc == 0);
+    REQUIRE(rc > 0);
 
 
     int idx;
@@ -249,7 +249,7 @@ TEST_CASE("parse-services-array", "[model]") {
 
     ziti_service **services;
     int rc = parse_ziti_service_array(&services, json, (int) strlen(json));
-    REQUIRE(rc == 0);
+    REQUIRE(rc == strlen(json));
     ziti_service **s;
     int idx;
 
@@ -335,7 +335,7 @@ TEST_CASE("parse-api-session", "[model]") {
 
     ziti_api_session *session;
     int rc = parse_ziti_api_session_ptr(&session, json, (int) strlen(json));
-    REQUIRE(rc == 0);
+    REQUIRE(rc > 0);
 
     REQUIRE_THAT(session->id, Equals("f0bd2587-1510-455a-96ca-6f1aea1c04f3"));
     REQUIRE_THAT(session->token, Equals("6fb97fe8-3507-4811-a83a-1d660b1022a3"));
@@ -367,7 +367,7 @@ TEST_CASE("parse-error", "[model]") {
 
     ziti_error err;
     int rc = parse_ziti_error(&err, json, (int) strlen(json));
-    REQUIRE(rc == 0);
+    REQUIRE(rc > 0);
     REQUIRE_THAT(err.code, Equals("UNAUTHORIZED"));
     free_ziti_error(&err);
 }
@@ -426,7 +426,7 @@ TEST_CASE("test service array", "[model]") {
 ])";
 
     ziti_service_array arr;
-    REQUIRE(parse_ziti_service_array(&arr, json, strlen(json)) == 0);
+    REQUIRE(parse_ziti_service_array(&arr, json, strlen(json)) == strlen(json));
     REQUIRE(arr != nullptr);
     CHECK(arr[1] == nullptr);
     CHECK_THAT(arr[0]->name, Equals("httpbin"));
@@ -485,7 +485,7 @@ TEST_CASE("service config test", "[model]") {
 )";
 
     ziti_service s;
-    REQUIRE(parse_ziti_service(&s, j, strlen(j)) == 0);
+    REQUIRE(parse_ziti_service(&s, j, strlen(j)) > 0);
 
     {
         ziti_client_cfg_v1 cfg;
@@ -558,9 +558,9 @@ TEST_CASE("config change", "[model]") {
 
 
     ziti_service s, s1, s2;
-    REQUIRE(parse_ziti_service(&s, j1, strlen(j1)) == 0);
-    REQUIRE(parse_ziti_service(&s1, j1, strlen(j1)) == 0);
-    REQUIRE(parse_ziti_service(&s2, j2, strlen(j2)) == 0);
+    REQUIRE(parse_ziti_service(&s, j1, strlen(j1)) > 0);
+    REQUIRE(parse_ziti_service(&s1, j1, strlen(j1)) > 0);
+    REQUIRE(parse_ziti_service(&s2, j2, strlen(j2)) > 0);
 
     CHECK(cmp_ziti_service(&s, &s1) == 0);
     CHECK(cmp_ziti_service(&s, &s2) != 0);
@@ -588,7 +588,7 @@ TEST_CASE("parse-ctrl-version", "[model]") {
     })";
 
     ziti_version ver;
-    REQUIRE(parse_ziti_version(&ver, json, strlen(json)) == 0);
+    REQUIRE(parse_ziti_version(&ver, json, strlen(json)) > 0);
     REQUIRE(ver.api_versions != nullptr);
     auto v1Path = (api_path *)model_map_get(&ver.api_versions->edge, "v1");
     REQUIRE(v1Path);

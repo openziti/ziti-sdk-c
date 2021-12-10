@@ -46,7 +46,7 @@ int parse_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **ze
     um_base64url_decode(ecfg->raw_jwt, &header, &header_len);
 
     *zejh = calloc(1, sizeof(ziti_enrollment_jwt_header));
-    if (parse_ziti_enrollment_jwt_header(*zejh, header, header_len) != 0) {
+    if (parse_ziti_enrollment_jwt_header(*zejh, header, header_len) < 0) {
         free_ziti_enrollment_jwt_header(*zejh);
         FREE(*zejh);
         return ZITI_JWT_INVALID_FORMAT;
@@ -58,7 +58,7 @@ int parse_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **ze
     um_base64url_decode(dot1 + 1, &body, &blen);
 
     *zej = calloc(1, sizeof(ziti_enrollment_jwt));
-    if (parse_ziti_enrollment_jwt(*zej, body, blen) != 0) {
+    if (parse_ziti_enrollment_jwt(*zej, body, blen) < 0) {
         free_ziti_enrollment_jwt(*zej);
         FREE(*zej);
         return ZITI_JWT_INVALID_FORMAT;
