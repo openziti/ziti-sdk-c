@@ -63,9 +63,9 @@ target_link_libraries(ziti     PUBLIC uv_mbed sodium)
 target_link_libraries(ziti_dll PUBLIC uv_mbed sodium)
 
 if (NOT WIN32)
-    target_link_libraries(ziti     PUBLIC m )
-    target_link_libraries(ziti_dll PUBLIC m )
-endif()
+    target_link_libraries(ziti PUBLIC m PUBLIC atomic)
+    target_link_libraries(ziti_dll PUBLIC m PUBLIC atomic)
+endif ()
 
 target_include_directories(ziti     ${ZITI_INCLUDE_DIRS})
 target_include_directories(ziti_dll ${ZITI_INCLUDE_DIRS})

@@ -23,7 +23,7 @@ limitations under the License.
 #include <uv.h>
 
 #if defined(__unix__) || defined(__APPLE__)
-# if defined(mips) || defined(__mips)
+# if __STDC_NO_ATOMICS__
 
 #   include <atomic.h>
 
