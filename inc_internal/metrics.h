@@ -28,7 +28,7 @@ limitations under the License.
 using namespace std;
 #else
 #if defined(__linux) || defined(__APPLE__)
-# if defined(mips) || defined(__mips)
+# if __STDC_NO_ATOMICS__
 
 #   include <bits/atomic.h>
 

@@ -55,12 +55,13 @@ if(NOT libsodium_POPULATED)
             endif()
             execute_process(
                     COMMAND "${libsodium_SOURCE_DIR}/configure" "--prefix=${libsodium_BINARY_DIR}"
-                    --disable-opt --without-pthreads --with-pic --host=${triple}
+                    --enable-opt --without-pthreads --with-pic --host=${triple}
+                    --with-sysroot=${CMAKE_SYSROOT}
                     WORKING_DIRECTORY ${libsodium_BINARY_DIR}
             )
         endif()
 		execute_process(
-                COMMAND make V=s
+                COMMAND make -j4
                 WORKING_DIRECTORY ${libsodium_BINARY_DIR}
         )
         execute_process(

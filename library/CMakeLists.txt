@@ -62,10 +62,15 @@ target_sources(ziti_dll PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 target_link_libraries(ziti     PUBLIC uv_mbed sodium)
 target_link_libraries(ziti_dll PUBLIC uv_mbed sodium)
 
-if (NOT WIN32)
-    target_link_libraries(ziti     PUBLIC m )
-    target_link_libraries(ziti_dll PUBLIC m )
+if (CMAKE_SYSTEM_NAME MATCHES "Linux")
+    target_link_libraries(ziti PUBLIC atomic)
+    target_link_libraries(ziti_dll PUBLIC atomic)
 endif()
+
+if (NOT WIN32)
+    target_link_libraries(ziti PUBLIC m)
+    target_link_libraries(ziti_dll PUBLIC m)
+endif ()
 
 target_include_directories(ziti     ${ZITI_INCLUDE_DIRS})
 target_include_directories(ziti_dll ${ZITI_INCLUDE_DIRS})
