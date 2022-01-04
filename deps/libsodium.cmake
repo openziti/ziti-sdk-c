@@ -26,7 +26,7 @@ if (WIN32)
            FetchContent_Declare (
                    libsodium
                    URL	https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-stable-mingw.tar.gz
-                   URL_HASH MD5=110bbb6ca2322a0c2b3f639432e15cea
+                   URL_HASH MD5=0ffb5948defc97edc4a75877ede26077
            )
            set(libsodium_include_path libsodium-win64/include)
            set(libsodium_lib_path libsodium-win64/lib/libsodium.a)
