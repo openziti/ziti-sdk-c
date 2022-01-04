@@ -75,7 +75,7 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err);
 
 static void send_latency_probe(uv_timer_t *t);
 
-static void connect_timeout(uv_timer_t *t);
+static void ch_connect_timeout(uv_timer_t *t);
 
 static void hello_reply_cb(void *ctx, message *msg, int err);
 
@@ -245,7 +245,7 @@ static void check_connecting_state(ziti_channel_t *ch) {
         reset = true;
     }
 
-    if (ch->timer->timer_cb != connect_timeout) {
+    if (ch->timer->timer_cb != ch_connect_timeout) {
         CH_LOG(ERROR, "state check: unexpected callback(%s)!", get_timeout_cb(ch));
         reset = true;
     }
@@ -671,7 +671,7 @@ static void send_hello(ziti_channel_t *ch, ziti_api_session *session) {
 }
 
 
-static void connect_timeout(uv_timer_t *t) {
+static void ch_connect_timeout(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
     CH_LOG(ERROR, "connect timeout");
     ch->state = Disconnected;
@@ -708,7 +708,7 @@ static void reconnect_cb(uv_timer_t *t) {
             on_channel_connect_internal(req, rc);
         }
         else {
-            uv_timer_start(ch->timer, connect_timeout, CONNECT_TIMEOUT, 0);
+            uv_timer_start(ch->timer, ch_connect_timeout, CONNECT_TIMEOUT, 0);
         }
     }
 }
@@ -861,7 +861,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
 
 #define TIMEOUT_CALLBACKS(XX) \
 XX(latency_timeout) \
-XX(connect_timeout) \
+XX(ch_connect_timeout) \
 XX(reconnect_cb)    \
 XX(send_latency_probe)
 
