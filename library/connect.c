@@ -79,7 +79,10 @@ static int ziti_disconnect(ziti_connection conn);
 
 static void restart_connect(struct ziti_conn *conn);
 
+static void ziti_rebind(ziti_connection conn);
+
 static uint16_t get_terminator_cost(ziti_listen_opts *opts, const char *service, ziti_context ztx);
+
 static uint8_t get_terminator_precedence(ziti_listen_opts *opts, const char *service, ziti_context ztx);
 
 static void free_handle(uv_handle_t *h) {
@@ -311,22 +314,28 @@ static void complete_conn_req(struct ziti_conn *conn, int code) {
 static void connect_timeout(uv_timer_t *timer) {
     struct ziti_conn *conn = timer->data;
 
+    ziti_channel_t *ch = conn->channel;
+    uv_close((uv_handle_t *) timer, free_handle);
+    conn->conn_req->conn_timeout = NULL;
+
     if (conn->state == Connecting) {
-        if (conn->channel == NULL) {
+        if (ch == NULL) {
             CONN_LOG(WARN, "connect timeout: no suitable edge router");
-        }
-        else {
-            CONN_LOG(WARN, "failed to establish connection in %d milliseconds", conn->timeout);
+        } else {
+            CONN_LOG(WARN, "failed to establish connection in %dms on ch[%d]", conn->timeout, ch->id);
         }
         complete_conn_req(conn, ZITI_TIMEOUT);
         ziti_disconnect(conn);
-
-    }
-    else {
+    } else if (conn->state == Binding) {
+        if (ch == NULL) {
+            CONN_LOG(WARN, "bind timeout: no suitable edge router");
+        } else {
+            CONN_LOG(WARN, "failed to bind in %dms on ch[%d]", conn->timeout, ch->id);
+        }
+        ziti_rebind(conn);
+    } else {
         CONN_LOG(ERROR, "timeout in unexpected state[%s]", ziti_conn_state(conn));
     }
-    uv_close((uv_handle_t *) timer, free_handle);
-    conn->conn_req->conn_timeout = NULL;
 }
 
 static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, struct ziti_conn *conn) {
@@ -1085,7 +1094,6 @@ int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *liste
     return uv_async_send(async_cr);
 }
 
-static void ziti_rebind(ziti_connection conn);
 
 static void rebind_delay_cb(uv_timer_t *t) {
     ziti_connection conn = t->data;
