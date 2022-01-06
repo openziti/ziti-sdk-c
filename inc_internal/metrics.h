@@ -27,7 +27,7 @@ limitations under the License.
 #include <atomic>
 using namespace std;
 #else
-#if defined(__linux) || defined(__APPLE__)
+#if defined(__linux)
 
 /* gcc 4.8 does not have <stdatomic.h> and does not set the flag */
 #if __GNUC__
@@ -46,6 +46,8 @@ using namespace std;
 # else
 #   include <stdatomic.h>
 # endif
+#elif defined(__APPLE__)
+# include <stdatomic.h>
 #elif _WIN32
 typedef long long atomic_llong;
 typedef long atomic_long;
