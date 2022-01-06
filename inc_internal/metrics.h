@@ -28,6 +28,15 @@ limitations under the License.
 using namespace std;
 #else
 #if defined(__linux) || defined(__APPLE__)
+
+/* gcc 4.8 does not have <stdatomic.h> and does not set the flag */
+#if __GNUC__
+#include <features.h>
+# if ! __GNUC_PREREQ(4,9)
+#   define __STDC_NO_ATOMICS__ 1
+# endif
+#endif
+
 # if __STDC_NO_ATOMICS__
 
 #   include <bits/atomic.h>
