@@ -365,6 +365,9 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ZTX_LOG(INFO, "Loading from config[%s] controller[%s]", ztx->opts->config, ztx->opts->controller);
 
     ziti_ctrl_init(loop, &ztx->controller, ztx->opts->controller, ztx->tlsCtx);
+    if (ztx->opts->api_page_size != 0) {
+        ziti_ctrl_set_page_size(&ztx->controller, ztx->opts->api_page_size);
+    }
 
     uv_timer_init(loop, &ztx->api_session_timer);
     ztx->api_session_timer.data = ztx;

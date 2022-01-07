@@ -37,11 +37,17 @@ extern const char* const PC_ENDPOINT_STATE_TYPE;
 
 typedef struct ziti_controller_s {
     um_http_t client;
+
+    // tuning options
+    unsigned int page_size;
+
     ziti_version version;
     char *api_session_token;
 } ziti_controller;
 
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctlr, const char *url, tls_context *tls);
+
+void ziti_ctrl_set_page_size(ziti_controller *ctrl, unsigned int size);
 
 int ziti_ctrl_close(ziti_controller *ctrl);
 
