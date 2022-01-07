@@ -233,6 +233,7 @@ typedef struct ziti_options_s {
     bool disabled; // if true initial state will be disabled
     const char **config_types;
 
+    unsigned int api_page_size;
     long refresh_interval; //the duration in seconds between checking for updates from the controller
     rate_type metrics_type; //an enum describing the metrics to collect
 

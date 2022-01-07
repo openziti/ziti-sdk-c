@@ -104,9 +104,9 @@ struct ctrl_resp {
 
     bool paging;
     const char *base_path;
-    int limit;
-    int total;
-    int recd;
+    unsigned int limit;
+    unsigned int total;
+    unsigned int recd;
     void **resp_array;
 
     int (*body_parse_func)(void *, const char *, size_t);
@@ -328,6 +328,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
 }
 
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_context *tls) {
+    ctrl->page_size = DEFAULT_PAGE_SIZE;
     um_http_init(loop, &ctrl->client, url);
     um_http_set_ssl(&ctrl->client, tls);
     um_http_idle_keepalive(&ctrl->client, ZITI_CTRL_KEEPALIVE);
@@ -337,6 +338,10 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_
     CTRL_LOG(INFO, "ziti controller client initialized");
 
     return ZITI_OK;
+}
+
+void ziti_ctrl_set_page_size(ziti_controller *ctrl, unsigned int size) {
+    ctrl->page_size = size;
 }
 
 int ziti_ctrl_close(ziti_controller *ctrl) {
@@ -706,7 +711,7 @@ void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len,
 static void ctrl_paging_req(struct ctrl_resp *resp) {
     ziti_controller *ctrl = resp->ctrl;
     if (resp->limit == 0) {
-        resp->limit = DEFAULT_PAGE_SIZE;
+        resp->limit = ctrl->page_size;
     }
     if (resp->recd == 0) {
         uv_gettimeofday(&resp->all_start);
