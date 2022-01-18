@@ -276,7 +276,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
                     uv_timeval64_t now;
                     uv_gettimeofday(&now);
                     uint64_t elapsed = (now.tv_sec * 1000000 + now.tv_usec) - (resp->start.tv_sec * 1000000 + resp->start.tv_usec);
-                    CTRL_LOG(DEBUG, "completed %s[%s] in %ld.%03ld ms", req->method, req->path, elapsed / 1000000, (elapsed / 1000) % 1000);
+                    CTRL_LOG(DEBUG, "completed %s[%s] in %ld.%03ld s", req->method, req->path, elapsed / 1000000, (elapsed / 1000) % 1000);
                     if (resp->paging) {
                         bool last_page = cr.meta.pagination.total <= cr.meta.pagination.offset + cr.meta.pagination.limit;
                         if (cr.meta.pagination.total > resp->total) {
@@ -303,7 +303,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
                             return;
                         }
                         elapsed = (now.tv_sec * 1000000 + now.tv_usec) - (resp->all_start.tv_sec * 1000000 + resp->all_start.tv_usec);
-                        CTRL_LOG(DEBUG, "completed paging request GET[%s] in %ld.%03ld ms", resp->base_path, elapsed / 1000000, (elapsed / 1000) % 1000);
+                        CTRL_LOG(DEBUG, "completed paging request GET[%s] in %ld.%03ld s", resp->base_path, elapsed / 1000000, (elapsed / 1000) % 1000);
                         resp_obj = resp->resp_array;
                     }
                 }
