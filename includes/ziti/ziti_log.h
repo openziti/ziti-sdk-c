@@ -39,8 +39,12 @@ enum DebugLevel {
 #undef _level
 };
 
+#ifndef ZITI_LOG_MODULE
+#define ZITI_LOG_MODULE NULL
+#endif
+
 #define ZITI_LOG(level, fmt, ...) do { \
-if (level <= ziti_log_level()) { ziti_logger(level, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
+if (level <= ziti_log_level()) { ziti_logger(level, ZITI_LOG_MODULE, __FILENAME__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
 } while(0)
 
 #ifdef __cplusplus
@@ -69,9 +73,9 @@ extern "C" {
 typedef void (*log_writer)(int level, const char *loc, const char *msg, size_t msglen);
 
 ZITI_FUNC extern void
-ziti_logger(int level, const char *file, unsigned int line, const char *func,
+ziti_logger(int level, const char *module, const char *file, unsigned int line, const char *func,
             FORMAT_STRING(const char *fmt), ...)
-            ziti_printf_args(5,6)
+ziti_printf_args(6, 7)
 ;
 
 // call once
@@ -86,6 +90,13 @@ ZITI_FUNC extern void ziti_log_set_level(int level);
 
 // don't use directly
 ZITI_FUNC extern int ziti_log_level();
+
+/**
+ * can be used to turn on logging of uv-mbed library and send log messages into the ziti_log
+ * Usage: <code>uv_mbed_set_debug(level, uv_mbed_logger);</code>
+ */
+void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg);
+
 
 #ifdef __cplusplus
 }

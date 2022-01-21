@@ -111,8 +111,6 @@ static const char *get_utc_time();
 
 static void flush_log(uv_prepare_t *p);
 
-static void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg);
-
 static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen);
 
 static uv_loop_t *ts_loop;
@@ -124,11 +122,16 @@ static uv_prepare_t log_flusher;
 static log_writer logger = NULL;
 static void init_debug(uv_loop_t *loop);
 
+static void init_uv_mbed_log();
+
 void ziti_log_init(uv_loop_t *loop, int level, log_writer log_func) {
     init_debug(loop);
 
-    if (level == ZITI_LOG_DEFAULT_LEVEL)
-        level = ziti_log_lvl; // in case it was set before
+    init_uv_mbed_log();
+
+    if (level == ZITI_LOG_DEFAULT_LEVEL) {
+        level = ziti_log_lvl;
+    } // in case it was set before
 
     ziti_log_set_level(level);
 
@@ -152,7 +155,6 @@ void ziti_log_set_level(int level) {
         ziti_log_lvl = level;
     }
 
-    uv_mbed_set_debug(ziti_log_lvl, uv_mbed_logger);
     if (logger) {
         char msg[128];
         int len = snprintf(msg, sizeof(msg), "set log level: ziti_log_lvl=%d &ziti_log_lvl = %p", ziti_log_lvl, &ziti_log_lvl);
@@ -166,6 +168,14 @@ int ziti_log_level() {
 
 void ziti_log_set_logger(log_writer log) {
     logger = log;
+}
+
+static void init_uv_mbed_log() {
+    char *lvl;
+    if ((lvl = getenv("UV_MBED_DEBUG")) != NULL) {
+        int l = (int) strtol(lvl, NULL, 10);
+        uv_mbed_set_debug(l, uv_mbed_logger);
+    }
 }
 
 static void init_debug(uv_loop_t *loop) {
@@ -189,7 +199,7 @@ static void init_debug(uv_loop_t *loop) {
     uv_prepare_start(&log_flusher, flush_log);
 }
 
-void ziti_logger(int level, const char *file, unsigned int line, const char *func, FORMAT_STRING(const char *fmt), ...) {
+void ziti_logger(int level, const char *module, const char *file, unsigned int line, const char *func, FORMAT_STRING(const char *fmt), ...) {
     static size_t loglinelen = 1024;
     static char *logbuf;
 
@@ -198,11 +208,33 @@ void ziti_logger(int level, const char *file, unsigned int line, const char *fun
     va_list argp;
     va_start(argp, fmt);
     char location[128];
-    if (func && func[0]) {
-        snprintf(location, sizeof(location), "%s:%u %s()", file + SOURCE_PATH_SIZE, line, func);
+    char *last_slash = strrchr(file, '/');
+
+    int modlen = 16;
+    if (module == NULL) {
+        if (last_slash == NULL) {
+            modlen = 0;
+        } else {
+            char *p = last_slash;
+            while (p > file) {
+                p--;
+                if (*p == '/') {
+                    p++;
+                    break;
+                }
+            }
+            module = p;
+            modlen = (int) (last_slash - p);
+        }
     }
-    else {
-        snprintf(location, sizeof(location), "%s:%u", file + SOURCE_PATH_SIZE, line);
+
+    if (last_slash) {
+        file = last_slash + 1;
+    }
+    if (func && func[0]) {
+        snprintf(location, sizeof(location), "%.*s:%s:%u %s()", modlen, module, file, line, func);
+    } else {
+        snprintf(location, sizeof(location), "%.*s:%s:%u", modlen, module, file, line);
     }
 
     int len = vsnprintf(logbuf, loglinelen, fmt, argp);
@@ -225,8 +257,8 @@ static void default_log_writer(int level, const char *loc, const char *msg, size
     fputc('\n', ziti_debug_out);
 }
 
-static void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg) {
-    ziti_logger(level, file, line, NULL, msg);
+void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg) {
+    ziti_logger(level, "uv-mbed", file, line, NULL, msg);
 }
 
 static void flush_log(uv_prepare_t *p) {
