@@ -292,6 +292,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
                         while (*chunk != NULL) {
                             resp->resp_array[resp->recd++] = *chunk++;
                         }
+                        CTRL_LOG(DEBUG, "received %d/%d for paging request GET[%s]", resp->recd, cr.meta.pagination.total, resp->base_path);
                         resp->resp_array[resp->recd] = NULL;
                         FREE(resp_obj);
                         resp->received = 0;
