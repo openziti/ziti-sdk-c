@@ -189,7 +189,7 @@ static void init_debug(uv_loop_t *loop) {
     uv_prepare_start(&log_flusher, flush_log);
 }
 
-void ziti_logger(int level, const char *file, unsigned int line, const char *func, FORMAT_STRING(const char *fmt), ...) {
+void ziti_logger(int level, const char *module, const char *file, unsigned int line, const char *func, FORMAT_STRING(const char *fmt), ...) {
     static size_t loglinelen = 1024;
     static char *logbuf;
 
@@ -198,11 +198,33 @@ void ziti_logger(int level, const char *file, unsigned int line, const char *fun
     va_list argp;
     va_start(argp, fmt);
     char location[128];
-    if (func && func[0]) {
-        snprintf(location, sizeof(location), "%s:%u %s()", file + SOURCE_PATH_SIZE, line, func);
+    char *last_slash = strrchr(file, '/');
+
+    int modlen = 16;
+    if (module == NULL) {
+        if (last_slash == NULL) {
+            modlen = 0;
+        } else {
+            char *p = last_slash;
+            while (p > file) {
+                p--;
+                if (*p == '/') {
+                    p++;
+                    break;
+                }
+            }
+            module = p;
+            modlen = (int) (last_slash - p);
+        }
     }
-    else {
-        snprintf(location, sizeof(location), "%s:%u", file + SOURCE_PATH_SIZE, line);
+
+    if (last_slash) {
+        file = last_slash + 1;
+    }
+    if (func && func[0]) {
+        snprintf(location, sizeof(location), "%.*s:%s:%u %s()", modlen, module, file, line, func);
+    } else {
+        snprintf(location, sizeof(location), "%.*s:%s:%u", modlen, module, file, line);
     }
 
     int len = vsnprintf(logbuf, loglinelen, fmt, argp);
@@ -226,7 +248,7 @@ static void default_log_writer(int level, const char *loc, const char *msg, size
 }
 
 static void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg) {
-    ziti_logger(level, file, line, NULL, msg);
+    ziti_logger(level, "uv-mbed", file, line, NULL, msg);
 }
 
 static void flush_log(uv_prepare_t *p) {
