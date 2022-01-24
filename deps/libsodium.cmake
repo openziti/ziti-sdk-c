@@ -6,7 +6,6 @@ if (WIN32)
            FetchContent_Declare (
                    libsodium
                    URL	https://download.libsodium.org/libsodium/releases/libsodium-1.0.18-stable-msvc.zip
-                   URL_HASH MD5=b68f2b60ea7436bfdc0260eaa2f60baf
 		   )
            if(CMAKE_EXE_LINKER_FLAGS MATCHES "/machine:x64")
               set(arch "x64")
