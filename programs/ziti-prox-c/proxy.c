@@ -432,8 +432,10 @@ static void update_listener(ziti_service *service, int status, struct listener *
             free_ziti_client_cfg_v1(&intercept);
         }
     } else {
-        ZITI_LOG(WARN, "service %s is not available. stopping listener[%d]", l->service_name, l->port);
-        uv_close((uv_handle_t *) &l->server, on_listener_close);
+        if (uv_is_active((const uv_handle_t *) &l->server)) {
+            ZITI_LOG(WARN, "service %s is not available. stopping listener[%d]", l->service_name, l->port);
+            uv_close((uv_handle_t *) &l->server, on_listener_close);
+        }
     }
 
     CATCH(uv) {
@@ -453,6 +455,9 @@ static void service_check_cb(ziti_context ztx, ziti_service *service, int status
 static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     struct proxy_app_ctx *app_ctx = ziti_app_ctx(ztx);
     switch (event->type) {
+        case ZitiAPIEvent:
+            ZITI_LOG(INFO, "update API URL to %s", event->event.api.new_ctrl_address);
+            break;
 
         case ZitiContextEvent:
             if (event->event.ctx.ctrl_status == ZITI_OK) {
@@ -624,7 +629,7 @@ void run(int argc, char **argv) {
 
     ziti_options opts = {
             .config = config,
-            .events = ZitiContextEvent | ZitiServiceEvent | ZitiRouterEvent | ZitiMfaAuthEvent,
+            .events = -1,
             .event_cb = on_ziti_event,
             .refresh_interval = 60,
             .router_keepalive = 10,
