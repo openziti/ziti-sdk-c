@@ -34,20 +34,27 @@ extern const char* const PC_PROCESS_MULTI_TYPE;
 extern const char* const PC_MAC_TYPE;
 extern const char* const PC_ENDPOINT_STATE_TYPE;
 
+typedef void (*ziti_ctrl_redirect_cb)(const char *new_address, void *ctx);
 
 typedef struct ziti_controller_s {
+    uv_loop_t *loop;
     um_http_t client;
+    char *url;
 
     // tuning options
     unsigned int page_size;
 
     ziti_version version;
     char *api_session_token;
+    ziti_ctrl_redirect_cb redirect_cb;
+    void *redirect_ctx;
 } ziti_controller;
 
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctlr, const char *url, tls_context *tls);
 
 void ziti_ctrl_set_page_size(ziti_controller *ctrl, unsigned int size);
+
+void ziti_ctrl_set_redirect_cb(ziti_controller *ctrl, ziti_ctrl_redirect_cb cb, void *ctx);
 
 int ziti_ctrl_close(ziti_controller *ctrl);
 

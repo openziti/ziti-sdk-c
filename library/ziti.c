@@ -42,6 +42,8 @@ limitations under the License.
 #endif
 #endif
 
+#define ztx_controller(ztx) ((ztx)->controller.url ? (ztx)->controller.url : (ztx)->opts->controller)
+
 static const char *ALL_CONFIG_TYPES[] = {
         "all",
         NULL
@@ -310,7 +312,9 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         // stop updates
         uv_timer_stop(&ztx->service_refresh_timer);
         ziti_stop_api_session_refresh(ztx);
-        uv_timer_stop(ztx->posture_checks->timer);
+        if (ztx->posture_checks && ztx->posture_checks->timer) {
+            uv_timer_stop(ztx->posture_checks->timer);
+        }
 
         // close all channels
         ziti_close_channels(ztx, ZITI_DISABLED);
@@ -348,6 +352,16 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
     }
 }
 
+static void on_ctrl_change(const char *new_addr, void *ctx) {
+    ziti_context ztx = ctx;
+
+    ziti_event_t ev = {
+            .type = ZitiAPIEvent,
+            .event.api.new_ctrl_address = new_addr,
+    };
+    ziti_send_event(ztx, &ev);
+}
+
 static void ziti_init_async(ziti_context ztx, void *data) {
     ztx->id = ztx_seq++;
     uv_loop_t *loop = ztx->w_async.loop;
@@ -362,9 +376,10 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ZTX_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
             ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
             time_str, start_time.tv_usec / 1000);
-    ZTX_LOG(INFO, "Loading from config[%s] controller[%s]", ztx->opts->config, ztx->opts->controller);
+    ZTX_LOG(INFO, "Loading from config[%s] controller[%s]", ztx->opts->config, ztx_controller(ztx));
 
-    ziti_ctrl_init(loop, &ztx->controller, ztx->opts->controller, ztx->tlsCtx);
+    ziti_ctrl_init(loop, &ztx->controller, ztx_controller(ztx), ztx->tlsCtx);
+    ziti_ctrl_set_redirect_cb(&ztx->controller, on_ctrl_change, ztx);
     if (ztx->opts->api_page_size != 0) {
         ziti_ctrl_set_page_size(&ztx->controller, ztx->opts->api_page_size);
     }
@@ -409,7 +424,7 @@ extern void *ziti_app_ctx(ziti_context ztx) {
 }
 
 const char *ziti_get_controller(ziti_context ztx) {
-    return ztx->opts->controller;
+    return ztx_controller(ztx);
 }
 
 const ziti_version *ziti_get_controller_version(ziti_context ztx) {
@@ -444,6 +459,8 @@ int ziti_set_timeout(ziti_context ztx, int timeout) {
 
 static void free_ztx(uv_handle_t *h) {
     ziti_context ztx = h->data;
+
+    ziti_ctrl_close(&ztx->controller);
 
     if (ztx->tlsCtx != NULL) {
         ztx->tlsCtx->api->free_ctx(ztx->tlsCtx);
@@ -502,7 +519,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     printer(ctx, "ID:\t%d\n", ztx->id);
     printer(ctx, "Enabled:\t%s\n", ziti_is_enabled(ztx) ? "true" : "false");
     printer(ctx, "Config:\t%s\n", ztx->opts->config);
-    printer(ctx, "Controller:\t%s\n", ztx->opts->controller);
+    printer(ctx, "Controller:\t%s\n", ztx_controller(ztx));
     printer(ctx, "Config types:\n");
     for (int i = 0; ztx->opts->config_types && ztx->opts->config_types[i]; i++) {
         printer(ctx, "\t%s\n", ztx->opts->config_types[i]);
@@ -702,7 +719,8 @@ static void api_session_refresh(uv_timer_t *t) {
     bool is_expired = is_api_session_expired(ztx);
 
     if (no_session || is_expired) {
-        ZTX_LOG(DEBUG, "api_session_refresh re-auth due to no active api session[%s] or session expiration[%s]", no_session ? "TRUE" : "FALSE", is_expired ? "TRUE" : "FALSE");
+        ZTX_LOG(DEBUG, "api_session_refresh re-auth due to no active api session[%s] or session expiration[%s]",
+                no_session ? "TRUE" : "FALSE", is_expired ? "TRUE" : "FALSE");
         ziti_re_auth(ztx);
     } else {
         // to attempt a refresh the api session needs to be partially or fully authenticated
@@ -721,13 +739,18 @@ static void api_session_refresh(uv_timer_t *t) {
 void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx) {
     bool is_expired = is_api_session_expired(ztx);
 
-    ZTX_LOG(WARN, "starting to re-auth with ctlr[%s] api_session_status[%d] api_session_expired[%s]", ztx->opts->controller, ztx->api_session_state, is_expired ? "TRUE" : "FALSE");
+    ZTX_LOG(WARN, "starting to re-auth with ctlr[%s] api_session_status[%d] api_session_expired[%s]",
+            ztx_controller(ztx), ztx->api_session_state, is_expired ? "TRUE" : "FALSE");
 
     bool is_auth_started = ztx->api_session_state == ZitiApiSessionStateAuthStarted;
-    bool authed_and_not_expired = (ztx->api_session_state == ZitiApiSessionStatePartiallyAuthenticated || ztx->api_session_state == ZitiApiSessionStateFullyAuthenticated) && !is_expired;
+    bool authed_and_not_expired = (ztx->api_session_state == ZitiApiSessionStatePartiallyAuthenticated ||
+                                   ztx->api_session_state == ZitiApiSessionStateFullyAuthenticated)
+                                  && !is_expired;
 
     if (is_auth_started || authed_and_not_expired) {
-        ZTX_LOG(VERBOSE, "re-auth aborted, api session state is currently authenticating/authenticated and not expired: api_session_status[%d] api_session_expired[%s]", ztx->api_session_state, is_expired ? "TRUE" : "FALSE");
+        ZTX_LOG(VERBOSE, "re-auth aborted, api session state is currently authenticating/authenticated and not expired: "
+                         "api_session_status[%d] api_session_expired[%s]",
+                ztx->api_session_state, is_expired ? "TRUE" : "FALSE");
 
         NEWP(err, ziti_error);
         err->err = ZITI_PARTIALLY_AUTHENTICATED;
@@ -861,7 +884,8 @@ static int is_service_updated(ziti_context ztx, ziti_service *new, ziti_service 
 
         //is_passing states differ
         if (old_set->is_passing != new_set->is_passing) {
-            ZTX_LOG(VERBOSE, "service [%s] is updated, new service is_passing state differs for policy [%s], old[%s] new[%s]", new->name, policy_id, old_set->is_passing ? "TRUE" : "FALSE", new_set->is_passing ? "TRUE" : "FALSE");
+            ZTX_LOG(VERBOSE, "service [%s] is updated, new service is_passing state differs for policy [%s], old[%s] new[%s]",
+                    new->name, policy_id, old_set->is_passing ? "TRUE" : "FALSE", new_set->is_passing ? "TRUE" : "FALSE");
             return 1;
         }
 
@@ -898,7 +922,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
 
     if (error) {
         ZTX_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
-                ztx->opts->controller);
+                ztx_controller(ztx));
         if (error->err == ZITI_NOT_AUTHORIZED) {
             ZTX_LOG(WARN, "api session is no longer valid. Trying to re-auth");
             ziti_re_auth(ztx);
@@ -1238,7 +1262,8 @@ void ziti_set_api_session(ziti_context ztx, ziti_api_session *session) {
 
         if (delay_seconds < API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS) {
             delay_seconds = API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS;
-            ZTX_LOG(WARN, "api session expiration window is set too small (<%d) and may cause issues with connectivity and api session maintenance, defaulting api session refresh delay [%ds]",
+            ZTX_LOG(WARN, "api session expiration window is set too small (<%d) and may cause issues with "
+                          "connectivity and api session maintenance, defaulting api session refresh delay [%ds]",
                     API_SESSION_EXPIRATION_TOO_SMALL_SECONDS, API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS);
         }
 
@@ -1279,7 +1304,7 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
         ziti_auth_query_process(ztx, session_post_auth_query_cb);
     } else if (err) {
         ZTX_LOG(WARN, "failed to get api session from ctrl[%s] api_session_state[%d] %s[%d] %s",
-                ztx->opts->controller, ztx->api_session_state, err->code, errCode, err->message);
+                ztx_controller(ztx), ztx->api_session_state, err->code, errCode, err->message);
 
         if (errCode == ZITI_NOT_AUTHORIZED) {
             if (ztx->api_session || !init_req->start) {
@@ -1293,7 +1318,7 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
                 ziti_set_impossible_to_authenticate(ztx);
 
                 ZTX_LOG(ERROR, "identity[%s] cannot authenticate with ctrl[%s]", ztx->opts->config,
-                        ztx->opts->controller);
+                        ztx_controller(ztx));
                 ziti_event_t service_event = {
                         .type = ZitiServiceEvent,
                         .event.service = {
@@ -1350,10 +1375,10 @@ static void version_cb(ziti_version *v, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err != NULL) {
         ZTX_LOG(ERROR, "failed to get controller version from %s %s(%s)",
-                ztx->opts->controller, err->code, err->message);
+                ztx_controller(ztx), err->code, err->message);
     } else {
         ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
-                ztx->opts->controller, v->version, v->revision, v->build_date);
+                ztx_controller(ztx), v->version, v->revision, v->build_date);
         free_ziti_version(v);
         FREE(v);
     }

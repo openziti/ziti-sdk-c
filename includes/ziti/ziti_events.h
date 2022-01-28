@@ -33,6 +33,7 @@ typedef enum {
     ZitiRouterEvent = 1 << 1,
     ZitiServiceEvent = 1 << 2,
     ZitiMfaAuthEvent = 1 << 3,
+    ZitiAPIEvent = 1 << 4,
 } ziti_event_type;
 
 /**
@@ -58,6 +59,9 @@ struct ziti_context_event {
     const char *err;
 };
 
+struct ziti_api_event {
+    const char *new_ctrl_address;
+};
 /**
  * \brief Edge Router Event.
  *
@@ -115,6 +119,7 @@ typedef struct ziti_event_s {
         struct ziti_router_event router;
         struct ziti_service_event service;
         struct ziti_mfa_auth_event mfa_auth_event;
+        struct ziti_api_event api;
     } event;
 } ziti_event_t;
 

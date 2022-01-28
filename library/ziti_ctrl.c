@@ -115,6 +115,7 @@ struct ctrl_resp {
 
     void *ctx;
 
+    const char *new_address;
     ziti_controller *ctrl;
 
     void (*ctrl_cb)(void *, const ziti_error *, struct ctrl_resp *);
@@ -122,17 +123,25 @@ struct ctrl_resp {
 
 static void ctrl_paging_req(struct ctrl_resp *resp);
 
-static char *str_array_to_json(const char **arr);
-
 static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp);
 
 static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len);
 
-static um_http_req_t* start_request(um_http_t *http, const char *method, const char *path, um_http_resp_cb cb, struct ctrl_resp *resp) {
+static um_http_req_t *start_request(um_http_t *http, const char *method, const char *path, um_http_resp_cb cb, struct ctrl_resp *resp) {
     ziti_controller *ctrl = resp->ctrl;
     uv_gettimeofday(&resp->start);
     CTRL_LOG(DEBUG, "starting %s[%s]", method, path);
     return um_http_req(http, method, path, cb, resp);
+}
+
+static const char *find_header(um_http_resp_t *r, const char *name) {
+    um_http_hdr *h;
+    LIST_FOREACH(h, &r->headers, _next) {
+        if (strcasecmp(h->name, name) == 0) {
+            return h->value;
+        }
+    }
+    return NULL;
 }
 
 static void ctrl_resp_cb(um_http_resp_t *r, void *data) {
@@ -150,23 +159,34 @@ static void ctrl_resp_cb(um_http_resp_t *r, void *data) {
     } else {
         CTRL_LOG(DEBUG, "received headers %s[%s]", r->req->method, r->req->path);
         r->body_cb = ctrl_body_cb;
-        um_http_hdr *h;
-        LIST_FOREACH(h, &r->headers, _next) {
-            if (strcasecmp(h->name, "Content-Length") == 0) {
-                resp->body = calloc(1, atol(h->value) + 1);
-                break;
-            }
-            if (strcasecmp(h->name, "Transfer-Encoding") == 0 && strcmp(h->value, "chunked") == 0) {
-                resp->resp_chunked = true;
-                resp->body = malloc(0);
-            }
+
+        const char *hv;
+        if ((hv = find_header(r, "Content-Length")) != NULL) {
+            resp->body = calloc(1, atol(hv) + 1);
+        } else if ((hv = find_header(r, "transfer-encoding")) && strcmp(hv, "chunked") == 0) {
+            resp->resp_chunked = true;
+            resp->body = malloc(0);
         }
+
+        resp->new_address = find_header(r, "ziti-ctrl-address");
     }
 }
 
 static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp) {
     if (resp->resp_cb) {
         resp->resp_cb(s, e, resp->ctx);
+    }
+    ziti_controller *ctrl = resp->ctrl;
+    if (resp->new_address && strcmp(resp->new_address, ctrl->url) != 0) {
+        CTRL_LOG(INFO, "controller supplied new address[%s]", resp->new_address);
+
+        FREE(ctrl->url);
+        ctrl->url = strdup(resp->new_address);
+        um_http_set_url(&ctrl->client, ctrl->url);
+
+        if (resp->ctrl->redirect_cb) {
+            ctrl->redirect_cb(ctrl->url, ctrl->redirect_ctx);
+        }
     }
 
     free(resp);
@@ -330,6 +350,9 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
 
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_context *tls) {
     ctrl->page_size = DEFAULT_PAGE_SIZE;
+    ctrl->loop = loop;
+    ctrl->url = strdup(url);
+    memset(&ctrl->version, 0, sizeof(ctrl->version));
     um_http_init(loop, &ctrl->client, url);
     um_http_set_ssl(&ctrl->client, tls);
     um_http_idle_keepalive(&ctrl->client, ZITI_CTRL_KEEPALIVE);
@@ -345,12 +368,16 @@ void ziti_ctrl_set_page_size(ziti_controller *ctrl, unsigned int size) {
     ctrl->page_size = size;
 }
 
+void ziti_ctrl_set_redirect_cb(ziti_controller *ctrl, ziti_ctrl_redirect_cb cb, void *ctx) {
+    ctrl->redirect_cb = cb;
+    ctrl->redirect_ctx = ctx;
+}
+
 int ziti_ctrl_close(ziti_controller *ctrl) {
-    if (ctrl->api_session_token != NULL) {
-        FREE(ctrl->api_session_token);
-        free_ziti_version(&ctrl->version);
-        um_http_close(&ctrl->client);
-    }
+    free_ziti_version(&ctrl->version);
+    FREE(ctrl->api_session_token);
+    FREE(ctrl->url);
+    um_http_close(&ctrl->client);
     return ZITI_OK;
 }
 
@@ -645,36 +672,6 @@ void ziti_ctrl_get_public_cert(ziti_controller *ctrl, enroll_cfg *ecfg, void (*c
     resp->ctrl_cb = ctrl_default_cb;
 
     start_request(&ctrl->client, "GET", "/", ctrl_resp_cb, resp);
-}
-
-static char *str_array_to_json(const char **arr) {
-    if (arr == NULL) {
-        return strdup("null");
-    }
-
-    size_t json_len = 3; //"[]"
-    const char **p = arr;
-    while (*p != NULL) {
-        json_len += strlen(*p) + 3;
-        p++;
-    }
-
-    p = arr;
-    char *json = malloc(json_len);
-    char *outp = json;
-    *outp++ = '[';
-    while (*p != NULL) {
-        *outp++ = '"';
-        strcpy(outp, *p);
-        outp += strlen(*p);
-        *outp++ = '"';
-        if (*(++p) != NULL) {
-            *outp++ = ',';
-        }
-    }
-    *outp++ = ']';
-    *outp = '\0';
-    return json;
 }
 
 void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
