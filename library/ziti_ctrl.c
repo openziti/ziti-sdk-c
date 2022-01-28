@@ -352,6 +352,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_
     ctrl->page_size = DEFAULT_PAGE_SIZE;
     ctrl->loop = loop;
     ctrl->url = strdup(url);
+    memset(&ctrl->version, 0, sizeof(ctrl->version));
     um_http_init(loop, &ctrl->client, url);
     um_http_set_ssl(&ctrl->client, tls);
     um_http_idle_keepalive(&ctrl->client, ZITI_CTRL_KEEPALIVE);
