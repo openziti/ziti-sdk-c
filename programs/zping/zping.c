@@ -243,7 +243,7 @@ static void print_stats(){
         isActive = false;
         getMinMaxAvg();
         getStddev();
-        printf("\n--- winserver03 ping statistics ---\n");
+        printf("\n--- %s ping statistics ---\n", identity);
         printf("%d packets sent and %d packets received, %.2lf%% packet loss\n",ps.sent,ps.recv,100*(1.0-(((double)ps.recv)/(double)ps.sent)));
         printf("round-trip min/max/avg/stddev %.3lf/%.3lf/%.3lf/%.3lf ms\n\n",ps.minrt,ps.maxrt,ps.avgrt,ps.stddv);
         //ziti_close(ps.c, NULL);
