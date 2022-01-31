@@ -99,7 +99,7 @@ ZITI_FUNC void uv_mbed_logger(int level, const char *file, unsigned int line, co
 
 // don't use this function. it's a temporary function to support logging on windows.it will be
 // removed in a future release
-ZITI_FUNC void ziti_enable_uv_mbed_logger(bool enabled);
+ZITI_FUNC void ziti_enable_uv_mbed_logger(int enabled);
 
 
 #ifdef __cplusplus

@@ -261,7 +261,7 @@ void uv_mbed_logger(int level, const char *file, unsigned int line, const char *
     ziti_logger(level, "uv-mbed", file, line, NULL, msg);
 }
 
-void ziti_enable_uv_mbed_logger(bool enabled) {
+void ziti_enable_uv_mbed_logger(int enabled) {
     if(enabled) {
         uv_mbed_set_debug(9, uv_mbed_logger);
     } else {
