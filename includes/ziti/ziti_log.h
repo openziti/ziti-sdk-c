@@ -97,6 +97,9 @@ ZITI_FUNC extern int ziti_log_level();
  */
 ZITI_FUNC void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg);
 
+// enabled the uv_mbed_logger. windows is stupid.
+ZITI_FUNC void ziti_enable_uv_mbed_logger();
+
 
 #ifdef __cplusplus
 }
