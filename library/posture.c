@@ -176,7 +176,12 @@ static pr_info *get_resp_info(ziti_context ztx, const char *id) {
 
 void ziti_send_posture_data(ziti_context ztx) {
     if (ztx->api_session == NULL || ztx->api_session->id == NULL) {
-        ZTX_LOG(DEBUG, "no api_session, can't submit posture checks");
+        ZTX_LOG(DEBUG, "no api_session, can't submit posture responses");
+        return;
+    }
+
+    if(ztx->api_session_state != ZitiApiSessionStateFullyAuthenticated) {
+        ZTX_LOG(DEBUG, "api_session is partially authenticated, can't submit posture responses");
         return;
     }
 
