@@ -45,7 +45,10 @@ typedef struct ziti_controller_s {
     unsigned int page_size;
 
     ziti_version version;
+
     char *api_session_token;
+    char *instance_id;
+
     ziti_ctrl_redirect_cb redirect_cb;
     void *redirect_ctx;
 } ziti_controller;
@@ -62,8 +65,7 @@ void ziti_ctrl_clear_api_session(ziti_controller *ctrl);
 
 void ziti_ctrl_get_version(ziti_controller *ctrl, void (*ver_cb)(ziti_version *, const ziti_error *, void *), void *ctx);
 
-void
-ziti_ctrl_login(ziti_controller *ctrl, const char **cfg_types, void (*login_cb)(ziti_api_session *, const ziti_error *, void *),
+void ziti_ctrl_login(ziti_controller *ctrl, const char **cfg_types, void (*login_cb)(ziti_api_session *, const ziti_error *, void *),
                 void *ctx);
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
