@@ -391,10 +391,10 @@ int main(int argc, char **argv) {
         printf("zping --help for more info\n");
         exit(1);
     }
-    if  (identity != NULL){
+    if (identity != NULL){
         printf("Connecting to identity: %s\n",identity);
     }
-    else{
+    else if ((identity == NULL) && (server != 1)){
         printf("Missing mandatory option -i,--identity <identity name>\n");
         printf("zping --help for more info\n");
         exit(1);
