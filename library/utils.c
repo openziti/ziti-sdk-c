@@ -261,8 +261,12 @@ void uv_mbed_logger(int level, const char *file, unsigned int line, const char *
     ziti_logger(level, "uv-mbed", file, line, NULL, msg);
 }
 
-void ziti_enable_uv_mbed_logger() {
-    uv_mbed_set_debug(9, uv_mbed_logger);
+void ziti_enable_uv_mbed_logger(bool enabled) {
+    if(enabled) {
+        uv_mbed_set_debug(9, uv_mbed_logger);
+    } else {
+        uv_mbed_set_debug(1, NULL);
+    }
 }
 
 static void flush_log(uv_prepare_t *p) {
