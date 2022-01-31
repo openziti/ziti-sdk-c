@@ -12,8 +12,6 @@ zping uses the addressable terminator function of ziti to direct ping requests t
 
 Compile from source:
 
-Install golang for your platform follow instructions at https://golang.org
-
 Linux:
 
    Create a dir
