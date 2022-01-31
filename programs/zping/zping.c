@@ -45,14 +45,20 @@ static void on_connect(ziti_connection conn, int status);
 static ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len);
 static void on_signal(uv_signal_t *h, int signal);
 static void on_ziti_init(ziti_context ztx, const ziti_event_t *ev);
+static void on_ziti_enroll(ziti_config *cfg, int status, char *err_message, void *ctx);
+static int write_identity_file(ziti_config *cfg);
 
 
 
 static ziti_context ziti;
-static int server = 0;
+static bool server = false;
 static const char *service;
 static const char *config;
 static const char *identity;
+static const char *output_file;
+static const char *ekey;
+static const char *ecert;
+static const char *jwt;
 static int count = 31536000;
 static int pmax = 31536000;
 static int bytes = 100;
@@ -61,6 +67,7 @@ struct timeval st, en, cur;
 struct timeval is[1000000];
 static double rt[1000000];
 static bool isActive = false;
+static bool enroll = false;
 uv_idle_t idler;
 uv_loop_t *loop;
 ziti_connection zconn;
@@ -78,6 +85,11 @@ struct pingSession{
     ziti_connection c;
 };
 
+struct enroll_cert {
+    const char *key;
+    const char *cert;
+};
+
 static struct pingSession ps;
 
 static int parse_opt (int key, char *arg, struct argp_state *state){
@@ -88,7 +100,11 @@ static int parse_opt (int key, char *arg, struct argp_state *state){
             }
             else if (strcmp("server", arg) == 0) {
                 printf("Running as server\n");
-                server = 1;
+                server = true;
+            }
+            else if (strcmp("enroll", arg) == 0) {
+                printf("enrolling\n");
+                enroll = true;
             }
             else{
                 printf("Invalid mode for option -m,--mode <server|client>\n");
@@ -122,6 +138,23 @@ static int parse_opt (int key, char *arg, struct argp_state *state){
             identity = arg;
             break;
         }
+        case 'k':{
+            ekey = arg;
+            break;
+        }
+        case 'e':{
+            ecert = arg;
+            break;
+        }
+        case 'o':{
+            output_file = arg;
+            break;
+        }
+         case 'j':{
+            jwt = arg;
+            break;
+        }
+
     }
   return 0;
 }
@@ -155,11 +188,11 @@ static ssize_t on_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
 static void getStddev() {
         double sum = 0.0;
         double sqavg = 0.0;
-        for (int x=0; x <= ps.recv; x++ ) {
+        for (int x=0; x < ps.recv; x++ ) {
                 double elem = ps.rt[x];
                 sum += pow(elem-ps.avgrt, 2.0);
-                if (x == ps.recv) { 
-                    sqavg = sum/((double)ps.recv + 1);
+                if (x == (ps.recv -1)) { 
+                    sqavg = sum/(double)ps.recv;
                 }
         }
         ps.stddv = sqrt(sqavg);
@@ -171,7 +204,7 @@ static void getMinMaxAvg() {
         double avg = 0.0;
         double max = 0.0;
         double min = 0.0;
-        for (int x=0; x <= ps.recv; x++ ){
+        for (int x=0; x < ps.recv; x++ ){
                 double elem = ps.rt[x];
                 total += elem;
                 if (x == 0) {
@@ -184,8 +217,8 @@ static void getMinMaxAvg() {
                 if (elem > max) {
                         max = elem;
                 }
-                if (x == ps.recv) {
-                    avg = total / ((double)ps.recv + 1.0);
+                if (x == (ps.recv -1)) {
+                    avg = total / (double)ps.recv;
                 }
 
         }
@@ -267,7 +300,7 @@ static void ping_idle_cb(uv_idle_t* handle) {
        char *base = malloc(bytes + 1);
        size_t l = sprintf(base, "%s%d", pattern, seq);
        DIE(ziti_write(zconn, base, l, on_write, base));
-       ps.sent = seq;
+       ps.sent = seq + 1;
        count--;
     }
     else if (isActive){
@@ -279,7 +312,7 @@ static void ping_idle_cb(uv_idle_t* handle) {
            char *base = malloc(128);
            size_t l = sprintf(base, "%s%d", pattern, seq);
            DIE(ziti_write(zconn, base, l, on_write, base));
-           ps.sent = seq;
+           ps.sent = seq + 1;
            count--;
        }
     }
@@ -293,9 +326,8 @@ static void on_connect(ziti_connection conn, int status) {
     uv_idle_start(&idler, ping_idle_cb);
 }
 
-static size_t total;
-
 static ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
+    size_t total;
     int seq;
     if (len == ZITI_EOF) {
 
@@ -320,7 +352,7 @@ static ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
         size_t l = sprintf(reply, "%.*s", (int)len, buf);
         size_t slen = sprintf(sequence, "%s", reply + bytes);
         seq = atoi(sequence);
-        ps.recv = seq;
+        ps.recv = seq + 1;
         double time_taken;
         gettimeofday(&en, NULL);
         time_taken = (en.tv_sec - ps.istart[seq].tv_sec) * 1e6;
@@ -329,7 +361,7 @@ static ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
         printf("%ld bytes from server ziti_seq=%s time=%.3lfms\n",(long)l-(long)slen,sequence,ps.rt[seq]);
         free(reply);    
     }
-    if ((count < 0) && isActive){
+    if (((ps.recv) == pmax) && isActive){
         print_stats();
     }
     return len;
@@ -368,43 +400,116 @@ static void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
     }
 }
 
+static int write_identity_file(ziti_config *cfg) {
+    FILE *f;
+
+    size_t len;
+    char *output_buf = ziti_config_to_json(cfg, 0, &len);
+
+    if ((f = fopen(output_file, "wb")) == NULL) {
+        return (-1);
+    }
+
+    int rc = ZITI_OK;
+    if (fwrite(output_buf, 1, len, f) != len) {
+        rc = -1;
+    }
+
+    free(output_buf);
+    fclose( f );
+
+    return rc;
+}
+
+static void on_ziti_enroll(ziti_config *cfg, int status, char *err_message, void *ctx) {
+
+    if (status != ZITI_OK) {
+        fprintf(stderr, "ERROR: => %d => %s\n", status, err_message);
+        exit(status);
+    }
+
+
+    int rc = write_identity_file(cfg);
+
+    DIE(rc);
+}
+
 int main(int argc, char **argv) {
     signal(SIGINT, INThandler);
+    loop = uv_default_loop();
     
     struct argp_option options[] = {
-        { "mode", 'm',"<mode>", 0, "set server|client mode"},
-        { "config", 'c',"<config-file>",0, "set config file <mandatory>"},
+        { "mode", 'm',"<mode>", 0, "set server|client mode|enroll"},
+        { "config", 'c',"<path to config-file>",0, "set config file <mandatory>"},
         { "service", 's',"<service name>",0, "set ziti service <mandatory>"},
         { "bytes", 'l',"<integer bytes>",0, "set size of payload <default 100>"},
         { "time-out", 't',"<integer seconds>",0, "set time between pings <default 1 sec>"},
         { "number", 'n',"<integer>",0, "set number of pings <default 31536000> "},
         { "identity", 'i',"<identity>",0, "set identity to dial <mandatory>"},
+        { "output-file", 'o',"<path to output file>",0, "set enrollment output-file <mandatory>"},
+        { "key", 'k',"<path to key file>",0, "set enrollment key <optional>"},
+        { "cert", 'e',"<path to cert file>",0, "set enrollment cert <optional>"},
+        { "jwt", 'j',"<path to jwt file>",0, "set jwt <optional>"},
         {0}
     };
     struct argp argp = { options, parse_opt, 0, 0 };
     argp_parse (&argp, argc, argv, 0, 0, 0);
-    if (config != NULL){
-         printf("Connecting using credentials in: %s\n",config);
-    } 
+    if (!enroll){
+        if (config != NULL){
+            printf("Connecting using credentials in: %s\n",config);
+        } 
+        else{
+            printf("Missing mandatory option -c,--config <path to config-file>\n");
+            printf("zping --help for more info\n");
+            exit(1);
+        }
+        if (identity != NULL){
+            printf("Connecting to identity: %s\n",identity);
+        }
+        else if ((identity == NULL) && (!server)){
+            printf("Missing mandatory option -i,--identity <identity name>\n");
+            printf("zping --help for more info\n");
+            exit(1);
+        }
+        
+        uv_idle_init(loop, &idler);
+    
+        DIE(ziti_init(config, loop, on_ziti_init, ZitiContextEvent, loop));
+
+        uv_signal_init(loop, &sig);
+    }
     else{
-        printf("Missing mandatory option -c,--config <path to config-file>\n");
-        printf("zping --help for more info\n");
-        exit(1);
-    }
-    if (identity != NULL){
-        printf("Connecting to identity: %s\n",identity);
-    }
-    else if ((identity == NULL) && (server != 1)){
-        printf("Missing mandatory option -i,--identity <identity name>\n");
-        printf("zping --help for more info\n");
-        exit(1);
-    }
-    loop = uv_default_loop();
-    uv_idle_init(loop, &idler);
+        if(output_file == NULL){
+            printf("Missing mandatory option -o,--output-file <path to output file>\n");
+            printf("zping --help for more info\n");
+            exit(1);
+        }
 
-    DIE(ziti_init(config, loop, on_ziti_init, ZitiContextEvent, loop));
+        ziti_enroll_opts opts = {0};
+        struct enroll_cert cert;
+        if((jwt == NULL) && ((ekey == NULL) || (ecert == NULL))){
+            printf("Must specify either -j or both (-k and -e)\n");
+            printf("zping --help for more info\n");
+            exit(1);
+        }
+        if(jwt != NULL){
+           opts.jwt = realpath(jwt, NULL);
+        }
 
-    uv_signal_init(loop, &sig);
+        if (ekey != NULL) {
+            opts.enroll_key = realpath(ekey, NULL);
+        }
+
+        if (ecert != NULL) {
+            opts.enroll_cert = realpath(ecert, NULL);
+        }
+
+        DIE(ziti_enroll(&opts, loop, on_ziti_enroll, NULL));
+    }
     uv_run(loop, UV_RUN_DEFAULT);
+    if (enroll){
+        printf("\nSuccessfully registered and output id to: %s\n", output_file); 
+    }
     return 0;
 }
+
