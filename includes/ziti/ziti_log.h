@@ -95,7 +95,11 @@ ZITI_FUNC extern int ziti_log_level();
  * can be used to turn on logging of uv-mbed library and send log messages into the ziti_log
  * Usage: <code>uv_mbed_set_debug(level, uv_mbed_logger);</code>
  */
-void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg);
+ZITI_FUNC void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg);
+
+// don't use this function. it's a temporary function to support logging on windows.it will be
+// removed in a future release
+ZITI_FUNC void ziti_enable_uv_mbed_logger(int enabled);
 
 
 #ifdef __cplusplus
