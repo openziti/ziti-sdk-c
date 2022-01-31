@@ -169,6 +169,13 @@ static void ctrl_resp_cb(um_http_resp_t *r, void *data) {
         }
 
         resp->new_address = find_header(r, "ziti-ctrl-address");
+
+        const char *instance_id = find_header(r, "ziti-instance-id");
+
+        if (instance_id) {
+            FREE(resp->ctrl->instance_id);
+            resp->ctrl->instance_id = strdup(instance_id);
+        }
     }
 }
 
@@ -359,6 +366,8 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_
     um_http_connect_timeout(&ctrl->client, ZITI_CTRL_TIMEOUT);
     um_http_header(&ctrl->client, "Accept", "application/json");
     ctrl->api_session_token = NULL;
+    ctrl->instance_id = NULL;
+
     CTRL_LOG(INFO, "ziti controller client initialized");
 
     return ZITI_OK;
@@ -376,6 +385,7 @@ void ziti_ctrl_set_redirect_cb(ziti_controller *ctrl, ziti_ctrl_redirect_cb cb, 
 int ziti_ctrl_close(ziti_controller *ctrl) {
     free_ziti_version(&ctrl->version);
     FREE(ctrl->api_session_token);
+    FREE(ctrl->instance_id);
     FREE(ctrl->url);
     um_http_close(&ctrl->client);
     return ZITI_OK;
