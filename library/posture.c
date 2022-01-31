@@ -186,7 +186,7 @@ void ziti_send_posture_data(ziti_context ztx) {
     bool new_controller_instance = (ztx->posture_checks->controller_instance_id == NULL && ztx->controller.instance_id != NULL) || strcmp(ztx->posture_checks->controller_instance_id, ztx->controller.instance_id) != 0;
 
     if(new_controller_instance){
-        ZTX_LOG(WARN, "a new controller instance was detected");
+        ZTX_LOG(WARN, "first run or potential controller restart detected");
     }
 
     if (new_session_id || ztx->posture_checks->must_send_every_time || new_controller_instance) {
