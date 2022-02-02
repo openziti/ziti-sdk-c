@@ -73,6 +73,15 @@ static const char *const level_labels[] = {
         DEBUG_LEVELS(LEVEL_LBL)
 };
 
+int get_debug_level(char* log_level) {
+    for (int i =0 ;level_labels[i]; i++) {
+        if (strcasecmp(log_level, level_labels[i]) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 const char *ziti_get_build_version(int verbose) {
     if (verbose) {
         return "\n\tVersion:\t" to_str(ZITI_VERSION)
