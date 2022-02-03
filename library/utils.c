@@ -166,7 +166,7 @@ int ziti_log_level() {
     return ziti_log_lvl;
 }
 
-char* ziti_log_level_label() {
+const char* ziti_log_level_label() {
     return level_labels[ziti_log_lvl];
 }
 
@@ -179,7 +179,7 @@ static int get_debug_level(char* log_level) {
     return -1;
 }
 
-void ziti_log_set_level_by_label(char* log_level) {
+void ziti_log_set_level_by_label(const char* log_level) {
     int lvl = get_debug_level(log_level);
     ziti_log_set_level(lvl);
 }

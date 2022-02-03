@@ -91,9 +91,9 @@ ZITI_FUNC extern void ziti_log_set_level(int level);
 // don't use directly
 ZITI_FUNC extern int ziti_log_level();
 
-ZITI_FUNC extern void ziti_log_set_level_by_label(char* log_level);
+ZITI_FUNC extern void ziti_log_set_level_by_label(const char* log_level);
 
-ZITI_FUNC extern char* ziti_log_level_label();
+ZITI_FUNC extern const char* ziti_log_level_label();
 
 /**
  * can be used to turn on logging of uv-mbed library and send log messages into the ziti_log
