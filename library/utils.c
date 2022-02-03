@@ -73,15 +73,6 @@ static const char *const level_labels[] = {
         DEBUG_LEVELS(LEVEL_LBL)
 };
 
-int get_debug_level(char* log_level) {
-    for (int i =0 ;level_labels[i]; i++) {
-        if (strcasecmp(log_level, level_labels[i]) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 const char *ziti_get_build_version(int verbose) {
     if (verbose) {
         return "\n\tVersion:\t" to_str(ZITI_VERSION)
@@ -173,6 +164,24 @@ void ziti_log_set_level(int level) {
 
 int ziti_log_level() {
     return ziti_log_lvl;
+}
+
+char* ziti_log_level_label() {
+    return level_labels[ziti_log_lvl];
+}
+
+static int get_debug_level(char* log_level) {
+    for (int i = 0;level_labels[i]; i++) {
+        if (strcasecmp(log_level, level_labels[i]) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void ziti_log_set_level_by_label(char* log_level) {
+    int lvl = get_debug_level(log_level);
+    ziti_log_set_level(lvl);
 }
 
 void ziti_log_set_logger(log_writer log) {
