@@ -172,7 +172,8 @@ const char* ziti_log_level_label() {
 
 void ziti_log_set_level_by_label(const char* log_level) {
     int lvl = -1;
-    for (int i = 0;i < 7; i++) {
+    int num_levels = sizeof(level_labels) / sizeof(const char *);
+    for (int i = 0;i < num_levels; i++) {
         if (strcasecmp(log_level, level_labels[i]) == 0) {
             lvl = i;
         }
