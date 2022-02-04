@@ -171,13 +171,13 @@ const char* ziti_log_level_label() {
 }
 
 void ziti_log_set_level_by_label(const char* log_level) {
-    int lvl = ZITI_LOG_DEFAULT_LEVEL;
+    int lvl = -1;
     for (int i = 0;i < 7; i++) {
         if (strcasecmp(log_level, level_labels[i]) == 0) {
             lvl = i;
         }
     }
-    if (lvl != ZITI_LOG_DEFAULT_LEVEL) {
+    if (lvl != -1) {
         ziti_log_set_level(lvl);
     }
 }
