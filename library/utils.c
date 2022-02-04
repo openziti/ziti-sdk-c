@@ -166,6 +166,22 @@ int ziti_log_level() {
     return ziti_log_lvl;
 }
 
+const char* ziti_log_level_label() {
+    return level_labels[ziti_log_lvl];
+}
+
+void ziti_log_set_level_by_label(const char* log_level) {
+    int lvl = ZITI_LOG_DEFAULT_LEVEL;
+    for (int i = 0;i < 7; i++) {
+        if (strcasecmp(log_level, level_labels[i]) == 0) {
+            lvl = i;
+        }
+    }
+    if (lvl != ZITI_LOG_DEFAULT_LEVEL) {
+        ziti_log_set_level(lvl);
+    }
+}
+
 void ziti_log_set_logger(log_writer log) {
     logger = log;
 }
