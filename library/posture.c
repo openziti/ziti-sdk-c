@@ -835,6 +835,7 @@ void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err,
     if (err) {
         ZTX_LOG(ERROR, "error during endpoint state posture response submission: %d - %s", err->http_code, err->message);
     } else {
+        ZTX_LOG(INFO, "endpoint state sent");
         handle_pr_resp_timer_events(ztx, pr_resp);
         ziti_services_refresh(&ztx->service_refresh_timer);
     }
@@ -843,6 +844,7 @@ void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err,
 
 void ziti_endpoint_state_change(ziti_context ztx, bool woken, bool unlocked) {
     if (woken || unlocked) {
+        ZTX_LOG(INFO, "endpoint state change reported: woken[%s] unlocked[%s]", woken ? "TRUE":"FALSE", unlocked ? "TRUE":"FALSE");
         ziti_pr_endpoint_state_req state_req = {
                 .id = "0",
                 .typeId = (char *) PC_ENDPOINT_STATE_TYPE,
@@ -855,6 +857,8 @@ void ziti_endpoint_state_change(ziti_context ztx, bool woken, bool unlocked) {
         char *obj = ziti_pr_endpoint_state_req_to_json(&state_req, 0, &obj_len);
 
         ziti_pr_post(&ztx->controller, obj, obj_len, ziti_endpoint_state_pr_cb, ztx);
+    } else {
+        ZTX_LOG(INFO, "endpoint state change reported, but no reason to send data: woken[%s] unlocked[%s]", woken ? "TRUE":"FALSE", unlocked ? "TRUE":"FALSE");
     }
 }
 
