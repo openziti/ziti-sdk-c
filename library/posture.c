@@ -202,6 +202,7 @@ void ziti_send_posture_data(ziti_context ztx) {
 
         ztx->posture_checks->must_send = true;
         FREE(ztx->posture_checks->previous_api_session_id);
+        FREE(ztx->posture_checks->controller_instance_id);
         ztx->posture_checks->previous_api_session_id = strdup(ztx->api_session->id);
         ztx->posture_checks->controller_instance_id = strdup(ztx->controller.instance_id);
     } else {
