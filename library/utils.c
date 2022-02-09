@@ -148,6 +148,10 @@ void ziti_log_set_level(int level) {
         char *lvl = getenv("ZITI_LOG");
         if (lvl != NULL) {
             ziti_log_lvl = (int) strtol(lvl, NULL, 10);
+            int num_levels = sizeof(level_labels) / sizeof(const char *);
+            if (ziti_log_lvl < 0 || ziti_log_lvl >= num_levels) {
+                ziti_log_lvl = INFO;
+            }
         } else {
             ziti_log_lvl = INFO;
         }
@@ -167,7 +171,12 @@ int ziti_log_level() {
 }
 
 const char* ziti_log_level_label() {
-    return level_labels[ziti_log_lvl];
+    int num_levels = sizeof(level_labels) / sizeof(const char *);
+    if (ziti_log_lvl >= 0 && ziti_log_lvl < num_levels) {
+        return level_labels[ziti_log_lvl];
+    } else {
+        return NULL;
+    }
 }
 
 void ziti_log_set_level_by_label(const char* log_level) {
