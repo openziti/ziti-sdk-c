@@ -4,7 +4,7 @@ include(FetchContent)
 
 FetchContent_Declare(uv-mbed
         GIT_REPOSITORY https://github.com/netfoundry/uv-mbed.git
-        GIT_TAG v0.13.7
+        GIT_TAG "fix-tls-engine-buffer-flush"
         )
 set(ENABLE_UM_TESTS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(uv-mbed)
