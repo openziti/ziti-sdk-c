@@ -822,6 +822,10 @@ static bool service_posture_check_timeouts_changed(ziti_context ztx, const ziti_
                 if (old_set->posture_queries[old_idx]->timeout != new_set->posture_queries[new_idx]->timeout) {
                     return true;
                 }
+
+                if (strcmp(old_set->posture_queries[old_idx]->updated_at, new_set->posture_queries[new_idx]->updated_at) != 0) {
+                    return true;
+                }
             }
         }
     }
