@@ -32,6 +32,7 @@ SET(ZITI_SRC_FILES
         ziti-socket.c
         pool.c
         model_map.c
+        authenticators.c
         )
 
 SET(ZITI_INCLUDE_DIRS

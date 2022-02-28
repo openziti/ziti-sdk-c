@@ -54,7 +54,8 @@ XX(updated, timestamp, ptr, updatedAt, __VA_ARGS__) \
 XX(cached_last_activity_at, timestamp, ptr, cachedLastActivityAt, __VA_ARGS__) \
 XX(identity, ziti_identity, ptr, identity, __VA_ARGS__) \
 XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__) \
-XX(auth_queries, ziti_auth_query_mfa, array, authQueries, __VA_ARGS__)
+XX(auth_queries, ziti_auth_query_mfa, array, authQueries, __VA_ARGS__)         \
+XX(authenticator_id, string, none, authenticatorId, __VA_ARGS__)
 
 #define ZITI_ERROR_MODEL(XX, ...) \
 XX(err, int, none, , __VA_ARGS__) \
@@ -149,6 +150,23 @@ XX(code, string, none, code, __VA_ARGS__)
 #define ZITI_MFA_RECOVERY_CODES_MODEL(XX, ...) \
 XX(recovery_codes, string, array, recoveryCodes, __VA_ARGS__)
 
+#define ZITI_EXTEND_CERT_AUTHENTICATOR_REQ(XX, ...) \
+XX(client_cert_csr, string, none, clientCertCsr, __VA_ARGS__)
+
+#define ZITI_VERIFY_EXTEND_CERT_AUTHENTICATOR_REQ(XX, ...) \
+XX(client_cert, string, none, clientCert, __VA_ARGS__)
+
+#define ZITI_EXTEND_CERT_AUTHENTICATOR_RESP(XX, ...) \
+XX(client_cert_pem, string, none, clientCert, __VA_ARGS__) \
+XX(cas_pem, string, none, ca, __VA_ARGS__)
+
+#define ZITI_AUTHENTICATOR_MODEL(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__) \
+XX(method, string, none, method, __VA_ARGS__) \
+XX(identity_id, string, none, identityId, __VA_ARGS__) \
+XX(cert_pem, string, none, certPem, __VA_ARGS__) \
+XX(fingerprint, string, none, fingerprint, __VA_ARGS__)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -196,6 +214,14 @@ DECLARE_MODEL(ziti_mfa_recovery_codes, ZITI_MFA_RECOVERY_CODES_MODEL)
 DECLARE_MODEL(ziti_service_timer, ZITI_SERVICE_TIMER)
 
 DECLARE_MODEL(ziti_pr_response, ZITI_PR_RESPONSE)
+
+DECLARE_MODEL(ziti_extend_cert_authenticator_req, ZITI_EXTEND_CERT_AUTHENTICATOR_REQ)
+
+DECLARE_MODEL(ziti_verify_extend_cert_authenticator_req, ZITI_VERIFY_EXTEND_CERT_AUTHENTICATOR_REQ)
+
+DECLARE_MODEL(ziti_authenticator, ZITI_AUTHENTICATOR_MODEL)
+
+DECLARE_MODEL(ziti_extend_cert_authenticator_resp, ZITI_EXTEND_CERT_AUTHENTICATOR_RESP)
 
 #ifdef __cplusplus
 }

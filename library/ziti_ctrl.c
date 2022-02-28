@@ -845,3 +845,51 @@ void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t
     um_http_req_header(req, "Content-Type", "application/json");
     um_http_req_data(req, body, body_len, free_body_cb);
 }
+
+void ziti_ctrl_extend_cert_authenticator(ziti_controller *ctrl, const char *authenticatorId, const char *csr, void(*cb)(ziti_extend_cert_authenticator_resp*, const ziti_error *, void *), void *ctx) {
+    if(!verify_api_session(ctrl, cb, ctx)) return;
+
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_extend_cert_authenticator_resp_ptr;
+    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    char path[128];
+    snprintf(path, sizeof(path), "/current-identity/authenticators/%s/extend", authenticatorId);
+
+    ziti_extend_cert_authenticator_req extend_req;
+    extend_req.client_cert_csr = csr;
+
+    size_t body_len;
+    char *body = ziti_extend_cert_authenticator_req_to_json(&extend_req, 0, &body_len);
+
+    um_http_req_t *req = start_request(ctrl->client, "POST", path, ctrl_resp_cb, resp);
+    um_http_req_header(req, "Content-Type", "application/json");
+    um_http_req_data(req, body, body_len, free_body_cb);
+}
+
+void ziti_ctrl_verify_extend_cert_authenticator(ziti_controller *ctrl, const char *authenticatorId, const char *client_cert, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
+    if(!verify_api_session(ctrl, cb, ctx)) return;
+
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = NULL;
+    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    char path[256];
+    snprintf(path, sizeof(path), "/current-identity/authenticators/%s/extend-verify", authenticatorId);
+
+    ziti_verify_extend_cert_authenticator_req verify_req;
+    verify_req.client_cert = client_cert;
+
+    size_t body_len;
+    char *body = ziti_verify_extend_cert_authenticator_req_to_json(&verify_req, 0, &body_len);
+
+    um_http_req_t *req = start_request(ctrl->client, "POST", path, ctrl_resp_cb, resp);
+    um_http_req_header(req, "Content-Type", "application/json");
+    um_http_req_data(req, body, body_len, free_body_cb);
+}

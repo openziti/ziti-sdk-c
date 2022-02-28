@@ -29,6 +29,7 @@
 #include "metrics.h"
 #include "edge_protocol.h"
 #include "posture.h"
+#include "authenticators.h"
 
 #include <sodium.h>
 
@@ -319,6 +320,8 @@ void ziti_set_unauthenticated(ziti_context ztx);
 void ziti_force_service_update(ziti_context ztx, const char* service_id);
 
 void ziti_services_refresh(uv_timer_t *t);
+
+extern void ziti_send_event(ziti_context ztx, const ziti_event_t *e);
 
 #ifdef __cplusplus
 }

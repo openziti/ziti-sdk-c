@@ -189,8 +189,8 @@ typedef void (*ziti_pq_os_cb)(ziti_context ztx, const char *id, ziti_pr_os_cb re
  *
  *  @see ziti_pq_process_cb()
  */
-typedef void(*ziti_pr_process_cb)(ziti_context ztx, const char *id, const char *path, bool is_running, const char *sha_512_hash,
-                                  char **signers, int num_signers);
+typedef void(*ziti_pr_process_cb)(ziti_context ztx, const char *id, const char *path, bool is_running,
+                                  const char *sha_512_hash, char **signers, int num_signers);
 
 /**
  *  @brief Posture Query for process callback
@@ -1001,6 +1001,81 @@ extern void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb auth_c
 ZITI_FUNC
 extern void ziti_endpoint_state_change(ziti_context ztx, bool woken, bool unlocked);
 
+/**
+ * @brief Extend Certificate Authenticator Callback
+ *
+ * This callback is invoked on the conclusion of ziti_extend_cert_authenticator(). The result of the function
+ * may be an error condition so it is important to verify the status code in this callback. In the
+ * event the certificate authenticator extension request cannot be completed an error will be returned otherwise
+ * #ZITI_OK is expected.
+ *
+ * @see ziti_extend_cert_authenticator(), ZITI_ERRORS
+ */
+typedef void (*ziti_extend_cert_authenticator_cb)(ziti_context ztx, const char* cert_pem, int status, void *ctx);
+
+/**
+ * @brief Attempts extend the lifetime of a 1st party client certificate (issued by the Ziti Controller)
+ *
+ * Attempts to extend the current authenticator used for the ztx's authentication. If it is not a certificate
+ * authenticator or it is not extendable, errors will be returned in subsequent events.
+ *
+ * Responses are provided via a `ziti_extend_cert_authenticator_cb` callback. On that callback, check the `error` field
+ * for issues. If there are no errors persist the `new_client_cert_pem` and make a subsequent call to
+ * `ziti_verify_extend_cert_authenticator` to enable use of the new client certificate.
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param csr a CSR representing the request for a new client certificate
+ * @param ctx additional context to be passed back to the call via cb
+ * @param cb a callback for the result of the certificate extension request
+ * @return returns #ZITI_OK on success, otherwise error
+ */
+ZITI_FUNC
+extern int ziti_extend_cert_authenticator(ziti_context ztx, const char *csr_pem, ziti_extend_cert_authenticator_cb cb, void *ctx);
+
+/**
+ * @brief Verify Extend Certificate Authenticator Callback
+ *
+ * This callback is invoked on the conclusion of ziti_verify_extend_cert_authenticator(). The result of the function
+ * may be an error condition so it is important to verify the status code in this callback. In the
+ * event the certificate authenticator extension verification request cannot be completed an error will be returned
+ * otherwise #ZITI_OK is expected. At the end of this callback's invocation, the new client certificate PEM
+ * should be stored and set for use via `ziti_set_client_cert` on new connections and reconnections.
+ *
+ * @see ziti_extend_cert_authenticator(), ZITI_ERRORS
+ */
+typedef void (*ziti_verify_extend_cert_authenticator_cb)(ziti_context ztx, int status, void *ctx);
+
+/**
+ * @brief Called in response to a ziti_extend_cert_authenticator_cb to verify a new client certificate
+ *
+ * After calling `ziti_extend_cert_authenticator` a `ziti_extend_cert_authenticator_cb` callback will be invoked.
+ * In order to have the new client cert provided in the event become active, the controller requires that the client
+ * verify that it has received the new certificate. Calling this function will verify the certificate and cause the new
+ * client certificate to become active, inactivating the old certificate. At the end of execution the provided callback
+ * will be invoked with #ZITI_OK or an error.
+ *
+ * `ziti_set_client_cert` should be called shortly after on success.
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param new_cert the new client certificate that will become active on successful verification, provided in the extension event
+ * @param ctx additional context to be passed back in raised events
+ * @return returns #ZITI_OK on success, otherwise error
+ */
+ZITI_FUNC
+extern int ziti_verify_extend_cert_authenticator(ziti_context ztx, const char *new_cert, ziti_verify_extend_cert_authenticator_cb cb, void *ctx);
+
+/**
+ * @brief Updates the certificate context for the ZTX with a new client certificate and key.
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param cert_buf a PEM formatted x509 certificate
+ * @param cert_len the length of cert_buf
+ * @param key_buf a PEM formatted x509 private key
+ * @param key_len the length of key_buf
+ * @return returns 0 on success
+ */
+ZITI_FUNC
+extern int ziti_set_client_cert(ziti_context ztx, const char *cert_buf, size_t cert_len, const char *key_buf, size_t key_len);
 
 #ifdef __cplusplus
 }
