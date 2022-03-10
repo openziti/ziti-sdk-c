@@ -118,6 +118,8 @@ struct ziti_write_req_s {
     uv_timer_t *timeout;
 
     void *ctx;
+
+    TAILQ_ENTRY(ziti_write_req_s) _next;
 };
 
 struct ziti_conn {
@@ -136,13 +138,14 @@ struct ziti_conn {
     ziti_close_cb close_cb;
     conn_state state;
     bool fin_sent;
-    bool fin_recv;
+    int fin_recv; // 0 - not received, 1 - received, 2 - called app data cb
     bool close;
     int timeout;
 
     buffer *inbound;
     uv_check_t *flusher;
     uv_async_t *disconnector;
+    TAILQ_HEAD(, ziti_write_req_s) wreqs;
     int write_reqs;
 
     void *data;
@@ -288,8 +291,6 @@ int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *liste
               ziti_client_cb on_clt_cb);
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg);
-
-int ziti_write_req(struct ziti_write_req_s *req);
 
 void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, int status);
 

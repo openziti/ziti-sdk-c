@@ -65,7 +65,9 @@ struct ziti_conn_req {
     bool failed;
 };
 
-static void flush_to_client(uv_check_t *fl);
+static void flush_connection(ziti_connection conn);
+static void flush_to_service(ziti_connection conn);
+static void flush_to_client(ziti_connection conn);
 
 static void ziti_connect_async(uv_async_t *ar);
 
@@ -306,6 +308,8 @@ static void complete_conn_req(struct ziti_conn *conn, int code) {
         }
         conn->conn_req->cb(conn, code);
         conn->conn_req->cb = NULL;
+
+        flush_connection(conn);
     } else {
         CONN_LOG(WARN, "connection attempt was already completed");
     }
@@ -572,21 +576,19 @@ static void ziti_write_timeout(uv_timer_t *t) {
     uv_close((uv_handle_t *) t, free_handle);
 }
 
-static void ziti_write_async(uv_async_t *ar) {
-    struct ziti_write_req_s *req = ar->data;
+static void ziti_write_req(struct ziti_write_req_s *req) {
     struct ziti_conn *conn = req->conn;
 
-    if (conn->state >= Disconnected) {
+    if (conn->state >= Timedout) {
         CONN_LOG(WARN, "got write req in closed/disconnected sate");
         conn->write_reqs--;
 
         req->cb(conn, ZITI_CONN_CLOSED, req->ctx);
         free(req);
-    }
-    else {
+    } else {
         if (req->cb) {
             req->timeout = calloc(1, sizeof(uv_timer_t));
-            uv_timer_init(ar->loop, req->timeout);
+            uv_timer_init(conn->ziti_ctx->loop, req->timeout);
             req->timeout->data = req;
             uv_timer_start(req->timeout, ziti_write_timeout, conn->timeout, 0);
         }
@@ -603,20 +605,6 @@ static void ziti_write_async(uv_async_t *ar) {
             send_message(conn, ContentTypeData, req->buf, req->len, req);
         }
     }
-    uv_close((uv_handle_t *) ar, free_handle);
-}
-
-int ziti_write_req(struct ziti_write_req_s *req) {
-    NEWP(ar, uv_async_t);
-    uv_async_init(req->conn->ziti_ctx->loop, ar, ziti_write_async);
-    req->conn->write_reqs++;
-    ar->data = req;
-
-    if (uv_thread_self() == req->conn->ziti_ctx->loop_thread) {
-        ziti_write_async(ar);
-        return 0;
-    }
-    return uv_async_send(ar);
 }
 
 static void ziti_disconnect_cb(ziti_connection conn, ssize_t status, void *ctx) {
@@ -738,24 +726,40 @@ static int send_crypto_header(ziti_connection conn) {
     return ZITI_OK;
 }
 
-static void flush_to_client(uv_check_t *fl) {
+static void on_flush(uv_check_t *fl) {
     ziti_connection conn = fl->data;
-    if (conn == NULL || conn->state >= Disconnected) {
-        uv_check_stop(fl);
+    if (conn == NULL) {
+        uv_close((uv_handle_t *) fl, (uv_close_cb) free);
         return;
     }
+    uv_check_stop(fl);
+    flush_to_service(conn);
+    flush_to_client(conn);
+}
 
-    // if fin was received and all data is flushed, signal EOF
-    if (conn->fin_recv && buffer_available(conn->inbound) == 0) {
-        conn->data_cb(conn, NULL, ZITI_EOF);
-        return;
+static void flush_connection (ziti_connection conn) {
+    uv_check_start(conn->flusher, on_flush);
+}
+
+static void flush_to_service(ziti_connection conn) {
+
+    if (conn->state == Connecting) {
+        flush_connection(conn);
+    } else {
+        while (!TAILQ_EMPTY(&conn->wreqs)) {
+            struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
+            TAILQ_REMOVE(&conn->wreqs, req, _next);
+
+            ziti_write_req(req);
+        }
     }
+}
 
-    CONN_LOG(TRACE, "flushing %zd bytes to client", buffer_available(conn->inbound));
-
+static void flush_to_client(ziti_connection conn) {
     while (buffer_available(conn->inbound) > 0) {
         uint8_t *chunk;
         ssize_t chunk_len = buffer_get_next(conn->inbound, 16 * 1024, &chunk);
+        CONN_LOG(TRACE, "flushing %zd bytes to client", chunk_len);
         ssize_t consumed = conn->data_cb(conn, chunk, chunk_len);
         if (consumed < 0) {
             CONN_LOG(WARN, "client indicated error[%zd] accepting data (%zd bytes buffered)",
@@ -764,15 +768,18 @@ static void flush_to_client(uv_check_t *fl) {
         else if (consumed < chunk_len) {
             buffer_push_back(conn->inbound, (chunk_len - consumed));
             CONN_LOG(VERBOSE, "client stalled: %zd bytes buffered", buffer_available(conn->inbound));
-            // client indicated that it cannot accept any more data
-            // schedule retry
-            if (!uv_is_active((const uv_handle_t *) fl)) {
-                uv_check_start(fl, flush_to_client);
-            }
-            return;
+            break;
         }
     }
-    uv_check_stop(fl);
+
+    if (buffer_available(conn->inbound) > 0) {
+        // could not flush everything
+        // schedule retry
+        flush_connection(conn);
+    } else if (conn->fin_recv == 1) { // if fin was received and all data is flushed, signal EOF
+        conn->fin_recv = 2;
+        conn->data_cb(conn, NULL, ZITI_EOF);
+    }
 }
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg) {
@@ -825,7 +832,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
         conn->fin_recv = true;
     }
 
-    flush_to_client(conn->flusher);
+    flush_connection(conn);
 }
 
 static void restart_connect(struct ziti_conn *conn) {
@@ -1194,7 +1201,7 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
 }
 
 int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx) {
-    if (conn->state != Connected) {
+    if (conn->state != Connected && conn->state != Connecting) {
         CONN_LOG(ERROR, "attempted write in invalid state[%s]", ziti_conn_state(conn));
         return ZITI_INVALID_STATE;
     }
@@ -1208,7 +1215,10 @@ int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb
 
     metrics_rate_update(&conn->ziti_ctx->up_rate, length);
 
-    return ziti_write_req(req);
+    TAILQ_INSERT_TAIL(&conn->wreqs, req, _next);
+    flush_connection(conn);
+
+    return 0;
 }
 
 static int send_fin_message(ziti_connection conn) {
@@ -1324,6 +1334,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
         return;
     }
 
+    int rc;
     int32_t seq;
     int32_t conn_id;
     bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
@@ -1418,7 +1429,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
             uint8_t *source_identity = NULL;
             size_t source_identity_sz = 0;
             bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
-            int rc = conn->encrypted ? establish_crypto(clt, msg) : ZITI_OK;
+            rc = conn->encrypted ? establish_crypto(clt, msg) : ZITI_OK;
             if (rc != ZITI_OK) {
                 CONN_LOG(ERROR, "failed to establish crypto with caller[%.*s]", (int)source_identity_sz,
                          caller_id_sent ? (char*)source_identity : "");
@@ -1439,7 +1450,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
         case ContentTypeStateConnected:
             if (conn->state == Connecting) {
                 CONN_LOG(TRACE, "connected");
-                int rc = establish_crypto(conn, msg);
+                rc = establish_crypto(conn, msg);
                 if (rc == ZITI_OK && conn->encrypted) {
                     send_crypto_header(conn);
                 }
