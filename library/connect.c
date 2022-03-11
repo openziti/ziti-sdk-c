@@ -738,7 +738,9 @@ static void on_flush(uv_check_t *fl) {
 }
 
 static void flush_connection (ziti_connection conn) {
-    uv_check_start(conn->flusher, on_flush);
+    if (conn->flusher) {
+        uv_check_start(conn->flusher, on_flush);
+    }
 }
 
 static void flush_to_service(ziti_connection conn) {
