@@ -91,7 +91,7 @@ XX(INVALID_ENROLLMENT_TOKEN, ZITI_JWT_INVALID)
     return ZITI_WTF;
 }
 
-#define CTRL_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ctrl[%s] " fmt, ctrl->client.host, ##__VA_ARGS__)
+#define CTRL_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ctrl[%s] " fmt, ctrl->client->host, ##__VA_ARGS__)
 
 struct ctrl_resp {
     int status;
@@ -189,7 +189,7 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
 
         FREE(ctrl->url);
         ctrl->url = strdup(resp->new_address);
-        um_http_set_url(&ctrl->client, ctrl->url);
+        um_http_set_url(ctrl->client, ctrl->url);
 
         if (resp->ctrl->redirect_cb) {
             ctrl->redirect_cb(ctrl->url, ctrl->redirect_ctx);
@@ -213,7 +213,7 @@ static void ctrl_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *re
         if (v->api_versions) {
             api_path *path = model_map_get(&v->api_versions->edge, "v1");
             if (path) {
-                um_http_set_path_prefix(&resp->ctrl->client, path->path);
+                um_http_set_path_prefix(resp->ctrl->client, path->path);
             } else {
                 CTRL_LOG(WARN, "controller did not provide expected(v1) API version path");
             }
@@ -222,10 +222,12 @@ static void ctrl_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *re
     ctrl_default_cb(v, e, resp);
 }
 
-void ziti_ctrl_clear_api_session(ziti_controller *ctrl){
+void ziti_ctrl_clear_api_session(ziti_controller *ctrl) {
     CTRL_LOG(DEBUG, "clearing api session token for ziti_controller");
     FREE(ctrl->api_session_token);
-    um_http_header(&ctrl->client, "zt-session", NULL);
+    if (ctrl->client) {
+        um_http_header(ctrl->client, "zt-session", NULL);
+    }
 }
 
 static void ctrl_login_cb(ziti_api_session *s, ziti_error *e, struct ctrl_resp *resp) {
@@ -239,7 +241,7 @@ static void ctrl_login_cb(ziti_api_session *s, ziti_error *e, struct ctrl_resp *
         CTRL_LOG(DEBUG, "authenticated successfully session[%s]", s->id);
         FREE(resp->ctrl->api_session_token);
         resp->ctrl->api_session_token = strdup(s->token);
-        um_http_header(&resp->ctrl->client, "zt-session", s->token);
+        um_http_header(resp->ctrl->client, "zt-session", s->token);
     }
     ctrl_default_cb(s, e, resp);
 }
@@ -249,7 +251,7 @@ static void ctrl_logout_cb(void *s, ziti_error *e, struct ctrl_resp *resp) {
     CTRL_LOG(DEBUG, "logged out");
 
     FREE(resp->ctrl->api_session_token);
-    um_http_header(&resp->ctrl->client, "zt-session", NULL);
+    um_http_header(resp->ctrl->client, "zt-session", NULL);
     ctrl_default_cb(s, e, resp);
 }
 
@@ -360,11 +362,13 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_
     ctrl->loop = loop;
     ctrl->url = strdup(url);
     memset(&ctrl->version, 0, sizeof(ctrl->version));
-    um_http_init(loop, &ctrl->client, url);
-    um_http_set_ssl(&ctrl->client, tls);
-    um_http_idle_keepalive(&ctrl->client, ZITI_CTRL_KEEPALIVE);
-    um_http_connect_timeout(&ctrl->client, ZITI_CTRL_TIMEOUT);
-    um_http_header(&ctrl->client, "Accept", "application/json");
+    ctrl->client = calloc(1, sizeof(um_http_t));
+    um_http_init(loop, ctrl->client, url);
+    ctrl->client->data = ctrl;
+    um_http_set_ssl(ctrl->client, tls);
+    um_http_idle_keepalive(ctrl->client, ZITI_CTRL_KEEPALIVE);
+    um_http_connect_timeout(ctrl->client, ZITI_CTRL_TIMEOUT);
+    um_http_header(ctrl->client, "Accept", "application/json");
     ctrl->api_session_token = NULL;
     ctrl->instance_id = NULL;
 
@@ -382,12 +386,17 @@ void ziti_ctrl_set_redirect_cb(ziti_controller *ctrl, ziti_ctrl_redirect_cb cb, 
     ctrl->redirect_ctx = ctx;
 }
 
+static void on_http_close(um_http_t *clt) {
+    free(clt);
+}
+
 int ziti_ctrl_close(ziti_controller *ctrl) {
     free_ziti_version(&ctrl->version);
     FREE(ctrl->api_session_token);
     FREE(ctrl->instance_id);
     FREE(ctrl->url);
-    um_http_close(&ctrl->client);
+    um_http_close(ctrl->client, on_http_close);
+    ctrl->client = NULL;
     return ZITI_OK;
 }
 
@@ -399,7 +408,7 @@ void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ziti_version *, cons
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_version_cb;
 
-    start_request(&ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
+    start_request(ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_login(
@@ -439,7 +448,7 @@ void ziti_ctrl_login(
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_login_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "POST", "/authenticate?method=cert", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "POST", "/authenticate?method=cert", ctrl_resp_cb, resp);
     um_http_req_header(req, "Content-Type", "application/json");
     um_http_req_data(req, body, body_len, free_body_cb);
 }
@@ -469,7 +478,7 @@ void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_d
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    start_request(&ctrl->client, "GET", "/current-identity", ctrl_resp_cb, resp);
+    start_request(ctrl->client, "GET", "/current-identity", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx) {
@@ -482,7 +491,7 @@ void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_ses
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_login_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "GET", "/current-api-session", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "GET", "/current-api-session", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
@@ -495,7 +504,7 @@ void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, const ziti_error 
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_logout_cb;
 
-    start_request(&ctrl->client, "DELETE", "/current-api-session", ctrl_resp_cb, resp);
+    start_request(ctrl->client, "DELETE", "/current-api-session", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_service_update *, const ziti_error *, void *), void *ctx) {
@@ -508,7 +517,7 @@ void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_servic
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    start_request(&ctrl->client, "GET", "/current-api-session/service-updates", ctrl_resp_cb, resp);
+    start_request(ctrl->client, "GET", "/current-api-session/service-updates", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service_array, const ziti_error *, void *), void *ctx) {
@@ -557,7 +566,7 @@ ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_service_cb;
 
-    start_request(&ctrl->client, "GET", path, ctrl_resp_cb, resp);
+    start_request(ctrl->client, "GET", path, ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_get_session(
@@ -578,7 +587,7 @@ void ziti_ctrl_get_session(
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "POST", "/sessions", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "POST", "/sessions", ctrl_resp_cb, resp);
     um_http_req_header(req, "Content-Type", "application/json");
     um_http_req_data(req, content, len, free_body_cb);
 }
@@ -641,7 +650,7 @@ ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, c
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "POST", path, ctrl_enroll_http_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "POST", path, ctrl_enroll_http_cb, resp);
     if (csr) {
         um_http_req_header(req, "Content-Type", "text/plain");
         um_http_req_data(req, csr, strlen(csr), NULL);
@@ -666,7 +675,7 @@ ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, const z
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "GET", "/.well-known/est/cacerts", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "GET", "/.well-known/est/cacerts", ctrl_resp_cb, resp);
     um_http_req_header(req, "Accept", "application/pkcs7-mime");
 }
 
@@ -681,7 +690,7 @@ void ziti_ctrl_get_public_cert(ziti_controller *ctrl, enroll_cfg *ecfg, void (*c
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    start_request(&ctrl->client, "GET", "/", ctrl_resp_cb, resp);
+    start_request(ctrl->client, "GET", "/", ctrl_resp_cb, resp);
 }
 
 void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
@@ -695,7 +704,7 @@ void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_default_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "POST", "/posture-response", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "POST", "/posture-response", ctrl_resp_cb, resp);
     um_http_req_header(req, "Content-Type", "application/json");
     um_http_req_data(req, body, body_len, free_body_cb);
 }
@@ -711,7 +720,7 @@ void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len,
     resp->ctrl = ctrl;
     resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_default_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "POST", "/posture-response-bulk", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "POST", "/posture-response-bulk", ctrl_resp_cb, resp);
     um_http_req_header(req, "Content-Type", "application/json");
     um_http_req_data(req, body, body_len, free_body_cb);
 }
@@ -729,7 +738,7 @@ static void ctrl_paging_req(struct ctrl_resp *resp) {
     char path[128];
     snprintf(path, sizeof(path), "%s%climit=%d&offset=%d", resp->base_path, query, resp->limit, resp->recd);
     CTRL_LOG(VERBOSE, "requesting %s", path);
-    start_request(&resp->ctrl->client, "GET", path, ctrl_resp_cb, resp);
+    start_request(resp->ctrl->client, "GET", path, ctrl_resp_cb, resp);
 }
 
 
@@ -743,7 +752,7 @@ void ziti_ctrl_login_mfa(ziti_controller *ctrl, char *body, size_t body_len, voi
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "POST", "/authenticate/mfa", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "POST", "/authenticate/mfa", ctrl_resp_cb, resp);
     um_http_req_header(req, "Content-Type", "application/json");
     um_http_req_data(req, body, body_len, free_body_cb);
 }
@@ -758,7 +767,7 @@ void ziti_ctrl_post_mfa(ziti_controller *ctrl, void(*cb)(void *, const ziti_erro
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "POST", "/current-identity/mfa", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "POST", "/current-identity/mfa", ctrl_resp_cb, resp);
     um_http_req_header(req, "Content-Type", "application/json");
     um_http_req_data(req, NULL, 0, free_body_cb);
 }
@@ -773,7 +782,7 @@ void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, c
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "GET", "/current-identity/mfa", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "GET", "/current-identity/mfa", ctrl_resp_cb, resp);
     um_http_req_header(req, "Content-Type", "application/json");
 }
 
@@ -787,7 +796,7 @@ void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char *code, void(*cb)(void *, c
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "DELETE", "/current-identity/mfa", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "DELETE", "/current-identity/mfa", ctrl_resp_cb, resp);
     um_http_req_header(req, "Content-Type", "application/json");
     um_http_req_header(req, "mfa-validation-code", code);
 }
@@ -802,7 +811,7 @@ void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char *body, size_t body_le
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "POST", "/current-identity/mfa/verify", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "POST", "/current-identity/mfa/verify", ctrl_resp_cb, resp);
     um_http_req_header(req, "Content-Type", "application/json");
     um_http_req_data(req, body, body_len, free_body_cb);
 }
@@ -817,7 +826,7 @@ void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char *code, void(*c
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "GET", "/current-identity/mfa/recovery-codes", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "GET", "/current-identity/mfa/recovery-codes", ctrl_resp_cb, resp);
     um_http_req_header(req, "mfa-validation-code", code);
     um_http_req_header(req, "Content-Type", "application/json");
 }
@@ -832,7 +841,7 @@ void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t
     resp->ctrl = ctrl;
     resp->ctrl_cb = ctrl_default_cb;
 
-    um_http_req_t *req = start_request(&ctrl->client, "POST", "/current-identity/mfa/recovery-codes", ctrl_resp_cb, resp);
+    um_http_req_t *req = start_request(ctrl->client, "POST", "/current-identity/mfa/recovery-codes", ctrl_resp_cb, resp);
     um_http_req_header(req, "Content-Type", "application/json");
     um_http_req_data(req, body, body_len, free_body_cb);
 }

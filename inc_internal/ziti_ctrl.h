@@ -38,7 +38,7 @@ typedef void (*ziti_ctrl_redirect_cb)(const char *new_address, void *ctx);
 
 typedef struct ziti_controller_s {
     uv_loop_t *loop;
-    um_http_t client;
+    um_http_t *client;
     char *url;
 
     // tuning options
