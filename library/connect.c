@@ -395,8 +395,7 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
 }
 
 static void connect_get_service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
-    uv_async_t *ar = ctx;
-    struct ziti_conn *conn = ar->data;
+    struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
