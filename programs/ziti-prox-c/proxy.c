@@ -108,12 +108,6 @@ static void shutdown_timer_cb(uv_timer_t *t) {
 static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     PREPF(uv, uv_strerror);
 
-    // shutdown clients
-    struct client *clt;
-    LIST_FOREACH(clt, &app_ctx->clients, next) {
-        ziti_close(clt->ziti_conn, on_ziti_close);
-    }
-
     // shutdown listeners
     MODEL_MAP_FOR(it, app_ctx->listeners) {
         struct listener *l = model_map_it_value(it);
@@ -130,7 +124,6 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
 
     // try to cleanup
     ziti_shutdown(app_ctx->ziti);
-    uv_loop_close(loop);
 
     CATCH(uv) {}
     ZITI_LOG(INFO, "exiting");
