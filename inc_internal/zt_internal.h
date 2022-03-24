@@ -140,11 +140,11 @@ struct ziti_conn {
     bool fin_sent;
     int fin_recv; // 0 - not received, 1 - received, 2 - called app data cb
     bool close;
+    bool disconnecting;
     int timeout;
 
     buffer *inbound;
     uv_check_t *flusher;
-    uv_async_t *disconnector;
     TAILQ_HEAD(, ziti_write_req_s) wreqs;
     int write_reqs;
 
@@ -191,6 +191,7 @@ struct ziti_ctx {
 
     tls_context *tlsCtx;
 
+    bool closing;
     bool enabled;
     int ctrl_status;
 
@@ -215,9 +216,9 @@ struct ziti_ctx {
 
     char *last_update;
 
-    uv_timer_t api_session_timer;
-    uv_timer_t service_refresh_timer;
-    uv_prepare_t reaper;
+    uv_timer_t *api_session_timer;
+    uv_timer_t *service_refresh_timer;
+    uv_prepare_t *reaper;
 
     uv_loop_t *loop;
     uv_thread_t loop_thread;
