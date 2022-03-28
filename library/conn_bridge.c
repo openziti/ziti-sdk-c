@@ -111,7 +111,7 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
     ziti_conn_set_data_cb(conn, on_ziti_data);
     uv_read_start(br->input, bridge_alloc, on_input);
 
-    return ZITI_WTF;
+    return ZITI_OK;
 }
 
 static void on_ziti_close(ziti_connection conn) {
