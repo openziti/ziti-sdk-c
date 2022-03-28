@@ -1153,6 +1153,11 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
         return;
     }
 
+    if (ztx->closing) {
+        free_ziti_edge_router_array(&ers);
+        return;
+    }
+
     model_map curr_routers = {0};
     const char *er_name;
     ziti_channel_t *ch;

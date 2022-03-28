@@ -16,16 +16,20 @@ limitations under the License.
 
 
 #include <ziti/ziti.h>
+#include <stdio.h>
 
+#define STDIN 0
+#define STDOUT 1
 
 typedef struct {
     uv_loop_t *loop;
     const char *service;
 } zcat_opts;
 
+// on successful connect bridge Ziti connection to standard input and output
 void on_connect(ziti_connection conn, int status) {
     if (status == ZITI_OK) {
-        ziti_conn_bridge_fds(conn, 0, 1, ziti_shutdown, ziti_conn_context(conn));
+        ziti_conn_bridge_fds(conn, STDIN, STDOUT, ziti_shutdown, ziti_conn_context(conn));
     } else {
         fprintf(stderr, "ziti connection failed: %s", ziti_errorstr(status));
         ziti_shutdown(ziti_conn_context(conn));
