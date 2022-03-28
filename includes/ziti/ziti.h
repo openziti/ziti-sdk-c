@@ -835,10 +835,12 @@ extern int ziti_conn_bridge(ziti_connection conn, uv_stream_t *stream, uv_close_
  * @param conn
  * @param input
  * @param output
+ * @param close_cb
+ * @param ctx
  * @return
  */
 ZITI_FUNC
-extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd_t output);
+extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd_t output, void (*close_cb)(void *ctx), void *ctx);
 
 /**
  * @brief Callback called after ziti_mfa_enroll()

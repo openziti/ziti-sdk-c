@@ -8,3 +8,5 @@ add_subdirectory(sample_http_link)
 add_subdirectory(sample-host)
 add_subdirectory(sample_enroll)
 add_subdirectory(wzcat)
+
+add_subdirectory(sample-bridge)

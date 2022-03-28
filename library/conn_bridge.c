@@ -17,12 +17,22 @@ limitations under the License.
 #include "zt_internal.h"
 #include "utils.h"
 
+struct fd_bridge_s {
+    uv_os_fd_t in;
+    uv_os_fd_t out;
+
+    void (*close_cb)(void *ctx);
+
+    void *ctx;
+};
+
 struct ziti_bridge_s {
     ziti_connection conn;
     uv_stream_t *input;
     uv_stream_t *output;
     uv_close_cb close_cb;
     void *data;
+    struct fd_bridge_s *fdbr;
 };
 
 static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len);
@@ -49,9 +59,58 @@ extern int ziti_conn_bridge(ziti_connection conn, uv_stream_t *stream, uv_close_
     return ZITI_OK;
 }
 
+static void on_sock_close(uv_handle_t *h) {
+    uv_close(h, (uv_close_cb) free);
+}
 
-extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd_t output) {
-    // TODO
+static void on_pipes_close(uv_handle_t *h) {
+    struct ziti_bridge_s *br = h->data;
+    uv_close((uv_handle_t *) br->input, (uv_close_cb) free);
+    uv_close((uv_handle_t *) br->output, (uv_close_cb) free);
+    if (br->fdbr) {
+        if (br->fdbr->close_cb) {
+            br->fdbr->close_cb(br->fdbr->ctx);
+        }
+        free(br->fdbr);
+    }
+}
+
+extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd_t output, void (*close_cb)(void *ctx), void *ctx) {
+    uv_loop_t *l = ziti_conn_context(conn)->loop;
+
+    if (input == output) {
+        uv_tcp_t *sock = calloc(1, sizeof(uv_tcp_t));
+        uv_tcp_init(l, sock);
+        uv_tcp_open(sock, input);
+        return ziti_conn_bridge(conn, (uv_stream_t *) sock, on_sock_close);
+    }
+
+    NEWP(br, struct ziti_bridge_s);
+    br->conn = conn;
+    br->input = calloc(1, sizeof(uv_pipe_t));
+    br->output = calloc(1, sizeof(uv_pipe_t));
+
+    uv_pipe_init(l, (uv_pipe_t *) br->input, 0);
+    uv_pipe_init(l, (uv_pipe_t *) br->output, 0);
+    uv_pipe_open((uv_pipe_t *) br->input, input);
+    uv_pipe_open((uv_pipe_t *) br->output, output);
+
+    br->close_cb = on_pipes_close;
+    NEWP(fdbr, struct fd_bridge_s);
+    fdbr->in = input;
+    fdbr->out = output;
+    fdbr->close_cb = close_cb;
+    fdbr->ctx = ctx;
+
+    br->data = br;
+    br->fdbr = fdbr;
+
+    uv_handle_set_data((uv_handle_t *) br->input, br);
+    ziti_conn_set_data(conn, br);
+
+    ziti_conn_set_data_cb(conn, on_ziti_data);
+    uv_read_start(br->input, bridge_alloc, on_input);
+
     return ZITI_WTF;
 }
 
