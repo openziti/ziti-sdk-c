@@ -744,6 +744,7 @@ static bool flush_to_service(ziti_connection conn) {
 
             conn->write_reqs++;
             ziti_write_req(req);
+            count++;
         }
         CONN_LOG(TRACE, "flushed %d messages", count);
     }
