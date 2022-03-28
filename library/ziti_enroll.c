@@ -224,16 +224,15 @@ static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enr
     ziti_controller *ctrl = enroll_req->controller;
 
     if (err != NULL) {
-        ZITI_LOG(ERROR, "failed to enroll with controller: %s:%s %s (%s)",
-                 ctrl->client.host, ctrl->client.port, err->code, err->message);
+        ZITI_LOG(ERROR, "failed to enroll with controller: %s %s (%s)",
+                 ctrl->url, err->code, err->message);
 
         if (enroll_req->enroll_cb) {
             enroll_req->enroll_cb(NULL, ZITI_JWT_INVALID, err->code, enroll_req->external_enroll_ctx);
         }
     }
     else {
-        ZITI_LOG(DEBUG, "successfully enrolled with controller %s:%s",
-                 ctrl->client.host, ctrl->client.port);
+        ZITI_LOG(DEBUG, "successfully enrolled with controller %s", ctrl->url);
 
         ziti_config cfg;
         cfg.controller_url = strdup(enroll_req->ecfg->zej->controller);

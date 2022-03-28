@@ -69,7 +69,7 @@ static void flush_connection(ziti_connection conn);
 static void flush_to_service(ziti_connection conn);
 static void flush_to_client(ziti_connection conn);
 
-static void ziti_connect_async(uv_async_t *ar);
+static void process_connect(struct ziti_conn *conn);
 
 static int send_fin_message(ziti_connection conn);
 
@@ -163,7 +163,7 @@ static void free_conn_req(struct ziti_conn_req *r) {
 }
 
 int close_conn_internal(struct ziti_conn *conn) {
-    if (conn->state == Closed && conn->write_reqs == 0 && model_map_size(&conn->children) == 0) {
+    if (conn->state == Closed && conn->write_reqs <= 0 && model_map_size(&conn->children) == 0) {
         CONN_LOG(DEBUG, "removing");
         if (conn->close_cb) {
             conn->close_cb(conn);
@@ -191,9 +191,6 @@ int close_conn_internal(struct ziti_conn *conn) {
             conn->flusher = NULL;
         }
 
-        if (conn->disconnector) {
-            uv_close((uv_handle_t *) conn->disconnector, free_handle);
-        }
         if (buffer_available(conn->inbound) > 0) {
             CONN_LOG(WARN, "dumping %zd bytes of undelivered data", buffer_available(conn->inbound));
         }
@@ -398,8 +395,7 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
 }
 
 static void connect_get_service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
-    uv_async_t *ar = ctx;
-    struct ziti_conn *conn = ar->data;
+    struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
@@ -423,13 +419,12 @@ static void connect_get_service_cb(ziti_service *s, const ziti_error *err, void 
         model_map_set(&ztx->services, s->name, s);
         req->service_id = strdup(s->id);
         conn->encrypted = s->encryption;
-        ziti_connect_async(ar);
+        process_connect(conn);
     }
 }
 
 static void connect_get_net_session_cb(ziti_net_session *s, const ziti_error *err, void *ctx) {
-    uv_async_t *ar = ctx;
-    struct ziti_conn *conn = ar->data;
+    struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
@@ -442,7 +437,6 @@ static void connect_get_net_session_cb(ziti_net_session *s, const ziti_error *er
             CONN_LOG(ERROR, "failed to get session for service[%s]: %s(%s)", conn->service, err->code, err->message);
             complete_conn_req(conn, e);
         }
-        uv_close((uv_handle_t *) ar, free_handle);
     }
     else {
         req->session = s;
@@ -460,15 +454,14 @@ static void connect_get_net_session_cb(ziti_net_session *s, const ziti_error *er
                 model_map_set(&ztx->sessions, s->service_id, s);
             }
         }
-        ziti_connect_async(ar);
+        process_connect(conn);
     }
 }
 
-static void ziti_connect_async(uv_async_t *ar) {
-    struct ziti_conn *conn = ar->data;
+static void process_connect(struct ziti_conn *conn) {
     struct ziti_conn_req *req = conn->conn_req;
     struct ziti_ctx *ztx = conn->ziti_ctx;
-    uv_loop_t *loop = ar->loop;
+    uv_loop_t *loop = ztx->loop;
 
     // find service
     if (req->service_id == NULL) {
@@ -476,7 +469,7 @@ static void ziti_connect_async(uv_async_t *ar) {
 
         if (service == NULL) {
             CONN_LOG(DEBUG, "service[%s] not loaded yet, requesting it", conn->service);
-            ziti_ctrl_get_service(&ztx->controller, conn->service, connect_get_service_cb, ar);
+            ziti_ctrl_get_service(&ztx->controller, conn->service, connect_get_service_cb, conn);
             return;
         }
         req->service_id = strdup(service->id);
@@ -490,7 +483,7 @@ static void ziti_connect_async(uv_async_t *ar) {
 
     if (req->session == NULL) {
         CONN_LOG(DEBUG, "requesting '%s' session for service[%s]", ziti_session_types.name(req->session_type), conn->service);
-        ziti_ctrl_get_session(&ztx->controller, req->service_id, req->session_type, connect_get_net_session_cb, ar);
+        ziti_ctrl_get_session(&ztx->controller, req->service_id, req->session_type, connect_get_net_session_cb, conn);
         return;
     }
     else {
@@ -502,8 +495,6 @@ static void ziti_connect_async(uv_async_t *ar) {
         CONN_LOG(DEBUG, "starting %s connection for service[%s] with session[%s]", ziti_session_types.name(req->session_type), conn->service, req->session->id);
         ziti_connect(ztx, req->session, conn);
     }
-
-    uv_close((uv_handle_t *) ar, free_handle);
 }
 
 static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opts *dial_opts, ziti_conn_cb conn_cb, ziti_data_cb data_cb) {
@@ -534,17 +525,13 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
     conn->data_cb = data_cb;
     conn_set_state(conn, Connecting);
 
-    NEWP(async_cr, uv_async_t);
-    uv_async_init(conn->ziti_ctx->loop, async_cr, ziti_connect_async);
-
     conn->flusher = calloc(1, sizeof(uv_check_t));
     uv_check_init(conn->ziti_ctx->loop, conn->flusher);
     conn->flusher->data = conn;
-    uv_unref((uv_handle_t *) conn->flusher);
 
-    async_cr->data = conn;
 
-    return uv_async_send(async_cr);
+    process_connect(conn);
+    return ZITI_OK;
 }
 
 extern ziti_context ziti_conn_context(ziti_connection conn) {
@@ -611,9 +598,7 @@ static void ziti_disconnect_cb(ziti_connection conn, ssize_t status, void *ctx) 
     conn_set_state(conn, conn->close ? Closed : Disconnected);
 }
 
-static void ziti_disconnect_async(uv_async_t *ar) {
-    struct ziti_conn *conn = ar->data;
-
+static void ziti_disconnect_async(struct ziti_conn *conn) {
     if (conn->channel == NULL) {
         CONN_LOG(DEBUG, "no channel -- no disconnect");
         ziti_disconnect_cb(conn, 0, NULL);
@@ -641,17 +626,15 @@ static void ziti_disconnect_async(uv_async_t *ar) {
 }
 
 static int ziti_disconnect(struct ziti_conn *conn) {
-    if (conn->disconnector) {
+    if (conn->disconnecting) {
         CONN_LOG(DEBUG, "already disconnecting");
         return ZITI_OK;
     }
 
     if (conn->state <= Timedout) {
-        NEWP(ar, uv_async_t);
-        uv_async_init(conn->ziti_ctx->loop, ar, ziti_disconnect_async);
-        ar->data = conn;
-        conn->disconnector = ar;
-        return uv_async_send(conn->disconnector);
+        conn->disconnecting = true;
+        ziti_disconnect_async(conn);
+        return ZITI_OK;
     }
     else {
         conn_set_state(conn, conn->close ? Closed : Disconnected);
@@ -752,6 +735,7 @@ static void flush_to_service(ziti_connection conn) {
             struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
             TAILQ_REMOVE(&conn->wreqs, req, _next);
 
+            conn->write_reqs++;
             ziti_write_req(req);
         }
     }
@@ -852,10 +836,7 @@ static void restart_connect(struct ziti_conn *conn) {
     CONN_LOG(DEBUG, "restarting connect sequence");
     conn->channel = NULL;
 
-    NEWP(ar, uv_async_t);
-    uv_async_init(conn->ziti_ctx->loop, ar, ziti_connect_async);
-    ar->data = conn;
-    ziti_connect_async(ar);
+    process_connect(conn);
 }
 
 void connect_reply_cb(void *ctx, message *msg, int err) {
@@ -1097,10 +1078,8 @@ int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *liste
     conn->client_cb = on_clt_cb;
     conn_set_state(conn, Binding);
 
-    NEWP(async_cr, uv_async_t);
-    uv_async_init(conn->ziti_ctx->loop, async_cr, ziti_connect_async);
-    async_cr->data = conn;
-    return uv_async_send(async_cr);
+    process_connect(conn);
+    return 0;
 }
 
 
@@ -1317,7 +1296,6 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
 
         CONN_LOG(DEBUG, "closed due to err[%d](%s)", code, ziti_errorstr(code));
         conn_state st = conn->state;
-        conn_set_state(conn, Disconnected);
         switch (st) {
             case Connecting:
             case Binding:
@@ -1331,6 +1309,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
             default:
                 CONN_LOG(WARN, "disconnecting from state[%d]", st);
         }
+        conn_set_state(conn, Disconnected);
         ziti_channel_rem_receiver(conn->channel, conn->conn_id);
         conn->channel = NULL;
         return;

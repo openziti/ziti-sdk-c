@@ -156,14 +156,9 @@ void ziti_channel_free(ziti_channel_t *ch) {
 int ziti_close_channels(struct ziti_ctx *ztx, int err) {
     ziti_channel_t *ch;
     const char *url;
-    model_map_iter it = model_map_iterator(&ztx->channels);
-    while (it != NULL) {
-        url = model_map_it_key(it);
-        ch = model_map_it_value(it);
-
+    MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
         ZTX_LOG(DEBUG, "closing channel[%s]: %s", url, ziti_errorstr(err));
         ziti_channel_close(ch, err);
-        it = model_map_it_remove(it);
     }
     return ZITI_OK;
 }
@@ -171,6 +166,8 @@ int ziti_close_channels(struct ziti_ctx *ztx, int err) {
 static void close_handle_cb(uv_handle_t *h) {
     uv_mbed_t *mbed = (uv_mbed_t *) h;
     ziti_channel_t *ch = mbed->data;
+
+    ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ctx);
 
     uv_mbed_free(mbed);
     ziti_channel_free(ch);
@@ -181,7 +178,6 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
     int r = 0;
     if (ch->state != Closed) {
         CH_LOG(INFO, "closing[%s]", ch->name);
-        ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ctx);
         ch->state = Closed;
 
         on_channel_close(ch, err, 0);
