@@ -311,7 +311,7 @@ typedef struct ziti_listen_opts_s {
  * @return indicate how much data was consumed
  * @see ziti_dial(), ziti_accept(), ZITI_ERRORS
  */
-typedef ssize_t (*ziti_data_cb)(ziti_connection conn, uint8_t *data, ssize_t length);
+typedef ssize_t (*ziti_data_cb)(ziti_connection conn, const uint8_t *data, ssize_t length);
 
 /**
  * @brief Connection callback.
@@ -638,6 +638,17 @@ ZITI_FUNC
 extern void ziti_conn_set_data(ziti_connection conn, void *data);
 
 /**
+ * @brief Set new data callback on ziti connection.
+ * This allows application to defer setting callback until connection is established (inside [ziti_conn_cb]),
+ * or change processing at any time.
+ *
+ * @param conn
+ * @param cb
+ */
+ZITI_FUNC
+extern void ziti_conn_set_data_cb(ziti_connection conn, ziti_data_cb cb);
+
+/**
  * @brief Get the identity of the client that initiated the #ziti_connection.
  *
  * @return identity of the client that requested the connection.
@@ -800,7 +811,34 @@ extern int ziti_close_write(ziti_connection conn);
 ZITI_FUNC
 extern int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx);
 
+/**
+ * @brief Bridge [ziti_connection] to a given IO stream
+ *
+ * This sets up the connection bridge: all bytes read from ziti_connection are forwarded to the IO stream, and vice a versa.
+ * Both ziti_connection and stream have to be established prior to this call.
+ *
+ * [on_close] is called after the bridge is terminated and ziti_connection was closed.
+ *
+ * @param conn
+ * @param stream
+ * @param on_close
+ * @return
+ */
+ZITI_FUNC
+extern int ziti_conn_bridge(ziti_connection conn, uv_stream_t *stream, uv_close_cb on_close);
 
+/**
+ * @brief Bridge [ziti_connection] to given IO file descriptors.
+ *
+ * All bytes read from ziti_connection are written to output fd, all bytes read from input fd are sent to ziti_connection.
+ *
+ * @param conn
+ * @param input
+ * @param output
+ * @return
+ */
+ZITI_FUNC
+extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd_t output);
 
 /**
  * @brief Callback called after ziti_mfa_enroll()
