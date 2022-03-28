@@ -66,8 +66,10 @@ struct ziti_conn_req {
 };
 
 static void flush_connection(ziti_connection conn);
-static void flush_to_service(ziti_connection conn);
-static void flush_to_client(ziti_connection conn);
+
+static bool flush_to_service(ziti_connection conn);
+
+static bool flush_to_client(ziti_connection conn);
 
 static void process_connect(struct ziti_conn *conn);
 
@@ -525,8 +527,8 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
     conn->data_cb = data_cb;
     conn_set_state(conn, Connecting);
 
-    conn->flusher = calloc(1, sizeof(uv_check_t));
-    uv_check_init(conn->ziti_ctx->loop, conn->flusher);
+    conn->flusher = calloc(1, sizeof(uv_idle_t));
+    uv_idle_init(conn->ziti_ctx->loop, conn->flusher);
     conn->flusher->data = conn;
 
 
@@ -709,28 +711,33 @@ static int send_crypto_header(ziti_connection conn) {
     return ZITI_OK;
 }
 
-static void on_flush(uv_check_t *fl) {
+static void on_flush(uv_idle_t *fl) {
     ziti_connection conn = fl->data;
     if (conn == NULL) {
         uv_close((uv_handle_t *) fl, (uv_close_cb) free);
         return;
     }
-    uv_check_stop(fl);
-    flush_to_service(conn);
-    flush_to_client(conn);
+
+    bool more_to_client = flush_to_client(conn);
+    bool more_to_service = flush_to_service(conn);
+
+    if (!more_to_client && !more_to_service) {
+        CONN_LOG(TRACE, "stopping flusher");
+        uv_idle_stop(fl);
+    }
 }
 
 static void flush_connection (ziti_connection conn) {
     if (conn->flusher) {
-        uv_check_start(conn->flusher, on_flush);
+        CONN_LOG(TRACE, "starting flusher");
+        uv_idle_start(conn->flusher, on_flush);
     }
 }
 
-static void flush_to_service(ziti_connection conn) {
+static bool flush_to_service(ziti_connection conn) {
 
-    if (conn->state == Connecting) {
-        flush_connection(conn);
-    } else {
+    if (conn->state == Connected) {
+        int count = 0;
         while (!TAILQ_EMPTY(&conn->wreqs)) {
             struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
             TAILQ_REMOVE(&conn->wreqs, req, _next);
@@ -738,10 +745,13 @@ static void flush_to_service(ziti_connection conn) {
             conn->write_reqs++;
             ziti_write_req(req);
         }
+        CONN_LOG(TRACE, "flushed %d messages", count);
     }
+
+    return !TAILQ_EMPTY(&conn->wreqs);
 }
 
-static void flush_to_client(ziti_connection conn) {
+static bool flush_to_client(ziti_connection conn) {
     while (buffer_available(conn->inbound) > 0) {
         uint8_t *chunk;
         ssize_t chunk_len = buffer_get_next(conn->inbound, 16 * 1024, &chunk);
@@ -750,8 +760,7 @@ static void flush_to_client(ziti_connection conn) {
         if (consumed < 0) {
             CONN_LOG(WARN, "client indicated error[%zd] accepting data (%zd bytes buffered)",
                      consumed, buffer_available(conn->inbound));
-        }
-        else if (consumed < chunk_len) {
+        } else if (consumed < chunk_len) {
             buffer_push_back(conn->inbound, (chunk_len - consumed));
             CONN_LOG(VERBOSE, "client stalled: %zd bytes buffered", buffer_available(conn->inbound));
             break;
@@ -761,11 +770,14 @@ static void flush_to_client(ziti_connection conn) {
     if (buffer_available(conn->inbound) > 0) {
         // could not flush everything
         // schedule retry
-        flush_connection(conn);
-    } else if (conn->fin_recv == 1) { // if fin was received and all data is flushed, signal EOF
+        return true;
+    }
+
+    if (conn->fin_recv == 1) { // if fin was received and all data is flushed, signal EOF
         conn->fin_recv = 2;
         conn->data_cb(conn, NULL, ZITI_EOF);
     }
+    return false;
 }
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg) {
@@ -1137,8 +1149,8 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     conn->channel = ch;
     conn->data_cb = data_cb;
 
-    conn->flusher = calloc(1, sizeof(uv_check_t));
-    uv_check_init(conn->ziti_ctx->loop, conn->flusher);
+    conn->flusher = calloc(1, sizeof(uv_idle_t));
+    uv_idle_init(conn->ziti_ctx->loop, conn->flusher);
     conn->flusher->data = conn;
     uv_unref((uv_handle_t *) &conn->flusher);
 
@@ -1193,7 +1205,7 @@ int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb
     req->len = length;
     req->cb = write_cb;
     req->ctx = write_ctx;
-
+    CONN_LOG(TRACE, "write %zd bytes", length);
     metrics_rate_update(&conn->ziti_ctx->up_rate, length);
 
     TAILQ_INSERT_TAIL(&conn->wreqs, req, _next);

@@ -144,7 +144,7 @@ struct ziti_conn {
     int timeout;
 
     buffer *inbound;
-    uv_check_t *flusher;
+    uv_idle_t *flusher;
     TAILQ_HEAD(, ziti_write_req_s) wreqs;
     int write_reqs;
 
