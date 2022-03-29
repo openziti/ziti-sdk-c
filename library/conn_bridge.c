@@ -94,6 +94,8 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
     uv_pipe_init(l, (uv_pipe_t *) br->output, 0);
     uv_pipe_open((uv_pipe_t *) br->input, input);
     uv_pipe_open((uv_pipe_t *) br->output, output);
+    br->input->data = br;
+    br->output->data = br;
 
     br->close_cb = on_pipes_close;
     NEWP(fdbr, struct fd_bridge_s);
@@ -123,6 +125,7 @@ static void on_ziti_close(ziti_connection conn) {
 }
 
 static void close_bridge(struct ziti_bridge_s *br) {
+    // if (br)
     ziti_close(br->conn, on_ziti_close);
 }
 
