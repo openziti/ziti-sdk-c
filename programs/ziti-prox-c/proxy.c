@@ -197,165 +197,20 @@ static void on_ziti_close(ziti_connection conn) {
     }
 }
 
-static void on_client_write(uv_write_t *req, int status) {
-    uv_stream_t *s = req->handle;
-    struct client *client = s->data;
-    if (status < 0) {
-        switch (status) {
-            case UV_EPIPE:
-            case UV_ECONNRESET:
-            case UV_ECANCELED: {
-                ZITI_LOG(WARN, "write failed: [%d/%s](%s) -- closing client[%s]", status,
-                         uv_err_name(status), uv_strerror(status), client->addr_s);
-                client->write_done = true;
-                ziti_close(client->ziti_conn, on_ziti_close);
-                break;
-            }
-            default:
-                ZITI_LOG(WARN, "unexpected: [%d/%s](%s)", status, uv_err_name(status), uv_strerror(status));
-        }
-    }
-    free(req->data);
-    free(req);
+static void on_bridge_close(uv_handle_t *handle) {
+    uv_close(handle, free);
 }
-
-static void alloc_cb(uv_handle_t *h, size_t suggested_size, uv_buf_t *buf) {
-    struct client *clt = h->data;
-
-    // if too many writes are in flight throttle the client
-    if (clt->inb_reqs < MAX_WRITES) {
-        buf->len = suggested_size > MAX_PROXY_PAYLOAD ? MAX_PROXY_PAYLOAD : suggested_size;
-        buf->base = malloc(buf->len);
-    } else {
-        ZITI_LOG(VERBOSE, "maximum outstanding writes reached clt[%s]", clt->addr_s);
-        buf->base = NULL;
-        buf->len = 0;
-    }
-}
-
-static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
-    uv_stream_t *stream = ziti_conn_data(conn);
-    if (stream != NULL) {
-        struct client *clt = stream->data;
-        if (status < 0) {
-            ZITI_LOG(ERROR, "ziti_write failed status[%zd] %s", status, ziti_errorstr(status));
-            if (!clt->closed) {
-                uv_close((uv_handle_t *) stream, close_cb);
-                clt->closed = true;
-            }
-        } else {
-            clt->inb_reqs--;
-        }
-    }
-    free(ctx);
-}
-
-static void data_cb(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
-    struct client *clt = stream->data;
-    ZITI_LOG(TRACE, "client[%s]: nread[%zd]", clt->addr_s, nread);
-    if (nread == UV_ENOBUFS) {
-        ZITI_LOG(VERBOSE, "client[%s] is throttled", clt->addr_s);
-    } else if (nread == UV_EOF) {
-        ZITI_LOG(DEBUG, "connection %s sent FIN write_done=%d, read_done=%d", clt->addr_s, clt->write_done,
-                 clt->read_done);
-        clt->read_done = true;
-        if (clt->write_done) {
-            ZITI_LOG(DEBUG, "closing client[%s]", clt->addr_s);
-            ziti_close(clt->ziti_conn, on_ziti_close);
-        } else {
-            ziti_close_write(clt->ziti_conn);
-            uv_read_stop(stream);
-        }
-        free(buf->base);
-    } else if (nread < 0) {
-        ZITI_LOG(DEBUG, "connection closed %s [%zd/%s](%s)",
-                 clt->addr_s, nread, uv_err_name(nread), uv_strerror(nread));
-
-        ziti_close(clt->ziti_conn, on_ziti_close);
-
-        uv_read_stop(stream);
-        uv_close((uv_handle_t *) stream, close_cb);
-        clt->closed = true;
-        free(buf->base);
-    } else if (clt->closed) {
-        free(buf->base);
-    } else {
-        clt->inb_reqs += 1;
-        ziti_write(clt->ziti_conn, buf->base, nread, on_ziti_write, buf->base);
-    }
-}
-
 
 void on_ziti_connect(ziti_connection conn, int status) {
     uv_stream_t *clt = ziti_conn_data(conn);
 
     if (status == ZITI_OK) {
-        uv_read_start(clt, alloc_cb, data_cb);
-        ziti_context ztx = ziti_conn_context(conn);
-        struct proxy_app_ctx *app = ziti_app_ctx(ztx);
-        struct client *c = clt->data;
+        ziti_conn_bridge(conn, clt, on_bridge_close);
     } else {
         ZITI_LOG(ERROR, "ziti connect failed: %s(%d)", ziti_errorstr(status), status);
-        uv_close((uv_handle_t *) clt, close_cb);
+        uv_close((uv_handle_t *) clt, free);
         ziti_close(conn, on_ziti_close);
     }
-}
-
-static void tcp_shutdown_cb(uv_shutdown_t *sr, int code) {
-    free(sr);
-}
-
-ssize_t on_ziti_data(ziti_connection conn, uint8_t *data, ssize_t len) {
-    uv_tcp_t *clt = ziti_conn_data(conn);
-    struct client *c = clt ? clt->data : NULL;
-
-    if (clt == NULL) {
-        // ziti_conn is still in process of disconnecting just drop data on the floor
-        ZITI_LOG(DEBUG, "received data[%zd] for disconnected client", len);
-        return len;
-    }
-
-    if (!uv_is_active((const uv_handle_t *) clt)) {
-        c->closed = true;
-        ZITI_LOG(DEBUG, "tcp side of client[%s] is closed", c->addr_s);
-        ziti_close(c->ziti_conn, on_ziti_close);
-        return UV_ECONNABORTED;
-    }
-
-    if (len > 0) {
-        NEWP(req, uv_write_t);
-        char *copy = malloc(len);
-        memcpy(copy, data, len);
-        uv_buf_t buf = uv_buf_init(copy, len);
-        req->data = copy;
-        ZITI_LOG(TRACE, "writing %zd bytes to [%s] wqs[%zd]", len, c->addr_s, clt->write_queue_size);
-        uv_write(req, (uv_stream_t *) clt, &buf, 1, on_client_write);
-        return len;
-    } else if (len == ZITI_EOF) {
-        ZITI_LOG(DEBUG, "ziti sent EOF to[%s] write_done=%d, read_done=%d", c->addr_s, c->write_done, c->read_done);
-        if (c->read_done) {
-            if (!c->closed) {
-                c->closed = true;
-                uv_close((uv_handle_t *) clt, close_cb);
-            }
-        } else {
-            uv_shutdown_t *sr = calloc(1, sizeof(uv_shutdown_t));
-            uv_shutdown(sr, (uv_stream_t *) clt, tcp_shutdown_cb);
-            c->write_done = true;
-        }
-    } else if (len < 0) {
-        if (clt != NULL) {
-            ZITI_LOG(DEBUG, "ziti connection closed with [%zd](%s)", len, ziti_errorstr(len));
-            if (!c->closed) {
-                c->closed = true;
-                ZITI_LOG(DEBUG, "closing clt[%s]", c->addr_s);
-                uv_close((uv_handle_t *) clt, close_cb);
-            }
-        }
-
-        return 0;
-    }
-    return 0;
 }
 
 static void on_client(uv_stream_t *server, int status) {
@@ -381,7 +236,7 @@ static void on_client(uv_stream_t *server, int status) {
 
     PREPF(ziti, ziti_errorstr);
     TRY(ziti, ziti_conn_init(l->app_ctx->ziti, &clt->ziti_conn, c));
-    TRY(ziti, ziti_dial(clt->ziti_conn, l->service_name, on_ziti_connect, on_ziti_data));
+    TRY(ziti, ziti_dial(clt->ziti_conn, l->service_name, on_ziti_connect, NULL));
     c->data = clt;
 
     CATCH(ziti) {

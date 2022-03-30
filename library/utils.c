@@ -284,7 +284,7 @@ static void default_log_writer(int level, const char *loc, const char *msg, size
 }
 
 void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg) {
-    ziti_logger(level, "uv-mbed", file, line, NULL, msg);
+    ziti_logger(level, "uv-mbed", file, line, NULL, "%s", msg);
 }
 
 void ziti_enable_uv_mbed_logger(int enabled) {

@@ -223,9 +223,9 @@ static void ctrl_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *re
 }
 
 void ziti_ctrl_clear_api_session(ziti_controller *ctrl) {
-    CTRL_LOG(DEBUG, "clearing api session token for ziti_controller");
     FREE(ctrl->api_session_token);
     if (ctrl->client) {
+        CTRL_LOG(DEBUG, "clearing api session token for ziti_controller");
         um_http_header(ctrl->client, "zt-session", NULL);
     }
 }

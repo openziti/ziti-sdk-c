@@ -736,7 +736,7 @@ static void flush_connection (ziti_connection conn) {
 
 static bool flush_to_service(ziti_connection conn) {
 
-    if (conn->state == Connected) {
+    if (conn->state == Connected || conn->state == CloseWrite) {
         int count = 0;
         while (!TAILQ_EMPTY(&conn->wreqs)) {
             struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
@@ -744,6 +744,7 @@ static bool flush_to_service(ziti_connection conn) {
 
             conn->write_reqs++;
             ziti_write_req(req);
+            count++;
         }
         CONN_LOG(TRACE, "flushed %d messages", count);
     }
@@ -1256,7 +1257,7 @@ int ziti_close_write(ziti_connection conn) {
         return ZITI_OK;
     }
     conn_set_state(conn, CloseWrite);
-    if (conn->write_reqs == 0) {
+    if (conn->write_reqs == 0 && TAILQ_EMPTY(&conn->wreqs)) {
         return send_fin_message(conn);
     }
     return ZITI_OK;

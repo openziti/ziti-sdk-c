@@ -667,6 +667,12 @@ void ziti_conn_set_data(ziti_connection conn, void *data) {
     }
 }
 
+void ziti_conn_set_data_cb(ziti_connection conn, ziti_data_cb cb) {
+    if (conn) {
+        conn->data_cb = cb;
+    }
+}
+
 const char *ziti_conn_source_identity(ziti_connection conn) {
     return conn != NULL ? conn->source_identity : NULL;
 }
@@ -1144,6 +1150,11 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
 
     if (ers == NULL) {
         ZTX_LOG(INFO, "no edge routers found");
+        return;
+    }
+
+    if (ztx->closing) {
+        free_ziti_edge_router_array(&ers);
         return;
     }
 
