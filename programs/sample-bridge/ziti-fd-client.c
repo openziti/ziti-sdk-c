@@ -1,0 +1,57 @@
+/*
+Copyright (c) 2022 NetFoundry, Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+#include <ziti/socket.h>
+
+#include <stdio.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+
+int main(int argc, char *argv[]) {
+    if (argc < 3) { return -1; }
+
+    const char *path = argv[1];
+    const char *service = argv[2];
+
+    Ziti_lib_init();
+
+    ziti_context ztx = Ziti_load_context(path);
+    int socket = Ziti_socket();
+
+    int rc = Ziti_connect(socket, ztx, service);
+
+    if (rc != 0) {
+        fprintf(stderr, "failed to connect: %d\n", rc);
+        goto DONE;
+    }
+
+    const char msg[] = "this is a test";
+    write(socket, msg, strlen(msg));
+    shutdown(socket, SHUT_WR);
+    char buf[1024];
+    do {
+        rc = read(socket, buf, sizeof(buf));
+        if (rc > 0) {
+            printf("read rc=%d(%.*s)\n", rc, rc, buf);
+        }
+    } while (rc > 0);
+    printf("rc = %d, errno = %d\n", rc, errno);
+
+    DONE:
+    Ziti_lib_shutdown();
+}
