@@ -6,6 +6,7 @@ set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_src.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_events.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_buffer.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/socket.h
         )
 
 SET(ZITI_SRC_FILES
@@ -27,7 +28,8 @@ SET(ZITI_SRC_FILES
         posture.c
         auth_queries.c
         conn_bridge.c
-)
+        ziti-socket.c
+        )
 
 SET(ZITI_INCLUDE_DIRS
     PUBLIC ../includes
