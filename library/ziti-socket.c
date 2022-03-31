@@ -17,15 +17,16 @@ limitations under the License.
 
 #include <sys/queue.h>
 
-#include <uv.h>
-#include <stdlib.h>
+#include <errno.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <uv.h>
 
 
 #include <ziti/socket.h>
 #include <ziti/ziti.h>
-#include <unistd.h>
-#include "ziti/ziti_log.h"
+#include <ziti/ziti_log.h>
 
 typedef struct future_s {
     uv_mutex_t lock;
@@ -232,7 +233,7 @@ static void on_ziti_connect(ziti_connection conn, int status) {
 static void do_ziti_connect(struct dial_req_s *req, future_t *f, uv_loop_t *l) {
     ziti_socket_t *zs = model_map_getl(&ziti_sockets, (long) req->fd);
     if (zs == NULL) {
-        fail_future(f, -EBADFD);
+        fail_future(f, -EBADF);
     } else if (zs->f != NULL) {
         fail_future(f, -EALREADY);
     } else {
