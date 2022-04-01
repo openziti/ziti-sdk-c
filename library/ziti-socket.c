@@ -233,7 +233,7 @@ static void on_ziti_connect(ziti_connection conn, int status) {
 static void do_ziti_connect(struct dial_req_s *req, future_t *f, uv_loop_t *l) {
     ziti_socket_t *zs = model_map_getl(&ziti_sockets, (long) req->fd);
     if (zs == NULL) {
-        fail_future(f, -EBADFD);
+        fail_future(f, -EBADF);
     } else if (zs->f != NULL) {
         fail_future(f, -EALREADY);
     } else {
