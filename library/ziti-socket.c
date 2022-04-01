@@ -17,15 +17,16 @@ limitations under the License.
 
 #include <sys/queue.h>
 
-#include <uv.h>
-#include <stdlib.h>
+#include <errno.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <uv.h>
 
 
 #include <ziti/socket.h>
 #include <ziti/ziti.h>
-#include <unistd.h>
-#include "ziti/ziti_log.h"
+#include <ziti/ziti_log.h>
 
 typedef struct future_s {
     uv_mutex_t lock;
