@@ -1337,6 +1337,8 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
 
     if (session) {
 
+        ZTX_LOG(DEBUG, "%s successfully => api_session[%s]", ztx->api_session ? "refreshed" : "logged in", session->id);
+
         ziti_set_api_session(ztx, session);
 
         ziti_auth_query_init(ztx);
