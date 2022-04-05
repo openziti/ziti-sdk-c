@@ -20,17 +20,18 @@ limitations under the License.
 #include <string.h>
 #include <errno.h>
 
-#if _WIN32
+#if !defined(_WIN32)
+
+#include <unistd.h>
+
+#else
+
 #include <WinSock2.h>
 
 #define SHUT_WR SD_SEND
 
-static DWORD write(ziti_socket_t s, const char* buf, size_t len) {
-    WSABUF b;
-    b.buf = buf;
-    b.len = len;
-
-    DWORD outlen = send(s, buf, len, 0);
+static long write(ziti_socket_t s, const char* buf, size_t len) {
+    long outlen = send(s, buf, len, 0);
     if (outlen == SOCKET_ERROR) {
         errno = WSAGetLastError();
         return -1;
@@ -39,10 +40,6 @@ static DWORD write(ziti_socket_t s, const char* buf, size_t len) {
 }
 
 static long read(ziti_socket_t s, char *buf, size_t len) {
-    WSABUF b;
-    b.buf = buf;
-    b.len = len;
-
     int outlen = recv(s, buf, len, 0);
 
     if (outlen == SOCKET_ERROR ){

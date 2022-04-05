@@ -22,12 +22,12 @@ limitations under the License.
 #include <stdlib.h>
 #include <uv.h>
 
-#ifdef _WIN32
+#if _WIN32
+#if !defined(__MINGW32__)
 #pragma comment(lib, "ws2_32.lib")
-
 #include <afunix.h>
 #endif
-
+#endif
 
 #include <ziti/socket.h>
 #include <ziti/ziti.h>
@@ -116,8 +116,18 @@ static uv_async_t q_async;
 static LIST_HEAD(loop_queue, queue_elem_s) loop_q;
 
 #if _WIN32
+
+// define sockaddr_un if missing under MINGW
+#ifndef UNIX_PATH_MAX
+#define UNIX_PATH_MAX 108
+struct sockaddr_un {
+     ADDRESS_FAMILY sun_family;
+     char sun_path[UNIX_PATH_MAX];
+};
+#endif
+
 static struct sockaddr_un ziti_sock_name;
-static SOCKET ziti_sock_server;
+static ziti_socket_t ziti_sock_server;
 #endif
 
 typedef struct ztx_wrap {
@@ -299,7 +309,7 @@ int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
 void Ziti_lib_shutdown(void) {
     schedule_on_loop(do_shutdown, NULL, true);
     uv_thread_join(&lib_thread);
-#ifdef _WIN32
+#if _WIN32
     closesocket(ziti_sock_server);
     if (!DeleteFile(ziti_sock_name.sun_path)) {
         fprintf(stderr, "failed to delete file: %lu\n", GetLastError());
