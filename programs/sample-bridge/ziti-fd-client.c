@@ -17,10 +17,41 @@ limitations under the License.
 #include <ziti/socket.h>
 
 #include <stdio.h>
-#include <sys/socket.h>
-#include <unistd.h>
 #include <string.h>
 #include <errno.h>
+
+#if _WIN32
+#include <WinSock2.h>
+
+#define SHUT_WR SD_SEND
+
+static DWORD write(ziti_socket_t s, const char* buf, size_t len) {
+    WSABUF b;
+    b.buf = buf;
+    b.len = len;
+
+    DWORD outlen = send(s, buf, len, 0);
+    if (outlen == SOCKET_ERROR) {
+        errno = WSAGetLastError();
+        return -1;
+    }
+    return outlen;
+}
+
+static long read(ziti_socket_t s, char *buf, size_t len) {
+    WSABUF b;
+    b.buf = buf;
+    b.len = len;
+
+    int outlen = recv(s, buf, len, 0);
+
+    if (outlen == SOCKET_ERROR ){
+        errno = WSAGetLastError();
+        return -1;
+    }
+    return outlen;
+}
+#endif
 
 int main(int argc, char *argv[]) {
     if (argc < 3) { return -1; }
@@ -31,12 +62,12 @@ int main(int argc, char *argv[]) {
     Ziti_lib_init();
 
     ziti_context ztx = Ziti_load_context(path);
-    int socket = Ziti_socket();
+    ziti_socket_t socket = Ziti_socket();
 
-    int rc = Ziti_connect(socket, ztx, service);
+    long rc = Ziti_connect(socket, ztx, service);
 
     if (rc != 0) {
-        fprintf(stderr, "failed to connect: %d\n", rc);
+        fprintf(stderr, "failed to connect: %ld(%s)\n", rc, ziti_errorstr(rc));
         goto DONE;
     }
 
@@ -47,10 +78,10 @@ int main(int argc, char *argv[]) {
     do {
         rc = read(socket, buf, sizeof(buf));
         if (rc > 0) {
-            printf("read rc=%d(%.*s)\n", rc, rc, buf);
+            printf("read rc=%ld(%.*s)\n", rc, (int)rc, buf);
         }
     } while (rc > 0);
-    printf("rc = %d, errno = %d\n", rc, errno);
+    printf("rc = %ld, errno = %d\n", rc, errno);
 
     DONE:
     Ziti_lib_shutdown();

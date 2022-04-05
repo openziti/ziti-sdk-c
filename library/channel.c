@@ -670,6 +670,11 @@ static void send_hello(ziti_channel_t *ch, ziti_api_session *session) {
 static void ch_connect_timeout(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
     CH_LOG(ERROR, "connect timeout");
+
+    if (ch->state == Closed) {
+        return;
+    }
+
     ch->state = Disconnected;
     if (ch->connection.conn_req == NULL) {
         // diagnostics
@@ -834,7 +839,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             send_hello(ch, ch->ctx->api_session);
         } else {
             CH_LOG(WARN, "api session invalidated, while connecting");
-            uv_mbed_close(&ch->connection, NULL);
+            uv_mbed_close(&ch->connection, close_handle_cb);
             reconnect_channel(ch, false);
         }
     } else {
