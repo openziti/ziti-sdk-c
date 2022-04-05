@@ -43,6 +43,14 @@ ZITI_FUNC
 void Ziti_lib_init(void);
 
 /**
+ * @brief return Ziti error code for last failed operation.
+ * Use [ziti_errorstr] to get error message.
+ * @return
+ */
+ZITI_FUNC
+int Ziti_last_error(void);
+
+/**
  * @brief Load Ziti identity.
  * @param identity location of identity configuration
  * @return Ziti Context handle
@@ -62,7 +70,7 @@ ziti_socket_t Ziti_socket();
  * @param socket socket handle created with [Ziti_socket()]
  * @param ztx Ziti context
  * @param service service name provided by [ztx]
- * @return 0 on sucess, -1 on failure, specific error can be looked up via `errno`
+ * @return 0 on sucess, negative error code on failure
  */
 ZITI_FUNC
 int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service);

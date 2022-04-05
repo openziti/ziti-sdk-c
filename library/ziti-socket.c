@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <uv_mbed/queue.h>
 
-#include <errno.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <uv.h>
@@ -113,6 +112,7 @@ static void do_shutdown(const void *args, future_t *f, uv_loop_t *l);
 static uv_once_t init;
 static uv_loop_t *lib_loop;
 static uv_thread_t lib_thread;
+static uv_key_t err_key;
 static uv_mutex_t q_mut;
 static uv_async_t q_async;
 static LIST_HEAD(loop_queue, queue_elem_s) loop_q;
@@ -151,6 +151,15 @@ static model_map ziti_sockets;
 
 void Ziti_lib_init(void) {
     uv_once(&init, internal_init);
+}
+
+int Ziti_last_error() {
+    void *p = uv_key_get(&err_key);
+    return (int)p;
+}
+
+static void set_error(int err) {
+    uv_key_set(&err_key, (void*)err);
 }
 
 static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
@@ -198,7 +207,7 @@ static void load_ziti_ctx(const void *arg, future_t *f, uv_loop_t *l) {
 ziti_context Ziti_load_context(const char *identity) {
     future_t *f = schedule_on_loop(load_ziti_ctx, identity, true);
     int err = await_future(f);
-    errno = err;
+    set_error(err);
     ziti_context ztx = (ziti_context) f->result;
     destroy_future(f);
     return ztx;
@@ -247,6 +256,7 @@ ziti_socket_t Ziti_socket() {
 
     future_t *f = schedule_on_loop(save_ziti_socket, zs, true);
     rc = await_future(f);
+    set_error(rc);
     destroy_future(f);
     return rc == 0 ? zs->fd : rc;
 }
@@ -311,6 +321,7 @@ int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
 void Ziti_lib_shutdown(void) {
     schedule_on_loop(do_shutdown, NULL, true);
     uv_thread_join(&lib_thread);
+    uv_key_delete(&err_key);
 #if _WIN32
     closesocket(ziti_sock_server);
     if (!DeleteFile(ziti_sock_name.sun_path)) {
@@ -385,7 +396,7 @@ static void internal_init() {
         fprintf(stderr, "failed to listen: %ld %d", err, WSAGetLastError());
     }
 #endif
-
+    uv_key_create(&err_key);
     uv_mutex_init(&q_mut);
     lib_loop = uv_loop_new();
     uv_async_init(lib_loop, &q_async, process_on_loop);

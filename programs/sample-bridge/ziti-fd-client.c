@@ -60,6 +60,10 @@ int main(int argc, char *argv[]) {
     Ziti_lib_init();
 
     ziti_context ztx = Ziti_load_context(path);
+    if (ztx == NULL) {
+        int err = Ziti_last_error();
+        fprintf(stderr, "failed to load Ziti: %d(%s)\n", err, ziti_errorstr(err));
+    }
     ziti_socket_t socket = Ziti_socket();
 
     long rc = Ziti_connect(socket, ztx, service);
