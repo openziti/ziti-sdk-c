@@ -59,7 +59,7 @@ static void destroy_future(future_t *f) {
 
 static int await_future(future_t *f) {
     uv_mutex_lock(&f->lock);
-    if (!f->completed) {
+    while (!f->completed) {
         uv_cond_wait(&f->cond, &f->lock);
     }
     int err = f->err;

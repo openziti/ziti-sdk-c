@@ -34,18 +34,44 @@ typedef SOCKET ziti_socket_t;
 typedef int ziti_socket_t;
 #endif
 
+/**
+ * @brief Initialize Ziti library.
+ *
+ * Creates a background processing thread for Ziti processing.
+ */
 ZITI_FUNC
 void Ziti_lib_init(void);
 
+/**
+ * @brief Load Ziti identity.
+ * @param identity location of identity configuration
+ * @return Ziti Context handle
+ */
 ZITI_FUNC
 ziti_context Ziti_load_context(const char *identity);
 
+/**
+ * @brief creates a socket handle(Windows) or file descriptor(*nix) suitable for connecting to a Ziti service
+ * @return native socket handle
+ */
 ZITI_FUNC
 ziti_socket_t Ziti_socket();
 
+/**
+ * @brief Connect socket to a Ziti service
+ * @param socket socket handle created with [Ziti_socket()]
+ * @param ztx Ziti context
+ * @param service service name provided by [ztx]
+ * @return 0 on sucess, -1 on failure, specific error can be looked up via `errno`
+ */
 ZITI_FUNC
 int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service);
 
+/**
+ * @brief Shutdown Ziti library.
+ *
+ * All loaded contexts are shutdown and background thread is terminated.
+ */
 ZITI_FUNC
 void Ziti_lib_shutdown(void);
 
