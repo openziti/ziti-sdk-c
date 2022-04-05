@@ -27,6 +27,8 @@ limitations under the License.
 #pragma comment(lib, "ws2_32.lib")
 #include <afunix.h>
 #endif
+#else
+#include <unistd.h>
 #endif
 
 #include <ziti/socket.h>

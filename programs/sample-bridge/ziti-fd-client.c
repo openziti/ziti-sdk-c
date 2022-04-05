@@ -23,6 +23,7 @@ limitations under the License.
 #if !defined(_WIN32)
 
 #include <unistd.h>
+#include <sys/socket.h>
 
 #else
 

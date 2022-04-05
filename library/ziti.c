@@ -1317,6 +1317,7 @@ void ziti_set_api_session(ziti_context ztx, ziti_api_session *session) {
 
     if (session->auth_queries != NULL && *session->auth_queries != NULL) {
         ziti_set_partially_authenticated(ztx);
+        update_ctrl_status(ztx, ZITI_PARTIALLY_AUTHENTICATED, NULL);
     } else {
         ziti_set_fully_authenticated(ztx);
         ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
@@ -1334,8 +1335,6 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
     int errCode = err ? err->err : ZITI_OK;
 
     if (session) {
-
-        update_ctrl_status(ztx, ZITI_PARTIALLY_AUTHENTICATED, NULL);
 
         ZTX_LOG(DEBUG, "%s successfully => api_session[%s]", ztx->api_session ? "refreshed" : "logged in", session->id);
 
