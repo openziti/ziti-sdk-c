@@ -23,8 +23,16 @@ extern "C" {
 #endif
 
 #include "externs.h"
+#include "errors.h"
 
 typedef struct ziti_ctx *ziti_context;
+
+#if _WIN32
+#include <WinSock2.h>
+typedef SOCKET ziti_socket_t;
+#else
+typedef int ziti_socket_t;
+#endif
 
 ZITI_FUNC
 void Ziti_lib_init(void);
@@ -33,10 +41,10 @@ ZITI_FUNC
 ziti_context Ziti_load_context(const char *identity);
 
 ZITI_FUNC
-int Ziti_socket();
+ziti_socket_t Ziti_socket();
 
 ZITI_FUNC
-int Ziti_connect(int socket, ziti_context ztx, const char *service);
+int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service);
 
 ZITI_FUNC
 void Ziti_lib_shutdown(void);
