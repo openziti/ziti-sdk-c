@@ -40,7 +40,16 @@ jobs:
         uses: bruceadams/get-release@v1.2.2
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - name: upload release bundle
+      - name: upload SDK release bundle
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}
+          asset_path: package/ziti-sdk-${{ github.ref_name }}-${{ runner.os }}.zip
+          asset_name: ziti-sdk-${{ runner.os }}.zip
+          asset_content_type: application/octet-stream
+      - name: upload ziti-prox-c bundle
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
