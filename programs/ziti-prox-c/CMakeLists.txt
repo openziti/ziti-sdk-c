@@ -1,4 +1,8 @@
 
+project(ziti-prox-c
+        VERSION ${CMAKE_PROJECT_VERSION}
+        LANGUAGES C CXX
+        )
 add_executable(ziti-prox-c proxy.c)
 
 if(WIN32)

@@ -15,6 +15,7 @@ jobs:
         os:
           - ubuntu-18.04
           - macOS-10.15
+          - windows-latest
 
     steps:
       - uses: actions/checkout@v2
@@ -27,7 +28,7 @@ jobs:
           cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build
           cmake --build ${{runner.workspace}}/build
       - name: make artifacts
-        run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c
+        run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c --target package
       - name: zip artifacts
         if: runner.os != 'Windows'
         run: 7z a -tzip ziti-prox-c-${{ runner.os }}.zip ${{runner.workspace}}/build/programs/ziti-prox-c/ziti-prox-c

@@ -52,17 +52,15 @@ link_directories(${CMAKE_BINARY_DIR}/lib)
 
 add_subdirectory(deps)
 
+set(CPACK_INSTALL_CMAKE_PROJECTS
+        "${CMAKE_CURRENT_BINARY_DIR};${PROJECT_NAME};ziti-sdk;/"
+        )
 set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY 0)
 set(CPACK_PACKAGE_VERSION ${ZITI_VERSION})
-set(CPACK_OUTPUT_FILE_PREFIX ${CMAKE_BINARY_DIR})
-if (UNIX)
-    set(CPACK_GENERATOR "TGZ")
-    set(archive_sfx "tar.gz")
-elseif (WIN32)
-    set(CPACK_GENERATOR "ZIP")
-    set(archive_sfx "zip")
-endif ()
+set(CPACK_OUTPUT_FILE_PREFIX ${CMAKE_BINARY_DIR}/package)
+set(CPACK_GENERATOR "ZIP")
+set(archive_sfx "zip")
 
 include(CPack)
 
