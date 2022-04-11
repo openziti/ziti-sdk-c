@@ -121,27 +121,41 @@ configure_file(${PROJECT_SOURCE_DIR}/ziti.pc.in ${CMAKE_CURRENT_BINARY_DIR}/ziti
 set(CMAKE_INSTALL_DOCDIR share/doc)
 
 install(TARGETS ziti ziti_dll
+        COMPONENT ziti-sdk
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../includes/
+        COMPONENT ziti-sdk
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 set(ziti_DEPS_DIR ${CMAKE_BINARY_DIR}/_deps)
 if (NOT USE_OPENSSL)
-    install(FILES ${ziti_DEPS_DIR}/mbedtls-src/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls)
+    install(FILES ${ziti_DEPS_DIR}/mbedtls-src/LICENSE
+            COMPONENT ziti-sdk
+            DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls)
 endif ()
 if (NOT HAVE_LIBUV)
-    install(FILES ${ziti_DEPS_DIR}/libuv-src/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/libuv)
+    install(FILES ${ziti_DEPS_DIR}/libuv-src/LICENSE
+            COMPONENT ziti-sdk
+            DESTINATION ${CMAKE_INSTALL_DOCDIR}/libuv)
 endif ()
-install(FILES ${uv-mbed_SOURCE_DIR}/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_mbed)
-install(FILES ${ziti_DEPS_DIR}/uv_link-src/README.md DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
-install(FILES ${ziti_DEPS_DIR}/http_parser-src/LICENSE-MIT DESTINATION ${CMAKE_INSTALL_DOCDIR}/http-parser)
+install(FILES ${uv-mbed_SOURCE_DIR}/LICENSE
+        COMPONENT ziti-sdk
+        DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_mbed)
+install(FILES ${ziti_DEPS_DIR}/uv_link-src/README.md
+        COMPONENT ziti-sdk
+        DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
+install(FILES ${ziti_DEPS_DIR}/http_parser-src/LICENSE-MIT
+        COMPONENT ziti-sdk
+        DESTINATION ${CMAKE_INSTALL_DOCDIR}/http-parser)
 
 if (NOT WIN32)
     # no license file windows pre-built bundle
     if (NOT HAVE_LIBSODIUM)
-        install(FILES ${CMAKE_BINARY_DIR}/_deps/libsodium-src/LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR}/libsodium)
+        install(FILES ${CMAKE_BINARY_DIR}/_deps/libsodium-src/LICENSE
+                COMPONENT ziti-sdk
+                DESTINATION ${CMAKE_INSTALL_DOCDIR}/libsodium)
     endif ()
 endif ()
 

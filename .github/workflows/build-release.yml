@@ -15,6 +15,7 @@ jobs:
         os:
           - ubuntu-18.04
           - macOS-10.15
+          - windows-latest
 
     steps:
       - uses: actions/checkout@v2
@@ -27,7 +28,7 @@ jobs:
           cmake -S ${{ github.workspace }} -B ${{runner.workspace}}/build
           cmake --build ${{runner.workspace}}/build
       - name: make artifacts
-        run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c
+        run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c --target package
       - name: zip artifacts
         if: runner.os != 'Windows'
         run: 7z a -tzip ziti-prox-c-${{ runner.os }}.zip ${{runner.workspace}}/build/programs/ziti-prox-c/ziti-prox-c
@@ -39,7 +40,16 @@ jobs:
         uses: bruceadams/get-release@v1.2.2
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - name: upload release bundle
+      - name: upload SDK release bundle
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}
+          asset_path: package/ziti-sdk-${{ github.ref_name }}-${{ runner.os }}.zip
+          asset_name: ziti-sdk-${{ runner.os }}.zip
+          asset_content_type: application/octet-stream
+      - name: upload ziti-prox-c bundle
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

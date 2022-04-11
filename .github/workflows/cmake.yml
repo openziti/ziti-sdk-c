@@ -18,15 +18,13 @@ jobs:
         os:
           - ubuntu-18.04
           - macOS-10.15
+          - windows-latest
         opts: [""]
 
         include:
           - os: windows-latest
             opts: -G "CodeBlocks - MinGW Makefiles"
             upload: "false"
-
-          - os: windows-latest
-            opts: ""
 
     steps:
       - uses: actions/checkout@v2
@@ -51,7 +49,7 @@ jobs:
         working-directory: ${{runner.workspace}}/build
         run: ctest -VV --no-compress-output
       - name: make artifacts
-        run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c
+        run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c --target package
       - name: zip artifacts
         if: runner.os != 'Windows'
         run: 7z a -tzip ziti-prox-c-${{ runner.os }}.zip ${{runner.workspace}}/build/programs/ziti-prox-c/ziti-prox-c
@@ -60,7 +58,13 @@ jobs:
         run: 7z a -tzip ziti-prox-c-${{ runner.os }}.zip ${{runner.workspace}}/build/programs/ziti-prox-c/Debug/ziti-prox-c.exe
       - name: upload artifacts
         if: matrix.upload != 'false'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: ziti-prox-c-${{ runner.os }}
           path: ziti-prox-c-${{ runner.os }}.zip
+      - name: upload SDK artifacts
+        if: matrix.upload != 'false'
+        uses: actions/upload-artifact@v3
+        with:
+          name: ziti-sdk-${{ runner.os }}
+          path: ${{ runner.workspace }}/build/package/ziti-sdk-*
