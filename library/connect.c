@@ -762,14 +762,13 @@ static bool flush_to_client(ziti_connection conn) {
         pool_return_obj(m);
     }
 
-    CONN_LOG(DEBUG, "%zu bytes available", buffer_available(conn->inbound));
+    CONN_LOG(VERBOSE, "%zu bytes available", buffer_available(conn->inbound));
     int flushes = 128;
     while (buffer_available(conn->inbound) > 0 && (flushes--) > 0) {
         uint8_t *chunk;
         ssize_t chunk_len = buffer_get_next(conn->inbound, 16 * 1024, &chunk);
-        CONN_LOG(TRACE, "flushing %zd bytes to client", chunk_len);
         ssize_t consumed = conn->data_cb(conn, chunk, chunk_len);
-        CONN_LOG(DEBUG, "client consumed %zd out of %zd bytes", consumed, chunk_len);
+        CONN_LOG(TRACE, "client consumed %zd out of %zd bytes", consumed, chunk_len);
 
         if (consumed < 0) {
             CONN_LOG(WARN, "client indicated error[%zd] accepting data (%zd bytes buffered)",
@@ -782,7 +781,7 @@ static bool flush_to_client(ziti_connection conn) {
     }
 
     if (buffer_available(conn->inbound) > 0) {
-        CONN_LOG(DEBUG, "%zu bytes still available", buffer_available(conn->inbound));
+        CONN_LOG(VERBOSE, "%zu bytes still available", buffer_available(conn->inbound));
 
         return true;
     }
