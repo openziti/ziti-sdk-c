@@ -650,6 +650,7 @@ int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {
     c->edge_msg_seq = 1;
     c->conn_id = ztx->conn_seq++;
     c->inbound = new_buffer();
+    TAILQ_INIT(&c->in_q);
     TAILQ_INIT(&c->wreqs);
 
     *conn = c;

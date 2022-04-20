@@ -128,6 +128,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     ch->in_next = NULL;
     ch->in_body_offset = 0;
     ch->incoming = new_buffer();
+    ch->in_msg_pool = pool_new(sizeof(message), 32, (void (*)(void *)) message_free);
 
     LIST_INIT(&ch->waiters);
 
@@ -148,6 +149,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
 
 void ziti_channel_free(ziti_channel_t *ch) {
     free_buffer(ch->incoming);
+    pool_destroy(ch->in_msg_pool);
     FREE(ch->name);
     FREE(ch->version);
     FREE(ch->host);
@@ -419,7 +421,7 @@ static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id) 
 }
 
 
-static bool is_edge(int32_t content) {
+static bool is_edge(uint32_t content) {
     switch (content) {
         case ContentTypeConnect:
         case ContentTypeStateConnected:
@@ -455,6 +457,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
             LIST_REMOVE(w, next);
             w->cb(w->reply_ctx, m, 0);
             free(w);
+            pool_return_obj(m);
             return;
         }
 
@@ -465,6 +468,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
         if (m->header.content == ContentTypeResultType) {
             CH_LOG(WARN, "lost hello reply waiter");
             hello_reply_cb(ch, m, ZITI_OK);
+            pool_return_obj(m);
             return;
         }
 
@@ -494,15 +498,15 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
 
 static void process_inbound(ziti_channel_t *ch) {
     uint8_t *ptr;
-    int len;
+    ssize_t len;
     do {
-        if (ch->in_next == NULL) {
+        if (ch->in_next == NULL && pool_has_available(ch->in_msg_pool)) {
             if (buffer_available(ch->incoming) < HEADER_SIZE) {
                 break;
             }
 
             uint8_t header_buf[HEADER_SIZE];
-            int header_read = 0;
+            size_t header_read = 0;
 
             while (header_read < HEADER_SIZE) {
                 len = buffer_get_next(ch->incoming, HEADER_SIZE - header_read, &ptr);
@@ -512,7 +516,7 @@ static void process_inbound(ziti_channel_t *ch) {
 
             assert(header_read == HEADER_SIZE);
 
-            ch->in_next = malloc(sizeof(message));
+            ch->in_next = pool_alloc_obj(ch->in_msg_pool);
             message_init(ch->in_next);
 
             header_from_buffer(&ch->in_next->header, header_buf);
@@ -529,11 +533,13 @@ static void process_inbound(ziti_channel_t *ch) {
                    ch->in_next->header.body_len, ch->in_next->header.headers_len);
         }
 
+        if (ch->in_next == NULL) { break; }
+
         // to complete the message need to read headers_len + body_len - (whatever was read already)
         uint32_t total = ch->in_next->header.body_len + ch->in_next->header.headers_len;
         uint32_t want = total - ch->in_body_offset;
         len = buffer_get_next(ch->incoming, want, &ptr);
-        CH_LOG(TRACE, "completing msg seq[%d] body+hrds=%d+%d, in_offset=%d, want=%d, got=%d", ch->in_next->header.seq,
+        CH_LOG(TRACE, "completing msg seq[%d] body+hrds=%d+%d, in_offset=%zd, want=%d, got=%zd", ch->in_next->header.seq,
                ch->in_next->header.body_len, ch->in_next->header.headers_len, ch->in_body_offset, want, len);
 
         if (len == -1) {
@@ -549,8 +555,6 @@ static void process_inbound(ziti_channel_t *ch) {
 
                 dispatch_message(ch, ch->in_next);
 
-                message_free(ch->in_next);
-                free(ch->in_next);
                 ch->in_next = NULL;
             }
         }
@@ -793,6 +797,25 @@ static void on_write(uv_write_t *req, int status) {
     FREE(req);
 }
 
+static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
+    uv_mbed_t *mbed = (uv_mbed_t *) handle;
+    ziti_channel_t *ch = mbed->data;
+    if (ch->in_next || pool_has_available(ch->in_msg_pool)) {
+        buf->base = (char *) malloc(suggested_size);
+        if (buf->base == NULL) {
+            ZITI_LOG(ERROR, "failed to allocate %zd bytes. Prepare for crash", suggested_size);
+            buf->len = 0;
+        } else {
+            buf->len = suggested_size;
+        }
+    } else {
+        ZITI_LOG(WARN, "can't alloc message");
+
+        buf->len = 0;
+        buf->base = NULL;
+    }
+}
+
 static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
     uv_mbed_t *mbed = (uv_mbed_t *) s;
     ziti_channel_t *ch = mbed->data;
@@ -800,6 +823,9 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
     if (len < 0) {
         free(buf->base);
         switch (len) {
+            case UV_ENOBUFS:
+                CH_LOG(VERBOSE, "blocked until messages are processed");
+                return;
             case UV_EOF:
             case UV_ECONNRESET:
             case UV_ECONNABORTED:
@@ -813,7 +839,6 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
             default:
                 CH_LOG(ERROR, "unhandled error on_data [%zd/%s]", len, uv_strerror(len));
                 on_channel_close(ch, ZITI_CONNABORT, len);
-
         }
     } else if (len == 0) {
         // sometimes SSL message has no payload
@@ -834,7 +859,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
         if (ch->ctx->api_session != NULL && ch->ctx->api_session->token != NULL) {
             CH_LOG(DEBUG, "connected");
             uv_mbed_t *mbed = (uv_mbed_t *) req->handle;
-            uv_mbed_read(mbed, ziti_alloc_cb, on_channel_data);
+            uv_mbed_read(mbed, channel_alloc_cb, on_channel_data);
             ch->reconnect_count = 0;
             send_hello(ch, ch->ctx->api_session);
         } else {

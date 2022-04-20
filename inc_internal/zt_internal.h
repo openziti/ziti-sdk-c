@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <ziti/ziti.h>
 #include "buffer.h"
+#include "pool.h"
 #include "message.h"
 #include "ziti_enroll.h"
 #include "ziti_ctrl.h"
@@ -97,8 +98,9 @@ typedef struct ziti_channel {
 
     buffer *incoming;
 
+    pool_t *in_msg_pool;
     message *in_next;
-    int in_body_offset;
+    size_t in_body_offset;
 
     // map[id->msg_receiver]
     model_map receivers;
@@ -143,6 +145,7 @@ struct ziti_conn {
     bool disconnecting;
     int timeout;
 
+    TAILQ_HEAD(, message_s) in_q;
     buffer *inbound;
     uv_idle_t *flusher;
     TAILQ_HEAD(, ziti_write_req_s) wreqs;
