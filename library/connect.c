@@ -195,6 +195,17 @@ int close_conn_internal(struct ziti_conn *conn) {
             conn->flusher = NULL;
         }
 
+        int count = 0;
+        while (!TAILQ_EMPTY(&conn->in_q)) {
+            message *m = TAILQ_FIRST(&conn->in_q);
+            TAILQ_REMOVE(&conn->in_q, m, _next);
+            pool_return_obj(m);
+            count++;
+        }
+        if (count > 0) {
+            CONN_LOG(WARN, "closing with %d unprocessed messaged", count);
+        }
+
         if (buffer_available(conn->inbound) > 0) {
             CONN_LOG(WARN, "dumping %zd bytes of undelivered data", buffer_available(conn->inbound));
         }
@@ -789,6 +800,10 @@ static bool flush_to_client(ziti_connection conn) {
     if (conn->fin_recv == 1) { // if fin was received and all data is flushed, signal EOF
         conn->fin_recv = 2;
         conn->data_cb(conn, NULL, ZITI_EOF);
+    }
+
+    if (conn->state == Disconnected) {
+        conn->data_cb(conn, NULL, ZITI_CONN_CLOSED);
     }
     return false;
 }
@@ -1391,7 +1406,6 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
                 case Connected:
                 case CloseWrite:
                     conn_set_state(conn, Disconnected);
-                    conn->data_cb(conn, NULL, ZITI_CONN_CLOSED);
                     break;
 
                 case Disconnected:
