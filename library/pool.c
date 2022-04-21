@@ -80,16 +80,16 @@ void *pool_alloc_obj(pool_t *pool) {
     return NULL;
 }
 
-size_t pool_obj_size(void *obj) {
-    struct pool_obj_s *m = container_of(obj, struct pool_obj_s, obj);
+size_t pool_obj_size(void *o) {
+    struct pool_obj_s *m = container_of(o, struct pool_obj_s, obj);
     return m->size;
 }
 
-void pool_return_obj(void *obj) {
-    struct pool_obj_s *m = container_of(obj, struct pool_obj_s, obj);
+void pool_return_obj(void *o) {
+    struct pool_obj_s *m = container_of(o, struct pool_obj_s, obj);
     pool_t *pool = m->pool;
-    if (pool->clear_func) { pool->clear_func(obj); }
-    memset(obj, 0, pool->memsize);
+    if (pool->clear_func) { pool->clear_func(o); }
+    memset(o, 0, pool->memsize);
     LIST_INSERT_HEAD(&pool->pool, m, _next);
     pool->out--;
 }
