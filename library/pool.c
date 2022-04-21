@@ -44,6 +44,7 @@ pool_t *pool_new(size_t objsize, size_t count, void (*clear_func)(void *)) {
     p->memsize = objsize;
     p->count = count;
     p->clear_func = clear_func;
+    return p;
 }
 
 void pool_destroy(pool_t *p) {
@@ -81,12 +82,12 @@ void *pool_alloc_obj(pool_t *pool) {
 }
 
 size_t pool_obj_size(void *o) {
-    struct pool_obj_s *m = container_of(o, struct pool_obj_s, obj);
+    struct pool_obj_s *m = container_of((char *) o, struct pool_obj_s, obj);
     return m->size;
 }
 
 void pool_return_obj(void *o) {
-    struct pool_obj_s *m = container_of(o, struct pool_obj_s, obj);
+    struct pool_obj_s *m = container_of((char *) o, struct pool_obj_s, obj);
     pool_t *pool = m->pool;
     if (pool->clear_func) { pool->clear_func(o); }
     memset(o, 0, pool->memsize);
