@@ -64,7 +64,7 @@ struct proxy_app_ctx {
 };
 
 struct listener {
-    const char *service_name;
+    char *service_name;
     int port;
     uv_tcp_t server;
     struct proxy_app_ctx *app_ctx;
@@ -103,6 +103,10 @@ static void shutdown_timer_cb(uv_timer_t *t) {
     uv_loop_t *l = t->loop;
 
     uv_print_active_handles(l, stderr);
+}
+
+static void free_listener(struct listener *l) {
+    free(l->service_name);
 }
 
 static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
@@ -519,6 +523,8 @@ void run(int argc, char **argv) {
     CATCH(uv) {
         excode = ERR(uv);
     }
+
+    model_map_clear(&app_ctx.listeners, (_free_f) free_listener);
 
     ZITI_LOG(INFO, "proxy event loop is done");
     free(loop);
