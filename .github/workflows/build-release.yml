@@ -41,20 +41,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - name: upload SDK release bundle
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          upload_url: ${{ steps.get_release.outputs.upload_url }}
-          asset_path: ${{runner.workspace}}/build/package/ziti-sdk-${{ github.ref_name }}-${{ runner.os }}.zip
-          asset_name: ziti-sdk-${{ runner.os }}.zip
-          asset_content_type: application/octet-stream
-      - name: upload ziti-prox-c bundle
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.get_release.outputs.upload_url }}
-          asset_path: ziti-prox-c-${{ runner.os }}.zip
-          asset_name: ziti-prox-c-${{ runner.os }}.zip
-          asset_content_type: application/octet-stream
+          files: |
+            ziti-prox-c-${{ runner.os }}.zip
+            ${{runner.workspace}}/build/package/ziti-sdk*
