@@ -29,6 +29,7 @@ SET(ZITI_SRC_FILES
         auth_queries.c
         conn_bridge.c
         ziti-socket.c
+        pool.c
         )
 
 SET(ZITI_INCLUDE_DIRS

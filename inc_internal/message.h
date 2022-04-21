@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <uv_mbed/queue.h>
 
 #define HEADER_SIZE 20
 
@@ -29,7 +30,7 @@ typedef char magic_t[4];
 
 #define HEADER_FIELDS(XX) \
 XX(content, uint32_t)\
-XX(seq, int32_t)\
+XX(seq, uint32_t)\
 XX(headers_len, uint32_t)\
 XX(body_len, uint32_t)
 
@@ -47,14 +48,15 @@ static header_t EMPTY_HEADER = {
         MAGIC_INIT,
 };
 
-
 typedef struct {
     uint32_t header_id;
     uint32_t length;
     uint8_t *value;
 } hdr_t;
 
-typedef struct {
+typedef struct message_s {
+    TAILQ_ENTRY(message_s) _next;
+
     header_t header;
     uint8_t *headers;
     uint8_t *body;

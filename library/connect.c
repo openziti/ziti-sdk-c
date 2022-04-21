@@ -75,7 +75,9 @@ static void process_connect(struct ziti_conn *conn);
 
 static int send_fin_message(ziti_connection conn);
 
-static void process_edge_message(struct ziti_conn *conn, message *msg, int code);
+static void queue_edge_message(struct ziti_conn *conn, message *msg, int code);
+
+static void process_edge_message(struct ziti_conn *conn, message *msg);
 
 static int ziti_channel_start_connection(struct ziti_conn *conn);
 
@@ -753,11 +755,21 @@ static bool flush_to_service(ziti_connection conn) {
 }
 
 static bool flush_to_client(ziti_connection conn) {
-    while (buffer_available(conn->inbound) > 0) {
+    while (!TAILQ_EMPTY(&conn->in_q)) {
+        message *m = TAILQ_FIRST(&conn->in_q);
+        TAILQ_REMOVE(&conn->in_q, m, _next);
+        process_edge_message(conn, m);
+        pool_return_obj(m);
+    }
+
+    CONN_LOG(VERBOSE, "%zu bytes available", buffer_available(conn->inbound));
+    int flushes = 128;
+    while (buffer_available(conn->inbound) > 0 && (flushes--) > 0) {
         uint8_t *chunk;
         ssize_t chunk_len = buffer_get_next(conn->inbound, 16 * 1024, &chunk);
-        CONN_LOG(TRACE, "flushing %zd bytes to client", chunk_len);
         ssize_t consumed = conn->data_cb(conn, chunk, chunk_len);
+        CONN_LOG(TRACE, "client consumed %zd out of %zd bytes", consumed, chunk_len);
+
         if (consumed < 0) {
             CONN_LOG(WARN, "client indicated error[%zd] accepting data (%zd bytes buffered)",
                      consumed, buffer_available(conn->inbound));
@@ -769,8 +781,8 @@ static bool flush_to_client(ziti_connection conn) {
     }
 
     if (buffer_available(conn->inbound) > 0) {
-        // could not flush everything
-        // schedule retry
+        CONN_LOG(VERBOSE, "%zu bytes still available", buffer_available(conn->inbound));
+
         return true;
     }
 
@@ -830,8 +842,6 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
     if (message_get_int32_header(msg, FlagsHeader, &flags) && (flags & EDGE_FIN)) {
         conn->fin_recv = true;
     }
-
-    flush_connection(conn);
 }
 
 static void restart_connect(struct ziti_conn *conn) {
@@ -957,7 +967,7 @@ static int ziti_channel_start_connection(struct ziti_conn *conn) {
     }
 
     ziti_channel_add_receiver(ch, conn->conn_id, conn,
-                              (void (*)(void *, message *, int)) process_edge_message);
+                              (void (*)(void *, message *, int)) queue_edge_message);
 
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(0);
@@ -1155,7 +1165,7 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     conn->flusher->data = conn;
     uv_unref((uv_handle_t *) &conn->flusher);
 
-    ziti_channel_add_receiver(ch, conn->conn_id, conn, (void (*)(void *, message *, int)) process_edge_message);
+    ziti_channel_add_receiver(ch, conn->conn_id, conn, (void (*)(void *, message *, int)) queue_edge_message);
 
     CONN_LOG(TRACE, "ch[%d] => Edge Accept parent_conn_id[%d]", ch->id, conn->parent->conn_id);
 
@@ -1294,8 +1304,7 @@ void reject_dial_request(ziti_connection conn, message *req, const char *reason)
     ziti_channel_send(ch, content_type, headers, 3, (const uint8_t *)reason, strlen(reason), NULL);
 }
 
-static void process_edge_message(struct ziti_conn *conn, message *msg, int code) {
-
+static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {
     if (msg == NULL) {
         if (conn->state == Bound) {
             if (code == ZITI_DISABLED) {
@@ -1327,6 +1336,12 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
         conn->channel = NULL;
         return;
     }
+
+    TAILQ_INSERT_TAIL(&conn->in_q, msg, _next);
+    flush_connection(conn);
+}
+
+static void process_edge_message(struct ziti_conn *conn, message *msg) {
 
     int rc;
     int32_t seq;
@@ -1450,21 +1465,18 @@ static void process_edge_message(struct ziti_conn *conn, message *msg, int code)
                 }
                 conn_set_state(conn, rc == ZITI_OK ? Connected : Disconnected);
                 complete_conn_req(conn, rc);
-            }
-            else if (conn->state == Binding) {
+            } else if (conn->state == Binding) {
                 CONN_LOG(TRACE, "bound");
                 conn_set_state(conn, Bound);
                 complete_conn_req(conn, ZITI_OK);
-            }
-            else if (conn->state == Accepting) {
+            } else if (conn->state == Accepting) {
                 CONN_LOG(TRACE, "accepted");
                 if (conn->encrypted) {
                     send_crypto_header(conn);
                 }
                 conn_set_state(conn, Connected);
                 complete_conn_req(conn, ZITI_OK);
-            }
-            else if (conn->state >= Timedout) {
+            } else if (conn->state >= Timedout) {
                 CONN_LOG(WARN, "received connect reply in closed/timedout state");
                 ziti_disconnect(conn);
             }
