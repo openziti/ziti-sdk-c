@@ -27,6 +27,7 @@ struct fd_bridge_s {
 };
 
 struct ziti_bridge_s {
+    bool closed;
     ziti_connection conn;
     uv_stream_t *input;
     uv_stream_t *output;
@@ -118,14 +119,20 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
 
 static void on_ziti_close(ziti_connection conn) {
     struct ziti_bridge_s *br = ziti_conn_data(conn);
-
-    uv_handle_set_data((uv_handle_t *) br->input, br->data);
-    br->close_cb((uv_handle_t *) br->input);
     free(br);
 }
 
 static void close_bridge(struct ziti_bridge_s *br) {
-    // if (br)
+    if (br->closed) { return; }
+
+    br->closed = true;
+
+    if (br->input) {
+        uv_handle_set_data((uv_handle_t *) br->input, br->data);
+        br->close_cb((uv_handle_t *) br->input);
+        br->input = NULL;
+    }
+
     ziti_close(br->conn, on_ziti_close);
 }
 
