@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "catch2/catch.hpp"
 
-#include <ziti/model_support.h>
+#include <ziti/model_map.h>
 #include <string.h>
 
 
