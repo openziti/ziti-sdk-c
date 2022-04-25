@@ -605,7 +605,7 @@ TEST_CASE("parse-ziti-address", "[model]") {
     ziti_address addr;
 
     int rc = parse_ziti_address(&addr, j, strlen(j));
-    CHECK(rc == strlen(j));
+    CHECK(rc > 0);
     CHECK(addr.type == ziti_address_hostname);
     CHECK_THAT(addr.addr.hostname, Catch::Equals("foo.bar"));
 }
