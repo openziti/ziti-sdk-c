@@ -19,7 +19,12 @@ limitations under the License.
 #define ZITI_SDK_ZITI_MODEL_H
 
 #include "model_support.h"
+
+#if _WIN32
+#include <in6addr.h>
+#else
 #include <netinet/in.h>
+#endif
 
 #define ZITI_SESSION_TYPE_ENUM(XX, ...) \
 XX(Bind, __VA_ARGS__)                   \
