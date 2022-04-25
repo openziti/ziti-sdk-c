@@ -76,10 +76,10 @@ typedef intptr_t ssize_t;
 typedef struct type##_s {\
 model(FIELD_DECL, type) \
 } type;\
-typedef type ** type##_array; \
 DECLARE_MODEL_FUNCS(type)
 
 #define DECLARE_MODEL_FUNCS(type) \
+typedef type ** type##_array; \
 MODEL_API type_meta* get_##type##_meta();\
 MODEL_API ptr(type) alloc_##type();\
 MODEL_API void free_##type(type *v); \
@@ -104,15 +104,15 @@ MODEL_API char* type##_to_json(const ptr(type) v, int flags, size_t *len);
 static field_meta type##_FIELDS[] =  {\
     model(gen_field_meta, type) \
     };                          \
-IMPL_MODEL_FUNCS(type)
-
-#define IMPL_MODEL_FUNCS(type)  \
 static type_meta type##_META = { \
 .name = #type, \
 .size = sizeof(type),\
 .field_count = sizeof(type##_FIELDS) / sizeof(field_meta),\
 .fields = type##_FIELDS,\
-};\
+};                              \
+IMPL_MODEL_FUNCS(type)
+
+#define IMPL_MODEL_FUNCS(type)  \
 type_meta* get_##type##_meta() { return &type##_META; }\
 int parse_##type(ptr(type) v, const char* json, size_t len) { return model_parse(v, json, len, &type##_META); } \
 int parse_##type##_ptr(ptr(type) *p, const char* json, size_t len) {\

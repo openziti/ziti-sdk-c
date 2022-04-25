@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 #include "catch2/catch.hpp"
-#include <string.h>
+#include <string>
 
 #if _WIN32
 #include <windows.h>
@@ -25,7 +25,10 @@ limitations under the License.
 #   ifndef _GNU_SOURCE
 #      define _GNU_SOURCE //add time.h include after defining _GNU_SOURCE
 #   endif
-#include <time.h>
+
+#include <ctime>
+#include <arpa/inet.h>
+
 #endif
 
 #include "internal_model.h"
@@ -503,7 +506,7 @@ TEST_CASE("service config test", "[model]") {
                                         (int (*)(void *, const char *, size_t)) (parse_ziti_intercept_cfg_v1)) == 0);
 
         CHECK_THAT(cfg.protocols[0], Equals("tcp"));
-        CHECK_THAT(cfg.addresses[0], Equals("1.2.3.4"));
+        // TODO CHECK_THAT(cfg.addresses[0], Equals("1.2.3.4"));
         CHECK(cfg.port_ranges[0]->high == 80);
         free_ziti_intercept_cfg_v1(&cfg);
     }
@@ -590,9 +593,86 @@ TEST_CASE("parse-ctrl-version", "[model]") {
     ziti_version ver;
     REQUIRE(parse_ziti_version(&ver, json, strlen(json)) > 0);
     REQUIRE(ver.api_versions != nullptr);
-    auto v1Path = (api_path *)model_map_get(&ver.api_versions->edge, "v1");
+    auto v1Path = (api_path *) model_map_get(&ver.api_versions->edge, "v1");
     REQUIRE(v1Path);
     REQUIRE_THAT(v1Path->path, Catch::Equals("/edge/v1"));
 
     free_ziti_version(&ver);
+}
+
+TEST_CASE("parse-ziti-address", "[model]") {
+    const char *j = R"("foo.bar")";
+    ziti_address addr;
+
+    int rc = parse_ziti_address(&addr, j, strlen(j));
+    CHECK(rc == strlen(j));
+    CHECK(addr.type == ziti_address_hostname);
+    CHECK_THAT(addr.addr.hostname, Catch::Equals("foo.bar"));
+}
+
+TEST_CASE("parse-ziti-intercept1", "[model]") {
+    const char *json = R"( {
+        "addresses": ["foo.bar", "1.1.1.1", "100.64.0.0/10", "ff::1/64"]
+    })";
+
+    char addr_str[64];
+    ziti_intercept_cfg_v1 intercept;
+    int len = parse_ziti_intercept_cfg_v1(&intercept, json, strlen(json));
+    REQUIRE(len > 0);
+    REQUIRE(intercept.addresses != nullptr);
+
+    int idx = 0;
+    CHECK(intercept.addresses[idx]->type == ziti_address_hostname);
+    CHECK_THAT(intercept.addresses[idx]->addr.hostname, Catch::Equals("foo.bar"));
+
+    idx++;
+    CHECK(intercept.addresses[idx]->type == ziti_address_cidr);
+    CHECK(intercept.addresses[idx]->addr.cidr.bits == 32);
+    CHECK(intercept.addresses[idx]->addr.cidr.af == AF_INET);
+    CHECK(inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) != NULL);
+    CHECK_THAT(addr_str, Catch::Equals("1.1.1.1"));
+
+    idx++;
+    CHECK(intercept.addresses[idx]->type == ziti_address_cidr);
+    CHECK(intercept.addresses[idx]->addr.cidr.bits == 10);
+    CHECK(intercept.addresses[idx]->addr.cidr.af == AF_INET);
+    CHECK(inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) != NULL);
+    CHECK_THAT(addr_str, Catch::Equals("100.64.0.0"));
+
+    idx++;
+    CHECK(intercept.addresses[idx]->type == ziti_address_cidr);
+    CHECK(intercept.addresses[idx]->addr.cidr.bits == 64);
+    CHECK(intercept.addresses[idx]->addr.cidr.af == AF_INET6);
+    CHECK(inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) != NULL);
+    CHECK_THAT(addr_str, Catch::Equals("ff::1"));
+
+    auto json_out = ziti_intercept_cfg_v1_to_json(&intercept, MODEL_JSON_COMPACT, nullptr);
+    Catch::cout() << json_out;
+    free_ziti_intercept_cfg_v1(&intercept);
+    free(json_out);
+}
+
+TEST_CASE("ziti-address-match", "[model]") {
+
+    const char *json = R"( {
+        "addresses": ["foo.bar", "*.ziti", "*.yahoo.com", "1.1.1.1", "100.64.0.0/10", "ff::1/64"]
+    })";
+
+    ziti_intercept_cfg_v1 intercept;
+    int len = parse_ziti_intercept_cfg_v1(&intercept, json, strlen(json));
+    REQUIRE(len > 0);
+    REQUIRE(intercept.addresses != nullptr);
+
+    CHECK(ziti_address_str_in_array("foo.bar", intercept.addresses));
+    CHECK(!ziti_address_str_in_array("foo.baz", intercept.addresses));
+    CHECK(ziti_address_str_in_array("AWESOME.ZITI", intercept.addresses));
+    CHECK(ziti_address_str_in_array("Yahoo.COM", intercept.addresses));
+    CHECK(ziti_address_str_in_array("1.1.1.1", intercept.addresses));
+    CHECK(!ziti_address_str_in_array("1.1.1.2", intercept.addresses));
+    CHECK(ziti_address_str_in_array("100.127.1.1", intercept.addresses));
+    CHECK(!ziti_address_str_in_array("100.128.1.2", intercept.addresses));
+    CHECK(ziti_address_str_in_array("ff::abcd:1", intercept.addresses));
+    CHECK(!ziti_address_str_in_array("ff:abcd::1", intercept.addresses));
+
+    free_ziti_intercept_cfg_v1(&intercept);
 }
