@@ -63,7 +63,7 @@ ziti_context Ziti_load_context(const char *identity);
  * @return native socket handle
  */
 ZITI_FUNC
-ziti_socket_t Ziti_socket();
+ziti_socket_t Ziti_socket(int type);
 
 /**
  * @brief Connect socket to a Ziti service
@@ -74,6 +74,9 @@ ziti_socket_t Ziti_socket();
  */
 ZITI_FUNC
 int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service);
+
+ZITI_FUNC
+int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port);
 
 /**
  * @brief Shutdown Ziti library.

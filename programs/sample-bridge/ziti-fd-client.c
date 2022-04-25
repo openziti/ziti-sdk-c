@@ -64,7 +64,7 @@ int main(int argc, char *argv[]) {
         int err = Ziti_last_error();
         fprintf(stderr, "failed to load Ziti: %d(%s)\n", err, ziti_errorstr(err));
     }
-    ziti_socket_t socket = Ziti_socket();
+    ziti_socket_t socket = Ziti_socket(SOCK_STREAM);
 
     long rc = Ziti_connect(socket, ztx, service);
 
