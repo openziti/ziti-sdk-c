@@ -19,7 +19,14 @@ limitations under the License.
 #include <ziti/ziti_model.h>
 #include <ziti/errors.h>
 
+#if _WIN32
+#include <stdint.h>
+typedef uint32_t in_addr_t;
+#define strcasecmp stricmp
+#else
 #include <arpa/inet.h>
+#endif
+
 #include <string.h>
 #include "ziti/ziti_buffer.h"
 

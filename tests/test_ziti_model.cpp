@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "catch2/catch.hpp"
 #include <string>
+#include <uv.h>
 
 #if _WIN32
 #include <windows.h>
@@ -629,21 +630,21 @@ TEST_CASE("parse-ziti-intercept1", "[model]") {
     CHECK(intercept.addresses[idx]->type == ziti_address_cidr);
     CHECK(intercept.addresses[idx]->addr.cidr.bits == 32);
     CHECK(intercept.addresses[idx]->addr.cidr.af == AF_INET);
-    CHECK(inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) != NULL);
+    CHECK(uv_inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) != 0);
     CHECK_THAT(addr_str, Catch::Equals("1.1.1.1"));
 
     idx++;
     CHECK(intercept.addresses[idx]->type == ziti_address_cidr);
     CHECK(intercept.addresses[idx]->addr.cidr.bits == 10);
     CHECK(intercept.addresses[idx]->addr.cidr.af == AF_INET);
-    CHECK(inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) != NULL);
+    CHECK(uv_inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) != 0);
     CHECK_THAT(addr_str, Catch::Equals("100.64.0.0"));
 
     idx++;
     CHECK(intercept.addresses[idx]->type == ziti_address_cidr);
     CHECK(intercept.addresses[idx]->addr.cidr.bits == 64);
     CHECK(intercept.addresses[idx]->addr.cidr.af == AF_INET6);
-    CHECK(inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) != NULL);
+    CHECK(uv_inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) != 0);
     CHECK_THAT(addr_str, Catch::Equals("ff::1"));
 
     auto json_out = ziti_intercept_cfg_v1_to_json(&intercept, MODEL_JSON_COMPACT, nullptr);

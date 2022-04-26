@@ -21,6 +21,7 @@ limitations under the License.
 #include "model_support.h"
 
 #if _WIN32
+#include <winsock2.h>
 #include <in6addr.h>
 #else
 #include <netinet/in.h>
