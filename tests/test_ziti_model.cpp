@@ -663,16 +663,16 @@ TEST_CASE("ziti-address-match", "[model]") {
     REQUIRE(len > 0);
     REQUIRE(intercept.addresses != nullptr);
 
-    CHECK(ziti_address_str_in_array("foo.bar", intercept.addresses));
-    CHECK(!ziti_address_str_in_array("foo.baz", intercept.addresses));
-    CHECK(ziti_address_str_in_array("AWESOME.ZITI", intercept.addresses));
-    CHECK(ziti_address_str_in_array("Yahoo.COM", intercept.addresses));
-    CHECK(ziti_address_str_in_array("1.1.1.1", intercept.addresses));
-    CHECK(!ziti_address_str_in_array("1.1.1.2", intercept.addresses));
-    CHECK(ziti_address_str_in_array("100.127.1.1", intercept.addresses));
-    CHECK(!ziti_address_str_in_array("100.128.1.2", intercept.addresses));
-    CHECK(ziti_address_str_in_array("ff::abcd:1", intercept.addresses));
-    CHECK(!ziti_address_str_in_array("ff:abcd::1", intercept.addresses));
+    CHECK(ziti_address_match_array("foo.bar", intercept.addresses));
+    CHECK(!ziti_address_match_array("foo.baz", intercept.addresses));
+    CHECK(ziti_address_match_array("AWESOME.ZITI", intercept.addresses));
+    CHECK(ziti_address_match_array("Yahoo.COM", intercept.addresses));
+    CHECK(ziti_address_match_array("1.1.1.1", intercept.addresses));
+    CHECK(!ziti_address_match_array("1.1.1.2", intercept.addresses));
+    CHECK(ziti_address_match_array("100.127.1.1", intercept.addresses));
+    CHECK(!ziti_address_match_array("100.128.1.2", intercept.addresses));
+    CHECK(ziti_address_match_array("ff::abcd:1", intercept.addresses));
+    CHECK(!ziti_address_match_array("ff:abcd::1", intercept.addresses));
 
     free_ziti_intercept_cfg_v1(&intercept);
 }

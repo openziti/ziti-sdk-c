@@ -140,7 +140,7 @@ static int parse_ziti_address_str(ziti_address *addr, const char *addr_str) {
     int rc = 0;
     char *slash = strchr(addr_str, '/');
     unsigned long bits;
-    char ip[40];
+    char ip[64];
     if (slash) {
         char *endp;
         bits = strtoul(slash + 1, &endp, 10);
@@ -185,22 +185,32 @@ static int parse_ziti_address0(ziti_address *addr, const char *json, void *tok) 
     return rc ? rc : parsed;
 }
 
-static int ziti_address_write_json(const ziti_address *addr, string_buf_t *buf, int indent, int flags) {
+int ziti_address_print(char *buf, size_t max, const ziti_address *addr) {
     if (addr->type == ziti_address_hostname) {
-        return get_string_meta()->jsonifier(addr->addr.hostname, buf, indent, flags);
+        return sprintf(buf, max, "%s", addr->addr.hostname);
     } else {
-        char cidr[64];
-        const char *r = inet_ntop(addr->addr.cidr.af, &addr->addr.cidr.ip, cidr, sizeof(cidr));
-        snprintf(cidr + strlen(r), sizeof(cidr) - strlen(r), "/%d", addr->addr.cidr.bits);
-        return get_string_meta()->jsonifier(cidr, buf, indent, flags);
+        char ip[64];
+        if (inet_ntop(addr->addr.cidr.af, &addr->addr.cidr.ip, ip, sizeof(ip)) == NULL) {
+            return -1;
+        }
+        return snprintf(buf, max, "%s/%d", ip, addr->addr.cidr.bits);
     }
+}
+
+static int ziti_address_write_json(const ziti_address *addr, string_buf_t *buf, int indent, int flags) {
+    char addr_str[256];
+    if (ziti_address_print(addr_str, sizeof(addr_str), addr) < 0) {
+        return -1;
+    }
+
+    return get_string_meta()->jsonifier(addr_str, buf, indent, flags);
 }
 
 static void free_ziti_address0(ziti_address *addr) {
 
 }
 
-bool ziti_address_in(ziti_address *addr, ziti_address *range) {
+bool ziti_address_match(ziti_address *addr, ziti_address *range) {
     if (addr->type != range->type) {
         return false;
     }
@@ -250,24 +260,24 @@ bool ziti_address_in(ziti_address *addr, ziti_address *range) {
     return false;
 }
 
-bool ziti_address_str_in(const char *addr, ziti_address *range) {
+bool ziti_address_match_s(const char *addr, ziti_address *range) {
     ziti_address a;
 
     bool res = false;
     if (parse_ziti_address_str(&a, addr) == 0) {
-        res = ziti_address_in(&a, range);
+        res = ziti_address_match(&a, range);
     }
     free_ziti_address(&a);
     return res;
 }
 
-bool ziti_address_str_in_array(const char *addr, ziti_address **range) {
+bool ziti_address_match_array(const char *addr, ziti_address **range) {
     ziti_address a;
 
     bool res = false;
     if (parse_ziti_address_str(&a, addr) == 0) {
         for (int i = 0; range[i] != NULL && !res; i++) {
-            if (ziti_address_in(&a, range[i])) {
+            if (ziti_address_match(&a, range[i])) {
                 res = true;
             }
         }

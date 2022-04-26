@@ -163,9 +163,13 @@ typedef struct ziti_address_s {
 #endif
 #define MODEL_API ZITI_FUNC
 
-ZITI_FUNC bool ziti_address_in(ziti_address *addr, ziti_address *range);
-ZITI_FUNC bool ziti_address_str_in(const char *addr, ziti_address *range);
-ZITI_FUNC bool ziti_address_str_in_array(const char *addr, ziti_address **range);
+ZITI_FUNC int ziti_address_print(char *buf, size_t max, const ziti_address *address);
+
+ZITI_FUNC bool ziti_address_match(ziti_address *addr, ziti_address *range);
+
+ZITI_FUNC bool ziti_address_match_s(const char *addr, ziti_address *range);
+
+ZITI_FUNC bool ziti_address_match_array(const char *addr, ziti_address **range);
 
 DECLARE_MODEL_FUNCS(ziti_address)
 
