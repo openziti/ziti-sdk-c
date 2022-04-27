@@ -19,7 +19,16 @@ limitations under the License.
 #include <ziti/ziti_model.h>
 #include <ziti/errors.h>
 
+#if _WIN32
+#include <stdint.h>
+typedef uint32_t in_addr_t;
+#define strcasecmp stricmp
+#else
+#include <arpa/inet.h>
+#endif
+
 #include <string.h>
+#include "ziti/ziti_buffer.h"
 
 IMPL_MODEL(ziti_posture_query, ZITI_POSTURE_QUERY_MODEL)
 
@@ -118,3 +127,178 @@ int ziti_service_get_config(ziti_service *service, const char *cfg_type, void *c
 
     return ZITI_OK;
 }
+
+static int cmp_ziti_address0(ziti_address *lh, ziti_address *rh) {
+    if (lh->type != rh->type) {
+        return (int) lh->type - (int) rh->type;
+    }
+
+    if (lh->type == ziti_address_hostname) {
+        return strcmp(lh->addr.hostname, rh->addr.hostname);
+    }
+
+    if (lh->type == ziti_address_cidr) {
+        return memcmp(&lh->addr.cidr, &rh->addr.cidr, sizeof(lh->addr.cidr));
+    }
+    return 0;
+}
+
+static int parse_ziti_address_str(ziti_address *addr, const char *addr_str) {
+    int rc = 0;
+    char *slash = strchr(addr_str, '/');
+    unsigned long bits;
+    char ip[64];
+    if (slash) {
+        char *endp;
+        bits = strtoul(slash + 1, &endp, 10);
+        if (*endp != '\0') {
+            rc = -1;
+        }
+
+        size_t iplen = (slash - addr_str > sizeof(ip)) ? sizeof(ip) : slash - addr_str;
+        snprintf(ip, sizeof(ip), "%.*s", (int) iplen, addr_str);
+    } else {
+        strncpy(ip, addr_str, sizeof(ip));
+    }
+    if (rc >= 0) {
+        addr->type = ziti_address_cidr;
+        if (inet_pton(AF_INET, ip, (struct in_addr *) &addr->addr.cidr.ip) == 1) {
+            addr->addr.cidr.af = AF_INET;
+            addr->addr.cidr.bits = slash ? bits : 32;
+        } else if (inet_pton(AF_INET6, ip, &addr->addr.cidr.ip) == 1) {
+            addr->addr.cidr.af = AF_INET6;
+            addr->addr.cidr.bits = slash ? bits : 128;
+        } else {
+            if (!slash) {
+                addr->type = ziti_address_hostname;
+                strncpy(addr->addr.hostname, addr_str, sizeof(addr->addr.hostname));
+            } else {
+                rc = -1;
+            }
+        }
+    }
+    return rc;
+}
+
+static int parse_ziti_address0(ziti_address *addr, const char *json, void *tok) {
+    char *addr_str = NULL;
+    int parsed = get_string_meta()->parser(&addr_str, json, tok);
+
+    if (parsed < 0) { return parsed; }
+
+    int rc = parse_ziti_address_str(addr, addr_str);
+
+    free(addr_str);
+    return rc ? rc : parsed;
+}
+
+int ziti_address_print(char *buf, size_t max, const ziti_address *addr) {
+    if (addr->type == ziti_address_hostname) {
+        return snprintf(buf, max, "%s", addr->addr.hostname);
+    } else {
+        char ip[64];
+        if (inet_ntop(addr->addr.cidr.af, &addr->addr.cidr.ip, ip, sizeof(ip)) == NULL) {
+            return -1;
+        }
+        return snprintf(buf, max, "%s/%d", ip, addr->addr.cidr.bits);
+    }
+}
+
+static int ziti_address_write_json(const ziti_address *addr, string_buf_t *buf, int indent, int flags) {
+    char addr_str[256];
+    if (ziti_address_print(addr_str, sizeof(addr_str), addr) < 0) {
+        return -1;
+    }
+
+    return get_string_meta()->jsonifier(addr_str, buf, indent, flags);
+}
+
+static void free_ziti_address0(ziti_address *addr) {
+
+}
+
+bool ziti_address_match(ziti_address *addr, ziti_address *range) {
+    if (addr->type != range->type) {
+        return false;
+    }
+
+    if (addr->type == ziti_address_hostname) {
+        if (range->addr.hostname[0] != '*') {
+            return strcasecmp(addr->addr.hostname, range->addr.hostname) == 0;
+        }
+
+        const char *domain = range->addr.hostname + 2;
+
+        const char *post_dot = addr->addr.hostname;
+        while (post_dot != NULL) {
+            if (strcasecmp(post_dot, domain) == 0) {
+                return true;
+            }
+
+            post_dot = strchr(post_dot, '.');
+            if (post_dot != NULL) {
+                post_dot++;
+            }
+        }
+    } else if (addr->type == ziti_address_cidr) {
+        if (addr->addr.cidr.af != range->addr.cidr.af) { return false; }
+        if (addr->addr.cidr.bits < range->addr.cidr.bits) { return false; }
+
+        if (addr->addr.cidr.af == AF_INET) {
+            in_addr_t mask = htonl((-1) << (32 - range->addr.cidr.bits));
+            return (((struct in_addr *) &addr->addr.cidr.ip)->s_addr & mask) == (((struct in_addr *) &range->addr.cidr.ip)->s_addr & mask);
+        } else if (addr->addr.cidr.af == AF_INET6) {
+            unsigned int bits = range->addr.cidr.bits;
+            uint8_t mask;
+            for (int i = 0; i < 16 && bits > 0; i++) {
+                if (bits > 8) {
+                    bits = bits - 8;
+                    mask = 0xff;
+                } else {
+                    mask = 0xff << bits;
+                    bits = 0;
+                }
+
+                if ((addr->addr.cidr.ip.s6_addr[i] & mask) != (range->addr.cidr.ip.s6_addr[i] & mask)) { return false; }
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ziti_address_match_s(const char *addr, ziti_address *range) {
+    ziti_address a;
+
+    bool res = false;
+    if (parse_ziti_address_str(&a, addr) == 0) {
+        res = ziti_address_match(&a, range);
+    }
+    free_ziti_address(&a);
+    return res;
+}
+
+bool ziti_address_match_array(const char *addr, ziti_address **range) {
+    ziti_address a;
+
+    bool res = false;
+    if (parse_ziti_address_str(&a, addr) == 0) {
+        for (int i = 0; range[i] != NULL && !res; i++) {
+            if (ziti_address_match(&a, range[i])) {
+                res = true;
+            }
+        }
+    }
+    free_ziti_address(&a);
+    return res;
+}
+
+static type_meta ziti_address_META = {
+        .size = sizeof(ziti_address),
+        .comparer = (_cmp_f) cmp_ziti_address0,
+        .parser = (_parse_f) parse_ziti_address0,
+        .jsonifier = (_to_json_f) ziti_address_write_json,
+        .destroyer = (_free_f) free_ziti_address0,
+};
+
+IMPL_MODEL_FUNCS(ziti_address)

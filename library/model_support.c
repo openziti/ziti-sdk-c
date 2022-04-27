@@ -82,6 +82,10 @@ jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_
 int model_cmp(const void *lh, const void *rh, type_meta *meta) {
     null_checks(lh, rh)
 
+    if (meta->comparer) {
+        return meta->comparer(lh, rh);
+    }
+
     int rc = 0;
     for (int i = 0; rc == 0 && i < meta->field_count; i++) {
         field_meta *fm = meta->fields + i;
@@ -517,6 +521,10 @@ static int parse_map(void *mapp, const char *json, jsmntok_t *tok, type_meta *el
 
 static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *meta) {
     memset(obj, 0, meta->size);
+    if (meta->parser) {
+        return meta->parser(obj, json, tok);
+    }
+
     if (tok->type != JSMN_OBJECT) {
         return -1;
     }

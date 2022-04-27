@@ -20,6 +20,13 @@ limitations under the License.
 
 #include "model_support.h"
 
+#if _WIN32
+#include <winsock2.h>
+#include <in6addr.h>
+#else
+#include <netinet/in.h>
+#endif
+
 #define ZITI_SESSION_TYPE_ENUM(XX, ...) \
 XX(Bind, __VA_ARGS__)                   \
 XX(Dial, __VA_ARGS__)
@@ -99,7 +106,7 @@ XX(high, int, none, high, __VA_ARGS__)
 
 #define ZITI_INTERCEPT_CFG_V1_MODEL(XX, ...) \
 XX(protocols, string, array, protocols, __VA_ARGS__) \
-XX(addresses, string, array, addresses, __VA_ARGS__) \
+XX(addresses, ziti_address, array, addresses, __VA_ARGS__) \
 XX(port_ranges, ziti_port_range, array, portRanges, __VA_ARGS__) \
 XX(dial_options, tag, map, dialOptions, __VA_ARGS__) \
 XX(source_ip, string, none, sourceIp, __VA_ARGS__)
@@ -131,11 +138,41 @@ XX(provisioning_url, string, none, provisioningUrl, __VA_ARGS__)
 extern "C" {
 #endif
 
+enum ziti_address_type {
+    ziti_address_hostname,
+    ziti_address_cidr
+};
+
+typedef struct ziti_address_s {
+    enum ziti_address_type type;
+    union {
+        struct {
+            char af;
+            unsigned int bits;
+            struct in6_addr ip;
+        } cidr;
+        char hostname[256];
+    } addr;
+} ziti_address;
+
+
+
+
 // make sure ziti model functions are properly exported
 #ifdef MODEL_API
 #undef MODEL_API
 #endif
 #define MODEL_API ZITI_FUNC
+
+ZITI_FUNC int ziti_address_print(char *buf, size_t max, const ziti_address *address);
+
+ZITI_FUNC bool ziti_address_match(ziti_address *addr, ziti_address *range);
+
+ZITI_FUNC bool ziti_address_match_s(const char *addr, ziti_address *range);
+
+ZITI_FUNC bool ziti_address_match_array(const char *addr, ziti_address **range);
+
+DECLARE_MODEL_FUNCS(ziti_address)
 
 DECLARE_ENUM(ziti_session_type, ZITI_SESSION_TYPE_ENUM)
 
