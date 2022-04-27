@@ -194,7 +194,7 @@ static int parse_ziti_address0(ziti_address *addr, const char *json, void *tok) 
 
 int ziti_address_print(char *buf, size_t max, const ziti_address *addr) {
     if (addr->type == ziti_address_hostname) {
-        return sprintf(buf, max, "%s", addr->addr.hostname);
+        return snprintf(buf, max, "%s", addr->addr.hostname);
     } else {
         char ip[64];
         if (inet_ntop(addr->addr.cidr.af, &addr->addr.cidr.ip, ip, sizeof(ip)) == NULL) {
