@@ -334,7 +334,7 @@ void ziti_mfa_auth_internal_cb(void *empty, const ziti_error *err, void *ctx) {
 
         if(!is_auth){
             //not authenticating, mfa re-check, refresh services
-            ziti_services_refresh(&ztx->service_refresh_timer);
+            ziti_services_refresh(ztx->service_refresh_timer);
         }
 
         FREE(ctx);
