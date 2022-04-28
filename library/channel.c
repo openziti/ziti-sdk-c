@@ -476,23 +476,19 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
     }
 
     if (is_edge(m->header.content)) {
-        int32_t conn_id;
+        int32_t conn_id = 0;
         bool has_conn_id = message_get_int32_header(m, ConnIdHeader, &conn_id);
+        struct msg_receiver *conn = has_conn_id ? find_receiver(ch, conn_id) : NULL;
 
-        if (!has_conn_id) {
-            CH_LOG(ERROR, "received message without conn_id ct[%04X]", m->header.content);
-        }
-        else {
-            struct msg_receiver *conn = find_receiver(ch, conn_id);
-            if (conn == NULL) {
-                CH_LOG(DEBUG, "received message for unknown connection conn_id[%d] ct[%04X]", conn_id,
-                       m->header.content);
-            } else {
-                conn->receive(conn->receiver, m, ZITI_OK);
-            }
+        if (conn) {
+            conn->receive(conn->receiver, m, ZITI_OK);
+        } else {
+            CH_LOG(ERROR, "received message without conn_id or for unknown connection ct[%04X] conn_id[%d]", m->header.content, conn_id);
+            pool_return_obj(m);
         }
     } else {
         CH_LOG(WARN, "unsupported content type [%04X]", m->header.content);
+        pool_return_obj(m);
     }
 }
 
