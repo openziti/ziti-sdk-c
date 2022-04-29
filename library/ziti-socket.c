@@ -394,7 +394,7 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
 static void do_ziti_connect(struct dial_req_s *req, future_t *f, uv_loop_t *l) {
     ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &req->fd, sizeof(req->fd));
     if (zs == NULL) {
-        ZITI_LOG(WARN, "socket %lu not found", (ulong)req->fd);
+        ZITI_LOG(WARN, "socket %lu not found", (unsigned long)req->fd);
         fail_future(f, -EBADF);
     } else if (zs->f != NULL) {
         fail_future(f, -EALREADY);
