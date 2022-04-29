@@ -344,7 +344,6 @@ static void on_ziti_connect(ziti_connection conn, int status) {
         complete_future(zs->f, conn);
     } else {
         ZITI_LOG(WARN, "failed to establish ziti connection: %d(%s)", status, ziti_errorstr(status));
-
         fail_future(zs->f, status);
         ziti_close(zs->conn, NULL);
         on_bridge_close(zs);
@@ -432,9 +431,9 @@ static void do_ziti_connect(struct dial_req_s *req, future_t *f, uv_loop_t *l) {
                     .app_data = app_data,
                     .app_data_sz = len,
             };
-            ZITI_LOG(INFO, "zs[%p]->f[%p]", zs, zs->f);
             ziti_dial_with_options(zs->conn, req->service, &opts, on_ziti_connect, NULL);
         } else {
+            ZITI_LOG(WARN, "no service for target address[%s:%s:$d]", proto, req->host, req->port);
             fail_future(f, -ECONNREFUSED);
         }
     }
