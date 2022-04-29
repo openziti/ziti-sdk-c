@@ -1,18 +1,16 @@
-/*
-Copyright (c) 2022 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2022.  NetFoundry, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 
 #include <uv_mbed/queue.h>
@@ -193,43 +191,49 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         }
     } else if (ev->type == ZitiServiceEvent) {
 
-        if (!wrap->services_loaded->completed) {
-            complete_future(wrap->services_loaded, NULL);
-        }
 
-        for (int i = 0; ev->event.service.removed[i] != NULL; i++) {
-            ziti_intercept_cfg_v1 *intercept = model_map_remove(&wrap->intercepts, ev->event.service.removed[i]->id);
+        for (int i = 0; ev->event.service.removed && ev->event.service.removed[i] != NULL; i++) {
+            ziti_intercept_cfg_v1 *intercept = model_map_remove(&wrap->intercepts, ev->event.service.removed[i]->name);
             free_ziti_intercept_cfg_v1(intercept);
             FREE(intercept);
         }
 
-        for (int i = 0; ev->event.service.changed[i] != NULL; i++) {
+        for (int i = 0; ev->event.service.changed && ev->event.service.changed[i] != NULL; i++) {
             ziti_service *s = ev->event.service.changed[i];
             ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
 
             if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, parse_ziti_intercept_cfg_v1) == ZITI_OK) {
-                intercept = model_map_set(&wrap->intercepts, s->id, intercept);
+                intercept = model_map_set(&wrap->intercepts, s->name, intercept);
             }
 
             free_ziti_intercept_cfg_v1(intercept);
             FREE(intercept);
         }
 
-        for (int i = 0; ev->event.service.added[i] != NULL; i++) {
+        for (int i = 0; ev->event.service.added && ev->event.service.added[i] != NULL; i++) {
             ziti_service *s = ev->event.service.added[i];
             ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
 
             if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, parse_ziti_intercept_cfg_v1) == ZITI_OK) {
-                intercept = model_map_set(&wrap->intercepts, s->id, intercept);
+                intercept = model_map_set(&wrap->intercepts, s->name, intercept);
             }
 
             free_ziti_intercept_cfg_v1(intercept);
             FREE(intercept);
         }
+
+        if (!wrap->services_loaded->completed) {
+            complete_future(wrap->services_loaded, NULL);
+        }
     }
 }
 
+static const char *configs[] = {
+        ZITI_INTERCEPT_CFG_V1, NULL
+};
+
 static void load_ziti_ctx(const void *arg, future_t *f, uv_loop_t *l) {
+
     struct ztx_wrap *wrap = model_map_get(&ziti_contexts, arg);
     if (wrap == NULL) {
         wrap = calloc(1, sizeof(struct ztx_wrap));
@@ -238,6 +242,7 @@ static void load_ziti_ctx(const void *arg, future_t *f, uv_loop_t *l) {
         wrap->opts.event_cb = on_ctx_event;
         wrap->opts.events = ZitiContextEvent | ZitiServiceEvent;
         wrap->opts.refresh_interval = 60;
+        wrap->opts.config_types = configs;
         wrap->services_loaded = new_future();
 
         model_map_set(&ziti_contexts, arg, wrap);
@@ -256,6 +261,8 @@ ziti_context Ziti_load_context(const char *identity) {
     int err = await_future(f);
     set_error(err);
     ziti_context ztx = (ziti_context) f->result;
+    ztx_wrap_t *wrap = ziti_app_ctx(ztx);
+    await_future(wrap->services_loaded);
     destroy_future(f);
     return ztx;
 }
@@ -350,9 +357,14 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
 
     const char* proto;
     switch (type) {
-        case SOCK_STREAM: proto = "TCP"; break;
-        case SOCK_DGRAM: proto = "UDP"; break;
-        default: return NULL;
+        case SOCK_STREAM:
+            proto = "tcp";
+            break;
+        case SOCK_DGRAM:
+            proto = "udp";
+            break;
+        default:
+            return NULL;
     }
 
     int i;
@@ -390,7 +402,7 @@ static void do_ziti_connect(struct dial_req_s *req, future_t *f, uv_loop_t *l) {
         zs->f = f;
 
         int proto = 0;
-        socklen_t optlen;
+        socklen_t optlen = sizeof(proto);
         if (getsockopt(req->fd, SOL_SOCKET, SO_TYPE, &proto, &optlen)) {
             ZITI_LOG(WARN, "unknown socket type fd[%d]: %d(%s)", req->fd, errno, strerror(errno));
         }
@@ -407,18 +419,24 @@ static void do_ziti_connect(struct dial_req_s *req, future_t *f, uv_loop_t *l) {
                 }
             }
         }
-        const char *proto_str = proto == SOCK_DGRAM ? "UDP" : "TCP";
 
-        ziti_conn_init(req->ztx, &zs->conn, zs);
-        char app_data[1024];
-        size_t len = snprintf(app_data, sizeof(app_data),
-                              "{\"dst_protocol\": \"%s\", \"dst_hostname\": \"%s\", \"dst_port\": %u}",
-                              proto_str, req->host, req->port);
-        ziti_dial_opts opts = {
-                .app_data = app_data,
-                .app_data_sz = len,
-        };
-        ziti_dial_with_options(zs->conn, req->service, &opts, on_ziti_connect, NULL);
+        if (req->ztx != NULL) {
+            const char *proto_str = proto == SOCK_DGRAM ? "udp" : "tcp";
+
+            ziti_conn_init(req->ztx, &zs->conn, zs);
+            char app_data[1024];
+            size_t len = snprintf(app_data, sizeof(app_data),
+                                  "{\"dst_protocol\": \"%s\", \"dst_hostname\": \"%s\", \"dst_port\": \"%u\"}",
+                                  proto_str, req->host, req->port);
+            ziti_dial_opts opts = {
+                    .app_data = app_data,
+                    .app_data_sz = len,
+            };
+            ZITI_LOG(INFO, "zs[%p]->f[%p]", zs, zs->f);
+            ziti_dial_with_options(zs->conn, req->service, &opts, on_ziti_connect, NULL);
+        } else {
+            fail_future(f, -ECONNREFUSED);
+        }
     }
 }
 
@@ -475,15 +493,15 @@ future_t *schedule_on_loop(loop_work_cb cb, const void *arg, bool wait) {
     queue_elem_t *el = calloc(1, sizeof(queue_elem_t));
     el->cb = cb;
     el->arg = arg;
+    if (wait) {
+        el->f = new_future();
+    }
 
     uv_mutex_lock(&q_mut);
     LIST_INSERT_HEAD(&loop_q, el, _next);
     uv_mutex_unlock(&q_mut);
     uv_async_send(&q_async);
 
-    if (wait) {
-        el->f = new_future();
-    }
     return el->f;
 }
 
