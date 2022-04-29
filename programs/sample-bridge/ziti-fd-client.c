@@ -27,27 +27,13 @@
 #else
 
 #include <WinSock2.h>
+#include <io.h>
+
+#define write(s,b,l) _write(s,b,l)
+#define read(s,b,l)  _read(s,b,l)
+#define close(s)     _close(s)
 
 #define SHUT_WR SD_SEND
-
-static long write(ziti_socket_t s, const char* buf, size_t len) {
-    long outlen = send(s, buf, len, 0);
-    if (outlen == SOCKET_ERROR) {
-        errno = WSAGetLastError();
-        return -1;
-    }
-    return outlen;
-}
-
-static long read(ziti_socket_t s, char *buf, size_t len) {
-    int outlen = recv(s, buf, len, 0);
-
-    if (outlen == SOCKET_ERROR ){
-        errno = WSAGetLastError();
-        return -1;
-    }
-    return outlen;
-}
 #endif
 
 int main(int argc, char *argv[]) {
