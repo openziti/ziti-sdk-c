@@ -331,11 +331,13 @@ static void on_bridge_close(void *ctx) {
 
 static void on_ziti_connect(ziti_connection conn, int status) {
     ziti_sock_t *zs = ziti_conn_data(conn);
-    ZITI_LOG(INFO, "bridge connected to ziti service");
     if (status == ZITI_OK) {
+        ZITI_LOG(INFO, "bridge connected to ziti service");
         ziti_conn_bridge_fds(conn, (uv_os_fd_t) zs->ziti_fd, (uv_os_fd_t) zs->ziti_fd, on_bridge_close, zs);
         complete_future(zs->f, conn);
     } else {
+        ZITI_LOG(WARN, "failed to establish ziti connection: %d(%s)", status, ziti_errorstr(status));
+
         fail_future(zs->f, status);
         ziti_close(zs->conn, NULL);
         on_bridge_close(zs);
@@ -369,7 +371,7 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
         }
         if (!port_match) continue;
 
-        host_match = ziti_address_str_in_array(host, intercept->addresses);
+        host_match = ziti_address_match_array(host, intercept->addresses);
 
         if (host_match)
             return service;
@@ -405,9 +407,18 @@ static void do_ziti_connect(struct dial_req_s *req, future_t *f, uv_loop_t *l) {
                 }
             }
         }
+        const char *proto_str = proto == SOCK_DGRAM ? "UDP" : "TCP";
 
         ziti_conn_init(req->ztx, &zs->conn, zs);
-        ziti_dial(zs->conn, req->service, on_ziti_connect, NULL);
+        char app_data[1024];
+        size_t len = snprintf(app_data, sizeof(app_data),
+                              "{\"dst_protocol\": \"%s\", \"dst_hostname\": \"%s\", \"dst_port\": %u}",
+                              proto_str, req->host, req->port);
+        ziti_dial_opts opts = {
+                .app_data = app_data,
+                .app_data_sz = len,
+        };
+        ziti_dial_with_options(zs->conn, req->service, &opts, on_ziti_connect, NULL);
     }
 }
 
