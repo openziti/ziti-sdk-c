@@ -60,10 +60,11 @@ ziti_context Ziti_load_context(const char *identity);
 
 /**
  * @brief creates a socket handle(Windows) or file descriptor(*nix) suitable for connecting to a Ziti service
+ * @param type socket type which defines communication semantics, only SOCK_STREAM and SOCK_DGRAM are supported at this time (see socket(2))
  * @return native socket handle
  */
 ZITI_FUNC
-ziti_socket_t Ziti_socket();
+ziti_socket_t Ziti_socket(int type);
 
 /**
  * @brief Connect socket to a Ziti service
@@ -74,6 +75,16 @@ ziti_socket_t Ziti_socket();
  */
 ZITI_FUNC
 int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service);
+
+/**
+ * @brief Connect socket to a Ziti service with the given intercept address
+ * @param socket socket handle created with [Ziti_socket()]
+ * @param host target hostname
+ * @param port target port
+ * @return
+ */
+ZITI_FUNC
+int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port);
 
 /**
  * @brief Shutdown Ziti library.

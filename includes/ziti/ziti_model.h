@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2020 Netfoundry, Inc.
+Copyright (c) 2020 NetFoundry, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
 
 #ifndef ZITI_SDK_ZITI_MODEL_H
 #define ZITI_SDK_ZITI_MODEL_H
@@ -103,6 +102,8 @@ XX(port, int, none, port, __VA_ARGS__)
 #define ZITI_PORT_RANGE_MODEL(XX, ...) \
 XX(low, int, none, low, __VA_ARGS__) \
 XX(high, int, none, high, __VA_ARGS__)
+
+#define ZITI_INTERCEPT_CFG_V1 "intercept.v1"
 
 #define ZITI_INTERCEPT_CFG_V1_MODEL(XX, ...) \
 XX(protocols, string, array, protocols, __VA_ARGS__) \

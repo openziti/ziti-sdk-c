@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <ziti/socket.h>
+#include <ziti/ziti.h>
+#include <http_parser.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -39,16 +41,21 @@
 int main(int argc, char *argv[]) {
     if (argc < 3) { return -1; }
 
-    const char *path = argv[1];
-    const char *service = NULL;
-    const char *hostname = NULL;
-    int port = -1;
-    if (argc == 3) {
-        service = argv[2];
-    } else if (argc == 4) {
-        hostname = argv[2];
-        port = atol(argv[3]);
+    const char *prog = strrchr(argv[0], '/');
+    if (prog == NULL) {
+        prog = argv[0];
+    } else {
+        prog++;
     }
+
+    const char *path = argv[1];
+
+    struct http_parser_url url = {0};
+    http_parser_parse_url(argv[2], strlen(argv[2]), 0, &url);
+
+    char hostname[256];
+    snprintf(hostname, sizeof(hostname), "%.*s", (int) url.field_data[UF_HOST].len, argv[2] + url.field_data[UF_HOST].off);
+    int port = (url.port != 0) ? url.port : 80;
 
     Ziti_lib_init();
 
@@ -59,24 +66,36 @@ int main(int argc, char *argv[]) {
     }
     ziti_socket_t socket = Ziti_socket(SOCK_STREAM);
 
-    long rc = service ? Ziti_connect(socket, ztx, service) : Ziti_connect_addr(socket, hostname, port);
+    long rc = Ziti_connect_addr(socket, hostname, port);
 
     if (rc != 0) {
         fprintf(stderr, "failed to connect: %ld(%s)\n", rc, ziti_errorstr(rc));
         goto DONE;
     }
 
-    const char msg[] = "this is a test";
-    write(socket, msg, strlen(msg));
+    char req[1024];
+    int len = snprintf(req, sizeof(req),
+                       "GET %.*s HTTP/1.1\r\n"
+                       "Host: %.*s\r\n"
+                       "User-Agent: %s/%s\r\n"
+                       "Connection: close\r\n"
+                       "Accept: */*\r\n\r\n",
+                       url.field_data[UF_PATH].len, argv[2] + url.field_data[UF_PATH].off,
+                       url.field_data[UF_HOST].len, argv[2] + url.field_data[UF_HOST].off,
+                       prog, ziti_get_version()->version);
+
+    write(socket, req, len);
     shutdown(socket, SHUT_WR);
     char buf[1024];
     do {
         rc = read(socket, buf, sizeof(buf));
         if (rc > 0) {
-            printf("read rc=%ld(%.*s)\n", rc, (int)rc, buf);
+            printf("%.*s", (int) rc, buf);
         }
     } while (rc > 0);
-    printf("rc = %ld, errno = %d\n", rc, errno);
+    if (rc < 0) {
+        fprintf(stderr, "rc = %ld, errno = %d\n", rc, errno);
+    }
 
     DONE:
     close(socket);
