@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <ziti/socket.h>
+#include <ziti/ziti.h>
 #include <http_parser.h>
 
 #include <stdio.h>
@@ -54,6 +55,13 @@ static long read(ziti_socket_t s, char *buf, size_t len) {
 int main(int argc, char *argv[]) {
     if (argc < 3) { return -1; }
 
+    const char *prog = strrchr(argv[0], '/');
+    if (prog == NULL) {
+        prog = argv[0];
+    } else {
+        prog++;
+    }
+
     const char *path = argv[1];
 
     struct http_parser_url url = {0};
@@ -83,11 +91,12 @@ int main(int argc, char *argv[]) {
     int len = snprintf(req, sizeof(req),
                        "GET %.*s HTTP/1.1\r\n"
                        "Host: %.*s\r\n"
-                       "User-Agent: curl/7.74.0\r\n"
+                       "User-Agent: %s/%s\r\n"
                        "Connection: close\r\n"
                        "Accept: */*\r\n\r\n",
                        url.field_data[UF_PATH].len, argv[2] + url.field_data[UF_PATH].off,
-                       url.field_data[UF_HOST].len, argv[2] + url.field_data[UF_HOST].off);
+                       url.field_data[UF_HOST].len, argv[2] + url.field_data[UF_HOST].off,
+                       prog, ziti_get_version()->version);
 
     write(socket, req, len);
     shutdown(socket, SHUT_WR);
