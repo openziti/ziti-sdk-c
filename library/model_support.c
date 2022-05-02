@@ -192,7 +192,7 @@ int model_parse(void *obj, const char *json, size_t len, type_meta *meta) {
     jsmn_parser parser;
     size_t ntoks;
     jsmntok_t *tokens = parse_tokens(&parser, json, len, &ntoks);
-    int res = tokens != NULL ? parse_obj(obj, json, tokens, meta) : -1;
+    int res = tokens != NULL ? parse_obj(obj, json, tokens, meta) : ntoks;
     int result = res > 0 ? tokens[0].end : res;
     FREE(tokens);
     return result;

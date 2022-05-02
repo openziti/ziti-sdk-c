@@ -273,8 +273,24 @@ TEST_CASE("parse incomplete", "[model]") {
     )";
 
     Bar bar = {0};
-    REQUIRE(parse_Bar(&bar, json, strlen(json)) < 0);
+    REQUIRE(parse_Bar(&bar, json, strlen(json)) == MODEL_PARSE_PARTIAL);
     free_Bar(&bar);
+
+    const char *json_array_partial = R"([
+        {"msg":"\thello\n\"world\"!"},
+        {"msg":"56")";
+    Bar_array bars = nullptr;
+    int rc = parse_Bar_array(&bars, json_array_partial, strlen(json_array_partial));
+    free_Bar_array(&bars);
+    CHECK(rc == MODEL_PARSE_PARTIAL);
+
+    const char *json_array_invalid = R"([
+       {"msg":"\thello\n\"world\"!"},
+       {"msg":"56"
+    ])";
+    rc = parse_Bar_array(&bars, json_array_invalid, strlen(json_array_invalid));
+    free_Bar_array(&bars);
+    CHECK(rc == MODEL_PARSE_INVALID);
 }
 
 #define baz_model(XX, ...) \
