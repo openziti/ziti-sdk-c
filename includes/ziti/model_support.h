@@ -174,6 +174,9 @@ typedef struct type_meta {
     _free_f destroyer;
 } type_meta;
 
+#define MODEL_PARSE_INVALID (-2)
+#define MODEL_PARSE_PARTIAL (-3)
+
 ZITI_FUNC void model_free(void *obj, type_meta *meta);
 
 ZITI_FUNC void model_free_array(void ***ap, type_meta *meta);

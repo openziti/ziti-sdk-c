@@ -63,14 +63,13 @@ jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_
         rc = jsmn_parse(parser, json, len, toks, tok_cap);
     }
 
+    *ntok = rc;
     if (rc < 0) {
-        ZITI_LOG(ERROR, "jsmn_parse() failed: %d", rc);
+        int lvl = (rc == JSMN_ERROR_PART) ? DEBUG : ERROR;
+        ZITI_LOG(lvl, "jsmn_parse() failed: %d", rc);
         free(toks);
         toks = NULL;
-        *ntok = 0;
     } else {
-        *ntok = rc;
-
         if (*ntok == tok_cap) {
             toks = realloc(toks, (tok_cap + 1) * sizeof(jsmntok_t));
         }
@@ -151,6 +150,7 @@ int model_parse_array(void ***arrp, const char *json, size_t len, type_meta *met
     jsmntok_t *tokens = parse_tokens(&parser, json, len, &ntoks);
     void **arr = NULL;
     if (tokens == NULL) {
+        result = ntoks;
         goto done;
     }
 
@@ -166,7 +166,7 @@ int model_parse_array(void ***arrp, const char *json, size_t len, type_meta *met
         arr[i] = calloc(1, meta->size);
         int rc = parse_obj(arr[i], json, tok, meta);
         if (rc < 0) {
-            result = -1;
+            result = rc;
             goto done;
         }
         tok += rc;
@@ -192,7 +192,7 @@ int model_parse(void *obj, const char *json, size_t len, type_meta *meta) {
     jsmn_parser parser;
     size_t ntoks;
     jsmntok_t *tokens = parse_tokens(&parser, json, len, &ntoks);
-    int res = tokens != NULL ? parse_obj(obj, json, tokens, meta) : -1;
+    int res = tokens != NULL ? parse_obj(obj, json, tokens, meta) : ntoks;
     int result = res > 0 ? tokens[0].end : res;
     FREE(tokens);
     return result;
