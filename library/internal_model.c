@@ -301,4 +301,23 @@ static type_meta ziti_address_META = {
         .destroyer = (_free_f) free_ziti_address0,
 };
 
+int ziti_intercept_from_client_cfg(ziti_intercept_cfg_v1 *intercept, const ziti_client_cfg_v1 *client_cfg) {
+    memset(intercept, 0, sizeof(*intercept));
+
+    intercept->protocols = calloc(3, sizeof(char*));
+    intercept->protocols[0] = strdup("tcp");
+    intercept->protocols[1] = strdup("udp");
+
+    intercept->addresses = calloc(2, sizeof(ziti_address*));
+    intercept->addresses[0] = calloc(1, sizeof(ziti_address));
+    memcpy(intercept->addresses[0], &client_cfg->hostname, sizeof(ziti_address));
+
+    intercept->port_ranges = calloc(2, sizeof(ziti_port_range*));
+    intercept->port_ranges[0] = calloc(1, sizeof(ziti_port_range));
+    intercept->port_ranges[0]->low = client_cfg->port;
+    intercept->port_ranges[0]->high = client_cfg->port;
+
+    return 0;
+}
+
 IMPL_MODEL_FUNCS(ziti_address)

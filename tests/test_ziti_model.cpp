@@ -496,9 +496,26 @@ TEST_CASE("service config test", "[model]") {
         REQUIRE(ziti_service_get_config(&s, "ziti-tunneler-client.v1", &cfg,
                                         (int (*)(void *, const char *, size_t)) (parse_ziti_client_cfg_v1)) == 0);
 
-        CHECK_THAT(cfg.hostname, Equals("hello.ziti"));
+        CHECK(cfg.hostname.type == ziti_address_hostname);
+        CHECK_THAT(cfg.hostname.addr.hostname, Equals("hello.ziti"));
         CHECK(cfg.port == 80);
+
+        ziti_intercept_cfg_v1 intercept;
+        ziti_intercept_from_client_cfg(&intercept, &cfg);
+        CHECK_THAT(intercept.protocols[0], Equals("tcp"));
+        CHECK_THAT(intercept.protocols[1], Equals("udp"));
+        CHECK(intercept.protocols[2] == nullptr);
+
+        CHECK(intercept.port_ranges[0]->high == 80);
+        CHECK(intercept.port_ranges[0]->low == 80);
+        CHECK(intercept.port_ranges[1] == nullptr);
+
+        CHECK(intercept.addresses[0]->type == ziti_address_hostname);
+        CHECK_THAT(intercept.addresses[0]->addr.hostname, Equals("hello.ziti"));
+        CHECK(intercept.addresses[1] == nullptr);
+
         free_ziti_client_cfg_v1(&cfg);
+        free_ziti_intercept_cfg_v1(&intercept);
     }
 
     {

@@ -96,7 +96,7 @@ XX(posture_query_map, ziti_posture_query_set, map, posturePolicies, __VA_ARGS__)
 XX(updated_at,string, none, updatedAt, __VA_ARGS__)
 
 #define ZITI_CLIENT_CFG_V1_MODEL(XX, ...) \
-XX(hostname, string, none, hostname, __VA_ARGS__) \
+XX(hostname, ziti_address, none, hostname, __VA_ARGS__) \
 XX(port, int, none, port, __VA_ARGS__)
 
 #define ZITI_PORT_RANGE_MODEL(XX, ...) \
@@ -123,11 +123,11 @@ XX(forward_protocol, bool, none, forwardProtocol, __VA_ARGS__) \
 XX(allowed_protocols, string, array, allowedProtocols, __VA_ARGS__) \
 XX(address, string, none, address, __VA_ARGS__) \
 XX(forward_address, bool, none, forwardAddress, __VA_ARGS__) \
-XX(allowed_addresses, string, array, allowedAddresses, __VA_ARGS__) \
+XX(allowed_addresses, ziti_address, array, allowedAddresses, __VA_ARGS__) \
 XX(port, int, none, port, __VA_ARGS__) \
 XX(forward_port, bool, none, forwardPort, __VA_ARGS__) \
 XX(allowed_port_ranges, ziti_port_range, array, allowedPortRanges, __VA_ARGS__) \
-XX(allowed_source_addresses, string, array, allowedSourceAddresses, __VA_ARGS__) \
+XX(allowed_source_addresses, ziti_address, array, allowedSourceAddresses, __VA_ARGS__) \
 XX(listen_options, tag, map, listenOptions, __VA_ARGS__)
 
 #define ZITI_MFA_ENROLLMENT_MODEL(XX, ...) \
@@ -215,6 +215,8 @@ ZITI_FUNC const char *ziti_service_get_raw_config(ziti_service *service, const c
 
 ZITI_FUNC int ziti_service_get_config(ziti_service *service, const char *cfg_type, void *cfg,
                                       int (*parse_func)(void *, const char *, size_t));
+
+ZITI_FUNC int ziti_intercept_from_client_cfg(ziti_intercept_cfg_v1 *intercept, const ziti_client_cfg_v1 *client_cfg);
 
 #ifdef __cplusplus
 }
