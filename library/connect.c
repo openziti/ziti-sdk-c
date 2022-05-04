@@ -1116,6 +1116,10 @@ int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *liste
     conn->client_cb = on_clt_cb;
     conn_set_state(conn, Binding);
 
+    conn->flusher = calloc(1, sizeof(uv_idle_t));
+    uv_idle_init(conn->ziti_ctx->loop, conn->flusher);
+    conn->flusher->data = conn;
+
     process_connect(conn);
     return 0;
 }
