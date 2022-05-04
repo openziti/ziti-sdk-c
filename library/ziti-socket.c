@@ -419,9 +419,8 @@ static void do_ziti_connect(struct dial_req_s *req, future_t *f, uv_loop_t *l) {
             }
         }
 
+        const char *proto_str = proto == SOCK_DGRAM ? "udp" : "tcp";
         if (req->ztx != NULL) {
-            const char *proto_str = proto == SOCK_DGRAM ? "udp" : "tcp";
-
             ziti_conn_init(req->ztx, &zs->conn, zs);
             char app_data[1024];
             size_t len = snprintf(app_data, sizeof(app_data),
@@ -433,7 +432,7 @@ static void do_ziti_connect(struct dial_req_s *req, future_t *f, uv_loop_t *l) {
             };
             ziti_dial_with_options(zs->conn, req->service, &opts, on_ziti_connect, NULL);
         } else {
-            ZITI_LOG(WARN, "no service for target address[%s:%s:$d]", proto, req->host, req->port);
+            ZITI_LOG(WARN, "no service for target address[%s:%s:%d]", proto_str, req->host, req->port);
             fail_future(f, -ECONNREFUSED);
         }
     }
