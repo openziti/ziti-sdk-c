@@ -1427,6 +1427,15 @@ static void version_cb(ziti_version *v, const ziti_error *err, void *ctx) {
     }
 }
 
+bool ziti_is_session_valid(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type) {
+    if (session == NULL) return false;
+
+    if (type == ziti_session_types.Bind) return true;
+
+    ziti_net_session *s = model_map_get(&ztx->sessions, service_id);
+    return s == session;
+}
+
 void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type) {
     if (session == NULL) {
         return;

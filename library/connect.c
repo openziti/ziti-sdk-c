@@ -77,7 +77,7 @@ static void queue_edge_message(struct ziti_conn *conn, message *msg, int code);
 
 static void process_edge_message(struct ziti_conn *conn, message *msg);
 
-static int ziti_channel_start_connection(struct ziti_conn *conn);
+static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t *ch);
 
 static int ziti_disconnect(ziti_connection conn);
 
@@ -301,8 +301,7 @@ static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
         else { // first channel to connect
             CONN_LOG(DEBUG, "selected ch[%s] status[%d]", ch->name, status);
 
-            conn->channel = ch;
-            ziti_channel_start_connection(conn);
+            ziti_channel_start_connection(conn, ch);
         }
     }
 }
@@ -312,6 +311,7 @@ static void complete_conn_req(struct ziti_conn *conn, int code) {
         if (code != ZITI_OK) {
             conn_set_state(conn, code == ZITI_TIMEOUT ? Timedout : Disconnected);
             conn->conn_req->failed = true;
+            conn->data_cb = NULL;
         }
         if(conn->conn_req->conn_timeout != NULL) {
             uv_timer_stop(conn->conn_req->conn_timeout);
@@ -366,7 +366,6 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
         return ZITI_GATEWAY_UNAVAILABLE;
     }
 
-    conn->token = session->token;
     conn->channel = NULL;
 
     ziti_edge_router **er;
@@ -392,7 +391,7 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
                 }
             }
             else {
-                CONN_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, tls, conn->token);
+                CONN_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, tls, session->id);
                 ziti_channel_connect(ztx, ch_name, tls, on_channel_connected, conn);
             }
             free(ch_name);
@@ -801,7 +800,9 @@ static bool flush_to_client(ziti_connection conn) {
     }
 
     if (conn->state == Disconnected) {
-        conn->data_cb(conn, NULL, ZITI_CONN_CLOSED);
+        if (conn->data_cb) {
+            conn->data_cb(conn, NULL, ZITI_CONN_CLOSED);
+        }
     }
     return false;
 }
@@ -957,11 +958,9 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
     }
 }
 
-static int ziti_channel_start_connection(struct ziti_conn *conn) {
+static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t *ch) {
     struct ziti_conn_req *req = conn->conn_req;
-    ziti_channel_t *ch = conn->channel;
-
-    CONN_LOG(TRACE, "ch[%d] => Edge Connect request token[%s]", ch->id, conn->token);
+    ziti_net_session *s = req->session;
 
     uint32_t content_type;
     switch (conn->state) {
@@ -979,6 +978,19 @@ static int ziti_channel_start_connection(struct ziti_conn *conn) {
             return ZITI_WTF;
     }
 
+    if (!ziti_is_session_valid(conn->ziti_ctx, s, req->service_id, req->session_type)) {
+        CONN_LOG(DEBUG, "session is no longer valid");
+        if (req->session_type == ziti_session_types.Bind) {
+            free_ziti_net_session(req->session);
+            FREE(req->session);
+        }
+        req->session = NULL;
+        restart_connect(conn);
+        return ZITI_OK;
+    }
+
+    CONN_LOG(TRACE, "ch[%d] => Edge Connect request token[%s]", ch->id, s->token);
+    conn->channel = ch;
     ziti_channel_add_receiver(ch, conn->conn_id, conn,
                               (void (*)(void *, message *, int)) queue_edge_message);
 
@@ -1085,7 +1097,7 @@ static int ziti_channel_start_connection(struct ziti_conn *conn) {
     }
 
     req->waiter =
-    ziti_channel_send_for_reply(ch, content_type, headers, nheaders, conn->token, strlen(conn->token),
+    ziti_channel_send_for_reply(ch, content_type, headers, nheaders, s->token, strlen(s->token),
                                 connect_reply_cb, conn);
 
     return ZITI_OK;
