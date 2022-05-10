@@ -13,18 +13,22 @@ endif()
 target_link_libraries(ziti-prox-c PUBLIC ziti subcommand)
 target_include_directories(ziti-prox-c PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 
-set(ZITI_ARCHIVE_NAME "ziti-prox-c-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}.${archive_sfx}")
-set(ZITI_EXECUTABLE_NAME "ziti-prox-c${CMAKE_EXECUTABLE_SUFFIX}")
-if (UNIX)
-    add_custom_target(ziti-prox-c-pack
+set(ZITI_ARCHIVE_NAME "ziti-prox-c-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}.${archive_sfx}")
+
+find_program(ZIP NAMES 7z)
+if (ZIP)
+    set(ZIP_OPTS a -tzip)
+else()
+    find_program(ZIP NAMES zip)
+    if (ZIP)
+        set(ZIP_OPTS "-jv")
+    else()
+        message("zip program not found")
+    endif()
+endif()
+
+add_custom_target(ziti-prox-c-pack
         BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${ZITI_ARCHIVE_NAME}
         DEPENDS ziti-prox-c
-        COMMAND tar zcf ${ZITI_ARCHIVE_NAME} ${ZITI_EXECUTABLE_NAME}
-    )
-else()
-    add_custom_target(ziti-prox-c-pack
-        BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/${ZITI_ARCHIVE_NAME}"
-            DEPENDS ziti-prox-c
-            COMMAND zip "${ZITI_ARCHIVE_NAME}" "${PROJECT_BINARY_DIR}/${CMAKE_BUILD_TYPE_INIT}/${ZITI_EXECUTABLE_NAME}"
-            )
-endif()
+        COMMAND ${ZIP} ${ZIP_OPTS} ${ZITI_ARCHIVE_NAME} $<TARGET_FILE:ziti-prox-c>
+        )
