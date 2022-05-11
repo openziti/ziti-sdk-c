@@ -308,11 +308,23 @@ static void complete_conn_req(struct ziti_conn *conn, int code) {
             conn->conn_req->failed = true;
             conn->data_cb = NULL;
         }
-        if(conn->conn_req->conn_timeout != NULL) {
+        if (conn->conn_req->conn_timeout != NULL) {
             uv_timer_stop(conn->conn_req->conn_timeout);
         }
         conn->conn_req->cb(conn, code);
         conn->conn_req->cb = NULL;
+
+        if (code != ZITI_OK) {
+            while (!TAILQ_EMPTY(&conn->wreqs)) {
+                struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
+                TAILQ_REMOVE(&conn->wreqs, req, _next);
+
+                if (req->cb) {
+                    req->cb(conn, code, req->ctx);
+                }
+                free(req);
+            }
+        }
 
         flush_connection(conn);
     } else {
