@@ -125,7 +125,6 @@ struct ziti_write_req_s {
 };
 
 struct ziti_conn {
-    char *token;
     char *service;
     char *source_identity;
     struct ziti_conn_req *conn_req;
@@ -253,6 +252,8 @@ struct ziti_ctx {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+bool ziti_is_session_valid(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type);
 
 void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type);
 
