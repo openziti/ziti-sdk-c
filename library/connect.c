@@ -245,11 +245,6 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
     }
 
     free(req);
-
-    if (conn->write_reqs == 0 && conn->state == CloseWrite) {
-        CONN_LOG(DEBUG, "sending FIN");
-        send_fin_message(conn);
-    }
 }
 
 static int
@@ -313,11 +308,23 @@ static void complete_conn_req(struct ziti_conn *conn, int code) {
             conn->conn_req->failed = true;
             conn->data_cb = NULL;
         }
-        if(conn->conn_req->conn_timeout != NULL) {
+        if (conn->conn_req->conn_timeout != NULL) {
             uv_timer_stop(conn->conn_req->conn_timeout);
         }
         conn->conn_req->cb(conn, code);
         conn->conn_req->cb = NULL;
+
+        if (code != ZITI_OK) {
+            while (!TAILQ_EMPTY(&conn->wreqs)) {
+                struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
+                TAILQ_REMOVE(&conn->wreqs, req, _next);
+
+                if (req->cb) {
+                    req->cb(conn, code, req->ctx);
+                }
+                free(req);
+            }
+        }
 
         flush_connection(conn);
     } else {
@@ -510,10 +517,15 @@ static void process_connect(struct ziti_conn *conn) {
 }
 
 static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opts *dial_opts, ziti_conn_cb conn_cb, ziti_data_cb data_cb) {
-    if (!conn->ziti_ctx->enabled) return ZITI_DISABLED;
+    if (!conn->ziti_ctx->enabled) { return ZITI_DISABLED; }
 
     if (conn->state != Initial) {
         CONN_LOG(ERROR, "can not dial in state[%s]", ziti_conn_state(conn));
+        return ZITI_INVALID_STATE;
+    }
+
+    if (conn_cb == NULL) {
+        CONN_LOG(ERROR, "connect_cb is NULL");
         return ZITI_INVALID_STATE;
     }
 
@@ -582,27 +594,36 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
         CONN_LOG(WARN, "got write req in closed/disconnected sate");
         conn->write_reqs--;
 
-        req->cb(conn, ZITI_CONN_CLOSED, req->ctx);
-        free(req);
-    } else {
         if (req->cb) {
-            req->timeout = calloc(1, sizeof(uv_timer_t));
-            uv_timer_init(conn->ziti_ctx->loop, req->timeout);
-            req->timeout->data = req;
-            uv_timer_start(req->timeout, ziti_write_timeout, conn->timeout, 0);
+            req->cb(conn, ZITI_CONN_CLOSED, req->ctx);
         }
+        free(req);
+        return;
+    }
+    if (req->eof) {
+        conn_set_state(conn, CloseWrite);
+        send_fin_message(conn);
+        conn->write_reqs--;
+        free(req);
+        return;
+    }
 
-        if (conn->encrypted) {
-            uint32_t crypto_len = req->len + crypto_secretstream_xchacha20poly1305_abytes();
-            unsigned char *cipher_text = malloc(crypto_len);
-            crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, cipher_text, NULL, req->buf, req->len, NULL, 0,
-                                                       0);
-            send_message(conn, ContentTypeData, cipher_text, crypto_len, req);
-            free(cipher_text);
-        }
-        else {
-            send_message(conn, ContentTypeData, req->buf, req->len, req);
-        }
+    if (req->cb) {
+        req->timeout = calloc(1, sizeof(uv_timer_t));
+        uv_timer_init(conn->ziti_ctx->loop, req->timeout);
+        req->timeout->data = req;
+        uv_timer_start(req->timeout, ziti_write_timeout, conn->timeout, 0);
+    }
+
+    if (conn->encrypted) {
+        uint32_t crypto_len = req->len + crypto_secretstream_xchacha20poly1305_abytes();
+        unsigned char *cipher_text = malloc(crypto_len);
+        crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, cipher_text, NULL, req->buf, req->len, NULL, 0,
+                                                   0);
+        send_message(conn, ContentTypeData, cipher_text, crypto_len, req);
+        free(cipher_text);
+    } else {
+        send_message(conn, ContentTypeData, req->buf, req->len, req);
     }
 }
 
@@ -746,7 +767,9 @@ static void flush_connection (ziti_connection conn) {
 
 static bool flush_to_service(ziti_connection conn) {
 
-    if (conn->state == Connected || conn->state == CloseWrite) {
+    if (conn->channel == NULL) { return false; }
+
+    if (conn->state == Connected) {
         int count = 0;
         while (!TAILQ_EMPTY(&conn->wreqs)) {
             struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
@@ -1234,6 +1257,11 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
 }
 
 int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx) {
+    if (conn->fin_sent) {
+        CONN_LOG(ERROR, "attempted write after ziti_close_write()");
+        return ZITI_INVALID_STATE;
+    }
+
     if (conn->state != Connected && conn->state != Connecting) {
         CONN_LOG(ERROR, "attempted write in invalid state[%s]", ziti_conn_state(conn));
         return ZITI_INVALID_STATE;
@@ -1255,6 +1283,7 @@ int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb
 }
 
 static int send_fin_message(ziti_connection conn) {
+    CONN_LOG(DEBUG, "sending FIN");
     ziti_channel_t *ch = conn->channel;
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(conn->edge_msg_seq++);
@@ -1292,13 +1321,18 @@ int ziti_close(ziti_connection conn, ziti_close_cb close_cb) {
 
 
 int ziti_close_write(ziti_connection conn) {
-    if (conn->fin_sent || conn->state >= Disconnected) {
+    if (conn->fin_sent || conn->state >= CloseWrite) {
         return ZITI_OK;
     }
-    conn_set_state(conn, CloseWrite);
-    if (conn->write_reqs == 0 && TAILQ_EMPTY(&conn->wreqs)) {
-        return send_fin_message(conn);
-    }
+
+    NEWP(req, struct ziti_write_req_s);
+    req->conn = conn;
+    req->eof = true;
+
+    TAILQ_INSERT_TAIL(&conn->wreqs, req, _next);
+    conn->fin_sent = true;
+
+    flush_connection(conn);
     return ZITI_OK;
 }
 
