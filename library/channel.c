@@ -570,7 +570,7 @@ static void latency_reply_cb(void *ctx, message *reply, int err) {
     if (reply->header.content == ContentTypeResultType &&
         message_get_uint64_header(reply, LatencyProbeTime, &ts)) {
         ch->latency = uv_now(ch->loop) - ts;
-        CH_LOG(VERBOSE, "latency is now %ld", ch->latency);
+        CH_LOG(VERBOSE, "latency is now %llu", ch->latency);
     }
     else {
         CH_LOG(WARN, "invalid latency probe result ct[%04X]", reply->header.content);

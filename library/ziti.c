@@ -609,9 +609,9 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
         printer(ctx, "ch[%d](%s) ", ch->id, url);
         if (ziti_channel_is_connected(ch)) {
-            printer(ctx, "connected [latency=%ld]\n", (long) ch->latency);
+            printer(ctx, "connected [latency=%llu]\n", ch->latency);
         } else {
-            printer(ctx, "Disconnected\n", (long) ch->latency);
+            printer(ctx, "Disconnected\n");
         }
     }
 
