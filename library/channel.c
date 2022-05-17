@@ -858,7 +858,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             send_hello(ch, ch->ctx->api_session);
         } else {
             CH_LOG(WARN, "api session invalidated, while connecting");
-            uv_mbed_close(&ch->connection, close_handle_cb);
+            uv_mbed_close(&ch->connection, NULL);
             reconnect_channel(ch, false);
         }
     } else {
