@@ -570,7 +570,7 @@ static void latency_reply_cb(void *ctx, message *reply, int err) {
     if (reply->header.content == ContentTypeResultType &&
         message_get_uint64_header(reply, LatencyProbeTime, &ts)) {
         ch->latency = uv_now(ch->loop) - ts;
-        CH_LOG(VERBOSE, "latency is now %ld", ch->latency);
+        CH_LOG(VERBOSE, "latency is now %llu", ch->latency);
     }
     else {
         CH_LOG(WARN, "invalid latency probe result ct[%04X]", reply->header.content);
@@ -858,7 +858,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             send_hello(ch, ch->ctx->api_session);
         } else {
             CH_LOG(WARN, "api session invalidated, while connecting");
-            uv_mbed_close(&ch->connection, close_handle_cb);
+            uv_mbed_close(&ch->connection, NULL);
             reconnect_channel(ch, false);
         }
     } else {
