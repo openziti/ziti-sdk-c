@@ -72,12 +72,14 @@ struct enroll_cert {
     const char *key;
     const char *cert;
 };
+#include <ziti/zitilib.h>
 
 int main(int argc, char **argv) {
 #if _WIN32
     //changes the output to UTF-8 so that the windows output looks correct and not all jumbly
     SetConsoleOutputCP(65001);
 #endif
+#if 0
     uv_loop_t *loop = uv_default_loop();
 
     output_file = argv[2];
@@ -100,5 +102,25 @@ int main(int argc, char **argv) {
     uv_run(loop, UV_RUN_DEFAULT);
 
     printf("\nSuccess\n");
+#endif
+    FILE *jwt_file = fopen(argv[1], "r");
+    if (jwt_file == NULL) {
+        perror("failed to open JWT file");
+        return 1;
+    }
+    char jwt[8 * 1024];
+    fgets(jwt, sizeof(jwt), jwt_file);
+    fclose(jwt_file);
 
+
+    Ziti_lib_init();
+    char *cfg;
+    size_t len;
+    int rc = Ziti_enroll_identity(jwt, NULL, NULL, &cfg, &len);
+    if (rc == ZITI_OK) {
+        printf("%.*s\n", (int)len, cfg);
+    } else {
+        printf("err = %d(%s)\n", rc, ziti_errorstr(rc));
+    }
+    Ziti_lib_shutdown();
 }
