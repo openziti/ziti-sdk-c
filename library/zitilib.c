@@ -582,7 +582,7 @@ static void do_enroll(ziti_enroll_opts *opts, future_t *f, uv_loop_t *loop) {
     ziti_enroll(opts, loop, on_enroll, f);
 }
 
-int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert, char **id_json, size_t *id_json_len) {
+int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert, char **id_json, unsigned long *id_json_len) {
     ziti_enroll_opts opts = {
             .jwt_content = jwt,
             .enroll_key = key,
