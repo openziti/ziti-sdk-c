@@ -92,20 +92,20 @@ static int fail_future(future_t *f, int err) {
     return rc;
 }
 
-typedef void (*loop_work_cb)(const void *arg, future_t *f, uv_loop_t *l);
+typedef void (*loop_work_cb)(void *arg, future_t *f, uv_loop_t *l);
 
 typedef struct queue_elem_s {
     loop_work_cb cb;
-    const void *arg;
+    void *arg;
     future_t *f;
     LIST_ENTRY(queue_elem_s) _next;
 } queue_elem_t;
 
 static void internal_init();
 
-static future_t *schedule_on_loop(loop_work_cb cb, const void *arg, bool wait);
+static future_t *schedule_on_loop(loop_work_cb cb, void *arg, bool wait);
 
-static void do_shutdown(const void *args, future_t *f, uv_loop_t *l);
+static void do_shutdown(void *args, future_t *f, uv_loop_t *l);
 
 static uv_once_t init;
 static uv_loop_t *lib_loop;
@@ -156,12 +156,12 @@ void Ziti_lib_init(void) {
 }
 
 int Ziti_last_error() {
-    void *p = uv_key_get(&err_key);
+    intptr_t p = (intptr_t) uv_key_get(&err_key);
     return (int)p;
 }
 
 static void set_error(int err) {
-    uv_key_set(&err_key, (void*)err);
+    uv_key_set(&err_key, (void *) (intptr_t) err);
 }
 
 static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
@@ -232,7 +232,7 @@ static const char *configs[] = {
         ZITI_INTERCEPT_CFG_V1, NULL
 };
 
-static void load_ziti_ctx(const void *arg, future_t *f, uv_loop_t *l) {
+static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
 
     struct ztx_wrap *wrap = model_map_get(&ziti_contexts, arg);
     if (wrap == NULL) {
@@ -267,7 +267,7 @@ ziti_context Ziti_load_context(const char *identity) {
     return ztx;
 }
 
-static void save_ziti_socket(const void *arg, future_t *f, uv_loop_t *l) {
+static void save_ziti_socket(void *arg, future_t *f, uv_loop_t *l) {
     ziti_sock_t *zs = arg;
     model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
     complete_future(f, (void *) zs);
@@ -487,7 +487,7 @@ static void looper(void *arg) {
     uv_run(arg, UV_RUN_DEFAULT);
 }
 
-future_t *schedule_on_loop(loop_work_cb cb, const void *arg, bool wait) {
+future_t *schedule_on_loop(loop_work_cb cb, void *arg, bool wait) {
     queue_elem_t *el = calloc(1, sizeof(queue_elem_t));
     el->cb = cb;
     el->arg = arg;
@@ -556,14 +556,43 @@ static void internal_init() {
     uv_thread_create(&lib_thread, looper, lib_loop);
 }
 
-void do_shutdown(const void *args, future_t *f, uv_loop_t *l) {
+void do_shutdown(void *args, future_t *f, uv_loop_t *l) {
     model_map_iter *it = model_map_iterator(&ziti_contexts);
     while (it) {
         ztx_wrap_t *w = model_map_it_value(it);
         it = model_map_it_remove(it);
         ziti_shutdown(w->ztx);
-        model_map_clear(&w->intercepts, free_ziti_intercept_cfg_v1);
+        model_map_clear(&w->intercepts, (void (*)(void *)) free_ziti_intercept_cfg_v1);
     }
-    uv_close(&q_async, NULL);
+    uv_close((uv_handle_t *) &q_async, NULL);
     uv_loop_close(l);
+}
+
+static void on_enroll(const ziti_config *cfg, int status, const char *error, void *ctx) {
+    future_t *f = ctx;
+    if (status != ZITI_OK) {
+        fail_future(f, status);
+    } else {
+        char *cfg_json = ziti_config_to_json(cfg, 0, NULL);
+        complete_future(f, cfg_json);
+    }
+}
+
+static void do_enroll(ziti_enroll_opts *opts, future_t *f, uv_loop_t *loop) {
+    ziti_enroll(opts, loop, on_enroll, f);
+}
+
+int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert, char **id_json, size_t *id_json_len) {
+    ziti_enroll_opts opts = {
+            .jwt_content = jwt,
+            .enroll_key = key,
+            .enroll_cert = cert,
+    };
+    future_t *f = schedule_on_loop((loop_work_cb) do_enroll, &opts, true);
+    int rc = await_future(f);
+    if (rc == ZITI_OK) {
+        *id_json = f->result;
+        *id_json_len = strlen(*id_json);
+    }
+    return rc;
 }

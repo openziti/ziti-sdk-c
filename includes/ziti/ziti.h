@@ -1,18 +1,16 @@
-/*
-Copyright 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 /**
  * @file ziti.h
@@ -388,7 +386,7 @@ typedef void (*ziti_write_cb)(ziti_connection conn, ssize_t status, void *write_
  *
  * @see ziti_enroll(), ZITI_ERRORS
  */
-typedef void (*ziti_enroll_cb)(ziti_config *cfg, int status, char *err_message, void *enroll_ctx);
+typedef void (*ziti_enroll_cb)(const ziti_config *cfg, int status, const char *err_message, void *enroll_ctx);
 
 /**
  * @brief Callback called after connection was closed.
