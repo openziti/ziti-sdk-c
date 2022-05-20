@@ -170,6 +170,16 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
     return ZITI_OK;
 }
 
+int ziti_set_client_cert(ziti_context ztx, const char *cert_buf, size_t cert_len, const char *key_buf, size_t key_len) {
+    int ret = ztx->tlsCtx->api->set_own_cert(ztx->tlsCtx, cert_buf, cert_len, key_buf, key_len);
+
+    if(ret != 0) {
+        return ZITI_INVALID_CERT_KEY_PAIR;
+    }
+
+    return ZITI_OK;
+}
+
 int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
     ziti_log_init(loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     metrics_init(loop, 5);

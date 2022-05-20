@@ -77,8 +77,8 @@ limitations under the License.
     /** SDK detected invalid cryptographic state of Ziti connection */ \
     XX(CRYPTO_FAIL, "crypto failure") \
     /** connection was closed */ \
-    XX(CONN_CLOSED, "connection is closed")               \
-    /** failed posture check */                    \
+    XX(CONN_CLOSED, "connection is closed") \
+    /** failed posture check */ \
     XX(INVALID_POSTURE, "failed posture check") \
     /** attempted to start MFA enrollment when it already has been started or completed */ \
     XX(MFA_EXISTS, "an MFA enrollment already exists") \
@@ -86,12 +86,18 @@ limitations under the License.
     XX(MFA_INVALID_TOKEN, "the token provided was invalid") \
     /** attempted to verify or retrieve details of an MFA enrollment that has not been completed */ \
     XX(MFA_NOT_ENROLLED, "the current identity has not completed MFA enrollment") \
-    /** not found, usually indicates stale reference or permission */    \
-    XX(NOT_FOUND, "entity no longer exists or is no longer accessible")  \
-    /** operation attempted while ziti_context is not enabled */                    \
-    XX(DISABLED, "ziti context is disabled")              \
-    /** returned when authentication is attempted but there is an existing api session waiting for auth queries to pass */                    \
-    XX(PARTIALLY_AUTHENTICATED, "api session is partially authenticated, waiting for auth query resolution") \
+    /** not found, usually indicates stale reference or permission */ \
+    XX(NOT_FOUND, "entity no longer exists or is no longer accessible") \
+    /** operation attempted while ziti_context is not enabled */ \
+    XX(DISABLED, "ziti context is disabled") \
+    /** returned when authentication is attempted but there is an existing api session waiting for auth queries to pass */ \
+    XX(PARTIALLY_AUTHENTICATED, "api session is partially authenticated, waiting for auth query resolution")               \
+    /** returned during certificate authenticator extension if the authenticator cannot be extended because it is the wrong type (i.e. UPDB or 3rd party)*/ \
+    XX(INVALID_AUTHENTICATOR_TYPE, "the authenticator could not be extended as it is the incorrect type")                  \
+    /** returned during certificate authentication extension when the current client cert does not match the authenticator*/ \
+    XX(INVALID_AUTHENTICATOR_CERT, "the authenticator could not be extended as the current client certificate does not match") \
+    /** returned when attempting to set the current certificate and key being used by a ztx when it could not be parsed/applied */ \
+    XX(INVALID_CERT_KEY_PAIR, "the active certificate and key could not be set, invalid pair, or could not parse") \
     /** Inspired by the Android SDK: What a Terrible Failure. A condition that should never happen. */ \
     XX(WTF, "WTF: programming error") \
 
