@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry, Inc.
+// Copyright (c) 2022.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@
 #include <unistd.h>
 #endif
 
-#include <ziti/socket.h>
+#include <ziti/zitilib.h>
 #include <ziti/ziti.h>
 #include <ziti/ziti_log.h>
 #include "utils.h"
