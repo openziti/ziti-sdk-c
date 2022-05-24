@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry, Inc.
+// Copyright (c) 2022.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -358,10 +358,6 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         // logout
         ziti_ctrl_logout(&ztx->controller, logout_cb, ztx);
 
-        ev.type = ZitiContextEvent;
-        ev.event.ctx.ctrl_status = ZITI_DISABLED;
-
-        ziti_send_event(ztx, &ev);
     }
 }
 
@@ -500,6 +496,13 @@ static void free_ztx(uv_handle_t *h) {
     free_ziti_identity_data(ztx->identity_data);
     FREE(ztx->identity_data);
     FREE(ztx->last_update);
+
+    ziti_event_t ev = {0};
+    ev.type = ZitiContextEvent;
+    ev.event.ctx.ctrl_status = ZITI_DISABLED;
+
+    ziti_send_event(ztx, &ev);
+
 
     ZTX_LOG(INFO, "shutdown is complete\n");
     free(ztx);

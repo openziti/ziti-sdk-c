@@ -186,6 +186,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
                 fail_future(f, err);
             }
             if (err == ZITI_DISABLED) {
+                destroy_future(wrap->services_loaded);
                 free(wrap);
             }
         }
@@ -472,9 +473,10 @@ int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
 }
 
 void Ziti_lib_shutdown(void) {
-    schedule_on_loop(do_shutdown, NULL, true);
+    future_t *f = schedule_on_loop(do_shutdown, NULL, true);
     uv_thread_join(&lib_thread);
     uv_key_delete(&err_key);
+    destroy_future(f);
 #if _WIN32
     closesocket(ziti_sock_server);
     if (!DeleteFile(ziti_sock_name.sun_path)) {
