@@ -52,7 +52,7 @@ extern int ziti_conn_bridge(ziti_connection conn, uv_stream_t *stream, uv_close_
     br->output = stream;
     br->close_cb = on_close;
     br->data = uv_handle_get_data((const uv_handle_t *) stream);
-    br->input_pool = pool_new(BRIDGE_MSG_SIZE, 16, NULL);
+    br->input_pool = pool_new(BRIDGE_MSG_SIZE, BRIDGE_POOL_SIZE, NULL);
 
     uv_handle_set_data((uv_handle_t *) stream, br);
     ziti_conn_set_data(conn, br);
