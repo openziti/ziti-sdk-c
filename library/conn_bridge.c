@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry, Inc.
+// Copyright (c) 2022.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,6 +14,9 @@
 
 #include "zt_internal.h"
 #include "utils.h"
+
+#define BRIDGE_MSG_SIZE (32 * 1024)
+#define BRIDGE_POOL_SIZE 16
 
 struct fd_bridge_s {
     uv_os_fd_t in;
@@ -32,6 +35,7 @@ struct ziti_bridge_s {
     uv_close_cb close_cb;
     void *data;
     struct fd_bridge_s *fdbr;
+    pool_t *input_pool;
 };
 
 static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len);
@@ -48,6 +52,7 @@ extern int ziti_conn_bridge(ziti_connection conn, uv_stream_t *stream, uv_close_
     br->output = stream;
     br->close_cb = on_close;
     br->data = uv_handle_get_data((const uv_handle_t *) stream);
+    br->input_pool = pool_new(BRIDGE_MSG_SIZE, BRIDGE_POOL_SIZE, NULL);
 
     uv_handle_set_data((uv_handle_t *) stream, br);
     ziti_conn_set_data(conn, br);
@@ -88,6 +93,7 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
     br->conn = conn;
     br->input = calloc(1, sizeof(uv_pipe_t));
     br->output = calloc(1, sizeof(uv_pipe_t));
+    br->input_pool = pool_new(BRIDGE_MSG_SIZE, BRIDGE_POOL_SIZE, NULL);
 
     uv_pipe_init(l, (uv_pipe_t *) br->input, 0);
     uv_pipe_init(l, (uv_pipe_t *) br->output, 0);
@@ -117,6 +123,7 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
 
 static void on_ziti_close(ziti_connection conn) {
     struct ziti_bridge_s *br = ziti_conn_data(conn);
+    pool_destroy(br->input_pool);
     free(br);
 }
 
@@ -171,12 +178,13 @@ ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
 }
 
 void bridge_alloc(uv_handle_t *h, size_t req, uv_buf_t *b) {
-    b->base = malloc(req);
-    b->len = b->base ? req : 0;
+    struct ziti_bridge_s *br = h->data;
+    b->base = pool_alloc_obj(br->input_pool);
+    b->len = pool_obj_size(b->base);
 }
 
 static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
-    FREE(ctx);
+    pool_return_obj(ctx);
     if (status < ZITI_OK) {
         close_bridge(ziti_conn_data(conn));
     }
@@ -184,15 +192,17 @@ static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
 
 void on_input(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     struct ziti_bridge_s *br = s->data;
-    if (len == 0) {
-        free(b->base);
-    } else if (len > 0) {
+    if (len > 0) {
         ziti_write(br->conn, b->base, len, on_ziti_write, b->base);
-    } else if (len == UV_EOF) {
-        free(b->base);
-        ziti_close_write(br->conn);
     } else {
-        free(b->base);
-        close_bridge(br);
+        pool_return_obj(b->base);
+        ZITI_LOG(WARN, "err = %zd", len);
+        if (len == UV_ENOBUFS) {
+            ZITI_LOG(TRACE, "stalled");
+        } else if (len == UV_EOF) {
+            ziti_close_write(br->conn);
+        } else if (len < 0) {
+            close_bridge(br);
+        }
     }
 }
