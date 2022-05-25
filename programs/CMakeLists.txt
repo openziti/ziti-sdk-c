@@ -10,3 +10,5 @@ add_subdirectory(sample_enroll)
 add_subdirectory(wzcat)
 
 add_subdirectory(sample-bridge)
+
+add_subdirectory(zitilib-samples)

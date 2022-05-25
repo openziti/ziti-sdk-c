@@ -269,52 +269,44 @@ ziti_context Ziti_load_context(const char *identity) {
     return ztx;
 }
 
-static void save_ziti_socket(void *arg, future_t *f, uv_loop_t *l) {
-    ziti_sock_t *zs = arg;
-    model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
-    complete_future(f, (void *) zs);
-}
-
-#if _WIN32
-static void connect_ziti_socket_win32(const void *arg, future_t *f, uv_loop_t *l) {
-    ziti_sock_t *zs = arg;
-
-    zs->ziti_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    int rc = connect(zs->ziti_fd, (const struct sockaddr *) &ziti_sock_name, sizeof(ziti_sock_name));
-    if (rc == SOCKET_ERROR) {
-        int err = WSAGetLastError();
-        fail_future(f, err);
-    } else {
-        complete_future(f, NULL);
-    }
-}
-#endif
-
-ziti_socket_t Ziti_socket(int type) {
-    NEWP(zs, ziti_sock_t);
-    int rc = 0;
-#if _WIN32
-    future_t *conn_f = schedule_on_loop(connect_ziti_socket_win32, zs, true);
-    zs->fd = accept(ziti_sock_server, NULL, 0);
-    rc = await_future(conn_f);
-    destroy_future(conn_f);
+static int make_socketpair(int type, int *fd0, int *fd1) {
+    int rc = ENOTRECOVERABLE;
+#if _WIN32 // TODO
 #else
     int fds[2] = {-1, -1};
     rc = socketpair(AF_UNIX, type, 0, fds);
-    zs->fd = fds[0];
-    zs->ziti_fd = fds[1];
+    *fd0 = fds[0];
+    *fd1 = fds[1];
 #endif
+    return rc;
+}
 
-    if (rc != 0) {
-        free(zs);
-        return rc;
+static void new_ziti_socket(void *arg, future_t *f, uv_loop_t *l) {
+    int socktype = (int)(uintptr_t)arg;
+
+    int fd0, fd1;
+    int rc = make_socketpair(socktype, &fd0, &fd1);
+    if (rc == 0) {
+        NEWP(zs, ziti_sock_t);
+        zs->fd = fd0;
+        zs->ziti_fd = fd1;
+        model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
+        complete_future(f, zs);
+    } else {
+        fail_future(f, rc);
     }
+}
 
-    future_t *f = schedule_on_loop(save_ziti_socket, zs, true);
-    rc = await_future(f);
-    set_error(rc);
+ziti_socket_t Ziti_socket(int type) {
+    ziti_socket_t fd = -1;
+    future_t *f = schedule_on_loop(new_ziti_socket, (void*)(uintptr_t)type, true);
+    int err = await_future(f);
+    if (err == 0) {
+        ziti_sock_t *zs = f->result;
+        fd = zs->fd;
+    }
     destroy_future(f);
-    return rc == 0 ? zs->fd : rc;
+    return fd;
 }
 
 struct dial_req_s {
