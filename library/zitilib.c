@@ -40,7 +40,7 @@ typedef struct future_s {
     void *result;
     int err;
 
-    LIST_ENTRY(future_s) _next;
+    TAILQ_ENTRY(future_s) _next;
 } future_t;
 
 static future_t *new_future() {
@@ -133,7 +133,7 @@ static ziti_socket_t ziti_sock_server;
 typedef struct ztx_wrap {
     ziti_options opts;
     ziti_context ztx;
-    LIST_HEAD(futures, future_s) futures;
+    TAILQ_HEAD(futures, future_s) futures;
 
     future_t *services_loaded;
     model_map intercepts;
@@ -171,18 +171,18 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         if (err == ZITI_OK) {
             wrap->ztx = ztx;
             future_t *f;
-            while (!LIST_EMPTY(&wrap->futures)) {
-                f = LIST_FIRST(&wrap->futures);
-                LIST_REMOVE(f, _next);
+            while (!TAILQ_EMPTY(&wrap->futures)) {
+                f = TAILQ_FIRST(&wrap->futures);
+                TAILQ_REMOVE(&wrap->futures, f, _next);
                 complete_future(f, ztx);
             }
         } else if (err == ZITI_PARTIALLY_AUTHENTICATED) {
             return;
         } else {
             future_t *f;
-            while (!LIST_EMPTY(&wrap->futures)) {
-                f = LIST_FIRST(&wrap->futures);
-                LIST_REMOVE(f, _next);
+            while (!TAILQ_EMPTY(&wrap->futures)) {
+                f = TAILQ_FIRST(&wrap->futures);
+                TAILQ_REMOVE(&wrap->futures, f, _next);
                 fail_future(f, err);
             }
             if (err == ZITI_DISABLED) {
@@ -245,20 +245,21 @@ static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
         wrap->opts.refresh_interval = 60;
         wrap->opts.config_types = configs;
         wrap->services_loaded = new_future();
+        TAILQ_INIT(&wrap->futures);
 
         model_map_set(&ziti_contexts, arg, wrap);
-        LIST_INSERT_HEAD(&wrap->futures, f, _next);
+        TAILQ_INSERT_TAIL(&wrap->futures, f, _next);
 
         ziti_init_opts(&wrap->opts, l);
     } else if (wrap->ztx) {
         complete_future(f, wrap->ztx);
     } else {
-        LIST_INSERT_HEAD(&wrap->futures, f, _next);
+        TAILQ_INSERT_TAIL(&wrap->futures, f, _next);
     }
 }
 
 ziti_context Ziti_load_context(const char *identity) {
-    future_t *f = schedule_on_loop(load_ziti_ctx, identity, true);
+    future_t *f = schedule_on_loop(load_ziti_ctx, (void*)identity, true);
     int err = await_future(f);
     set_error(err);
     ziti_context ztx = (ziti_context) f->result;
