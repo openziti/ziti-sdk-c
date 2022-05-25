@@ -1,0 +1,49 @@
+// Copyright (c) 2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include <ziti/zitilib.h>
+#include <sys/socket.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+
+#define CHECK(desc, op) do{ \
+int rc = (op);                      \
+if (rc != 0) {        \
+fprintf(stderr, desc"{" #op "} err=%d(%s)\n", rc, ziti_errorstr(rc)); \
+goto DONE;\
+}                      \
+} while(0)
+
+int main(int argc, char *argv[]) {
+
+    Ziti_lib_init();
+
+    ziti_context ztx = Ziti_load_context(argv[1]);
+    int ssock = Ziti_socket(SOCK_STREAM);
+
+    CHECK("bind", Ziti_bind(ssock, ztx, argv[2]));
+
+//    int csock = Ziti_accept(ssock);
+
+    DONE:
+    close(ssock);
+    Ziti_lib_shutdown();
+}

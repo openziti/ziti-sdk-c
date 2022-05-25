@@ -139,12 +139,24 @@ typedef struct ztx_wrap {
     model_map intercepts;
 } ztx_wrap_t;
 
+struct backlog_entry_s {
+    ziti_connection conn;
+    TAILQ_ENTRY(backlog_entry_s) _next;
+};
+
 typedef struct ziti_sock_s {
     ziti_socket_t fd;
     ziti_socket_t ziti_fd;
     future_t *f;
     ziti_context ztx;
     ziti_connection conn;
+
+    bool server;
+    int pending;
+    int max_pending;
+    TAILQ_HEAD(, backlog_entry_s) backlog;
+    TAILQ_HEAD(, future_s) accept_q;
+
 } ziti_sock_t;
 
 static model_map ziti_contexts;
@@ -309,7 +321,7 @@ ziti_socket_t Ziti_socket(int type) {
     return fd;
 }
 
-struct dial_req_s {
+struct conn_req_s {
     ziti_socket_t fd;
 
     ziti_context ztx;
@@ -384,7 +396,7 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
     return NULL;
 }
 
-static void do_ziti_connect(struct dial_req_s *req, future_t *f, uv_loop_t *l) {
+static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
     ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &req->fd, sizeof(req->fd));
     if (zs == NULL) {
         ZITI_LOG(WARN, "socket %lu not found", (unsigned long)req->fd);
@@ -436,7 +448,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     if (host == NULL) return -EINVAL;
     if (port == 0 || port > UINT16_MAX) return -EINVAL;
 
-    struct dial_req_s req = {
+    struct conn_req_s req = {
             .fd = socket,
             .host = host,
             .port = port,
@@ -453,13 +465,74 @@ int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
     if (ztx == NULL) return -EINVAL;
     if (service == NULL) return -EINVAL;
 
-    struct dial_req_s req = {
+    struct conn_req_s req = {
             .fd = socket,
             .ztx = ztx,
             .service = service
     };
 
     future_t *f = schedule_on_loop((loop_work_cb) do_ziti_connect, &req, true);
+    int err = await_future(f);
+    destroy_future(f);
+    return err;
+}
+
+static void on_ziti_client(ziti_connection server, ziti_connection client, int status, ziti_client_ctx *clt_ctx) {
+    ziti_sock_t *server_sock = ziti_conn_data(server);
+
+    if (server_sock->pending < server_sock->pending) {
+        // TODO actual connect
+    } else {
+        ziti_close(client, NULL);
+    }
+}
+
+static void on_ziti_bind(ziti_connection server, int status) {
+    ziti_sock_t *zs = ziti_conn_data(server);
+
+    if (status != ZITI_OK) {
+        ZITI_LOG(WARN, "failed to bind fd[%d] err[%d/%s]", zs->fd, status, ziti_errorstr(status));
+        fail_future(zs->f, status);
+    } else {
+        ZITI_LOG(DEBUG, "successfully bound fd[%d]", zs->fd);
+        complete_future(zs->f, server);
+    }
+}
+
+static void do_ziti_bind(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
+    ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &req->fd, sizeof(req->fd));
+
+    if (zs == NULL) {
+        ZITI_LOG(WARN, "socket %lu not found", (unsigned long)req->fd);
+        fail_future(f, -EBADF);
+    } else if (zs->f != NULL) {
+        fail_future(f, -EALREADY);
+    } else {
+        if (req->ztx != NULL) {
+            ZITI_LOG(INFO, "requesting bind fd[%d] to service[%s]", zs->fd, req->service);
+            ziti_conn_init(req->ztx, &zs->conn, zs);
+            ziti_listen(zs->conn, req->service, on_ziti_bind, on_ziti_client);
+            zs->f = f;
+            zs->server = true;
+        } else {
+            ZITI_LOG(WARN, "service[%s] not found", req->service);
+            fail_future(f, -EINVAL);
+        }
+    }
+}
+
+int Ziti_bind(ziti_socket_t socket, ziti_context ztx, const char *service) {
+
+    if (ztx == NULL) return -EINVAL;
+    if (service == NULL) return -EINVAL;
+
+    struct conn_req_s req = {
+            .fd = socket,
+            .ztx = ztx,
+            .service = service
+    };
+
+    future_t *f = schedule_on_loop((loop_work_cb) do_ziti_bind, &req, true);
     int err = await_future(f);
     destroy_future(f);
     return err;
