@@ -41,6 +41,9 @@ int main(int argc, char *argv[]) {
 
     CHECK("bind", Ziti_bind(ssock, ztx, argv[2]));
 
+    CHECK("listen", Ziti_listen(ssock, 10));
+
+
 //    int csock = Ziti_accept(ssock);
 
     DONE:

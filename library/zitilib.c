@@ -480,8 +480,12 @@ int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
 static void on_ziti_client(ziti_connection server, ziti_connection client, int status, ziti_client_ctx *clt_ctx) {
     ziti_sock_t *server_sock = ziti_conn_data(server);
 
-    if (server_sock->pending < server_sock->pending) {
-        // TODO actual connect
+    if (server_sock->pending < server_sock->max_pending) {
+        // TODO check accept_q
+        NEWP(pending, struct backlog_entry_s);
+        pending->conn = client;
+        TAILQ_INSERT_TAIL(&server_sock->backlog, pending, _next);
+        server_sock->pending++;
     } else {
         ziti_close(client, NULL);
     }
@@ -513,7 +517,6 @@ static void do_ziti_bind(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
             ziti_conn_init(req->ztx, &zs->conn, zs);
             ziti_listen(zs->conn, req->service, on_ziti_bind, on_ziti_client);
             zs->f = f;
-            zs->server = true;
         } else {
             ZITI_LOG(WARN, "service[%s] not found", req->service);
             fail_future(f, -EINVAL);
@@ -533,6 +536,40 @@ int Ziti_bind(ziti_socket_t socket, ziti_context ztx, const char *service) {
     };
 
     future_t *f = schedule_on_loop((loop_work_cb) do_ziti_bind, &req, true);
+    int err = await_future(f);
+    destroy_future(f);
+    return err;
+}
+
+struct listen_req_s {
+    ziti_socket_t fd;
+    int backlog;
+};
+
+static void do_ziti_listen(void *arg, future_t *f, uv_loop_t *l) {
+    struct listen_req_s *req = arg;
+    ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &req->fd, sizeof(req->fd));
+    if (zs == NULL) {
+        fail_future(f, EBADF);
+    } else {
+        if (!zs->server) {
+            TAILQ_INIT(&zs->accept_q);
+            TAILQ_INIT(&zs->backlog);
+            zs->server = true;
+        }
+        zs->max_pending = req->backlog;
+        complete_future(f, NULL);
+    }
+}
+
+int Ziti_listen(ziti_socket_t socket, int backlog) {
+    if (backlog <= 0) {
+        return EINVAL;
+    }
+
+    struct listen_req_s req = {.fd = socket, .backlog = backlog};
+    future_t *f = schedule_on_loop(do_ziti_listen, &req, true);
+
     int err = await_future(f);
     destroy_future(f);
     return err;
