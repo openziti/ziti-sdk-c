@@ -97,6 +97,50 @@ ZITI_FUNC
 int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port);
 
 /**
+ * @brief Bind socket to a Ziti service
+ * @param socket socket handle created with [Ziti_socket()]
+ * @param ztx Ziti context
+ * @param service service name provided by [ztx]
+ * @return 0 on sucess, negative error code on failure
+ */
+ZITI_FUNC
+int Ziti_bind(ziti_socket_t socket, ziti_context ztx, const char *service);
+
+/**
+ * @brief Bind socket to a Ziti service with the given intercept address
+ * @param socket socket handle created with [Ziti_socket()]
+ * @param host target hostname
+ * @param port target port
+ * @return
+ */
+ZITI_FUNC
+int Ziti_bind_addr(ziti_socket_t socket, const char *host, unsigned int port);
+
+/**
+ * @brief marks the [socket] as a socket able to accept incoming connections
+ * @param socket a file descriptor created with [Ziti_socket()] and bound to a service with [Ziti_bind] or [Ziti_bind_addr]
+ * @param backlog maximum size of the queue of pending connections.
+ * @return On success, 0 is returned. On error -1, is returned and [Ziti_last_error()] is set to actual code.
+ */
+ZITI_FUNC
+int Ziti_listen(ziti_socket_t socket, int backlog);
+
+/**
+ * @brief accept a client Ziti connection as a socket
+ *
+ * Extracts the first [ziti_connection] from pending queue, accepts it, and opens a new socket fd for it.
+ *
+ * If no pending connection requests are present, behavior depends on whether [socket] is marked non-blocking.
+ * - marked as non-blocking: fails with error code EAGAIN or EWOULDBLOCK.
+ * - not marked as non-blocking: blocks until a connection request is present.
+ *
+ * @param socket socket created with [Ziti_socket()], bound to a service with [Ziti_bind()] or [Ziti_bind_addr()], and is listening after [Ziti_listen()]
+ * @return on success returns a file descriptor for the accepted connection. on error -1 is returned, use [Ziti_last_error()] to get actual error code.
+ */
+ZITI_FUNC
+ziti_socket_t Ziti_accept(ziti_socket_t socket);
+
+/**
  * @brief Shutdown Ziti library.
  *
  * All loaded contexts are shutdown and background thread is terminated.
