@@ -13,17 +13,24 @@
 // limitations under the License.
 
 #include <ziti/zitilib.h>
-#include <sys/socket.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <string.h>
 
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#if _WIN32
+#include <winsock2.h>
+#define close(s) closesocket(s)
+#define write(s,b,l) send(s,b,l,0)
+#define read(s,b,l) recv(s,b,l,0)
+#else
 #include <fcntl.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#endif
 
+#ifndef SOCKET_ERROR
+#define SOCKET_ERROR (-1)
+#endif
 
 // This sample runs a simple byte counting server
 // - binds to the service
@@ -45,8 +52,13 @@ goto DONE;\
 } while(0)
 
 static ziti_socket_t non_blocking_accept(ziti_socket_t srv) {
+#if _WIN32
+    u_long opt = 1;
+    ioctlsocket(srv, FIONBIO, &opt);
+#else
     int opt = fcntl(srv, F_GETFL);
     fcntl(srv, F_SETFL, opt | O_NONBLOCK);
+#endif
 
     fd_set rdfds;
     FD_ZERO(&rdfds);
@@ -81,6 +93,8 @@ int main(int argc, char *argv[]) {
     ziti_context ztx = Ziti_load_context(argv[1]);
     ziti_socket_t srv = Ziti_socket(SOCK_STREAM);
 
+    CHECK("socket", srv == SOCKET_ERROR);
+
     CHECK("bind", Ziti_bind(srv, ztx, argv[2]));
 
     CHECK("listen", Ziti_listen(srv, 10));
@@ -111,6 +125,7 @@ int main(int argc, char *argv[]) {
     } while (1);
 
     DONE:
-    close(srv);
+    if (srv != SOCKET_ERROR)
+        close(srv);
     Ziti_lib_shutdown();
 }

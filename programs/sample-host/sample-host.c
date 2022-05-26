@@ -34,7 +34,7 @@ static void on_client_write(ziti_connection clt, ssize_t status, void *ctx) {
     free(ctx);
 }
 
-static ssize_t on_client_data(ziti_connection clt, uint8_t *data, ssize_t len) {
+static ssize_t on_client_data(ziti_connection clt, const uint8_t *data, ssize_t len) {
     if (len > 0) {
         printf("client sent:%.*s\n", (int) len, data);
         char *reply = malloc(128);

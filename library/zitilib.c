@@ -125,9 +125,6 @@ struct sockaddr_un {
      char sun_path[UNIX_PATH_MAX];
 };
 #endif
-
-static struct sockaddr_un ziti_sock_name;
-static ziti_socket_t ziti_sock_server;
 #endif
 
 typedef struct ztx_wrap {
@@ -281,9 +278,75 @@ ziti_context Ziti_load_context(const char *identity) {
     return ztx;
 }
 
-static int make_socketpair(int type, int *fd0, int *fd1) {
-    int rc = ENOTRECOVERABLE;
-#if _WIN32 // TODO
+#if _WIN32
+static const char * fmt_win32err(int err) {
+    static char wszMsgBuff[512];  // Buffer for text.
+
+    // Try to get the message from the system errors.
+    FormatMessage( FORMAT_MESSAGE_FROM_SYSTEM |
+                   FORMAT_MESSAGE_IGNORE_INSERTS,
+                   NULL,
+                   WSAGetLastError(),
+                   0,
+                   wszMsgBuff,
+                   512,
+                   NULL );
+    return wszMsgBuff;
+}
+#endif
+
+static int make_socketpair(int type, ziti_socket_t *fd0, ziti_socket_t *fd1) {
+    int rc = 0;
+#if _WIN32
+    ziti_socket_t
+            lsock = SOCKET_ERROR, // listener
+            ssock = SOCKET_ERROR, // server side
+            csock = SOCKET_ERROR; // client side
+
+    PREPF(WSOCK, fmt_win32err);
+
+    u_long nonblocking = 1;
+    TRY(WSOCK, (lsock = socket(AF_INET, SOCK_STREAM, 0)) == SOCKET_ERROR);
+    ioctlsocket(lsock, FIONBIO, &nonblocking);
+
+    struct sockaddr_in laddr;
+    int laddrlen = sizeof(laddr);
+    laddr.sin_port = 0;
+    laddr.sin_family = AF_INET;
+    laddr.sin_addr = in4addr_loopback;
+
+    TRY(WSOCK, bind(lsock, (const struct sockaddr *) &laddr, laddrlen));
+    TRY(WSOCK, getsockname(lsock, (struct sockaddr *) &laddr, &laddrlen));
+    TRY(WSOCK, listen(lsock, 1));
+    TRY(WSOCK, (csock = socket(AF_INET, SOCK_STREAM, 0)) == SOCKET_ERROR);
+
+    ioctlsocket(csock, FIONBIO, &nonblocking);
+
+    // this should return an error(WSAEWOULDBLOCK)
+    connect(csock, (const struct sockaddr *) &laddr, laddrlen);
+    TRY(WSOCK, WSAGetLastError() != WSAEWOULDBLOCK);
+
+    fd_set fds = {0};
+    FD_SET(lsock, &fds);
+    const struct timeval timeout = {
+            .tv_sec = 1,
+    };
+    TRY(WSOCK, select(0, &fds, NULL, NULL, &timeout) != 1);
+    TRY(WSOCK, !FD_ISSET(lsock, &fds));
+    TRY(WSOCK, (ssock = accept(lsock, NULL, NULL)) == SOCKET_ERROR);
+
+    nonblocking = 0;
+    ioctlsocket(csock, FIONBIO, &nonblocking);
+
+    CATCH(WSOCK) {
+        rc  = WSAGetLastError();
+        if (csock != SOCKET_ERROR) closesocket(csock);
+        if (ssock != SOCKET_ERROR) closesocket(ssock);
+    }
+
+    if (lsock != SOCKET_ERROR) closesocket(lsock);
+    *fd0 = csock;
+    *fd1 = ssock;
 #else
     int fds[2] = {-1, -1};
     rc = socketpair(AF_UNIX, type, 0, fds);
@@ -296,7 +359,7 @@ static int make_socketpair(int type, int *fd0, int *fd1) {
 static void new_ziti_socket(void *arg, future_t *f, uv_loop_t *l) {
     int socktype = (int)(uintptr_t)arg;
 
-    int fd0, fd1;
+    ziti_socket_t fd0, fd1;
     int rc = make_socketpair(socktype, &fd0, &fd1);
     if (rc == 0) {
         NEWP(zs, ziti_sock_t);
@@ -313,6 +376,7 @@ ziti_socket_t Ziti_socket(int type) {
     ziti_socket_t fd = -1;
     future_t *f = schedule_on_loop(new_ziti_socket, (void*)(uintptr_t)type, true);
     int err = await_future(f);
+    set_error(err);
     if (err == 0) {
         ziti_sock_t *zs = f->result;
         fd = zs->fd;
@@ -478,9 +542,33 @@ int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
 }
 
 static bool is_blocking(ziti_socket_t s) {
+#if _WIN32
+    /*
+     * Win32 does not have a method of testing if socket was put into non-blocking state.
+     */
+    DWORD timeout;
+    DWORD fast_check = 1;
+    int tolen = sizeof(timeout);
+    getsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char *) &timeout, &tolen);
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *) &fast_check, sizeof(fast_check));
+    char b;
+    int r = recv(s, &b, 0, 0);
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *) &timeout, sizeof(fast_check));
+
+    if (r == 0)
+        return true;
+    else if (r == -1) {
+        int err = WSAGetLastError();
+        if (err == WSAEWOULDBLOCK) return false;
+        if (err == WSAETIMEDOUT) return true;
+    }
+    return true;
+#else
     int flags = fcntl(s, F_GETFL, 0);
     return (flags & O_NONBLOCK) == 0;
+#endif
 }
+
 
 static void on_ziti_accept(ziti_connection client, int status) {
     future_t *f = ziti_conn_data(client);
@@ -509,6 +597,7 @@ static void on_ziti_accept(ziti_connection client, int status) {
 
 static void on_ziti_client(ziti_connection server, ziti_connection client, int status, ziti_client_ctx *clt_ctx) {
     ziti_sock_t *server_sock = ziti_conn_data(server);
+    ZITI_LOG(INFO, "incoming client = %s", clt_ctx->caller_id);
 
     if (status != ZITI_OK) {
         on_bridge_close(server_sock);
@@ -531,7 +620,11 @@ static void on_ziti_client(ziti_connection server, ziti_connection client, int s
         server_sock->pending++;
         if (!is_blocking(server_sock->fd)) {
             char b = 1;
+#if _WIN32
+            send(server_sock->ziti_fd, &b, 1, 0);
+#else
             write(server_sock->ziti_fd, &b, 1);
+#endif
         }
     } else {
         ziti_close(client, NULL);
@@ -666,7 +759,12 @@ ziti_socket_t Ziti_accept(ziti_socket_t server) {
         clt = (ziti_socket_t) (uintptr_t) f->result;
         if (!is_blocking(server)) {
             char b;
+#if _WIN32
+            recv(server, &b, 1, 0);
+#else
             read(server, &b, 1);
+#endif
+
         }
     }
     set_error(err);
@@ -680,12 +778,6 @@ void Ziti_lib_shutdown(void) {
     uv_thread_join(&lib_thread);
     uv_key_delete(&err_key);
     destroy_future(f);
-#if _WIN32
-    closesocket(ziti_sock_server);
-    if (!DeleteFile(ziti_sock_name.sun_path)) {
-        fprintf(stderr, "failed to delete file: %lu\n", GetLastError());
-    }
-#endif
 }
 
 static void looper(void *arg) {
@@ -729,31 +821,6 @@ void process_on_loop(uv_async_t *async) {
 }
 
 static void internal_init() {
-#if _WIN32
-    WORD ver = MAKEWORD(2,2);
-    WSADATA data;
-    DWORD err;
-    err = WSAStartup(ver, &data);
-
-    ziti_sock_server = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (ziti_sock_server == INVALID_SOCKET) {
-        fprintf(stderr, "invalid socket: %d", WSAGetLastError());
-    }
-
-    ziti_sock_name.sun_family = AF_UNIX;
-    char temp[sizeof(ziti_sock_name.sun_path)];
-    GetTempPath(sizeof(temp), temp);
-    snprintf(ziti_sock_name.sun_path, sizeof(ziti_sock_name.sun_path), "%sziti-socket.%d", temp, uv_os_getpid());
-
-    err = bind(ziti_sock_server, (const struct sockaddr *) &ziti_sock_name, sizeof(ziti_sock_name));
-    if (err != 0) {
-        fprintf(stderr, "failed to bind: %ld %d", err, WSAGetLastError());
-    }
-    err = listen(ziti_sock_server, 10);
-    if (err != 0) {
-        fprintf(stderr, "failed to listen: %ld %d", err, WSAGetLastError());
-    }
-#endif
     uv_key_create(&err_key);
     uv_mutex_init(&q_mut);
     lib_loop = uv_loop_new();
