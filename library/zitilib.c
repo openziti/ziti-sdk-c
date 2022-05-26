@@ -477,15 +477,62 @@ int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
     return err;
 }
 
+static bool is_blocking(ziti_socket_t s) {
+    int flags = fcntl(s, F_GETFL, 0);
+    return (flags & O_NONBLOCK) == 0;
+}
+
+static void on_ziti_accept(ziti_connection client, int status) {
+    future_t *f = ziti_conn_data(client);
+    if (status != ZITI_OK) {
+        fail_future(f, status);
+        ziti_close(client, NULL);
+        return;
+    }
+
+    ziti_socket_t fd, ziti_fd;
+    int rc = make_socketpair(SOCK_STREAM, &fd, &ziti_fd);
+    if (rc != 0) {
+        fail_future(f, rc);
+        ziti_close(client, NULL);
+        return;
+    }
+
+    NEWP(zs, ziti_sock_t);
+    zs->fd = fd;
+    zs->ziti_fd = ziti_fd;
+    ziti_conn_set_data(client, zs);
+    model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
+    ziti_conn_bridge_fds(client, (uv_os_fd_t) zs->ziti_fd, (uv_os_fd_t) zs->ziti_fd, on_bridge_close, zs);
+    complete_future(f, (void *) (uintptr_t) zs->fd);
+}
+
 static void on_ziti_client(ziti_connection server, ziti_connection client, int status, ziti_client_ctx *clt_ctx) {
     ziti_sock_t *server_sock = ziti_conn_data(server);
 
+    if (status != ZITI_OK) {
+        on_bridge_close(server_sock);
+        return;
+    }
+
+    if (!TAILQ_EMPTY(&server_sock->accept_q)) {
+        future_t *accept_f = TAILQ_FIRST(&server_sock->accept_q);
+        TAILQ_REMOVE(&server_sock->accept_q, accept_f, _next);
+
+        ziti_conn_set_data(client, accept_f);
+        ziti_accept(client, on_ziti_accept, NULL);
+        return;
+    }
+
     if (server_sock->pending < server_sock->max_pending) {
-        // TODO check accept_q
         NEWP(pending, struct backlog_entry_s);
         pending->conn = client;
         TAILQ_INSERT_TAIL(&server_sock->backlog, pending, _next);
         server_sock->pending++;
+        if (!is_blocking(server_sock->fd)) {
+            char b = 1;
+            write(server_sock->ziti_fd, &b, 1);
+        }
     } else {
         ziti_close(client, NULL);
     }
@@ -574,6 +621,58 @@ int Ziti_listen(ziti_socket_t socket, int backlog) {
     destroy_future(f);
     return err;
 }
+
+static void do_ziti_accept(void *r, future_t *f, uv_loop_t *l) {
+    ziti_socket_t server_fd = (ziti_socket_t) (uintptr_t) r;
+    ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &server_fd, sizeof(server_fd));
+    if (zs == NULL) {
+        fail_future(f, -EINVAL);
+        return;
+    }
+
+    if (!zs->server) {
+        fail_future(f, -EBADF);
+        return;
+    }
+
+    // no pending connections
+    if (TAILQ_EMPTY(&zs->backlog)) {
+        if (is_blocking(server_fd)) {
+            TAILQ_INSERT_TAIL(&zs->accept_q, f, _next);
+        } else {
+            fail_future(f, -EWOULDBLOCK);
+        }
+        return;
+    }
+
+    struct backlog_entry_s *pending = TAILQ_FIRST(&zs->backlog);
+    TAILQ_REMOVE(&zs->backlog, pending, _next);
+
+    ziti_connection conn = pending->conn;
+    free(pending);
+
+    ziti_conn_set_data(conn, f);
+    ziti_accept(conn, on_ziti_accept, NULL);
+}
+
+ziti_socket_t Ziti_accept(ziti_socket_t server) {
+    future_t *f = schedule_on_loop(do_ziti_accept, (void *) (uintptr_t) server, true);
+
+    ziti_socket_t clt = -1;
+    int err = await_future(f);
+    if (!err) {
+        clt = (ziti_socket_t) (uintptr_t) f->result;
+    }
+    set_error(err);
+    destroy_future(f);
+    if (!is_blocking(server)) {
+        char b;
+        read(server, &b, 1);
+    }
+    return clt;
+
+}
+
 
 void Ziti_lib_shutdown(void) {
     future_t *f = schedule_on_loop(do_shutdown, NULL, true);

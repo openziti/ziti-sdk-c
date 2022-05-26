@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry, Inc.
+// Copyright (c) 2022.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -1206,6 +1206,14 @@ static void ziti_rebind(ziti_connection conn) {
 }
 
 int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
+
+    if (conn->state == Disconnected) {
+        return ZITI_CONN_CLOSED;
+    }
+
+    if (conn->state != Accepting) {
+        return ZITI_INVALID_STATE;
+    }
 
     ziti_channel_t *ch = conn->parent->channel;
 
