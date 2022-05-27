@@ -31,9 +31,9 @@
 #include <WinSock2.h>
 #include <io.h>
 
-#define write(s,b,l) _write(s,b,l)
-#define read(s,b,l)  _read(s,b,l)
-#define close(s)     _close(s)
+#define write(s,b,l) send(s,b,l,0)
+#define read(s,b,l)  recv(s,b,l,0)
+#define close(s)     closesocket(s)
 
 #define SHUT_WR SD_SEND
 #endif
@@ -58,13 +58,15 @@ int main(int argc, char *argv[]) {
     int port = (url.port != 0) ? url.port : 80;
 
     Ziti_lib_init();
+    ziti_socket_t socket = Ziti_socket(SOCK_STREAM);
 
     ziti_context ztx = Ziti_load_context(path);
     if (ztx == NULL) {
         int err = Ziti_last_error();
         fprintf(stderr, "failed to load Ziti: %d(%s)\n", err, ziti_errorstr(err));
+        goto DONE;
     }
-    ziti_socket_t socket = Ziti_socket(SOCK_STREAM);
+
 
     long rc = Ziti_connect_addr(socket, hostname, port);
 
@@ -84,8 +86,10 @@ int main(int argc, char *argv[]) {
                        url.field_data[UF_HOST].len, argv[2] + url.field_data[UF_HOST].off,
                        prog, ziti_get_version()->version);
 
-    write(socket, req, len);
-    shutdown(socket, SHUT_WR);
+    rc = write(socket, req, len);
+    fprintf(stderr, "rc = %ld, errno = %d\n", rc, errno);
+
+    //shutdown(socket, SHUT_WR);
     char buf[1024];
     do {
         rc = read(socket, buf, sizeof(buf));

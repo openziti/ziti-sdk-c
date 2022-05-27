@@ -29,9 +29,9 @@
 #include <WinSock2.h>
 #include <io.h>
 
-#define write(s,b,l) _write(s,b,l)
-#define read(s,b,l)  _read(s,b,l)
-#define close(s)     _close(s)
+#define write(s,b,l) send(s,b,l,0)
+#define read(s,b,l)  recv(s,b,l,0)
+#define close(s)     closesocket(s)
 
 #define SHUT_WR SD_SEND
 #endif

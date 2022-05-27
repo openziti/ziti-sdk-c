@@ -196,12 +196,12 @@ void on_input(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         ziti_write(br->conn, b->base, len, on_ziti_write, b->base);
     } else {
         pool_return_obj(b->base);
-        ZITI_LOG(WARN, "err = %zd", len);
         if (len == UV_ENOBUFS) {
             ZITI_LOG(TRACE, "stalled");
         } else if (len == UV_EOF) {
             ziti_close_write(br->conn);
         } else if (len < 0) {
+            ZITI_LOG(WARN, "err = %zd", len);
             close_bridge(br);
         }
     }

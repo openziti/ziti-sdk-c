@@ -40,7 +40,7 @@ typedef struct future_s {
     void *result;
     int err;
 
-    LIST_ENTRY(future_s) _next;
+    TAILQ_ENTRY(future_s) _next;
 } future_t;
 
 static future_t *new_future() {
@@ -125,19 +125,21 @@ struct sockaddr_un {
      char sun_path[UNIX_PATH_MAX];
 };
 #endif
-
-static struct sockaddr_un ziti_sock_name;
-static ziti_socket_t ziti_sock_server;
 #endif
 
 typedef struct ztx_wrap {
     ziti_options opts;
     ziti_context ztx;
-    LIST_HEAD(futures, future_s) futures;
+    TAILQ_HEAD(futures, future_s) futures;
 
     future_t *services_loaded;
     model_map intercepts;
 } ztx_wrap_t;
+
+struct backlog_entry_s {
+    ziti_connection conn;
+    TAILQ_ENTRY(backlog_entry_s) _next;
+};
 
 typedef struct ziti_sock_s {
     ziti_socket_t fd;
@@ -145,6 +147,13 @@ typedef struct ziti_sock_s {
     future_t *f;
     ziti_context ztx;
     ziti_connection conn;
+
+    bool server;
+    int pending;
+    int max_pending;
+    TAILQ_HEAD(, backlog_entry_s) backlog;
+    TAILQ_HEAD(, future_s) accept_q;
+
 } ziti_sock_t;
 
 static model_map ziti_contexts;
@@ -171,18 +180,18 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         if (err == ZITI_OK) {
             wrap->ztx = ztx;
             future_t *f;
-            while (!LIST_EMPTY(&wrap->futures)) {
-                f = LIST_FIRST(&wrap->futures);
-                LIST_REMOVE(f, _next);
+            while (!TAILQ_EMPTY(&wrap->futures)) {
+                f = TAILQ_FIRST(&wrap->futures);
+                TAILQ_REMOVE(&wrap->futures, f, _next);
                 complete_future(f, ztx);
             }
         } else if (err == ZITI_PARTIALLY_AUTHENTICATED) {
             return;
         } else {
             future_t *f;
-            while (!LIST_EMPTY(&wrap->futures)) {
-                f = LIST_FIRST(&wrap->futures);
-                LIST_REMOVE(f, _next);
+            while (!TAILQ_EMPTY(&wrap->futures)) {
+                f = TAILQ_FIRST(&wrap->futures);
+                TAILQ_REMOVE(&wrap->futures, f, _next);
                 fail_future(f, err);
             }
             if (err == ZITI_DISABLED) {
@@ -245,20 +254,21 @@ static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
         wrap->opts.refresh_interval = 60;
         wrap->opts.config_types = configs;
         wrap->services_loaded = new_future();
+        TAILQ_INIT(&wrap->futures);
 
         model_map_set(&ziti_contexts, arg, wrap);
-        LIST_INSERT_HEAD(&wrap->futures, f, _next);
+        TAILQ_INSERT_TAIL(&wrap->futures, f, _next);
 
         ziti_init_opts(&wrap->opts, l);
     } else if (wrap->ztx) {
         complete_future(f, wrap->ztx);
     } else {
-        LIST_INSERT_HEAD(&wrap->futures, f, _next);
+        TAILQ_INSERT_TAIL(&wrap->futures, f, _next);
     }
 }
 
 ziti_context Ziti_load_context(const char *identity) {
-    future_t *f = schedule_on_loop(load_ziti_ctx, identity, true);
+    future_t *f = schedule_on_loop(load_ziti_ctx, (void*)identity, true);
     int err = await_future(f);
     set_error(err);
     ziti_context ztx = (ziti_context) f->result;
@@ -268,55 +278,114 @@ ziti_context Ziti_load_context(const char *identity) {
     return ztx;
 }
 
-static void save_ziti_socket(void *arg, future_t *f, uv_loop_t *l) {
-    ziti_sock_t *zs = arg;
-    model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
-    complete_future(f, (void *) zs);
-}
-
 #if _WIN32
-static void connect_ziti_socket_win32(const void *arg, future_t *f, uv_loop_t *l) {
-    ziti_sock_t *zs = arg;
+static const char * fmt_win32err(int err) {
+    static char wszMsgBuff[512];  // Buffer for text.
 
-    zs->ziti_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    int rc = connect(zs->ziti_fd, (const struct sockaddr *) &ziti_sock_name, sizeof(ziti_sock_name));
-    if (rc == SOCKET_ERROR) {
-        int err = WSAGetLastError();
-        fail_future(f, err);
-    } else {
-        complete_future(f, NULL);
-    }
+    // Try to get the message from the system errors.
+    FormatMessage( FORMAT_MESSAGE_FROM_SYSTEM |
+                   FORMAT_MESSAGE_IGNORE_INSERTS,
+                   NULL,
+                   WSAGetLastError(),
+                   0,
+                   wszMsgBuff,
+                   512,
+                   NULL );
+    return wszMsgBuff;
 }
 #endif
 
-ziti_socket_t Ziti_socket(int type) {
-    NEWP(zs, ziti_sock_t);
+static int make_socketpair(int type, ziti_socket_t *fd0, ziti_socket_t *fd1) {
     int rc = 0;
 #if _WIN32
-    future_t *conn_f = schedule_on_loop(connect_ziti_socket_win32, zs, true);
-    zs->fd = accept(ziti_sock_server, NULL, 0);
-    rc = await_future(conn_f);
-    destroy_future(conn_f);
+    ziti_socket_t
+            lsock = SOCKET_ERROR, // listener
+            ssock = SOCKET_ERROR, // server side
+            csock = SOCKET_ERROR; // client side
+
+    PREPF(WSOCK, fmt_win32err);
+
+    u_long nonblocking = 1;
+    TRY(WSOCK, (lsock = socket(AF_INET, SOCK_STREAM, 0)) == SOCKET_ERROR);
+    ioctlsocket(lsock, FIONBIO, &nonblocking);
+
+    struct sockaddr_in laddr;
+    int laddrlen = sizeof(laddr);
+    laddr.sin_port = 0;
+    laddr.sin_family = AF_INET;
+    laddr.sin_addr = in4addr_loopback;
+
+    TRY(WSOCK, bind(lsock, (const struct sockaddr *) &laddr, laddrlen));
+    TRY(WSOCK, getsockname(lsock, (struct sockaddr *) &laddr, &laddrlen));
+    TRY(WSOCK, listen(lsock, 1));
+    TRY(WSOCK, (csock = socket(AF_INET, SOCK_STREAM, 0)) == SOCKET_ERROR);
+
+    ioctlsocket(csock, FIONBIO, &nonblocking);
+
+    // this should return an error(WSAEWOULDBLOCK)
+    connect(csock, (const struct sockaddr *) &laddr, laddrlen);
+    TRY(WSOCK, WSAGetLastError() != WSAEWOULDBLOCK);
+
+    fd_set fds = {0};
+    FD_SET(lsock, &fds);
+    const struct timeval timeout = {
+            .tv_sec = 1,
+    };
+    TRY(WSOCK, select(0, &fds, NULL, NULL, &timeout) != 1);
+    TRY(WSOCK, !FD_ISSET(lsock, &fds));
+    TRY(WSOCK, (ssock = accept(lsock, NULL, NULL)) == SOCKET_ERROR);
+
+    nonblocking = 0;
+    ioctlsocket(csock, FIONBIO, &nonblocking);
+
+    CATCH(WSOCK) {
+        rc  = WSAGetLastError();
+        if (csock != SOCKET_ERROR) closesocket(csock);
+        if (ssock != SOCKET_ERROR) closesocket(ssock);
+    }
+
+    if (lsock != SOCKET_ERROR) closesocket(lsock);
+    *fd0 = csock;
+    *fd1 = ssock;
 #else
     int fds[2] = {-1, -1};
     rc = socketpair(AF_UNIX, type, 0, fds);
-    zs->fd = fds[0];
-    zs->ziti_fd = fds[1];
+    *fd0 = fds[0];
+    *fd1 = fds[1];
 #endif
-
-    if (rc != 0) {
-        free(zs);
-        return rc;
-    }
-
-    future_t *f = schedule_on_loop(save_ziti_socket, zs, true);
-    rc = await_future(f);
-    set_error(rc);
-    destroy_future(f);
-    return rc == 0 ? zs->fd : rc;
+    return rc;
 }
 
-struct dial_req_s {
+static void new_ziti_socket(void *arg, future_t *f, uv_loop_t *l) {
+    int socktype = (int)(uintptr_t)arg;
+
+    ziti_socket_t fd0, fd1;
+    int rc = make_socketpair(socktype, &fd0, &fd1);
+    if (rc == 0) {
+        NEWP(zs, ziti_sock_t);
+        zs->fd = fd0;
+        zs->ziti_fd = fd1;
+        model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
+        complete_future(f, zs);
+    } else {
+        fail_future(f, rc);
+    }
+}
+
+ziti_socket_t Ziti_socket(int type) {
+    ziti_socket_t fd = -1;
+    future_t *f = schedule_on_loop(new_ziti_socket, (void*)(uintptr_t)type, true);
+    int err = await_future(f);
+    set_error(err);
+    if (err == 0) {
+        ziti_sock_t *zs = f->result;
+        fd = zs->fd;
+    }
+    destroy_future(f);
+    return fd;
+}
+
+struct conn_req_s {
     ziti_socket_t fd;
 
     ziti_context ztx;
@@ -391,13 +460,13 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
     return NULL;
 }
 
-static void do_ziti_connect(struct dial_req_s *req, future_t *f, uv_loop_t *l) {
+static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
     ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &req->fd, sizeof(req->fd));
     if (zs == NULL) {
         ZITI_LOG(WARN, "socket %lu not found", (unsigned long)req->fd);
-        fail_future(f, -EBADF);
+        fail_future(f, EBADF);
     } else if (zs->f != NULL) {
-        fail_future(f, -EALREADY);
+        fail_future(f, EALREADY);
     } else {
         zs->f = f;
 
@@ -434,7 +503,7 @@ static void do_ziti_connect(struct dial_req_s *req, future_t *f, uv_loop_t *l) {
             ziti_dial_with_options(zs->conn, req->service, &opts, on_ziti_connect, NULL);
         } else {
             ZITI_LOG(WARN, "no service for target address[%s:%s:%d]", proto_str, req->host, req->port);
-            fail_future(f, -ECONNREFUSED);
+            fail_future(f, ECONNREFUSED);
         }
     }
 }
@@ -443,7 +512,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     if (host == NULL) return -EINVAL;
     if (port == 0 || port > UINT16_MAX) return -EINVAL;
 
-    struct dial_req_s req = {
+    struct conn_req_s req = {
             .fd = socket,
             .host = host,
             .port = port,
@@ -460,7 +529,7 @@ int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
     if (ztx == NULL) return -EINVAL;
     if (service == NULL) return -EINVAL;
 
-    struct dial_req_s req = {
+    struct conn_req_s req = {
             .fd = socket,
             .ztx = ztx,
             .service = service
@@ -472,17 +541,243 @@ int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
     return err;
 }
 
+static bool is_blocking(ziti_socket_t s) {
+#if _WIN32
+    /*
+     * Win32 does not have a method of testing if socket was put into non-blocking state.
+     */
+    DWORD timeout;
+    DWORD fast_check = 1;
+    int tolen = sizeof(timeout);
+    getsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char *) &timeout, &tolen);
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *) &fast_check, sizeof(fast_check));
+    char b;
+    int r = recv(s, &b, 0, 0);
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *) &timeout, sizeof(fast_check));
+
+    if (r == 0)
+        return true;
+    else if (r == -1) {
+        int err = WSAGetLastError();
+        if (err == WSAEWOULDBLOCK) return false;
+        if (err == WSAETIMEDOUT) return true;
+    }
+    return true;
+#else
+    int flags = fcntl(s, F_GETFL, 0);
+    return (flags & O_NONBLOCK) == 0;
+#endif
+}
+
+
+static void on_ziti_accept(ziti_connection client, int status) {
+    future_t *f = ziti_conn_data(client);
+    if (status != ZITI_OK) {
+        fail_future(f, status);
+        ziti_close(client, NULL);
+        return;
+    }
+
+    ziti_socket_t fd, ziti_fd;
+    int rc = make_socketpair(SOCK_STREAM, &fd, &ziti_fd);
+    if (rc != 0) {
+        fail_future(f, rc);
+        ziti_close(client, NULL);
+        return;
+    }
+
+    NEWP(zs, ziti_sock_t);
+    zs->fd = fd;
+    zs->ziti_fd = ziti_fd;
+    ziti_conn_set_data(client, zs);
+    model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
+    ziti_conn_bridge_fds(client, (uv_os_fd_t) zs->ziti_fd, (uv_os_fd_t) zs->ziti_fd, on_bridge_close, zs);
+    complete_future(f, (void *) (uintptr_t) zs->fd);
+}
+
+static void on_ziti_client(ziti_connection server, ziti_connection client, int status, ziti_client_ctx *clt_ctx) {
+    ziti_sock_t *server_sock = ziti_conn_data(server);
+    ZITI_LOG(INFO, "incoming client = %s", clt_ctx->caller_id);
+
+    if (status != ZITI_OK) {
+        on_bridge_close(server_sock);
+        return;
+    }
+
+    if (!TAILQ_EMPTY(&server_sock->accept_q)) {
+        future_t *accept_f = TAILQ_FIRST(&server_sock->accept_q);
+        TAILQ_REMOVE(&server_sock->accept_q, accept_f, _next);
+
+        ziti_conn_set_data(client, accept_f);
+        ziti_accept(client, on_ziti_accept, NULL);
+        return;
+    }
+
+    if (server_sock->pending < server_sock->max_pending) {
+        NEWP(pending, struct backlog_entry_s);
+        pending->conn = client;
+        TAILQ_INSERT_TAIL(&server_sock->backlog, pending, _next);
+        server_sock->pending++;
+        if (!is_blocking(server_sock->fd)) {
+            char b = 1;
+#if _WIN32
+            send(server_sock->ziti_fd, &b, 1, 0);
+#else
+            write(server_sock->ziti_fd, &b, 1);
+#endif
+        }
+    } else {
+        ziti_close(client, NULL);
+    }
+}
+
+static void on_ziti_bind(ziti_connection server, int status) {
+    ziti_sock_t *zs = ziti_conn_data(server);
+
+    if (status != ZITI_OK) {
+        ZITI_LOG(WARN, "failed to bind fd[%d] err[%d/%s]", zs->fd, status, ziti_errorstr(status));
+        fail_future(zs->f, status);
+    } else {
+        ZITI_LOG(DEBUG, "successfully bound fd[%d]", zs->fd);
+        complete_future(zs->f, server);
+    }
+}
+
+static void do_ziti_bind(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
+    ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &req->fd, sizeof(req->fd));
+
+    if (zs == NULL) {
+        ZITI_LOG(WARN, "socket %lu not found", (unsigned long)req->fd);
+        fail_future(f, EBADF);
+    } else if (zs->f != NULL) {
+        fail_future(f, EALREADY);
+    } else {
+        if (req->ztx != NULL) {
+            ZITI_LOG(INFO, "requesting bind fd[%d] to service[%s]", zs->fd, req->service);
+            ziti_conn_init(req->ztx, &zs->conn, zs);
+            ziti_listen(zs->conn, req->service, on_ziti_bind, on_ziti_client);
+            zs->f = f;
+        } else {
+            ZITI_LOG(WARN, "service[%s] not found", req->service);
+            fail_future(f, EINVAL);
+        }
+    }
+}
+
+int Ziti_bind(ziti_socket_t socket, ziti_context ztx, const char *service) {
+
+    if (ztx == NULL) { return EINVAL; }
+    if (service == NULL) { return EINVAL; }
+
+    struct conn_req_s req = {
+            .fd = socket,
+            .ztx = ztx,
+            .service = service
+    };
+
+    future_t *f = schedule_on_loop((loop_work_cb) do_ziti_bind, &req, true);
+    int err = await_future(f);
+    set_error(err);
+    destroy_future(f);
+    return err ? -1 : 0;
+}
+
+struct listen_req_s {
+    ziti_socket_t fd;
+    int backlog;
+};
+
+static void do_ziti_listen(void *arg, future_t *f, uv_loop_t *l) {
+    struct listen_req_s *req = arg;
+    ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &req->fd, sizeof(req->fd));
+    if (zs == NULL) {
+        fail_future(f, EBADF);
+    } else {
+        if (!zs->server) {
+            TAILQ_INIT(&zs->accept_q);
+            TAILQ_INIT(&zs->backlog);
+            zs->server = true;
+        }
+        zs->max_pending = req->backlog;
+        complete_future(f, NULL);
+    }
+}
+
+int Ziti_listen(ziti_socket_t socket, int backlog) {
+    if (backlog <= 0) {
+        return EINVAL;
+    }
+
+    struct listen_req_s req = {.fd = socket, .backlog = backlog};
+    future_t *f = schedule_on_loop(do_ziti_listen, &req, true);
+
+    int err = await_future(f);
+    set_error(err);
+    destroy_future(f);
+    return err ? -1 : 0;
+}
+
+static void do_ziti_accept(void *r, future_t *f, uv_loop_t *l) {
+    ziti_socket_t server_fd = (ziti_socket_t) (uintptr_t) r;
+    ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &server_fd, sizeof(server_fd));
+    if (zs == NULL) {
+        fail_future(f, -EINVAL);
+        return;
+    }
+
+    if (!zs->server) {
+        fail_future(f, -EBADF);
+        return;
+    }
+
+    // no pending connections
+    if (TAILQ_EMPTY(&zs->backlog)) {
+        if (is_blocking(server_fd)) {
+            TAILQ_INSERT_TAIL(&zs->accept_q, f, _next);
+        } else {
+            fail_future(f, -EWOULDBLOCK);
+        }
+        return;
+    }
+
+    struct backlog_entry_s *pending = TAILQ_FIRST(&zs->backlog);
+    TAILQ_REMOVE(&zs->backlog, pending, _next);
+
+    ziti_connection conn = pending->conn;
+    free(pending);
+
+    ziti_conn_set_data(conn, f);
+    ziti_accept(conn, on_ziti_accept, NULL);
+}
+
+ziti_socket_t Ziti_accept(ziti_socket_t server) {
+    future_t *f = schedule_on_loop(do_ziti_accept, (void *) (uintptr_t) server, true);
+
+    ziti_socket_t clt = -1;
+    int err = await_future(f);
+    if (!err) {
+        clt = (ziti_socket_t) (uintptr_t) f->result;
+        if (!is_blocking(server)) {
+            char b;
+#if _WIN32
+            recv(server, &b, 1, 0);
+#else
+            read(server, &b, 1);
+#endif
+
+        }
+    }
+    set_error(err);
+    destroy_future(f);
+    return clt;
+}
+
+
 void Ziti_lib_shutdown(void) {
     future_t *f = schedule_on_loop(do_shutdown, NULL, true);
     uv_thread_join(&lib_thread);
     uv_key_delete(&err_key);
     destroy_future(f);
-#if _WIN32
-    closesocket(ziti_sock_server);
-    if (!DeleteFile(ziti_sock_name.sun_path)) {
-        fprintf(stderr, "failed to delete file: %lu\n", GetLastError());
-    }
-#endif
 }
 
 static void looper(void *arg) {
@@ -526,31 +821,6 @@ void process_on_loop(uv_async_t *async) {
 }
 
 static void internal_init() {
-#if _WIN32
-    WORD ver = MAKEWORD(2,2);
-    WSADATA data;
-    DWORD err;
-    err = WSAStartup(ver, &data);
-
-    ziti_sock_server = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (ziti_sock_server == INVALID_SOCKET) {
-        fprintf(stderr, "invalid socket: %d", WSAGetLastError());
-    }
-
-    ziti_sock_name.sun_family = AF_UNIX;
-    char temp[sizeof(ziti_sock_name.sun_path)];
-    GetTempPath(sizeof(temp), temp);
-    snprintf(ziti_sock_name.sun_path, sizeof(ziti_sock_name.sun_path), "%sziti-socket.%d", temp, uv_os_getpid());
-
-    err = bind(ziti_sock_server, (const struct sockaddr *) &ziti_sock_name, sizeof(ziti_sock_name));
-    if (err != 0) {
-        fprintf(stderr, "failed to bind: %ld %d", err, WSAGetLastError());
-    }
-    err = listen(ziti_sock_server, 10);
-    if (err != 0) {
-        fprintf(stderr, "failed to listen: %ld %d", err, WSAGetLastError());
-    }
-#endif
     uv_key_create(&err_key);
     uv_mutex_init(&q_mut);
     lib_loop = uv_loop_new();
