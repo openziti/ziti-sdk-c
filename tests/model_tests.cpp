@@ -678,6 +678,31 @@ DECLARE_MODEL(ListsObj, LISTS_MODEL)
 
 IMPL_MODEL(ListsObj, LISTS_MODEL)
 
+TEST_CASE("parse model_list", "[model]") {
+    const char *json = R"([
+    {
+      "color": "orange",
+      "count": 1
+    },
+    {
+      "color": "red",
+      "count": 2
+    }
+])";
+    model_list list = {0};
+    CHECK(parse_Fruit_list(&list, json, strlen(json)) == strlen(json));
+
+    auto it = model_list_iterator(&list);
+    auto fruit = (Fruit *) model_list_it_element(it);
+    CHECK(fruit->count == 1);
+    CHECK_THAT(fruit->color, Catch::Equals("orange"));
+    it = model_list_it_next(it);
+    fruit = (Fruit *) model_list_it_element(it);
+    CHECK(fruit->count == 2);
+    CHECK_THAT(fruit->color, Catch::Equals("red"));
+    CHECK(model_list_it_next(it) == nullptr);
+}
+
 TEST_CASE("lists model", "[model]") {
     const char *json = R"(
 {
