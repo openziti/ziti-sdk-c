@@ -1,18 +1,16 @@
-/*
-Copyright (c) 2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2020-2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 
 #ifndef ZITI_SDK_MODEL_SUPPORT_H
@@ -69,6 +67,7 @@ typedef intptr_t ssize_t;
 #define ptr(t)  t*
 #define array(t) t##_array
 #define map(t)  model_map
+#define list(t) model_list
 
 #define FIELD_DECL(name, type, mod, path, _) mod(type) name;
 
@@ -88,6 +87,7 @@ MODEL_API void free_##type##_array(array(type) *ap);\
 MODEL_API int parse_##type(ptr(type) v, const char* json, size_t len);\
 MODEL_API int parse_##type##_ptr(ptr(type) *p, const char* json, size_t len);\
 MODEL_API int parse_##type##_array(array(type) *a, const char* json, size_t len); \
+MODEL_API int parse_##type##_list(list(type) *l, const char* json, size_t len); \
 /** write to fixed buffer */                                 \
 MODEL_API ssize_t type##_to_json_r(const ptr(type) v, int flags, char *outbuf, size_t max); \
 MODEL_API char* type##_to_json(const ptr(type) v, int flags, size_t *len);
@@ -122,6 +122,7 @@ if (rc < 0) { free_##type(*p); free(*p); *p = NULL; } \
 return rc;\
 }\
 int parse_##type##_array(array(type) *a, const char *json, size_t len) { return model_parse_array((void***)a, json, len, &type##_META); }\
+int parse_##type##_list(list(type) *l, const char *json, size_t len) { return model_parse_list(l, json, len, &type##_META); }\
 ptr(type) alloc_##type() { return (ptr(type))calloc(1, sizeof(type)); } \
 int cmp_##type(const type *lh, const type *rh) { return model_cmp(lh, rh, &type##_META); }\
 void free_##type(ptr(type) v) { model_free(v, &type##_META); } \
@@ -144,7 +145,8 @@ enum _field_mod {
     none_mod,
     ptr_mod,
     array_mod,
-    map_mod
+    map_mod,
+    list_mod,
 };
 
 typedef struct field_meta {
@@ -186,6 +188,8 @@ ZITI_FUNC int model_cmp(const void *lh, const void *rh, type_meta *meta);
 ZITI_FUNC int model_parse(void *obj, const char *json, size_t len, type_meta *meta);
 
 ZITI_FUNC int model_parse_array(void ***arp, const char *json, size_t len, type_meta *meta);
+
+ZITI_FUNC int model_parse_list(model_list *list, const char *json, size_t len, type_meta *meta);
 
 ZITI_FUNC char *model_to_json(const void *obj, const type_meta *meta, int flags, size_t *len);
 
