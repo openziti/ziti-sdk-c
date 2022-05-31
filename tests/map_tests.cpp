@@ -1,18 +1,16 @@
-/*
-Copyright (c) 2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2020-2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "catch2/catch.hpp"
 
@@ -107,11 +105,56 @@ TEST_CASE("it remove last element", "[model]") {
     }
 
     auto it = model_map_iterator(&m);
-    while(it != nullptr) {
+    while (it != nullptr) {
         auto val = model_map_it_value(it);
         it = model_map_it_remove(it);
         free(val);
     }
 
     REQUIRE(m.impl == nullptr);
+}
+
+TEST_CASE("list tests", "[model]") {
+    model_list l = {nullptr};
+    void *msg;
+
+
+    CHECK(model_list_size(&l) == 0);
+    CHECK(model_list_iterator(&l) == nullptr);
+    CHECK(model_list_pop(&l) == nullptr);
+    MODEL_LIST_FOREACH(msg, l) {
+        FAIL_CHECK("should not make here");
+    }
+
+    auto msg1 = "this is message1";
+    auto msg2 = "this is message2";
+
+    model_list_append(&l, (void *) msg1);
+    CHECK(model_list_size(&l) == 1);
+    CHECK(model_list_head(&l) == msg1);
+    CHECK(model_list_it_element(model_list_iterator(&l)) == msg1);
+
+    model_list_append(&l, (void *) msg2);
+    CHECK(model_list_size(&l) == 2);
+    CHECK(model_list_head(&l) == msg1);
+    CHECK(model_list_it_element(model_list_iterator(&l)) == msg1);
+    CHECK(model_list_it_element(
+            model_list_it_next(
+                    model_list_iterator(&l))) == msg2);
+
+    MODEL_LIST_FOREACH(msg, l) {
+        printf("msg = %s\n", (const char *) msg);
+    }
+
+    auto it = model_list_iterator(&l);
+    it = model_list_it_remove(it);
+    CHECK(model_list_size(&l) == 1);
+    CHECK(model_list_head(&l) == msg2);
+    CHECK(model_list_it_element(it) == msg2);
+    CHECK(model_list_it_next(it) == nullptr);
+    CHECK(model_list_it_element(model_list_iterator(&l)) == msg2);
+
+    CHECK(model_list_it_remove(it) == nullptr);
+    CHECK(model_list_size(&l) == 0);
+    CHECK(l.impl == nullptr);
 }

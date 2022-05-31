@@ -1,18 +1,16 @@
-/*
-Copyright (c) 2022 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 
 #ifndef ZITI_SDK_MODEL_MAP_H
@@ -79,6 +77,35 @@ for (var(e,line) = model_map_iterator(map), k = model_map_it_key(var(e,line)), v
 #define MODEL_MAP_FOREACH(k, v, map) MODEL_MAP_FOREACH_l(k, v, map, __LINE__)
 
 #define MODEL_MAP_FOR(it, m) for(model_map_iter it = model_map_iterator(&(m)); (it) != NULL; (it) = model_map_it_next(it))
+
+typedef struct model_list_s {
+    struct model_list_impl_s *impl;
+} model_list;
+
+typedef void *model_list_iter;
+
+ZITI_FUNC size_t model_list_size(const model_list *l);
+
+ZITI_FUNC void model_list_append(model_list *l, void *el);
+
+ZITI_FUNC void *model_list_pop(model_list *l);
+
+ZITI_FUNC void *model_list_head(const model_list *l);
+
+ZITI_FUNC model_list_iter model_list_iterator(model_list *l);
+
+ZITI_FUNC model_list_iter model_list_it_next(model_list_iter it);
+
+ZITI_FUNC model_list_iter model_list_it_remove(model_list_iter it);
+
+ZITI_FUNC void *model_list_it_element(model_list_iter it);
+
+#define MODEL_LIST_FOR(it, m) for(model_list_iter it = model_list_iterator(&(m)); (it) != NULL; (it) = model_list_it_next(it))
+
+#define MODEL_LIST_FOREACH(el, list) for(model_list_iter it = model_list_iterator(&(list)); \
+(it) != NULL && (((el) = model_list_it_element(it)), true);                                 \
+(it) = model_list_it_next(it))
+
 
 #ifdef __cplusplus
 }
