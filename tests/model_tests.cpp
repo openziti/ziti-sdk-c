@@ -1,18 +1,16 @@
-/*
-Copyright (c) 2020 Netfoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2020-2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <cstring>
 #include "catch2/catch.hpp"
@@ -669,4 +667,105 @@ TEST_CASE("null to JSON", "[model]") {
     char *json = Foo_to_json(nullptr, 0, nullptr);
 
     CHECK(json == nullptr);
+}
+
+#define LISTS_MODEL(xx, ...) \
+xx(fruit, Fruit, list, fruit, __VA_ARGS__)\
+xx(errors, string, list, errors, __VA_ARGS__)\
+xx(codes, int, list, codes, __VA_ARGS__)
+
+DECLARE_MODEL(ListsObj, LISTS_MODEL)
+
+IMPL_MODEL(ListsObj, LISTS_MODEL)
+
+TEST_CASE("parse model_list", "[model]") {
+    const char *json = R"([
+    {
+      "color": "orange",
+      "count": 1
+    },
+    {
+      "color": "red",
+      "count": 2
+    }
+])";
+    model_list list = {0};
+    CHECK(parse_Fruit_list(&list, json, strlen(json)) == strlen(json));
+    CHECK(model_list_size(&list) == 2);
+
+    auto it = model_list_iterator(&list);
+    auto fruit = (Fruit *) model_list_it_element(it);
+    CHECK(fruit->count == 1);
+    CHECK_THAT(fruit->color, Catch::Equals("orange"));
+    it = model_list_it_next(it);
+    fruit = (Fruit *) model_list_it_element(it);
+    CHECK(fruit->count == 2);
+    CHECK_THAT(fruit->color, Catch::Equals("red"));
+    CHECK(model_list_it_next(it) == nullptr);
+
+    auto head = model_list_head(&list);
+    fruit = (Fruit *) model_list_pop(&list);
+    CHECK(head == fruit);
+    CHECK(fruit != model_list_head(&list));
+    CHECK(model_list_size(&list) == 1);
+
+    CHECK(fruit->count == 1);
+    CHECK_THAT(fruit->color, Catch::Equals("orange"));
+
+    free_Fruit_ptr(fruit);
+    model_list_clear(&list, (void (*)(void *)) (free_Fruit_ptr));
+}
+
+TEST_CASE("lists model", "[model]") {
+    const char *json = R"(
+{
+"errors": ["Not Authorized", "Conflict"],
+"codes": [401, 409, 413],
+"fruit": [
+    {
+      "color": "orange",
+      "count": 1
+    },
+    {
+      "color": "red",
+      "count": 2
+    }
+]
+})";
+
+    ListsObj lists;
+    CHECK(parse_ListsObj(&lists, json, strlen(json)) == strlen(json));
+    CHECK(model_list_size(&lists.codes) == 3);
+    CHECK(model_list_size(&lists.errors) == 2);
+    CHECK(model_list_size(&lists.fruit) == 2);
+
+
+    auto it = model_list_iterator(&lists.errors);
+    CHECK_THAT((const char *) model_list_it_element(it), Catch::Equals("Not Authorized"));
+    it = model_list_it_next(it);
+    CHECK_THAT((const char *) model_list_it_element(it), Catch::Equals("Conflict"));
+    CHECK(model_list_it_next(it) == nullptr);
+
+    it = model_list_iterator(&lists.codes);
+    CHECK((intptr_t) model_list_it_element(it) == 401);
+    it = model_list_it_next(it);
+    CHECK((intptr_t) model_list_it_element(it) == 409);
+    it = model_list_it_next(it);
+    CHECK((intptr_t) model_list_it_element(it) == 413);
+    CHECK(model_list_it_next(it) == nullptr);
+
+    it = model_list_iterator(&lists.fruit);
+    auto fruit = (Fruit *) model_list_it_element(it);
+    CHECK(fruit->count == 1);
+    CHECK_THAT(fruit->color, Catch::Equals("orange"));
+    it = model_list_it_next(it);
+    fruit = (Fruit *) model_list_it_element(it);
+    CHECK(fruit->count == 2);
+    CHECK_THAT(fruit->color, Catch::Equals("red"));
+    CHECK(model_list_it_next(it) == nullptr);
+
+    const char *json_out = ListsObj_to_json(&lists, 0, nullptr);
+    printf("%s\n", json_out);
+
+    free_ListsObj(&lists);
 }

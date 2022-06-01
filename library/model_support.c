@@ -1,18 +1,16 @@
-/*
-Copyright (c) 2020 Netfoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2020-2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -109,8 +107,37 @@ int model_cmp(const void *lh, const void *rh, type_meta *meta) {
             rf_ptr = rf_addr;
 
             rc = model_map_compare(lf_ptr, rf_ptr, ftm);
-        }
-        else if (fm->mod == array_mod) {
+        } else if (fm->mod == list_mod) {
+            model_list *ll = (model_list *) (lf_addr);
+            model_list *rl = (model_list *) (rf_addr);
+
+            model_list_iter lit = model_list_iterator(ll);
+            model_list_iter rit = model_list_iterator(rl);
+
+            if (lit == NULL) { rc = -1; }
+            else if (rit == NULL) { rc = 1; }
+            else {
+                for (int idx = 0; rc == 0; idx++) {
+                    lf_ptr = model_list_it_element(lit);
+                    rf_ptr = model_list_it_element(rit);
+                    if (rf_ptr == NULL && lf_ptr == NULL) { break; }
+
+                    if (ftm->comparer) {
+                        if (fm->meta() == get_string_meta() ||
+                            fm->meta() == get_json_meta() ||
+                            fm->meta() == get_int_meta() ||
+                            fm->meta() == get_bool_meta()) {
+                            rc = ftm->comparer(&lf_ptr, &rf_ptr);
+                        } else {
+                            rc = ftm->comparer(lf_ptr, rf_ptr);
+                        }
+                    } else {
+                        rc = model_cmp(lf_ptr, rf_ptr, ftm);
+                    }
+                }
+            }
+
+        } else if (fm->mod == array_mod) {
             void **larr = (void **) (*lf_addr);
             void **rarr = (void **) (*rf_addr);
 
@@ -130,8 +157,7 @@ int model_cmp(const void *lh, const void *rh, type_meta *meta) {
                         else {
                             rc = ftm->comparer(lf_ptr, rf_ptr);
                         }
-                    }
-                    else {
+                    } else {
                         rc = model_cmp(lf_ptr, rf_ptr, ftm);
                     }
                 }
@@ -140,6 +166,50 @@ int model_cmp(const void *lh, const void *rh, type_meta *meta) {
     }
 
     return rc;
+}
+
+int model_parse_list(model_list *list, const char *json, size_t len, type_meta *meta) {
+    jsmn_parser parser;
+    size_t ntoks;
+    int result = -1;
+    int children = 0;
+    jsmntok_t *tokens = parse_tokens(&parser, json, len, &ntoks);
+    if (tokens == NULL) {
+        result = ntoks;
+        goto done;
+    }
+
+    jsmntok_t *tok = tokens;
+    if (tok->type != JSMN_ARRAY) {
+        goto done;
+    }
+    result = tokens[0].end;
+    children = tok->size;
+    tok++;
+    for (int i = 0; i < children; i++) {
+        void *el = calloc(1, meta->size);
+        int rc = parse_obj(el, json, tok, meta);
+        if (rc < 0) {
+            result = rc;
+            goto done;
+        }
+        model_list_append(list, el);
+        tok += rc;
+    }
+    done:
+    if (result < 0) {
+        model_list_iter it = model_list_iterator(list);
+        while (it != NULL) {
+            void *el = model_list_it_element(it);
+            it = model_list_it_remove(it);
+            if (el != NULL) {
+                model_free(el, meta);
+                FREE(el);
+            }
+        }
+    }
+    FREE(tokens);
+    return result;
 }
 
 int model_parse_array(void ***arrp, const char *json, size_t len, type_meta *meta) {
@@ -305,16 +375,38 @@ int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf
                 BUF_APPEND_S(buf, "\":");
                 if (ftm->jsonifier) {
                     CHECK_APPEND(ftm->jsonifier(v, buf, indent + 1, flags));
-                }
-                else {
+                } else {
                     CHECK_APPEND(write_model_to_buf(v, ftm, buf, indent + 1, flags));
                 }
                 need_comma = true;
             }
             BUF_APPEND_B(buf, '}');
             indent--;
-        }
-        else if (fm->mod == array_mod) {
+        } else if (fm->mod == list_mod) {
+            model_list *list = (model_list *) (f_addr);
+
+            int idx = 0;
+            BUF_APPEND_B(buf, '[');
+            void *el;
+            MODEL_LIST_FOREACH(f_ptr, *list) {
+                if (f_ptr == NULL) { break; }
+                if (idx++ > 0) {
+                    BUF_APPEND_B(buf, ',');
+                }
+
+                size_t ellen;
+                if (ftm->jsonifier) {
+                    if (ftm == get_int_meta() || ftm == get_bool_meta()) {
+                        CHECK_APPEND(ftm->jsonifier(&f_ptr, buf, indent + 1, flags));
+                    } else {
+                        CHECK_APPEND(ftm->jsonifier(f_ptr, buf, indent + 1, flags));
+                    }
+                } else {
+                    CHECK_APPEND(write_model_to_buf(f_ptr, ftm, buf, indent + 1, flags));
+                }
+            }
+            BUF_APPEND_B(buf, ']');
+        } else if (fm->mod == array_mod) {
             void **arr = (void **) (*f_addr);
 
             int idx = 0;
@@ -389,8 +481,7 @@ void model_free(void *obj, type_meta *meta) {
                     f_ptr = arr + idx;
                     if (fm->meta() == get_string_meta()) {
                         model_free(f_ptr, fm->meta());
-                    }
-                    else {
+                    } else {
                         void *mem_ptr = (void *) (*(void **) f_ptr);
                         model_free(mem_ptr, fm->meta());
                         free(mem_ptr);
@@ -398,8 +489,20 @@ void model_free(void *obj, type_meta *meta) {
                 }
                 free(arr);
             }
-        }
-        else if (fm->mod == map_mod) {
+        } else if (fm->mod == list_mod) {
+            model_list *list = (model_list *) f_addr;
+            model_list_iter it = model_list_iterator(list);
+            bool str_type = (fm->meta() == get_string_meta() || fm->meta() == get_json_meta());
+            while (it != NULL) {
+                void *el = model_list_it_element(it);
+                it = model_list_it_remove(it);
+                if (fm->meta()->destroyer) {
+                    fm->meta()->destroyer(str_type ? &el : el);
+                } else {
+                    model_free(el, fm->meta());
+                }
+            }
+        } else if (fm->mod == map_mod) {
             model_map *map = (model_map *) f_addr;
             _free_f ff = NULL;
             model_map_iter it = model_map_iterator(map);
@@ -408,8 +511,7 @@ void model_free(void *obj, type_meta *meta) {
                 void *v = model_map_it_value(it);
                 if (fm->meta() == get_string_meta() || fm->meta() == get_json_meta()) {
                     fm->meta()->destroyer(&v);
-                }
-                else if (fm->meta()->destroyer) {
+                } else if (fm->meta()->destroyer) {
                     fm->meta()->destroyer(v);
                 }
                 else {
@@ -422,8 +524,7 @@ void model_free(void *obj, type_meta *meta) {
 
             if (fm->meta() == get_string_meta()) {
                 ff = free;
-            }
-            else {
+            } else {
                 ff = fm->meta()->destroyer;
             }
             model_map_clear(map, ff);
@@ -432,7 +533,7 @@ void model_free(void *obj, type_meta *meta) {
 }
 
 static int parse_array(void **arr, const char *json, jsmntok_t *tok, type_meta *el_meta) {
-    if(tok-> type == JSMN_PRIMITIVE && json[tok->start] == 'n'){ //null check
+    if (tok->type == JSMN_PRIMITIVE && json[tok->start] == 'n') { //null check
         *arr = NULL;
         return 1;
     }
@@ -453,19 +554,56 @@ static int parse_array(void **arr, const char *json, jsmntok_t *tok, type_meta *
         if (el_meta != get_string_meta()) {
             el = calloc(1, el_meta->size);
             elems[idx] = el;
-        }
-        else {
+        } else {
             el = &elems[idx];
         }
         if (el_meta->parser != NULL) {
             rc = el_meta->parser(el, json, tok);
-        }
-        else {
+        } else {
             rc = parse_obj(el, json, tok, el_meta);
         }
         if (rc < 0) {
             return rc;
         }
+        tok += rc;
+        processed += rc;
+    }
+    return processed;
+}
+
+static int parse_list(void *field, const char *json, jsmntok_t *tok, type_meta *el_meta) {
+    if (tok->type == JSMN_PRIMITIVE && json[tok->start] == 'n') { //null check
+        return 1;
+    }
+
+    if (tok->type != JSMN_ARRAY) {
+        ZITI_LOG(ERROR, "unexpected token, array as expected");
+        return -1;
+    }
+    int children = tok->size;
+    model_list *list = field;
+    int idx;
+    int rc = 0;
+    int processed = 1;
+    tok++;
+    for (idx = 0; idx < children; idx++) {
+        void *el;
+        void *value = NULL;
+        if (el_meta == get_string_meta() ||
+            el_meta == get_json_meta() ||
+            el_meta == get_int_meta() ||
+            el_meta == get_bool_meta()) {
+            rc = el_meta->parser(&value, json, tok);
+        } else {
+            value = calloc(1, el_meta->size);
+            rc = el_meta->parser ?
+                 el_meta->parser(value, json, tok) :
+                 parse_obj(value, json, tok, el_meta);
+        }
+        if (rc < 0) {
+            return rc;
+        }
+        model_list_append(list, value);
         tok += rc;
         processed += rc;
     }
@@ -556,8 +694,9 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
                 rc = parse_array(field, json, tok, fm->meta());
             } else if (fm->mod == map_mod) {
                 rc = parse_map(field, json, tok, fm->meta());
-            }
-            else {
+            } else if (fm->mod == list_mod) {
+                rc = parse_list(field, json, tok, fm->meta());
+            } else {
                 char *memobj = NULL;
                 if (fm->mod == none_mod) {
                     memobj = (char *) (field);

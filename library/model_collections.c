@@ -1,20 +1,18 @@
-/*
-Copyright (c) 2022 NetFoundry, Inc.
+// Copyright (c) 2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-#include <ziti/model_map.h>
+#include <ziti/model_collections.h>
 
 #include <stddef.h>
 #include <stdint.h>
@@ -267,4 +265,102 @@ model_map_iter model_map_it_remove(model_map_iter it) {
         }
     }
     return next;
+}
+
+struct model_list_el {
+    void *el;
+    model_list *l;
+    LIST_ENTRY(model_list_el) _next;
+};
+
+struct model_list_impl_s {
+    size_t size;
+    LIST_HEAD(, model_list_el) elements;
+    struct model_list_el end;
+};
+
+size_t model_list_size(const model_list *l) {
+    return l->impl ? l->impl->size : 0;
+}
+
+void *model_list_pop(model_list *l) {
+    model_list_iter it = model_list_iterator(l);
+    void *el = model_list_it_element(it);
+    model_list_it_remove(it);
+
+    return el;
+}
+
+void model_list_append(model_list *l, void *el) {
+    if (l->impl == NULL) {
+        l->impl = calloc(1, sizeof(*l->impl));
+        LIST_INSERT_HEAD(&l->impl->elements, &l->impl->end, _next);
+    }
+
+    l->impl->size++;
+    struct model_list_el *entry = calloc(1, sizeof(struct model_list_el));
+    entry->el = el;
+    entry->l = l;
+    LIST_INSERT_BEFORE(&l->impl->end, entry, _next);
+}
+
+void *model_list_head(const model_list *l) {
+    if (l->impl == NULL) { return NULL; }
+
+    struct model_list_el *el = LIST_FIRST(&l->impl->elements);
+    if (el == &l->impl->end) { return NULL; }
+
+    return el->el;
+}
+
+void model_list_clear(model_list *list, void (*clear_f)(void *)) {
+    if (list == NULL) { return; }
+    while (model_list_size(list) > 0) {
+        void *el = model_list_pop(list);
+        if (clear_f) {
+            clear_f(el);
+        }
+    }
+}
+
+model_list_iter model_list_iterator(model_list *l) {
+    if (l == NULL || l->impl == NULL) { return NULL; }
+
+    struct model_list_el *el = LIST_FIRST(&l->impl->elements);
+    if (el == &l->impl->end) { return NULL; }
+
+    return el;
+}
+
+model_list_iter model_list_it_next(model_list_iter it) {
+    if (it == NULL) { return NULL; }
+
+    struct model_list_el *entry = it;
+    struct model_list_el *next = LIST_NEXT(entry, _next);
+    if (next == &entry->l->impl->end) { return NULL; }
+
+    return next;
+}
+
+model_list_iter model_list_it_remove(model_list_iter it) {
+    if (it == NULL) { return NULL; }
+    struct model_list_el *entry = it;
+    model_list *list = entry->l;
+
+    model_list_iter next = model_list_it_next(it);
+    list->impl->size--;
+    LIST_REMOVE(entry, _next);
+    free(entry);
+
+    if (list->impl->size == 0) {
+        free(list->impl);
+        list->impl = NULL;
+    }
+    return next;
+}
+
+void *model_list_it_element(model_list_iter it) {
+    if (it == NULL) { return NULL; }
+
+    return ((struct model_list_el *) it)->el;
 }
