@@ -7,7 +7,7 @@ add_executable(all_tests
         model_tests.cpp
         test_metrics.cpp
         enum_tests.cpp
-        map_tests.cpp
+        collections_tests.cpp
         buffer_tests.cpp
         pool_tests.cpp
         )

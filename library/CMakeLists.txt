@@ -7,7 +7,7 @@ set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_events.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_buffer.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/zitilib.h
-        ${PROJECT_SOURCE_DIR}/includes/ziti/model_map.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/model_collections.h
         )
 
 SET(ZITI_SRC_FILES
@@ -31,7 +31,7 @@ SET(ZITI_SRC_FILES
         conn_bridge.c
         zitilib.c
         pool.c
-        model_map.c
+        model_collections.c
         authenticators.c
         )
 

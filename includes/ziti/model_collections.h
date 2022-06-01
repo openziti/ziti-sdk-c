@@ -13,8 +13,8 @@
 // limitations under the License.
 
 
-#ifndef ZITI_SDK_MODEL_MAP_H
-#define ZITI_SDK_MODEL_MAP_H
+#ifndef ZITI_SDK_MODEL_COLLECTIONS_H
+#define ZITI_SDK_MODEL_COLLECTIONS_H
 
 #include "externs.h"
 
@@ -111,4 +111,4 @@ ZITI_FUNC void *model_list_it_element(model_list_iter it);
 }
 #endif
 
-#endif //ZITI_SDK_MODEL_MAP_H
+#endif //ZITI_SDK_MODEL_COLLECTIONS_H

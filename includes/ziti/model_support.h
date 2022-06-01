@@ -25,7 +25,7 @@
 #include <string.h>
 
 #include "externs.h"
-#include "model_map.h"
+#include "model_collections.h"
 
 #if !defined(__DEFINED_ssize_t) && !defined(__ssize_t_defined)
 #if _WIN32

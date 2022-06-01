@@ -14,7 +14,7 @@
 
 #include "catch2/catch.hpp"
 
-#include <ziti/model_map.h>
+#include <ziti/model_collections.h>
 #include <string.h>
 
 

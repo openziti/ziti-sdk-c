@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <ziti/model_map.h>
+#include <ziti/model_collections.h>
 
 #include <stddef.h>
 #include <stdint.h>
