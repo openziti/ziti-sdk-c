@@ -81,7 +81,8 @@ DECLARE_MODEL_FUNCS(type)
 typedef type ** type##_array; \
 MODEL_API type_meta* get_##type##_meta();\
 MODEL_API ptr(type) alloc_##type();\
-MODEL_API void free_##type(type *v); \
+MODEL_API void free_##type(type *v);     \
+MODEL_API void free_##type##_ptr(type *v); \
 MODEL_API int cmp_##type(const type *lh, const type *rh); \
 MODEL_API void free_##type##_array(array(type) *ap);\
 MODEL_API int parse_##type(ptr(type) v, const char* json, size_t len);\
@@ -125,7 +126,8 @@ int parse_##type##_array(array(type) *a, const char *json, size_t len) { return 
 int parse_##type##_list(list(type) *l, const char *json, size_t len) { return model_parse_list(l, json, len, &type##_META); }\
 ptr(type) alloc_##type() { return (ptr(type))calloc(1, sizeof(type)); } \
 int cmp_##type(const type *lh, const type *rh) { return model_cmp(lh, rh, &type##_META); }\
-void free_##type(ptr(type) v) { model_free(v, &type##_META); } \
+void free_##type(ptr(type) v) { model_free(v, &type##_META); }                                                  \
+void free_##type##_ptr(ptr(type) v) { free_##type(v); free(v); }                                                \
 void free_##type##_array(array(type) *ap) { model_free_array((void***)ap, &type##_META); }                      \
 MODEL_API ssize_t type##_to_json_r(const ptr(type) v, int flags, char *outbuf, size_t max) {                    \
 return model_to_json_r(v, &type##_META, flags, outbuf, max); } \

@@ -92,6 +92,8 @@ ZITI_FUNC void *model_list_pop(model_list *l);
 
 ZITI_FUNC void *model_list_head(const model_list *l);
 
+ZITI_FUNC void model_list_clear(model_list *l, void (*clear_f)(void *));
+
 ZITI_FUNC model_list_iter model_list_iterator(model_list *l);
 
 ZITI_FUNC model_list_iter model_list_it_next(model_list_iter it);

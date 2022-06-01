@@ -313,6 +313,16 @@ void *model_list_head(const model_list *l) {
     return el->el;
 }
 
+void model_list_clear(model_list *list, void (*clear_f)(void *)) {
+    if (list == NULL) { return; }
+    while (model_list_size(list) > 0) {
+        void *el = model_list_pop(list);
+        if (clear_f) {
+            clear_f(el);
+        }
+    }
+}
+
 model_list_iter model_list_iterator(model_list *l) {
     if (l == NULL || l->impl == NULL) { return NULL; }
 

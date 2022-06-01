@@ -691,6 +691,7 @@ TEST_CASE("parse model_list", "[model]") {
 ])";
     model_list list = {0};
     CHECK(parse_Fruit_list(&list, json, strlen(json)) == strlen(json));
+    CHECK(model_list_size(&list) == 2);
 
     auto it = model_list_iterator(&list);
     auto fruit = (Fruit *) model_list_it_element(it);
@@ -701,6 +702,18 @@ TEST_CASE("parse model_list", "[model]") {
     CHECK(fruit->count == 2);
     CHECK_THAT(fruit->color, Catch::Equals("red"));
     CHECK(model_list_it_next(it) == nullptr);
+
+    auto head = model_list_head(&list);
+    fruit = (Fruit *) model_list_pop(&list);
+    CHECK(head == fruit);
+    CHECK(fruit != model_list_head(&list));
+    CHECK(model_list_size(&list) == 1);
+
+    CHECK(fruit->count == 1);
+    CHECK_THAT(fruit->color, Catch::Equals("orange"));
+
+    free_Fruit_ptr(fruit);
+    model_list_clear(&list, (void (*)(void *)) (free_Fruit_ptr));
 }
 
 TEST_CASE("lists model", "[model]") {
