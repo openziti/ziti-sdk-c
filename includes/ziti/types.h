@@ -25,10 +25,16 @@
 extern "C" {
 #endif
 
+/** Nanosecond precision time duration, like Golang's time.Duration */
 typedef int64_t duration;
 
-ZITI_FUNC int parse_duration(duration *val, const char* str, size_t len);
+#define DURATION_MILLISECONDS(d) ((d)/MILLISECOND)
 
+#define MICROSECOND ((int64_t)1000)
+#define MILLISECOND (1000 * MICROSECOND)
+#define SECOND (1000 * MILLISECOND)
+#define MINUTE (60 * SECOND)
+#define HOUR (60 * MINUTE)
 
 #ifdef __cplusplus
 }

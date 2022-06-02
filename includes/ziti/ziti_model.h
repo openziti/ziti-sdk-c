@@ -135,6 +135,15 @@ XX(is_verified, bool, none, isVerified, __VA_ARGS__) \
 XX(recovery_codes, string, array, recoveryCodes, __VA_ARGS__) \
 XX(provisioning_url, string, none, provisioningUrl, __VA_ARGS__)
 
+#define ZITI_LISTEN_OPTS_MODEL(XX, ...) \
+XX(bind_with_identity, bool, none, bindUsingEdgeIdentity, __VA_ARGS__) \
+XX(connect_timeout, duration, none, connectTimeout, __VA_ARGS__) \
+XX(cost, int, none, cost, __VA_ARGS__) \
+XX(identity, string, none, identity, __VA_ARGS__) \
+XX(max_connections, int, none, maxConnections, __VA_ARGS__)\
+XX(precendence, string, none, precendence, __VA_ARGS__)
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -202,6 +211,8 @@ DECLARE_MODEL(ziti_client_cfg_v1, ZITI_CLIENT_CFG_V1_MODEL)
 DECLARE_MODEL(ziti_port_range, ZITI_PORT_RANGE_MODEL)
 
 DECLARE_MODEL(ziti_intercept_cfg_v1, ZITI_INTERCEPT_CFG_V1_MODEL)
+
+DECLARE_MODEL(ziti_listen_options, ZITI_LISTEN_OPTS_MODEL)
 
 DECLARE_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
 

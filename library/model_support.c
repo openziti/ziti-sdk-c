@@ -1223,6 +1223,7 @@ static void _free_map(model_map *m) {
 }
 
 static type_meta bool_META = {
+        .name = "bool",
         .size = sizeof(bool),
         .comparer = (_cmp_f) _cmp_bool,
         .parser = (_parse_f) (_parse_bool),
@@ -1231,6 +1232,7 @@ static type_meta bool_META = {
 };
 
 static type_meta int_META = {
+        .name = "int",
         .size = sizeof(int),
         .comparer = (_cmp_f) _cmp_int,
         .parser = (_parse_f) _parse_int,
@@ -1239,6 +1241,7 @@ static type_meta int_META = {
 };
 
 static type_meta string_META = {
+        .name = "string",
         .size = sizeof(char *),
         .comparer = (_cmp_f) _cmp_string,
         .parser = (_parse_f) _parse_string,
@@ -1247,6 +1250,7 @@ static type_meta string_META = {
 };
 
 static type_meta timestamp_META = {
+        .name = "timestamp",
         .size = sizeof(struct timeval),
         .comparer = (_cmp_f) _cmp_timeval,
         .parser = (_parse_f) _parse_timeval,
@@ -1255,6 +1259,7 @@ static type_meta timestamp_META = {
 };
 
 static type_meta json_META = {
+        .name = "json",
         .size = sizeof(char *),
         .comparer = (_cmp_f) _cmp_string,
         .parser = (_parse_f) _parse_json,
@@ -1263,6 +1268,7 @@ static type_meta json_META = {
 };
 
 static type_meta map_META = {
+        .name = "map",
         .size = sizeof(model_map),
         .comparer = (_cmp_f) _cmp_map,
         .parser = (_parse_f) _parse_map,
@@ -1271,12 +1277,12 @@ static type_meta map_META = {
 };
 
 static type_meta tag_META = {
+        .name = "tag",
         .size = sizeof(tag),
         .comparer = (_cmp_f) _cmp_tag,
         .parser = (_parse_f) _parse_tag,
         .jsonifier = (_to_json_f) tag_to_json,
         .destroyer = (_free_f) _free_tag,
-
 };
 
 type_meta *get_bool_meta() { return &bool_META; }
@@ -1292,3 +1298,54 @@ type_meta *get_json_meta() { return &json_META; }
 type_meta *get_model_map_meta() { return &map_META; }
 
 type_meta *get_tag_meta() { return &tag_META; }
+
+static int cmp_duration (const duration *lh, const duration *rh) {
+    null_checks(lh, rh)
+    duration diff = *lh - *rh;
+    return diff < 0 ? -1 : (diff > 0 ? 1 : 0);
+}
+
+static int parse_duration(duration *val, const char *json, jsmntok_t *tok) {
+    char *str;
+    if (tok->type != JSMN_STRING) return -1;
+    const char *start = json + tok->start;
+    const char *end = json + tok->end;
+    char *endp;
+    duration v = (duration) strtol(start, &endp, 10);
+    size_t tu_len = end - endp;
+    if (tu_len == 1) { // single char timeunit: s,m,h
+        switch (*endp) {
+            case 's': v *= SECOND; break;
+            case 'm': v *= MINUTE; break;
+            case 'h': v *= HOUR; break;
+            default: return -1;
+        }
+    } else if (tu_len == 2) {
+        if (strncmp(endp, "ms", 2) == 0) {
+            v *= MILLISECOND;
+        } else {
+            return -1;
+        }
+    } else {
+        return -1;
+    }
+
+    *val = v;
+    return 1;
+}
+
+static int duration_to_json(duration *d, string_buf_t *buf, int indent, int flags) {
+    char json[32];
+    int rc = snprintf(json, sizeof(json), "\"%lldms\"", (long long)DURATION_MILLISECONDS(*d));
+    return string_buf_append(buf, json);
+}
+type_meta *get_duration_meta() {
+    static type_meta _meta = {
+            .name = "duration",
+            .comparer = (_cmp_f) cmp_duration,
+            .parser = (_parse_f) parse_duration,
+            .jsonifier = (_to_json_f) duration_to_json,
+            .destroyer = _free_noop,
+    };
+    return &_meta;
+}

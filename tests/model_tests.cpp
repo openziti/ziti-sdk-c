@@ -769,3 +769,32 @@ TEST_CASE("lists model", "[model]") {
 
     free_ListsObj(&lists);
 }
+
+#define DURATION_MODEL(XX, ...) \
+XX(timeout, duration, none, timeout, __VA_ARGS__)
+DECLARE_MODEL(Duration, DURATION_MODEL)
+IMPL_MODEL(Duration, DURATION_MODEL)
+
+TEST_CASE("parse duration", "[model]") {
+    using std::make_tuple;
+    std::string test_input;
+    duration expected_output = 3 * SECOND;
+    std::tie( test_input, expected_output ) =
+            GENERATE( table<std::string, duration>(
+                    {
+                        make_tuple(R"({"timeout": "3s"})", (duration)(3 * SECOND)),
+                        make_tuple(R"({"timeout": "3m"})", (duration)(3 * MINUTE)),
+                        make_tuple(R"({"timeout": "3h"})", 3 * HOUR),
+                        make_tuple(R"({"timeout": "3ms"})", 3 * MILLISECOND)
+                    })
+            );
+
+
+    Duration d = {0};
+    // run the test
+    CHECK(parse_Duration(&d, test_input.c_str(), test_input.length()) == test_input.length());
+        // capture the input data to go with the outputs.
+    CAPTURE(test_input);
+        // check it matches the pre-calculated data
+    REQUIRE(d.timeout == expected_output);
+}
