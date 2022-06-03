@@ -50,6 +50,8 @@ IMPL_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
 
 IMPL_MODEL(ziti_host_cfg_v1, ZITI_HOST_CFG_V1_MODEL)
 
+IMPL_MODEL(ziti_host_cfg_v2, ZITI_HOST_CFG_V2_MODEL)
+
 IMPL_MODEL(ziti_id_cfg, ZITI_ID_CFG_MODEL)
 
 IMPL_MODEL(ziti_config, ZITI_CONFIG_MODEL)

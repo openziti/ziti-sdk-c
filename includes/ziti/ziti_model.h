@@ -128,7 +128,10 @@ XX(port, int, none, port, __VA_ARGS__) \
 XX(forward_port, bool, none, forwardPort, __VA_ARGS__) \
 XX(allowed_port_ranges, ziti_port_range, array, allowedPortRanges, __VA_ARGS__) \
 XX(allowed_source_addresses, ziti_address, array, allowedSourceAddresses, __VA_ARGS__) \
-XX(listen_options, tag, map, listenOptions, __VA_ARGS__)
+XX(listen_options, ziti_listen_options, ptr, listenOptions, __VA_ARGS__)
+
+#define ZITI_HOST_CFG_V2_MODEL(XX, ...) \
+XX(terminators, ziti_host_cfg_v1, list, terminators, __VA_ARGS__)
 
 #define ZITI_MFA_ENROLLMENT_MODEL(XX, ...) \
 XX(is_verified, bool, none, isVerified, __VA_ARGS__) \
@@ -137,7 +140,8 @@ XX(provisioning_url, string, none, provisioningUrl, __VA_ARGS__)
 
 #define ZITI_LISTEN_OPTS_MODEL(XX, ...) \
 XX(bind_with_identity, bool, none, bindUsingEdgeIdentity, __VA_ARGS__) \
-XX(connect_timeout, duration, none, connectTimeout, __VA_ARGS__) \
+XX(connect_timeout, duration, none, connectTimeout, __VA_ARGS__)       \
+XX(connect_timeout_seconds, int, none, connectTimeoutSeconds, __VA_ARGS__) \
 XX(cost, int, none, cost, __VA_ARGS__) \
 XX(identity, string, none, identity, __VA_ARGS__) \
 XX(max_connections, int, none, maxConnections, __VA_ARGS__)\
@@ -217,6 +221,8 @@ DECLARE_MODEL(ziti_listen_options, ZITI_LISTEN_OPTS_MODEL)
 DECLARE_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
 
 DECLARE_MODEL(ziti_host_cfg_v1, ZITI_HOST_CFG_V1_MODEL)
+
+DECLARE_MODEL(ziti_host_cfg_v2, ZITI_HOST_CFG_V2_MODEL)
 
 DECLARE_MODEL(ziti_auth_query_mfa, ZITI_AUTH_QUERY_MFA_MODEL)
 
