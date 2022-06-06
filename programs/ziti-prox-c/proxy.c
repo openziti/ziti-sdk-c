@@ -272,17 +272,6 @@ static void update_listener(ziti_service *service, int status, struct listener *
         TRY(uv, uv_tcp_bind(&l->server, (const struct sockaddr *) addr, 0));
         TRY(uv, uv_listen((uv_stream_t *) &l->server, 5, on_client));
         free(addr);
-
-        // this is for illustration purposes only
-        ziti_client_cfg_v1 intercept;
-        int rc = ziti_service_get_config(service, "ziti-tunneler-client.v1", &intercept,
-                                         (int (*)(void *, const char *, size_t)) parse_ziti_client_cfg_v1);
-        if (rc < 0) {
-            ZITI_LOG(ERROR, "failed to parse client intercept");
-        } else {
-            ZITI_LOG(INFO, "should intercepting %s:%d", intercept.hostname, intercept.port);
-            free_ziti_client_cfg_v1(&intercept);
-        }
     } else {
         if (uv_is_active((const uv_handle_t *) &l->server)) {
             ZITI_LOG(WARN, "service %s is not available. stopping listener[%d]", l->service_name, l->port);
