@@ -698,8 +698,6 @@ static void reconnect_cb(uv_timer_t *t) {
 
         ch->state = Connecting;
 
-        uv_mbed_free(&ch->connection);
-        uv_mbed_init(ch->loop, &ch->connection, ch->connection.tls);
         ch->connection.data = ch;
         CH_LOG(DEBUG, "connecting to %s:%d", ch->host, ch->port);
         int rc = uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
