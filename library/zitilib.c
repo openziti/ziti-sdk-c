@@ -639,6 +639,7 @@ static void on_ziti_client(ziti_connection server, ziti_connection client, int s
         ziti_conn_set_data(client, pending);
         // this should not happen but check anyway
         if (ziti_accept(client, on_ziti_accept, NULL) != ZITI_OK) {
+            ZITI_LOG(WARN, "ziti_accept() failed unexpectedly");
             ziti_close(client, NULL);
             free(pending->caller_id);
             free(pending);
