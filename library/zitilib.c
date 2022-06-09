@@ -151,6 +151,7 @@ typedef struct ziti_sock_s {
     ziti_context ztx;
     ziti_connection conn;
 
+    char *service;
     bool server;
     int pending;
     int max_pending;
@@ -406,13 +407,14 @@ static void on_bridge_close(void *ctx) {
 #else
     close(zs->ziti_fd);
 #endif
+    free(zs->service);
     free(zs);
 }
 
 static void on_ziti_connect(ziti_connection conn, int status) {
     ziti_sock_t *zs = ziti_conn_data(conn);
     if (status == ZITI_OK) {
-        ZITI_LOG(INFO, "bridge connected to ziti service");
+        ZITI_LOG(DEBUG, "bridge connected to ziti service[%s]", zs->service);
         ziti_conn_bridge_fds(conn, (uv_os_fd_t) zs->ziti_fd, (uv_os_fd_t) zs->ziti_fd, on_bridge_close, zs);
         complete_future(zs->f, conn);
     } else {
@@ -494,6 +496,7 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
 
         const char *proto_str = proto == SOCK_DGRAM ? "udp" : "tcp";
         if (req->ztx != NULL) {
+            zs->service = strdup(req->service);
             ziti_conn_init(req->ztx, &zs->conn, zs);
             char app_data[1024];
             size_t len = snprintf(app_data, sizeof(app_data),
@@ -616,7 +619,7 @@ static void on_ziti_accept(ziti_connection client, int status) {
 
 static void on_ziti_client(ziti_connection server, ziti_connection client, int status, ziti_client_ctx *clt_ctx) {
     ziti_sock_t *server_sock = ziti_conn_data(server);
-    ZITI_LOG(INFO, "incoming client = %s", clt_ctx->caller_id);
+    ZITI_LOG(DEBUG, "incoming client[%s] for service[%s]", clt_ctx->caller_id, server_sock->service);
 
     if (status != ZITI_OK) {
         on_bridge_close(server_sock);
@@ -656,7 +659,7 @@ static void on_ziti_client(ziti_connection server, ziti_connection client, int s
         write(server_sock->ziti_fd, &notify, sizeof(notify));
 #endif
     } else {
-        ZITI_LOG(WARN, "accept backlog is full, client[%s] rejected", clt_ctx->caller_id);
+        ZITI_LOG(DEBUG, "accept backlog is full, client[%s] rejected", clt_ctx->caller_id);
         ziti_close(client, NULL);
     }
 }
@@ -683,7 +686,8 @@ static void do_ziti_bind(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
         fail_future(f, EALREADY);
     } else {
         if (req->ztx != NULL) {
-            ZITI_LOG(INFO, "requesting bind fd[%d] to service[%s]", zs->fd, req->service);
+            ZITI_LOG(DEBUG, "requesting bind fd[%d] to service[%s]", zs->fd, req->service);
+            zs->service = strdup(req->service);
             ziti_conn_init(req->ztx, &zs->conn, zs);
             ziti_listen(zs->conn, req->service, on_ziti_bind, on_ziti_client);
             zs->f = f;
@@ -772,6 +776,7 @@ static void do_ziti_accept(void *r, future_t *f, uv_loop_t *l) {
 
     while (!TAILQ_EMPTY(&zs->backlog)) {
         struct backlog_entry_s *pending = TAILQ_FIRST(&zs->backlog);
+        ZITI_LOG(DEBUG, "pending connection[%s] for service[%s]", pending->caller_id, zs->service);
         TAILQ_REMOVE(&zs->backlog, pending, _next);
 
         ziti_connection conn = pending->conn;
@@ -783,7 +788,7 @@ static void do_ziti_accept(void *r, future_t *f, uv_loop_t *l) {
             break;
         }
 
-        ZITI_LOG(WARN, "failed to accept: client gone? [%d/%s]", rc, ziti_errorstr(rc));
+        ZITI_LOG(DEBUG, "failed to accept: client gone? [%d/%s]", rc, ziti_errorstr(rc));
         ziti_close(conn, NULL);
         free(pending->caller_id);
         free(pending);
@@ -804,6 +809,7 @@ ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
         free(si->peer);
         free(si);
         char b;
+        fprintf(stderr, "\n>>>> reading notify <<<<\n");
 #if _WIN32
         recv(server, &b, 1, 0);
 #else
