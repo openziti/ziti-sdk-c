@@ -8,6 +8,7 @@ set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_buffer.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/zitilib.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/model_collections.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/types.h
         )
 
 SET(ZITI_SRC_FILES

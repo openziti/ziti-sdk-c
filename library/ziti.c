@@ -995,6 +995,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
             ZTX_LOG(VERBOSE, "api session partially authenticated, waiting for api session state change");
             return;
         } else {
+            FREE(ztx->last_update);
             update_ctrl_status(ztx, ZITI_CONTROLLER_UNAVAILABLE, error->message);
         }
         return;

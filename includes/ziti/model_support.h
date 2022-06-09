@@ -26,6 +26,7 @@
 
 #include "externs.h"
 #include "model_collections.h"
+#include "types.h"
 
 #if !defined(__DEFINED_ssize_t) && !defined(__ssize_t_defined)
 #if _WIN32
@@ -208,6 +209,8 @@ ZITI_FUNC extern type_meta *get_timestamp_meta();
 ZITI_FUNC extern type_meta *get_json_meta();
 
 ZITI_FUNC extern type_meta *get_model_map_meta();
+
+ZITI_FUNC extern type_meta *get_duration_meta();
 
 typedef struct timeval timestamp;
 
