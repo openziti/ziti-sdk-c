@@ -39,7 +39,7 @@
 // - clients are processed on at a time, client queue is managed by Ziti server socket implementation.
 
 // set this to 1 to verify that Ziti server socket works in non-blocking mode
-#define NON_BLOCKING_SERVER 0
+#define NON_BLOCKING_SERVER 1
 
 #define CHECK(desc, op) do{ \
 int rc = (op);                      \
@@ -51,7 +51,7 @@ goto DONE;\
 }                      \
 } while(0)
 
-static ziti_socket_t non_blocking_accept(ziti_socket_t srv) {
+static ziti_socket_t non_blocking_accept(ziti_socket_t srv, char *caller, int caller_len) {
 #if _WIN32
     u_long opt = 1;
     ioctlsocket(srv, FIONBIO, &opt);
@@ -81,9 +81,9 @@ static ziti_socket_t non_blocking_accept(ziti_socket_t srv) {
         fprintf(stderr, "select failure");
         return -1;
     }
-
     // srv socket is readable, accept should succeed
-    return Ziti_accept(srv);
+    ziti_socket_t clt = Ziti_accept(srv, caller, caller_len);
+    return clt;
 }
 
 int main(int argc, char *argv[]) {
@@ -103,13 +103,14 @@ int main(int argc, char *argv[]) {
     char readbuf[8 * 1024];
 
     do {
+        char caller[128];
 #if NON_BLOCKING_SERVER
-        CHECK("non blocking accept", (clt = non_blocking_accept(srv)) < 0);
+        CHECK("non blocking accept", (clt = non_blocking_accept(srv, caller, sizeof(caller))) < 0);
 #else
-        CHECK("accept", (clt = Ziti_accept(srv)) < 0);
+        CHECK("accept", (clt = Ziti_accept(srv, caller, sizeof(caller))) < 0);
 #endif
 
-        printf("client connected\n");
+        printf("client[%s] connected\n", caller);
         size_t count = 0;
         size_t total = 0;
         do {
