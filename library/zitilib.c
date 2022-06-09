@@ -809,7 +809,6 @@ ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
         free(si->peer);
         free(si);
         char b;
-        fprintf(stderr, "\n>>>> reading notify <<<<\n");
 #if _WIN32
         recv(server, &b, 1, 0);
 #else
