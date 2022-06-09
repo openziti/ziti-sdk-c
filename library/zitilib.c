@@ -526,8 +526,9 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
 
     future_t *f = schedule_on_loop((loop_work_cb) do_ziti_connect, &req, true);
     int err = await_future(f);
+    set_error(err);
     destroy_future(f);
-    return err;
+    return err ? -1 : 0;
 }
 
 int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
@@ -543,8 +544,9 @@ int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
 
     future_t *f = schedule_on_loop((loop_work_cb) do_ziti_connect, &req, true);
     int err = await_future(f);
+    set_error(err);
     destroy_future(f);
-    return err;
+    return err ? -1 : 0;
 }
 
 static bool is_blocking(ziti_socket_t s) {
