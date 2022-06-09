@@ -651,7 +651,7 @@ static void on_ziti_client(ziti_connection server, ziti_connection client, int s
         TAILQ_INSERT_TAIL(&server_sock->backlog, pending, _next);
         server_sock->pending++;
 #if _WIN32
-            send(server_sock->ziti_fd, &b, 1, 0);
+            send(server_sock->ziti_fd, &notify, sizeof(notify), 0);
 #else
         write(server_sock->ziti_fd, &notify, sizeof(notify));
 #endif
