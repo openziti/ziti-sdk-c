@@ -125,6 +125,8 @@ int Ziti_listen(ziti_socket_t socket, int backlog);
  * - not marked as non-blocking: blocks until a connection request is present.
  *
  * @param socket socket created with [Ziti_socket()], bound to a service with [Ziti_bind()] or [Ziti_bind_addr()], and is listening after [Ziti_listen()]
+ * @param caller buffer to store caller ID (dialing identity name)
+ * @param caller_len length of the [caller] buffer
  * @return on success returns a file descriptor for the accepted connection. on error -1 is returned, use [Ziti_last_error()] to get actual error code.
  */
 ZITI_FUNC
