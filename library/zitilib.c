@@ -299,14 +299,14 @@ static const char * fmt_win32err(int err) {
 }
 #endif
 
-#ifdef _MSC_VER
-#define init_in4addr_loopback() {}
-#else
+#ifdef __MINGW32__
 static const IN_ADDR in4addr_loopback;
 static void init_in4addr_loopback() {
     IN_ADDR *lo = (IN_ADDR *)&in4addr_loopback;
     lo->S_un.S_addr = htonl(INADDR_LOOPBACK);
 }
+#else
+#define init_in4addr_loopback() {}
 #endif
 
 static int make_socketpair(int type, ziti_socket_t *fd0, ziti_socket_t *fd1) {
