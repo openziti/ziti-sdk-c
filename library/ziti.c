@@ -367,6 +367,19 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
         uv_prepare_start(ztx->reaper, grim_reaper);
         ziti_ctrl_get_version(&ztx->controller, version_cb, ztx);
         ziti_set_unauthenticated(ztx);
+
+        // if the ztx is disabled, api_session_timer and service_refresh_timer will be null
+        ztx->api_session_timer = calloc(1, sizeof(uv_timer_t));
+        uv_timer_init(ztx->loop, ztx->api_session_timer);
+        ztx->api_session_timer->data = ztx;
+
+        ztx->service_refresh_timer = calloc(1, sizeof(uv_timer_t));
+        uv_timer_init(ztx->loop, ztx->service_refresh_timer);
+        if (ztx->opts->refresh_interval == 0) {
+            uv_unref((uv_handle_t *) ztx->service_refresh_timer);
+        }
+        ztx->service_refresh_timer->data = ztx;
+
         ziti_re_auth(ztx);
     }
 }
@@ -1140,6 +1153,10 @@ void ziti_services_refresh(uv_timer_t *t) {
 
     if (ztx->auth_queries->outstanding_auth_query_ctx) {
         ZTX_LOG(DEBUG, "service refresh stopped, outstanding auth queries");
+        return;
+    }
+    if (!ztx->enabled) {
+        ZTX_LOG(DEBUG, "service refresh stopped, ztx is disabled");
         return;
     }
 
