@@ -205,7 +205,6 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         }
     } else if (ev->type == ZitiServiceEvent) {
 
-
         for (int i = 0; ev->event.service.removed && ev->event.service.removed[i] != NULL; i++) {
             ziti_intercept_cfg_v1 *intercept = model_map_remove(&wrap->intercepts, ev->event.service.removed[i]->name);
             free_ziti_intercept_cfg_v1(intercept);
@@ -247,7 +246,7 @@ static const char *configs[] = {
 };
 
 static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
-
+    int rc = 0;
     struct ztx_wrap *wrap = model_map_get(&ziti_contexts, arg);
     if (wrap == NULL) {
         wrap = calloc(1, sizeof(struct ztx_wrap));
@@ -260,10 +259,15 @@ static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
         wrap->services_loaded = new_future();
         TAILQ_INIT(&wrap->futures);
 
+        rc = ziti_init_opts(&wrap->opts, l);
+        if (rc != ZITI_OK) {
+            fail_future(f, rc);
+            ZITI_LOG(WARN, "identity file[%s] not found", (const char *) arg);
+            free(wrap);
+            return;
+        }
         model_map_set(&ziti_contexts, arg, wrap);
         TAILQ_INSERT_TAIL(&wrap->futures, f, _next);
-
-        ziti_init_opts(&wrap->opts, l);
     } else if (wrap->ztx) {
         complete_future(f, wrap->ztx);
     } else {
@@ -272,12 +276,14 @@ static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
 }
 
 ziti_context Ziti_load_context(const char *identity) {
-    future_t *f = schedule_on_loop(load_ziti_ctx, (void*)identity, true);
+    future_t *f = schedule_on_loop(load_ziti_ctx, (void *) identity, true);
     int err = await_future(f);
     set_error(err);
     ziti_context ztx = (ziti_context) f->result;
-    ztx_wrap_t *wrap = ziti_app_ctx(ztx);
-    await_future(wrap->services_loaded);
+    if (err == 0) {
+        ztx_wrap_t *wrap = ziti_app_ctx(ztx);
+        await_future(wrap->services_loaded);
+    }
     destroy_future(f);
     return ztx;
 }
@@ -542,9 +548,8 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
 }
 
 int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
-
-    if (ztx == NULL) return -EINVAL;
-    if (service == NULL) return -EINVAL;
+    if (ztx == NULL) { return EINVAL; }
+    if (service == NULL) { return EINVAL; }
 
     struct conn_req_s req = {
             .fd = socket,

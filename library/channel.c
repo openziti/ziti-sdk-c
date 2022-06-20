@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry, Inc.
+// Copyright (c) 2022.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -237,22 +237,22 @@ static void check_connecting_state(ziti_channel_t *ch) {
     // verify channel state
     bool reset = false;
     if (!uv_is_active((const uv_handle_t *) &ch->timer)) {
-        CH_LOG(ERROR, "state check: timer not active!");
+        CH_LOG(DEBUG, "state check: timer not active!");
         reset = true;
     }
 
     if (ch->timer->timer_cb != ch_connect_timeout) {
-        CH_LOG(ERROR, "state check: unexpected callback(%s)!", get_timeout_cb(ch));
+        CH_LOG(DEBUG, "state check: unexpected callback(%s)!", get_timeout_cb(ch));
         reset = true;
     }
 
     if (ch->timer->timeout < uv_now(ch->loop)) {
-        CH_LOG(ERROR, "state check: timer is in the past!");
+        CH_LOG(DEBUG, "state check: timer is in the past!");
         reset = true;
     }
 
     if (ch->timer->timeout - uv_now(ch->loop) > CONNECT_TIMEOUT) {
-        CH_LOG(ERROR, "state check: timer is too far into the future!");
+        CH_LOG(DEBUG, "state check: timer is too far into the future!");
         reset = true;
     }
 }
