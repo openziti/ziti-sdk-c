@@ -130,10 +130,11 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
 
     LIST_INIT(&ch->waiters);
 
-    uv_mbed_init(ch->loop, &ch->connection, tls);
-    uv_mbed_keepalive(&ch->connection, true, ctx->opts->router_keepalive);
-    uv_mbed_nodelay(&ch->connection, true);
-    ch->connection.data = ch;
+    ch->connection = calloc(1, sizeof(*ch->connection));
+    uv_mbed_init(ch->loop, ch->connection, tls);
+    uv_mbed_keepalive(ch->connection, true, ctx->opts->router_keepalive);
+    uv_mbed_nodelay(ch->connection, true);
+    ch->connection->data = ch;
 
     ch->timer = calloc(1, sizeof(uv_timer_t));
     uv_timer_init(ch->loop, ch->timer);
@@ -154,37 +155,48 @@ void ziti_channel_free(ziti_channel_t *ch) {
 }
 
 int ziti_close_channels(struct ziti_ctx *ztx, int err) {
-    ziti_channel_t *ch;
     const char *url;
-    MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
-        ZTX_LOG(DEBUG, "closing channel[%s]: %s", url, ziti_errorstr(err));
-        ziti_channel_close(ch, err);
+    model_list ch_ids = {0};
+    MODEL_MAP_FOR(it, ztx->channels) {
+        model_list_append(&ch_ids, model_map_it_key(it));
     }
+
+    MODEL_LIST_FOR(it, ch_ids) {
+        url = model_list_it_element(it);
+        ziti_channel_t *ch = model_map_get(&ztx->channels, url);
+        if (ch != NULL) {
+            ZTX_LOG(DEBUG, "closing channel[%s]: %s", url, ziti_errorstr(err));
+            ziti_channel_close(ch, err);
+        }
+    }
+    model_list_clear(&ch_ids, NULL);
     return ZITI_OK;
 }
 
 static void close_handle_cb(uv_handle_t *h) {
     uv_mbed_t *mbed = (uv_mbed_t *) h;
-    ziti_channel_t *ch = mbed->data;
-
-    ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ctx);
-
     uv_mbed_free(mbed);
-    ziti_channel_free(ch);
-    free(ch);
+    free(mbed);
 }
 
 int ziti_channel_close(ziti_channel_t *ch, int err) {
     int r = 0;
     if (ch->state != Closed) {
         CH_LOG(INFO, "closing[%s]", ch->name);
-        ch->state = Closed;
 
         on_channel_close(ch, err, 0);
 
         uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
         ch->timer = NULL;
-        r = uv_mbed_close(&ch->connection, close_handle_cb);
+        ch->connection->data = NULL;
+        uv_mbed_close(ch->connection, close_handle_cb);
+
+        ch->state = Closed;
+
+        ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ctx);
+
+        ziti_channel_free(ch);
+        free(ch);
     }
     return r;
 }
@@ -346,7 +358,7 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
     }
     req->data = ziti_write;
     ziti_write->payload = msg_buf;
-    int rc = uv_mbed_write(req, &ch->connection, &buf, on_channel_send);
+    int rc = uv_mbed_write(req, ch->connection, &buf, on_channel_send);
     if (rc != 0) {
         on_channel_send(req, rc);
     }
@@ -405,7 +417,7 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
 
     NEWP(req, uv_write_t);
     req->data = wr;
-    int rc = uv_mbed_write(req, &wr->ch->connection, &wr->buf, on_write);
+    int rc = uv_mbed_write(req, wr->ch->connection, &wr->buf, on_write);
     if (rc != 0) {
         on_write(req, rc);
     }
@@ -584,7 +596,7 @@ static void latency_timeout(uv_timer_t *t) {
     ch->latency_waiter = NULL;
     ch->latency = UINT64_MAX;
 
-    uv_mbed_close(&ch->connection, NULL);
+    uv_mbed_close(ch->connection, NULL);
     on_channel_close(ch, ZITI_TIMEOUT, UV_ETIMEDOUT);
 }
 
@@ -640,7 +652,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
 
         ch->state = Disconnected;
         ch->notify_cb(ch, EdgeRouterUnavailable, ch->notify_ctx);
-        uv_mbed_close(&ch->connection, NULL);
+        uv_mbed_close(ch->connection, NULL);
         reconnect_channel(ch, false);
     }
 
@@ -674,12 +686,12 @@ static void ch_connect_timeout(uv_timer_t *t) {
     }
 
     ch->state = Disconnected;
-    if (ch->connection.conn_req == NULL) {
+    if (ch->connection->conn_req == NULL) {
         // diagnostics
         CH_LOG(WARN, "diagnostics: no conn_req in connect timeout");
     }
     reconnect_channel(ch, false);
-    uv_mbed_close(&ch->connection, NULL);
+    uv_mbed_close(ch->connection, NULL);
 }
 
 static void reconnect_cb(uv_timer_t *t) {
@@ -698,9 +710,9 @@ static void reconnect_cb(uv_timer_t *t) {
 
         ch->state = Connecting;
 
-        ch->connection.data = ch;
+        ch->connection->data = ch;
         CH_LOG(DEBUG, "connecting to %s:%d", ch->host, ch->port);
-        int rc = uv_mbed_connect(req, &ch->connection, ch->host, ch->port, on_channel_connect_internal);
+        int rc = uv_mbed_connect(req, ch->connection, ch->host, ch->port, on_channel_connect_internal);
         if (rc != 0) {
             on_channel_connect_internal(req, rc);
         }
@@ -856,7 +868,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             send_hello(ch, ch->ctx->api_session);
         } else {
             CH_LOG(WARN, "api session invalidated, while connecting");
-            uv_mbed_close(&ch->connection, NULL);
+            uv_mbed_close(ch->connection, NULL);
             reconnect_channel(ch, false);
         }
     } else {

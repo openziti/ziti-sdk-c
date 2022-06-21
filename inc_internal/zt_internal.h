@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry, Inc.
+// Copyright (c) 2022.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -78,7 +78,7 @@ typedef struct ziti_channel {
 
     uint32_t id;
     char token[UUID_STR_LEN];
-    uv_mbed_t connection;
+    uv_mbed_t *connection;
 
     // multi purpose timer:
     // - reconnect timeout if not connected
