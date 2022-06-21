@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
     }
     ziti_socket_t socket = Ziti_socket(SOCK_STREAM);
 
-    long rc = service ? Ziti_connect(socket, ztx, service) : Ziti_connect_addr(socket, hostname, port);
+    long rc = service ? Ziti_connect(socket, ztx, service, "ziggy") : Ziti_connect_addr(socket, hostname, port);
 
     if (rc != 0) {
         fprintf(stderr, "failed to connect: %ld(%s)\n", rc, ziti_errorstr(rc));
