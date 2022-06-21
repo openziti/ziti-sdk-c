@@ -1,18 +1,16 @@
-/*
-Copyright (c) 2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2020-2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 
 #include <internal_model.h>
@@ -24,11 +22,18 @@ limitations under the License.
 typedef uint32_t in_addr_t;
 #define strcasecmp stricmp
 #else
+
 #include <arpa/inet.h>
+
 #endif
 
 #include <string.h>
 #include "ziti/ziti_buffer.h"
+
+#define null_checks(lh, rh) \
+    if ((lh) == (rh)) { return 0; } \
+    if ((lh) == NULL) { return -1; } \
+    if ((rh) == NULL) { return 1; }
 
 IMPL_MODEL(ziti_posture_query, ZITI_POSTURE_QUERY_MODEL)
 
@@ -142,6 +147,8 @@ int ziti_service_get_config(ziti_service *service, const char *cfg_type, void *c
 }
 
 static int cmp_ziti_address0(ziti_address *lh, ziti_address *rh) {
+    null_checks(lh, rh)
+
     if (lh->type != rh->type) {
         return (int) lh->type - (int) rh->type;
     }

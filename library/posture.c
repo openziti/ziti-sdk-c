@@ -1,18 +1,16 @@
-/*
-Copyright (c) 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2019-2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "posture.h"
 #include <utils.h>
@@ -127,6 +125,9 @@ void ziti_posture_init(ziti_context ztx, long interval_secs) {
         NEWP(pc, struct posture_checks);
 
         NEWP(timer, uv_timer_t);
+        uv_timer_init(ztx->loop, timer);
+        timer->data = ztx;
+        uv_unref((uv_handle_t *) timer);
 
         pc->timer = timer;
         pc->interval = (double) interval_secs;
@@ -139,10 +140,7 @@ void ziti_posture_init(ziti_context ztx, long interval_secs) {
     }
 
     if (!uv_is_active((uv_handle_t *) ztx->posture_checks->timer)) {
-        uv_timer_init(ztx->loop, ztx->posture_checks->timer);
-        ztx->posture_checks->timer->data = ztx;
         uv_timer_start(ztx->posture_checks->timer, ziti_pr_ticker_cb, MILLIS(interval_secs), MILLIS(interval_secs));
-        uv_unref((uv_handle_t *) ztx->posture_checks->timer);
     }
 }
 
@@ -152,8 +150,8 @@ static void ziti_posture_checks_timer_free(uv_handle_t *handle) {
 
 void ziti_posture_checks_free(struct posture_checks *pcs) {
     if (pcs != NULL) {
-        uv_timer_stop(pcs->timer);
         uv_close((uv_handle_t *) pcs->timer, ziti_posture_checks_timer_free);
+        pcs->timer = NULL;
         model_map_clear(&pcs->responses, (_free_f) ziti_pr_free_pr_info_members);
         model_map_clear(&pcs->error_states, NULL);
         FREE(pcs->previous_api_session_id);
