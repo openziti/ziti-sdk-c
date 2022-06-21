@@ -76,6 +76,8 @@ struct listener {
     //LIST_ENTRY(listener) next;
 };
 
+
+
 // typedef LIST_HEAD(listeners, listener) listener_l;
 
 struct client {

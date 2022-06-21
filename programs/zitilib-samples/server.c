@@ -23,6 +23,7 @@
 #define write(s,b,l) send(s,b,l,0)
 #define read(s,b,l) recv(s,b,l,0)
 #else
+#include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -66,24 +67,32 @@ static ziti_socket_t non_blocking_accept(ziti_socket_t srv, char *caller, int ca
     struct timeval to = {
             .tv_sec = 60 * 60, // one hour
     };
-    int src = select(srv + 1, &rdfds, NULL, NULL, &to);
-    if (src < 0) {
-        perror("select");
-        return -1;
-    }
+    do {
+        int src = select(srv + 1, &rdfds, NULL, NULL, &to);
+        if (src < 0) {
+            perror("select");
+            return -1;
+        }
 
-    if (src == 0) {
-        perror("timeout");
-        return -1;
-    }
+        if (src == 0) {
+            perror("timeout");
+            return -1;
+        }
 
-    if (!FD_ISSET(srv, &rdfds)) {
-        fprintf(stderr, "select failure");
-        return -1;
-    }
-    // srv socket is readable, accept should succeed
-    ziti_socket_t clt = Ziti_accept(srv, caller, caller_len);
-    return clt;
+        if (!FD_ISSET(srv, &rdfds)) {
+            fprintf(stderr, "select failure");
+            break;
+        }
+        // srv socket is readable, accept should succeed
+        ziti_socket_t clt = Ziti_accept(srv, caller, caller_len);
+        if (clt != SOCKET_ERROR) { return clt; }
+
+        if (Ziti_last_error() != EWOULDBLOCK) {
+            break;
+        }
+    } while (1);
+
+    return -1;
 }
 
 int main(int argc, char *argv[]) {
@@ -98,7 +107,7 @@ int main(int argc, char *argv[]) {
     const char *terminator = argc > 3 ? argv[3] : NULL;
 
     ziti_context ztx = Ziti_load_context(argv[1]);
-    ziti_socket_t srv = Ziti_socket(SOCK_STREAM);
+    ziti_socket_t srv = socket(AF_INET, SOCK_STREAM, 0);
 
     CHECK("socket", srv == SOCKET_ERROR);
 
@@ -118,15 +127,21 @@ int main(int argc, char *argv[]) {
 #endif
 
         printf("client[%s] connected\n", caller);
-        size_t count = 0;
+        long count = 0;
         size_t total = 0;
+        char msg[128];
+        int len;
         do {
-            CHECK("read", (count = read(clt, readbuf, sizeof(readbuf))) < 0);
-            total += count;
+            count = read(clt, readbuf, sizeof(readbuf));
+            if (count > 0) {
+                printf("read %zd bytes\n", count);
+                total += count;
+                len = snprintf(msg, sizeof(msg), "you[%s] sent %zd bytes", caller, total);
+                write(clt, msg, len);
+            }
         } while (count > 0);
 
-        char msg[128];
-        int len = snprintf(msg, sizeof(msg), "you[%s] sent %zd bytes", caller, total);
+        len = snprintf(msg, sizeof(msg), "you[%s] sent %zd total bytes", caller, total);
         write(clt, msg, len);
         close(clt);
         printf("client is done after sending %zd bytes\n", total);
