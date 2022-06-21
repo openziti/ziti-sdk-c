@@ -298,11 +298,15 @@ static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
 
     ziti_set_unauthenticated(ztx);
 
+    ziti_close_channels(ztx, ZITI_DISABLED);
+
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
     model_map_clear(&ztx->services, (_free_f) free_ziti_service);
 
     if (ztx->closing) {
         shutdown_and_free(ztx);
+    } else {
+        update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
     }
 }
 
@@ -335,8 +339,9 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         uv_close((uv_handle_t *) ztx->api_session_timer, (uv_close_cb) free);
         ztx->api_session_timer = NULL;
 
-        if (ztx->posture_checks && ztx->posture_checks->timer) {
-            uv_timer_stop(ztx->posture_checks->timer);
+        if (ztx->posture_checks) {
+            ziti_posture_checks_free(ztx->posture_checks);
+            ztx->posture_checks = NULL;
         }
 
         // close all channels
@@ -357,7 +362,6 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
 
         // logout
         ziti_ctrl_logout(&ztx->controller, logout_cb, ztx);
-
     }
 }
 
