@@ -81,10 +81,11 @@ ziti_socket_t Ziti_socket(int type);
  * @param socket socket handle created with [Ziti_socket()]
  * @param ztx Ziti context
  * @param service service name provided by [ztx]
+ * @param terminator (optional) specific terminator to connect to
  * @return 0 on success, negative error code on failure
  */
 ZITI_FUNC
-int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service);
+int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service, const char *terminator);
 
 /**
  * @brief Connect socket to a Ziti service with the given intercept address
@@ -101,10 +102,11 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
  * @param socket socket handle created with [Ziti_socket()]
  * @param ztx Ziti context
  * @param service service name provided by [ztx]
+ * @param terminator (optional) create specific terminator
  * @return 0 on success, negative error code on failure
  */
 ZITI_FUNC
-int Ziti_bind(ziti_socket_t socket, ziti_context ztx, const char *service);
+int Ziti_bind(ziti_socket_t socket, ziti_context ztx, const char *service, const char *terminator);
 
 /**
  * @brief marks the [socket] as a socket able to accept incoming connections

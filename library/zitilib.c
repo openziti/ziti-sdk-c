@@ -168,6 +168,11 @@ void Ziti_lib_init(void) {
     uv_once(&init, internal_init);
 }
 
+ZITI_FUNC
+uv_thread_t Ziti_lib_thread() {
+    return lib_thread;
+}
+
 int Ziti_last_error() {
     intptr_t p = (intptr_t) uv_key_get(&err_key);
     return (int)p;
@@ -388,7 +393,8 @@ static void new_ziti_socket(void *arg, future_t *f, uv_loop_t *l) {
         model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
         complete_future(f, zs);
     } else {
-        fail_future(f, rc);
+        ZITI_LOG(WARN, "failed to create socketpair(%x)! %d/%s", socktype, errno, strerror(errno));
+        fail_future(f, errno);
     }
 }
 
@@ -410,6 +416,7 @@ struct conn_req_s {
 
     ziti_context ztx;
     const char *service;
+    const char *terminator;
 
     const char *host;
     uint16_t port;
@@ -521,6 +528,7 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
             ziti_dial_opts opts = {
                     .app_data = app_data,
                     .app_data_sz = len,
+                    .identity = req->terminator,
             };
             ziti_dial_with_options(zs->conn, req->service, &opts, on_ziti_connect, NULL);
         } else {
@@ -547,14 +555,16 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     return err ? -1 : 0;
 }
 
-int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service) {
-    if (ztx == NULL) { return EINVAL; }
-    if (service == NULL) { return EINVAL; }
+int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service, const char *terminator) {
+
+    if (ztx == NULL) return EINVAL;
+    if (service == NULL) return EINVAL;
 
     struct conn_req_s req = {
             .fd = socket,
             .ztx = ztx,
-            .service = service
+            .service = service,
+            .terminator = terminator,
     };
 
     future_t *f = schedule_on_loop((loop_work_cb) do_ziti_connect, &req, true);
@@ -705,9 +715,13 @@ static void do_ziti_bind(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
     } else {
         if (req->ztx != NULL) {
             ZITI_LOG(DEBUG, "requesting bind fd[%d] to service[%s]", zs->fd, req->service);
+            ziti_listen_opts opts = {
+                    .identity = req->terminator,
+                    .bind_using_edge_identity = (req->terminator == NULL),
+            };
             zs->service = strdup(req->service);
             ziti_conn_init(req->ztx, &zs->conn, zs);
-            ziti_listen(zs->conn, req->service, on_ziti_bind, on_ziti_client);
+            ziti_listen_with_options(zs->conn, req->service, &opts, on_ziti_bind, on_ziti_client);
             zs->f = f;
         } else {
             ZITI_LOG(WARN, "service[%s] not found", req->service);
@@ -716,7 +730,7 @@ static void do_ziti_bind(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
     }
 }
 
-int Ziti_bind(ziti_socket_t socket, ziti_context ztx, const char *service) {
+int Ziti_bind(ziti_socket_t socket, ziti_context ztx, const char *service, const char *terminator) {
 
     if (ztx == NULL) { return EINVAL; }
     if (service == NULL) { return EINVAL; }
@@ -724,7 +738,8 @@ int Ziti_bind(ziti_socket_t socket, ziti_context ztx, const char *service) {
     struct conn_req_s req = {
             .fd = socket,
             .ztx = ztx,
-            .service = service
+            .service = service,
+            .terminator = terminator,
     };
 
     future_t *f = schedule_on_loop((loop_work_cb) do_ziti_bind, &req, true);

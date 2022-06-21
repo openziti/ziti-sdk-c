@@ -88,14 +88,21 @@ static ziti_socket_t non_blocking_accept(ziti_socket_t srv, char *caller, int ca
 
 int main(int argc, char *argv[]) {
 
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s <id_file> <service> [terminator]\n", argv[0]);
+        exit(1);
+    }
+
     Ziti_lib_init();
+    const char *service = argv[2];
+    const char *terminator = argc > 3 ? argv[3] : NULL;
 
     ziti_context ztx = Ziti_load_context(argv[1]);
     ziti_socket_t srv = Ziti_socket(SOCK_STREAM);
 
     CHECK("socket", srv == SOCKET_ERROR);
 
-    CHECK("bind", Ziti_bind(srv, ztx, argv[2]));
+    CHECK("bind", Ziti_bind(srv, ztx, service, terminator));
 
     CHECK("listen", Ziti_listen(srv, 10));
 
@@ -119,7 +126,7 @@ int main(int argc, char *argv[]) {
         } while (count > 0);
 
         char msg[128];
-        int len = snprintf(msg, sizeof(msg), "you sent %zd bytes", total);
+        int len = snprintf(msg, sizeof(msg), "you[%s] sent %zd bytes", caller, total);
         write(clt, msg, len);
         close(clt);
         printf("client is done after sending %zd bytes\n", total);
