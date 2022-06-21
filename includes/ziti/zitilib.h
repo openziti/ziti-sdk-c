@@ -81,6 +81,7 @@ ziti_socket_t Ziti_socket(int type);
  * @param socket socket handle created with [Ziti_socket()]
  * @param ztx Ziti context
  * @param service service name provided by [ztx]
+ * @param terminator (optional) specific terminator to connect to
  * @return 0 on success, negative error code on failure
  */
 ZITI_FUNC
@@ -101,6 +102,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
  * @param socket socket handle created with [Ziti_socket()]
  * @param ztx Ziti context
  * @param service service name provided by [ztx]
+ * @param terminator (optional) create specific terminator
  * @return 0 on success, negative error code on failure
  */
 ZITI_FUNC
