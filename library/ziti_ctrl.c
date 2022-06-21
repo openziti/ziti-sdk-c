@@ -1,18 +1,16 @@
-/*
-Copyright 2019 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <stdlib.h>
 #include <http_parser.h>
@@ -206,9 +204,10 @@ static void ctrl_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *re
     }
 
     if (v) {
-        resp->ctrl->version.version = strdup(v->version);
-        resp->ctrl->version.revision = strdup(v->revision);
-        resp->ctrl->version.build_date = strdup(v->build_date);
+        free_ziti_version(&ctrl->version);
+        ctrl->version.version = strdup(v->version);
+        ctrl->version.revision = strdup(v->revision);
+        ctrl->version.build_date = strdup(v->build_date);
 
         if (v->api_versions) {
             api_path *path = model_map_get(&v->api_versions->edge, "v1");
