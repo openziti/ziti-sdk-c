@@ -104,6 +104,7 @@ XX(low, int, none, low, __VA_ARGS__) \
 XX(high, int, none, high, __VA_ARGS__)
 
 #define ZITI_INTERCEPT_CFG_V1 "intercept.v1"
+#define ZITI_CLIENT_CFG_V1 "ziti-tunneler-client.v1"
 
 #define ZITI_INTERCEPT_CFG_V1_MODEL(XX, ...) \
 XX(protocols, string, array, protocols, __VA_ARGS__) \

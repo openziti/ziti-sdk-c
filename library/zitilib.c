@@ -43,6 +43,14 @@ typedef struct future_s {
     TAILQ_ENTRY(future_s) _next;
 } future_t;
 
+
+static const char *configs[] = {
+        ZITI_INTERCEPT_CFG_V1,
+        ZITI_CLIENT_CFG_V1,
+        NULL,
+};
+
+
 static future_t *new_future() {
     future_t *f = calloc(1, sizeof(future_t));
     uv_mutex_init(&f->lock);
@@ -231,9 +239,14 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         for (int i = 0; ev->event.service.added && ev->event.service.added[i] != NULL; i++) {
             ziti_service *s = ev->event.service.added[i];
             ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
+            ziti_client_cfg_v1 clt_cfg = {0};
 
             if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, parse_ziti_intercept_cfg_v1) == ZITI_OK) {
                 intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+            } else if (ziti_service_get_config(s, ZITI_CLIENT_CFG_V1, &clt_cfg, parse_ziti_client_cfg_v1) == ZITI_OK) {
+                ziti_intercept_from_client_cfg(intercept, &clt_cfg);
+                intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+                free_ziti_client_cfg_v1(&clt_cfg);
             }
 
             free_ziti_intercept_cfg_v1(intercept);
@@ -245,10 +258,6 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         }
     }
 }
-
-static const char *configs[] = {
-        ZITI_INTERCEPT_CFG_V1, NULL
-};
 
 static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
     int rc = 0;
