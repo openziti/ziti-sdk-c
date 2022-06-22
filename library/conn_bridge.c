@@ -64,6 +64,13 @@ extern int ziti_conn_bridge(ziti_connection conn, uv_stream_t *stream, uv_close_
 }
 
 static void on_sock_close(uv_handle_t *h) {
+    struct fd_bridge_s *fdbr = h->data;
+    if (fdbr) {
+        if (fdbr->close_cb) {
+            fdbr->close_cb(fdbr->ctx);
+        }
+        free(fdbr);
+    }
     uv_close(h, (uv_close_cb) free);
 }
 
@@ -82,10 +89,17 @@ static void on_pipes_close(uv_handle_t *h) {
 extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd_t output, void (*close_cb)(void *ctx), void *ctx) {
     uv_loop_t *l = ziti_conn_context(conn)->loop;
 
+    NEWP(fdbr, struct fd_bridge_s);
+    fdbr->in = input;
+    fdbr->out = output;
+    fdbr->close_cb = close_cb;
+    fdbr->ctx = ctx;
+
     if (input == output) {
         uv_tcp_t *sock = calloc(1, sizeof(uv_tcp_t));
         uv_tcp_init(l, sock);
         uv_tcp_open(sock, input);
+        sock->data = fdbr;
         return ziti_conn_bridge(conn, (uv_stream_t *) sock, on_sock_close);
     }
 
@@ -103,11 +117,6 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
     br->output->data = br;
 
     br->close_cb = on_pipes_close;
-    NEWP(fdbr, struct fd_bridge_s);
-    fdbr->in = input;
-    fdbr->out = output;
-    fdbr->close_cb = close_cb;
-    fdbr->ctx = ctx;
 
     br->data = br;
     br->fdbr = fdbr;
