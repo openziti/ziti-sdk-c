@@ -26,7 +26,6 @@ extern "C" {
 
 struct posture_checks {
     uv_timer_t *timer;
-    double interval;
 
     // map<type/process_path,response>
     model_map responses;

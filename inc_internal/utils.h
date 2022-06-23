@@ -102,6 +102,13 @@ if (COND(ex)(ERR(ex))) { ERFILE(ex) = __FILENAME__; ERLINE(ex) = __LINE__; _##ex
 
 #define container_of(ptr, type, member) ((type *) ((ptr) - offsetof(type, member)))
 
+#define CLOSE_AND_NULL(h) do{ if (h) { \
+if (!uv_is_closing((uv_handle_t*)(h))) uv_close((uv_handle_t*)(h), (uv_close_cb)free); \
+(h) = NULL;                            \
+}}while(0)
+
+
+
 void ziti_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf);
 
 int get_url_data(const char *url, struct http_parser_url *parser, int uf, char *out, size_t maxout);

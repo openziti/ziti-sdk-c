@@ -333,11 +333,8 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         metrics_rate_close(&ztx->down_rate);
 
         // stop updates
-        uv_close((uv_handle_t *) ztx->service_refresh_timer, (uv_close_cb) free);
-        ztx->service_refresh_timer = NULL;
+        uv_timer_stop(ztx->service_refresh_timer);
         ziti_stop_api_session_refresh(ztx);
-        uv_close((uv_handle_t *) ztx->api_session_timer, (uv_close_cb) free);
-        ztx->api_session_timer = NULL;
 
         if (ztx->posture_checks) {
             ziti_posture_checks_free(ztx->posture_checks);
@@ -365,24 +362,19 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
     }
 }
 
+uv_timer_t* new_ztx_timer(ziti_context ztx) {
+    uv_timer_t *timer = calloc(1, sizeof(uv_timer_t));
+    uv_timer_init(ztx->loop, timer);
+    timer->data = ztx;
+    return timer;
+}
+
 static void ziti_start_internal(ziti_context ztx, void *init_req) {
     if (!ztx->enabled) {
         ztx->enabled = true;
         uv_prepare_start(ztx->reaper, grim_reaper);
         ziti_ctrl_get_version(&ztx->controller, version_cb, ztx);
         ziti_set_unauthenticated(ztx);
-
-        // if the ztx is disabled, api_session_timer and service_refresh_timer will be null
-        ztx->api_session_timer = calloc(1, sizeof(uv_timer_t));
-        uv_timer_init(ztx->loop, ztx->api_session_timer);
-        ztx->api_session_timer->data = ztx;
-
-        ztx->service_refresh_timer = calloc(1, sizeof(uv_timer_t));
-        uv_timer_init(ztx->loop, ztx->service_refresh_timer);
-        if (ztx->opts->refresh_interval == 0) {
-            uv_unref((uv_handle_t *) ztx->service_refresh_timer);
-        }
-        ztx->service_refresh_timer->data = ztx;
 
         ziti_re_auth(ztx);
     }
@@ -421,16 +413,8 @@ static void ziti_init_async(ziti_context ztx, void *data) {
         ziti_ctrl_set_page_size(&ztx->controller, ztx->opts->api_page_size);
     }
 
-    ztx->api_session_timer = calloc(1, sizeof(uv_timer_t));
-    uv_timer_init(loop, ztx->api_session_timer);
-    ztx->api_session_timer->data = ztx;
-
-    ztx->service_refresh_timer = calloc(1, sizeof(uv_timer_t));
-    uv_timer_init(loop, ztx->service_refresh_timer);
-    if (ztx->opts->refresh_interval == 0) {
-        uv_unref((uv_handle_t *) ztx->service_refresh_timer);
-    }
-    ztx->service_refresh_timer->data = ztx;
+    ztx->api_session_timer = new_ztx_timer(ztx);
+    ztx->service_refresh_timer = new_ztx_timer(ztx);
 
     ztx->reaper = calloc(1, sizeof(uv_prepare_t));
     uv_prepare_init(loop, ztx->reaper);
@@ -537,7 +521,10 @@ static void shutdown_and_free(ziti_context ztx) {
     }
 
     grim_reaper(ztx->reaper);
-    uv_close((uv_handle_t *) ztx->reaper, (uv_close_cb) free);
+    CLOSE_AND_NULL(ztx->reaper);
+    CLOSE_AND_NULL(ztx->api_session_timer);
+    CLOSE_AND_NULL(ztx->service_refresh_timer);
+
     uv_close((uv_handle_t *) &ztx->w_async, free_ztx);
 }
 
@@ -984,10 +971,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
     ziti_context ztx = ctx;
 
     // schedule next refresh
-    if (ztx->opts->refresh_interval > 0) {
-        ZTX_LOG(VERBOSE, "scheduling service refresh %ld seconds from now", ztx->opts->refresh_interval);
-        uv_timer_start(ztx->service_refresh_timer, ziti_services_refresh, ztx->opts->refresh_interval * 1000, 0);
-    }
+    ziti_services_refresh(ztx, false);
 
     if (error) {
         ZTX_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
@@ -1143,7 +1127,7 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
         free_ziti_service_update(update);
         need_update = false;
 
-        uv_timer_start(ztx->service_refresh_timer, ziti_services_refresh, ztx->opts->refresh_interval * 1000, 0);
+        ziti_services_refresh(ztx, false);
     }
 
     if (need_update) {
@@ -1152,7 +1136,7 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
     FREE(update);
 }
 
-void ziti_services_refresh(uv_timer_t *t) {
+static void refresh_cb(uv_timer_t *t) {
     ziti_context ztx = t->data;
 
     if (ztx->auth_queries->outstanding_auth_query_ctx) {
@@ -1168,6 +1152,18 @@ void ziti_services_refresh(uv_timer_t *t) {
         ziti_ctrl_get_services(&ztx->controller, update_services, ztx);
     } else {
         ziti_ctrl_get_services_update(&ztx->controller, check_service_update, ztx);
+    }
+}
+
+void ziti_services_refresh(ziti_context ztx, bool now) {
+    if (now || ztx->opts->refresh_interval > 0) {
+        if (now) {
+            ZTX_LOG(VERBOSE, "forcing service refresh");
+        } else {
+            ZTX_LOG(VERBOSE, "scheduling service refresh %ld seconds from now", ztx->opts->refresh_interval);
+        }
+        uint64_t timeout = now ? 0 : (ztx->opts->refresh_interval * 1000);
+        uv_timer_start(ztx->service_refresh_timer, refresh_cb, timeout, 0);
     }
 }
 
@@ -1277,9 +1273,9 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
             ziti_ctrl_current_api_session(&ztx->controller, update_session_data, ztx);
         }
 
-        if (ztx->opts->refresh_interval > 0 && !uv_is_active((const uv_handle_t *) &ztx->service_refresh_timer)) {
+        if (ztx->opts->refresh_interval > 0) {
             ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
-            ziti_services_refresh(ztx->service_refresh_timer);
+            ziti_services_refresh(ztx, true);
         } else if (ztx->opts->refresh_interval == 0) {
             ZTX_LOG(DEBUG, "refresh_interval not specified");
             uv_timer_stop(ztx->service_refresh_timer);

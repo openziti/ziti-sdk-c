@@ -319,9 +319,11 @@ void ziti_set_unauthenticated(ziti_context ztx);
 
 void ziti_force_service_update(ziti_context ztx, const char* service_id);
 
-void ziti_services_refresh(uv_timer_t *t);
+void ziti_services_refresh(ziti_context ztx, bool now);
 
 extern void ziti_send_event(ziti_context ztx, const ziti_event_t *e);
+
+extern uv_timer_t* new_ztx_timer(ziti_context ztx);
 
 #ifdef __cplusplus
 }

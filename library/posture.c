@@ -124,13 +124,7 @@ void ziti_posture_init(ziti_context ztx, long interval_secs) {
     if (ztx->posture_checks == NULL) {
         NEWP(pc, struct posture_checks);
 
-        NEWP(timer, uv_timer_t);
-        uv_timer_init(ztx->loop, timer);
-        timer->data = ztx;
-        uv_unref((uv_handle_t *) timer);
-
-        pc->timer = timer;
-        pc->interval = (double) interval_secs;
+        pc->timer = new_ztx_timer(ztx);
         pc->previous_api_session_id = NULL;
         pc->controller_instance_id = NULL;
         pc->must_send_every_time = true;
@@ -446,7 +440,7 @@ static void ziti_pr_post_bulk_cb(ziti_pr_response *pr_resp, const ziti_error *er
     } else {
         ztx->posture_checks->must_send = false; //did not error, can skip submissions
         handle_pr_resp_timer_events(ztx, pr_resp);
-        ziti_services_refresh(ztx->service_refresh_timer);
+        ziti_services_refresh(ztx, true);
         ZTX_LOG(DEBUG, "done with bulk posture response submission");
     }
 
@@ -483,7 +477,7 @@ static void ziti_pr_post_cb(ziti_pr_response *pr_resp, const ziti_error *err, vo
     } else {
         ziti_pr_set_info_success(pr_ctx->ztx, pr_ctx->info->id);
         handle_pr_resp_timer_events(ztx, pr_resp);
-        ziti_services_refresh(ztx->service_refresh_timer);
+        ziti_services_refresh(ztx, true);
         ZTX_LOG(TRACE, "done with one pr response submission, object: %s", pr_ctx->info->obj);
     }
 
@@ -838,7 +832,7 @@ void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err,
     } else {
         ZTX_LOG(INFO, "endpoint state sent");
         handle_pr_resp_timer_events(ztx, pr_resp);
-        ziti_services_refresh(ztx->service_refresh_timer);
+        ziti_services_refresh(ztx, true);
     }
 }
 
