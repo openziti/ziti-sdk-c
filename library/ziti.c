@@ -357,6 +357,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         ziti_send_event(ztx, &ev);
         FREE(ev.event.service.removed);
 
+        ziti_ctrl_cancel(&ztx->controller);
         // logout
         ziti_ctrl_logout(&ztx->controller, logout_cb, ztx);
     }
@@ -1116,6 +1117,9 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
         if (err->http_code == 404) {
             ZTX_LOG(INFO, "Controller does not support /current-api-session/service-updates API");
             ztx->no_service_updates_api = true;
+        }
+        if (err->err == ZITI_DISABLED) {
+            need_update = false;
         }
     } else if (ztx->last_update == NULL || strcmp(ztx->last_update, update->last_change) != 0) {
         ZTX_LOG(VERBOSE, "ztx last_update = %s", update->last_change);
