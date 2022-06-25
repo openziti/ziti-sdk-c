@@ -436,6 +436,11 @@ static void ziti_init_async(ziti_context ztx, void *data) {
 
     if (init_req->start) {
         ziti_start_internal(ztx, NULL);
+    } else {
+        ziti_event_t ev = {0};
+        ev.type = ZitiContextEvent;
+        ev.event.ctx.ctrl_status = ZITI_DISABLED;
+        ziti_send_event(ztx, &ev);
     }
     free(init_req);
 }
