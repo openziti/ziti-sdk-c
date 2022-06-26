@@ -147,10 +147,18 @@ static void ctrl_resp_cb(um_http_resp_t *r, void *data) {
     ziti_controller *ctrl = resp->ctrl;
     resp->status = r->code;
     if (r->code < 0) {
-        CTRL_LOG(ERROR, "unavailable: %d(%s)", r->code, uv_strerror(r->code));
+        int e = ZITI_CONTROLLER_UNAVAILABLE;
+        const char *code = "CONTROLLER_UNAVAILABLE";
+        CTRL_LOG(ERROR, "request failed: %d(%s)", r->code, uv_strerror(r->code));
+
+        if (r->code == UV_ECANCELED) {
+            e = ZITI_DISABLED;
+            code = ziti_errorstr(ZITI_DISABLED);
+        }
+
         ziti_error err = {
-                .err = ZITI_CONTROLLER_UNAVAILABLE,
-                .code = "CONTROLLER_UNAVAILABLE",
+                .err = e,
+                .code = (char *) code,
                 .message = (char *) uv_strerror(r->code),
         };
         ctrl_default_cb(NULL, &err, resp);
@@ -352,7 +360,19 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len) {
         free_ziti_error(cr.error);
         FREE(cr.error);
     } else {
-        CTRL_LOG(ERROR, "Unexpected ERROR: %zd", len);
+        CTRL_LOG(WARN, "failed to read response body: %zd[%s]", len, uv_strerror(len));
+        FREE(resp->body);
+        ziti_error err = {
+                .err = ZITI_CONTROLLER_UNAVAILABLE,
+                .code = "CONTROLLER_UNAVAILABLE",
+                .message = (char *) uv_strerror(len),
+        };
+
+        if (len == UV_ECANCELED) {
+            err.err = ZITI_DISABLED;
+            err.code = "CONTEXT_DISABLED";
+        }
+        resp->resp_cb(NULL, &err, resp);
     }
 }
 
@@ -387,6 +407,10 @@ void ziti_ctrl_set_redirect_cb(ziti_controller *ctrl, ziti_ctrl_redirect_cb cb, 
 
 static void on_http_close(um_http_t *clt) {
     free(clt);
+}
+
+int ziti_ctrl_cancel(ziti_controller *ctrl) {
+    um_http_cancel_all(ctrl->client);
 }
 
 int ziti_ctrl_close(ziti_controller *ctrl) {

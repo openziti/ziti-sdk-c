@@ -341,6 +341,12 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
             ztx->posture_checks = NULL;
         }
 
+        model_map_iter it = model_map_iterator(&ztx->sessions);
+        while (it) {
+            ziti_net_session *ns = model_map_it_value(it);
+            it = model_map_it_remove(it);
+            free_ziti_net_session_ptr(ns);
+        }
         // close all channels
         ziti_close_channels(ztx, ZITI_DISABLED);
 
@@ -350,13 +356,16 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         ev.type = ZitiServiceEvent;
         ev.event.service.removed = calloc(model_map_size(&ztx->services) + 1, sizeof(ziti_service *));
         int idx = 0;
-        MODEL_MAP_FOREACH(svc_name, svc, &ztx->services) {
-            ev.event.service.removed[idx++] = svc;
+        it = model_map_iterator(&ztx->services);
+        while (it) {
+            ev.event.service.removed[idx++] = model_map_it_value(it);
+            it = model_map_it_remove(it);
         }
 
         ziti_send_event(ztx, &ev);
-        FREE(ev.event.service.removed);
+        free_ziti_service_array(&ev.event.service.removed);
 
+        ziti_ctrl_cancel(&ztx->controller);
         // logout
         ziti_ctrl_logout(&ztx->controller, logout_cb, ztx);
     }
@@ -427,6 +436,11 @@ static void ziti_init_async(ziti_context ztx, void *data) {
 
     if (init_req->start) {
         ziti_start_internal(ztx, NULL);
+    } else {
+        ziti_event_t ev = {0};
+        ev.type = ZitiContextEvent;
+        ev.event.ctx.ctrl_status = ZITI_DISABLED;
+        ziti_send_event(ztx, &ev);
     }
     free(init_req);
 }
@@ -695,10 +709,8 @@ const char *ziti_conn_source_identity(ziti_connection conn) {
 
 
 void ziti_send_event(ziti_context ztx, const ziti_event_t *e) {
-    if (ztx->enabled || e->type == ZitiContextEvent) {
-        if ((ztx->opts->events & e->type) && ztx->opts->event_cb) {
-            ztx->opts->event_cb(ztx, e);
-        }
+    if ((ztx->opts->events & e->type) && ztx->opts->event_cb) {
+        ztx->opts->event_cb(ztx, e);
     }
 }
 
@@ -1116,6 +1128,9 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
         if (err->http_code == 404) {
             ZTX_LOG(INFO, "Controller does not support /current-api-session/service-updates API");
             ztx->no_service_updates_api = true;
+        }
+        if (err->err == ZITI_DISABLED) {
+            need_update = false;
         }
     } else if (ztx->last_update == NULL || strcmp(ztx->last_update, update->last_change) != 0) {
         ZTX_LOG(VERBOSE, "ztx last_update = %s", update->last_change);
