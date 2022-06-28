@@ -113,7 +113,7 @@ struct ctrl_resp {
 
     void *ctx;
 
-    const char *new_address;
+    char *new_address;
     ziti_controller *ctrl;
 
     void (*ctrl_cb)(void *, const ziti_error *, struct ctrl_resp *);
@@ -174,11 +174,16 @@ static void ctrl_resp_cb(um_http_resp_t *r, void *data) {
             resp->body = malloc(0);
         }
 
-        resp->new_address = find_header(r, "ziti-ctrl-address");
+        const char *new_addr = find_header(r, "ziti-ctrl-address");
+        if (new_addr) {
+            FREE(resp->new_address);
+            resp->new_address = strdup(new_addr);
+        }
 
         const char *instance_id = find_header(r, "ziti-instance-id");
 
-        if (instance_id) {
+        if (instance_id &&
+            (resp->ctrl->instance_id == NULL || strcmp(instance_id, resp->ctrl->instance_id) != 0)) {
             FREE(resp->ctrl->instance_id);
             resp->ctrl->instance_id = strdup(instance_id);
         }
@@ -194,7 +199,8 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
         CTRL_LOG(INFO, "controller supplied new address[%s]", resp->new_address);
 
         FREE(ctrl->url);
-        ctrl->url = strdup(resp->new_address);
+        ctrl->url = resp->new_address;
+        resp->new_address = NULL;
         um_http_set_url(ctrl->client, ctrl->url);
 
         if (resp->ctrl->redirect_cb) {
@@ -202,6 +208,7 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
         }
     }
 
+    FREE(resp->new_address);
     free(resp);
 }
 
