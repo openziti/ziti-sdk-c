@@ -300,8 +300,8 @@ static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
 
     ziti_close_channels(ztx, ZITI_DISABLED);
 
-    model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
-    model_map_clear(&ztx->services, (_free_f) free_ziti_service);
+    model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session_ptr);
+    model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
 
     if (ztx->closing) {
         shutdown_and_free(ztx);
@@ -505,8 +505,8 @@ static void free_ztx(uv_handle_t *h) {
     }
     ziti_auth_query_free(ztx->auth_queries);
     ziti_posture_checks_free(ztx->posture_checks);
-    model_map_clear(&ztx->services, (_free_f) free_ziti_service);
-    model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
+    model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
+    model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session_ptr);
     ziti_set_unauthenticated(ztx);
     free_ziti_identity_data(ztx->identity_data);
     FREE(ztx->identity_data);
@@ -833,7 +833,7 @@ void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const 
         uv_timer_stop(ztx->posture_checks->timer);
     }
 
-    model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session);
+    model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session_ptr);
     FREE(ztx->last_update);
 
     ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, cb, ctx);
@@ -899,10 +899,7 @@ static bool service_posture_check_timeouts_changed(ziti_context ztx, const ziti_
 
 void ziti_force_service_update(ziti_context ztx, const char* service_id) {
     ZTX_LOG(DEBUG, "forcing service[%s] to be reported as updated", service_id);
-    NEWP(val, bool);
-    *val = true;
-    void* old = model_map_set(&ztx->service_forced_updates, service_id, val);
-    FREE(old);
+    model_map_set(&ztx->service_forced_updates, service_id, (void *) (uintptr_t) true);
 }
 
 // is_service_updated returns 0 if the direct service properties
@@ -916,8 +913,7 @@ static int is_service_updated(ziti_context ztx, ziti_service *new, ziti_service 
     }
 
     //check for forced updates
-    if (model_map_get(&ztx->service_forced_updates, new->id) != NULL) {
-        model_map_remove(&ztx->service_forced_updates, new->id);
+    if (model_map_remove(&ztx->service_forced_updates, new->id) != NULL) {
         return 1;
     }
 
@@ -1425,7 +1421,7 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
                 }
 
                 ziti_send_event(ztx, &service_event);
-                model_map_clear(&ztx->services, (_free_f) free_ziti_service);
+                model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
 
                 ziti_stop_api_session_refresh(ztx);
                 uv_timer_stop(ztx->service_refresh_timer);
