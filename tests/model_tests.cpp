@@ -341,7 +341,7 @@ TEST_CASE("model map test", "[model]") {
     std::cout << j << std::endl;
     free(j);
 
-    model_map_clear(&o.map, nullptr);
+    free_ObjMap(&o);
 }
 
 TEST_CASE("model compare", "[model]") {
@@ -764,10 +764,11 @@ TEST_CASE("lists model", "[model]") {
     CHECK_THAT(fruit->color, Catch::Equals("red"));
     CHECK(model_list_it_next(it) == nullptr);
 
-    const char *json_out = ListsObj_to_json(&lists, 0, nullptr);
+    char *json_out = ListsObj_to_json(&lists, 0, nullptr);
     printf("%s\n", json_out);
 
     free_ListsObj(&lists);
+    free(json_out);
 }
 
 #define DURATION_MODEL(XX, ...) \
