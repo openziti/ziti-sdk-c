@@ -100,7 +100,7 @@ void *model_map_setl(model_map *m, long key, void *val) {
 }
 
 void *model_map_set(model_map *m, const char *key, void *val) {
-    return model_map_set_key(m, key, strlen(key) + 1, val);
+    return model_map_set_key(m, key, strlen(key), val);
 }
 
 void *model_map_set_key(model_map *m, const void *key, size_t key_len, void *val) {
