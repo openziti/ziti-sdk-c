@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <uv_mbed/queue.h>
+#include <assert.h>
 
 struct pool_obj_s {
     pool_t *pool;
@@ -31,8 +32,9 @@ struct pool_obj_s {
 struct pool_s {
     LIST_HEAD(objs, pool_obj_s) pool;
     size_t memsize;
-    size_t count;
+    size_t capacity;
     size_t out;
+    bool is_closed;
 
     void (*clear_func)(void *);
 };
@@ -40,32 +42,37 @@ struct pool_s {
 pool_t *pool_new(size_t objsize, size_t count, void (*clear_func)(void *)) {
     pool_t *p = calloc(1, sizeof(pool_t));
     p->memsize = objsize;
-    p->count = count;
+    p->capacity = count;
     p->clear_func = clear_func;
     return p;
 }
 
-void pool_destroy(pool_t *p) {
-    while (!LIST_EMPTY(&p->pool)) {
-        struct pool_obj_s *m = LIST_FIRST(&p->pool);
+void pool_destroy(pool_t *pool) {
+    pool->is_closed = true;
+
+    while (!LIST_EMPTY(&pool->pool)) {
+        struct pool_obj_s *m = LIST_FIRST(&pool->pool);
         LIST_REMOVE(m, _next);
         free(m);
     }
 
-    free(p);
+    if (pool->out == 0)
+        free(pool);
 }
 
 bool pool_has_available(pool_t *pool) {
-    return !LIST_EMPTY(&pool->pool) || pool->count > 0;
+    assert(!pool->is_closed);
+    return !LIST_EMPTY(&pool->pool) || pool->capacity > pool->out;
 }
 
 void *pool_alloc_obj(pool_t *pool) {
+    assert(!pool->is_closed);
+
     struct pool_obj_s *member = NULL;
     if (!LIST_EMPTY(&pool->pool)) {
         member = LIST_FIRST(&pool->pool);
         LIST_REMOVE(member, _next);
-    } else if (pool->count > 0) {
-        pool->count--;
+    } else if (pool->capacity > pool->out) {
         member = calloc(1, sizeof(struct pool_obj_s) + pool->memsize);
         member->size = pool->memsize;
         member->pool = pool;
@@ -92,7 +99,15 @@ void pool_return_obj(void *o) {
     struct pool_obj_s *m = container_of((char *) o, struct pool_obj_s, obj);
     pool_t *pool = m->pool;
     if (pool->clear_func) { pool->clear_func(o); }
-    memset(o, 0, pool->memsize);
-    LIST_INSERT_HEAD(&pool->pool, m, _next);
+    memset(o, 0, m->size);
     pool->out--;
+
+    if (pool->is_closed) {
+        free(m);
+        if (pool->out == 0) {
+            free(pool);
+        }
+    } else {
+        LIST_INSERT_HEAD(&pool->pool, m, _next);
+    }
 }

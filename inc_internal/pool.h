@@ -30,7 +30,7 @@ typedef struct pool_s pool_t;
 
 pool_t *pool_new(size_t objsize, size_t count, void (*clear_func)(void *));
 
-void pool_destroy(pool_t *p);
+void pool_destroy(pool_t *pool);
 
 bool pool_has_available(pool_t *p);
 
