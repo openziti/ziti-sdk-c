@@ -925,7 +925,7 @@ void do_shutdown(void *args, future_t *f, uv_loop_t *l) {
         ztx_wrap_t *w = model_map_it_value(it);
         it = model_map_it_remove(it);
         ziti_shutdown(w->ztx);
-        model_map_clear(&w->intercepts, (void (*)(void *)) free_ziti_intercept_cfg_v1);
+        model_map_clear(&w->intercepts, (void (*)(void *)) free_ziti_intercept_cfg_v1_ptr);
     }
     uv_close((uv_handle_t *) &q_async, NULL);
     uv_loop_close(l);

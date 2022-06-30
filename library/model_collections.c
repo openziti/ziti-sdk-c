@@ -24,6 +24,7 @@
 
 struct model_map_entry {
     void *key;
+    char key_pad[2];
     size_t key_len;
     uint32_t key_hash;
     void *value;
@@ -99,7 +100,7 @@ void *model_map_setl(model_map *m, long key, void *val) {
 }
 
 void *model_map_set(model_map *m, const char *key, void *val) {
-    return model_map_set_key(m, key, strlen(key) + 1, val);
+    return model_map_set_key(m, key, strlen(key), val);
 }
 
 void *model_map_set_key(model_map *m, const void *key, size_t key_len, void *val) {
@@ -118,11 +119,11 @@ void *model_map_set_key(model_map *m, const void *key, size_t key_len, void *val
         return old_val;
     }
 
-    el = malloc(sizeof(struct model_map_entry));
+    el = calloc(1, sizeof(*el));
     el->value = val;
     el->key_len = key_len;
     if (key_len > sizeof(el->key)) {
-        el->key = malloc(key_len);
+        el->key = calloc(1, key_len + 1);
         memcpy(el->key, key, key_len);
     } else {
         memcpy(&el->key, key, key_len);
@@ -148,7 +149,7 @@ void *model_map_getl(const model_map *m, long key) {
 }
 
 void *model_map_get(const model_map *m, const char *key) {
-    return model_map_get_key(m, key, strlen(key) + 1);
+    return model_map_get_key(m, key, strlen(key));
 }
 
 void *model_map_get_key(const model_map *m, const void *key, size_t key_len) {
@@ -165,7 +166,7 @@ void *model_map_removel(model_map *m, long key) {
 }
 
 void *model_map_remove(model_map *m, const char *key) {
-    return model_map_remove_key(m, key, strlen(key) + 1);
+    return model_map_remove_key(m, key, strlen(key));
 }
 
 void *model_map_remove_key(model_map *m, const void *key, size_t key_len) {
@@ -205,7 +206,6 @@ void model_map_clear(model_map *map, void (*val_free_func)(void *)) {
         if (val_free_func) {
             val_free_func(el->value);
         }
-        FREE(el->value);
         FREE(el);
     }
     FREE(map->impl->table);

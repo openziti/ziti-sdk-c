@@ -107,6 +107,7 @@ static bool check_running(uv_loop_t *loop, const char *path);
 static void ziti_pr_free_pr_info_members(pr_info *info) {
     FREE(info->id);
     FREE(info->obj);
+    free(info);
 }
 
 
@@ -376,7 +377,7 @@ void ziti_send_posture_data(ziti_context ztx) {
         }
     }
 
-    model_map_clear(&processes, NULL);
+    model_map_clear(&processes, free);
 
     free(domainInfo);
     free(osInfo);
@@ -723,7 +724,7 @@ static void default_pq_mac(ziti_context ztx, const char *id, ziti_pr_mac_cb resp
 
     response_cb(ztx, id, addresses, (int) addr_count);
     free(addresses);
-    model_map_clear(&addrs, NULL);
+    model_map_clear(&addrs, free);
     uv_free_interface_addresses(info, count);
 }
 

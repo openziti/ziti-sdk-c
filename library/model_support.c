@@ -500,6 +500,7 @@ void model_free(void *obj, type_meta *meta) {
                     fm->meta()->destroyer(str_type ? &el : el);
                 } else {
                     model_free(el, fm->meta());
+                    free(el);
                 }
             }
         } else if (fm->mod == map_mod) {
@@ -649,10 +650,7 @@ static int parse_map(void *mapp, const char *json, jsmntok_t *tok, type_meta *el
         }
         tok += rc;
         tokens_processed += rc;
-        char *k = calloc(1, keylen + 1);
-        strncpy(k, key, keylen);
-        model_map_set(map, k, value);
-        free(k);
+        model_map_set_key(map, key, keylen, value);
     }
     return tokens_processed;
 }
@@ -1210,16 +1208,13 @@ static int _parse_map(model_map *m, const char *json, jsmntok_t *tok) {
         }
         tok += rc;
         tokens_processed += rc;
-        char *k = calloc(1, keylen + 1);
-        strncpy(k, key, keylen);
-        model_map_set(m, k, value);
-        free(k);
+        model_map_set_key(m, key, keylen, value);
     }
     return tokens_processed;
 }
 
 static void _free_map(model_map *m) {
-    model_map_clear(m, NULL);
+    model_map_clear(m, free);
 }
 
 static type_meta bool_META = {

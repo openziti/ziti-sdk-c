@@ -47,18 +47,19 @@ TEST_CASE("model bench", "[model]") {
         if (val) { free(val); }
     }
 
-    model_map_clear(&m, nullptr);
+    model_map_clear(&m, free);
 }
 
 TEST_CASE("map[long->str] bench", "[model]") {
     char key[128];
     model_map m = {nullptr};
-    for (int i = 0; i < 50000; i++) {
-        snprintf(key, sizeof(key), "%d", i);
+    long i;
+    for (i = 0; i < 50000; i++) {
+        snprintf(key, sizeof(key), "%ld", i);
         model_map_setl(&m, i, strdup(key));
     }
 
-    for (int i = 0; i < 50000; i++) {
+    for (i = 0; i < 50000; i++) {
         const char *val = static_cast<const char *>(model_map_getl(&m, i));
         CHECK(i == atol(val));
     }
@@ -77,7 +78,7 @@ TEST_CASE("map[long->str] bench", "[model]") {
         }
     }
 
-    model_map_clear(&m, nullptr);
+    model_map_clear(&m, free);
 }
 
 TEST_CASE("remove last element", "[model]") {
@@ -157,4 +158,27 @@ TEST_CASE("list tests", "[model]") {
     CHECK(model_list_it_remove(it) == nullptr);
     CHECK(model_list_size(&l) == 0);
     CHECK(l.impl == nullptr);
+}
+
+TEST_CASE("map-non-terminated-string-keys", "[model]") {
+    char keys[] = "aaaaaaaaaaaaaaaa";
+
+    model_map m = {nullptr};
+    for (int i = 1; i < sizeof(keys); i++) {
+        model_map_set_key(&m, keys, i, (void *) (intptr_t) (i));
+    }
+
+    CHECK(model_map_size(&m) == strlen(keys));
+    for (int i = 1; i < sizeof(keys); i++) {
+        int v = (int) (intptr_t) model_map_get_key(&m, keys, i);
+        CHECK(v == i);
+    }
+
+    auto it = model_map_iterator(&m);
+    while (it) {
+        const char *key = model_map_it_key(it);
+        int v = (int) (intptr_t) model_map_it_value(it);
+        CHECK(strlen(key) == v);
+        it = model_map_it_next(it);
+    }
 }
