@@ -55,3 +55,32 @@ TEST_CASE("pool1", "[util]") {
     pool_return_obj(f2);
     pool_destroy(pool);
 }
+
+TEST_CASE("return after destroy", "[util]") {
+    pool_t *pool = pool_new(sizeof(foo), 2, clear_foo);
+
+    struct foo *f1, *f2, *f3;
+
+    f1 = (foo *) pool_alloc_obj(pool);
+    CHECK(f1->num == 0);
+    CHECK(f1->str == nullptr);
+    f1->num = 100;
+    f1->str = strdup("this is a message");
+    pool_return_obj(f1);
+
+    f1 = (foo *) pool_alloc_obj(pool);
+    CHECK(f1->num == 0);
+    CHECK(f1->str == nullptr);
+
+    f2 = (foo *) pool_alloc_obj(pool);
+    CHECK(f2->num == 0);
+    CHECK(f2->str == nullptr);
+
+    f3 = (foo *) pool_alloc_obj(pool);
+    CHECK(f3 == nullptr);
+
+    pool_destroy(pool);
+
+    pool_return_obj(f1);
+    pool_return_obj(f2);
+}
