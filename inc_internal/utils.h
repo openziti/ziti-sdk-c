@@ -1,18 +1,16 @@
-/*
-Copyright 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef ZITI_TLS_UTILS_H
 #define ZITI_TLS_UTILS_H
@@ -24,6 +22,7 @@ limitations under the License.
 #include <stdlib.h>
 #include <uv_mbed/queue.h>
 #include <ziti/ziti_log.h>
+#include "ziti/model_collections.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -108,10 +107,20 @@ if (!uv_is_closing((uv_handle_t*)(h))) uv_close((uv_handle_t*)(h), (uv_close_cb)
 }}while(0)
 
 
-
 void ziti_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf);
 
 int get_url_data(const char *url, struct http_parser_url *parser, int uf, char *out, size_t maxout);
+
+/**
+ * Split string based on delimiters.
+ * strings are appended to the provided list. Caller is responsible to freeing resulting strings -
+ * possibly via `model_list_clear(result, free)`
+ * @param str
+ * @param delim
+ * @param result
+ * @return number of tokens
+ */
+size_t str_split(const char *str, const char *delim, model_list *result);
 
 #ifdef __cplusplus
 }

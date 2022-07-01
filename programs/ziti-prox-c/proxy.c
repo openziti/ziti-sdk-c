@@ -57,8 +57,15 @@ static struct sig_handlers {
 
 struct proxy_app_ctx {
     model_map listeners;
+    model_map bindings;
     LIST_HEAD(clients, client) clients;
     ziti_context ziti;
+};
+
+struct binding {
+    char *service_name;
+    ziti_connection conn;
+    struct addrinfo *addr;
 };
 
 struct listener {
@@ -133,9 +140,19 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
 }
 
 static void debug_dump(struct proxy_app_ctx *app_ctx) {
+    printf("==== listeners ====\n");
     MODEL_MAP_FOR(it, app_ctx->listeners) {
         struct listener *l = model_map_it_value(it);
         printf("listening for service[%s] on port[%d]\n", l->service_name, l->port);
+    }
+
+    printf("\n==== bindings ====\n");
+    MODEL_MAP_FOR(it, app_ctx->bindings) {
+        struct binding *b = model_map_it_value(it);
+        char addr[24];
+        uv_getnameinfo_t name;
+        uv_getnameinfo(global_loop, &name, NULL, b->addr->ai_addr, NI_NUMERICHOST);
+        printf("bound to service[%s] -> %s:%s\n", b->service_name, name.host, name.service);
     }
     ziti_dump(app_ctx->ziti, fprintf, stdout);
 }
@@ -283,12 +300,65 @@ static void update_listener(ziti_service *service, int status, struct listener *
     }
 }
 
+static void binding_listen_cb(ziti_connection srv, int status) {
+    struct binding *b = ziti_conn_data(srv);
+    if (status != ZITI_OK) {
+        ZITI_LOG(WARN, "failed to bind to service[%s]", b->service_name);
+        ziti_close(b->conn, NULL);
+        b->conn = NULL;
+    }
+}
+
+static void on_ziti_accept(ziti_connection clt, int status) {
+    uv_stream_t *s = ziti_conn_data(clt);
+    if (status == ZITI_OK) {
+        ziti_conn_bridge(clt, s, on_bridge_close);
+    } else {
+        ziti_close(clt, NULL);
+        uv_close(s, on_bridge_close);
+    }
+}
+
+static void on_tcp_connect(uv_connect_t *conn_req, int status) {
+    ziti_connection clt = conn_req->data;
+    if (status == 0) {
+        ziti_conn_set_data(clt, conn_req->handle);
+        ziti_accept(clt, on_ziti_accept, NULL);
+    } else {
+        uv_close((uv_handle_t *) conn_req->handle, on_bridge_close);
+        ziti_close(clt, NULL);
+    }
+    free(conn_req);
+}
+
+static void binding_client_cb(ziti_connection srv, ziti_connection clt, int status, ziti_client_ctx clt_ctx) {
+    struct binding *b = ziti_conn_data(srv);
+    NEWP(tcp, uv_tcp_t);
+    uv_tcp_init(global_loop, tcp);
+
+    NEWP(conn_req, uv_connect_t);
+    conn_req->data = clt;
+    if (uv_tcp_connect(conn_req, tcp, b->addr->ai_addr, on_tcp_connect) != 0) {
+        ziti_close(clt, NULL);
+        uv_close((uv_handle_t *) tcp, (uv_close_cb) free);
+        free(conn_req);
+    }
+}
+
 static void service_check_cb(ziti_context ztx, ziti_service *service, int status, void *ctx) {
     struct proxy_app_ctx *app_ctx = ctx;
     ZITI_LOG(DEBUG, "service[%s]: %s", service->name, ziti_errorstr(status));
     struct listener *l = model_map_get(&app_ctx->listeners, service->name);
     if (l) {
         update_listener(service, status, l);
+    }
+
+    struct binding *b = model_map_get(&app_ctx->bindings, service->name);
+    if (b && (service->perm_flags & ZITI_CAN_DIAL) != 0) {
+        if (b->conn == NULL) {
+            ziti_conn_init(ztx, &b->conn, b);
+            ziti_listen(b->conn, b->service_name, binding_listen_cb, binding_client_cb);
+        }
     }
 }
 
@@ -440,7 +510,7 @@ void mfa_auth_event_handler(ziti_context ztx) {
     uv_queue_work(global_loop, &mfa_wr->w, mfa_worker, mfa_worker_done);
 }
 
-
+static struct proxy_app_ctx app_ctx = {0};
 void run(int argc, char **argv) {
 
     PREPF(uv, uv_strerror);
@@ -449,7 +519,7 @@ void run(int argc, char **argv) {
     uv_loop_init(loop);
     global_loop = loop;
 
-    struct proxy_app_ctx app_ctx = {0};
+
     for (int i = 0; i < argc; i++) {
 
         char *p = strchr(argv[i], ':');
@@ -533,7 +603,8 @@ int run_opts(int argc, char **argv) {
             {"debug",   optional_argument, NULL, 'd'},
             {"config",  required_argument, NULL, 'c'},
             {"metrics", optional_argument, NULL, 'm'},
-            {NULL,      0,                 NULL, 0}
+            {"bind",    required_argument, NULL, 'b'},
+            {NULL, 0,                      NULL, 0}
     };
 
     int c, option_index, errors = 0;
@@ -542,7 +613,7 @@ int run_opts(int argc, char **argv) {
 
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "d:c:m:",
+    while ((c = getopt_long(argc, argv, "b:c:d:m:",
                             long_options, &option_index)) != -1) {
         switch (c) {
             case 'd':
@@ -563,6 +634,45 @@ int run_opts(int argc, char **argv) {
                 if (optarg) {
                     report_metrics = (int) strtol(optarg, NULL, 10);
                 }
+                break;
+
+            case 'b':
+                if (!optarg) {
+                    fprintf(stderr, "-b|--bind option requires <service:address> argument\n");
+                    errors++;
+                    break;
+                }
+
+                model_list args = {0};
+                str_split(optarg, ":", &args);
+                size_t args_len = model_list_size(&args);
+                if (args_len < 2) {
+                    fprintf(stderr, "-b|--bind option should be <service:host:port>\n");
+                    errors++;
+                    break;
+                }
+                model_list_iter it = model_list_iterator(&args);
+                NEWP(b, struct binding);
+                b->service_name = model_list_it_element(it);
+                it = model_list_it_remove(it);
+
+                if (model_list_size(&args) > 1) {
+                    char *host = model_list_it_element(it);
+                    if (strlen(host) == 0) {
+                        host = "localhost";
+                    }
+                    it = model_list_it_next(it);
+                    char *port = model_list_it_element(it);
+
+                    int rc = getaddrinfo(host, port, NULL, &b->addr);
+                    if (rc != 0) {
+                        errors++;
+                        fprintf(stderr, "failed to resolve %s:%s for service[%s] binding", host, port, b->service_name);
+                    }
+                    model_map_set(&app_ctx.bindings, b->service_name, b);
+                }
+
+                model_list_clear(&args, free);
                 break;
 
             default: {
