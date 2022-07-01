@@ -420,7 +420,9 @@ size_t str_split(const char *str, const char *delim, model_list *result) {
             const char *s = sep;
             char *val;
             if ((sep = strpbrk(s, delim)) != NULL) {
-                val = strndup(s, sep++ - s);
+                size_t tok_len = sep++ - s;
+                val = calloc(1, tok_len + 1);
+                strncpy(val, s, tok_len);
             } else {
                 val = strdup(s);
             }
