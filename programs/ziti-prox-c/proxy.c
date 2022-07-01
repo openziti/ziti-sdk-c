@@ -331,17 +331,24 @@ static void on_tcp_connect(uv_connect_t *conn_req, int status) {
     free(conn_req);
 }
 
-static void binding_client_cb(ziti_connection srv, ziti_connection clt, int status, ziti_client_ctx clt_ctx) {
+static void binding_client_cb(ziti_connection srv, ziti_connection clt, int status, ziti_client_ctx *clt_ctx) {
     struct binding *b = ziti_conn_data(srv);
-    NEWP(tcp, uv_tcp_t);
-    uv_tcp_init(global_loop, tcp);
 
-    NEWP(conn_req, uv_connect_t);
-    conn_req->data = clt;
-    if (uv_tcp_connect(conn_req, tcp, b->addr->ai_addr, on_tcp_connect) != 0) {
-        ziti_close(clt, NULL);
-        uv_close((uv_handle_t *) tcp, (uv_close_cb) free);
-        free(conn_req);
+    if (status == ZITI_OK) {
+        NEWP(tcp, uv_tcp_t);
+        uv_tcp_init(global_loop, tcp);
+
+        NEWP(conn_req, uv_connect_t);
+        conn_req->data = clt;
+        if (uv_tcp_connect(conn_req, tcp, b->addr->ai_addr, on_tcp_connect) != 0) {
+            ziti_close(clt, NULL);
+            uv_close((uv_handle_t *) tcp, (uv_close_cb) free);
+            free(conn_req);
+        }
+    } else {
+        ZITI_LOG(WARN, "stopping serving[%s] due to %d/%s", b->service_name, status, ziti_errorstr(status));
+        ziti_close(b->conn, NULL);
+        b->conn = NULL;
     }
 }
 
@@ -354,7 +361,7 @@ static void service_check_cb(ziti_context ztx, ziti_service *service, int status
     }
 
     struct binding *b = model_map_get(&app_ctx->bindings, service->name);
-    if (b && (service->perm_flags & ZITI_CAN_DIAL) != 0) {
+    if (b && (service->perm_flags & ZITI_CAN_BIND) != 0) {
         if (b->conn == NULL) {
             ziti_conn_init(ztx, &b->conn, b);
             ziti_listen(b->conn, b->service_name, binding_listen_cb, binding_client_cb);
