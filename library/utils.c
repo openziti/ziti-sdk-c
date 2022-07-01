@@ -1,18 +1,16 @@
-/*
-Copyright 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <uv.h>
 #include <uv_mbed/uv_mbed.h>
@@ -405,10 +403,33 @@ void hexify(const uint8_t *bin, size_t bin_len, char sep, char **buf) {
     char *p = out;
     for (int i = 0; i < bin_len; i++) {
         unsigned char b = bin[i];
-        if (sep && i > 0) *p++ = sep;
+        if (sep && i > 0) { *p++ = sep; }
         *p++ = hex[b >> 4];
         *p++ = hex[b & 0xf];
     }
     *p = 0;
     *buf = out;
+}
+
+
+size_t str_split(const char *str, const char *delim, model_list *result) {
+    size_t count = 0;
+    if (str) {
+        const char *sep = str;
+        do {
+            const char *s = sep;
+            char *val;
+            if ((sep = strpbrk(s, delim)) != NULL) {
+                size_t tok_len = sep++ - s;
+                val = calloc(1, tok_len + 1);
+                strncpy(val, s, tok_len);
+            } else {
+                val = strdup(s);
+            }
+            model_list_append(result, val);
+            count++;
+        } while (sep);
+    }
+
+    return count;
 }
