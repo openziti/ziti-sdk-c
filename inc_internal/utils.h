@@ -120,7 +120,7 @@ int get_url_data(const char *url, struct http_parser_url *parser, int uf, char *
  * @param result
  * @return number of tokens
  */
-size_t str_split(const char *str, const char *delim, model_list *result);
+extern size_t str_split(const char *str, const char *delim, model_list *result);
 
 #ifdef __cplusplus
 }
