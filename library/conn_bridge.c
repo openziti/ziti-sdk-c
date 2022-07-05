@@ -29,6 +29,8 @@ struct fd_bridge_s {
 
 struct ziti_bridge_s {
     bool closed;
+    bool ziti_eof;
+    bool input_eof;
     ziti_connection conn;
     uv_stream_t *input;
     uv_stream_t *output;
@@ -178,8 +180,14 @@ ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
         uv_write(wr, br->output, &b, 1, on_output);
         return len;
     } else if (len == ZITI_EOF) {
-        NEWP(sr, uv_shutdown_t);
-        uv_shutdown(sr, br->output, on_shutdown);
+        br->ziti_eof = true;
+        if (br->input_eof) {
+            ZITI_LOG(VERBOSE, "both sides are EOF");
+            close_bridge(br);
+        } else {
+            NEWP(sr, uv_shutdown_t);
+            uv_shutdown(sr, br->output, on_shutdown);
+        }
     } else {
         close_bridge(br);
     }
@@ -208,7 +216,13 @@ void on_input(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
         if (len == UV_ENOBUFS) {
             ZITI_LOG(TRACE, "stalled");
         } else if (len == UV_EOF) {
-            ziti_close_write(br->conn);
+            br->input_eof = true;
+            if (br->ziti_eof) {
+                ZITI_LOG(VERBOSE, "both sides are EOF");
+                close_bridge(br);
+            } else {
+                ziti_close_write(br->conn);
+            }
         } else if (len < 0) {
             ZITI_LOG(WARN, "err = %zd", len);
             close_bridge(br);
