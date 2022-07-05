@@ -23,7 +23,7 @@
 static const char *INVALID_SESSION = "Invalid Session";
 static const int MAX_CONNECT_RETRY = 3;
 
-#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%u.%u] " fmt, conn->ziti_ctx->id, conn->conn_id, ##__VA_ARGS__)
+#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%u.%u/%s] " fmt, conn->ziti_ctx->id, conn->conn_id, conn_state_str[conn->state], ##__VA_ARGS__)
 
 #define conn_states(XX) \
     XX(Initial)\
@@ -590,16 +590,6 @@ static void ziti_write_timeout(uv_timer_t *t) {
 static void ziti_write_req(struct ziti_write_req_s *req) {
     struct ziti_conn *conn = req->conn;
 
-    if (conn->state >= Timedout) {
-        CONN_LOG(WARN, "got write req in closed/disconnected sate");
-        conn->write_reqs--;
-
-        if (req->cb) {
-            req->cb(conn, ZITI_CONN_CLOSED, req->ctx);
-        }
-        free(req);
-        return;
-    }
     if (req->eof) {
         conn_set_state(conn, CloseWrite);
         send_fin_message(conn);
@@ -767,20 +757,30 @@ static void flush_connection (ziti_connection conn) {
 
 static bool flush_to_service(ziti_connection conn) {
 
+    // still connecting
     if (conn->channel == NULL) { return false; }
+    if (conn->state < Connected || conn->state == Accepting) { return false; }
 
-    if (conn->state == Connected) {
-        int count = 0;
-        while (!TAILQ_EMPTY(&conn->wreqs)) {
-            struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
-            TAILQ_REMOVE(&conn->wreqs, req, _next);
+    int count = 0;
+    while (!TAILQ_EMPTY(&conn->wreqs)) {
+        struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
+        TAILQ_REMOVE(&conn->wreqs, req, _next);
 
+        if (conn->state == Connected) {
             conn->write_reqs++;
             ziti_write_req(req);
             count++;
+        } else {
+            CONN_LOG(DEBUG, "got write req in invalid state[%s]", conn_state_str[conn->state]);
+            conn->write_reqs--;
+
+            if (req->cb) {
+                req->cb(conn, ZITI_INVALID_STATE, req->ctx);
+            }
+            free(req);
         }
-        CONN_LOG(TRACE, "flushed %d messages", count);
     }
+    CONN_LOG(TRACE, "flushed %d messages", count);
 
     return !TAILQ_EMPTY(&conn->wreqs);
 }
