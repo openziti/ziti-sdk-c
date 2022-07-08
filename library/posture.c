@@ -104,15 +104,9 @@ static int hash_sha512(ziti_context ztx, uv_loop_t *loop, const char *path, unsi
 
 static bool check_running(uv_loop_t *loop, const char *path);
 
-static void ziti_pr_free_pr_info_members(pr_info *info) {
+static void ziti_pr_free_pr_info(pr_info *info) {
     FREE(info->id);
     FREE(info->obj);
-    free(info);
-}
-
-
-static void ziti_pr_free_pr_info(pr_info *info) {
-    ziti_pr_free_pr_info_members(info);
     FREE(info);
 }
 
@@ -147,7 +141,7 @@ void ziti_posture_checks_free(struct posture_checks *pcs) {
     if (pcs != NULL) {
         uv_close((uv_handle_t *) pcs->timer, ziti_posture_checks_timer_free);
         pcs->timer = NULL;
-        model_map_clear(&pcs->responses, (_free_f) ziti_pr_free_pr_info_members);
+        model_map_clear(&pcs->responses, (_free_f) ziti_pr_free_pr_info);
         model_map_clear(&pcs->error_states, NULL);
         FREE(pcs->previous_api_session_id);
         FREE(pcs->controller_instance_id);
