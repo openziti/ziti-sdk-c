@@ -1,23 +1,35 @@
-name: mattermost-ziti-webhook
-on: 
-  create:
-  delete:
+name: ziti-mattermost-action-py
+on:
   issues:
   issue_comment:
   pull_request_review:
+    types: [submitted]
   pull_request_review_comment:
   pull_request:
+    types: [opened, reopened]
   push:
   fork:
   release:
+    types: [released]
 
 jobs:
-  mattermost-ziti-webhook:
-    runs-on: macos-latest
-    name: POST Webhook
+  ziti-webhook:
+    runs-on: ubuntu-latest
+    name: Ziti Mattermost Action - Py
     steps:
-    - uses: openziti/ziti-webhook-action@main
+    - uses: openziti/ziti-mattermost-action-py@main
+      if: github.event_name != 'pull_request_review'
       with:
-        ziti-id: ${{ secrets.ZITI_MATTERMOST_IDENTITY }}
-        webhook-url: ${{ secrets.ZITI_MATTERMOST_WEBHOOK_URL }}
-        webhook-secret: ${{ secrets.ZITI_MATTERMOSTI_WEBHOOK_SECRET }}
+        zitiId: ${{ secrets.ZITI_MATTERMOST_IDENTITY }}
+        webhookUrl: ${{ secrets.ZHOOK_URL }}
+        eventJson: ${{ toJson(github.event) }}
+        senderUsername: "GitHubZ"
+        destChannel: "dev-notifications"
+    - uses: openziti/ziti-mattermost-action-py@main
+      if: github.event_name == 'pull_request_review' && github.event.review.state == 'approved'
+      with:
+        zitiId: ${{ secrets.ZITI_MATTERMOST_IDENTITY }}
+        webhookUrl: ${{ secrets.ZHOOK_URL }}
+        eventJson: ${{ toJson(github.event) }}
+        senderUsername: "GitHubZ"
+        destChannel: "dev-notifications"
