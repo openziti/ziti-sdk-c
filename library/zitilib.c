@@ -456,7 +456,7 @@ static void on_ziti_connect(ziti_connection conn, int status) {
 }
 
 static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, uint16_t port) {
-    ZITI_LOG(INFO, "looking up %s:%d", host, port);
+    ZITI_LOG(DEBUG, "looking up %s:%d", host, port);
     const char *service;
     ziti_intercept_cfg_v1 *intercept;
 
@@ -468,7 +468,7 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
         case SOCK_DGRAM:
             proto = "udp";
             break;
-        case 0:
+        case 0: // resolve case: any protocol can be used to assign IP address to host
             break;
         default:
             return NULL;
@@ -545,7 +545,7 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
                 .app_data_sz = len,
                 .identity = req->terminator,
         };
-        ZITI_LOG(INFO, "connecting fd[%d] to service[%s]", zs->fd, req->service);
+        ZITI_LOG(DEBUG, "connecting fd[%d] to service[%s]", zs->fd, req->service);
         ziti_dial_with_options(zs->conn, req->service, &opts, on_ziti_connect, NULL);
     } else {
         ZITI_LOG(WARN, "no service for target address[%s:%s:%d]", proto_str, req->host, req->port);
@@ -856,7 +856,6 @@ ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
 
     ziti_socket_t clt = -1;
     int err = await_future(f);
-    fprintf(stderr, "accept complete\n");
     if (!err) {
         struct sock_info_s *si = f->result;
         clt = si->fd;
@@ -1006,7 +1005,7 @@ static void resolve_cb(void *r, future_t *f) {
     in_addr_t ip = (in_addr_t)(intptr_t)model_map_get(&host_to_ip, req->host);
     if (ip == 0) {
         ip = htonl(++addr_counter);
-        ZITI_LOG(INFO, "assigned %s => %x", req->host, ip);
+        ZITI_LOG(DEBUG, "assigned %s => %x", req->host, ip);
         model_map_set(&host_to_ip, req->host, (void*)(uintptr_t)ip);
         model_map_set_key(&ip_to_host, &ip, sizeof(ip), strdup(req->host));
     }
