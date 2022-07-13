@@ -62,6 +62,18 @@ set(CPACK_OUTPUT_FILE_PREFIX ${CMAKE_BINARY_DIR}/package)
 set(CPACK_GENERATOR "ZIP")
 set(archive_sfx "zip")
 
+find_program(ZIP NAMES 7z)
+if (ZIP)
+    set(ZIP_OPTS a -tzip)
+else ()
+    find_program(ZIP NAMES zip)
+    if (ZIP)
+        set(ZIP_OPTS "-jv")
+    else ()
+        message("zip program not found")
+    endif ()
+endif ()
+
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 
 include(CPack)
@@ -76,6 +88,7 @@ else()
 endif()
 
 add_subdirectory(library)
+add_subdirectory(zitify)
 
 if (ZITI_BUILD_PROGRAMS)
     add_subdirectory(programs)

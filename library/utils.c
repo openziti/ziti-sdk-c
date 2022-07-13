@@ -324,27 +324,6 @@ static const char *get_utc_time() {
     return elapsed_buffer;
 }
 
-void ziti_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-    buf->base = (char *) malloc(suggested_size);
-    if (buf->base == NULL) {
-        ZITI_LOG(ERROR, "failed to allocate %zd bytes. Prepare for crash", suggested_size);
-        buf->len = 0;
-    }
-    else {
-        buf->len = suggested_size;
-    }
-}
-
-int get_url_data(const char *url, struct http_parser_url *parser, int uf, char *out, size_t maxout) {
-    if ((parser->field_set & (1 << uf)) != 0) {
-        snprintf(out, maxout, "%*.*s", parser->field_data[uf].len, parser->field_data[uf].len,
-                 url + parser->field_data[uf].off);
-        return 1;
-    }
-    out[0] = 0;
-    return 0;
-}
-
 int lt_zero(int v) { return v < 0; }
 
 int non_zero(int v) { return v != 0; }

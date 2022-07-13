@@ -41,7 +41,7 @@ jobs:
           cmake --build ${{runner.workspace}}/build
 
       - name: make artifacts
-        run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c-pack --target package
+        run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c-pack --target package --target zitify-pack
 
 #      - name: zip artifacts
 #        if: runner.os != 'Windows'
@@ -61,3 +61,4 @@ jobs:
           files: |
             ${{runner.workspace}}/build/package/ziti-sdk*
             ${{runner.workspace}}/build/programs/ziti-prox-c/ziti-prox-c-*.zip
+            ${{runner.workspace}}/build/zitify/zitify*.zip

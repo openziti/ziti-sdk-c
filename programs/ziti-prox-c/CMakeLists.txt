@@ -15,18 +15,6 @@ target_include_directories(ziti-prox-c PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_intern
 
 set(ZITI_ARCHIVE_NAME "ziti-prox-c-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}.${archive_sfx}")
 
-find_program(ZIP NAMES 7z)
-if (ZIP)
-    set(ZIP_OPTS a -tzip)
-else()
-    find_program(ZIP NAMES zip)
-    if (ZIP)
-        set(ZIP_OPTS "-jv")
-    else()
-        message("zip program not found")
-    endif()
-endif()
-
 add_custom_target(ziti-prox-c-pack
         BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${ZITI_ARCHIVE_NAME}
         DEPENDS ziti-prox-c

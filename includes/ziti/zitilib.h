@@ -16,6 +16,7 @@
 #ifndef ZITI_SDK_ZITILIB_H
 #define ZITI_SDK_ZITILIB_H
 
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -29,6 +30,8 @@ typedef struct ziti_ctx *ziti_context;
 #include <WinSock2.h>
 typedef SOCKET ziti_socket_t;
 #else
+#include <netinet/in.h>
+
 typedef int ziti_socket_t;
 #endif
 
@@ -141,6 +144,7 @@ ziti_socket_t Ziti_accept(ziti_socket_t socket, char *caller, int caller_len);
  */
 ZITI_FUNC
 void Ziti_lib_shutdown(void);
+
 
 #ifdef __cplusplus
 }

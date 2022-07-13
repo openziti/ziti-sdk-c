@@ -58,7 +58,7 @@ int main(int argc, char *argv[]) {
     int port = (url.port != 0) ? url.port : 80;
 
     Ziti_lib_init();
-    ziti_socket_t socket = Ziti_socket(SOCK_STREAM);
+    ziti_socket_t soc = socket(AF_INET, SOCK_STREAM, 0); //Ziti_socket(SOCK_STREAM);
 
     ziti_context ztx = Ziti_load_context(path);
     if (ztx == NULL) {
@@ -68,10 +68,10 @@ int main(int argc, char *argv[]) {
     }
 
 
-    long rc = Ziti_connect_addr(socket, hostname, port);
+    long rc = Ziti_connect_addr(soc, hostname, port);
 
     if (rc != 0) {
-        fprintf(stderr, "failed to connect: %ld(%s)\n", rc, ziti_errorstr(rc));
+        fprintf(stderr, "failed to connect: %ld(%s)\n", rc, ziti_errorstr((int)rc));
         goto DONE;
     }
 
@@ -86,13 +86,13 @@ int main(int argc, char *argv[]) {
                        url.field_data[UF_HOST].len, argv[2] + url.field_data[UF_HOST].off,
                        prog, ziti_get_version()->version);
 
-    rc = write(socket, req, len);
+    rc = write(soc, req, len);
     fprintf(stderr, "rc = %ld, errno = %d\n", rc, errno);
 
     //shutdown(socket, SHUT_WR);
     char buf[1024];
     do {
-        rc = read(socket, buf, sizeof(buf));
+        rc = read(soc, buf, sizeof(buf));
         if (rc > 0) {
             printf("%.*s", (int) rc, buf);
         }
@@ -102,6 +102,6 @@ int main(int argc, char *argv[]) {
     }
 
     DONE:
-    close(socket);
+    close(soc);
     Ziti_lib_shutdown();
 }
