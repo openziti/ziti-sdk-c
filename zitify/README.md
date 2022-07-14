@@ -12,7 +12,7 @@ Download the latest release and extract into a directory on your `$PATH`
 
 Acquire an enrollment token from [ZEDS](https://zeds.openziti.org)
 
-Enroll (assume your file is `my_id.jwt`):
+Enroll (assume your file is `my_id.jwt`). Python is required to execute enrollment command:
 
 ```console
 $ zitify enroll -j my_id.jwt -i my_id.json
