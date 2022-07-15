@@ -930,7 +930,9 @@ static bool check_running(uv_loop_t *loop, const char *path) {
 
         HANDLE ph = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pe32.th32ProcessID); //OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pe32.th32ProcessID);
         if (ph == NULL) {
-            ZITI_LOG(WARN, "process %s is running, however not able to open handle. GetLastError(): %lu", pe32.szExeFile, GetLastError());
+            if (pe32.th32ProcessID > 0) {
+                ZITI_LOG(DEBUG, "process %s is running, however not able to open handle. GetLastError(): %lu", pe32.szExeFile, GetLastError());
+            }
             continue;
         }
         fullPathSize = sizeof(fullPath);
