@@ -911,7 +911,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
 
     // Set the size of the structure before using it.
     PROCESSENTRY32 pe32;
-    pe32.dwSize = sizeof( PROCESSENTRY32 );
+    pe32.dwSize = sizeof(pe32);
     // Retrieve information about the first process, and exit if unsuccessful
     if( !Process32First( sh, &pe32 ) )
     {
@@ -928,7 +928,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
     {
         ZITI_LOG(VERBOSE, "process is running: %s", pe32.szExeFile);
 
-        HANDLE ph = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pe32.th32ProcessID); //OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pe32.th32ProcessID);
+        HANDLE ph = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pe32.th32ProcessID);
         if (ph == NULL) {
             if (pe32.th32ProcessID > 0) {
                 ZITI_LOG(DEBUG, "process %s is running, however not able to open handle. GetLastError(): %lu", pe32.szExeFile, GetLastError());
