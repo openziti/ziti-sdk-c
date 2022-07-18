@@ -99,6 +99,8 @@ const char* ziti_git_commit() {
     return to_str(ZITI_COMMIT);
 }
 
+static const char * UV_MBED_MODULE = "uv-mbed";
+
 static model_map log_levels;
 static int ziti_log_lvl = ZITI_LOG_DEFAULT_LEVEL;
 static FILE *ziti_debug_out;

@@ -64,8 +64,6 @@ typedef const char *(*fmt_error_t)(int);
 
 typedef int *(*cond_error_t)(int);
 
-static char *const UV_MBED_MODULE = "uv-mbed";
-
 #define NEWP(var, type) type *var = calloc(1, sizeof(type))
 #define VAL_OR_ELSE(v, def) ((v) != NULL ? (v) : (def))
 #define FREE(v)  do { if ((v) != NULL) { free((void*)(v)); (v) = NULL; } } while(0)
