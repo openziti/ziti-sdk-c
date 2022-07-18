@@ -977,6 +977,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
             }
         }
     }
+    uv_fs_req_cleanup(&fs_proc);
 
 #elif __APPLE__ && __MACH__ && !defined(TARGET_OS_IPHONE) && !defined(TARGET_OS_SIMULATOR)
     int n_pids = proc_listallpids(NULL, 0);
@@ -999,7 +1000,6 @@ static bool check_running(uv_loop_t *loop, const char *path) {
     ZITI_LOG(WARN, "not implemented on %s", uname.sysname);
 #endif
     ZITI_LOG(DEBUG, "is running result: %s for %s", (result ? "true" : "false"), path);
-    uv_fs_req_cleanup(&fs_proc);
     return result;
 }
 
