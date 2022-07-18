@@ -382,6 +382,12 @@ void ziti_send_posture_data(ziti_context ztx) {
 
 static void ziti_collect_pr(ziti_context ztx, const char *pr_obj_key, char *pr_obj, size_t pr_obj_len) {
 
+    if (ztx->posture_checks == NULL) {
+        ZTX_LOG(WARN, "ztx disabled, posture check obsolete id[%s]", pr_obj_key);
+        free(pr_obj);
+        return;
+    }
+
     pr_info *current_info = model_map_get(&ztx->posture_checks->responses, pr_obj_key);
 
     if (current_info != NULL) {
@@ -426,20 +432,23 @@ static void ziti_pr_post_bulk_cb(ziti_pr_response *pr_resp, const ziti_error *er
 
     ZTX_LOG(DEBUG, "ziti_pr_post_bulk_cb: starting");
 
-    if (err != NULL) {
-        ZTX_LOG(ERROR, "error during bulk posture response submission (%d) %s", err->http_code, err->message);
-        ztx->posture_checks->must_send = true; //error, must try again
-        if (err->http_code == 404) {
-            ztx->no_bulk_posture_response_api = true;
+    // if ztx is disabled this request is cancelled and posture_checks is cleared
+    if (ztx->posture_checks) {
+        if (err != NULL) {
+            ZTX_LOG(ERROR, "error during bulk posture response submission (%d) %s", err->http_code, err->message);
+            ztx->posture_checks->must_send = true; //error, must try again
+            if (err->http_code == 404) {
+                ztx->no_bulk_posture_response_api = true;
+            }
+        } else {
+            ztx->posture_checks->must_send = false; //did not error, can skip submissions
+            handle_pr_resp_timer_events(ztx, pr_resp);
+            ziti_services_refresh(ztx, true);
+            ZTX_LOG(DEBUG, "done with bulk posture response submission");
         }
-    } else {
-        ztx->posture_checks->must_send = false; //did not error, can skip submissions
-        handle_pr_resp_timer_events(ztx, pr_resp);
-        ziti_services_refresh(ztx, true);
-        ZTX_LOG(DEBUG, "done with bulk posture response submission");
     }
 
-    FREE(pr_resp);
+    free_ziti_pr_response_ptr(pr_resp);
 }
 
 static void ziti_pr_set_info_errored(ziti_context ztx, const char *id) {
@@ -477,7 +486,7 @@ static void ziti_pr_post_cb(ziti_pr_response *pr_resp, const ziti_error *err, vo
     }
 
     ziti_pr_free_pr_cb_ctx(ctx);
-    FREE(pr_resp);
+    free_ziti_pr_response_ptr(pr_resp);
 }
 
 static void ziti_pr_send(ziti_context ztx) {
@@ -829,6 +838,7 @@ void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err,
         handle_pr_resp_timer_events(ztx, pr_resp);
         ziti_services_refresh(ztx, true);
     }
+    free_ziti_pr_response_ptr(pr_resp);
 }
 
 
@@ -896,6 +906,8 @@ goto cleanup;                                   \
     cleanup:
     if (rc != 0) FREE(digest);
     uv_fs_close(loop, &ft, file, NULL);
+    uv_fs_req_cleanup(&ft);
+    FREE(buf.base);
 
     return rc;
 }
@@ -987,6 +999,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
     ZITI_LOG(WARN, "not implemented on %s", uname.sysname);
 #endif
     ZITI_LOG(DEBUG, "is running result: %s for %s", (result ? "true" : "false"), path);
+    uv_fs_req_cleanup(&fs_proc);
     return result;
 }
 
