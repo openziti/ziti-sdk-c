@@ -223,6 +223,11 @@ static void init_debug(uv_loop_t *loop) {
     uv_prepare_start(&log_flusher, flush_log);
 }
 
+#if _WIN32 && _MSVC
+static char sep = '\\';
+#else
+static char sep = '/';
+#endif
 void ziti_logger(int level, const char *module, const char *file, unsigned int line, const char *func, FORMAT_STRING(const char *fmt), ...) {
     static size_t loglinelen = 1024;
     static char *logbuf;
@@ -232,7 +237,7 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
     va_list argp;
     va_start(argp, fmt);
     char location[128];
-    char *last_slash = strrchr(file, '/');
+    char *last_slash = strrchr(file, sep);
 
     int modlen = 16;
     if (module == NULL) {
@@ -242,7 +247,7 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
             char *p = last_slash;
             while (p > file) {
                 p--;
-                if (*p == '/') {
+                if (*p == sep) {
                     p++;
                     break;
                 }
@@ -283,14 +288,6 @@ static void default_log_writer(int level, const char *loc, const char *msg, size
 
 void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg) {
     ziti_logger(level, "uv-mbed", file, line, NULL, "%s", msg);
-}
-
-void ziti_enable_uv_mbed_logger(int enabled) {
-    if(enabled) {
-        uv_mbed_set_debug(9, uv_mbed_logger);
-    } else {
-        uv_mbed_set_debug(1, NULL);
-    }
 }
 
 static void flush_log(uv_prepare_t *p) {
@@ -371,7 +368,7 @@ void ziti_fmt_time(char* time_str, size_t time_str_sz, uv_timeval64_t* tv) {
         strncpy(time_str, "null tv", time_str_sz);
     } else {
         struct tm* start_tm = gmtime(&tv->tv_sec);
-        strftime(time_str, time_str_sz, "%FT%T", start_tm);
+        strftime(time_str, time_str_sz, "%Y-%m-%dT%H:%M:%S", start_tm);
     }
 }
 
