@@ -1,3 +1,17 @@
+// Copyright (c) 2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 //
 // Created by eugene on 4/15/2020.
 //
@@ -44,7 +58,7 @@ enum DebugLevel {
 #endif
 
 #define ZITI_LOG(level, fmt, ...) do { \
-if (level <= ziti_log_level()) { ziti_logger(level, ZITI_LOG_MODULE, __FILENAME__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
+if (level <= ziti_log_level(ZITI_LOG_MODULE, __FILENAME__)) { ziti_logger(level, ZITI_LOG_MODULE, __FILENAME__, __LINE__, __func__, fmt, ##__VA_ARGS__); }\
 } while(0)
 
 #ifdef __cplusplus
@@ -75,8 +89,7 @@ typedef void (*log_writer)(int level, const char *loc, const char *msg, size_t m
 ZITI_FUNC extern void
 ziti_logger(int level, const char *module, const char *file, unsigned int line, const char *func,
             FORMAT_STRING(const char *fmt), ...)
-ziti_printf_args(6, 7)
-;
+ziti_printf_args(6, 7);
 
 // call once
 // use ZITI_LOG_DEFAULT_LEVEL to use default(INFO)/ZITI_LOG env var
@@ -86,14 +99,14 @@ ZITI_FUNC extern void ziti_log_init(uv_loop_t *loop, int level, log_writer logge
 ZITI_FUNC extern void ziti_log_set_logger(log_writer logger);
 
 // use ZITI_LOG_DEFAULT_LEVEL to reset to default(INFO) or ZITI_LOG env var
-ZITI_FUNC extern void ziti_log_set_level(int level);
+ZITI_FUNC extern void ziti_log_set_level(int level, const char *marker);
 
 // don't use directly
-ZITI_FUNC extern int ziti_log_level();
+ZITI_FUNC extern int ziti_log_level(const char *module, const char *file);
 
-ZITI_FUNC extern void ziti_log_set_level_by_label(const char* log_level);
+ZITI_FUNC extern void ziti_log_set_level_by_label(const char *log_level);
 
-ZITI_FUNC extern const char* ziti_log_level_label();
+ZITI_FUNC extern const char *ziti_log_level_label();
 
 /**
  * can be used to turn on logging of uv-mbed library and send log messages into the ziti_log
