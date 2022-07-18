@@ -129,7 +129,7 @@ void ziti_posture_init(ziti_context ztx, long interval_secs) {
     }
 
     if (!uv_is_active((uv_handle_t *) ztx->posture_checks->timer)) {
-        uv_timer_start(ztx->posture_checks->timer, ziti_pr_ticker_cb, MILLIS(interval_secs), MILLIS(interval_secs));
+        uv_timer_start(ztx->posture_checks->timer, ziti_pr_ticker_cb, MILLIS(1)/*fire on startup*/, MILLIS(interval_secs));
     }
 }
 
@@ -905,29 +905,46 @@ static bool check_running(uv_loop_t *loop, const char *path) {
 #if _WIN32
     HANDLE sh = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (sh == INVALID_HANDLE_VALUE) {
-        ZITI_LOG(ERROR, "failed to get process list: %d", GetLastError());
+        ZITI_LOG(ERROR, "failed to get process list: %lu", GetLastError());
         return result;
     }
-    PROCESSENTRY32W entry = {
-            .dwSize = sizeof(PROCESSENTRY32W)
-    };
+
+    // Set the size of the structure before using it.
+    PROCESSENTRY32 pe32;
+    pe32.dwSize = sizeof(pe32);
+    // Retrieve information about the first process, and exit if unsuccessful
+    if( !Process32First( sh, &pe32 ) )
+    {
+        CloseHandle( sh );          // clean the snapshot object
+        return( FALSE );
+    }
 
     char fullPath[1024];
     DWORD fullPathSize;
 
-    for (BOOL ret = Process32FirstW(sh, &entry); ret; ret = Process32NextW(sh, &entry)) {
-        HANDLE ph = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, entry.th32ProcessID);
+    // Now walk the snapshot of processes, and display information about each process in turn
+    ZITI_LOG(VERBOSE, "checking to see if process is running: %s", path);
+    do
+    {
+        ZITI_LOG(VERBOSE, "process is running: %s", pe32.szExeFile);
+
+        HANDLE ph = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pe32.th32ProcessID);
         if (ph == NULL) {
+            if (pe32.th32ProcessID > 0) {
+                ZITI_LOG(DEBUG, "process %s is running, however not able to open handle. GetLastError(): %lu", pe32.szExeFile, GetLastError());
+            }
             continue;
         }
         fullPathSize = sizeof(fullPath);
         QueryFullProcessImageNameA(ph, 0, fullPath, &fullPathSize);
 
+        ZITI_LOG(VERBOSE, "comparing process: %s to: %s", pe32.szExeFile, fullPath);
         if (strnicmp(path, fullPath, fullPathSize) == 0) {
             result = true;
             break;
         }
-    }
+    } while( Process32Next( sh, &pe32 ) );
+
     CloseHandle(sh);
 
 #elif __linux || __linux__
@@ -969,6 +986,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
     uv_os_uname(&uname);
     ZITI_LOG(WARN, "not implemented on %s", uname.sysname);
 #endif
+    ZITI_LOG(DEBUG, "is running result: %s for %s", (result ? "true" : "false"), path);
     return result;
 }
 
@@ -1008,7 +1026,7 @@ char **get_signers(const char *path, int *signers_count) {
         DWORD size = sizeof(sha1);
         BOOL rc = CertGetCertificateContextProperty(pCertContext, CERT_SHA1_HASH_PROP_ID, sha1, &size);
         if (!rc) {
-            ZITI_LOG(WARN, "failed to get cert[%d] sig: %d", idx, GetLastError());
+            ZITI_LOG(WARN, "failed to get cert[%d] sig: %lu", idx, GetLastError());
             continue;
         } else {
             hexify(sha1, sizeof(sha1), 0, &hex);
