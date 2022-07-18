@@ -68,6 +68,20 @@ struct pr_cb_ctx_s {
     pr_info *info;
 };
 
+struct process_work {
+    uv_work_t w;
+    bool canceled;
+    char *id;
+    char *path;
+    ziti_context ztx;
+    ziti_pr_process_cb cb;
+
+    bool is_running;
+    char *sha512;
+    char **signers;
+    int num_signers;
+};
+
 typedef struct pr_cb_ctx_s pr_cb_ctx;
 
 
@@ -143,6 +157,12 @@ void ziti_posture_checks_free(struct posture_checks *pcs) {
         pcs->timer = NULL;
         model_map_clear(&pcs->responses, (_free_f) ziti_pr_free_pr_info);
         model_map_clear(&pcs->error_states, NULL);
+        model_map_iter it = model_map_iterator(&pcs->active_work);
+        while (it) {
+            struct process_work *pwk = model_map_it_value(it);
+            pwk->canceled = true;
+            it = model_map_it_remove(it);
+        }
         FREE(pcs->previous_api_session_id);
         FREE(pcs->controller_instance_id);
         FREE(pcs);
@@ -746,24 +766,16 @@ static void default_pq_domain(ziti_context ztx, const char *id, ziti_pr_domain_c
 #endif
 }
 
-struct process_work {
-    uv_work_t w;
-    char *id;
-    char *path;
-    ziti_context ztx;
-    ziti_pr_process_cb cb;
-
-    bool is_running;
-    char *sha512;
-    char **signers;
-    int num_signers;
-};
-
 static void process_check_work(uv_work_t *w);
 
 static void process_check_done(uv_work_t *w, int status) {
     struct process_work *pcw = container_of(w, struct process_work, w);
-    pcw->cb(pcw->ztx, pcw->id, pcw->path, pcw->is_running, pcw->sha512, pcw->signers, pcw->num_signers);
+    if (!pcw->canceled) {
+        model_map_remove_key(&pcw->ztx->posture_checks->active_work, &pcw, sizeof(uintptr_t));
+        pcw->cb(pcw->ztx, pcw->id, pcw->path, pcw->is_running, pcw->sha512, pcw->signers, pcw->num_signers);
+    } else {
+        ZITI_LOG(INFO, "process check path[%s] was cancelled", pcw->path);
+    }
     free(pcw->id);
     free(pcw->path);
     FREE(pcw->sha512);
@@ -804,6 +816,7 @@ static void default_pq_process(ziti_context ztx, const char *id, const char *pat
     wr->path = strdup(path);
     wr->cb = cb;
     wr->ztx = ztx;
+    model_map_set_key(&ztx->posture_checks->active_work, &wr, sizeof(uintptr_t), wr);
     uv_queue_work(ztx->loop, &wr->w, process_check_work, process_check_done);
 }
 
@@ -823,7 +836,7 @@ static void process_check_work(uv_work_t *w) {
     pcw->is_running = check_running(w->loop, path);
     if (hash_sha512(ztx, w->loop, path, &digest, &digest_len) == 0) {
         hexify(digest, digest_len, 0, &pcw->sha512);
-        ZTX_LOG(VERBOSE, "file(%s) hash = %s", path, pcw->sha512);
+        ZITI_LOG(VERBOSE, "file(%s) hash = %s", path, pcw->sha512);
         free(digest);
     }
     pcw->signers = get_signers(path, &pcw->num_signers);
@@ -869,7 +882,7 @@ static int hash_sha512(ziti_context ztx, uv_loop_t *loop, const char *path, unsi
     int rc = 0;
 
 #define CHECK(op) do{ rc = (op); if (rc != 0) { \
-ZTX_LOG(ERROR, "failed hashing op[" #op "]: %d", rc); \
+ZITI_LOG(ERROR, "failed hashing path[%s] op[" #op "]: %d", path, rc); \
 goto cleanup;                                   \
 } }while(0)
 
