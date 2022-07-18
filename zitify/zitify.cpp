@@ -118,18 +118,29 @@ int connect(int fd, const struct sockaddr *addr, socklen_t size) {
         return connect_f(fd, addr, size);
     }
 
-    int flags = fcntl(fd, F_GETFL);
+    in_port_t port = 0;
+    in_addr_t in_addr = 0;
     if (addr->sa_family == AF_INET) {
         auto addr4 = (sockaddr_in *) addr;
-        auto hostname = Ziti_lookup(addr4->sin_addr.s_addr);
-        if (hostname) {
-            int rc = Ziti_connect_addr(fd, hostname, ntohs(addr4->sin_port));
-            fcntl(fd, F_SETFL, flags);
-            return rc;
+        in_addr = addr4->sin_addr.s_addr;
+        port = addr4->sin_port;
+    } else if (addr->sa_family == AF_INET6) {
+        auto addr6 = (const sockaddr_in6 *) addr;
+        if (IN6_IS_ADDR_V4MAPPED(&addr6->sin6_addr)) {
+            in_addr = addr6->sin6_addr.s6_addr32[3];
+            port = addr6->sin6_port;
         }
     }
 
-    return connect_f(fd, addr, size);
+    const char* hostname;
+    if (in_addr == 0 || (hostname = Ziti_lookup(in_addr)) == nullptr) {
+        return connect_f(fd, addr, size);
+    }
+
+    int flags = fcntl(fd, F_GETFL);
+    int rc = Ziti_connect_addr(fd, hostname, (unsigned int)ntohs(port));
+    fcntl(fd, F_SETFL, flags);
+    return rc;
 }
 
 //int listen(int fd, int backlog) {
