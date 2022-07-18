@@ -71,6 +71,8 @@ static const char *const level_labels[] = {
         DEBUG_LEVELS(LEVEL_LBL)
 };
 
+static const char *basename(const char *path);
+
 const char *ziti_get_build_version(int verbose) {
     if (verbose) {
         return "\n\tVersion:\t" to_str(ZITI_VERSION)
@@ -97,6 +99,7 @@ const char* ziti_git_commit() {
     return to_str(ZITI_COMMIT);
 }
 
+static model_map log_levels;
 static int ziti_log_lvl = ZITI_LOG_DEFAULT_LEVEL;
 static FILE *ziti_debug_out;
 static bool log_initialized = false;
@@ -123,15 +126,11 @@ static void init_debug(uv_loop_t *loop);
 static void init_uv_mbed_log();
 
 void ziti_log_init(uv_loop_t *loop, int level, log_writer log_func) {
-    init_debug(loop);
-
     init_uv_mbed_log();
 
-    if (level == ZITI_LOG_DEFAULT_LEVEL) {
-        level = ziti_log_lvl;
-    } // in case it was set before
+    init_debug(loop);
 
-    ziti_log_set_level(level);
+    ziti_log_set_level(level, NULL);
 
     if (log_func == NULL) {
         // keep the logger if it was already set
@@ -141,30 +140,43 @@ void ziti_log_init(uv_loop_t *loop, int level, log_writer log_func) {
     }
 }
 
-void ziti_log_set_level(int level) {
+void ziti_log_set_level(int level, const char *marker) {
     if (level == ZITI_LOG_DEFAULT_LEVEL) {
-        char *lvl = getenv("ZITI_LOG");
-        if (lvl != NULL) {
-            ziti_log_lvl = (int) strtol(lvl, NULL, 10);
-            int num_levels = sizeof(level_labels) / sizeof(const char *);
-            if (ziti_log_lvl < 0 || ziti_log_lvl >= num_levels) {
-                ziti_log_lvl = INFO;
-            }
-        } else {
-            ziti_log_lvl = INFO;
+        if (marker) {
+            model_map_remove(&log_levels, marker);
         }
     } else {
-        ziti_log_lvl = level;
+        if (marker) {
+            model_map_set(&log_levels, marker, (void *) (uintptr_t) level);
+            if (strcmp(marker, UV_MBED_MODULE) == 0) {
+                uv_mbed_set_debug(level, uv_mbed_logger);
+            }
+        } else {
+            ziti_log_lvl = level;
+        }
     }
 
     if (logger) {
         char msg[128];
-        int len = snprintf(msg, sizeof(msg), "set log level: ziti_log_lvl=%d &ziti_log_lvl = %p", ziti_log_lvl, &ziti_log_lvl);
+        int len = snprintf(msg, sizeof(msg), "set log level: %s=%d", marker ? marker : "root", level);
         logger(INFO, "ziti_log_set_level", msg, len);
     }
 }
 
-int ziti_log_level() {
+int ziti_log_level(const char *module, const char *file) {
+    int level;
+
+    file = basename(file);
+    if (file) {
+        level = (int) (uintptr_t) model_map_get(&log_levels, file);
+        if (level) { return level; }
+    }
+
+    if (module) {
+        level = (int) (uintptr_t) model_map_get(&log_levels, module);
+        if (level) { return level; }
+    }
+
     return ziti_log_lvl;
 }
 
@@ -186,7 +198,7 @@ void ziti_log_set_level_by_label(const char* log_level) {
         }
     }
     if (lvl != ZITI_LOG_DEFAULT_LEVEL) {
-        ziti_log_set_level(lvl);
+        ziti_log_set_level(lvl, NULL);
     }
 }
 
@@ -213,7 +225,30 @@ static void init_debug(uv_loop_t *loop) {
     }
     ts_loop = loop;
     log_initialized = true;
-    ziti_log_set_level(ziti_log_lvl);
+
+    ziti_log_lvl = ERROR;
+    model_list levels = {0};
+    str_split(getenv("ZITI_LOG"), ";", &levels);
+
+    const char *lvl;
+    int l;
+    MODEL_LIST_FOREACH(lvl, levels) {
+        char *eq = strchr(lvl, '=');
+        if (eq) {
+            l = (int) strtol(eq + 1, NULL, 10);
+            model_map_set_key(&log_levels, lvl, eq - lvl, (void *) (intptr_t) l);
+        } else {
+            l = (int) strtol(lvl, NULL, 10);
+            ziti_log_lvl = l;
+        }
+    }
+    model_list_clear(&levels, free);
+
+    int uv_mbed_level = model_map_get(&log_levels, UV_MBED_MODULE);
+    if (uv_mbed_level > 0) {
+        uv_mbed_set_debug(uv_mbed_level, uv_mbed_logger);
+    }
+
     ziti_debug_out = stderr;
 
     starttime = uv_now(loop);
@@ -228,6 +263,15 @@ static char sep = '\\';
 #else
 static char sep = '/';
 #endif
+
+static const char *basename(const char *path) {
+    if (path == NULL) { return NULL; }
+
+    char *last_slash = strrchr(path, sep);
+    if (last_slash) { return last_slash + 1; }
+    return path;
+}
+
 void ziti_logger(int level, const char *module, const char *file, unsigned int line, const char *func, FORMAT_STRING(const char *fmt), ...) {
     static size_t loglinelen = 1024;
     static char *logbuf;
@@ -287,7 +331,7 @@ static void default_log_writer(int level, const char *loc, const char *msg, size
 }
 
 void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg) {
-    ziti_logger(level, "uv-mbed", file, line, NULL, "%s", msg);
+    ziti_logger(level, UV_MBED_MODULE, file, line, NULL, "%s", msg);
 }
 
 static void flush_log(uv_prepare_t *p) {
@@ -326,7 +370,6 @@ int lt_zero(int v) { return v < 0; }
 int non_zero(int v) { return v != 0; }
 
 void hexDump (char *desc, void *addr, int len) {
-    if (DEBUG > ziti_log_level()) return;
     ZITI_LOG(DEBUG, " ");
     int i;
     unsigned char buffLine[17];
