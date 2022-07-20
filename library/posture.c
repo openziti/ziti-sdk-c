@@ -938,7 +938,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
         fullPathSize = sizeof(fullPath);
         QueryFullProcessImageNameA(ph, 0, fullPath, &fullPathSize);
 
-        ZITI_LOG(VERBOSE, "comparing process: %s to: %s", pe32.szExeFile, fullPath);
+        ZITI_LOG(VERBOSE, "comparing process: %s to: %.*s", pe32.szExeFile, fullPathSize, fullPath);
         if (strnicmp(path, fullPath, fullPathSize) == 0) {
             result = true;
             break;
