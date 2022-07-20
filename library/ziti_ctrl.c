@@ -128,7 +128,7 @@ static void ctrl_body_cb(um_http_req_t *req, const char *b, ssize_t len);
 static um_http_req_t *start_request(um_http_t *http, const char *method, const char *path, um_http_resp_cb cb, struct ctrl_resp *resp) {
     ziti_controller *ctrl = resp->ctrl;
     uv_gettimeofday(&resp->start);
-    CTRL_LOG(DEBUG, "starting %s[%s]", method, path);
+    CTRL_LOG(VERBOSE, "starting %s[%s]", method, path);
     return um_http_req(http, method, path, cb, resp);
 }
 
@@ -163,7 +163,7 @@ static void ctrl_resp_cb(um_http_resp_t *r, void *data) {
         };
         ctrl_default_cb(NULL, &err, resp);
     } else {
-        CTRL_LOG(DEBUG, "received headers %s[%s]", r->req->method, r->req->path);
+        CTRL_LOG(VERBOSE, "received headers %s[%s]", r->req->method, r->req->path);
         r->body_cb = ctrl_body_cb;
 
         const char *hv;
