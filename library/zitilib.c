@@ -33,6 +33,8 @@
 #include <ziti/ziti_log.h>
 #include "utils.h"
 
+static bool is_blocking(ziti_socket_t s);
+
 typedef struct future_s {
     uv_mutex_t lock;
     uv_cond_t cond;
@@ -75,6 +77,8 @@ static int await_future(future_t *f) {
 }
 
 static int complete_future(future_t *f, void *result) {
+    if (f == NULL) return 0;
+
     int rc = UV_EINVAL;
     uv_mutex_lock(&f->lock);
     if (!f->completed) {
@@ -88,6 +92,8 @@ static int complete_future(future_t *f, void *result) {
 }
 
 static int fail_future(future_t *f, int err) {
+    if (f == NULL) return 0;
+
     int rc = UV_EINVAL;
     uv_mutex_lock(&f->lock);
     if (!f->completed) {
@@ -391,17 +397,20 @@ static int connect_socket(ziti_socket_t clt_sock, ziti_socket_t *ziti_sock) {
     int fds[2] = {-1, -1};
     rc = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
     if (rc) {
+        ZITI_LOG(VERBOSE, "socketpair failed[%d/%s]", errno, strerror(errno));
         return errno;
     }
 
     rc = dup2(fds[0], clt_sock);
     if (rc == -1) {
+        ZITI_LOG(VERBOSE, "dup2 failed[%d/%s]", errno, strerror(errno));
         return errno;
     }
+
     *ziti_sock = fds[1];
     ZITI_LOG(VERBOSE, "connected client socket[%d] <-> ziti_fd[%d]", clt_sock, *ziti_sock);
 #endif
-    return rc;
+    return 0;
 }
 
 ziti_socket_t Ziti_socket(int type) {
@@ -563,11 +572,15 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
             .port = port,
     };
 
-    future_t *f = schedule_on_loop((loop_work_cb) do_ziti_connect, &req, true);
-    int err = await_future(f);
 
-    set_error(err);
-    destroy_future(f);
+    future_t *f = schedule_on_loop((loop_work_cb) do_ziti_connect, &req, true);
+
+    int err = 0;
+    if (f) {
+        err = await_future(f);
+        set_error(err);
+        destroy_future(f);
+    }
     return err ? -1 : 0;
 }
 
