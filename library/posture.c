@@ -68,6 +68,20 @@ struct pr_cb_ctx_s {
     pr_info *info;
 };
 
+struct process_work {
+    uv_work_t w;
+    bool canceled;
+    char *id;
+    char *path;
+    ziti_context ztx;
+    ziti_pr_process_cb cb;
+
+    bool is_running;
+    char *sha512;
+    char **signers;
+    int num_signers;
+};
+
 typedef struct pr_cb_ctx_s pr_cb_ctx;
 
 
@@ -143,6 +157,12 @@ void ziti_posture_checks_free(struct posture_checks *pcs) {
         pcs->timer = NULL;
         model_map_clear(&pcs->responses, (_free_f) ziti_pr_free_pr_info);
         model_map_clear(&pcs->error_states, NULL);
+        model_map_iter it = model_map_iterator(&pcs->active_work);
+        while (it) {
+            struct process_work *pwk = model_map_it_value(it);
+            pwk->canceled = true;
+            it = model_map_it_remove(it);
+        }
         FREE(pcs->previous_api_session_id);
         FREE(pcs->controller_instance_id);
         FREE(pcs);
@@ -382,6 +402,12 @@ void ziti_send_posture_data(ziti_context ztx) {
 
 static void ziti_collect_pr(ziti_context ztx, const char *pr_obj_key, char *pr_obj, size_t pr_obj_len) {
 
+    if (ztx->posture_checks == NULL) {
+        ZTX_LOG(WARN, "ztx disabled, posture check obsolete id[%s]", pr_obj_key);
+        free(pr_obj);
+        return;
+    }
+
     pr_info *current_info = model_map_get(&ztx->posture_checks->responses, pr_obj_key);
 
     if (current_info != NULL) {
@@ -426,20 +452,23 @@ static void ziti_pr_post_bulk_cb(ziti_pr_response *pr_resp, const ziti_error *er
 
     ZTX_LOG(DEBUG, "ziti_pr_post_bulk_cb: starting");
 
-    if (err != NULL) {
-        ZTX_LOG(ERROR, "error during bulk posture response submission (%d) %s", err->http_code, err->message);
-        ztx->posture_checks->must_send = true; //error, must try again
-        if (err->http_code == 404) {
-            ztx->no_bulk_posture_response_api = true;
+    // if ztx is disabled this request is cancelled and posture_checks is cleared
+    if (ztx->posture_checks) {
+        if (err != NULL) {
+            ZTX_LOG(ERROR, "error during bulk posture response submission (%d) %s", err->http_code, err->message);
+            ztx->posture_checks->must_send = true; //error, must try again
+            if (err->http_code == 404) {
+                ztx->no_bulk_posture_response_api = true;
+            }
+        } else {
+            ztx->posture_checks->must_send = false; //did not error, can skip submissions
+            handle_pr_resp_timer_events(ztx, pr_resp);
+            ziti_services_refresh(ztx, true);
+            ZTX_LOG(DEBUG, "done with bulk posture response submission");
         }
-    } else {
-        ztx->posture_checks->must_send = false; //did not error, can skip submissions
-        handle_pr_resp_timer_events(ztx, pr_resp);
-        ziti_services_refresh(ztx, true);
-        ZTX_LOG(DEBUG, "done with bulk posture response submission");
     }
 
-    FREE(pr_resp);
+    free_ziti_pr_response_ptr(pr_resp);
 }
 
 static void ziti_pr_set_info_errored(ziti_context ztx, const char *id) {
@@ -477,7 +506,7 @@ static void ziti_pr_post_cb(ziti_pr_response *pr_resp, const ziti_error *err, vo
     }
 
     ziti_pr_free_pr_cb_ctx(ctx);
-    FREE(pr_resp);
+    free_ziti_pr_response_ptr(pr_resp);
 }
 
 static void ziti_pr_send(ziti_context ztx) {
@@ -737,24 +766,16 @@ static void default_pq_domain(ziti_context ztx, const char *id, ziti_pr_domain_c
 #endif
 }
 
-struct process_work {
-    uv_work_t w;
-    char *id;
-    char *path;
-    ziti_context ztx;
-    ziti_pr_process_cb cb;
-
-    bool is_running;
-    char *sha512;
-    char **signers;
-    int num_signers;
-};
-
 static void process_check_work(uv_work_t *w);
 
 static void process_check_done(uv_work_t *w, int status) {
     struct process_work *pcw = container_of(w, struct process_work, w);
-    pcw->cb(pcw->ztx, pcw->id, pcw->path, pcw->is_running, pcw->sha512, pcw->signers, pcw->num_signers);
+    if (!pcw->canceled) {
+        model_map_remove_key(&pcw->ztx->posture_checks->active_work, &pcw, sizeof(uintptr_t));
+        pcw->cb(pcw->ztx, pcw->id, pcw->path, pcw->is_running, pcw->sha512, pcw->signers, pcw->num_signers);
+    } else {
+        ZITI_LOG(INFO, "process check path[%s] was cancelled", pcw->path);
+    }
     free(pcw->id);
     free(pcw->path);
     FREE(pcw->sha512);
@@ -795,6 +816,7 @@ static void default_pq_process(ziti_context ztx, const char *id, const char *pat
     wr->path = strdup(path);
     wr->cb = cb;
     wr->ztx = ztx;
+    model_map_set_key(&ztx->posture_checks->active_work, &wr, sizeof(uintptr_t), wr);
     uv_queue_work(ztx->loop, &wr->w, process_check_work, process_check_done);
 }
 
@@ -814,7 +836,7 @@ static void process_check_work(uv_work_t *w) {
     pcw->is_running = check_running(w->loop, path);
     if (hash_sha512(ztx, w->loop, path, &digest, &digest_len) == 0) {
         hexify(digest, digest_len, 0, &pcw->sha512);
-        ZTX_LOG(VERBOSE, "file(%s) hash = %s", path, pcw->sha512);
+        ZITI_LOG(VERBOSE, "file(%s) hash = %s", path, pcw->sha512);
         free(digest);
     }
     pcw->signers = get_signers(path, &pcw->num_signers);
@@ -829,6 +851,7 @@ void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err,
         handle_pr_resp_timer_events(ztx, pr_resp);
         ziti_services_refresh(ztx, true);
     }
+    free_ziti_pr_response_ptr(pr_resp);
 }
 
 
@@ -859,7 +882,7 @@ static int hash_sha512(ziti_context ztx, uv_loop_t *loop, const char *path, unsi
     int rc = 0;
 
 #define CHECK(op) do{ rc = (op); if (rc != 0) { \
-ZTX_LOG(ERROR, "failed hashing op[" #op "]: %d", rc); \
+ZITI_LOG(ERROR, "failed hashing path[%s] op[" #op "]: %d", path, rc); \
 goto cleanup;                                   \
 } }while(0)
 
@@ -896,6 +919,8 @@ goto cleanup;                                   \
     cleanup:
     if (rc != 0) FREE(digest);
     uv_fs_close(loop, &ft, file, NULL);
+    uv_fs_req_cleanup(&ft);
+    FREE(buf.base);
 
     return rc;
 }
@@ -965,6 +990,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
             }
         }
     }
+    uv_fs_req_cleanup(&fs_proc);
 
 #elif __APPLE__ && __MACH__ && !defined(TARGET_OS_IPHONE) && !defined(TARGET_OS_SIMULATOR)
     int n_pids = proc_listallpids(NULL, 0);
