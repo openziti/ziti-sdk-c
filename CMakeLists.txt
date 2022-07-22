@@ -88,7 +88,6 @@ else()
 endif()
 
 add_subdirectory(library)
-add_subdirectory(zitify)
 
 if (ZITI_BUILD_PROGRAMS)
     add_subdirectory(programs)
