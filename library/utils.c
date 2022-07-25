@@ -105,6 +105,7 @@ static model_map log_levels;
 static int ziti_log_lvl = ZITI_LOG_DEFAULT_LEVEL;
 static FILE *ziti_debug_out;
 static bool log_initialized = false;
+static uv_pid_t log_pid = 0;
 
 const char *(*get_elapsed)();
 
@@ -119,7 +120,7 @@ static void default_log_writer(int level, const char *loc, const char *msg, size
 static uv_loop_t *ts_loop;
 static uint64_t starttime;
 static uint64_t last_update;
-static char elapsed_buffer[32];
+static char log_timestamp[32];
 
 static uv_prepare_t log_flusher;
 static log_writer logger = NULL;
@@ -220,10 +221,20 @@ static void init_uv_mbed_log() {
     }
 }
 
+static void child_init() {
+    log_initialized = false;
+    log_pid = uv_os_getpid();
+}
+
 static void init_debug(uv_loop_t *loop) {
     if (log_initialized) {
         return;
     }
+#if defined(PTHREAD_ONCE_INIT)
+    pthread_atfork(NULL, NULL, child_init);
+#endif
+
+    log_pid = uv_os_getpid();
     get_elapsed = get_elapsed_time;
     char *ts_format = getenv("ZITI_TIME_FORMAT");
     if (ts_format && strcasecmp("utc", ts_format) == 0) {
@@ -334,9 +345,7 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
 
 static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
     const char *elapsed = get_elapsed();
-    fprintf(ziti_debug_out, "[%s] %7s %s ", elapsed, level_labels[level], loc);
-    fwrite(msg, 1, msglen, ziti_debug_out);
-    fputc('\n', ziti_debug_out);
+    fprintf(ziti_debug_out, "(%u)[%s] %7s %s %.*s\n", log_pid, elapsed, level_labels[level], loc, (unsigned int) msglen, msg);
 }
 
 void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg) {
@@ -352,9 +361,9 @@ static const char *get_elapsed_time() {
     if (now > last_update) {
         last_update = now;
         unsigned long long elapsed = now - starttime;
-        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%9llu.%03llu", (elapsed / 1000), (elapsed % 1000));
+        snprintf(log_timestamp, sizeof(log_timestamp), "%9llu.%03llu", (elapsed / 1000), (elapsed % 1000));
     }
-    return elapsed_buffer;
+    return log_timestamp;
 }
 
 static const char *get_utc_time() {
@@ -366,12 +375,12 @@ static const char *get_utc_time() {
         uv_gettimeofday(&ts);
         struct tm *tm = gmtime(&ts.tv_sec);
 
-        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
+        snprintf(log_timestamp, sizeof(log_timestamp), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
                  1900 + tm->tm_year, tm->tm_mon + 1, tm->tm_mday,
                  tm->tm_hour, tm->tm_min, tm->tm_sec, ts.tv_usec / 1000
-                 );
+        );
     }
-    return elapsed_buffer;
+    return log_timestamp;
 }
 
 int lt_zero(int v) { return v < 0; }
