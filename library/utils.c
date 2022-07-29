@@ -130,6 +130,10 @@ static void init_uv_mbed_log();
 void ziti_log_init(uv_loop_t *loop, int level, log_writer log_func) {
     init_uv_mbed_log();
 
+    if (level == ZITI_LOG_DEFAULT_LEVEL) {
+        level = ziti_log_lvl;
+    } // in case it was set before
+
     init_debug(loop);
 
     ziti_log_set_level(level, NULL);
@@ -228,7 +232,10 @@ static void init_debug(uv_loop_t *loop) {
     ts_loop = loop;
     log_initialized = true;
 
-    ziti_log_lvl = ERROR;
+    if (ziti_log_lvl == ZITI_LOG_DEFAULT_LEVEL) {
+        ziti_log_lvl = ERROR;
+    }
+
     model_list levels = {0};
     str_split(getenv("ZITI_LOG"), ";", &levels);
 
