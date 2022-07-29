@@ -1,6 +1,10 @@
+include(FetchContent)
+FetchContent_Declare(Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG v3.1.0)
+FetchContent_MakeAvailable(Catch2)
 
 add_executable(all_tests
-        all_tests.cpp
         test_ziti_model.cpp
         ctrl_tests.cpp
         test_jwt.cpp
@@ -10,19 +14,21 @@ add_executable(all_tests
         collections_tests.cpp
         buffer_tests.cpp
         pool_tests.cpp
+        catch2_includes.hpp
         )
 
 if (WIN32)
     set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
 else ()
-    set_property(TARGET all_tests PROPERTY CXX_STANDARD 11)
+    set_property(TARGET all_tests PROPERTY CXX_STANDARD 14)
 endif ()
 
 target_include_directories(all_tests
         PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 
 target_link_libraries(all_tests
-        PRIVATE ziti)
+        PRIVATE ziti
+        PRIVATE Catch2WithMain)
 
 include(CTest)
 add_test(quick_tests all_tests -d yes "~[integ]~[metrics]")

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 
-#include "catch2/catch.hpp"
+#include "catch2_includes.hpp"
 
 #include <ziti/model_support.h>
 
@@ -30,7 +30,7 @@ TEST_CASE("test enum", "[model]") {
 
     CHECK(State_Unknown == 0);
     CHECK(good == States.Good);
-    CHECK_THAT(States.name(good), Catch::Matches("Good"));
+    CHECK_THAT(States.name(good), Catch::Matchers::Matches("Good"));
 }
 
 #define ModelWithEnum(XX, ...) \
@@ -49,7 +49,7 @@ TEST_CASE("parse enum", "[model]") {
     FooWithEnum f1;
     REQUIRE(parse_FooWithEnum(&f1, json, strlen(json)) == strlen(json));
 
-    CHECK_THAT(f1.name, Catch::Equals("this is a name"));
+    CHECK_THAT(f1.name, Catch::Matchers::Equals("this is a name"));
     CHECK(f1.state == States.Ugly);
 }
 
@@ -62,7 +62,7 @@ TEST_CASE("parse null enum", "[model]") {
     FooWithEnum f1;
     REQUIRE(parse_FooWithEnum(&f1, json, strlen(json)) == strlen(json));
 
-    CHECK_THAT(f1.name, Catch::Equals("this is a name"));
+    CHECK_THAT(f1.name, Catch::Matchers::Equals("this is a name"));
     CHECK(f1.state == 0);
 }
 
@@ -76,7 +76,7 @@ TEST_CASE("default enum", "[model]") {
 
     REQUIRE(json);
 
-    REQUIRE_THAT(json, Catch::Contains("\"state\":null"));
+    REQUIRE_THAT(json, Catch::Matchers::ContainsSubstring("\"state\":null"));
 
     FooWithEnum f2;
     REQUIRE(parse_FooWithEnum(&f2, json, strlen(json)) == strlen(json));
@@ -97,7 +97,7 @@ TEST_CASE("enum to json", "[model]") {
 
     REQUIRE(json);
 
-    REQUIRE_THAT(json, Catch::Contains("\"state\":\"Bad\""));
+    REQUIRE_THAT(json, Catch::Matchers::ContainsSubstring("\"state\":\"Bad\""));
     free(json);
 }
 
@@ -131,7 +131,7 @@ TEST_CASE("parse enum array", "[model]") {
     FooWithEnumArray f1;
     REQUIRE(parse_FooWithEnumArray(&f1, json, strlen(json)) == strlen(json));
 
-    CHECK_THAT(f1.name, Catch::Equals("this is a name"));
+    CHECK_THAT(f1.name, Catch::Matchers::Equals("this is a name"));
     CHECK(*f1.states[0] == States.Ugly);
     CHECK(*f1.states[1] == States.Bad);
     CHECK(f1.states[2] == nullptr);
@@ -139,7 +139,7 @@ TEST_CASE("parse enum array", "[model]") {
     size_t json_len;
     auto js = FooWithEnumArray_to_json(&f1, 0, &json_len);
 
-    CHECK_THAT(js, Catch::Contains(R"("states":["Ugly","Bad"])"));
+    CHECK_THAT(js, Catch::Matchers::ContainsSubstring(R"("states":["Ugly","Bad"])"));
 
     free_FooWithEnumArray(&f1);
     free(js);

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "catch2/catch.hpp"
+#include "catch2_includes.hpp"
 
 #include <buffer.h>
 #include <iostream>
@@ -44,7 +44,7 @@ TEST_CASE("buffer appendn", "[util]") {
     size_t len;
     char *result = string_buf_to_string(buf, &len);
 
-    CHECK_THAT(result, Catch::Equals(test_str));
+    CHECK_THAT(result, Catch::Matchers::Equals(test_str));
     CHECK(len == test_str.size());
 
     delete_string_buf(buf);
@@ -65,7 +65,7 @@ TEST_CASE("buffer append", "[util]") {
     size_t len;
     char *result = string_buf_to_string(&json_buf, &len);
 
-    CHECK_THAT(result, Catch::Equals(test_str));
+    CHECK_THAT(result, Catch::Matchers::Equals(test_str));
     CHECK(len == test_str.size());
 
     string_buf_free(&json_buf);
@@ -95,7 +95,7 @@ TEST_CASE("buffer fmt", "[util]") {
     char *result = string_buf_to_string(&fmt_buf, &len);
     CHECK(len == test_str.size());
     CHECK(string_buf_size(&fmt_buf) == 0);
-    CHECK_THAT(result, Catch::Equals(test_str));
+    CHECK_THAT(result, Catch::Matchers::Equals(test_str));
 
     free(result);
     string_buf_free(&fmt_buf);

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "catch2/catch.hpp"
+#include "catch2_includes.hpp"
 #include <metrics.h>
 #include <cstring>
 #include <ziti/enums.h>
