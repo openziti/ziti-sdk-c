@@ -13,10 +13,12 @@
 // limitations under the License.
 
 #include <cstring>
-#include "catch2/catch.hpp"
+#include "catch2_includes.hpp"
+#include <catch2/generators/catch_generators.hpp>
 
 #include <ziti/model_support.h>
 #include <iostream>
+#include <tuple>
 
 #define BAR_MODEL(xx, ...)\
 xx(num, int, none, num, __VA_ARGS__)\
@@ -231,8 +233,8 @@ TEST_CASE("parse array", "[model]") {
     Bar_array bars = nullptr;
     int rc = parse_Bar_array(&bars, json, strlen(json));
     CHECK(rc == strlen(json));
-    CHECK_THAT(bars[0]->msg, Catch::Matches("\thello\n\"world\"!"));
-    CHECK_THAT(bars[1]->msg, Catch::Matches("Hello again!"));
+    CHECK_THAT(bars[0]->msg, Catch::Matchers::Matches("\thello\n\"world\"!"));
+    CHECK_THAT(bars[1]->msg, Catch::Matchers::Matches("Hello again!"));
     free_Bar_array(&bars);
 }
 
@@ -256,12 +258,12 @@ TEST_CASE("parse 2 objects in string ", "[model]") {
     Bar bar = {0};
     int rc = parse_Bar(&bar, json, strlen(json));
     REQUIRE(rc > 0);
-    CHECK_THAT(bar.msg, Catch::Matches("\thello\n\"world\"!"));
+    CHECK_THAT(bar.msg, Catch::Matchers::Matches("\thello\n\"world\"!"));
     free_Bar(&bar);
 
     rc = parse_Bar(&bar, json + rc, strlen(json) - rc);
     REQUIRE(rc > 0);
-    CHECK_THAT(bar.msg, Catch::Matches("Hello again!"));
+    CHECK_THAT(bar.msg, Catch::Matchers::Matches("Hello again!"));
     free_Bar(&bar);
 }
 
@@ -632,7 +634,7 @@ TEST_CASE("parse-json-u-escape", "[model]") {
     size_t json_len;
     char *json_out = Foo_to_json(&foo, 0, &json_len);
     CHECK(json_len == strlen(json_out));
-    CHECK_THAT(json_out, Catch::Matchers::Contains("\"hello\\u000cабвгд!\""));
+    CHECK_THAT(json_out, Catch::Matchers::ContainsSubstring("\"hello\\u000cабвгд!\""));
     free(json_out);
     free_Foo(&foo);
 }
@@ -696,11 +698,11 @@ TEST_CASE("parse model_list", "[model]") {
     auto it = model_list_iterator(&list);
     auto fruit = (Fruit *) model_list_it_element(it);
     CHECK(fruit->count == 1);
-    CHECK_THAT(fruit->color, Catch::Equals("orange"));
+    CHECK_THAT(fruit->color, Catch::Matchers::Equals("orange"));
     it = model_list_it_next(it);
     fruit = (Fruit *) model_list_it_element(it);
     CHECK(fruit->count == 2);
-    CHECK_THAT(fruit->color, Catch::Equals("red"));
+    CHECK_THAT(fruit->color, Catch::Matchers::Equals("red"));
     CHECK(model_list_it_next(it) == nullptr);
 
     auto head = model_list_head(&list);
@@ -710,7 +712,7 @@ TEST_CASE("parse model_list", "[model]") {
     CHECK(model_list_size(&list) == 1);
 
     CHECK(fruit->count == 1);
-    CHECK_THAT(fruit->color, Catch::Equals("orange"));
+    CHECK_THAT(fruit->color, Catch::Matchers::Equals("orange"));
 
     free_Fruit_ptr(fruit);
     model_list_clear(&list, (void (*)(void *)) (free_Fruit_ptr));
@@ -741,9 +743,9 @@ TEST_CASE("lists model", "[model]") {
 
 
     auto it = model_list_iterator(&lists.errors);
-    CHECK_THAT((const char *) model_list_it_element(it), Catch::Equals("Not Authorized"));
+    CHECK_THAT((const char *) model_list_it_element(it), Catch::Matchers::Equals("Not Authorized"));
     it = model_list_it_next(it);
-    CHECK_THAT((const char *) model_list_it_element(it), Catch::Equals("Conflict"));
+    CHECK_THAT((const char *) model_list_it_element(it), Catch::Matchers::Equals("Conflict"));
     CHECK(model_list_it_next(it) == nullptr);
 
     it = model_list_iterator(&lists.codes);
@@ -757,11 +759,11 @@ TEST_CASE("lists model", "[model]") {
     it = model_list_iterator(&lists.fruit);
     auto fruit = (Fruit *) model_list_it_element(it);
     CHECK(fruit->count == 1);
-    CHECK_THAT(fruit->color, Catch::Equals("orange"));
+    CHECK_THAT(fruit->color, Catch::Matchers::Equals("orange"));
     it = model_list_it_next(it);
     fruit = (Fruit *) model_list_it_element(it);
     CHECK(fruit->count == 2);
-    CHECK_THAT(fruit->color, Catch::Equals("red"));
+    CHECK_THAT(fruit->color, Catch::Matchers::Equals("red"));
     CHECK(model_list_it_next(it) == nullptr);
 
     char *json_out = ListsObj_to_json(&lists, 0, nullptr);

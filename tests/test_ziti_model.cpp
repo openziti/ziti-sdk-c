@@ -14,7 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "catch2/catch.hpp"
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
+
 #include <string>
 #include <uv.h>
 
@@ -97,7 +99,7 @@ TEST_CASE("multi-edge-router session", "[model]") {
     REQUIRE(s->edge_routers[2] == nullptr);
 
     const char *tls = (const char*)model_map_get(&s->edge_routers[1]->ingress, "tls");
-    REQUIRE_THAT(tls, Catch::Matches("tls://ec2-18-188-224-88.us-east-2.compute.amazonaws.com:3022"));
+    REQUIRE_THAT(tls, Catch::Matchers::Matches("tls://ec2-18-188-224-88.us-east-2.compute.amazonaws.com:3022"));
 
     free_ziti_net_session(s);
     free(s);
@@ -613,7 +615,7 @@ TEST_CASE("parse-ctrl-version", "[model]") {
     REQUIRE(ver.api_versions != nullptr);
     auto v1Path = (api_path *) model_map_get(&ver.api_versions->edge, "v1");
     REQUIRE(v1Path);
-    REQUIRE_THAT(v1Path->path, Catch::Equals("/edge/v1"));
+    REQUIRE_THAT(v1Path->path, Catch::Matchers::Equals("/edge/v1"));
 
     free_ziti_version(&ver);
 }
@@ -625,7 +627,7 @@ TEST_CASE("parse-ziti-address", "[model]") {
     int rc = parse_ziti_address(&addr, j, strlen(j));
     CHECK(rc > 0);
     CHECK(addr.type == ziti_address_hostname);
-    CHECK_THAT(addr.addr.hostname, Catch::Equals("foo.bar"));
+    CHECK_THAT(addr.addr.hostname, Catch::Matchers::Equals("foo.bar"));
 }
 
 TEST_CASE("parse-ziti-intercept1", "[model]") {
@@ -641,31 +643,30 @@ TEST_CASE("parse-ziti-intercept1", "[model]") {
 
     int idx = 0;
     CHECK(intercept.addresses[idx]->type == ziti_address_hostname);
-    CHECK_THAT(intercept.addresses[idx]->addr.hostname, Catch::Equals("foo.bar"));
+    CHECK_THAT(intercept.addresses[idx]->addr.hostname, Catch::Matchers::Equals("foo.bar"));
 
     idx++;
     CHECK(intercept.addresses[idx]->type == ziti_address_cidr);
     CHECK(intercept.addresses[idx]->addr.cidr.bits == 32);
     CHECK(intercept.addresses[idx]->addr.cidr.af == AF_INET);
     CHECK(uv_inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) == 0);
-    CHECK_THAT(addr_str, Catch::Equals("1.1.1.1"));
+    CHECK_THAT(addr_str, Catch::Matchers::Equals("1.1.1.1"));
 
     idx++;
     CHECK(intercept.addresses[idx]->type == ziti_address_cidr);
     CHECK(intercept.addresses[idx]->addr.cidr.bits == 10);
     CHECK(intercept.addresses[idx]->addr.cidr.af == AF_INET);
     CHECK(uv_inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) == 0);
-    CHECK_THAT(addr_str, Catch::Equals("100.64.0.0"));
+    CHECK_THAT(addr_str, Catch::Matchers::Equals("100.64.0.0"));
 
     idx++;
     CHECK(intercept.addresses[idx]->type == ziti_address_cidr);
     CHECK(intercept.addresses[idx]->addr.cidr.bits == 64);
     CHECK(intercept.addresses[idx]->addr.cidr.af == AF_INET6);
     CHECK(uv_inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) == 0);
-    CHECK_THAT(addr_str, Catch::Equals("ff::1"));
+    CHECK_THAT(addr_str, Catch::Matchers::Equals("ff::1"));
 
     auto json_out = ziti_intercept_cfg_v1_to_json(&intercept, MODEL_JSON_COMPACT, nullptr);
-    Catch::cout() << json_out;
     free_ziti_intercept_cfg_v1(&intercept);
     free(json_out);
 }
