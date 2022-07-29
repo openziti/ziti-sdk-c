@@ -37,7 +37,7 @@ jobs:
         run: |
           echo "build number = ${BUILD_NUMBER}"
           cmake -E make_directory ${{runner.workspace}}/build
-          cmake -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
           cmake --build ${{runner.workspace}}/build
 
       - name: make artifacts
