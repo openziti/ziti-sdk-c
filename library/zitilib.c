@@ -892,6 +892,7 @@ ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
 
 void Ziti_lib_shutdown(void) {
     future_t *f = schedule_on_loop(do_shutdown, NULL, true);
+    await_future(f);
     uv_thread_join(&lib_thread);
     uv_once_t child_once = UV_ONCE_INIT;
     memcpy(&init, &child_once, sizeof(child_once));
@@ -900,7 +901,9 @@ void Ziti_lib_shutdown(void) {
 }
 
 static void looper(void *arg) {
-    uv_run(arg, UV_RUN_DEFAULT);
+    uv_loop_t *l = arg;
+    uv_run(l, UV_RUN_DEFAULT);
+    ZITI_LOG(DEBUG, "loop is done");
 }
 
 future_t *schedule_on_loop(loop_work_cb cb, void *arg, bool wait) {
@@ -953,11 +956,17 @@ void do_shutdown(void *args, future_t *f, uv_loop_t *l) {
     while (it) {
         ztx_wrap_t *w = model_map_it_value(it);
         it = model_map_it_remove(it);
-        ziti_shutdown(w->ztx);
+        if (w->ztx) {
+            ziti_shutdown(w->ztx);
+        }
         model_map_clear(&w->intercepts, (void (*)(void *)) free_ziti_intercept_cfg_v1_ptr);
     }
+    complete_future(f, NULL);
     uv_close((uv_handle_t *) &q_async, NULL);
-    uv_loop_close(l);
+
+#if _WIN32
+    uv_stop(q_async.loop);
+#endif
 }
 
 static void on_enroll(const ziti_config *cfg, int status, const char *error, void *ctx) {

@@ -47,7 +47,19 @@ jobs:
       - name: test
         if: matrix.spec.no_tests != 'true'
         working-directory: ${{runner.workspace}}/build
-        run: ctest -VV --no-compress-output
+        run: ctest -VV --no-compress-output -R quick_tests
+
+      - name: integration tests
+        env:
+          TEST_ID: ${{ secrets.ZITI_TEST_IDENTITY }}
+          ZITI_TEST_IDENTITY: ${{ runner.workspace }}/test_id.json
+          ZITI_LOG: 4
+        if: matrix.spec.no_tests != 'true' && env.TEST_ID != ''
+        working-directory: ${{runner.workspace}}/build
+        shell: bash
+        run: |
+          echo "${TEST_ID}" > "${ZITI_TEST_IDENTITY}"
+          ctest -VV --no-compress-output -R zitilib_tests
 
       - name: make artifacts
         run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c --target package

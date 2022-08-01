@@ -184,6 +184,7 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
     if (ch->state != Closed) {
         CH_LOG(INFO, "closing[%s]", ch->name);
 
+        ch->state = Closed;
         on_channel_close(ch, err, 0);
 
         uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
@@ -191,7 +192,6 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
         ch->connection->data = NULL;
         uv_mbed_close(ch->connection, close_handle_cb);
 
-        ch->state = Closed;
 
         ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ctx);
 

@@ -30,6 +30,13 @@ target_link_libraries(all_tests
         PRIVATE ziti
         PRIVATE Catch2WithMain)
 
+add_executable(zitilib-tests zitilib-tests.cpp)
+target_link_libraries(zitilib-tests
+        PRIVATE ziti
+        PRIVATE Catch2WithMain)
+
 include(CTest)
 add_test(quick_tests all_tests -d yes "~[integ]~[metrics]")
+
+add_test(zitilib_tests zitilib-tests -d yes)
 
