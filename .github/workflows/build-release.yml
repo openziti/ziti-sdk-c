@@ -38,10 +38,10 @@ jobs:
           echo "build number = ${BUILD_NUMBER}"
           cmake -E make_directory ${{runner.workspace}}/build
           cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-          cmake --build ${{runner.workspace}}/build
+          cmake --build ${{runner.workspace}}/build --config Release
 
       - name: make artifacts
-        run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c-pack --target package
+        run: cmake --build ${{runner.workspace}}/build --config Release --target ziti-prox-c-pack --target package
 
 #      - name: zip artifacts
 #        if: runner.os != 'Windows'
