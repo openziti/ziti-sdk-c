@@ -16,7 +16,7 @@ jobs:
         spec:
         - { name: 'Linux x86_64', runner: 'ubuntu-18.04' }
         - { name: 'Linux ARM', runner: 'ubuntu-18.04', toolchain: 'Linux-arm', no_tests: 'true' }
-        - { name: 'MacOS x86_64', runner: 'macOS-10.15' }
+        - { name: 'MacOS x86_64', runner: 'macOS-11' }
         - { name: 'MacOS arm64', runner: 'macOS-11', toolchain: 'macOS-arm64', no_tests: 'true' }
         - { name: 'Windows x86_64', runner: 'windows-2019' }
 
@@ -38,10 +38,10 @@ jobs:
           echo "build number = ${BUILD_NUMBER}"
           cmake -E make_directory ${{runner.workspace}}/build
           cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-          cmake --build ${{runner.workspace}}/build
+          cmake --build ${{runner.workspace}}/build --config Release
 
       - name: make artifacts
-        run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c-pack --target package
+        run: cmake --build ${{runner.workspace}}/build --config Release --target ziti-prox-c-pack --target package
 
 #      - name: zip artifacts
 #        if: runner.os != 'Windows'
