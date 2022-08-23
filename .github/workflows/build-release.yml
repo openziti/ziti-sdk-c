@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         spec:
-          - { name: 'Linux x86_64', runner: 'ubuntu-18.04' }
+        - { name: 'Linux x86_64', runner: 'ubuntu-18.04' }
         - { name: 'Linux ARM', runner: 'ubuntu-18.04', toolchain: 'Linux-arm', no_tests: 'true' }
         - { name: 'Linux ARM64', runner: 'ubuntu-18.04', toolchain: 'Linux-arm64', no_tests: 'true' }
         - { name: 'MacOS x86_64', runner: 'macOS-11' }
