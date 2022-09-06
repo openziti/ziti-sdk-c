@@ -64,8 +64,6 @@
 #define ZITI_ARCH UKNOWN
 #endif
 
-#define MAX_LOG_LINE (1024 * 2)
-
 #define LEVEL_LBL(lvl) #lvl,
 static const char *const level_labels[] = {
         DEBUG_LEVELS(LEVEL_LBL)
@@ -107,7 +105,7 @@ static FILE *ziti_debug_out;
 static bool log_initialized = false;
 static uv_pid_t log_pid = 0;
 
-const char *(*get_elapsed)();
+static const char *(*get_elapsed)();
 
 static const char *get_elapsed_time();
 
@@ -264,7 +262,7 @@ static void init_debug(uv_loop_t *loop) {
     }
     model_list_clear(&levels, free);
 
-    int uv_mbed_level = model_map_get(&log_levels, UV_MBED_MODULE);
+    int uv_mbed_level = (int) (intptr_t) model_map_get(&log_levels, UV_MBED_MODULE);
     if (uv_mbed_level > 0) {
         uv_mbed_set_debug(uv_mbed_level, uv_mbed_logger);
     }
@@ -279,15 +277,15 @@ static void init_debug(uv_loop_t *loop) {
 }
 
 #if _WIN32 && _MSVC
-static char sep = '\\';
+static const char DIR_SEP = '\\';
 #else
-static char sep = '/';
+static const char DIR_SEP = '/';
 #endif
 
 static const char *basename(const char *path) {
     if (path == NULL) { return NULL; }
 
-    char *last_slash = strrchr(path, sep);
+    char *last_slash = strrchr(path, DIR_SEP);
     if (last_slash) { return last_slash + 1; }
     return path;
 }
@@ -301,7 +299,7 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
     va_list argp;
     va_start(argp, fmt);
     char location[128];
-    char *last_slash = strrchr(file, sep);
+    char *last_slash = strrchr(file, DIR_SEP);
 
     int modlen = 16;
     if (module == NULL) {
@@ -311,7 +309,7 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
             char *p = last_slash;
             while (p > file) {
                 p--;
-                if (*p == sep) {
+                if (*p == DIR_SEP) {
                     p++;
                     break;
                 }
@@ -384,8 +382,6 @@ static const char *get_utc_time() {
 }
 
 int lt_zero(int v) { return v < 0; }
-
-int non_zero(int v) { return v != 0; }
 
 void hexDump (char *desc, void *addr, int len) {
     ZITI_LOG(DEBUG, " ");
