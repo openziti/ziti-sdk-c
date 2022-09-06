@@ -64,8 +64,6 @@
 #define ZITI_ARCH UKNOWN
 #endif
 
-#define MAX_LOG_LINE (1024 * 2)
-
 #define LEVEL_LBL(lvl) #lvl,
 static const char *const level_labels[] = {
         DEBUG_LEVELS(LEVEL_LBL)
@@ -105,8 +103,9 @@ static model_map log_levels;
 static int ziti_log_lvl = ZITI_LOG_DEFAULT_LEVEL;
 static FILE *ziti_debug_out;
 static bool log_initialized = false;
+static uv_pid_t log_pid = 0;
 
-const char *(*get_elapsed)();
+static const char *(*get_elapsed)();
 
 static const char *get_elapsed_time();
 
@@ -119,7 +118,7 @@ static void default_log_writer(int level, const char *loc, const char *msg, size
 static uv_loop_t *ts_loop;
 static uint64_t starttime;
 static uint64_t last_update;
-static char elapsed_buffer[32];
+static char log_timestamp[32];
 
 static uv_prepare_t log_flusher;
 static log_writer logger = NULL;
@@ -220,10 +219,20 @@ static void init_uv_mbed_log() {
     }
 }
 
+static void child_init() {
+    log_initialized = false;
+    log_pid = uv_os_getpid();
+}
+
 static void init_debug(uv_loop_t *loop) {
     if (log_initialized) {
         return;
     }
+#if defined(PTHREAD_ONCE_INIT)
+    pthread_atfork(NULL, NULL, child_init);
+#endif
+
+    log_pid = uv_os_getpid();
     get_elapsed = get_elapsed_time;
     char *ts_format = getenv("ZITI_TIME_FORMAT");
     if (ts_format && strcasecmp("utc", ts_format) == 0) {
@@ -253,7 +262,7 @@ static void init_debug(uv_loop_t *loop) {
     }
     model_list_clear(&levels, free);
 
-    int uv_mbed_level = model_map_get(&log_levels, UV_MBED_MODULE);
+    int uv_mbed_level = (int) (intptr_t) model_map_get(&log_levels, UV_MBED_MODULE);
     if (uv_mbed_level > 0) {
         uv_mbed_set_debug(uv_mbed_level, uv_mbed_logger);
     }
@@ -268,15 +277,15 @@ static void init_debug(uv_loop_t *loop) {
 }
 
 #if _WIN32 && _MSVC
-static char sep = '\\';
+static const char DIR_SEP = '\\';
 #else
-static char sep = '/';
+static const char DIR_SEP = '/';
 #endif
 
 static const char *basename(const char *path) {
     if (path == NULL) { return NULL; }
 
-    char *last_slash = strrchr(path, sep);
+    char *last_slash = strrchr(path, DIR_SEP);
     if (last_slash) { return last_slash + 1; }
     return path;
 }
@@ -290,7 +299,7 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
     va_list argp;
     va_start(argp, fmt);
     char location[128];
-    char *last_slash = strrchr(file, sep);
+    char *last_slash = strrchr(file, DIR_SEP);
 
     int modlen = 16;
     if (module == NULL) {
@@ -300,7 +309,7 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
             char *p = last_slash;
             while (p > file) {
                 p--;
-                if (*p == sep) {
+                if (*p == DIR_SEP) {
                     p++;
                     break;
                 }
@@ -334,9 +343,7 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
 
 static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
     const char *elapsed = get_elapsed();
-    fprintf(ziti_debug_out, "[%s] %7s %s ", elapsed, level_labels[level], loc);
-    fwrite(msg, 1, msglen, ziti_debug_out);
-    fputc('\n', ziti_debug_out);
+    fprintf(ziti_debug_out, "(%u)[%s] %7s %s %.*s\n", log_pid, elapsed, level_labels[level], loc, (unsigned int) msglen, msg);
 }
 
 void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg) {
@@ -352,9 +359,9 @@ static const char *get_elapsed_time() {
     if (now > last_update) {
         last_update = now;
         unsigned long long elapsed = now - starttime;
-        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%9llu.%03llu", (elapsed / 1000), (elapsed % 1000));
+        snprintf(log_timestamp, sizeof(log_timestamp), "%9llu.%03llu", (elapsed / 1000), (elapsed % 1000));
     }
-    return elapsed_buffer;
+    return log_timestamp;
 }
 
 static const char *get_utc_time() {
@@ -366,17 +373,15 @@ static const char *get_utc_time() {
         uv_gettimeofday(&ts);
         struct tm *tm = gmtime(&ts.tv_sec);
 
-        snprintf(elapsed_buffer, sizeof(elapsed_buffer), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
+        snprintf(log_timestamp, sizeof(log_timestamp), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
                  1900 + tm->tm_year, tm->tm_mon + 1, tm->tm_mday,
                  tm->tm_hour, tm->tm_min, tm->tm_sec, ts.tv_usec / 1000
-                 );
+        );
     }
-    return elapsed_buffer;
+    return log_timestamp;
 }
 
 int lt_zero(int v) { return v < 0; }
-
-int non_zero(int v) { return v != 0; }
 
 void hexDump (char *desc, void *addr, int len) {
     ZITI_LOG(DEBUG, " ");

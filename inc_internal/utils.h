@@ -58,8 +58,6 @@ extern void hexDump(char *desc, void *addr, int len);
 
 int lt_zero(int v);
 
-int non_zero(int v);
-
 typedef const char *(*fmt_error_t)(int);
 
 typedef int *(*cond_error_t)(int);
