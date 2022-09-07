@@ -582,9 +582,8 @@ static void latency_reply_cb(void *ctx, message *reply, int err) {
     if (reply->header.content == ContentTypeResultType &&
         message_get_uint64_header(reply, LatencyProbeTime, &ts)) {
         ch->latency = uv_now(ch->loop) - ts;
-        CH_LOG(VERBOSE, "latency is now %llu", ch->latency);
-    }
-    else {
+        CH_LOG(VERBOSE, "latency is now %llu", (unsigned long long)ch->latency);
+    } else {
         CH_LOG(WARN, "invalid latency probe result ct[%04X]", reply->header.content);
     }
     uv_timer_start(ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
@@ -849,10 +848,8 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
         free(buf->base);
     } else {
         CH_LOG(TRACE, "on_data [len=%zd]", len);
-        if (len > 0) {
-            buffer_append(ch->incoming, buf->base, (uint32_t) len);
-            process_inbound(ch);
-        }
+        buffer_append(ch->incoming, buf->base, (uint32_t) len);
+        process_inbound(ch);
     }
 }
 
