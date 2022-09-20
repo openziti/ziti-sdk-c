@@ -56,8 +56,14 @@ static const char *configs[] = {
 
 static future_t *new_future() {
     future_t *f = calloc(1, sizeof(future_t));
-    uv_mutex_init(&f->lock);
-    uv_cond_init(&f->cond);
+    int rc = uv_mutex_init(&f->lock);
+    if (rc != 0) {
+        fprintf(stderr, "failed to init lock %d/%s\n", rc, uv_strerror(rc));
+    }
+    rc = uv_cond_init(&f->cond);
+    if (rc != 0) {
+        fprintf(stderr, "failed to init cond %d/%s\n", rc, uv_strerror(rc));
+    }
     return f;
 }
 
@@ -68,6 +74,10 @@ static void destroy_future(future_t *f) {
 }
 
 static int await_future(future_t *f) {
+    if (f == NULL) {
+        return 0;
+    }
+
     uv_mutex_lock(&f->lock);
     while (!f->completed) {
         uv_cond_wait(&f->cond, &f->lock);
@@ -129,6 +139,9 @@ static uv_key_t err_key;
 static uv_mutex_t q_mut;
 static uv_async_t q_async;
 static LIST_HEAD(loop_queue, queue_elem_s) loop_q;
+
+static future_t *child_init_future;
+
 
 #if _WIN32
 
@@ -269,32 +282,43 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
 static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
     int rc = 0;
     struct ztx_wrap *wrap = model_map_get(&ziti_contexts, arg);
-    if (wrap == NULL) {
-        ZITI_LOG(DEBUG, "loading identity from %s", (char*)arg);
-        wrap = calloc(1, sizeof(struct ztx_wrap));
-        wrap->opts.app_ctx = wrap;
-        wrap->opts.config = strdup(arg);
-        wrap->opts.event_cb = on_ctx_event;
-        wrap->opts.events = ZitiContextEvent | ZitiServiceEvent;
-        wrap->opts.refresh_interval = 60;
-        wrap->opts.config_types = configs;
-        wrap->services_loaded = new_future();
-        TAILQ_INIT(&wrap->futures);
 
-        rc = ziti_init_opts(&wrap->opts, l);
-        if (rc != ZITI_OK) {
-            fail_future(f, rc);
-            ZITI_LOG(WARN, "identity file[%s] not found", (const char *) arg);
-            free(wrap);
+
+    if (wrap) {
+        if (wrap->ztx) {
+            complete_future(f, wrap->ztx);
             return;
         }
-        model_map_set(&ziti_contexts, arg, wrap);
-        TAILQ_INSERT_TAIL(&wrap->futures, f, _next);
-    } else if (wrap->ztx) {
-        complete_future(f, wrap->ztx);
-    } else {
+
+        if (f) {
+            TAILQ_INSERT_TAIL(&wrap->futures, f, _next);
+        }
+        return;
+    }
+
+    ZITI_LOG(DEBUG, "loading identity from %s", (char *) arg);
+    wrap = calloc(1, sizeof(struct ztx_wrap));
+    wrap->opts.app_ctx = wrap;
+    wrap->opts.config = strdup(arg);
+    wrap->opts.event_cb = on_ctx_event;
+    wrap->opts.events = ZitiContextEvent | ZitiServiceEvent;
+    wrap->opts.refresh_interval = 60;
+    wrap->opts.config_types = configs;
+    wrap->services_loaded = new_future();
+    TAILQ_INIT(&wrap->futures);
+    if (f) {
         TAILQ_INSERT_TAIL(&wrap->futures, f, _next);
     }
+
+    rc = ziti_init_opts(&wrap->opts, l);
+    if (rc != ZITI_OK) {
+        fail_future(f, rc);
+        ZITI_LOG(WARN, "identity file[%s] not found", (const char *) arg);
+        free(wrap);
+        return;
+    }
+    model_map_set(&ziti_contexts, arg, wrap);
+
 }
 
 ziti_context Ziti_load_context(const char *identity) {
@@ -605,8 +629,17 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
 }
 
 int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port) {
-    if (host == NULL) return EINVAL;
-    if (port == 0 || port > UINT16_MAX) return EINVAL;
+    if (host == NULL) { return EINVAL; }
+    if (port == 0 || port > UINT16_MAX) { return EINVAL; }
+
+    await_future(child_init_future);
+
+    const char *id;
+    ztx_wrap_t *wrap;
+    MODEL_MAP_FOREACH(id, wrap, &ziti_contexts) {
+        await_future(wrap->services_loaded);
+    }
+
 
     struct conn_req_s req = {
             .fd = socket,
@@ -944,6 +977,7 @@ void Ziti_lib_shutdown(void) {
 
 static void looper(void *arg) {
     uv_loop_t *l = arg;
+    ZITI_LOG(DEBUG, "loop is starting");
     uv_run(l, UV_RUN_DEFAULT);
     ZITI_LOG(DEBUG, "loop is done");
 }
@@ -984,36 +1018,34 @@ void process_on_loop(uv_async_t *async) {
     }
 }
 
+static void child_load_contexts(void *load_list, future_t *f, uv_loop_t *l) {
+    model_list *load_ids = load_list;
+
+    void *id;
+    MODEL_LIST_FOREACH(id, *load_ids) {
+        ZITI_LOG(INFO, "loading %s", (const char *) id);
+        load_ziti_ctx(id, NULL, l);
+    }
+
+    complete_future(f, NULL);
+}
+
 static void child_init() {
     lib_loop = uv_loop_new();
+    memset(&loop_q, 0, sizeof(loop_q));
     ziti_log_init(lib_loop, -1, NULL);
     uv_async_init(lib_loop, &q_async, process_on_loop);
-    uv_thread_create(&lib_thread, looper, lib_loop);
 
     model_map_iter it = model_map_iterator(&ziti_contexts);
-    model_list idents = {0};
+    model_list *idents = calloc(1, sizeof(*idents));
     while (it) {
         const char *ident = model_map_it_key(it);
-        model_list_append(&idents, strdup(ident));
+        model_list_append(idents, strdup(ident));
         it = model_map_it_remove(it);
     }
 
-    model_list_iter ident_it = model_list_iterator(&idents);
-    model_list futures = {0};
-    while (ident_it) {
-        void *id = model_list_it_element(ident_it);
-        future_t *f = schedule_on_loop(load_ziti_ctx, id, true);
-        model_list_append(&futures, f);
-        ident_it = model_list_it_remove(ident_it);
-    }
-
-    model_list_iter fit = model_list_iterator(&futures);
-    while(fit) {
-        future_t *f = model_list_it_element(fit);
-        int err = await_future(f);
-        destroy_future(f);
-        fit = model_list_it_next(fit);
-    }
+    child_init_future = schedule_on_loop(child_load_contexts, idents, true);
+    uv_thread_create(&lib_thread, looper, lib_loop);
 }
 
 
@@ -1021,7 +1053,6 @@ static void internal_init() {
 #if defined(PTHREAD_ONCE_INIT)
     pthread_atfork(NULL, NULL, child_init);
 #endif
-    fprintf(stderr, "internal_init() pid[%d]\n", uv_os_getpid());
     init_in4addr_loopback();
     uv_key_create(&err_key);
     uv_mutex_init(&q_mut);
