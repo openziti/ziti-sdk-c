@@ -1166,7 +1166,7 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *addr
 
         *addrlist = res;
         return 0;
-    } else if (uv_ip6_addr(host, port, (struct sockaddr_in6 *) addr4) == 0) {
+    } else if (uv_ip6_addr(host, portnum, (struct sockaddr_in6 *) addr4) == 0) {
         ZITI_LOG(INFO, "host[%s] port[%s] rc = %d", host, port, rc);
 
         res->ai_family = AF_INET6;
