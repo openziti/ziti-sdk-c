@@ -359,7 +359,7 @@ int ziti_port_match(int port, const model_list *port_range_list) {
             if (score == -1 || score > width) {
                 score = width;
             }
-            if (score == 0) { // bests possible score
+            if (score == 0) { // best possible score
                 return score;
             }
         }

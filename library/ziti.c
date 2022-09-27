@@ -774,7 +774,12 @@ const ziti_service *ziti_service_for_addr(ziti_context ztx, ziti_protocol proto,
     const char *name;
     MODEL_MAP_FOREACH(name, srv, &ztx->services) {
         ziti_intercept_cfg_v1 intercept = {0};
-        if (ziti_service_get_config(srv, ZITI_INTERCEPT_CFG_V1, &intercept, parse_ziti_intercept_cfg_v1) == ZITI_OK) {
+        ziti_client_cfg_v1 clt_cfg = {0};
+        if (ziti_service_get_config(srv, ZITI_INTERCEPT_CFG_V1, &intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK ||
+                (ziti_service_get_config(srv, ZITI_CLIENT_CFG_V1, &clt_cfg, (parse_service_cfg_f) parse_ziti_client_cfg_v1) == ZITI_OK &&
+                 ziti_intercept_from_client_cfg(&intercept, &clt_cfg) == ZITI_OK
+                )
+        ) {
             int match = ziti_intercept_match(&intercept, proto, addr, port);
 
             if (match == -1) { continue; }
@@ -787,6 +792,8 @@ const ziti_service *ziti_service_for_addr(ziti_context ztx, ziti_protocol proto,
                 best = srv;
             }
         }
+        free_ziti_intercept_cfg_v1(&intercept);
+        free_ziti_client_cfg_v1(&clt_cfg);
     }
     return best;
 }

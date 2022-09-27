@@ -234,7 +234,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             ziti_service *s = ev->event.service.changed[i];
             ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
 
-            if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (int (*)(void *, const char *, size_t)) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
+            if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
                 intercept = model_map_set(&wrap->intercepts, s->name, intercept);
             }
 
