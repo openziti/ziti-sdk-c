@@ -46,7 +46,7 @@ const char *zl_strerror(uv_link_t *link, int err);
 
 static void zlnf_conn_cb(ziti_connection conn, int status);
 
-static ssize_t zlnf_data_cb(ziti_connection conn, uint8_t *data, ssize_t length);
+static ssize_t zlnf_data_cb(ziti_connection conn, const uint8_t *data, ssize_t length);
 
 static void zlnf_write_cb(ziti_connection conn, ssize_t status, void *ctx);
 
@@ -74,15 +74,39 @@ int ziti_src_init(uv_loop_t *l, um_src_t *st, const char *svc, ziti_context ztx)
     uv_link_init(st->link, &ziti_link_methods);
 
     ziti_link_t *zl = (ziti_link_t *) st->link;
-    zl->service = strdup(svc);
+    if (svc)
+        zl->service = strdup(svc);
+    else
+        zl->service = NULL;
     zl->ztx = ztx;
     
     return 0; 
 }
 
 static int
-ziti_src_connect(um_src_t *src, const char *h, const char *p, um_src_connect_cb cb, void *conn_ctx) {
+ziti_src_connect(um_src_t *src, const char *host, const char *port, um_src_connect_cb cb, void *conn_ctx) {
     ziti_link_t *zl = (ziti_link_t *) src->link;
+
+    char app_data[1024];
+    size_t app_data_len = snprintf(app_data, sizeof(app_data), "{"
+                                         "\"dst_protocol\":\"tcp\","
+                                         "\"dst_hostname\":\"%s\", "
+                                         "\"dst_port\":\"%s\""
+                                         "}", host, port);
+    ziti_dial_opts opts = {
+            .app_data = app_data,
+            .app_data_sz = app_data_len,
+    };
+    if (zl->service == NULL) { // find service by intercept
+        int portnum = (int)strtol(port, NULL, 10);
+        const ziti_service *s = ziti_service_for_addr(zl->ztx, ziti_protocols.tcp, host, portnum);
+        if (s == NULL) {
+            ZITI_LOG(ERROR, "no service for address[tcp:%s:%s]", host, port);
+            return ZITI_SERVICE_UNAVAILABLE;
+        }
+
+        zl->service = strdup(s->name);
+    }
 
     ZITI_LOG(TRACE, "service %s", zl->service);
     src->connect_cb = cb;
@@ -92,7 +116,7 @@ ziti_src_connect(um_src_t *src, const char *h, const char *p, um_src_connect_cb 
     if (status != ZITI_OK) {
         return status;
     }
-    return ziti_dial(zl->conn, zl->service, zlnf_conn_cb, zlnf_data_cb);
+    return ziti_dial_with_options(zl->conn, zl->service, &opts, zlnf_conn_cb, zlnf_data_cb);
 }
 
 static void ziti_src_release(um_src_t *src) {
@@ -107,7 +131,7 @@ static void zlnf_conn_cb(ziti_connection conn, int status) {
 }
 
 //static void link_close_cb(uv_link_t *l) {}
-static ssize_t zlnf_data_cb(ziti_connection conn, uint8_t *data, ssize_t length) {
+static ssize_t zlnf_data_cb(ziti_connection conn, const uint8_t *data, ssize_t length) {
     um_src_t *src = (um_src_t *) ziti_conn_data(conn);
     uv_buf_t read_buf;
 

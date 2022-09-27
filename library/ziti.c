@@ -1326,13 +1326,13 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
             ziti_ctrl_current_api_session(&ztx->controller, update_session_data, ztx);
         }
 
-        if (ztx->opts->refresh_interval > 0) {
-            ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
-            ziti_services_refresh(ztx, true);
-        } else if (ztx->opts->refresh_interval == 0) {
-            ZTX_LOG(DEBUG, "refresh_interval not specified");
-            uv_timer_stop(ztx->service_refresh_timer);
-        }
+        ziti_services_refresh(ztx, true);
+//        if (ztx->opts->refresh_interval > 0) {
+//            ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
+//        } else if (ztx->opts->refresh_interval == 0) {
+//            ZTX_LOG(DEBUG, "refresh_interval not specified");
+//            uv_timer_stop(ztx->service_refresh_timer);
+//        }
 
         ziti_posture_init(ztx, 20);
 

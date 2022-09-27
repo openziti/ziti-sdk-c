@@ -15,6 +15,7 @@ add_executable(all_tests
         buffer_tests.cpp
         pool_tests.cpp
         catch2_includes.hpp
+        ziti_src_tests.cpp
         )
 
 if (WIN32)
