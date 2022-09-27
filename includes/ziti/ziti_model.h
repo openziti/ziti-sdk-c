@@ -191,7 +191,9 @@ ZITI_FUNC int ziti_address_match(const ziti_address *addr, const ziti_address *r
 
 ZITI_FUNC int ziti_address_match_s(const char *addr, ziti_address *range);
 
-ZITI_FUNC int ziti_address_match_list(const char *addr, const model_list *range);
+ZITI_FUNC int ziti_addrstr_match_list(const char *addr, const model_list *range);
+ZITI_FUNC int ziti_address_match_list(const ziti_address *addr, const model_list *range);
+
 ZITI_FUNC int ziti_address_match_array(const char *addr, ziti_address **range);
 
 DECLARE_MODEL_FUNCS(ziti_address)

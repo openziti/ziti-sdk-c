@@ -691,16 +691,16 @@ TEST_CASE("ziti-address-match", "[model]") {
     int len = parse_ziti_intercept_cfg_v1(&intercept, json, strlen(json));
     REQUIRE(len > 0);
 
-    CHECK(ziti_address_match_list("foo.bar", &intercept.addresses) == 0);
-    CHECK(ziti_address_match_list("foo.baz", &intercept.addresses) == -1);
-    CHECK(ziti_address_match_list("AWESOME.ZITI", &intercept.addresses) > 0);
-    CHECK(ziti_address_match_list("Yahoo.COM", &intercept.addresses) >= 0);
-    CHECK(ziti_address_match_list("1.1.1.1", &intercept.addresses) == 0);
-    CHECK(ziti_address_match_list("1.1.1.2", &intercept.addresses) == -1);
-    CHECK(ziti_address_match_list("100.127.1.1", &intercept.addresses) == 22); // match 100.64.0.0/10
-    CHECK(ziti_address_match_list("100.128.1.2", &intercept.addresses) == -1);
-    CHECK(ziti_address_match_list("ff::abcd:1", &intercept.addresses) > 0);
-    CHECK(ziti_address_match_list("ff:abcd::1", &intercept.addresses) == -1);
+    CHECK(ziti_addrstr_match_list("foo.bar", &intercept.addresses) == 0);
+    CHECK(ziti_addrstr_match_list("foo.baz", &intercept.addresses) == -1);
+    CHECK(ziti_addrstr_match_list("AWESOME.ZITI", &intercept.addresses) > 0);
+    CHECK(ziti_addrstr_match_list("Yahoo.COM", &intercept.addresses) >= 0);
+    CHECK(ziti_addrstr_match_list("1.1.1.1", &intercept.addresses) == 0);
+    CHECK(ziti_addrstr_match_list("1.1.1.2", &intercept.addresses) == -1);
+    CHECK(ziti_addrstr_match_list("100.127.1.1", &intercept.addresses) == 22); // match 100.64.0.0/10
+    CHECK(ziti_addrstr_match_list("100.128.1.2", &intercept.addresses) == -1);
+    CHECK(ziti_addrstr_match_list("ff::abcd:1", &intercept.addresses) > 0);
+    CHECK(ziti_addrstr_match_list("ff:abcd::1", &intercept.addresses) == -1);
 
     free_ziti_intercept_cfg_v1(&intercept);
 }

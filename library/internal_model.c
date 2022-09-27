@@ -303,7 +303,7 @@ int ziti_address_match_s(const char *addr, ziti_address *range) {
     return res;
 }
 
-int ziti_address_match2_list(const ziti_address *addr, const model_list *range) {
+int ziti_address_match_list(const ziti_address *addr, const model_list *range) {
     ziti_address a;
 
     int best = -1;
@@ -319,12 +319,12 @@ int ziti_address_match2_list(const ziti_address *addr, const model_list *range) 
     return best;
 }
 
-int ziti_address_match_list(const char *addr, const model_list *range) {
+int ziti_addrstr_match_list(const char *addr, const model_list *range) {
     ziti_address a;
 
     int best = -1;
     if (parse_ziti_address_str(&a, addr) == 0) {
-        best = ziti_address_match2_list(&a, range);
+        best = ziti_address_match_list(&a, range);
     }
     free_ziti_address(&a);
     return best;
@@ -380,7 +380,7 @@ int ziti_intercept_match2(const ziti_intercept_cfg_v1 *intercept, ziti_protocol 
         return -1;
     }
 
-    int addr_match = ziti_address_match2_list(addr, &intercept->addresses);
+    int addr_match = ziti_address_match_list(addr, &intercept->addresses);
     if (addr_match == -1) {
         return -1;
     }
