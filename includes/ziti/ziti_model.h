@@ -1,18 +1,16 @@
-/*
-Copyright (c) 2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2020-2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef ZITI_SDK_ZITI_MODEL_H
 #define ZITI_SDK_ZITI_MODEL_H
@@ -23,8 +21,14 @@ limitations under the License.
 #include <winsock2.h>
 #include <in6addr.h>
 #else
+
 #include <netinet/in.h>
+
 #endif
+
+#define ZITI_PROTOCOL_ENUM(XX, ...) \
+XX(tcp, __VA_ARGS__)                \
+XX(udp, __VA_ARGS__)
 
 #define ZITI_SESSION_TYPE_ENUM(XX, ...) \
 XX(Bind, __VA_ARGS__)                   \
@@ -107,9 +111,9 @@ XX(high, int, none, high, __VA_ARGS__)
 #define ZITI_CLIENT_CFG_V1 "ziti-tunneler-client.v1"
 
 #define ZITI_INTERCEPT_CFG_V1_MODEL(XX, ...) \
-XX(protocols, string, array, protocols, __VA_ARGS__) \
-XX(addresses, ziti_address, array, addresses, __VA_ARGS__) \
-XX(port_ranges, ziti_port_range, array, portRanges, __VA_ARGS__) \
+XX(protocols, ziti_protocol, list, protocols, __VA_ARGS__) \
+XX(addresses, ziti_address, list, addresses, __VA_ARGS__) \
+XX(port_ranges, ziti_port_range, list, portRanges, __VA_ARGS__) \
 XX(dial_options, tag, map, dialOptions, __VA_ARGS__) \
 XX(source_ip, string, none, sourceIp, __VA_ARGS__)
 
@@ -179,15 +183,23 @@ typedef struct ziti_address_s {
 #endif
 #define MODEL_API ZITI_FUNC
 
+ZITI_FUNC int parse_ziti_address_str(ziti_address *addr, const char *addr_str);
+
 ZITI_FUNC int ziti_address_print(char *buf, size_t max, const ziti_address *address);
 
-ZITI_FUNC bool ziti_address_match(ziti_address *addr, ziti_address *range);
+ZITI_FUNC int ziti_address_match(ziti_address *addr, ziti_address *range);
 
-ZITI_FUNC bool ziti_address_match_s(const char *addr, ziti_address *range);
+ZITI_FUNC int ziti_address_match_s(const char *addr, ziti_address *range);
 
-ZITI_FUNC bool ziti_address_match_array(const char *addr, ziti_address **range);
+ZITI_FUNC int ziti_address_match_list(const char *addr, const model_list *range);
+ZITI_FUNC int ziti_address_match_array(const char *addr, ziti_address **range);
 
 DECLARE_MODEL_FUNCS(ziti_address)
+
+DECLARE_ENUM(ziti_protocol, ZITI_PROTOCOL_ENUM)
+
+ZITI_FUNC bool ziti_protocol_match(ziti_protocol proto, const model_list *proto_list);
+ZITI_FUNC int ziti_port_match(int port, const model_list *port_range_list);
 
 DECLARE_ENUM(ziti_session_type, ZITI_SESSION_TYPE_ENUM)
 
@@ -231,10 +243,14 @@ DECLARE_MODEL(ziti_mfa_enrollment, ZITI_MFA_ENROLLMENT_MODEL)
 
 ZITI_FUNC const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type);
 
+typedef int (*parse_service_cfg_f)(void *, const char *, size_t);
 ZITI_FUNC int ziti_service_get_config(ziti_service *service, const char *cfg_type, void *cfg,
-                                      int (*parse_func)(void *, const char *, size_t));
+                                      parse_service_cfg_f parse_func);
 
 ZITI_FUNC int ziti_intercept_from_client_cfg(ziti_intercept_cfg_v1 *intercept, const ziti_client_cfg_v1 *client_cfg);
+
+ZITI_FUNC int ziti_intercept_match(const ziti_intercept_cfg_v1 *intercept, ziti_protocol proto, const char *addr, int port);
+
 
 #ifdef __cplusplus
 }

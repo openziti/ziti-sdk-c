@@ -127,6 +127,8 @@ IMPL_MODEL(ziti_extend_cert_authenticator_resp, ZITI_EXTEND_CERT_AUTHENTICATOR_R
 
 IMPL_ENUM(ziti_session_type, ZITI_SESSION_TYPE_ENUM)
 
+IMPL_ENUM(ziti_protocol, ZITI_PROTOCOL_ENUM)
+
 
 const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type) {
     return (const char *) model_map_get(&service->config, cfg_type);
@@ -163,7 +165,7 @@ static int cmp_ziti_address0(ziti_address *lh, ziti_address *rh) {
     return 0;
 }
 
-static int parse_ziti_address_str(ziti_address *addr, const char *addr_str) {
+int parse_ziti_address_str(ziti_address *addr, const char *addr_str) {
     int rc = 0;
     char *slash = strchr(addr_str, '/');
     unsigned long bits;
@@ -237,14 +239,14 @@ static void free_ziti_address0(ziti_address *addr) {
 
 }
 
-bool ziti_address_match(ziti_address *addr, ziti_address *range) {
+int ziti_address_match(ziti_address *addr, ziti_address *range) {
     if (addr->type != range->type) {
-        return false;
+        return -1;
     }
 
     if (addr->type == ziti_address_hostname) {
         if (range->addr.hostname[0] != '*') {
-            return strcasecmp(addr->addr.hostname, range->addr.hostname) == 0;
+            return (strcasecmp(addr->addr.hostname, range->addr.hostname) == 0) ? 0 : -1;
         }
 
         const char *domain = range->addr.hostname + 2;
@@ -252,7 +254,7 @@ bool ziti_address_match(ziti_address *addr, ziti_address *range) {
         const char *post_dot = addr->addr.hostname;
         while (post_dot != NULL) {
             if (strcasecmp(post_dot, domain) == 0) {
-                return true;
+                return (int) (strlen(addr->addr.hostname) - strlen(domain));
             }
 
             post_dot = strchr(post_dot, '.');
@@ -261,12 +263,13 @@ bool ziti_address_match(ziti_address *addr, ziti_address *range) {
             }
         }
     } else if (addr->type == ziti_address_cidr) {
-        if (addr->addr.cidr.af != range->addr.cidr.af) { return false; }
-        if (addr->addr.cidr.bits < range->addr.cidr.bits) { return false; }
+        if (addr->addr.cidr.af != range->addr.cidr.af) { return -1; }
+        if (addr->addr.cidr.bits < range->addr.cidr.bits) { return -1; }
 
         if (addr->addr.cidr.af == AF_INET) {
             in_addr_t mask = htonl((-1) << (32 - range->addr.cidr.bits));
-            return (((struct in_addr *) &addr->addr.cidr.ip)->s_addr & mask) == (((struct in_addr *) &range->addr.cidr.ip)->s_addr & mask);
+            return (((struct in_addr *) &addr->addr.cidr.ip)->s_addr & mask) == (((struct in_addr *) &range->addr.cidr.ip)->s_addr & mask) ?
+                   (int) addr->addr.cidr.bits - (int) range->addr.cidr.bits : -1;
         } else if (addr->addr.cidr.af == AF_INET6) {
             unsigned int bits = range->addr.cidr.bits;
             uint8_t mask;
@@ -279,18 +282,20 @@ bool ziti_address_match(ziti_address *addr, ziti_address *range) {
                     bits = 0;
                 }
 
-                if ((addr->addr.cidr.ip.s6_addr[i] & mask) != (range->addr.cidr.ip.s6_addr[i] & mask)) { return false; }
+                if ((addr->addr.cidr.ip.s6_addr[i] & mask) != (range->addr.cidr.ip.s6_addr[i] & mask)) {
+                    return -1;
+                }
             }
-            return true;
+            return addr->addr.cidr.bits - range->addr.cidr.bits;
         }
     }
-    return false;
+    return -1;
 }
 
-bool ziti_address_match_s(const char *addr, ziti_address *range) {
+int ziti_address_match_s(const char *addr, ziti_address *range) {
     ziti_address a;
 
-    bool res = false;
+    int res = false;
     if (parse_ziti_address_str(&a, addr) == 0) {
         res = ziti_address_match(&a, range);
     }
@@ -298,20 +303,89 @@ bool ziti_address_match_s(const char *addr, ziti_address *range) {
     return res;
 }
 
-bool ziti_address_match_array(const char *addr, ziti_address **range) {
+int ziti_address_match_list(const char *addr, const model_list *range) {
     ziti_address a;
 
-    bool res = false;
+    int best = -1;
     if (parse_ziti_address_str(&a, addr) == 0) {
-        for (int i = 0; range[i] != NULL && !res; i++) {
-            if (ziti_address_match(&a, range[i])) {
-                res = true;
+        ziti_address *range_addr;
+        MODEL_LIST_FOREACH(range_addr, *range) {
+            int res = ziti_address_match(&a, range_addr);
+            if (res == -1) { continue; }
+
+            if (best == -1 || res < best) {
+                best = res;
             }
         }
     }
     free_ziti_address(&a);
-    return res;
+    return best;
 }
+
+int ziti_address_match_array(const char *addr, ziti_address **range) {
+    ziti_address a;
+
+    int best = -1;
+    if (parse_ziti_address_str(&a, addr) == 0) {
+        for (int i = 0; range[i] != NULL; i++) {
+            int res = ziti_address_match(&a, range[i]);
+            if (res == -1) { continue; }
+
+            if (best == -1 || res < best) {
+                best = res;
+            }
+        }
+    }
+    free_ziti_address(&a);
+    return best;
+}
+
+bool ziti_protocol_match(ziti_protocol proto, const model_list *proto_list) {
+    ziti_protocol *p;
+    MODEL_LIST_FOREACH(p, *proto_list) {
+        if (proto == *p) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int ziti_port_match(int port, const model_list *port_range_list) {
+    ziti_port_range *p;
+    int score = -1;
+    MODEL_LIST_FOREACH(p, *port_range_list) {
+        if (p->low <= port && port <= p->high) {
+            int width = p->high - p->low;
+            if (score == -1 || score > width) {
+                score = width;
+            }
+            if (score == 0) { // bests possible score
+                return score;
+            }
+        }
+    }
+    return score;
+}
+
+int ziti_intercept_match(const ziti_intercept_cfg_v1 *intercept, ziti_protocol proto, const char *addr, int port) {
+    if (proto != 0 && !ziti_protocol_match(proto, &intercept->protocols)) {
+        return -1;
+    }
+
+    int addr_match = ziti_address_match_list(addr, &intercept->addresses);
+    if (addr_match == -1) {
+        return -1;
+    }
+
+    int port_match = ziti_port_match(port, &intercept->port_ranges);
+    if (port_match == -1) {
+        return -1;
+    }
+
+    // addr match takes precedence so push it into higher bits to get one value for intercept
+    return (int) ((addr_match << 16) | (port_match & 0xFF));
+}
+
 
 static type_meta ziti_address_META = {
         .size = sizeof(ziti_address),
@@ -324,18 +398,21 @@ static type_meta ziti_address_META = {
 int ziti_intercept_from_client_cfg(ziti_intercept_cfg_v1 *intercept, const ziti_client_cfg_v1 *client_cfg) {
     memset(intercept, 0, sizeof(*intercept));
 
-    intercept->protocols = calloc(3, sizeof(char*));
-    intercept->protocols[0] = strdup("tcp");
-    intercept->protocols[1] = strdup("udp");
+    ziti_protocol *proto = calloc(1, sizeof(ziti_protocol));
+    *proto = ziti_protocols.tcp;
+    model_list_append(&intercept->protocols, proto);
+    proto = calloc(1, sizeof(ziti_protocol));
+    *proto = ziti_protocols.udp;
+    model_list_append(&intercept->protocols, proto);
 
-    intercept->addresses = calloc(2, sizeof(ziti_address*));
-    intercept->addresses[0] = calloc(1, sizeof(ziti_address));
-    memcpy(intercept->addresses[0], &client_cfg->hostname, sizeof(ziti_address));
+    ziti_address *addr_copy = calloc(1, sizeof(ziti_address));
+    memcpy(addr_copy, &client_cfg->hostname, sizeof(ziti_address));
+    model_list_append(&intercept->addresses, addr_copy);
 
-    intercept->port_ranges = calloc(2, sizeof(ziti_port_range*));
-    intercept->port_ranges[0] = calloc(1, sizeof(ziti_port_range));
-    intercept->port_ranges[0]->low = client_cfg->port;
-    intercept->port_ranges[0]->high = client_cfg->port;
+    ziti_port_range *range_copy = calloc(1, sizeof(ziti_port_range));
+    range_copy->low = client_cfg->port;
+    range_copy->high = client_cfg->port;
+    model_list_append(&intercept->port_ranges, range_copy);
 
     return 0;
 }

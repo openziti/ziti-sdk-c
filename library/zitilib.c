@@ -234,7 +234,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             ziti_service *s = ev->event.service.changed[i];
             ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
 
-            if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, parse_ziti_intercept_cfg_v1) == ZITI_OK) {
+            if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (int (*)(void *, const char *, size_t)) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
                 intercept = model_map_set(&wrap->intercepts, s->name, intercept);
             }
 
@@ -247,9 +247,9 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
             ziti_client_cfg_v1 clt_cfg = {0};
 
-            if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, parse_ziti_intercept_cfg_v1) == ZITI_OK) {
+            if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
                 intercept = model_map_set(&wrap->intercepts, s->name, intercept);
-            } else if (ziti_service_get_config(s, ZITI_CLIENT_CFG_V1, &clt_cfg, parse_ziti_client_cfg_v1) == ZITI_OK) {
+            } else if (ziti_service_get_config(s, ZITI_CLIENT_CFG_V1, &clt_cfg, (parse_service_cfg_f) parse_ziti_client_cfg_v1) == ZITI_OK) {
                 ziti_intercept_from_client_cfg(intercept, &clt_cfg);
                 intercept = model_map_set(&wrap->intercepts, s->name, intercept);
                 free_ziti_client_cfg_v1(&clt_cfg);
@@ -469,13 +469,13 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
     const char *service;
     ziti_intercept_cfg_v1 *intercept;
 
-    const char* proto;
+    ziti_protocol proto;
     switch (type) {
         case SOCK_STREAM:
-            proto = "tcp";
+            proto = ziti_protocols.tcp;
             break;
         case SOCK_DGRAM:
-            proto = "udp";
+            proto = ziti_protocols.udp;
             break;
         case 0: // resolve case: any protocol can be used to assign IP address to host
             break;
@@ -483,29 +483,20 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
             return NULL;
     }
 
-    int i;
+    int score = -1;
+    const char *best = NULL;
     MODEL_MAP_FOREACH(service, intercept, &wrap->intercepts) {
-        bool proto_match = type == 0;
-        bool port_match = port == 0;
-        bool host_match = false;
+        int match = ziti_intercept_match(intercept, proto, host, port);
+        if (match == -1) { continue; }
 
-        for (i = 0; !proto_match && intercept->protocols[i] != NULL; i++) {
-            proto_match = strcasecmp(proto, intercept->protocols[i]) == 0;
+        if (match == 0) { return service; }
+
+        if (score == -1 || score > match) {
+            best = service;
+            score = match;
         }
-        if (!proto_match) continue;
-
-        for (i = 0; !port_match && intercept->port_ranges[i] != NULL; i++) {
-            ziti_port_range *range = intercept->port_ranges[i];
-            port_match = range->low <= port && port <= range->high;
-        }
-        if (!port_match) continue;
-
-        host_match = ziti_address_match_array(host, intercept->addresses);
-
-        if (host_match)
-            return service;
     }
-    return NULL;
+    return best;
 }
 
 static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {

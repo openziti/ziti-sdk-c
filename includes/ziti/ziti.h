@@ -671,6 +671,9 @@ extern const char *ziti_conn_source_identity(ziti_connection conn);
 ZITI_FUNC
 extern int ziti_service_available(ziti_context ztx, const char *service, ziti_service_cb cb, void *ctx);
 
+ZITI_FUNC
+extern const ziti_service *ziti_service_for_addr(ziti_context ztx, ziti_protocol proto, const char *addr, int port);
+
 /**
  * @brief Establishes connection to a Ziti service.
  *
