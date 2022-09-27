@@ -187,7 +187,7 @@ ZITI_FUNC int parse_ziti_address_str(ziti_address *addr, const char *addr_str);
 
 ZITI_FUNC int ziti_address_print(char *buf, size_t max, const ziti_address *address);
 
-ZITI_FUNC int ziti_address_match(ziti_address *addr, ziti_address *range);
+ZITI_FUNC int ziti_address_match(const ziti_address *addr, const ziti_address *range);
 
 ZITI_FUNC int ziti_address_match_s(const char *addr, ziti_address *range);
 
@@ -250,6 +250,8 @@ ZITI_FUNC int ziti_service_get_config(ziti_service *service, const char *cfg_typ
 ZITI_FUNC int ziti_intercept_from_client_cfg(ziti_intercept_cfg_v1 *intercept, const ziti_client_cfg_v1 *client_cfg);
 
 ZITI_FUNC int ziti_intercept_match(const ziti_intercept_cfg_v1 *intercept, ziti_protocol proto, const char *addr, int port);
+
+ZITI_FUNC int ziti_intercept_match2(const ziti_intercept_cfg_v1 *intercept, ziti_protocol proto, const ziti_address *addr, int port);
 
 
 #ifdef __cplusplus

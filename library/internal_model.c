@@ -239,7 +239,7 @@ static void free_ziti_address0(ziti_address *addr) {
 
 }
 
-int ziti_address_match(ziti_address *addr, ziti_address *range) {
+int ziti_address_match(const ziti_address *addr, const ziti_address *range) {
     if (addr->type != range->type) {
         return -1;
     }
@@ -303,20 +303,28 @@ int ziti_address_match_s(const char *addr, ziti_address *range) {
     return res;
 }
 
+int ziti_address_match2_list(const ziti_address *addr, const model_list *range) {
+    ziti_address a;
+
+    int best = -1;
+    const ziti_address *range_addr;
+    MODEL_LIST_FOREACH(range_addr, *range) {
+        int res = ziti_address_match(addr, range_addr);
+        if (res == -1) { continue; }
+
+        if (best == -1 || res < best) {
+            best = res;
+        }
+    }
+    return best;
+}
+
 int ziti_address_match_list(const char *addr, const model_list *range) {
     ziti_address a;
 
     int best = -1;
     if (parse_ziti_address_str(&a, addr) == 0) {
-        ziti_address *range_addr;
-        MODEL_LIST_FOREACH(range_addr, *range) {
-            int res = ziti_address_match(&a, range_addr);
-            if (res == -1) { continue; }
-
-            if (best == -1 || res < best) {
-                best = res;
-            }
-        }
+        best = ziti_address_match2_list(&a, range);
     }
     free_ziti_address(&a);
     return best;
@@ -367,12 +375,12 @@ int ziti_port_match(int port, const model_list *port_range_list) {
     return score;
 }
 
-int ziti_intercept_match(const ziti_intercept_cfg_v1 *intercept, ziti_protocol proto, const char *addr, int port) {
+int ziti_intercept_match2(const ziti_intercept_cfg_v1 *intercept, ziti_protocol proto, const ziti_address *addr, int port) {
     if (proto != 0 && !ziti_protocol_match(proto, &intercept->protocols)) {
         return -1;
     }
 
-    int addr_match = ziti_address_match_list(addr, &intercept->addresses);
+    int addr_match = ziti_address_match2_list(addr, &intercept->addresses);
     if (addr_match == -1) {
         return -1;
     }
@@ -384,6 +392,16 @@ int ziti_intercept_match(const ziti_intercept_cfg_v1 *intercept, ziti_protocol p
 
     // addr match takes precedence so push it into higher bits to get one value for intercept
     return (int) ((addr_match << 16) | (port_match & 0xFF));
+}
+
+int ziti_intercept_match(const ziti_intercept_cfg_v1 *intercept, ziti_protocol proto, const char *addr, int port) {
+    ziti_address a;
+    int match = -1;
+    if (parse_ziti_address_str(&a, addr) >= 0) {
+        match = ziti_intercept_match2(intercept, proto, &a, port);
+    }
+    free_ziti_address(&a);
+    return match;
 }
 
 
