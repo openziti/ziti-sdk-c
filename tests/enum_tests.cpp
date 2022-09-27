@@ -51,6 +51,8 @@ TEST_CASE("parse enum", "[model]") {
 
     CHECK_THAT(f1.name, Catch::Matchers::Equals("this is a name"));
     CHECK(f1.state == States.Ugly);
+
+    free_FooWithEnum(&f1);
 }
 
 TEST_CASE("parse null enum", "[model]") {
@@ -142,5 +144,39 @@ TEST_CASE("parse enum array", "[model]") {
     CHECK_THAT(js, Catch::Matchers::ContainsSubstring(R"("states":["Ugly","Bad"])"));
 
     free_FooWithEnumArray(&f1);
+    free(js);
+}
+
+#define ModelWithEnumList(XX, ...) \
+XX(name, string, none, name, __VA_ARGS__) \
+XX(states, State, list, states, __VA_ARGS__)
+
+DECLARE_MODEL(FooWithEnumList, ModelWithEnumList)
+
+IMPL_MODEL(FooWithEnumList, ModelWithEnumList)
+
+TEST_CASE("parse enum list", "[model]") {
+    const char *json = R"({
+"name": "this is a name",
+"states": ["Ugly", "Bad"]
+})";
+
+    FooWithEnumList f1;
+    REQUIRE(parse_FooWithEnumList(&f1, json, strlen(json)) == strlen(json));
+
+    CHECK_THAT(f1.name, Catch::Matchers::Equals("this is a name"));
+    auto it = model_list_iterator(&f1.states);
+    CHECK(*(State *) model_list_it_element(it) == States.Ugly);
+    it = model_list_it_next(it);
+    CHECK(*(State *) model_list_it_element(it) == States.Bad);
+    CHECK(model_list_it_next(it) == nullptr);
+
+
+    size_t json_len;
+    auto js = FooWithEnumList_to_json(&f1, 0, &json_len);
+
+    CHECK_THAT(js, Catch::Matchers::ContainsSubstring(R"("states":["Ugly","Bad"])"));
+
+    free_FooWithEnumList(&f1);
     free(js);
 }

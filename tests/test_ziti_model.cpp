@@ -1,18 +1,16 @@
-/*
-Copyright 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -504,17 +502,21 @@ TEST_CASE("service config test", "[model]") {
 
         ziti_intercept_cfg_v1 intercept;
         ziti_intercept_from_client_cfg(&intercept, &cfg);
-        CHECK_THAT(intercept.protocols[0], Equals("tcp"));
-        CHECK_THAT(intercept.protocols[1], Equals("udp"));
-        CHECK(intercept.protocols[2] == nullptr);
+        model_list_iter it = model_list_iterator(&intercept.protocols);
+        CHECK(*(ziti_protocol *) model_list_it_element(it) == ziti_protocols.tcp);
+        it = model_list_it_next(it);
+        CHECK(*(ziti_protocol *) model_list_it_element(it) == ziti_protocols.udp);
+        CHECK(model_list_it_next(it) == nullptr);
 
-        CHECK(intercept.port_ranges[0]->high == 80);
-        CHECK(intercept.port_ranges[0]->low == 80);
-        CHECK(intercept.port_ranges[1] == nullptr);
+        auto pr = (ziti_port_range *) model_list_head(&intercept.port_ranges);
+        CHECK(pr->high == 80);
+        CHECK(pr->low == 80);
+        CHECK(model_list_size(&intercept.port_ranges) == 1);
 
-        CHECK(intercept.addresses[0]->type == ziti_address_hostname);
-        CHECK_THAT(intercept.addresses[0]->addr.hostname, Equals("hello.ziti"));
-        CHECK(intercept.addresses[1] == nullptr);
+        auto addr = (ziti_address *) model_list_head(&intercept.addresses);
+        CHECK(addr->type == ziti_address_hostname);
+        CHECK_THAT(addr->addr.hostname, Equals("hello.ziti"));
+        CHECK(model_list_size(&intercept.addresses) == 1);
 
         free_ziti_client_cfg_v1(&cfg);
         free_ziti_intercept_cfg_v1(&intercept);
@@ -525,9 +527,12 @@ TEST_CASE("service config test", "[model]") {
         REQUIRE(ziti_service_get_config(&s, "intercept.v1", &cfg,
                                         (int (*)(void *, const char *, size_t)) (parse_ziti_intercept_cfg_v1)) == 0);
 
-        CHECK_THAT(cfg.protocols[0], Equals("tcp"));
-        // TODO CHECK_THAT(cfg.addresses[0], Equals("1.2.3.4"));
-        CHECK(cfg.port_ranges[0]->high == 80);
+        CHECK(*(ziti_protocol *) model_list_head(&cfg.protocols) == ziti_protocols.tcp);
+        ziti_address ip1_2_3_4;
+        parse_ziti_address_str(&ip1_2_3_4, "1.2.3.4");
+        CHECK(ziti_address_match((ziti_address *) model_list_head(&cfg.addresses), &ip1_2_3_4) == 0);
+        auto pr = (ziti_port_range *) model_list_head(&cfg.port_ranges);
+        CHECK(pr->high == 80);
         free_ziti_intercept_cfg_v1(&cfg);
     }
 
@@ -639,31 +644,36 @@ TEST_CASE("parse-ziti-intercept1", "[model]") {
     ziti_intercept_cfg_v1 intercept;
     int len = parse_ziti_intercept_cfg_v1(&intercept, json, strlen(json));
     REQUIRE(len > 0);
-    REQUIRE(intercept.addresses != nullptr);
+    REQUIRE(model_list_size(&intercept.addresses) == 4);
 
     int idx = 0;
-    CHECK(intercept.addresses[idx]->type == ziti_address_hostname);
-    CHECK_THAT(intercept.addresses[idx]->addr.hostname, Catch::Matchers::Equals("foo.bar"));
+    model_list_iter it = model_list_iterator(&intercept.addresses);
+    auto *addr = (ziti_address *) model_list_it_element(it);
+    CHECK(addr->type == ziti_address_hostname);
+    CHECK_THAT(addr->addr.hostname, Catch::Matchers::Equals("foo.bar"));
 
-    idx++;
-    CHECK(intercept.addresses[idx]->type == ziti_address_cidr);
-    CHECK(intercept.addresses[idx]->addr.cidr.bits == 32);
-    CHECK(intercept.addresses[idx]->addr.cidr.af == AF_INET);
-    CHECK(uv_inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) == 0);
+    it = model_list_it_next(it);
+    addr = (ziti_address *) model_list_it_element(it);
+    CHECK(addr->type == ziti_address_cidr);
+    CHECK(addr->addr.cidr.bits == 32);
+    CHECK(addr->addr.cidr.af == AF_INET);
+    CHECK(uv_inet_ntop(addr->addr.cidr.af, &addr->addr.cidr.ip, addr_str, sizeof(addr_str)) == 0);
     CHECK_THAT(addr_str, Catch::Matchers::Equals("1.1.1.1"));
 
-    idx++;
-    CHECK(intercept.addresses[idx]->type == ziti_address_cidr);
-    CHECK(intercept.addresses[idx]->addr.cidr.bits == 10);
-    CHECK(intercept.addresses[idx]->addr.cidr.af == AF_INET);
-    CHECK(uv_inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) == 0);
+    it = model_list_it_next(it);
+    addr = (ziti_address *) model_list_it_element(it);
+    CHECK(addr->type == ziti_address_cidr);
+    CHECK(addr->addr.cidr.bits == 10);
+    CHECK(addr->addr.cidr.af == AF_INET);
+    CHECK(uv_inet_ntop(addr->addr.cidr.af, &addr->addr.cidr.ip, addr_str, sizeof(addr_str)) == 0);
     CHECK_THAT(addr_str, Catch::Matchers::Equals("100.64.0.0"));
 
-    idx++;
-    CHECK(intercept.addresses[idx]->type == ziti_address_cidr);
-    CHECK(intercept.addresses[idx]->addr.cidr.bits == 64);
-    CHECK(intercept.addresses[idx]->addr.cidr.af == AF_INET6);
-    CHECK(uv_inet_ntop(intercept.addresses[idx]->addr.cidr.af, &intercept.addresses[idx]->addr.cidr.ip, addr_str, sizeof(addr_str)) == 0);
+    it = model_list_it_next(it);
+    addr = (ziti_address *) model_list_it_element(it);
+    CHECK(addr->type == ziti_address_cidr);
+    CHECK(addr->addr.cidr.bits == 64);
+    CHECK(addr->addr.cidr.af == AF_INET6);
+    CHECK(uv_inet_ntop(addr->addr.cidr.af, &addr->addr.cidr.ip, addr_str, sizeof(addr_str)) == 0);
     CHECK_THAT(addr_str, Catch::Matchers::Equals("ff::1"));
 
     auto json_out = ziti_intercept_cfg_v1_to_json(&intercept, MODEL_JSON_COMPACT, nullptr);
@@ -680,18 +690,17 @@ TEST_CASE("ziti-address-match", "[model]") {
     ziti_intercept_cfg_v1 intercept;
     int len = parse_ziti_intercept_cfg_v1(&intercept, json, strlen(json));
     REQUIRE(len > 0);
-    REQUIRE(intercept.addresses != nullptr);
 
-    CHECK(ziti_address_match_array("foo.bar", intercept.addresses));
-    CHECK(!ziti_address_match_array("foo.baz", intercept.addresses));
-    CHECK(ziti_address_match_array("AWESOME.ZITI", intercept.addresses));
-    CHECK(ziti_address_match_array("Yahoo.COM", intercept.addresses));
-    CHECK(ziti_address_match_array("1.1.1.1", intercept.addresses));
-    CHECK(!ziti_address_match_array("1.1.1.2", intercept.addresses));
-    CHECK(ziti_address_match_array("100.127.1.1", intercept.addresses));
-    CHECK(!ziti_address_match_array("100.128.1.2", intercept.addresses));
-    CHECK(ziti_address_match_array("ff::abcd:1", intercept.addresses));
-    CHECK(!ziti_address_match_array("ff:abcd::1", intercept.addresses));
+    CHECK(ziti_addrstr_match_list("foo.bar", &intercept.addresses) == 0);
+    CHECK(ziti_addrstr_match_list("foo.baz", &intercept.addresses) == -1);
+    CHECK(ziti_addrstr_match_list("AWESOME.ZITI", &intercept.addresses) > 0);
+    CHECK(ziti_addrstr_match_list("Yahoo.COM", &intercept.addresses) >= 0);
+    CHECK(ziti_addrstr_match_list("1.1.1.1", &intercept.addresses) == 0);
+    CHECK(ziti_addrstr_match_list("1.1.1.2", &intercept.addresses) == -1);
+    CHECK(ziti_addrstr_match_list("100.127.1.1", &intercept.addresses) == 22); // match 100.64.0.0/10
+    CHECK(ziti_addrstr_match_list("100.128.1.2", &intercept.addresses) == -1);
+    CHECK(ziti_addrstr_match_list("ff::abcd:1", &intercept.addresses) > 0);
+    CHECK(ziti_addrstr_match_list("ff:abcd::1", &intercept.addresses) == -1);
 
     free_ziti_intercept_cfg_v1(&intercept);
 }
