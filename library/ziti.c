@@ -766,7 +766,16 @@ int ziti_service_available(ziti_context ztx, const char *service, ziti_service_c
     return ZITI_OK;
 }
 
-const ziti_service *ziti_service_for_addr(ziti_context ztx, ziti_protocol proto, const char *addr, int port) {
+const ziti_service *ziti_service_for_addr_str(ziti_context ztx, ziti_protocol proto, const char *addr, int port) {
+    ziti_address a;
+    if (parse_ziti_address_str(&a, addr) != -1) {
+        return ziti_service_for_addr(ztx, proto, &a, port);
+    }
+    ZITI_LOG(WARN, "invalid address host[%s]", addr);
+    return NULL;
+}
+
+const ziti_service *ziti_service_for_addr(ziti_context ztx, ziti_protocol proto, const ziti_address *addr, int port) {
     int best_score = -1;
     ziti_service *best = NULL;
 
@@ -780,7 +789,7 @@ const ziti_service *ziti_service_for_addr(ziti_context ztx, ziti_protocol proto,
                  ziti_intercept_from_client_cfg(&intercept, &clt_cfg) == ZITI_OK
                 )
         ) {
-            int match = ziti_intercept_match(&intercept, proto, addr, port);
+            int match = ziti_intercept_match2(&intercept, proto, addr, port);
 
             if (match == -1) { continue; }
 
