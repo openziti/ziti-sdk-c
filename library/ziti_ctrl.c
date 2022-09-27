@@ -443,7 +443,7 @@ void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ziti_version *, cons
 
 void ziti_ctrl_login(
         ziti_controller *ctrl,
-        const char **cfg_types,
+        model_list *cfg_types,
         void(*cb)(ziti_api_session *, const ziti_error *, void *),
         void *ctx) {
 
@@ -465,8 +465,11 @@ void ziti_ctrl_login(
                     .os_version = osInfo.version,
                     .arch = osInfo.machine,
             },
-            .config_types = (string_array) cfg_types,
+            .config_types = {0}
     };
+    if (cfg_types) {
+        authreq.config_types = *cfg_types;
+    }
 
     size_t body_len;
     char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);

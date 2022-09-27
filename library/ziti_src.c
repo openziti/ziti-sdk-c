@@ -1,18 +1,16 @@
-/*
-Copyright 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <ziti/ziti_src.h>
 #include <ziti/ziti_log.h>
@@ -87,19 +85,12 @@ static int
 ziti_src_connect(um_src_t *src, const char *host, const char *port, um_src_connect_cb cb, void *conn_ctx) {
     ziti_link_t *zl = (ziti_link_t *) src->link;
 
-    char app_data[1024];
-    size_t app_data_len = snprintf(app_data, sizeof(app_data), "{"
-                                         "\"dst_protocol\":\"tcp\","
-                                         "\"dst_hostname\":\"%s\", "
-                                         "\"dst_port\":\"%s\""
-                                         "}", host, port);
-    ziti_dial_opts opts = {
-            .app_data = app_data,
-            .app_data_sz = app_data_len,
-    };
+    ziti_address a;
+    parse_ziti_address_str(&a, host);
+
     if (zl->service == NULL) { // find service by intercept
-        int portnum = (int)strtol(port, NULL, 10);
-        const ziti_service *s = ziti_service_for_addr(zl->ztx, ziti_protocols.tcp, host, portnum);
+        int portnum = (int) strtol(port, NULL, 10);
+        const ziti_service *s = ziti_service_for_addr(zl->ztx, ziti_protocols.tcp, &a, portnum);
         if (s == NULL) {
             ZITI_LOG(ERROR, "no service for address[tcp:%s:%s]", host, port);
             return ZITI_SERVICE_UNAVAILABLE;
@@ -116,6 +107,23 @@ ziti_src_connect(um_src_t *src, const char *host, const char *port, um_src_conne
     if (status != ZITI_OK) {
         return status;
     }
+
+    char app_data[1024];
+    size_t app_data_len = snprintf(app_data, sizeof(app_data),
+                                   "{"
+                                   "\"dst_protocol\":\"tcp\","
+                                   "\"%s\":\"%s\", "
+                                   "\"dst_port\":\"%s\""
+                                   "}",
+                                   a.type == ziti_address_cidr ? "dst_ip" : "dst_hostname",
+                                   host, port);
+
+    ziti_dial_opts opts = {
+            .app_data = app_data,
+            .app_data_sz = app_data_len,
+    };
+
+
     return ziti_dial_with_options(zl->conn, zl->service, &opts, zlnf_conn_cb, zlnf_data_cb);
 }
 
