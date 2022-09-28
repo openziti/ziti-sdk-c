@@ -877,8 +877,15 @@ void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const 
 
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session_ptr);
     FREE(ztx->last_update);
+    model_list cfgs = {0};
+    model_list_append(&cfgs, ZITI_INTERCEPT_CFG_V1);
+    model_list_append(&cfgs, ZITI_CLIENT_CFG_V1);
 
-    ziti_ctrl_login(&ztx->controller, ztx->opts->config_types, cb, ctx);
+    for (int i = 0; ztx->opts->config_types && ztx->opts->config_types[i]; i++) {
+        model_list_append(&cfgs, (void *) ztx->opts->config_types[i]);
+    }
+
+    ziti_ctrl_login(&ztx->controller, &cfgs, cb, ctx);
 }
 
 /**
@@ -1326,13 +1333,13 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
             ziti_ctrl_current_api_session(&ztx->controller, update_session_data, ztx);
         }
 
-        if (ztx->opts->refresh_interval > 0) {
-            ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
-            ziti_services_refresh(ztx, true);
-        } else if (ztx->opts->refresh_interval == 0) {
-            ZTX_LOG(DEBUG, "refresh_interval not specified");
-            uv_timer_stop(ztx->service_refresh_timer);
-        }
+        ziti_services_refresh(ztx, true);
+//        if (ztx->opts->refresh_interval > 0) {
+//            ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
+//        } else if (ztx->opts->refresh_interval == 0) {
+//            ZTX_LOG(DEBUG, "refresh_interval not specified");
+//            uv_timer_stop(ztx->service_refresh_timer);
+//        }
 
         ziti_posture_init(ztx, 20);
 

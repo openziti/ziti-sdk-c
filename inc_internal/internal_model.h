@@ -1,18 +1,16 @@
-/*
-Copyright (c) 2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2020-2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 
 #ifndef ZITI_SDK_INTERNAL_MODEL_H
@@ -90,7 +88,7 @@ XX(arch, string, none, arch, __VA_ARGS__)
 #define ZITI_AUTH_REQ(XX, ...) \
 XX(sdk_info, ziti_sdk_info, none, sdkInfo, __VA_ARGS__) \
 XX(env_info, ziti_env_info, none, envInfo, __VA_ARGS__) \
-XX(config_types, string, array, configTypes, __VA_ARGS__)
+XX(config_types, string, list, configTypes, __VA_ARGS__)
 
 #define ZITI_ENROLLMENT_RESP(XX, ...) \
 XX(cert, string, none, cert, __VA_ARGS__)

@@ -1,18 +1,16 @@
-/*
-Copyright 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2022.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <ziti/ziti_src.h>
 #include <ziti/ziti_log.h>
@@ -46,7 +44,7 @@ const char *zl_strerror(uv_link_t *link, int err);
 
 static void zlnf_conn_cb(ziti_connection conn, int status);
 
-static ssize_t zlnf_data_cb(ziti_connection conn, uint8_t *data, ssize_t length);
+static ssize_t zlnf_data_cb(ziti_connection conn, const uint8_t *data, ssize_t length);
 
 static void zlnf_write_cb(ziti_connection conn, ssize_t status, void *ctx);
 
@@ -74,15 +72,32 @@ int ziti_src_init(uv_loop_t *l, um_src_t *st, const char *svc, ziti_context ztx)
     uv_link_init(st->link, &ziti_link_methods);
 
     ziti_link_t *zl = (ziti_link_t *) st->link;
-    zl->service = strdup(svc);
+    if (svc)
+        zl->service = strdup(svc);
+    else
+        zl->service = NULL;
     zl->ztx = ztx;
     
     return 0; 
 }
 
 static int
-ziti_src_connect(um_src_t *src, const char *h, const char *p, um_src_connect_cb cb, void *conn_ctx) {
+ziti_src_connect(um_src_t *src, const char *host, const char *port, um_src_connect_cb cb, void *conn_ctx) {
     ziti_link_t *zl = (ziti_link_t *) src->link;
+
+    ziti_address a;
+    parse_ziti_address_str(&a, host);
+
+    if (zl->service == NULL) { // find service by intercept
+        int portnum = (int) strtol(port, NULL, 10);
+        const ziti_service *s = ziti_service_for_addr(zl->ztx, ziti_protocols.tcp, &a, portnum);
+        if (s == NULL) {
+            ZITI_LOG(ERROR, "no service for address[tcp:%s:%s]", host, port);
+            return ZITI_SERVICE_UNAVAILABLE;
+        }
+
+        zl->service = strdup(s->name);
+    }
 
     ZITI_LOG(TRACE, "service %s", zl->service);
     src->connect_cb = cb;
@@ -92,7 +107,24 @@ ziti_src_connect(um_src_t *src, const char *h, const char *p, um_src_connect_cb 
     if (status != ZITI_OK) {
         return status;
     }
-    return ziti_dial(zl->conn, zl->service, zlnf_conn_cb, zlnf_data_cb);
+
+    char app_data[1024];
+    size_t app_data_len = snprintf(app_data, sizeof(app_data),
+                                   "{"
+                                   "\"dst_protocol\":\"tcp\","
+                                   "\"%s\":\"%s\", "
+                                   "\"dst_port\":\"%s\""
+                                   "}",
+                                   a.type == ziti_address_cidr ? "dst_ip" : "dst_hostname",
+                                   host, port);
+
+    ziti_dial_opts opts = {
+            .app_data = app_data,
+            .app_data_sz = app_data_len,
+    };
+
+
+    return ziti_dial_with_options(zl->conn, zl->service, &opts, zlnf_conn_cb, zlnf_data_cb);
 }
 
 static void ziti_src_release(um_src_t *src) {
@@ -107,7 +139,7 @@ static void zlnf_conn_cb(ziti_connection conn, int status) {
 }
 
 //static void link_close_cb(uv_link_t *l) {}
-static ssize_t zlnf_data_cb(ziti_connection conn, uint8_t *data, ssize_t length) {
+static ssize_t zlnf_data_cb(ziti_connection conn, const uint8_t *data, ssize_t length) {
     um_src_t *src = (um_src_t *) ziti_conn_data(conn);
     uv_buf_t read_buf;
 

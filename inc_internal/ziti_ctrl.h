@@ -65,8 +65,8 @@ void ziti_ctrl_clear_api_session(ziti_controller *ctrl);
 
 void ziti_ctrl_get_version(ziti_controller *ctrl, void (*ver_cb)(ziti_version *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_login(ziti_controller *ctrl, const char **cfg_types, void (*login_cb)(ziti_api_session *, const ziti_error *, void *),
-                void *ctx);
+void ziti_ctrl_login(ziti_controller *ctrl, model_list *cfg_types, void (*cb)(ziti_api_session *, const ziti_error *, void *),
+                     void *ctx);
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
 
