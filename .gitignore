@@ -21,3 +21,6 @@ windows/packages
 .idea
 
 Testing/
+
+#additional stuff for localtesting
+local.cmake

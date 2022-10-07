@@ -97,3 +97,7 @@ if (ZITI_BUILD_TESTS)
     add_subdirectory(tests)
 endif ()
 
+if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/local.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/local.cmake")
+endif ()
+
