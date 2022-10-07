@@ -46,7 +46,6 @@ typedef struct future_s {
     TAILQ_ENTRY(future_s) _next;
 } future_t;
 
-
 static const char *configs[] = {
         ZITI_INTERCEPT_CFG_V1,
         ZITI_CLIENT_CFG_V1,
@@ -420,6 +419,8 @@ static int connect_socket(ziti_socket_t clt_sock, ziti_socket_t *ziti_sock) {
 
     *ziti_sock = ssock;
 #else
+
+#if defined(SOCKET_PAIR_ALT)
     ziti_socket_t
             lsock = SOCKET_ERROR, // listener
             ssock = SOCKET_ERROR; // server side
@@ -466,24 +467,26 @@ static int connect_socket(ziti_socket_t clt_sock, ziti_socket_t *ziti_sock) {
 
     *ziti_sock = ssock;
     return rc;
-
+#endif
 
     ZITI_LOG(VERBOSE, "connecting client socket[%d]", clt_sock);
-//    int fds[2] = {-1, -1};
-//    rc = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
-//    if (rc) {
-//        ZITI_LOG(VERBOSE, "socketpair failed[%d/%s]", errno, strerror(errno));
-//        return errno;
-//    }
-//
-//    rc = dup2(fds[0], clt_sock);
-//    if (rc == -1) {
-//        ZITI_LOG(VERBOSE, "dup2 failed[%d/%s]", errno, strerror(errno));
-//        return errno;
-//    }
-//
-//    *ziti_sock = fds[1];
-//    ZITI_LOG(VERBOSE, "connected client socket[%d] <-> ziti_fd[%d]", clt_sock, *ziti_sock);
+    int fds[2] = {-1, -1};
+    rc = socketpair(AF_UNIX, SOCK_STREAM, 0, fds);
+    if (rc) {
+        ZITI_LOG(WARN, "socketpair failed[%d/%s]", errno, strerror(errno));
+        return errno;
+    }
+
+    rc = dup2(fds[0], clt_sock);
+    if (rc == -1) {
+        ZITI_LOG(WARN, "dup2 failed[%d/%s]", errno, strerror(errno));
+        close(fds[0]);
+        close(fds[1]);
+        return errno;
+    }
+
+    *ziti_sock = fds[1];
+    ZITI_LOG(VERBOSE, "connected client socket[%d] <-> ziti_fd[%d]", clt_sock, *ziti_sock);
 #endif
     return 0;
 }
