@@ -39,6 +39,7 @@ typedef uint32_t in_addr_t;
 
 static bool is_blocking(ziti_socket_t s);
 
+ZITI_FUNC
 const char *Ziti_lookup(in_addr_t addr);
 
 typedef struct future_s {
