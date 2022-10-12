@@ -23,6 +23,8 @@
 #if !defined(__MINGW32__)
 #pragma comment(lib, "ws2_32.lib")
 #include <afunix.h>
+
+typedef uint32_t in_addr_t;
 #endif
 #else
 #include <unistd.h>
@@ -37,7 +39,7 @@
 
 static bool is_blocking(ziti_socket_t s);
 
-const char *Ziti_lookup(in_addr_t ip);
+const char *Ziti_lookup(in_addr_t addr);
 
 typedef struct future_s {
     uv_mutex_t lock;
