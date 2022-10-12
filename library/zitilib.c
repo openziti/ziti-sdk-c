@@ -32,6 +32,7 @@
 #include <ziti/zitilib.h>
 #include <ziti/ziti.h>
 #include <ziti/ziti_log.h>
+#include "zt_internal.h"
 #include "utils.h"
 
 static bool is_blocking(ziti_socket_t s);
@@ -547,7 +548,7 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
     const char *service;
     ziti_intercept_cfg_v1 *intercept;
 
-    ziti_protocol proto;
+    ziti_protocol proto = 0;
     switch (type) {
         case SOCK_STREAM:
             proto = ziti_protocols.tcp;
@@ -1144,19 +1145,24 @@ static void resolve_cb(void *r, future_t *f) {
     if (ip == 0) {
         ip = htonl(++addr_counter);
         ZITI_LOG(DEBUG, "assigned %s => %x", req->host, ip);
-        model_map_set(&host_to_ip, req->host, (void*)(uintptr_t)ip);
+        model_map_set(&host_to_ip, req->host, (void *) (uintptr_t) ip);
         model_map_set_key(&ip_to_host, &ip, sizeof(ip), strdup(req->host));
     }
 
-    complete_future(f, (void*)(uintptr_t)ip);
+    complete_future(f, (void *) (uintptr_t) ip);
 }
 
 ZITI_FUNC
-int Ziti_resolve(const char *host, const char *port, const struct addrinfo *addr, struct addrinfo ** addrlist) {
-    in_port_t portnum = port ? (in_port_t)strtol(port, NULL, 10) : 0;
+void Ziti_freeaddrinfo(struct addrinfo *addrlist) {
+    uv_freeaddrinfo(addrlist);
+}
+
+ZITI_FUNC
+int Ziti_resolve(const char *host, const char *port, const struct addrinfo *addr, struct addrinfo **addrlist) {
+    in_port_t portnum = port ? (in_port_t) strtol(port, NULL, 10) : 0;
     ZITI_LOG(DEBUG, "host[%s] port[%s]", host, port);
     struct addrinfo *res = calloc(1, sizeof(struct addrinfo));
-    if (addr) res->ai_socktype = addr->ai_socktype;
+    if (addr) { res->ai_socktype = addr->ai_socktype; }
 
     struct sockaddr_in *addr4 = calloc(1, sizeof(struct sockaddr_in6));
     int rc = 0;
@@ -1177,6 +1183,34 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *addr
         res->ai_addrlen = sizeof(struct sockaddr_in6);
         *addrlist = res;
         return 0;
+    }
+
+    // refuse resolving controller/router addresses here
+    // this way Ziti context can operate even if resolve was high-jacked (e.g. zitify)
+    MODEL_MAP_FOR(it, ziti_contexts) {
+        ztx_wrap_t *wrap = model_map_it_value(it);
+        const char *ctrl = wrap->ztx ? ziti_get_controller(wrap->ztx) : wrap->opts.controller;
+        struct http_parser_url url;
+        http_parser_url_init(&url);
+        http_parser_parse_url(ctrl, strlen(ctrl), 0, &url);
+
+        if (strncmp(host, ctrl + url.field_data[UF_HOST].off, url.field_data[UF_HOST].len) == 0) {
+            return -1;
+        }
+
+        if (wrap->ztx) {
+            MODEL_MAP_FOR(chit, wrap->ztx->channels) {
+                ziti_channel_t *ch = model_map_it_value(chit);
+                if (strcmp(ch->host, host) == 0) {
+                    return -1;
+                }
+            }
+        }
+    }
+
+    MODEL_MAP_FOR(it, ziti_contexts) {
+        ztx_wrap_t *ztx = model_map_it_value(it);
+        await_future(ztx->services_loaded);
     }
 
     struct conn_req_s req = {
@@ -1205,7 +1239,14 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *addr
 }
 
 ZITI_FUNC
-const char* Ziti_lookup(in_addr_t addr) {
+const char *Ziti_lookup(in_addr_t addr) {
     const char *hostname = model_map_get_key(&ip_to_host, &addr, sizeof(addr));
     return hostname;
+}
+
+ZITI_FUNC
+void Ziti_free(void *o) {
+    if (o) {
+        free(o);
+    }
 }
