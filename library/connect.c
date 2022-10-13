@@ -63,6 +63,8 @@ struct ziti_conn_req {
     bool failed;
 };
 
+static void rebind_cb(ziti_connection conn, int status);
+
 static void flush_connection(ziti_connection conn);
 
 static bool flush_to_service(ziti_connection conn);
@@ -448,12 +450,18 @@ static void connect_get_net_session_cb(ziti_net_session *s, const ziti_error *er
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
     if (err != NULL) {
+        int e = err->err == ZITI_NOT_FOUND ? ZITI_SERVICE_UNAVAILABLE : err->err;
+        CONN_LOG(WARN, "failed to get '%s' session for service[%s]: %s(%s)",
+                 ziti_session_types.name(req->session_type), conn->service, err->code, err->message);
+
         if (err->err == ZITI_NOT_AUTHORIZED) {
             ziti_force_api_session_refresh(ztx);
-            restart_connect(conn);
+            if (conn->state == Binding) {
+                rebind_cb(conn, err->err);
+            } else {
+                restart_connect(conn);
+            }
         } else {
-            int e = err->err == ZITI_NOT_FOUND ? ZITI_SERVICE_UNAVAILABLE : err->err;
-            CONN_LOG(ERROR, "failed to get session for service[%s]: %s(%s)", conn->service, err->code, err->message);
             complete_conn_req(conn, e);
         }
     }
