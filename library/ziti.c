@@ -137,6 +137,10 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
     size_t cert_len = parse_ref(cfg->id.cert, &cert);
     tls_context *tls = default_tls_context(ca, ca_len);
 
+    if (cfg->id.key == NULL) {
+	TRY(ziti, ("TLS key should be provided", ZITI_INVALID_CONFIG));
+    }
+
     if (strncmp(cfg->id.key, "pkcs11://", strlen("pkcs11://")) == 0) {
         char path[MAXPATHLEN] = {0};
         char pin[32] = {0};
@@ -196,6 +200,12 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
         TRY(ziti, load_config(options->config, &cfg));
     }
     if (options->controller == NULL) {
+
+	if (cfg->controller_url == NULL) {
+	    ZITI_LOG(ERROR, "controller URL should be provided");
+	    return ZITI_INVALID_CONFIG;
+	}
+
         options->controller = strdup(cfg->controller_url);
     }
 
