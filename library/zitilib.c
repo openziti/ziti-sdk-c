@@ -20,11 +20,11 @@
 #include <uv.h>
 
 #if _WIN32
+typedef uint32_t in_addr_t;
+typedef uint16_t in_port_t;
 #if !defined(__MINGW32__)
 #pragma comment(lib, "ws2_32.lib")
 #include <afunix.h>
-
-typedef uint32_t in_addr_t;
 #endif
 #else
 #include <unistd.h>
@@ -1129,11 +1129,6 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert, cha
 
 static model_map host_to_ip;
 static model_map ip_to_host;
-
-#if _WIN32
-typedef uint32_t in_addr_t;
-typedef uint16_t in_port_t;
-#endif
 
 static in_addr_t addr_counter = 0x64400000; // 100.64.0.0
 static void resolve_cb(void *r, future_t *f) {
