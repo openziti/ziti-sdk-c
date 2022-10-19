@@ -490,6 +490,7 @@ static int connect_socket(ziti_socket_t clt_sock, ziti_socket_t *ziti_sock) {
         close(fds[1]);
         return errno;
     }
+    close(fds[0]);
 
     *ziti_sock = fds[1];
     ZITI_LOG(VERBOSE, "connected client socket[%d] <-> ziti_fd[%d]", clt_sock, *ziti_sock);
@@ -497,10 +498,40 @@ static int connect_socket(ziti_socket_t clt_sock, ziti_socket_t *ziti_sock) {
     return 0;
 }
 
+// make sure old ziti_sock_t instance does not interfere with
+// the new/re-used socket fd
+static void check_socket(void *arg, future_t *f, uv_loop_t *l) {
+    ziti_socket_t fd = (ziti_socket_t) (uintptr_t) arg;
+    ZITI_LOG(VERBOSE, "checking client fd[%d]", fd);
+    ziti_sock_t *s = model_map_remove_key(&ziti_sockets, &fd, sizeof(fd));
+    if (s) {
+        ZITI_LOG(VERBOSE, "stale ziti_sock_t[fd=%d]", fd);
+        s->fd = SOCKET_ERROR;
+    }
+    complete_future(f, NULL);
+}
+
 ziti_socket_t Ziti_socket(int type) {
     ziti_socket_t fd = socket(AF_INET, type, 0);
     set_error(fd < 0 ? errno : 0);
+    if (fd > 0) {
+        future_t *f = schedule_on_loop(check_socket, (void *) (uintptr_t) fd, true);
+        await_future(f);
+    }
     return fd;
+}
+
+static void close_work(void *arg, future_t *f, uv_loop_t *l) {
+    ziti_socket_t fd = (ziti_socket_t) (uintptr_t) arg;
+    ZITI_LOG(DEBUG, "closing client fd[%d]", fd);
+    ziti_sock_t *s = model_map_remove_key(&ziti_sockets, &fd, sizeof(fd));
+    close(fd);
+    complete_future(f, NULL);
+}
+
+void Ziti_close(ziti_socket_t fd) {
+    future_t *f = schedule_on_loop(close_work, (void *) (uintptr_t) fd, true);
+    await_future(f);
 }
 
 struct conn_req_s {
@@ -584,6 +615,7 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
 }
 
 static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
+    ZITI_LOG(DEBUG, "connecting fd[%d] to %s:%d", req->fd, req->host, req->port);
     ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &req->fd, sizeof(req->fd));
     if (zs != NULL) {
         ZITI_LOG(WARN, "socket %lu already connecting/connected", (unsigned long) req->fd);
@@ -657,7 +689,6 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     MODEL_MAP_FOREACH(id, wrap, &ziti_contexts) {
         await_future(wrap->services_loaded);
     }
-
 
     struct conn_req_s req = {
             .fd = socket,
