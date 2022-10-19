@@ -80,6 +80,15 @@ ZITI_FUNC
 ziti_socket_t Ziti_socket(int type);
 
 /**
+ * @brief close the given socket handle/file descriptor.
+ * This method facilitates faster cleanup of Ziti socket. Calling standard close()/closesocket() methods still works but may lead to
+ * race conditions.
+ * @param socket
+ */
+ZITI_FUNC
+void Ziti_close(ziti_socket_t socket);
+
+/**
  * @brief Connect socket to a Ziti service
  * @param socket socket handle created with [Ziti_socket()]
  * @param ztx Ziti context

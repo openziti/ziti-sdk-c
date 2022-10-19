@@ -532,7 +532,7 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
     }
 
     if (!send) {
-        ZTX_LOG(DEBUG, "no change in posture data, not sending");
+        ZTX_LOG(VERBOSE, "no change in posture data, not sending");
         return; //nothing to send
     }
 
