@@ -413,6 +413,9 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ztx->id = ztx_seq++;
     uv_loop_t *loop = ztx->w_async.loop;
     struct ziti_init_req *init_req = data;
+    ziti_event_t ev = {
+	     .type = ZitiContextEvent,
+    };
 
     uv_timeval64_t start_time;
     uv_gettimeofday(&start_time);
@@ -426,7 +429,13 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ZTX_LOG(INFO, "using uv_mbed[%s], tls[%s]", uv_mbed_version(), ztx->tlsCtx->api->version ? ztx->tlsCtx->api->version() : "unspecified");
     ZTX_LOG(INFO, "Loading from config[%s] controller[%s]", ztx->opts->config, ztx_controller(ztx));
 
-    ziti_ctrl_init(loop, &ztx->controller, ztx_controller(ztx), ztx->tlsCtx);
+    if (ziti_ctrl_init(loop, &ztx->controller, ztx_controller(ztx), ztx->tlsCtx) != ZITI_OK) {
+	ZITI_LOG(ERROR, "Ziti controller init failed");
+        ev.event.ctx.ctrl_status = ZITI_INVALID_CONFIG;
+        ziti_send_event(ztx, &ev);
+	return;
+    }
+
     ziti_ctrl_set_redirect_cb(&ztx->controller, on_ctrl_change, ztx);
     if (ztx->opts->api_page_size != 0) {
         ziti_ctrl_set_page_size(&ztx->controller, ztx->opts->api_page_size);
@@ -447,8 +456,6 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     if (init_req->start) {
         ziti_start_internal(ztx, NULL);
     } else {
-        ziti_event_t ev = {0};
-        ev.type = ZitiContextEvent;
         ev.event.ctx.ctrl_status = ZITI_DISABLED;
         ziti_send_event(ztx, &ev);
     }
