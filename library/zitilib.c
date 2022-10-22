@@ -1106,7 +1106,7 @@ static void internal_init() {
     uv_key_create(&err_key);
     uv_mutex_init(&q_mut);
     lib_loop = uv_loop_new();
-    ziti_log_init(lib_loop, 5, NULL);
+    ziti_log_init(lib_loop, -1, NULL);
     uv_async_init(lib_loop, &q_async, process_on_loop);
     uv_thread_create(&lib_thread, looper, lib_loop);
 }
