@@ -75,6 +75,11 @@ struct enroll_cert {
 #include <ziti/zitilib.h>
 
 int main(int argc, char **argv) {
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s <JWT file> <ID file> [key_file] [cert_file]\n", argv[0]);
+        exit(1);
+    }
+
 #if _WIN32
     //changes the output to UTF-8 so that the windows output looks correct and not all jumbly
     SetConsoleOutputCP(65001);
