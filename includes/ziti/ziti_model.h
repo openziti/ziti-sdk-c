@@ -243,15 +243,19 @@ DECLARE_MODEL(ziti_auth_query_mfa, ZITI_AUTH_QUERY_MFA_MODEL)
 
 DECLARE_MODEL(ziti_mfa_enrollment, ZITI_MFA_ENROLLMENT_MODEL)
 
+ZITI_FUNC bool ziti_service_has_permission(const ziti_service *service, ziti_session_type sessionType);
+
 ZITI_FUNC const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type);
 
 typedef int (*parse_service_cfg_f)(void *, const char *, size_t);
+
 ZITI_FUNC int ziti_service_get_config(ziti_service *service, const char *cfg_type, void *cfg,
                                       parse_service_cfg_f parse_func);
 
 ZITI_FUNC int ziti_intercept_from_client_cfg(ziti_intercept_cfg_v1 *intercept, const ziti_client_cfg_v1 *client_cfg);
 
-ZITI_FUNC int ziti_intercept_match(const ziti_intercept_cfg_v1 *intercept, ziti_protocol proto, const char *addr, int port);
+ZITI_FUNC int
+ziti_intercept_match(const ziti_intercept_cfg_v1 *intercept, ziti_protocol proto, const char *addr, int port);
 
 ZITI_FUNC int ziti_intercept_match2(const ziti_intercept_cfg_v1 *intercept, ziti_protocol proto, const ziti_address *addr, int port);
 

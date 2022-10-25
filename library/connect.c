@@ -491,9 +491,8 @@ static void process_connect(struct ziti_conn *conn) {
     uv_loop_t *loop = ztx->loop;
 
     // find service
+    ziti_service *service = model_map_get(&ztx->services, conn->service);
     if (req->service_id == NULL) {
-        ziti_service *service = model_map_get(&ztx->services, conn->service);
-
         if (service == NULL) {
             CONN_LOG(DEBUG, "service[%s] not loaded yet, requesting it", conn->service);
             ziti_ctrl_get_service(&ztx->controller, conn->service, connect_get_service_cb, conn);
@@ -503,13 +502,20 @@ static void process_connect(struct ziti_conn *conn) {
         conn->encrypted = service->encryption;
     }
 
+    if (!ziti_service_has_permission(service, req->session_type)) {
+        CONN_LOG(WARN, "not authorized to %s", ziti_session_types.name(req->session_type));
+        complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
+        return;
+    }
+
     ziti_send_posture_data(ztx);
     if (req->session == NULL && req->session_type == ziti_session_types.Dial) {
         req->session = model_map_get(&ztx->sessions, req->service_id);
     }
 
     if (req->session == NULL) {
-        CONN_LOG(DEBUG, "requesting '%s' session for service[%s]", ziti_session_types.name(req->session_type), conn->service);
+        CONN_LOG(DEBUG, "requesting '%s' session for service[%s]", ziti_session_types.name(req->session_type),
+                 conn->service);
         ziti_ctrl_get_session(&ztx->controller, req->service_id, req->session_type, connect_get_net_session_cb, conn);
         return;
     }
