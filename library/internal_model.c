@@ -29,6 +29,7 @@ typedef uint32_t in_addr_t;
 
 #include <string.h>
 #include "ziti/ziti_buffer.h"
+#include "ziti/ziti.h"
 
 #define null_checks(lh, rh) \
     if ((lh) == (rh)) { return 0; } \
@@ -129,6 +130,17 @@ IMPL_ENUM(ziti_session_type, ZITI_SESSION_TYPE_ENUM)
 
 IMPL_ENUM(ziti_protocol, ZITI_PROTOCOL_ENUM)
 
+bool ziti_service_has_permission(const ziti_service *service, ziti_session_type sessionType) {
+    if (sessionType == ziti_session_types.Dial) {
+        return (service->perm_flags & ZITI_CAN_DIAL) != 0;
+    }
+
+    if (sessionType == ziti_session_types.Bind) {
+        return (service->perm_flags & ZITI_CAN_BIND) != 0;
+    }
+
+    return false;
+}
 
 const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type) {
     return (const char *) model_map_get(&service->config, cfg_type);

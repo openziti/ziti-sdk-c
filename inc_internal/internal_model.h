@@ -59,7 +59,8 @@ XX(authenticator_id, string, none, authenticatorId, __VA_ARGS__)
 XX(err, int, none, , __VA_ARGS__) \
 XX(http_code, int, none, , __VA_ARGS__) \
 XX(code, string, none, code, __VA_ARGS__) \
-XX(message, string, none, message, __VA_ARGS__)
+XX(message, string, none, message, __VA_ARGS__) \
+XX(cause, string, map, cause, __VA_ARGS__)
 
 #define ZITI_ENROLLMENT_JWT_HEADER_MODEL(XX, ...) \
 XX(alg, string, none, alg, __VA_ARGS__) \

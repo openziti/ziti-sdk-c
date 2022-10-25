@@ -875,6 +875,7 @@ static void do_ziti_bind(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
         zs = calloc(1, sizeof(*zs));
         zs->fd = req->fd;
         zs->service = strdup(req->service);
+        zs->f = f;
 
         ZITI_LOG(DEBUG, "requesting bind fd[%d] to service[%s@%s]", zs->fd, req->terminator ? req->terminator : "", req->service);
         ziti_listen_opts opts = {
@@ -882,7 +883,6 @@ static void do_ziti_bind(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
         };
         ziti_conn_init(req->ztx, &zs->conn, zs);
         ziti_listen_with_options(zs->conn, req->service, &opts, on_ziti_bind, on_ziti_client);
-        zs->f = f;
     } else {
         ZITI_LOG(WARN, "service[%s] not found", req->service);
         fail_future(f, EINVAL);
