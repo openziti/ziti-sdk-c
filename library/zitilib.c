@@ -774,9 +774,10 @@ static void on_ziti_accept(ziti_connection client, int status) {
     }
 
     ziti_socket_t fd, ziti_fd;
-    fd = Ziti_socket(SOCK_STREAM);
+    fd = socket(AF_INET, SOCK_STREAM, 0);
     int rc = connect_socket(fd, &ziti_fd);
     if (rc != 0) {
+        ZITI_LOG(WARN, "failed to connect client socket[%d]: %d", fd, rc);
         fail_future(pending->accept_f, rc);
         ziti_close(client, NULL);
         free(pending->caller_id);
