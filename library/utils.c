@@ -276,7 +276,7 @@ static void init_debug(uv_loop_t *loop) {
     uv_prepare_start(&log_flusher, flush_log);
 }
 
-#if _WIN32 && _MSVC
+#if _WIN32 && defined(_MSC_VER)
 static const char DIR_SEP = '\\';
 #else
 static const char DIR_SEP = '/';
