@@ -391,7 +391,11 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_
     ctrl->url = strdup(url);
     memset(&ctrl->version, 0, sizeof(ctrl->version));
     ctrl->client = calloc(1, sizeof(um_http_t));
-    um_http_init(loop, ctrl->client, url);
+
+    if (um_http_init(loop, ctrl->client, url) != 0) {
+	return ZITI_INVALID_CONFIG;
+    }
+
     ctrl->client->data = ctrl;
     um_http_set_ssl(ctrl->client, tls);
     um_http_idle_keepalive(ctrl->client, ZITI_CTRL_KEEPALIVE);

@@ -116,7 +116,7 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
 
     NEWP(ctrl, ziti_controller);
     ecfg->ctrl = ctrl;
-    ziti_ctrl_init(loop, ctrl, ecfg->zej->controller, ecfg->tls);
+    TRY(ziti, ziti_ctrl_init(loop, ctrl, ecfg->zej->controller, ecfg->tls));
 
     NEWP(enroll_req, struct ziti_enroll_req);
     enroll_req->enroll_cb = enroll_cb;
@@ -139,15 +139,13 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
 
 static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *err, void *req) {
     ZITI_LOG(DEBUG, "base64_encoded_pkcs7 is: %s", base64_encoded_pkcs7);
+    PREPF(ziti, ziti_errorstr);
 
     int ziti_err;
     struct ziti_enroll_req *enroll_req = req;
     if ((NULL == base64_encoded_pkcs7) || (NULL != err)) {
         ZITI_LOG(DEBUG, "err->message is: %s", err->message);
-        if (enroll_req->enroll_cb) {
-            enroll_req->enroll_cb(NULL, ZITI_JWT_VERIFICATION_FAILED, err->code, enroll_req->external_enroll_ctx);
-        }
-        return;
+	TRY(ziti, ZITI_JWT_VERIFICATION_FAILED);
     }
 
     PREPF(TLS, enroll_req->ecfg->tls->api->strerror);
@@ -203,7 +201,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     enroll_req2->external_enroll_ctx = enroll_req->ecfg->external_enroll_ctx;
     enroll_req2->loop = enroll_req->loop;
     enroll_req2->controller = calloc(1, sizeof(ziti_controller));
-    ziti_ctrl_init(enroll_req2->loop, enroll_req2->controller, enroll_req->ecfg->zej->controller, tls);
+    TRY(ziti, ziti_ctrl_init(enroll_req2->loop, enroll_req2->controller, enroll_req->ecfg->zej->controller, tls));
     enroll_req2->ecfg = enroll_req->ecfg;
 
     ziti_ctrl_enroll(enroll_req2->controller, enroll_req->ecfg->zej->method, enroll_req->ecfg->zej->token,
@@ -215,6 +213,12 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
             static char err[1024];
             snprintf(err, sizeof(err), "%s[%d]: %s", ziti_errorstr(ziti_err), ziti_err, tls->api->strerror(ERR(TLS)));
             enroll_req->enroll_cb(NULL, ziti_err, err, enroll_req->external_enroll_ctx);
+        }
+    }
+
+    CATCH(ziti) {
+        if (enroll_req->enroll_cb) {
+            enroll_req->enroll_cb(NULL, ERR(ziti), err ? err->code : "enroll failed", enroll_req->ecfg->external_enroll_ctx);
         }
     }
 }
