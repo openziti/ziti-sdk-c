@@ -186,9 +186,8 @@ typedef struct ziti_sock_s {
 
     char *service;
     bool server;
-    int pending;
     int max_pending;
-    TAILQ_HEAD(, backlog_entry_s) backlog;
+    model_list backlog;
     TAILQ_HEAD(, future_s) accept_q;
 
 } ziti_sock_t;
@@ -525,7 +524,11 @@ static void close_work(void *arg, future_t *f, uv_loop_t *l) {
     ziti_socket_t fd = (ziti_socket_t) (uintptr_t) arg;
     ZITI_LOG(DEBUG, "closing client fd[%d]", fd);
     ziti_sock_t *s = model_map_remove_key(&ziti_sockets, &fd, sizeof(fd));
+#if _WIN32
+    closesocket(fd);
+#else
     close(fd);
+#endif
     complete_future(f, NULL);
 }
 
@@ -735,16 +738,16 @@ static bool is_blocking(ziti_socket_t s) {
     DWORD timeout;
     DWORD fast_check = 1;
     int tolen = sizeof(timeout);
-    getsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char *) &timeout, &tolen);
-    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *) &fast_check, sizeof(fast_check));
+    int rc = getsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char *) &timeout, &tolen);
+    rc = setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *) &fast_check, sizeof(fast_check));
     char b;
-    int r = recv(s, &b, 0, 0);
+    int r = recv(s, &b, 0, MSG_OOB);
+    int err = WSAGetLastError();
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *) &timeout, sizeof(fast_check));
 
     if (r == 0)
         return true;
     else if (r == -1) {
-        int err = WSAGetLastError();
         if (err == WSAEWOULDBLOCK) return false;
         if (err == WSAETIMEDOUT) return true;
     }
@@ -785,6 +788,8 @@ static void on_ziti_accept(ziti_connection client, int status) {
         return;
     }
 
+    ZITI_LOG(INFO, "bridging socket for fd[%d]", fd);
+
     NEWP(zs, ziti_sock_t);
     zs->fd = fd;
     zs->ziti_fd = ziti_fd;
@@ -795,6 +800,7 @@ static void on_ziti_accept(ziti_connection client, int status) {
     si->fd = zs->fd;
     si->peer = pending->caller_id;
 
+    ZITI_LOG(DEBUG, "completing accept future[%p] with fd[%d]", pending->accept_f, fd);
     complete_future(pending->accept_f, si);
     free(pending);
 }
@@ -803,10 +809,11 @@ static void on_ziti_client(ziti_connection server, ziti_connection client, int s
     ziti_sock_t *server_sock = ziti_conn_data(server);
 
     if (status != ZITI_OK) {
+        ZITI_LOG(ERROR, "closing server fd[%d]: failed to accept client [%d/%s]", server_sock->fd, status, ziti_errorstr(status));
         on_bridge_close(server_sock);
         return;
     }
-    ZITI_LOG(DEBUG, "incoming client[%s] for service[%s] status[%s]", clt_ctx->caller_id, server_sock->service, ziti_errorstr(status));
+    ZITI_LOG(DEBUG, "incoming client[%s] for service[%s]/fd[%d]", clt_ctx->caller_id, server_sock->service, server_sock->fd);
 
     char notify = 1;
 
@@ -817,6 +824,10 @@ static void on_ziti_client(ziti_connection server, ziti_connection client, int s
 
     if (!TAILQ_EMPTY(&server_sock->accept_q)) {
         future_t *accept_f = TAILQ_FIRST(&server_sock->accept_q);
+        ZITI_LOG(DEBUG, "found waiting accept for fd[%d]");
+
+        pending->accept_f = accept_f;
+        TAILQ_REMOVE(&server_sock->accept_q, accept_f, _next);
 
         ziti_conn_set_data(client, pending);
         // this should not happen but check anyway
@@ -825,23 +836,17 @@ static void on_ziti_client(ziti_connection server, ziti_connection client, int s
             ziti_close(client, NULL);
             free(pending->caller_id);
             free(pending);
+            TAILQ_INSERT_HEAD(&server_sock->accept_q, accept_f, _next);
             return;
         }
-        pending->accept_f = accept_f;
-        TAILQ_REMOVE(&server_sock->accept_q, accept_f, _next);
-        write(server_sock->ziti_fd, &notify, sizeof(notify));
+        send(server_sock->ziti_fd, &notify, sizeof(notify), 0);
         return;
     }
 
-    if (server_sock->pending < server_sock->max_pending) {
-        TAILQ_INSERT_TAIL(&server_sock->backlog, pending, _next);
-        server_sock->pending++;
-#if _WIN32
-            send(server_sock->ziti_fd, &notify, sizeof(notify), 0);
-#else
-        int r = write(server_sock->ziti_fd, &notify, sizeof(notify));
-        ZITI_LOG(TRACE, "wrote result = %d", r);
-#endif
+    if (model_list_size(&server_sock->backlog) < server_sock->max_pending) {
+        ZITI_LOG(DEBUG, "server[%d] no active accept: putting connection in backlog and sending notify", server_sock->fd);
+        model_list_append(&server_sock->backlog, pending);
+        send(server_sock->ziti_fd, &notify, sizeof(notify), 0);
     } else {
         ZITI_LOG(DEBUG, "accept backlog is full, client[%s] rejected", clt_ctx->caller_id);
         ziti_close(client, NULL);
@@ -922,7 +927,6 @@ static void do_ziti_listen(void *arg, future_t *f, uv_loop_t *l) {
     } else {
         if (!zs->server) {
             TAILQ_INIT(&zs->accept_q);
-            TAILQ_INIT(&zs->backlog);
             zs->server = true;
         }
         zs->max_pending = req->backlog;
@@ -948,30 +952,20 @@ static void do_ziti_accept(void *r, future_t *f, uv_loop_t *l) {
     ziti_socket_t server_fd = (ziti_socket_t) (uintptr_t) r;
     ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &server_fd, sizeof(server_fd));
     if (zs == NULL) {
-        fail_future(f, -EINVAL);
+        ZITI_LOG(WARN, "fd[%d] is not a ziti socket", server_fd);
+        fail_future(f, EINVAL);
         return;
     }
 
     if (!zs->server) {
-        fail_future(f, -EBADF);
+        ZITI_LOG(WARN, "fd[%d] cannot so accept on non-server socket", server_fd);
+        fail_future(f, EBADF);
         return;
     }
 
-    // no pending connections
-    if (TAILQ_EMPTY(&zs->backlog)) {
-        ZITI_LOG(DEBUG, "no pending connections");
-        if (is_blocking(server_fd)) {
-            TAILQ_INSERT_TAIL(&zs->accept_q, f, _next);
-        } else {
-            fail_future(f, EWOULDBLOCK);
-        }
-        return;
-    }
-
-    while (!TAILQ_EMPTY(&zs->backlog)) {
-        struct backlog_entry_s *pending = TAILQ_FIRST(&zs->backlog);
-        ZITI_LOG(DEBUG, "pending connection[%s] for service[%s]", pending->caller_id, zs->service);
-        TAILQ_REMOVE(&zs->backlog, pending, _next);
+    while (model_list_size(&zs->backlog) > 0) {
+        struct backlog_entry_s *pending = model_list_pop(&zs->backlog);
+        ZITI_LOG(DEBUG, "server[%d]: pending connection[%s] for service[%s]", zs->fd, pending->caller_id, zs->service);
 
         ziti_connection conn = pending->conn;
         pending->accept_f = f;
@@ -979,38 +973,56 @@ static void do_ziti_accept(void *r, future_t *f, uv_loop_t *l) {
         int rc = ziti_accept(conn, on_ziti_accept, NULL);
 
         if (rc == ZITI_OK) {
-            break;
+            return;
         }
 
-        ZITI_LOG(DEBUG, "failed to accept: client gone? [%d/%s]", rc, ziti_errorstr(rc));
+        ZITI_LOG(DEBUG, "failed to accept: client conn[%d] gone? [%d/%s]", conn->conn_id, rc, ziti_errorstr(rc));
         ziti_close(conn, NULL);
         free(pending->caller_id);
         free(pending);
     }
+
+    // no pending connections
+    if (model_list_size(&zs->backlog) == 0) {
+        bool blocking = is_blocking(server_fd);
+        ZITI_LOG(DEBUG, "fd[%d] is_blocking[%d]", server_fd, blocking);
+
+        ZITI_LOG(DEBUG, "no pending connections for server fd[%d]", server_fd);
+        if (blocking) {
+            TAILQ_INSERT_TAIL(&zs->accept_q, f, _next);
+        } else {
+            fail_future(f, EWOULDBLOCK);
+        }
+        return;
+    }
+
 }
 
 ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
     future_t *f = schedule_on_loop(do_ziti_accept, (void *) (uintptr_t) server, true);
-
+    ZITI_LOG(DEBUG, "fd[%d] waiting for future[%p]", server, f);
     ziti_socket_t clt = -1;
     int err = await_future(f);
+    ZITI_LOG(DEBUG, "fd[%d] future[%p] completed err = %d", server, f, err);
+
     if (!err) {
         struct sock_info_s *si = f->result;
         clt = si->fd;
         if (caller != NULL) {
             strncpy(caller, si->peer, caller_len);
         }
+        ZITI_LOG(DEBUG, "fd[%d] future[%p] completed with caller %.*s", server, f, caller_len, caller);
+
         free(si->peer);
         free(si);
         char b;
-#if _WIN32
+
         recv(server, &b, 1, 0);
-#else
-        read(server, &b, 1);
-#endif
     }
     set_error(err);
     destroy_future(f);
+    ZITI_LOG(DEBUG, "fd[%d] future[%p] returning clt[%d]", server, f, clt);
+
     return clt;
 }
 
