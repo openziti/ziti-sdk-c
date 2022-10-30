@@ -824,7 +824,7 @@ static void on_ziti_client(ziti_connection server, ziti_connection client, int s
 
     if (!TAILQ_EMPTY(&server_sock->accept_q)) {
         future_t *accept_f = TAILQ_FIRST(&server_sock->accept_q);
-        ZITI_LOG(DEBUG, "found waiting accept for fd[%d]");
+        ZITI_LOG(DEBUG, "found waiting accept for fd[%d]", server_sock->fd);
 
         pending->accept_f = accept_f;
         TAILQ_REMOVE(&server_sock->accept_q, accept_f, _next);
