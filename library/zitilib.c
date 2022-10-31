@@ -520,6 +520,7 @@ ziti_socket_t Ziti_socket(int type) {
     if (fd > 0) {
         future_t *f = schedule_on_loop(check_socket, (void *) (uintptr_t) fd, true);
         await_future(f);
+        destroy_future(f);
     }
     return fd;
 }
@@ -542,6 +543,7 @@ int Ziti_close(ziti_socket_t fd) {
         ZITI_LOG(DEBUG, "closing ziti socket[%d]", fd);
         future_t *f = schedule_on_loop(close_work, (void *) (uintptr_t) fd, true);
         await_future(f);
+        destroy_future(f);
         return 0;
     }
     return -1;
@@ -1179,6 +1181,7 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert, cha
         *id_json = f->result;
         *id_json_len = strlen(*id_json);
     }
+    destroy_future(f);
     return rc;
 }
 
