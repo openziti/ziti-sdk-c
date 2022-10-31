@@ -86,7 +86,15 @@ ziti_socket_t Ziti_socket(int type);
  * @param socket
  */
 ZITI_FUNC
-void Ziti_close(ziti_socket_t socket);
+int Ziti_close(ziti_socket_t socket);
+
+/**
+ * Check if the given socket handle/fd is attached to a Ziti connection via `Ziti_connect()`/`Ziti_bind()`
+ * @param socket
+ * @return 0 - not a ziti socket, 1 - connected ziti socket, 2 - ziti server socket
+ */
+ZITI_FUNC
+int Ziti_check_socket(ziti_socket_t socket);
 
 /**
  * @brief Connect socket to a Ziti service
