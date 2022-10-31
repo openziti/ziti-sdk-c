@@ -490,6 +490,10 @@ static int connect_socket(ziti_socket_t clt_sock, ziti_socket_t *ziti_sock) {
         return errno;
     }
     close(fds[0]);
+#if defined(SO_NOSIGPIPE)
+    int nosig = 1;
+    setsockopt(fds[1], SOL_SOCKET, SO_NOSIGPIPE, (void *)&nosig, sizeof(int));
+#endif
 
     *ziti_sock = fds[1];
     ZITI_LOG(VERBOSE, "connected client socket[%d] <-> ziti_fd[%d]", clt_sock, *ziti_sock);
@@ -532,9 +536,15 @@ static void close_work(void *arg, future_t *f, uv_loop_t *l) {
     complete_future(f, NULL);
 }
 
-void Ziti_close(ziti_socket_t fd) {
-    future_t *f = schedule_on_loop(close_work, (void *) (uintptr_t) fd, true);
-    await_future(f);
+int Ziti_close(ziti_socket_t fd) {
+    ziti_sock_t *s = model_map_get_key(&ziti_sockets, &fd, sizeof(fd));
+    if (s) {
+        ZITI_LOG(DEBUG, "closing ziti socket[%d]", fd);
+        future_t *f = schedule_on_loop(close_work, (void *) (uintptr_t) fd, true);
+        await_future(f);
+        return 0;
+    }
+    return -1;
 }
 
 struct conn_req_s {
@@ -571,7 +581,8 @@ static void on_ziti_connect(ziti_connection conn, int status) {
             return;
         }
 
-        ZITI_LOG(DEBUG, "bridge connected to ziti service[%s]", zs->service);
+        ZITI_LOG(DEBUG, "bridge connected to ziti fd[%d]->ziti_fd[%d]->conn[%d]->service[%s]",
+                 zs->fd, zs->ziti_fd, zs->conn->conn_id, zs->service);
         ziti_conn_bridge_fds(conn, (uv_os_fd_t) zs->ziti_fd, (uv_os_fd_t) zs->ziti_fd, on_bridge_close, zs);
         complete_future(zs->f, conn);
     } else {
@@ -1288,6 +1299,8 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
 
     future_t *f = schedule_on_loop((loop_work_cb) resolve_cb, &req, true);
     int err = await_future(f);
+    set_error(err);
+
     if (err == 0) {
         addr4->sin_family = AF_INET;
         addr4->sin_port = htons(portnum);
@@ -1299,11 +1312,17 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
 
         res->ai_addrlen = sizeof(*addr4);
         *addrlist = res;
-        return 0;
-    } else {
-        set_error(err);
-        return -1;
     }
+    destroy_future(f);
+
+    return err == 0 ? 0 : -1;
+}
+
+int Ziti_check_socket(ziti_socket_t fd) {
+    ziti_sock_t *sock = model_map_get_key(&ziti_sockets, &fd, sizeof(fd));
+    if (sock == NULL) return 0;
+    if (sock->server) return 2;
+    return 1;
 }
 
 ZITI_FUNC

@@ -903,6 +903,7 @@ void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const 
     }
 
     ziti_ctrl_login(&ztx->controller, &cfgs, cb, ctx);
+    model_list_clear(&cfgs, NULL);
 }
 
 /**
