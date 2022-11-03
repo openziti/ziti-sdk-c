@@ -403,7 +403,7 @@ int ziti_intercept_match2(const ziti_intercept_cfg_v1 *intercept, ziti_protocol 
     }
 
     // addr match takes precedence so push it into higher bits to get one value for intercept
-    return (int) ((addr_match << 16) | (port_match & 0xFF));
+    return (int) ((addr_match << 16) | (port_match & 0xFFFF));
 }
 
 int ziti_intercept_match(const ziti_intercept_cfg_v1 *intercept, ziti_protocol proto, const char *addr, int port) {
