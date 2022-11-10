@@ -27,7 +27,8 @@ xx(isOK, bool, none, ok, __VA_ARGS__)\
 xx(msg, string, none, msg, __VA_ARGS__)\
 xx(ts, timestamp, ptr, time, __VA_ARGS__)\
 xx(errors, string, array, errors, __VA_ARGS__)\
-xx(codes, int, array, codes, __VA_ARGS__)
+xx(codes, int, array, codes, __VA_ARGS__)\
+xx(shoes, string, list, shoes, __VA_ARGS__)
 
 DECLARE_MODEL(Bar, BAR_MODEL)
 
@@ -50,7 +51,8 @@ using namespace Catch::Matchers;
 \"time\": \"2020-07-20T14:14:14.666666Z\",\
 \"msg\":\"this is a message\",\
 \"errors\": [\"error1\", \"error2\"], \
-\"codes\": [401, 403] \
+\"codes\": [401, 403], \
+\"shoes\": [ \"sandals\", \"slippers\", \"boots\" ] \
 }"
 
 #define BAR_WITH_NULL_CODES_ARRAY "{\
@@ -59,7 +61,8 @@ using namespace Catch::Matchers;
 \"time\": \"2020-07-20T14:14:14.666666Z\",\
 \"msg\":\"this is a message\",\
 \"errors\": [\"error1\", \"error2\"], \
-\"codes\": null \
+\"codes\": null, \
+\"shoes\": null \
 }"
 
 #define BAR_WITH_MISSING_CODES_ARRAY "{\

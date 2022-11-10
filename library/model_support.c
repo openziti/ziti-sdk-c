@@ -114,12 +114,13 @@ int model_cmp(const void *lh, const void *rh, type_meta *meta) {
             model_list_iter lit = model_list_iterator(ll);
             model_list_iter rit = model_list_iterator(rl);
 
-            if (lit == NULL) { rc = -1; }
-            else if (rit == NULL) { rc = 1; }
+            if (lit == NULL && rit != NULL) { rc = 1; }
             else {
                 for (int idx = 0; rc == 0; idx++) {
                     lf_ptr = model_list_it_element(lit);
+                    lit = model_list_it_next(lit);
                     rf_ptr = model_list_it_element(rit);
+                    rit = model_list_it_next(rit);
                     if (rf_ptr == NULL && lf_ptr == NULL) { break; }
 
                     if (ftm->comparer) {
