@@ -30,7 +30,7 @@ using namespace std;
 #if defined(__linux)
 
 /* gcc 4.8 does not have <stdatomic.h> and does not set the flag */
-#if __GNUC__
+#if __GNUC__ && !__clang__
 #include <features.h>
 # if ! __GNUC_PREREQ(4,9)
 #   define __STDC_NO_ATOMICS__ 1
