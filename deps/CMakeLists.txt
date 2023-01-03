@@ -4,7 +4,7 @@ include(FetchContent)
 
 FetchContent_Declare(uv-mbed
         GIT_REPOSITORY https://github.com/openziti/uv-mbed.git
-        GIT_TAG v0.14.11
+        GIT_TAG v0.14.12
         )
 set(ENABLE_UM_TESTS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(uv-mbed)
