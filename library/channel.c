@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -591,12 +591,20 @@ static void latency_reply_cb(void *ctx, message *reply, int err) {
 
 static void latency_timeout(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
-    ziti_channel_remove_waiter(ch, ch->latency_waiter);
-    ch->latency_waiter = NULL;
-    ch->latency = UINT64_MAX;
+    if (uv_now(t->loop) - MAX(ch->last_read, ch->last_write) < LATENCY_TIMEOUT) {
+        CH_LOG(DEBUG, "latency timeout on active channel, extending timeout");
+        uv_timer_start(t, latency_timeout, LATENCY_TIMEOUT, 0);
+    }
+    else {
+        CH_LOG(ERROR, "no read traffic on channel since before latency probe was sent, closing channel");
 
-    uv_mbed_close(ch->connection, NULL);
-    on_channel_close(ch, ZITI_TIMEOUT, UV_ETIMEDOUT);
+        ziti_channel_remove_waiter(ch, ch->latency_waiter);
+        ch->latency_waiter = NULL;
+        ch->latency = UINT64_MAX;
+
+        uv_mbed_close(ch->connection, NULL);
+        on_channel_close(ch, ZITI_TIMEOUT, UV_ETIMEDOUT);
+    }
 }
 
 static void send_latency_probe(uv_timer_t *t) {
@@ -774,6 +782,16 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
         free(con);
     }
 
+    // dump all buffered data
+    free_buffer(ch->incoming);
+    ch->incoming = new_buffer();
+
+    if (ch->in_next) { // discard partially read message
+        message_free(ch->in_next);
+        pool_return_obj(ch->in_next);
+        ch->in_next = NULL;
+    }
+
     if (ch->state != Closed) {
         if (uv_err == UV_EOF) {
             ZTX_LOG(VERBOSE, "edge router closed connection, trying to refresh api session");
@@ -786,11 +804,14 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
 static void on_write(uv_write_t *req, int status) {
     ZITI_LOG(TRACE, "on_write(%p,%d)", req, status);
     struct ch_write_req *wr = req->data;
+    ziti_channel_t *ch = wr->ch;
 
     if (status < 0) {
-        ziti_channel_t *ch = wr->ch;
         CH_LOG(ERROR, "write failed [%d/%s]", status, uv_strerror(status));
         on_channel_close(ch, ZITI_CONN_CLOSED, status);
+    }
+    else {
+        ch->last_write = uv_now(ch->loop);
     }
 
     if (wr != NULL) {
@@ -848,6 +869,7 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
         free(buf->base);
     } else {
         CH_LOG(TRACE, "on_data [len=%zd]", len);
+        ch->last_read = uv_now(ch->loop);
         buffer_append(ch->incoming, buf->base, (uint32_t) len);
         process_inbound(ch);
     }

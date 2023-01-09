@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -88,6 +88,8 @@ typedef struct ziti_channel {
 
     uint64_t latency;
     struct waiter_s *latency_waiter;
+    uint64_t last_read;
+    uint64_t last_write;
 
     ch_state state;
     uint32_t reconnect_count;
