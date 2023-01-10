@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022.  NetFoundry Inc.
+// Copyright (c) 2020-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -501,9 +501,10 @@ void model_free(void *obj, type_meta *meta) {
                     fm->meta()->destroyer(str_type ? &el : el);
                 } else {
                     model_free(el, fm->meta());
-                    free(el);
                 }
+                free(el);
             }
+            model_list_clear(list, NULL);
         } else if (fm->mod == map_mod) {
             model_map *map = (model_map *) f_addr;
             _free_f ff = NULL;
