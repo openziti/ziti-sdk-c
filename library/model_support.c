@@ -464,14 +464,15 @@ void model_free(void *obj, type_meta *meta) {
         field_meta *fm = &meta->fields[i];
         void **f_addr = (void **) ((char *) obj + fm->offset);
         void *f_ptr = NULL;
+        struct type_meta *field_meta = fm->meta();
         if (fm->mod == none_mod) {
             f_ptr = f_addr;
-            model_free(f_ptr, fm->meta());
+            model_free(f_ptr, field_meta);
         }
         else if (fm->mod == ptr_mod) {
             f_ptr = (void *) (*f_addr);
             if (f_ptr != NULL) {
-                model_free(f_ptr, fm->meta());
+                model_free(f_ptr, field_meta);
                 free(f_ptr);
             }
         }
@@ -480,11 +481,12 @@ void model_free(void *obj, type_meta *meta) {
             if (arr != NULL) {
                 for (int idx = 0; arr[idx] != NULL; idx++) {
                     f_ptr = arr + idx;
-                    if (fm->meta() == get_string_meta()) {
-                        model_free(f_ptr, fm->meta());
-                    } else {
+                    if (field_meta == get_string_meta()) {
+                        model_free(f_ptr, field_meta);
+                    }
+                    else {
                         void *mem_ptr = (void *) (*(void **) f_ptr);
-                        model_free(mem_ptr, fm->meta());
+                        model_free(mem_ptr, field_meta);
                         free(mem_ptr);
                     }
                 }
@@ -493,16 +495,20 @@ void model_free(void *obj, type_meta *meta) {
         } else if (fm->mod == list_mod) {
             model_list *list = (model_list *) f_addr;
             model_list_iter it = model_list_iterator(list);
-            bool str_type = (fm->meta() == get_string_meta() || fm->meta() == get_json_meta());
+            bool str_type = (field_meta == get_string_meta() || field_meta == get_json_meta());
             while (it != NULL) {
                 void *el = model_list_it_element(it);
                 it = model_list_it_remove(it);
-                if (fm->meta()->destroyer) {
-                    fm->meta()->destroyer(str_type ? &el : el);
-                } else {
-                    model_free(el, fm->meta());
+                if (str_type) {
+                    field_meta->destroyer(&el);
                 }
-                free(el);
+                else if (field_meta->destroyer) {
+                    field_meta->destroyer(el);
+                }
+                else {
+                    model_free(el, field_meta);
+                    free(el);
+                }
             }
             model_list_clear(list, NULL);
         } else if (fm->mod == map_mod) {
@@ -512,23 +518,25 @@ void model_free(void *obj, type_meta *meta) {
             while (it != NULL) {
                 const char *k = model_map_it_key(it);
                 void *v = model_map_it_value(it);
-                if (fm->meta() == get_string_meta() || fm->meta() == get_json_meta()) {
-                    fm->meta()->destroyer(&v);
-                } else if (fm->meta()->destroyer) {
-                    fm->meta()->destroyer(v);
+                if (field_meta == get_string_meta() || field_meta == get_json_meta()) {
+                    field_meta->destroyer(&v);
+                }
+                else if (field_meta->destroyer) {
+                    field_meta->destroyer(v);
                 }
                 else {
-                    model_free(v, fm->meta());
+                    model_free(v, field_meta);
                 }
                 free(v);
 
                 it = model_map_it_remove(it);
             }
 
-            if (fm->meta() == get_string_meta()) {
+            if (field_meta == get_string_meta()) {
                 ff = free;
-            } else {
-                ff = fm->meta()->destroyer;
+            }
+            else {
+                ff = field_meta->destroyer;
             }
             model_map_clear(map, ff);
         }
