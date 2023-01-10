@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2022.  NetFoundry Inc.
+// Copyright (c) 2021-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -66,6 +66,8 @@ TEST_CASE("parse null enum", "[model]") {
 
     CHECK_THAT(f1.name, Catch::Matchers::Equals("this is a name"));
     CHECK(f1.state == 0);
+
+    free_FooWithEnum(&f1);
 }
 
 TEST_CASE("default enum", "[model]") {
@@ -84,7 +86,7 @@ TEST_CASE("default enum", "[model]") {
     REQUIRE(parse_FooWithEnum(&f2, json, strlen(json)) == strlen(json));
     CHECK(f2.state == State_Unknown);
 
-
+    free_FooWithEnum(&f2);
     free(json);
 }
 
