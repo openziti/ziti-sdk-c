@@ -129,13 +129,11 @@ static void init_uv_mbed_log();
 void ziti_log_init(uv_loop_t *loop, int level, log_writer log_func) {
     init_uv_mbed_log();
 
-    if (level == ZITI_LOG_DEFAULT_LEVEL) {
-        level = ziti_log_lvl;
-    } // in case it was set before
-
     init_debug(loop);
 
-    ziti_log_set_level(level, NULL);
+    if (level == ZITI_LOG_DEFAULT_LEVEL) {
+        level = ziti_log_lvl;
+    }
 
     if (log_func == NULL) {
         // keep the logger if it was already set
@@ -143,9 +141,17 @@ void ziti_log_init(uv_loop_t *loop, int level, log_writer log_func) {
     } else {
         ziti_log_set_logger(log_func);
     }
+
+    ziti_log_set_level(level, NULL);
 }
 
 void ziti_log_set_level(int level, const char *marker) {
+    if (level > TRACE) {
+        level = TRACE;
+    } else if (level < 0) {
+        level = ZITI_LOG_DEFAULT_LEVEL;
+    }
+
     if (level == ZITI_LOG_DEFAULT_LEVEL) {
         if (marker) {
             model_map_remove(&log_levels, marker);
@@ -162,9 +168,9 @@ void ziti_log_set_level(int level, const char *marker) {
     }
 
     if (logger) {
-        char msg[128];
-        int len = snprintf(msg, sizeof(msg), "set log level: %s=%d", marker ? marker : "root", level);
-        logger(INFO, "ziti_log_set_level", msg, len);
+        int l = level == ZITI_LOG_DEFAULT_LEVEL ? ziti_log_lvl : level;
+        const char *lbl = level_labels[l];
+        ZITI_LOG(INFO, "set log level: %s=%d/%s", marker ? marker : "root", l, lbl);
     }
 }
 
