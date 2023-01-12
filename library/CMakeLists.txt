@@ -148,7 +148,7 @@ endif ()
 install(FILES ${uv-mbed_SOURCE_DIR}/LICENSE
         COMPONENT ziti-sdk
         DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_mbed)
-install(FILES ${ziti_DEPS_DIR}/uv_link-src/README.md
+install(FILES ${ziti_DEPS_DIR}/uv-mbed-src/deps/uv_link_t/README.md
         COMPONENT ziti-sdk
         DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
 install(FILES ${ziti_DEPS_DIR}/http_parser-src/LICENSE-MIT

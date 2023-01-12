@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022.  NetFoundry Inc.
+// Copyright (c) 2020-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -181,4 +181,6 @@ TEST_CASE("map-non-terminated-string-keys", "[model]") {
         CHECK(strlen(key) == v);
         it = model_map_it_next(it);
     }
+
+    model_map_clear(&m, nullptr);
 }

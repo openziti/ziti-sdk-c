@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022.  NetFoundry Inc.
+// Copyright (c) 2020-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -422,7 +422,6 @@ static type_meta ziti_address_META = {
         .comparer = (_cmp_f) cmp_ziti_address0,
         .parser = (_parse_f) parse_ziti_address0,
         .jsonifier = (_to_json_f) ziti_address_write_json,
-        .destroyer = (_free_f) free_ziti_address0,
 };
 
 int ziti_intercept_from_client_cfg(ziti_intercept_cfg_v1 *intercept, const ziti_client_cfg_v1 *client_cfg) {

@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -703,4 +703,17 @@ TEST_CASE("ziti-address-match", "[model]") {
     CHECK(ziti_addrstr_match_list("ff:abcd::1", &intercept.addresses) == -1);
 
     free_ziti_intercept_cfg_v1(&intercept);
+}
+
+TEST_CASE("ziti-intercept_test", "[model]") {
+    ziti_client_cfg_v1 cltV1;
+    REQUIRE(parse_ziti_address_str(&cltV1.hostname, "httpbin.ziti") == 0);
+    cltV1.port = 80;
+
+    ziti_intercept_cfg_v1 interceptCfgV1;
+    REQUIRE(ziti_intercept_from_client_cfg(&interceptCfgV1, &cltV1) == 0);
+    REQUIRE(model_list_size(&interceptCfgV1.addresses) == 1);
+
+    free_ziti_intercept_cfg_v1(&interceptCfgV1);
+    free_ziti_client_cfg_v1(&cltV1);
 }
