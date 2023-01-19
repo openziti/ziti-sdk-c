@@ -11,7 +11,7 @@ existing underlay networks.
 
 <h2>Status</h2>
 
-[![Build Status]![example workflow](https://github.com/openziti/ziti-sdk-c/actions/workflows/cmake.yml/badge.svg?branch=main)
+![Build Status](https://github.com/openziti/ziti-sdk-c/actions/workflows/cmake.yml/badge.svg?branch=main)
 
 <h2>Building</h2>
 
