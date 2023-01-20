@@ -25,7 +25,7 @@ struct pool_obj_s {
     size_t size;
 
     LIST_ENTRY(pool_obj_s) _next;
-
+    void (*clear_func)(void *);
     char obj[];
 };
 
@@ -67,11 +67,12 @@ bool pool_has_available(pool_t *pool) {
     return !LIST_EMPTY(&pool->pool) || pool->capacity > pool->out;
 }
 
-void *alloc_unpooled_obj(size_t size) {
+void *alloc_unpooled_obj(size_t size, void (*clear_func)(void *)) {
     struct pool_obj_s *obj = calloc(1, sizeof(struct pool_obj_s) + size);
     if (obj) {
         obj->size = size;
         obj->pool = NULL;
+        obj->clear_func = clear_func;
     }
     return obj->obj;
 }
@@ -91,6 +92,7 @@ void *pool_alloc_obj(pool_t *pool) {
         member = calloc(1, sizeof(struct pool_obj_s) + pool->memsize);
         member->size = pool->memsize;
         member->pool = pool;
+        member->clear_func = pool->clear_func;
     }
 
     if (member) {
@@ -116,13 +118,15 @@ void pool_return_obj(void *o) {
     if (o == NULL) { return; }
 
     struct pool_obj_s *m = container_of((char *) o, struct pool_obj_s, obj);
+    if (m->clear_func) {
+        m->clear_func(o);
+    }
     pool_t *pool = m->pool;
     if (pool == NULL) {
         free(m);
         return;
     }
 
-    if (pool->clear_func) { pool->clear_func(o); }
     memset(o, 0, m->size);
     pool->out--;
 

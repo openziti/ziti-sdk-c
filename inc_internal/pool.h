@@ -36,7 +36,7 @@ void *pool_alloc_obj(pool_t *pool);
 
 // allocate object that can be freed by [pool_return_obj]
 // useful when you need alloc before pool is available or need an object larger that normal
-void *alloc_unpooled_obj(size_t size);
+void *alloc_unpooled_obj(size_t size, void (*clear_func)(void *));
 
 void pool_return_obj(void *obj);
 
