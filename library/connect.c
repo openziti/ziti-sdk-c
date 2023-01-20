@@ -411,7 +411,8 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
     }
 
     if (best_ch) {
-        CONN_LOG(DEBUG, "selected ch[%s] for best latency(%llu ms)", best_ch->name, best_ch->latency);
+        CONN_LOG(DEBUG, "selected ch[%s] for best latency(%llu ms)", best_ch->name,
+                 (unsigned long long) best_ch->latency);
         on_channel_connected(best_ch, conn, ZITI_OK);
     }
 

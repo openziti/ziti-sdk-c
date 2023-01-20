@@ -63,6 +63,9 @@ void message_init(message* m) {
 
 void message_free(message* m) {
     if (m != NULL) {
+        if (m->msgbufp != m->msgbuf) {
+            free(m->msgbufp);
+        }
         FREE(m->hdrs);
     }
 }
@@ -160,21 +163,26 @@ bool message_get_bytes_header(message *m, int header_id, uint8_t **v, size_t *le
 }
 
 message *message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE]) {
-    message *m;
     header_t h;
     header_from_buffer(&h, buf);
-    size_t msgbuflen = HEADER_SIZE + h.headers_len + h.body_len;
+
+    size_t msgbuflen = HEADER_SIZE + h.headers_len + h.content_len;
+    message *m = pool ? pool_alloc_obj(pool) : alloc_unpooled_obj(sizeof(message) + msgbuflen,
+                                                                  (void (*)(void *)) message_free);
+
+    m->msgbuflen = msgbuflen;
+
     size_t msgsize = sizeof(message) + msgbuflen;
-    if (msgsize > pool_mem_size(pool)) {
-        m = alloc_unpooled_obj(msgsize);
+    if (msgsize > pool_obj_size(m)) {
+        m->msgbufp = malloc(msgbuflen);
     }
     else {
-        m = pool_alloc_obj(pool);
+        m->msgbufp = m->msgbuf;
     }
+
     memcpy(&m->header, &h, sizeof(h));
-    m->headers = m->msgbuf + h.headers_len;
-    m->body = m->headers + h.headers_len;
-    m->msgbuflen = m->msgbuflen;
+    m->headers = m->msgbufp + HEADER_SIZE;
+    m->content = m->headers + h.headers_len;
     return m;
 }
 
@@ -187,25 +195,32 @@ message *message_new(pool_t *pool, uint32_t content, const hdr_t *hdrs, int nhdr
     size_t msgbuflen = HEADER_SIZE + hdrs_len + body_len;
     size_t msgsize = sizeof(message) + msgbuflen;
     message *m;
-    if (msgsize > pool_mem_size(pool)) {
-        m = alloc_unpooled_obj(msgsize);
+    if (pool == NULL) {
+        m = alloc_unpooled_obj(msgsize, (void (*)(void *)) message_free);
     }
     else {
         m = pool_alloc_obj(pool);
     }
 
     memcpy(&m->header, &EMPTY_HEADER, sizeof(EMPTY_HEADER));
-    m->header.content = content;
+    m->header.ct = content;
     m->header.headers_len = hdrs_len;
-    m->header.body_len = body_len;
+    m->header.content_len = body_len;
     m->msgbuflen = msgbuflen;
 
+    if (msgsize > pool_obj_size(m)) {
+        m->msgbufp = malloc(msgbuflen);
+    }
+    else {
+        m->msgbufp = m->msgbuf;
+    }
+
     // write header
-    header_to_buffer(&m->header, m->msgbuf);
+    header_to_buffer(&m->header, m->msgbufp);
 
     // write headers
-    m->headers = m->msgbuf + HEADER_SIZE;
-    m->body = m->headers + m->header.headers_len;
+    m->headers = m->msgbufp + HEADER_SIZE;
+    m->content = m->headers + m->header.headers_len;
     uint8_t *p = m->headers;
     for (int i = 0; i < nhdrs; i++) {
         p = write_hdr(&hdrs[i], p);
@@ -216,5 +231,5 @@ message *message_new(pool_t *pool, uint32_t content, const hdr_t *hdrs, int nhdr
 
 void message_set_seq(message *m, uint32_t seq) {
     m->header.seq = seq;
-    header_to_buffer(&m->header, m->msgbuf);
+    header_to_buffer(&m->header, m->msgbufp);
 }

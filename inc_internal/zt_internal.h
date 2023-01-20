@@ -118,7 +118,7 @@ struct ziti_write_req_s {
     size_t len;
     bool eof;
 
-    message *message;
+    struct message_s *message;
     ziti_write_cb cb;
     uv_timer_t *timeout;
 

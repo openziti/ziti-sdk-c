@@ -64,13 +64,23 @@ typedef struct message_s {
     int nhdrs;
 
     size_t msgbuflen;
+    uint8_t *msgbufp;
     uint8_t msgbuf[];
 } message;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 void header_init(header_t *h, uint32_t seq);
+
 void header_to_buffer(header_t *h, uint8_t *buf);
+
 void header_from_buffer(header_t *h, uint8_t *buf);
+
 void message_init(message *m);
+
 void message_free(message *m);
 
 bool message_get_bool_header(message *m, int header_id, bool *v);
@@ -90,5 +100,10 @@ message *message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE]);
 message *message_new(pool_t *pool, uint32_t content, const hdr_t *headers, int nheaders, size_t body_len);
 
 void message_set_seq(message *m, uint32_t seq);
+
+
+#ifdef __cplusplus
+};
+#endif
 
 #endif //ZITI_SDK_MESSAGE_H
