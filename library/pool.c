@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -56,23 +56,38 @@ void pool_destroy(pool_t *pool) {
         free(m);
     }
 
-    if (pool->out == 0)
+    if (pool->out == 0) {
         free(pool);
+    }
 }
 
 bool pool_has_available(pool_t *pool) {
+    assert(pool);
     assert(!pool->is_closed);
     return !LIST_EMPTY(&pool->pool) || pool->capacity > pool->out;
 }
 
+void *alloc_unpooled_obj(size_t size) {
+    struct pool_obj_s *obj = calloc(1, sizeof(struct pool_obj_s) + size);
+    if (obj) {
+        obj->size = size;
+        obj->pool = NULL;
+    }
+    return obj->obj;
+}
+
 void *pool_alloc_obj(pool_t *pool) {
+    if (pool == NULL) {
+        return NULL;
+    }
     assert(!pool->is_closed);
 
     struct pool_obj_s *member = NULL;
     if (!LIST_EMPTY(&pool->pool)) {
         member = LIST_FIRST(&pool->pool);
         LIST_REMOVE(member, _next);
-    } else if (pool->capacity > pool->out) {
+    }
+    else if (pool->capacity > pool->out) {
         member = calloc(1, sizeof(struct pool_obj_s) + pool->memsize);
         member->size = pool->memsize;
         member->pool = pool;
@@ -84,6 +99,10 @@ void *pool_alloc_obj(pool_t *pool) {
     }
 
     return NULL;
+}
+
+size_t pool_mem_size(pool_t *pool) {
+    return pool ? pool->memsize : 0;
 }
 
 size_t pool_obj_size(void *o) {
@@ -98,6 +117,11 @@ void pool_return_obj(void *o) {
 
     struct pool_obj_s *m = container_of((char *) o, struct pool_obj_s, obj);
     pool_t *pool = m->pool;
+    if (pool == NULL) {
+        free(m);
+        return;
+    }
+
     if (pool->clear_func) { pool->clear_func(o); }
     memset(o, 0, m->size);
     pool->out--;
