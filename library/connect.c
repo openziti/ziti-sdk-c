@@ -1332,7 +1332,8 @@ static int send_fin_message(ziti_connection conn) {
             },
     };
     NEWP(wr, struct ziti_write_req_s);
-    return ziti_channel_send(ch, ContentTypeData, headers, 3, NULL, 0, wr);
+    message *m = message_new(NULL, ContentTypeData, headers, 3, 0);
+    return ziti_channel_send_message(ch, m, wr);
 }
 
 int ziti_close(ziti_connection conn, ziti_close_cb close_cb) {
@@ -1390,7 +1391,10 @@ void reject_dial_request(ziti_connection conn, message *req, const char *reason)
             },
     };
 
-    ziti_channel_send(ch, content_type, headers, 3, (const uint8_t *)reason, strlen(reason), NULL);
+    message *m = message_new(NULL, ContentTypeDialFailed, headers, 3, strlen(reason));
+    memcpy(m->body, reason, strlen(reason));
+
+    ziti_channel_send_message(ch, m, NULL);
 }
 
 static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {
