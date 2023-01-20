@@ -1,18 +1,16 @@
-/*
-Copyright 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2023.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "message.h"
 #include <stdlib.h>
@@ -62,9 +60,11 @@ void header_init(header_t *h, uint32_t seq) {
 void message_init(message* m) {
     memset(m, 0, sizeof(message));
 }
+
 void message_free(message* m) {
-    FREE(m->headers);
-    FREE(m->hdrs);
+    if (m != NULL) {
+        FREE(m->hdrs);
+    }
 }
 
 uint8_t *write_hdr(const hdr_t *h, uint8_t *buf) {
@@ -157,4 +157,64 @@ bool message_get_bytes_header(message *m, int header_id, uint8_t **v, size_t *le
         return true;
     }
     return false;
+}
+
+message *message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE]) {
+    message *m;
+    header_t h;
+    header_from_buffer(&h, buf);
+    size_t msgbuflen = HEADER_SIZE + h.headers_len + h.body_len;
+    size_t msgsize = sizeof(message) + msgbuflen;
+    if (msgsize > pool_mem_size(pool)) {
+        m = alloc_unpooled_obj(msgsize);
+    }
+    else {
+        m = pool_alloc_obj(pool);
+    }
+    memcpy(&m->header, &h, sizeof(h));
+    m->headers = m->msgbuf + h.headers_len;
+    m->body = m->headers + h.headers_len;
+    m->msgbuflen = m->msgbuflen;
+    return m;
+}
+
+message *message_new(pool_t *pool, uint32_t content, const hdr_t *hdrs, int nhdrs, size_t body_len) {
+    uint32_t hdrs_len = 0;
+    for (int i = 0; i < nhdrs; i++) {
+        hdrs_len += sizeof(uint32_t) * 2 + hdrs[i].length; // header id + val(length) + length
+    }
+
+    size_t msgbuflen = HEADER_SIZE + hdrs_len + body_len;
+    size_t msgsize = sizeof(message) + msgbuflen;
+    message *m;
+    if (msgsize > pool_mem_size(pool)) {
+        m = alloc_unpooled_obj(msgsize);
+    }
+    else {
+        m = pool_alloc_obj(pool);
+    }
+
+    memcpy(&m->header, &EMPTY_HEADER, sizeof(EMPTY_HEADER));
+    m->header.content = content;
+    m->header.headers_len = hdrs_len;
+    m->header.body_len = body_len;
+    m->msgbuflen = msgbuflen;
+
+    // write header
+    header_to_buffer(&m->header, m->msgbuf);
+
+    // write headers
+    m->headers = m->msgbuf + HEADER_SIZE;
+    m->body = m->headers + m->header.headers_len;
+    uint8_t *p = m->headers;
+    for (int i = 0; i < nhdrs; i++) {
+        p = write_hdr(&hdrs[i], p);
+    }
+
+    return m;
+}
+
+void message_set_seq(message *m, uint32_t seq) {
+    m->header.seq = seq;
+    header_to_buffer(&m->header, m->msgbuf);
 }
