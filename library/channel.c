@@ -126,7 +126,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     ch->in_next = NULL;
     ch->in_body_offset = 0;
     ch->incoming = new_buffer();
-    ch->in_msg_pool = pool_new(sizeof(message), 32, (void (*)(void *)) message_free);
+    ch->in_msg_pool = pool_new(32 * 1024, 32, (void (*)(void *)) message_free);
 
     LIST_INIT(&ch->waiters);
 
@@ -316,53 +316,52 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
 void on_channel_send(uv_write_t *w, int status) {
     struct ziti_write_req_s *ziti_write = w->data;
 
-    if (ziti_write != NULL) {
-        free(ziti_write->payload);
+    ziti_channel_t *ch = ziti_write->ch;
+    if (status < 0) {
+        CH_LOG(ERROR, "write failed [%d/%s]", status, uv_strerror(status));
+        on_channel_close(ch, ZITI_CONN_CLOSED, status);
+    }
+
+    pool_return_obj(ziti_write->message);
+    ziti_write->message = NULL;
+
+    if (ziti_write->conn) {
         on_write_completed(ziti_write->conn, ziti_write, status);
+    }
+    else {
+        free(ziti_write);
     }
 
     free(w);
 }
 
-int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
-                      uint32_t body_len,
-                      struct ziti_write_req_s *ziti_write) {
-    header_t header;
-    header_init(&header, ch->msg_seq++);
-
-    CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", content, header.seq, body_len);
-    header.content = content;
-    header.body_len = body_len;
-
-    uint32_t hdrs_len = 0;
-    for (int i = 0; i < nhdrs; i++) {
-        hdrs_len += sizeof(uint32_t) * 2 + hdrs[i].length; // header id + val(length) + length
-    }
-    header.headers_len = hdrs_len;
-
-    unsigned int msg_size = body_len + HEADER_SIZE + hdrs_len;
-    uint8_t *msg_buf = malloc(msg_size);
-    header_to_buffer(&header, msg_buf);
-
-    uint8_t *p = msg_buf + HEADER_SIZE;
-    for (int i = 0; i < nhdrs; i++) {
-        p = write_hdr(&hdrs[i], p);
-    }
-    assert(p == msg_buf + HEADER_SIZE + hdrs_len);
-    memcpy(p, body, body_len);
-
-    uv_buf_t buf = uv_buf_init(msg_buf, msg_size);
+int ziti_channel_send_message(ziti_channel_t *ch, message *msg, struct ziti_write_req_s *ziti_write) {
+    uv_buf_t buf = uv_buf_init((char *) msg->msgbuf, msg->msgbuflen);
     NEWP(req, uv_write_t);
     if (ziti_write == NULL) {
         ziti_write = calloc(1, sizeof(struct ziti_write_req_s));
     }
+    ziti_write->ch = ch;
+
     req->data = ziti_write;
-    ziti_write->payload = msg_buf;
+    ziti_write->message = msg;
     int rc = uv_mbed_write(req, ch->connection, &buf, on_channel_send);
     if (rc != 0) {
         on_channel_send(req, rc);
     }
     return 0;
+
+}
+
+int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
+                      uint32_t body_len,
+                      struct ziti_write_req_s *ziti_write) {
+    message *m = message_new(NULL, content, hdrs, nhdrs, body_len);
+    message_set_seq(m, ch->msg_seq++);
+    CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", content, m->header.seq, body_len);
+    memcpy(m->body, body, body_len);
+
+    return ziti_channel_send_message(ch, m, ziti_write);
 }
 
 void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter) {
@@ -377,33 +376,14 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
                             uint32_t body_len,
                             reply_cb rep_cb, void *reply_ctx) {
     struct waiter_s *result = NULL;
-    header_t header;
-    header_init(&header, ch->msg_seq++);
-
-    CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", content, header.seq, body_len);
-    header.content = content;
-    header.body_len = body_len;
-
-    uint32_t hdrs_len = 0;
-    for (int i = 0; i < nhdrs; i++) {
-        hdrs_len += sizeof(uint32_t) * 2 + hdrs[i].length; // header id + val(length) + length
-    }
-    header.headers_len = hdrs_len;
-    unsigned int msg_size = HEADER_SIZE + hdrs_len + body_len;
-    uint8_t *msg_buf = malloc(msg_size);
-    header_to_buffer(&header, msg_buf);
-
-    uint8_t *p = msg_buf + HEADER_SIZE;
-    for (int i = 0; i < nhdrs; i++) {
-        p = write_hdr(&hdrs[i], p);
-    }
-    assert(p == msg_buf + HEADER_SIZE + hdrs_len);
-
-    memcpy(p, body, body_len);
+    message *m = message_new(NULL, content, hdrs, nhdrs, body_len);
+    message_set_seq(m, ch->msg_seq++);
+    CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", content, m->header.seq, body_len);
+    memcpy(m->body, body, body_len);
 
     if (rep_cb != NULL) {
         NEWP(w, struct waiter_s);
-        w->seq = header.seq;
+        w->seq = m->header.seq;
         w->cb = rep_cb;
         w->reply_ctx = reply_ctx;
 
@@ -411,16 +391,7 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
         result = w;
     }
 
-    NEWP(wr, struct ch_write_req);
-    wr->buf = uv_buf_init(msg_buf, msg_size);
-    wr->ch = ch;
-
-    NEWP(req, uv_write_t);
-    req->data = wr;
-    int rc = uv_mbed_write(req, wr->ch->connection, &wr->buf, on_write);
-    if (rc != 0) {
-        on_write(req, rc);
-    }
+    ziti_channel_send_message(ch, m, NULL);
 
     return result;
 }
@@ -522,16 +493,7 @@ static void process_inbound(ziti_channel_t *ch) {
 
             assert(header_read == HEADER_SIZE);
 
-            ch->in_next = pool_alloc_obj(ch->in_msg_pool);
-            message_init(ch->in_next);
-
-            header_from_buffer(&ch->in_next->header, header_buf);
-
-            // allocate single memory block for both headers and body
-            // body ptr will point to inside the block
-            ch->in_next->headers = malloc(ch->in_next->header.headers_len + ch->in_next->header.body_len);
-            ch->in_next->body = ch->in_next->headers + ch->in_next->header.headers_len;
-
+            ch->in_next = message_new_from_header(ch->in_msg_pool, header_buf);
             ch->in_body_offset = 0;
 
             CH_LOG(TRACE, "<= ct[%04X] seq[%d] len[%d] hdrs[%d]", ch->in_next->header.content,
@@ -787,7 +749,6 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
     ch->incoming = new_buffer();
 
     if (ch->in_next) { // discard partially read message
-        message_free(ch->in_next);
         pool_return_obj(ch->in_next);
         ch->in_next = NULL;
     }
@@ -799,26 +760,6 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
         }
         reconnect_channel(ch, false);
     }
-}
-
-static void on_write(uv_write_t *req, int status) {
-    ZITI_LOG(TRACE, "on_write(%p,%d)", req, status);
-    struct ch_write_req *wr = req->data;
-    ziti_channel_t *ch = wr->ch;
-
-    if (status < 0) {
-        CH_LOG(ERROR, "write failed [%d/%s]", status, uv_strerror(status));
-        on_channel_close(ch, ZITI_CONN_CLOSED, status);
-    }
-    else {
-        ch->last_write = uv_now(ch->loop);
-    }
-
-    if (wr != NULL) {
-        FREE(wr->buf.base);
-        FREE(wr);
-    }
-    FREE(req);
 }
 
 static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {

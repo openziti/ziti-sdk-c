@@ -113,11 +113,12 @@ typedef struct ziti_channel {
 
 struct ziti_write_req_s {
     struct ziti_conn *conn;
+    struct ziti_channel *ch;
     uint8_t *buf;
     size_t len;
     bool eof;
 
-    uint8_t *payload; // internal buffer
+    message *message;
     ziti_write_cb cb;
     uv_timer_t *timeout;
 
@@ -274,6 +275,8 @@ int ziti_channel_close(ziti_channel_t *ch, int err);
 void ziti_channel_add_receiver(ziti_channel_t *ch, int id, void *receiver, void (*receive_f)(void *, message *, int));
 
 void ziti_channel_rem_receiver(ziti_channel_t *ch, int id);
+
+int ziti_channel_send_message(ziti_channel_t *ch, message *msg, struct ziti_write_req_s *ziti_write);
 
 int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
                       uint32_t body_len,
