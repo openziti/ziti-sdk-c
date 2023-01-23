@@ -1,21 +1,21 @@
-/*
-Copyright 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2023.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef ZITI_SDK_MESSAGE_H
 #define ZITI_SDK_MESSAGE_H
+
+#include "pool.h"
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -62,12 +62,25 @@ typedef struct message_s {
     uint8_t *body;
     hdr_t *hdrs;
     int nhdrs;
+
+    size_t msgbuflen;
+    uint8_t *msgbufp;
+    uint8_t msgbuf[];
 } message;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 void header_init(header_t *h, uint32_t seq);
+
 void header_to_buffer(header_t *h, uint8_t *buf);
+
 void header_from_buffer(header_t *h, uint8_t *buf);
+
 void message_init(message *m);
+
 void message_free(message *m);
 
 bool message_get_bool_header(message *m, int header_id, bool *v);
@@ -81,5 +94,16 @@ bool message_get_bytes_header(message *m, int header_id, uint8_t **ptr, size_t *
 uint8_t *write_hdr(const hdr_t *h, uint8_t *buf);
 
 int parse_hdrs(uint8_t *buf, uint32_t len, hdr_t **hp);
+
+message *message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE]);
+
+message *message_new(pool_t *pool, uint32_t content, const hdr_t *headers, int nheaders, size_t body_len);
+
+void message_set_seq(message *m, uint32_t seq);
+
+
+#ifdef __cplusplus
+};
+#endif
 
 #endif //ZITI_SDK_MESSAGE_H

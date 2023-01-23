@@ -16,7 +16,7 @@ add_executable(all_tests
         pool_tests.cpp
         catch2_includes.hpp
         ziti_src_tests.cpp
-        )
+        message_tests.cpp)
 
 if (WIN32)
     set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)

@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -249,9 +249,7 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
     free(req);
 }
 
-static int
-send_message(struct ziti_conn *conn, uint32_t content, uint8_t *body, uint32_t body_len, struct ziti_write_req_s *wr) {
-    ziti_channel_t *ch = conn->channel;
+static message *create_message(struct ziti_conn *conn, uint32_t content, size_t body_len) {
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(conn->edge_msg_seq++);
     hdr_t headers[] = {
@@ -266,7 +264,12 @@ send_message(struct ziti_conn *conn, uint32_t content, uint8_t *body, uint32_t b
                     .value = (uint8_t *) &msg_seq
             }
     };
-    return ziti_channel_send(ch, content, headers, 2, body, body_len, wr);
+    return message_new(NULL, content, headers, 2, body_len);
+}
+
+static int send_message(struct ziti_conn *conn, message *m, struct ziti_write_req_s *wr) {
+    ziti_channel_t *ch = conn->channel;
+    return ziti_channel_send_message(ch, m, wr);
 }
 
 static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
@@ -408,7 +411,8 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
     }
 
     if (best_ch) {
-        CONN_LOG(DEBUG, "selected ch[%s] for best latency(%llu ms)", best_ch->name, best_ch->latency);
+        CONN_LOG(DEBUG, "selected ch[%s] for best latency(%llu ms)", best_ch->name,
+                 (unsigned long long) best_ch->latency);
         on_channel_connected(best_ch, conn, ZITI_OK);
     }
 
@@ -619,16 +623,17 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
         uv_timer_start(req->timeout, ziti_write_timeout, conn->timeout, 0);
     }
 
+    size_t total_len = req->len + (conn->encrypted ? crypto_secretstream_xchacha20poly1305_abytes() : 0);
+    message *m = create_message(conn, ContentTypeData, total_len);
+
     if (conn->encrypted) {
-        uint32_t crypto_len = req->len + crypto_secretstream_xchacha20poly1305_abytes();
-        unsigned char *cipher_text = malloc(crypto_len);
-        crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, cipher_text, NULL, req->buf, req->len, NULL, 0,
-                                                   0);
-        send_message(conn, ContentTypeData, cipher_text, crypto_len, req);
-        free(cipher_text);
-    } else {
-        send_message(conn, ContentTypeData, req->buf, req->len, req);
+        crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL, req->buf, req->len, NULL, 0, 0);
     }
+    else {
+        memcpy(m->body, req->buf, req->len);
+    }
+
+    send_message(conn, m, req);
 }
 
 static void ziti_disconnect_cb(ziti_connection conn, ssize_t status, void *ctx) {
@@ -648,11 +653,12 @@ static void ziti_disconnect_async(struct ziti_conn *conn) {
         case Connected:
         case CloseWrite:
         case Timedout: {
+            message *m = create_message(conn, ContentTypeStateClosed, 0);
             NEWP(wr, struct ziti_write_req_s);
             wr->conn = conn;
             wr->cb = ziti_disconnect_cb;
             conn->write_reqs++;
-            send_message(conn, ContentTypeStateClosed, NULL, 0, wr);
+            send_message(conn, m, wr);
             break;
         }
 
@@ -730,16 +736,14 @@ int establish_crypto(ziti_connection conn, message *msg) {
 
 static int send_crypto_header(ziti_connection conn) {
     if (conn->encrypted) {
+        size_t crypto_header_len = crypto_secretstream_xchacha20poly1305_headerbytes();
+        message *m = create_message(conn, ContentTypeData, crypto_header_len);
+        crypto_secretstream_xchacha20poly1305_init_push(&conn->crypt_o, m->body, conn->tx);
         NEWP(wr, struct ziti_write_req_s);
         wr->conn = conn;
-        uint8_t *header = calloc(1, crypto_secretstream_xchacha20poly1305_headerbytes());
-        wr->buf = header;
         wr->cb = crypto_wr_cb;
-
-        crypto_secretstream_xchacha20poly1305_init_push(&conn->crypt_o, header, conn->tx);
         conn->write_reqs++;
-        send_message(conn, ContentTypeData, header, crypto_secretstream_xchacha20poly1305_headerbytes(), wr);
-        free(header);
+        send_message(conn, m, wr);
         memset(conn->tx, 0, crypto_secretstream_xchacha20poly1305_KEYBYTES);
         FREE(conn->tx);
     }
@@ -1328,7 +1332,8 @@ static int send_fin_message(ziti_connection conn) {
             },
     };
     NEWP(wr, struct ziti_write_req_s);
-    return ziti_channel_send(ch, ContentTypeData, headers, 3, NULL, 0, wr);
+    message *m = message_new(NULL, ContentTypeData, headers, 3, 0);
+    return ziti_channel_send_message(ch, m, wr);
 }
 
 int ziti_close(ziti_connection conn, ziti_close_cb close_cb) {
@@ -1386,7 +1391,10 @@ void reject_dial_request(ziti_connection conn, message *req, const char *reason)
             },
     };
 
-    ziti_channel_send(ch, content_type, headers, 3, (const uint8_t *)reason, strlen(reason), NULL);
+    message *m = message_new(NULL, ContentTypeDialFailed, headers, 3, strlen(reason));
+    memcpy(m->body, reason, strlen(reason));
+
+    ziti_channel_send_message(ch, m, NULL);
 }
 
 static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {

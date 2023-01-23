@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,6 +38,7 @@ struct ziti_bridge_s {
     void *data;
     struct fd_bridge_s *fdbr;
     pool_t *input_pool;
+    bool input_throttle;
 };
 
 static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len);
@@ -198,6 +199,12 @@ void bridge_alloc(uv_handle_t *h, size_t req, uv_buf_t *b) {
     struct ziti_bridge_s *br = h->data;
     b->base = pool_alloc_obj(br->input_pool);
     b->len = pool_obj_size(b->base);
+    if (b->base != NULL) {
+        if (br->input_throttle) {
+            ZITI_LOG(TRACE, "unstalled ziti_conn[%d.%d]", br->conn->ziti_ctx->id, br->conn->conn_id);
+        }
+        br->input_throttle = false;
+    }
 }
 
 static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
@@ -214,7 +221,10 @@ void on_input(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     } else {
         pool_return_obj(b->base);
         if (len == UV_ENOBUFS) {
-            ZITI_LOG(TRACE, "stalled");
+            if (!br->input_throttle) {
+                ZITI_LOG(TRACE, "stalled ziti_conn[%d.%d]", br->conn->ziti_ctx->id, br->conn->conn_id);
+                br->input_throttle = true;
+            }
         } else if (len == UV_EOF) {
             br->input_eof = true;
             if (br->ziti_eof) {
