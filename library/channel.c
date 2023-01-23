@@ -31,6 +31,9 @@
 #define BACKOFF_TIME 5000 /* 5 seconds */
 #define MAX_BACKOFF 5 /* max reconnection timeout: (1 << MAX_BACKOFF) * BACKOFF_TIME = 160 seconds */
 
+#define POOLED_MESSAGE_SIZE (32 * 1024)
+#define INBOUND_POOL_SIZE (32)
+
 #define CH_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ch[%d] " fmt, ch->id, ##__VA_ARGS__)
 
 enum ChannelState {
@@ -119,14 +122,13 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     snprintf(ch->token, sizeof(ch->token), "ziti-sdk-c[%d]@%*.*s", ch->id, (int) hostlen, (int) hostlen, hostname);
 
     ch->state = Initial;
-    // 32 concurrent connect requests for the same channel is probably enough
     LIST_INIT(&ch->conn_reqs);
 
     ch->name = NULL;
     ch->in_next = NULL;
     ch->in_body_offset = 0;
     ch->incoming = new_buffer();
-    ch->in_msg_pool = pool_new(32 * 1024, 32, (void (*)(void *)) message_free);
+    ch->in_msg_pool = pool_new(POOLED_MESSAGE_SIZE, INBOUND_POOL_SIZE, (void (*)(void *)) message_free);
 
     LIST_INIT(&ch->waiters);
 
@@ -336,7 +338,7 @@ void on_channel_send(uv_write_t *w, int status) {
 }
 
 int ziti_channel_send_message(ziti_channel_t *ch, message *msg, struct ziti_write_req_s *ziti_write) {
-    uv_buf_t buf = uv_buf_init((char *) msg->msgbuf, msg->msgbuflen);
+    uv_buf_t buf = uv_buf_init((char *) msg->msgbufp, msg->msgbuflen);
     NEWP(req, uv_write_t);
     if (ziti_write == NULL) {
         ziti_write = calloc(1, sizeof(struct ziti_write_req_s));

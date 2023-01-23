@@ -189,7 +189,8 @@ message *message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE]) {
 message *message_new(pool_t *pool, uint32_t content, const hdr_t *hdrs, int nhdrs, size_t body_len) {
     uint32_t hdrs_len = 0;
     for (int i = 0; i < nhdrs; i++) {
-        hdrs_len += sizeof(uint32_t) * 2 + hdrs[i].length; // header id + val(length) + length
+        // wire format length: header id + val(length) + length
+        hdrs_len += sizeof(hdrs[i].header_id) + sizeof(hdrs[i].length) + hdrs[i].length;
     }
 
     size_t msgbuflen = HEADER_SIZE + hdrs_len + body_len;
