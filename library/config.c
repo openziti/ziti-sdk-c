@@ -70,6 +70,7 @@ int load_config(const char *cfgstr, ziti_config *cfg) {
     int rc = parse_ziti_config(cfg, cfgstr, strlen(cfgstr));
 
     if (rc < 0) {
+        ZITI_LOG(DEBUG, "trying to load config from file");
         rc = load_config_file(cfgstr, cfg);
     }
 

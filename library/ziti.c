@@ -425,7 +425,7 @@ static void ziti_init_async(ziti_context ztx, void *data) {
             ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
             time_str, start_time.tv_usec / 1000);
     ZTX_LOG(INFO, "using uv_mbed[%s], tls[%s]", uv_mbed_version(), ztx->tlsCtx->api->version ? ztx->tlsCtx->api->version() : "unspecified");
-    ZTX_LOG(INFO, "Loading from config[%s] controller[%s]", ztx->opts->config, ztx_controller(ztx));
+    ZTX_LOG(INFO, "Loading ziti context with controller[%s]", ztx_controller(ztx));
 
     if (ziti_ctrl_init(loop, &ztx->controller, ztx_controller(ztx), ztx->tlsCtx) != ZITI_OK) {
 	ZITI_LOG(ERROR, "Ziti controller init failed");
