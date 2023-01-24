@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -195,27 +195,25 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
         return ZITI_INVALID_CONFIG;
     }
 
-    ziti_config *cfg = NULL;
+    ziti_config cfg = {0};
     if (options->config != NULL) {
         TRY(ziti, load_config(options->config, &cfg));
     }
     if (options->controller == NULL) {
+        if (cfg.controller_url == NULL) {
+            ZITI_LOG(ERROR, "controller URL should be provided");
+            return ZITI_INVALID_CONFIG;
+        }
 
-	if (cfg->controller_url == NULL) {
-	    ZITI_LOG(ERROR, "controller URL should be provided");
-	    return ZITI_INVALID_CONFIG;
-	}
-
-        options->controller = strdup(cfg->controller_url);
+        options->controller = strdup(cfg.controller_url);
     }
 
     tls_context *tls = options->tls;
     if (tls == NULL) {
-        TRY(ziti, load_tls(cfg, &tls));
+        TRY(ziti, load_tls(&cfg, &tls));
     }
 
-    free_ziti_config(cfg);
-    free(cfg);
+    free_ziti_config(&cfg);
 
     NEWP(ctx, struct ziti_ctx);
     ctx->opts = options;
@@ -427,7 +425,7 @@ static void ziti_init_async(ziti_context ztx, void *data) {
             ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
             time_str, start_time.tv_usec / 1000);
     ZTX_LOG(INFO, "using uv_mbed[%s], tls[%s]", uv_mbed_version(), ztx->tlsCtx->api->version ? ztx->tlsCtx->api->version() : "unspecified");
-    ZTX_LOG(INFO, "Loading from config[%s] controller[%s]", ztx->opts->config, ztx_controller(ztx));
+    ZTX_LOG(INFO, "Loading ziti context with controller[%s]", ztx_controller(ztx));
 
     if (ziti_ctrl_init(loop, &ztx->controller, ztx_controller(ztx), ztx->tlsCtx) != ZITI_OK) {
 	ZITI_LOG(ERROR, "Ziti controller init failed");
