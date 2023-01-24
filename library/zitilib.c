@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -317,7 +317,7 @@ static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
     rc = ziti_init_opts(&wrap->opts, l);
     if (rc != ZITI_OK) {
         fail_future(f, rc);
-        ZITI_LOG(WARN, "identity file[%s] not found", (const char *) arg);
+        ZITI_LOG(WARN, "fail to load identity file[%s]: %d/%s", (const char *) arg, rc, ziti_errorstr(rc));
         free(wrap);
         return;
     }
