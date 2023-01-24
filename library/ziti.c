@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -195,27 +195,25 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
         return ZITI_INVALID_CONFIG;
     }
 
-    ziti_config *cfg = NULL;
+    ziti_config cfg = {0};
     if (options->config != NULL) {
         TRY(ziti, load_config(options->config, &cfg));
     }
     if (options->controller == NULL) {
+        if (cfg.controller_url == NULL) {
+            ZITI_LOG(ERROR, "controller URL should be provided");
+            return ZITI_INVALID_CONFIG;
+        }
 
-	if (cfg->controller_url == NULL) {
-	    ZITI_LOG(ERROR, "controller URL should be provided");
-	    return ZITI_INVALID_CONFIG;
-	}
-
-        options->controller = strdup(cfg->controller_url);
+        options->controller = strdup(cfg.controller_url);
     }
 
     tls_context *tls = options->tls;
     if (tls == NULL) {
-        TRY(ziti, load_tls(cfg, &tls));
+        TRY(ziti, load_tls(&cfg, &tls));
     }
 
-    free_ziti_config(cfg);
-    free(cfg);
+    free_ziti_config(&cfg);
 
     NEWP(ctx, struct ziti_ctx);
     ctx->opts = options;
