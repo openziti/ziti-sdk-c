@@ -40,7 +40,7 @@ SET(ZITI_INCLUDE_DIRS
     PUBLIC ../includes
     PRIVATE ../inc_internal
     PRIVATE ${PROJECT_BINARY_DIR}/include
-    PRIVATE ${uv-mbed_SOURCE_DIR}/src
+    PRIVATE ${tlsuv_SOURCE_DIR}/src
 )
 
 add_library(ziti     STATIC ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
@@ -145,10 +145,10 @@ if (NOT HAVE_LIBUV)
             COMPONENT ziti-sdk
             DESTINATION ${CMAKE_INSTALL_DOCDIR}/libuv)
 endif ()
-install(FILES ${uv-mbed_SOURCE_DIR}/LICENSE
+install(FILES ${tlsuv_SOURCE_DIR}/LICENSE
         COMPONENT ziti-sdk
-        DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_mbed)
-install(FILES ${ziti_DEPS_DIR}/uv-mbed-src/deps/uv_link_t/README.md
+        DESTINATION ${CMAKE_INSTALL_DOCDIR}/tlsuv)
+install(FILES ${ziti_DEPS_DIR}/tlsuv-src/deps/uv_link_t/README.md
         COMPONENT ziti-sdk
         DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
 install(FILES ${ziti_DEPS_DIR}/http_parser-src/LICENSE-MIT
