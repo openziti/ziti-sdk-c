@@ -825,12 +825,21 @@ extern int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_w
  * [on_close] is called after the bridge is terminated and ziti_connection was closed.
  *
  * @param conn
- * @param stream
+ * @param handle IO handle, must be a stream (UV_TCP, UV_PIPE, UV_TTY) or a UV_UDP handle
  * @param on_close
- * @return
+ * @return 0 on success, error code on failure
  */
 ZITI_FUNC
-extern int ziti_conn_bridge(ziti_connection conn, uv_stream_t *stream, uv_close_cb on_close);
+extern int ziti_conn_bridge(ziti_connection conn, uv_handle_t *handle, uv_close_cb on_close);
+
+/**
+ * set idle timeout on bridged connection.
+ * @param conn ziti_connection previously bridged wtih [ziti_conn_bridge] or [ziti_conn_bridge_fds]
+ * @param millis timeout after which bridge will be closed absent any traffic
+ * @return 0 on success, error code on failure
+ */
+ZITI_FUNC
+extern int ziti_conn_bridge_idle_timeout(ziti_connection conn, unsigned long millis);
 
 /**
  * @brief Bridge [ziti_connection] to given IO file descriptors.
