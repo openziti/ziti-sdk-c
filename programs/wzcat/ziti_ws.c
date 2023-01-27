@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <uv.h>
 #include <ziti/ziti.h>
-#include <uv_mbed/um_http_src_t.h>
+#include <tlsuv/http_src_t.h>
 #include <ziti/ziti_src.h>
-#include <uv_mbed/um_websocket.h>
+#include <tlsuv/websocket.h>
 #include "../../inc_internal/utils.h"
 #include "../../inc_internal/zt_internal.h"
 
@@ -51,14 +51,14 @@ static void on_ws_write(uv_write_t *wr, int status) {
 }
 
 static void input_read(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
-    um_websocket_t *ws = s->data;
+    tlsuv_websocket_t *ws = s->data;
     if (len > 0) {
         NEWP(wr, uv_write_t);
         uv_buf_t wb = uv_buf_init(buf->base, len);
         wr->data = buf->base;
-        um_websocket_write(wr, ws, &wb, on_ws_write);
+        tlsuv_websocket_write(wr, ws, &wb, on_ws_write);
     } else {
-        um_websocket_close(ws, NULL);
+        tlsuv_websocket_close(ws, NULL);
     }
 }
 
@@ -69,7 +69,7 @@ static void alloc(uv_handle_t* handle, size_t suggested_size, uv_buf_t* buf) {
 
 static uv_pipe_t input;
 static void on_connect(uv_connect_t *r, int status) {
-    um_websocket_t *ws = r->data;
+    tlsuv_websocket_t *ws = r->data;
     if (status == 0) {
         printf("websocket connected\n");
         uv_pipe_init(ws->loop, &input, 0);
@@ -87,7 +87,7 @@ static void on_ws_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
         printf("< %.*s", (int)len, buf->base);
     } else if (len < 0) {
         fprintf(stderr, "=========================\nwebsocket error[%zd]: %s\n", len, ziti_errorstr(len));
-        um_websocket_close((um_websocket_t *) s, (uv_close_cb) free);
+        tlsuv_websocket_close((tlsuv_websocket_t *) s, (uv_close_cb) free);
         uv_close((uv_handle_t *) &input, NULL);
         ziti_shutdown(ctx);
     }
@@ -95,14 +95,14 @@ static void on_ws_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
 
 static void init_cb(ziti_context ztx, const ziti_event_t *ev) {
     const char *service = ziti_app_ctx(ztx);
-    NEWP(src, um_src_t);
+    NEWP(src, tlsuv_src_t);
     ziti_src_init(ztx->loop, src, service, ztx);
 
-    NEWP(ws, um_websocket_t);
+    NEWP(ws, tlsuv_websocket_t);
     ws->data = ztx;
-    um_websocket_init_with_src(ztx->loop, ws, src);
+    tlsuv_websocket_init_with_src(ztx->loop, ws, src);
 
     NEWP(connr, uv_connect_t);
     connr->data = ws;
-    um_websocket_connect(connr, ws, "wss://echo.websocket.org", on_connect, on_ws_data);
+    tlsuv_websocket_connect(connr, ws, "wss://echo.websocket.org", on_connect, on_ws_data);
 }

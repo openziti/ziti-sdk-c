@@ -16,14 +16,14 @@ limitations under the License.
 
 #include <ziti/ziti.h>
 #include <ziti/ziti_src.h>
-#include <uv_mbed/uv_mbed.h>
-#include <uv_mbed/um_http.h>
+#include <tlsuv/tlsuv.h>
+#include <tlsuv/http.h>
 #include <string.h>
 
 static uv_loop_t *loop;
 static ziti_context ziti;
-static um_http_t clt;
-static um_src_t zs;
+static tlsuv_http_t clt;
+static tlsuv_src_t zs;
 
 #define DIE(v) do { \
 int code = (v);\
@@ -32,12 +32,12 @@ fprintf(stderr, "ERROR: " #v " => %s\n", ziti_errorstr(code));\
 exit(code);\
 }} while(0)
 
-void resp_cb(um_http_resp_t *resp, void *data) {
+void resp_cb(tlsuv_http_resp_t *resp, void *data) {
     if (resp->code < 0) {
         fprintf(stderr, "ERROR: %d(%s)", resp->code, uv_strerror(resp->code));
         exit(-1);
     }
-    um_http_hdr *h;
+    tlsuv_http_hdr *h;
     printf("Response (%d) >>>\nHeaders >>>\n", resp->code);
     LIST_FOREACH(h, &resp->headers, _next) {
         printf("\t%s: %s\n", h->name, h->value);
@@ -45,7 +45,7 @@ void resp_cb(um_http_resp_t *resp, void *data) {
     printf("\n");
 }
 
-void body_cb(um_http_req_t *req, const char *body, ssize_t len) {
+void body_cb(tlsuv_http_req_t *req, const char *body, ssize_t len) {
     if (len == UV_EOF) {
         printf("\n\n====================\nRequest completed\n");
         ziti_shutdown(ziti);
@@ -63,9 +63,9 @@ void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
 
     ziti = ztx;
     ziti_src_init(loop, &zs, "httpbin", ziti);
-    um_http_init_with_src(loop, &clt, "http://httpbin.org", (um_src_t *) &zs);
+    tlsuv_http_init_with_src(loop, &clt, "http://httpbin.org", (um_src_t *) &zs);
 
-    um_http_req_t *r = um_http_req(&clt, "GET", "/json", resp_cb, NULL);
+    tlsuv_http_req_t *r = tlsuv_http_req(&clt, "GET", "/json", resp_cb, NULL);
     r->resp.body_cb = body_cb;
 }
 
