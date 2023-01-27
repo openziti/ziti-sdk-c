@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -110,9 +110,9 @@ ZITI_FUNC extern const char *ziti_log_level_label();
 
 /**
  * can be used to turn on logging of uv-mbed library and send log messages into the ziti_log
- * Usage: <code>uv_mbed_set_debug(level, uv_mbed_logger);</code>
+ * Usage: <code>uv_mbed_set_debug(level, tlsuv_logger);</code>
  */
-ZITI_FUNC void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg);
+ZITI_FUNC void tlsuv_logger(int level, const char *file, unsigned int line, const char *msg);
 
 #ifdef __cplusplus
 }

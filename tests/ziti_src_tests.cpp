@@ -23,8 +23,8 @@ struct source_test {
     int err;
     uv_loop_t *loop;
     ziti_context ztx;
-    um_src_t src;
-    um_http_t clt;
+    tlsuv_src_t src;
+    tlsuv_http_t clt;
     int code;
     std::string body;
     bool done;
@@ -54,12 +54,12 @@ TEST_CASE("httpbin.ziti:ziti_src", "[integ]") {
                 if (t->done) break;
 
                 ziti_src_init(t->loop, &t->src, nullptr, ztx);
-                um_http_init_with_src(t->loop, &t->clt, "http://httpbin.ziti", &t->src);
-                um_http_req(&t->clt, "GET", "/json", [](um_http_resp_t *resp, void *ctx){
+                tlsuv_http_init_with_src(t->loop, &t->clt, "http://httpbin.ziti", &t->src);
+                tlsuv_http_req(&t->clt, "GET", "/json", [](tlsuv_http_resp_t *resp, void *ctx){
                     auto t = (source_test*)ctx;
                     t->code = resp->code;
 
-                    resp->body_cb = [](um_http_req_t *req, const char *body, ssize_t len){
+                    resp->body_cb = [](tlsuv_http_req_t *req, const char *body, ssize_t len){
                         auto t = (source_test*)req->data;
                         if (len > 0)
                             t->body.append(body, len);

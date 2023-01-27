@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,9 +28,9 @@ typedef struct ziti_link_s {
 } ziti_link_t;
 
 // connect and release method for um_http custom source link
-static int ziti_src_connect(um_src_t *src, const char *, const char *, um_src_connect_cb cb, void *conn_ctx);
+static int ziti_src_connect(tlsuv_src_t *src, const char *, const char *, tlsuv_src_connect_cb cb, void *conn_ctx);
 
-static void ziti_src_release(um_src_t *src);
+static void ziti_src_release(tlsuv_src_t *src);
 
 // uv_link methods
 static int zl_read_start(uv_link_t *l);
@@ -63,7 +63,7 @@ static const uv_link_methods_t ziti_link_methods = {
         .read_cb_override = NULL
 };
 
-int ziti_src_init(uv_loop_t *l, um_src_t *st, const char *svc, ziti_context ztx) {
+int ziti_src_init(uv_loop_t *l, tlsuv_src_t *st, const char *svc, ziti_context ztx) {
     st->loop = l;
     st->connect = ziti_src_connect;
     st->connect_cb = NULL;
@@ -72,8 +72,9 @@ int ziti_src_init(uv_loop_t *l, um_src_t *st, const char *svc, ziti_context ztx)
     uv_link_init(st->link, &ziti_link_methods);
 
     ziti_link_t *zl = (ziti_link_t *) st->link;
-    if (svc)
+    if (svc) {
         zl->service = strdup(svc);
+    }
     else
         zl->service = NULL;
     zl->ztx = ztx;
@@ -82,7 +83,7 @@ int ziti_src_init(uv_loop_t *l, um_src_t *st, const char *svc, ziti_context ztx)
 }
 
 static int
-ziti_src_connect(um_src_t *src, const char *host, const char *port, um_src_connect_cb cb, void *conn_ctx) {
+ziti_src_connect(tlsuv_src_t *src, const char *host, const char *port, tlsuv_src_connect_cb cb, void *conn_ctx) {
     ziti_link_t *zl = (ziti_link_t *) src->link;
 
     ziti_address a;
@@ -127,20 +128,20 @@ ziti_src_connect(um_src_t *src, const char *host, const char *port, um_src_conne
     return ziti_dial_with_options(zl->conn, zl->service, &opts, zlnf_conn_cb, zlnf_data_cb);
 }
 
-static void ziti_src_release(um_src_t *src) {
-    ziti_link_t *zl = (ziti_link_t *)src->link;
+static void ziti_src_release(tlsuv_src_t *src) {
+    ziti_link_t *zl = (ziti_link_t *) src->link;
     free(zl->service);
     free(src->link);
 }
 
 static void zlnf_conn_cb(ziti_connection conn, int status) {
-    um_src_t *src = (um_src_t *) ziti_conn_data(conn);
+    tlsuv_src_t *src = (tlsuv_src_t *) ziti_conn_data(conn);
     src->connect_cb(src, status, src->connect_ctx);
 }
 
 //static void link_close_cb(uv_link_t *l) {}
 static ssize_t zlnf_data_cb(ziti_connection conn, const uint8_t *data, ssize_t length) {
-    um_src_t *src = (um_src_t *) ziti_conn_data(conn);
+    tlsuv_src_t *src = (tlsuv_src_t *) ziti_conn_data(conn);
     uv_buf_t read_buf;
 
     if (length == ZITI_EOF) {

@@ -39,11 +39,11 @@ int parse_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **ze
     ecfg->jwt_signing_input = (unsigned char *) calloc(1, strlen(ecfg->raw_jwt) + 1);
     strncpy((char *) ecfg->jwt_signing_input, ecfg->raw_jwt, (dot2 - ecfg->raw_jwt));
     ZITI_LOG(DEBUG, "ecfg->jwt_signing_input is: \n%s", ecfg->jwt_signing_input);
-    um_base64url_decode(dot2 + 1, &ecfg->jwt_sig, &ecfg->jwt_sig_len);
+    tlsuv_base64url_decode(dot2 + 1, &ecfg->jwt_sig, &ecfg->jwt_sig_len);
 
     size_t header_len;
     char *header;
-    um_base64url_decode(ecfg->raw_jwt, &header, &header_len);
+    tlsuv_base64url_decode(ecfg->raw_jwt, &header, &header_len);
 
     *zejh = calloc(1, sizeof(ziti_enrollment_jwt_header));
     if (parse_ziti_enrollment_jwt_header(*zejh, header, header_len) < 0) {
@@ -55,7 +55,7 @@ int parse_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **ze
 
     size_t blen;
     char *body;
-    um_base64url_decode(dot1 + 1, &body, &blen);
+    tlsuv_base64url_decode(dot1 + 1, &body, &blen);
 
     *zej = calloc(1, sizeof(ziti_enrollment_jwt));
     if (parse_ziti_enrollment_jwt(*zej, body, blen) < 0) {

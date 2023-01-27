@@ -424,14 +424,15 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ZTX_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
             ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
             time_str, start_time.tv_usec / 1000);
-    ZTX_LOG(INFO, "using uv_mbed[%s], tls[%s]", uv_mbed_version(), ztx->tlsCtx->api->version ? ztx->tlsCtx->api->version() : "unspecified");
+    ZTX_LOG(INFO, "using tlsuv[%s], tls[%s]", tlsuv_version(),
+            ztx->tlsCtx->api->version ? ztx->tlsCtx->api->version() : "unspecified");
     ZTX_LOG(INFO, "Loading ziti context with controller[%s]", ztx_controller(ztx));
 
     if (ziti_ctrl_init(loop, &ztx->controller, ztx_controller(ztx), ztx->tlsCtx) != ZITI_OK) {
-	ZITI_LOG(ERROR, "Ziti controller init failed");
+        ZITI_LOG(ERROR, "Ziti controller init failed");
         ev.event.ctx.ctrl_status = ZITI_INVALID_CONFIG;
         ziti_send_event(ztx, &ev);
-	return;
+        return;
     }
 
     ziti_ctrl_set_redirect_cb(&ztx->controller, on_ctrl_change, ztx);

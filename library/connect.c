@@ -15,8 +15,6 @@
 #include <stdlib.h>
 #include <posture.h>
 
-#include "zt_internal.h"
-#include "utils.h"
 #include "endian_internal.h"
 #include "win32_compat.h"
 

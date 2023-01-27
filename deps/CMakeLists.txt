@@ -2,12 +2,12 @@ project(ziti-deps)
 
 include(FetchContent)
 
-FetchContent_Declare(uv-mbed
-        GIT_REPOSITORY https://github.com/openziti/uv-mbed.git
-        GIT_TAG v0.14.13
+FetchContent_Declare(tlsuv
+        GIT_REPOSITORY https://github.com/openziti/tlsuv.git
+        GIT_TAG v0.20.0
         )
-set(ENABLE_UM_TESTS OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(uv-mbed)
+set(ENABLE_TLSUV_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(tlsuv)
 
 
 FetchContent_Declare(subcommand

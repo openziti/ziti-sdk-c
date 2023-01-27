@@ -40,7 +40,7 @@ SET(ZITI_INCLUDE_DIRS
     PUBLIC ../includes
     PRIVATE ../inc_internal
     PRIVATE ${PROJECT_BINARY_DIR}/include
-    PRIVATE ${uv-mbed_SOURCE_DIR}/src
+    PRIVATE ${tlsuv_SOURCE_DIR}/src
 )
 
 add_library(ziti     STATIC ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
@@ -64,16 +64,16 @@ set_target_properties(ziti_dll PROPERTIES IMPORT_SUFFIX ".imp.lib")
 
 set_property(TARGET ziti ziti_dll PROPERTY C_STANDARD 11)
 
-target_sources(ziti     PRIVATE ${ZITI_PRIVATE_SRC_FILES})
+target_sources(ziti PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 target_sources(ziti_dll PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 
-target_link_libraries(ziti     PUBLIC uv_mbed sodium)
-target_link_libraries(ziti_dll PUBLIC uv_mbed sodium)
+target_link_libraries(ziti PUBLIC tlsuv sodium)
+target_link_libraries(ziti_dll PUBLIC tlsuv sodium)
 
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     target_link_libraries(ziti PUBLIC atomic)
     target_link_libraries(ziti_dll PUBLIC atomic)
-endif()
+endif ()
 
 if (NOT WIN32)
     target_link_libraries(ziti PUBLIC m)
@@ -145,10 +145,10 @@ if (NOT HAVE_LIBUV)
             COMPONENT ziti-sdk
             DESTINATION ${CMAKE_INSTALL_DOCDIR}/libuv)
 endif ()
-install(FILES ${uv-mbed_SOURCE_DIR}/LICENSE
+install(FILES ${tlsuv_SOURCE_DIR}/LICENSE
         COMPONENT ziti-sdk
-        DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_mbed)
-install(FILES ${ziti_DEPS_DIR}/uv-mbed-src/deps/uv_link_t/README.md
+        DESTINATION ${CMAKE_INSTALL_DOCDIR}/tlsuv)
+install(FILES ${ziti_DEPS_DIR}/tlsuv-src/deps/uv_link_t/README.md
         COMPONENT ziti-sdk
         DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
 install(FILES ${ziti_DEPS_DIR}/http_parser-src/LICENSE-MIT
