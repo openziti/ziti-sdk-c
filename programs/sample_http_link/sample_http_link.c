@@ -63,7 +63,7 @@ void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
 
     ziti = ztx;
     ziti_src_init(loop, &zs, "httpbin", ziti);
-    tlsuv_http_init_with_src(loop, &clt, "http://httpbin.org", (um_src_t *) &zs);
+    tlsuv_http_init_with_src(loop, &clt, "http://httpbin.org", (tlsuv_src_t *) &zs);
 
     tlsuv_http_req_t *r = tlsuv_http_req(&clt, "GET", "/json", resp_cb, NULL);
     r->resp.body_cb = body_cb;
