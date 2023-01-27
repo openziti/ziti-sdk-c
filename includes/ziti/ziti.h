@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@
 #define ZITI_ZITI_H
 
 #include <stdint.h>
+#include <tlsuv/tlsuv.h>
 #include <uv.h>
-#include <uv_mbed/tls_engine.h>
 #include "errors.h"
 
 #include "externs.h"

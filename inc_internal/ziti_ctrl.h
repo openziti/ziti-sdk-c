@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2022.  NetFoundry Inc.
+// Copyright (c) 2019-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 #ifndef ZITI_SDK_CONTROLLER_H
 #define ZITI_SDK_CONTROLLER_H
 
-#include <uv_mbed/um_http.h>
+#include <tlsuv/http.h>
 #include "internal_model.h"
 #include "ziti/ziti_model.h"
 #include "zt_internal.h"
@@ -36,7 +36,7 @@ typedef void (*ziti_ctrl_redirect_cb)(const char *new_address, void *ctx);
 
 typedef struct ziti_controller_s {
     uv_loop_t *loop;
-    um_http_t *client;
+    tlsuv_http_t *client;
     char *url;
 
     // tuning options

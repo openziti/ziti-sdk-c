@@ -133,9 +133,9 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     LIST_INIT(&ch->waiters);
 
     ch->connection = calloc(1, sizeof(*ch->connection));
-    uv_mbed_init(ch->loop, ch->connection, tls);
-    uv_mbed_keepalive(ch->connection, true, ctx->opts->router_keepalive);
-    uv_mbed_nodelay(ch->connection, true);
+    tlsuv_stream_init(ch->loop, ch->connection, tls);
+    tlsuv_stream_keepalive(ch->connection, true, ctx->opts->router_keepalive);
+    tlsuv_stream_nodelay(ch->connection, true);
     ch->connection->data = ch;
 
     ch->timer = calloc(1, sizeof(uv_timer_t));
@@ -176,9 +176,9 @@ int ziti_close_channels(struct ziti_ctx *ztx, int err) {
 }
 
 static void close_handle_cb(uv_handle_t *h) {
-    uv_mbed_t *mbed = (uv_mbed_t *) h;
-    uv_mbed_free(mbed);
-    free(mbed);
+    tlsuv_stream_t *tls = (tlsuv_stream_t *) h;
+    tlsuv_stream_free(tls);
+    free(tls);
 }
 
 int ziti_channel_close(ziti_channel_t *ch, int err) {
@@ -192,7 +192,7 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
         uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
         ch->timer = NULL;
         ch->connection->data = NULL;
-        uv_mbed_close(ch->connection, close_handle_cb);
+        tlsuv_stream_close(ch->connection, close_handle_cb);
 
 
         ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ctx);
@@ -347,7 +347,7 @@ int ziti_channel_send_message(ziti_channel_t *ch, message *msg, struct ziti_writ
 
     req->data = ziti_write;
     ziti_write->message = msg;
-    int rc = uv_mbed_write(req, ch->connection, &buf, on_channel_send);
+    int rc = tlsuv_stream_write(req, ch->connection, &buf, on_channel_send);
     if (rc != 0) {
         on_channel_send(req, rc);
     }
@@ -566,7 +566,7 @@ static void latency_timeout(uv_timer_t *t) {
         ch->latency_waiter = NULL;
         ch->latency = UINT64_MAX;
 
-        uv_mbed_close(ch->connection, NULL);
+        tlsuv_stream_close(ch->connection, NULL);
         on_channel_close(ch, ZITI_TIMEOUT, UV_ETIMEDOUT);
     }
 }
@@ -623,7 +623,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
 
         ch->state = Disconnected;
         ch->notify_cb(ch, EdgeRouterUnavailable, ch->notify_ctx);
-        uv_mbed_close(ch->connection, NULL);
+        tlsuv_stream_close(ch->connection, NULL);
         reconnect_channel(ch, false);
     }
 
@@ -662,7 +662,7 @@ static void ch_connect_timeout(uv_timer_t *t) {
         CH_LOG(WARN, "diagnostics: no conn_req in connect timeout");
     }
     reconnect_channel(ch, false);
-    uv_mbed_close(ch->connection, NULL);
+    tlsuv_stream_close(ch->connection, NULL);
 }
 
 static void reconnect_cb(uv_timer_t *t) {
@@ -683,7 +683,7 @@ static void reconnect_cb(uv_timer_t *t) {
 
         ch->connection->data = ch;
         CH_LOG(DEBUG, "connecting to %s:%d", ch->host, ch->port);
-        int rc = uv_mbed_connect(req, ch->connection, ch->host, ch->port, on_channel_connect_internal);
+        int rc = tlsuv_stream_connect(req, ch->connection, ch->host, ch->port, on_channel_connect_internal);
         if (rc != 0) {
             on_channel_connect_internal(req, rc);
         }
@@ -765,7 +765,7 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
 }
 
 static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-    uv_mbed_t *mbed = (uv_mbed_t *) handle;
+    tlsuv_stream_t *mbed = (tlsuv_stream_t *) handle;
     ziti_channel_t *ch = mbed->data;
     if (ch->in_next || pool_has_available(ch->in_msg_pool)) {
         buf->base = (char *) malloc(suggested_size);
@@ -784,7 +784,7 @@ static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_
 }
 
 static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
-    uv_mbed_t *mbed = (uv_mbed_t *) s;
+    tlsuv_stream_t *mbed = (tlsuv_stream_t *) s;
     ziti_channel_t *ch = mbed->data;
 
     if (len < 0) {
@@ -824,13 +824,13 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
     if (status == 0) {
         if (ch->ctx->api_session != NULL && ch->ctx->api_session->token != NULL) {
             CH_LOG(DEBUG, "connected");
-            uv_mbed_t *mbed = (uv_mbed_t *) req->handle;
-            uv_mbed_read(mbed, channel_alloc_cb, on_channel_data);
+            tlsuv_stream_t *mbed = (tlsuv_stream_t *) req->handle;
+            tlsuv_stream_read(mbed, channel_alloc_cb, on_channel_data);
             ch->reconnect_count = 0;
             send_hello(ch, ch->ctx->api_session);
         } else {
             CH_LOG(WARN, "api session invalidated, while connecting");
-            uv_mbed_close(ch->connection, NULL);
+            tlsuv_stream_close(ch->connection, NULL);
             reconnect_channel(ch, false);
         }
     } else {

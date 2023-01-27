@@ -17,7 +17,7 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <uv_mbed/queue.h>
+#include <tlsuv/queue.h>
 #include <assert.h>
 
 struct pool_obj_s {

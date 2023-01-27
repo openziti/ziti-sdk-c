@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #include <uv.h>
-#include <uv_mbed/uv_mbed.h>
+#include <tlsuv/tlsuv.h>
 #include <ziti/ziti_model.h>
 #include <ziti/ziti_log.h>
 #include <stdarg.h>
@@ -97,7 +97,7 @@ const char* ziti_git_commit() {
     return to_str(ZITI_COMMIT);
 }
 
-static const char * UV_MBED_MODULE = "uv-mbed";
+static const char *TLSUV_MODULE = "tlsuv";
 
 static model_map log_levels;
 static int ziti_log_lvl = ZITI_LOG_DEFAULT_LEVEL;
@@ -159,8 +159,8 @@ void ziti_log_set_level(int level, const char *marker) {
     } else {
         if (marker) {
             model_map_set(&log_levels, marker, (void *) (uintptr_t) level);
-            if (strcmp(marker, UV_MBED_MODULE) == 0) {
-                uv_mbed_set_debug(level, uv_mbed_logger);
+            if (strcmp(marker, TLSUV_MODULE) == 0) {
+                tlsuv_set_debug(level, tlsuv_logger);
             }
         } else {
             ziti_log_lvl = level;
@@ -219,9 +219,9 @@ void ziti_log_set_logger(log_writer log) {
 
 static void init_uv_mbed_log() {
     char *lvl;
-    if ((lvl = getenv("UV_MBED_DEBUG")) != NULL) {
+    if ((lvl = getenv("TLSUV_DEBUG")) != NULL) {
         int l = (int) strtol(lvl, NULL, 10);
-        uv_mbed_set_debug(l, uv_mbed_logger);
+        tlsuv_set_debug(l, tlsuv_logger);
     }
 }
 
@@ -261,16 +261,17 @@ static void init_debug(uv_loop_t *loop) {
         if (eq) {
             l = (int) strtol(eq + 1, NULL, 10);
             model_map_set_key(&log_levels, lvl, eq - lvl, (void *) (intptr_t) l);
-        } else {
+        }
+        else {
             l = (int) strtol(lvl, NULL, 10);
             ziti_log_lvl = l;
         }
     }
     model_list_clear(&levels, free);
 
-    int uv_mbed_level = (int) (intptr_t) model_map_get(&log_levels, UV_MBED_MODULE);
-    if (uv_mbed_level > 0) {
-        uv_mbed_set_debug(uv_mbed_level, uv_mbed_logger);
+    int tlsuv_level = (int) (intptr_t) model_map_get(&log_levels, TLSUV_MODULE);
+    if (tlsuv_level > 0) {
+        tlsuv_set_debug(tlsuv_level, tlsuv_logger);
     }
 
     ziti_debug_out = stderr;
@@ -352,8 +353,8 @@ static void default_log_writer(int level, const char *loc, const char *msg, size
     fprintf(ziti_debug_out, "(%u)[%s] %7s %s %.*s\n", log_pid, elapsed, level_labels[level], loc, (unsigned int) msglen, msg);
 }
 
-void uv_mbed_logger(int level, const char *file, unsigned int line, const char *msg) {
-    ziti_logger(level, UV_MBED_MODULE, file, line, NULL, "%s", msg);
+void tlsuv_logger(int level, const char *file, unsigned int line, const char *msg) {
+    ziti_logger(level, TLSUV_MODULE, file, line, NULL, "%s", msg);
 }
 
 static void flush_log(uv_prepare_t *p) {

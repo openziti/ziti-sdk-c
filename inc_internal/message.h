@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <uv_mbed/queue.h>
+#include <tlsuv/queue.h>
 
 #define HEADER_SIZE 20
 

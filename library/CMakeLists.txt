@@ -64,16 +64,16 @@ set_target_properties(ziti_dll PROPERTIES IMPORT_SUFFIX ".imp.lib")
 
 set_property(TARGET ziti ziti_dll PROPERTY C_STANDARD 11)
 
-target_sources(ziti     PRIVATE ${ZITI_PRIVATE_SRC_FILES})
+target_sources(ziti PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 target_sources(ziti_dll PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 
-target_link_libraries(ziti     PUBLIC uv_mbed sodium)
-target_link_libraries(ziti_dll PUBLIC uv_mbed sodium)
+target_link_libraries(ziti PUBLIC tlsuv sodium)
+target_link_libraries(ziti_dll PUBLIC tlsuv sodium)
 
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     target_link_libraries(ziti PUBLIC atomic)
     target_link_libraries(ziti_dll PUBLIC atomic)
-endif()
+endif ()
 
 if (NOT WIN32)
     target_link_libraries(ziti PUBLIC m)

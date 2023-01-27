@@ -17,8 +17,8 @@
 
 
 #include <stdbool.h>
-#include <uv_mbed/uv_mbed.h>
-#include <uv_mbed/queue.h>
+#include <tlsuv/tlsuv.h>
+#include <tlsuv/queue.h>
 
 #include <ziti/ziti.h>
 #include "buffer.h"
@@ -78,7 +78,7 @@ typedef struct ziti_channel {
 
     uint32_t id;
     char token[UUID_STR_LEN];
-    uv_mbed_t *connection;
+    tlsuv_stream_t *connection;
 
     // multi purpose timer:
     // - reconnect timeout if not connected

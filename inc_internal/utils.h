@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 #include <uv.h>
 #include <http_parser.h>
 #include <stdlib.h>
-#include <uv_mbed/queue.h>
+#include <tlsuv/queue.h>
 #include <ziti/ziti_log.h>
 #include "ziti/model_collections.h"
 
