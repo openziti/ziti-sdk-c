@@ -16,6 +16,7 @@
 #include <posture.h>
 
 #include "endian_internal.h"
+#include "win32_compat.h"
 
 static const char *INVALID_SESSION = "Invalid Session";
 static const int MAX_CONNECT_RETRY = 3;
