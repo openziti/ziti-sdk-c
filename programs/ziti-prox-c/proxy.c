@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -66,6 +66,7 @@ struct binding {
     char *service_name;
     ziti_connection conn;
     struct addrinfo *addr;
+    int type;
 };
 
 struct listener {
@@ -156,7 +157,7 @@ static void debug_dump(struct proxy_app_ctx *app_ctx) {
         uv_getnameinfo(global_loop, &name, NULL, b->addr->ai_addr, NI_NUMERICHOST);
         printf("bound to service[%s] -> %s:%s\n", b->service_name, name.host, name.service);
     }
-    ziti_dump(app_ctx->ziti, fprintf, stdout);
+    ziti_dump(app_ctx->ziti, (int (*)(void *, const char *, ...)) fprintf, stdout);
 }
 
 static void reporter_cb(uv_timer_t *t) {
@@ -220,7 +221,7 @@ static void on_ziti_close(ziti_connection conn) {
 }
 
 static void on_bridge_close(uv_handle_t *handle) {
-    uv_close(handle, free);
+    uv_close(handle, (uv_close_cb) free);
 }
 
 void on_ziti_connect(ziti_connection conn, int status) {
@@ -311,9 +312,18 @@ static void binding_listen_cb(ziti_connection srv, int status) {
 }
 
 static void on_ziti_accept(ziti_connection clt, int status) {
-    uv_stream_t *s = ziti_conn_data(clt);
+    uv_handle_t *s = ziti_conn_data(clt);
     if (status == ZITI_OK) {
-        ziti_conn_bridge(clt, s, on_bridge_close);
+        if (ziti_conn_bridge(clt, s, on_bridge_close) == 0) {
+            if (s->type == UV_UDP) {
+                ziti_conn_bridge_idle_timeout(clt, 10000);
+            }
+        }
+        else {
+            ZITI_LOG(WARN, "failed to bridge ziti connection and backend handle");
+            ziti_close(clt, NULL);
+            uv_close(s, (uv_close_cb) free);
+        }
     } else {
         ziti_close(clt, NULL);
         uv_close(s, on_bridge_close);
@@ -336,15 +346,39 @@ static void binding_client_cb(ziti_connection srv, ziti_connection clt, int stat
     struct binding *b = ziti_conn_data(srv);
 
     if (status == ZITI_OK) {
-        NEWP(tcp, uv_tcp_t);
-        uv_tcp_init(global_loop, tcp);
+        switch (b->addr->ai_protocol) {
+            case IPPROTO_TCP: {
+                NEWP(tcp, uv_tcp_t);
+                uv_tcp_init(global_loop, tcp);
 
-        NEWP(conn_req, uv_connect_t);
-        conn_req->data = clt;
-        if (uv_tcp_connect(conn_req, tcp, b->addr->ai_addr, on_tcp_connect) != 0) {
-            ziti_close(clt, NULL);
-            uv_close((uv_handle_t *) tcp, (uv_close_cb) free);
-            free(conn_req);
+                NEWP(conn_req, uv_connect_t);
+                conn_req->data = clt;
+                if (uv_tcp_connect(conn_req, tcp, b->addr->ai_addr, on_tcp_connect) != 0) {
+                    ziti_close(clt, NULL);
+                    uv_close((uv_handle_t *) tcp, (uv_close_cb) free);
+                    free(conn_req);
+                }
+                break;
+            }
+            case IPPROTO_UDP: {
+                NEWP(udp, uv_udp_t);
+                uv_udp_init(global_loop, udp);
+                int rc = uv_udp_connect(udp, b->addr->ai_addr);
+                if (rc != 0) {
+                    ZITI_LOG(WARN, "failed to connect UDP handle: %d/%s", rc, uv_strerror(rc));
+                    ziti_close(clt, NULL);
+                }
+                else {
+                    ziti_conn_set_data(clt, udp);
+                    ziti_accept(clt, on_ziti_accept, NULL);
+                }
+                break;
+            }
+
+            default:
+                ziti_close(clt, NULL);
+                ZITI_LOG(WARN, "unknown protocol for bound service[%s]", b->service_name);
+                break;
         }
     } else {
         ZITI_LOG(WARN, "stopping serving[%s] due to %d/%s", b->service_name, status, ziti_errorstr(status));
@@ -608,11 +642,12 @@ CommandLine main_cmd;
 
 int run_opts(int argc, char **argv) {
     static struct option long_options[] = {
-            {"debug",   optional_argument, NULL, 'd'},
-            {"config",  required_argument, NULL, 'c'},
-            {"metrics", optional_argument, NULL, 'm'},
-            {"bind",    required_argument, NULL, 'b'},
-            {NULL, 0,                      NULL, 0}
+            {"debug",    optional_argument, NULL, 'd'},
+            {"config",   required_argument, NULL, 'c'},
+            {"metrics",  optional_argument, NULL, 'm'},
+            {"bind",     required_argument, NULL, 'b'},
+            {"bind-udp", required_argument, NULL, 'B'},
+            {NULL, 0,                       NULL, 0}
     };
 
     int c, option_index, errors = 0;
@@ -621,14 +656,15 @@ int run_opts(int argc, char **argv) {
 
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "b:c:d:m:",
+    while ((c = getopt_long(argc, argv, "b:B:c:d:m:",
                             long_options, &option_index)) != -1) {
         switch (c) {
             case 'd':
                 debug_set = true;
                 if (optarg) {
                     debug_level = (int) strtol(optarg, NULL, 10);
-                } else {
+                }
+                else {
                     debug_level++;
                 }
                 break;
@@ -645,8 +681,9 @@ int run_opts(int argc, char **argv) {
                 break;
 
             case 'b':
+            case 'B':
                 if (!optarg) {
-                    fprintf(stderr, "-b|--bind option requires <service:address> argument\n");
+                    fprintf(stderr, "-b|--bind|-B|--bind-udp option requires <service:address> argument\n");
                     errors++;
                     break;
                 }
@@ -655,7 +692,7 @@ int run_opts(int argc, char **argv) {
                 str_split(optarg, ":", &args);
                 size_t args_len = model_list_size(&args);
                 if (args_len < 2) {
-                    fprintf(stderr, "-b|--bind option should be <service:host:port>\n");
+                    fprintf(stderr, "-b|--bind|-B|--bind-udp option should be <service:host:port>\n");
                     errors++;
                     break;
                 }
@@ -671,8 +708,10 @@ int run_opts(int argc, char **argv) {
                     }
                     it = model_list_it_next(it);
                     char *port = model_list_it_element(it);
-
-                    int rc = getaddrinfo(host, port, NULL, &b->addr);
+                    struct addrinfo hints = {
+                            .ai_socktype = c == 'B' ? SOCK_DGRAM : SOCK_STREAM
+                    };
+                    int rc = getaddrinfo(host, port, &hints, &b->addr);
                     if (rc != 0) {
                         errors++;
                         fprintf(stderr, "failed to resolve %s:%s for service[%s] binding", host, port, b->service_name);
