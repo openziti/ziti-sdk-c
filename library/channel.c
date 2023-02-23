@@ -30,6 +30,7 @@
 #define LATENCY_INTERVAL (60*1000) /* 1 minute */
 #define BACKOFF_TIME 5000 /* 5 seconds */
 #define MAX_BACKOFF 5 /* max reconnection timeout: (1 << MAX_BACKOFF) * BACKOFF_TIME = 160 seconds */
+#define WRITE_DELAY_WARNING (1000)
 
 #define POOLED_MESSAGE_SIZE (32 * 1024)
 #define INBOUND_POOL_SIZE (32)
@@ -316,22 +317,37 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
 }
 
 void on_channel_send(uv_write_t *w, int status) {
-    struct ziti_write_req_s *ziti_write = w->data;
+    struct ziti_write_req_s *zwreq = w->data;
 
-    ziti_channel_t *ch = ziti_write->ch;
+    ziti_channel_t *ch = zwreq->ch;
+    uint64_t now = uv_now(ch->loop);
+
+    // time to get on-wire
+    uint64_t write_delay = now - zwreq->start_ts;
+    if (write_delay > WRITE_DELAY_WARNING && ch->last_write_delay < WRITE_DELAY_WARNING) {
+        CH_LOG(WARN, "write delay = %ld.%03ld q=%ld qs=%ld",
+               write_delay/1000L, write_delay % 1000L, ch->out_q, ch->out_q_bytes);
+    } else {
+        CH_LOG(TRACE, "write delay = %ld.%03ld q=%ld qs=%ld",
+               write_delay / 1000L, write_delay % 1000L, ch->out_q, ch->out_q_bytes);
+    }
+    ch->last_write = now;
+    ch->last_write_delay = write_delay;
+    ch->out_q--;
+    ch->out_q_bytes -= zwreq->message->msgbuflen;
+
+    pool_return_obj(zwreq->message);
+    zwreq->message = NULL;
+
+    if (zwreq->conn) {
+        on_write_completed(zwreq->conn, zwreq, status);
+    } else {
+        free(zwreq);
+    }
+
     if (status < 0) {
         CH_LOG(ERROR, "write failed [%d/%s]", status, uv_strerror(status));
         on_channel_close(ch, ZITI_CONN_CLOSED, status);
-    }
-
-    pool_return_obj(ziti_write->message);
-    ziti_write->message = NULL;
-
-    if (ziti_write->conn) {
-        on_write_completed(ziti_write->conn, ziti_write, status);
-    }
-    else {
-        free(ziti_write);
     }
 
     free(w);
@@ -347,6 +363,9 @@ int ziti_channel_send_message(ziti_channel_t *ch, message *msg, struct ziti_writ
 
     req->data = ziti_write;
     ziti_write->message = msg;
+    ziti_write->start_ts = uv_now(ch->loop);
+    ch->out_q++;
+    ch->out_q_bytes += buf.len;
     int rc = tlsuv_stream_write(req, ch->connection, &buf, on_channel_send);
     if (rc != 0) {
         on_channel_send(req, rc);
@@ -560,7 +579,7 @@ static void latency_timeout(uv_timer_t *t) {
         uv_timer_start(t, latency_timeout, LATENCY_TIMEOUT, 0);
     }
     else {
-        CH_LOG(ERROR, "no read traffic on channel since before latency probe was sent, closing channel");
+        CH_LOG(ERROR, "no read/write traffic on channel since before latency probe was sent, closing channel");
 
         ziti_channel_remove_waiter(ch, ch->latency_waiter);
         ch->latency_waiter = NULL;
@@ -776,7 +795,7 @@ static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_
             buf->len = suggested_size;
         }
     } else {
-        ZITI_LOG(WARN, "can't alloc message");
+        CH_LOG(WARN, "can't alloc message");
 
         buf->len = 0;
         buf->base = NULL;

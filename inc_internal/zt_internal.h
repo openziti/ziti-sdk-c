@@ -90,6 +90,9 @@ typedef struct ziti_channel {
     struct waiter_s *latency_waiter;
     uint64_t last_read;
     uint64_t last_write;
+    uint64_t last_write_delay;
+    uint64_t out_q;
+    uint64_t out_q_bytes;
 
     ch_state state;
     uint32_t reconnect_count;
@@ -121,6 +124,7 @@ struct ziti_write_req_s {
     struct message_s *message;
     ziti_write_cb cb;
     uv_timer_t *timeout;
+    uint64_t start_ts;
 
     void *ctx;
 
