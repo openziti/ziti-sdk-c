@@ -290,6 +290,9 @@ ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
 
 void bridge_alloc(uv_handle_t *h, size_t req, uv_buf_t *b) {
     struct ziti_bridge_s *br = h->data;
+
+    ZITI_LOG(TRACE, "alloc ziti_conn[%d.%d]: %s", br->conn->ziti_ctx->id, br->conn->conn_id, br->input_throttle ? "stalled" : "live");
+
     b->base = pool_alloc_obj(br->input_pool);
     b->len = pool_obj_size(b->base);
     if (b->base != NULL) {
@@ -302,8 +305,19 @@ void bridge_alloc(uv_handle_t *h, size_t req, uv_buf_t *b) {
 
 static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
     pool_return_obj(ctx);
+    struct ziti_bridge_s *bridge = ziti_conn_data(conn);
+
     if (status < ZITI_OK) {
-        close_bridge(ziti_conn_data(conn));
+        close_bridge(bridge);
+    } else {
+        if (bridge->input_throttle) {
+            bridge->input_throttle = false;
+            if (bridge->input->type == UV_UDP) {
+                uv_udp_recv_start((uv_udp_t *) bridge->input, bridge_alloc, on_udp_input);
+            } else {
+                uv_read_start((uv_stream_t *) bridge->input, bridge_alloc, on_input);
+            }
+        }
     }
 }
 
@@ -322,6 +336,7 @@ void on_udp_input(uv_udp_t *udp, ssize_t len, const uv_buf_t *b, const struct so
             if (!br->input_throttle) {
                 ZITI_LOG(TRACE, "stalled ziti_conn[%d.%d]", br->conn->ziti_ctx->id, br->conn->conn_id);
                 br->input_throttle = true;
+                uv_udp_recv_stop(udp);
             }
         } else if (len < 0) {
             ZITI_LOG(WARN, "err = %zd/%s", len, uv_strerror(len));
@@ -345,6 +360,7 @@ void on_input(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
             if (!br->input_throttle) {
                 ZITI_LOG(TRACE, "stalled ziti_conn[%d.%d]", br->conn->ziti_ctx->id, br->conn->conn_id);
                 br->input_throttle = true;
+                uv_read_stop(s);
             }
         } else if (len == UV_EOF) {
             br->input_eof = true;
