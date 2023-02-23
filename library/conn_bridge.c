@@ -309,7 +309,7 @@ static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
 
     if (status < ZITI_OK) {
         close_bridge(bridge);
-    } else {
+    } else if (bridge->input) {
         if (bridge->input_throttle) {
             bridge->input_throttle = false;
             if (bridge->input->type == UV_UDP) {
