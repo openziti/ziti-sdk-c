@@ -187,8 +187,8 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
     if (ch->state != Closed) {
         CH_LOG(INFO, "closing[%s]", ch->name);
 
-        ch->state = Closed;
         on_channel_close(ch, err, 0);
+        ch->state = Closed;
 
         uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
         ch->timer = NULL;
@@ -738,12 +738,14 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
 static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
     ziti_context ztx = ch->ctx;
 
-    if (ch->state != Closed) {
-        if (ch->state == Connected) {
-            ch->notify_cb(ch, EdgeRouterDisconnected, ch->notify_ctx);
-        }
-        ch->state = Disconnected;
+    if (ch->state == Closed || ch->state == Disconnected) {
+        return;
     }
+
+    if (ch->state == Connected) {
+        ch->notify_cb(ch, EdgeRouterDisconnected, ch->notify_ctx);
+    }
+    ch->state = Disconnected;
 
     ch->latency = UINT64_MAX;
     if (uv_is_active((const uv_handle_t *) &ch->timer)) {
