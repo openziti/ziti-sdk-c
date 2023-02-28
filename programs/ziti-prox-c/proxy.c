@@ -336,7 +336,11 @@ static void on_tcp_connect(uv_connect_t *conn_req, int status) {
         ziti_conn_set_data(clt, conn_req->handle);
         ziti_accept(clt, on_ziti_accept, NULL);
     } else {
-        uv_close((uv_handle_t *) conn_req->handle, on_bridge_close);
+        struct binding *b = conn_req->handle->data;
+        uv_getnameinfo_t name;
+        uv_getnameinfo(global_loop, &name, NULL, b->addr->ai_addr, NI_NUMERICHOST);
+        ZITI_LOG(WARN, "failed to establish connection to tcp:%s:%s", name.host, name.service);
+        uv_close((uv_handle_t *) conn_req->handle, (uv_close_cb) free);
         ziti_close(clt, NULL);
     }
     free(conn_req);
@@ -350,6 +354,7 @@ static void binding_client_cb(ziti_connection srv, ziti_connection clt, int stat
             case IPPROTO_TCP: {
                 NEWP(tcp, uv_tcp_t);
                 uv_tcp_init(global_loop, tcp);
+                tcp->data = b;
 
                 NEWP(conn_req, uv_connect_t);
                 conn_req->data = clt;
