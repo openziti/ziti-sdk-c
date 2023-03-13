@@ -186,6 +186,7 @@ int close_conn_internal(struct ziti_conn *conn) {
 
         LIST_REMOVE(conn, next);
         FREE(conn->rx);
+        FREE(conn->tx);
 
         if (conn->flusher) {
             conn->flusher->data = NULL;
