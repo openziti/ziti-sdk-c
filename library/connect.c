@@ -635,14 +635,19 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
     send_message(conn, m, req);
 }
 
-static void ziti_disconnect_cb(ziti_connection conn, ssize_t status, void *ctx) {
+static void on_disconnect(ziti_connection conn, ssize_t status, void *ctx) {
     conn_set_state(conn, conn->close ? Closed : Disconnected);
+    ziti_channel_t *ch = conn->channel;
+    if (ch) {
+        ziti_channel_rem_receiver(ch, conn->conn_id);
+        conn->channel = NULL;
+    }
 }
 
 static void ziti_disconnect_async(struct ziti_conn *conn) {
     if (conn->channel == NULL) {
         CONN_LOG(DEBUG, "no channel -- no disconnect");
-        ziti_disconnect_cb(conn, 0, NULL);
+        on_disconnect(conn, 0, NULL);
     }
 
     switch (conn->state) {
@@ -655,7 +660,7 @@ static void ziti_disconnect_async(struct ziti_conn *conn) {
             message *m = create_message(conn, ContentTypeStateClosed, 0);
             NEWP(wr, struct ziti_write_req_s);
             wr->conn = conn;
-            wr->cb = ziti_disconnect_cb;
+            wr->cb = on_disconnect;
             conn->write_reqs++;
             send_message(conn, m, wr);
             break;
@@ -663,7 +668,7 @@ static void ziti_disconnect_async(struct ziti_conn *conn) {
 
         default:
             CONN_LOG(DEBUG, "can't send StateClosed in state[%s]", conn_state_str[conn->state]);
-            ziti_disconnect_cb(conn, 0, NULL);
+            on_disconnect(conn, 0, NULL);
     }
 }
 
@@ -1410,6 +1415,8 @@ static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {
 
         CONN_LOG(DEBUG, "closed due to err[%d](%s)", code, ziti_errorstr(code));
         conn_state st = conn->state;
+        on_disconnect(conn, code, NULL);
+
         switch (st) {
             case Connecting:
             case Binding:
@@ -1423,9 +1430,6 @@ static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {
             default:
                 CONN_LOG(WARN, "disconnecting from state[%d]", st);
         }
-        conn_set_state(conn, Disconnected);
-        ziti_channel_rem_receiver(conn->channel, conn->conn_id);
-        conn->channel = NULL;
         return;
     }
 
