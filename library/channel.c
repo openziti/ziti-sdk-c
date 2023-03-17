@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <inttypes.h>
 #include <stdlib.h>
 #include <http_parser.h>
 #include <assert.h>
@@ -325,10 +326,10 @@ void on_channel_send(uv_write_t *w, int status) {
     // time to get on-wire
     uint64_t write_delay = now - zwreq->start_ts;
     if (write_delay > WRITE_DELAY_WARNING && ch->last_write_delay < WRITE_DELAY_WARNING) {
-        CH_LOG(WARN, "write delay = %ld.%03ld q=%ld qs=%ld",
-               write_delay/1000L, write_delay % 1000L, ch->out_q, ch->out_q_bytes);
+        CH_LOG(WARN, "write delay = %" PRIu64 ".%03" PRIu64 " q=%zd qs=%zd",
+               write_delay / 1000L, write_delay % 1000L, ch->out_q, ch->out_q_bytes);
     } else {
-        CH_LOG(TRACE, "write delay = %ld.%03ld q=%ld qs=%ld",
+        CH_LOG(TRACE, "write delay = %" PRIu64 ".%03" PRIu64 "d q=%ld qs=%ld",
                write_delay / 1000L, write_delay % 1000L, ch->out_q, ch->out_q_bytes);
     }
     ch->last_write = now;
@@ -727,7 +728,7 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
         uv_random(ch->loop, NULL, &random, sizeof(random), 0, NULL);
 
         timeout = random % ((1U << backoff) * BACKOFF_TIME);
-        CH_LOG(INFO, "reconnecting in %ld ms (attempt = %d)", timeout, ch->reconnect_count);
+        CH_LOG(INFO, "reconnecting in %" PRIu64 "ms (attempt = %d)", timeout, ch->reconnect_count);
     }
     else {
         CH_LOG(INFO, "reconnecting NOW");
