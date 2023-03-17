@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -293,7 +293,8 @@ static bool is_api_session_expired(ziti_context ztx) {
     uv_gettimeofday(&now);
 
     if (ztx->api_session_expires_at.tv_sec < now.tv_sec) {
-        ZTX_LOG(DEBUG, "is_api_session_expired[TRUE] - expires->tv_sec[%ld] < now->tv_sec[%ld]", ztx->api_session->expires->tv_sec, now.tv_sec);
+        ZTX_LOG(DEBUG, "is_api_session_expired[TRUE] - expires->tv_sec[%" PRIu64 "] < now->tv_sec[%" PRIu64 "]",
+                (uint64_t) ztx->api_session->expires->tv_sec, now.tv_sec);
         return true;
     }
 
@@ -324,7 +325,7 @@ void ziti_stop_api_session_refresh(ziti_context ztx) {
 }
 
 void ziti_schedule_api_session_refresh(ziti_context ztx, uint64_t timeout_ms) {
-    ZTX_LOG(DEBUG, "ziti_schedule_api_session_refresh: scheduling api session refresh: %ldms", timeout_ms);
+    ZTX_LOG(DEBUG, "ziti_schedule_api_session_refresh: scheduling api session refresh: %" PRIu64 "ms", timeout_ms);
     uv_timer_start(ztx->api_session_timer, api_session_refresh, timeout_ms, 0);
 }
 
@@ -656,7 +657,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
         printer(ctx, "ch[%d](%s) ", ch->id, url);
         if (ziti_channel_is_connected(ch)) {
-            printer(ctx, "connected [latency=%llu]\n", ch->latency);
+            printer(ctx, "connected [latency=%" PRIu64 "]\n", ch->latency);
         } else {
             printer(ctx, "Disconnected\n");
         }
@@ -1351,13 +1352,6 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
         }
 
         ziti_services_refresh(ztx, true);
-//        if (ztx->opts->refresh_interval > 0) {
-//            ZTX_LOG(DEBUG, "refresh_interval set to %ld seconds", ztx->opts->refresh_interval);
-//        } else if (ztx->opts->refresh_interval == 0) {
-//            ZTX_LOG(DEBUG, "refresh_interval not specified");
-//            uv_timer_stop(ztx->service_refresh_timer);
-//        }
-
         ziti_posture_init(ztx, 20);
 
         if (!ztx->no_current_edge_routers) {
