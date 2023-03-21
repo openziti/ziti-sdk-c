@@ -225,7 +225,7 @@ static void on_bridge_close(uv_handle_t *handle) {
 }
 
 void on_ziti_connect(ziti_connection conn, int status) {
-    uv_stream_t *clt = ziti_conn_data(conn);
+    uv_handle_t *clt = ziti_conn_data(conn);
 
     if (status == ZITI_OK) {
         ziti_conn_bridge(conn, clt, on_bridge_close);
