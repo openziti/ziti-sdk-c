@@ -230,6 +230,7 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
     if (req->timeout != NULL) {
         uv_timer_stop(req->timeout);
         uv_close((uv_handle_t *) req->timeout, free_handle);
+        req->timeout = NULL;
     }
 
     if (status < 0) {

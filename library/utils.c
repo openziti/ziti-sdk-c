@@ -120,8 +120,11 @@ static uint64_t starttime;
 static uint64_t last_update;
 static char log_timestamp[32];
 
+static uv_key_t logbufs;
+
 static uv_prepare_t log_flusher;
 static log_writer logger = NULL;
+
 static void init_debug(uv_loop_t *loop);
 
 static void init_uv_mbed_log();
@@ -237,7 +240,7 @@ static void init_debug(uv_loop_t *loop) {
 #if defined(PTHREAD_ONCE_INIT)
     pthread_atfork(NULL, NULL, child_init);
 #endif
-
+    uv_key_create(&logbufs);
     log_pid = uv_os_getpid();
     get_elapsed = get_elapsed_time;
     char *ts_format = getenv("ZITI_TIME_FORMAT");
@@ -299,12 +302,16 @@ static const char *basename(const char *path) {
 
 void ziti_logger(int level, const char *module, const char *file, unsigned int line, const char *func, FORMAT_STRING(const char *fmt), ...) {
     static size_t loglinelen = 1024;
-    static char *logbuf;
 
-    if (!logbuf) { logbuf = malloc(loglinelen); }
+    log_writer logfunc = logger;
+    if (logfunc == NULL) { return; }
 
-    va_list argp;
-    va_start(argp, fmt);
+    char *logbuf = (char *) uv_key_get(&logbufs);
+    if (!logbuf) {
+        logbuf = malloc(loglinelen);
+        uv_key_set(&logbufs, logbuf);
+    }
+
     char location[128];
     char *last_slash = strrchr(file, DIR_SEP);
 
@@ -312,7 +319,8 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
     if (module == NULL) {
         if (last_slash == NULL) {
             modlen = 0;
-        } else {
+        }
+        else {
             char *p = last_slash;
             while (p > file) {
                 p--;
@@ -331,21 +339,21 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
     }
     if (func && func[0]) {
         snprintf(location, sizeof(location), "%.*s:%s:%u %s()", modlen, module, file, line, func);
-    } else {
+    }
+    else {
         snprintf(location, sizeof(location), "%.*s:%s:%u", modlen, module, file, line);
     }
 
+    va_list argp;
+    va_start(argp, fmt);
     int len = vsnprintf(logbuf, loglinelen, fmt, argp);
     va_end(argp);
+
     if (len > loglinelen) {
-        loglinelen = len + 1;
-        logbuf = realloc(logbuf, loglinelen);
-        va_start(argp, fmt);
-        vsnprintf(logbuf, loglinelen, fmt, argp);
-        va_end(argp);
+        len = (int) loglinelen;
     }
 
-    if (logger) { logger(level, location, logbuf, len); }
+    logfunc(level, location, logbuf, len);
 }
 
 static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
