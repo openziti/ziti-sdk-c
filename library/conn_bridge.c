@@ -323,7 +323,7 @@ static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
     struct ziti_bridge_s *br = ziti_conn_data(conn);
 
     if (status < ZITI_OK) {
-        BR_LOG(DEBUG, "ziti_write failed: %d/%s", status, ziti_errorstr(status));
+        BR_LOG(DEBUG, "ziti_write failed: %zd/%s", status, ziti_errorstr(status));
         close_bridge(br);
     }
     else if (br->input) {
