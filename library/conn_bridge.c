@@ -84,13 +84,16 @@ extern int ziti_conn_bridge(ziti_connection conn, uv_handle_t *handle, uv_close_
     ziti_conn_set_data(conn, br);
 
     ziti_conn_set_data_cb(conn, on_ziti_data);
-    if (br->input->type == UV_UDP) {
-        uv_udp_recv_start((uv_udp_t *) br->input, bridge_alloc, on_udp_input);
+    int rc = (br->input->type == UV_UDP) ?
+             uv_udp_recv_start((uv_udp_t *) br->input, bridge_alloc, on_udp_input) :
+             uv_read_start((uv_stream_t *) br->input, bridge_alloc, on_input);
+
+    if (rc != 0) {
+        BR_LOG(WARN, "failed to start reading handle: %d/%s", rc, uv_strerror(rc));
+        close_bridge(br);
+    } else {
+        BR_LOG(DEBUG, "connected");
     }
-    else {
-        uv_read_start((uv_stream_t *) br->input, bridge_alloc, on_input);
-    }
-    BR_LOG(DEBUG, "connected");
 
     return ZITI_OK;
 }
@@ -174,8 +177,13 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
     ziti_conn_set_data(conn, br);
 
     ziti_conn_set_data_cb(conn, on_ziti_data);
-    uv_read_start((uv_stream_t *) br->input, bridge_alloc, on_input);
-
+    int rc = uv_read_start((uv_stream_t *) br->input, bridge_alloc, on_input);
+    if (rc != 0) {
+        BR_LOG(WARN, "failed to start reading handle: %d/%s", rc, uv_strerror(rc));
+        close_bridge(br);
+    } else {
+        BR_LOG(DEBUG, "connected");
+    }
     return ZITI_OK;
 }
 
@@ -321,11 +329,15 @@ static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
     else if (br->input) {
         if (br->input_throttle) {
             br->input_throttle = false;
-            if (br->input->type == UV_UDP) {
-                uv_udp_recv_start((uv_udp_t *) br->input, bridge_alloc, on_udp_input);
-            }
-            else {
-                uv_read_start((uv_stream_t *) br->input, bridge_alloc, on_input);
+            int rc = br->input->type == UV_UDP ?
+                     uv_udp_recv_start((uv_udp_t *) br->input, bridge_alloc, on_udp_input) :
+                     uv_read_start((uv_stream_t *) br->input, bridge_alloc, on_input);
+
+            if (rc != 0) {
+                BR_LOG(WARN, "failed to start reading handle: %d/%s", rc, uv_strerror(rc));
+                close_bridge(br);
+            } else {
+                BR_LOG(DEBUG, "connected");
             }
         }
     }
