@@ -303,7 +303,7 @@ static const char *basename(const char *path) {
 void ziti_logger(int level, const char *module, const char *file, unsigned int line, const char *func, FORMAT_STRING(const char *fmt), ...) {
     static size_t loglinelen = 1024;
 
-    typeof(logger) logfunc = logger;
+    log_writer logfunc = logger;
     if (logfunc == NULL) { return; }
 
     char *logbuf = (char *) uv_key_get(&logbufs);
