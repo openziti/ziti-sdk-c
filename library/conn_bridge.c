@@ -225,26 +225,6 @@ static void close_bridge(struct ziti_bridge_s *br) {
     ziti_close(br->conn, on_ziti_close);
 }
 
-static void on_output(uv_write_t *wr, int status) {
-    if (status != 0) {
-        struct ziti_bridge_s *br = wr->handle->data;
-        ZITI_LOG(WARN, "write failed: %d(%s)", status, uv_strerror(status));
-        close_bridge(br);
-    }
-    free(wr->data);
-    free(wr);
-}
-
-static void on_udp_send(uv_udp_send_t *sr, int status) {
-    if (status != 0) {
-        struct ziti_bridge_s *br = sr->handle->data;
-        ZITI_LOG(WARN, "udp_send failed: %d(%s)", status, uv_strerror(status));
-        close_bridge(br);
-    }
-    free(sr->data);
-    free(sr);
-}
-
 static void on_shutdown(uv_shutdown_t *sr, int status) {
     if (status != 0) {
         ZITI_LOG(WARN, "shutdown failed: %d(%s)", status, uv_strerror(status));
@@ -256,23 +236,34 @@ static void on_shutdown(uv_shutdown_t *sr, int status) {
 ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
     struct ziti_bridge_s *br = ziti_conn_data(conn);
 
+    if (br == NULL) {
+        ziti_close(conn, NULL);
+        return -1;
+    }
+
     if (br->idle_timer) { // reset idle timer
         uv_timer_start(br->idle_timer, on_bridge_idle, br->idle_timeout, 0);
     }
 
     if (len > 0) {
-        uv_buf_t b = uv_buf_init(malloc(len), len);
-        memcpy(b.base, data, len);
-        if (br->output->type == UV_UDP) {
-            NEWP(sr, uv_udp_send_t);
-            sr->data = b.base;
-            uv_udp_send(sr, (uv_udp_t *) br->output, &b, 1, NULL, on_udp_send);
-        } else {
-            NEWP(wr, uv_write_t);
-            wr->data = b.base;
-            uv_write(wr, (uv_stream_t *) br->output, &b, 1, on_output);
+        uv_buf_t b = uv_buf_init((char *) data, len);
+
+        ssize_t rc = br->output->type == UV_UDP ?
+                     uv_udp_try_send((uv_udp_t *) br->output, &b, 1, NULL) :
+                     uv_try_write((uv_stream_t *) br->output, &b, 1);
+
+        if (rc >= 0) {
+            return rc;
         }
-        return len;
+        else if (rc == UV_EAGAIN) { // EWOULDBLOCK
+            return 0;
+        }
+        else {
+            ZITI_LOG(WARN, "write failed: %zd(%s)", rc, uv_strerror((int) rc));
+            close_bridge(br);
+            return rc;
+        }
+
     } else if (len == ZITI_EOF) {
         br->ziti_eof = true;
         if (br->input_eof || br->input->type == UV_UDP) {
@@ -283,6 +274,7 @@ ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
             uv_shutdown(sr, (uv_stream_t *) br->output, on_shutdown);
         }
     } else {
+        ZITI_LOG(WARN, "closing bridge due to error: %zd(%s)", len, ziti_errorstr((int) len));
         close_bridge(br);
     }
     return 0;
