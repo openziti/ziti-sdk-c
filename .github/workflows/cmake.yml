@@ -22,7 +22,7 @@ jobs:
         - { name: 'MacOS x86_64', runner: 'macOS-11' }
         - { name: 'MacOS arm64', runner: 'macOS-11', toolchain:  'macOS-arm64', no_tests: 'true' }
         - { name: 'Windows x86_64', runner: 'windows-2019' }
-        - { name: 'Windows ARM64', runner: 'windows-2022', toolchain: 'Windows-ARM64-msvc', no_tests: 'true' }
+        - { name: 'Windows ARM64', runner: 'windows-2022', toolchain: 'Windows-ARM64-msvc', cmake_generator_args: '-A ARM64', no_tests: 'true' }
 
     steps:
       - name: Install Crossbuild tools
@@ -43,7 +43,7 @@ jobs:
           TOOLCHAIN: ${{ matrix.spec.toolchain && format('{0}/toolchains/{1}.cmake', github.workspace, matrix.spec.toolchain) || '' }}
         run: |
           echo   cmake -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-          cmake -DCMAKE_TOOLCHAIN_FILE=${{ matrix.spec.toolchain && format('{0}/toolchains/{1}.cmake', github.workspace, matrix.spec.toolchain) || '' }} -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+          cmake -DCMAKE_TOOLCHAIN_FILE=${{ matrix.spec.toolchain && format('{0}/toolchains/{1}.cmake', github.workspace, matrix.spec.toolchain) || '' }} -S ${{ github.workspace }} -B ${{runner.workspace}}/build ${{matrix.spec.cmake_generator_args}}
           cmake --build ${{runner.workspace}}/build
 
       - name: test
