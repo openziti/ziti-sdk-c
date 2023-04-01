@@ -25,6 +25,11 @@ if (WIN32)
         else()
             # arm builds are not included in libsodium release tarballs (yet?), so we need to build it.
             # windows/arm build support has been added to master, but not stable (yet?) (https://github.com/jedisct1/libsodium/pull/1130)
+            if(CMAKE_BUILD_TYPE)
+                set(build_type ${CMAKE_BUILD_TYPE})
+            else()
+                set(build_type "Debug")
+            endif()
             set(arch "ARM64")
             FetchContent_Declare (
                     libsodium
@@ -32,8 +37,7 @@ if (WIN32)
                     GIT_TAG master
             )
             set(libsodium_include_path src/libsodium/include)
-            # bin\ARM64\Debug\v142\static
-            set(libsodium_lib_path bin/${arch}/${CMAKE_BUILD_TYPE}/v${MSVC_TOOLSET_VERSION}/static/libsodium${CMAKE_STATIC_LIBRARY_SUFFIX})
+            set(libsodium_lib_path bin/${arch}/${build_type}/v${MSVC_TOOLSET_VERSION}/static/libsodium${CMAKE_STATIC_LIBRARY_SUFFIX})
         endif()
     else()
         FetchContent_Declare (
@@ -82,9 +86,9 @@ if(NOT libsodium_POPULATED)
         )
     else()
         execute_process(
-                COMMAND regen-msvc/regen-msvc.py
-                COMMAND msvc-scripts/process.bat
-                COMMAND msbuild ${libsodium_SOURCE_DIR}/builds/msvc/vs2022/libsodium.sln -property:Configuration=StaticDebug -property:Platform=${arch}
+                COMMAND msbuild ${libsodium_SOURCE_DIR}/builds/msvc/vs2019/libsodium.sln -property:Configuration=StaticDebug -property:Platform=${arch}
+                COMMAND_ECHO STDOUT
+                COMMAND_ERROR_IS_FATAL ANY
                 WORKING_DIRECTORY ${libsodium_BINARY_DIR}
         )
     endif ()
