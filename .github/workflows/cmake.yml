@@ -22,7 +22,7 @@ jobs:
         - { name: 'MacOS x86_64', runner: 'macOS-11' }
         - { name: 'MacOS arm64', runner: 'macOS-11', toolchain:  'macOS-arm64', no_tests: 'true' }
         - { name: 'Windows x86_64', runner: 'windows-2019' }
-        - { name: 'Windows ARM64', runner: 'windows-2019', toolchain: 'Windows-ARM64-msvc', no_tests: 'true' }
+        - { name: 'Windows ARM64', runner: 'windows-2022', toolchain: 'Windows-ARM64-msvc', no_tests: 'true' }
 
     steps:
       - name: Install Crossbuild tools
