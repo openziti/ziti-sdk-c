@@ -83,6 +83,7 @@ if(NOT libsodium_POPULATED)
     else()
         execute_process(
                 COMMAND regen-msvc/regen-msvc.py
+                COMMAND msvc-scripts/process.bat
                 COMMAND msbuild ${libsodium_SOURCE_DIR}/builds/msvc/vs2022/libsodium.sln -property:Configuration=StaticDebug -property:Platform=${arch}
                 WORKING_DIRECTORY ${libsodium_BINARY_DIR}
         )
