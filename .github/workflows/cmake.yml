@@ -32,7 +32,7 @@ jobs:
           sudo apt install -y crossbuild-essential-armhf crossbuild-essential-arm64
 
       - name: Add msbuild to PATH
-        if: matrix.spec.runner == windows-2019
+        if: matrix.spec.runner == 'windows-2019'
         uses: microsoft/setup-msbuild@v1.1
 
       - uses: actions/checkout@v3
