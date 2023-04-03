@@ -74,7 +74,7 @@ jobs:
         uses: actions/upload-artifact@v3
         env:
           EXE_SUFFIX: ${{ runner.os == 'Windows' && '.exe' || '' }}
-          BUILD_DIR: ${{ contains(matrix.spec.toolchain, 'msvc') && format('{0}/', matrix.spec.build_type && matrix.spec.build_type || 'Debug') || '' }}
+          BUILD_DIR: ${{ runner.os == 'Windows' && format('{0}/', matrix.spec.build_type && matrix.spec.build_type || 'Debug') || '' }}
         with:
           name: ziti-prox-c-${{ matrix.spec.toolchain || runner.os }}
           path: ${{ runner.workspace }}/build/programs/ziti-prox-c/${{ env.BUILD_DIR }}ziti-prox-c${{ env.EXE_SUFFIX }}
