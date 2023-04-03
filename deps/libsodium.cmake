@@ -29,7 +29,8 @@ if (WIN32)
                     GIT_TAG master
             )
             set(libsodium_include_path src/libsodium/include)
-            set(libsodium_lib_path bin/${arch}/${build_type}/v${MSVC_TOOLSET_VERSION}/static/libsodium${CMAKE_STATIC_LIBRARY_SUFFIX})
+            # v142 matches toolset version that's used in libsodium.sln below. vs2019 --> v142.
+            set(libsodium_lib_path bin/${arch}/${build_type}/v142/static/libsodium${CMAKE_STATIC_LIBRARY_SUFFIX})
         endif()
     else()
         FetchContent_Declare (
