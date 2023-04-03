@@ -16,9 +16,9 @@ jobs:
       fail-fast: false
       matrix:
         spec:
-        - { name: 'Linux x86_64', runner: 'ubuntu-18.04' }
-        - { name: 'Linux ARM', runner: 'ubuntu-18.04', toolchain: 'Linux-arm', no_tests: 'true' }
-        - { name: 'Linux ARM64', runner: 'ubuntu-18.04', toolchain: 'Linux-arm64', no_tests: 'true' }
+        - { name: 'Linux x86_64', runner: 'ubuntu-20.04' }
+        - { name: 'Linux ARM', runner: 'ubuntu-20.04', toolchain: 'Linux-arm', no_tests: 'true' }
+        - { name: 'Linux ARM64', runner: 'ubuntu-20.04', toolchain: 'Linux-arm64', no_tests: 'true' }
         - { name: 'MacOS x86_64', runner: 'macOS-11' }
         - { name: 'MacOS arm64', runner: 'macOS-11', toolchain:  'macOS-arm64', no_tests: 'true' }
         - { name: 'Windows x86_64', runner: 'windows-2019' }
