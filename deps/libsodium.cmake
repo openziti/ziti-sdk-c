@@ -87,7 +87,7 @@ if(NOT libsodium_POPULATED)
                 )
             else()
                 execute_process(
-                        COMMAND msbuild ${libsodium_SOURCE_DIR}/builds/msvc/vs2019/libsodium.sln -property:Configuration=StaticDebug -property:Platform=${arch}
+                        COMMAND msbuild ${libsodium_SOURCE_DIR}/builds/msvc/vs2019/libsodium.sln -property:Configuration=Static${build_type} -property:Platform=${arch}
                         COMMAND_ECHO STDOUT
                         COMMAND_ERROR_IS_FATAL ANY
                         WORKING_DIRECTORY ${libsodium_BINARY_DIR}
