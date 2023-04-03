@@ -62,9 +62,8 @@ jobs:
           ZITI_LOG: 4
         if: matrix.spec.no_tests != 'true' && env.TEST_ID != ''
         working-directory: ${{runner.workspace}}/build
-        shell: bash
         run: |
-          echo "${TEST_ID}" > "${ZITI_TEST_IDENTITY}"
+          echo "${{ env.TEST_ID }}" > "${{ env.ZITI_TEST_IDENTITY }}"
           ctest -VV --no-compress-output -R zitilib_tests
 
       - name: make artifacts
