@@ -22,7 +22,7 @@ jobs:
         - { name: 'MacOS x86_64', runner: 'macOS-11' }
         - { name: 'MacOS arm64', runner: 'macOS-11', toolchain:  'macOS-arm64', no_tests: 'true' }
         - { name: 'Windows x86_64', runner: 'windows-2019' }
-        - { name: 'Windows ARM64', runner: 'windows-2019', toolchain: 'Windows-ARM64-msvc', cmake_generator_args: '-A ARM64', no_tests: 'true' }
+        - { name: 'Windows ARM64', runner: 'windows-2019', toolchain: 'Windows-ARM64-msvc', cmake_opts: '-A ARM64', no_tests: 'true' }
 
     steps:
       - name: Install Crossbuild tools
@@ -39,15 +39,15 @@ jobs:
         with:
           fetch-depth: 0
       - run: |
-          echo "BUILD_NUMBER = ${BUILD_NUMBER}"
+          echo "BUILD_NUMBER = ${{ env.BUILD_NUMBER }}"
           cmake -E make_directory ${{ runner.workspace }}/build
 
       - name: setup/build CMake
         env:
           TOOLCHAIN: ${{ matrix.spec.toolchain && format('{0}/toolchains/{1}.cmake', github.workspace, matrix.spec.toolchain) || '' }}
         run: |
-          echo   cmake -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-          cmake -DCMAKE_TOOLCHAIN_FILE=${{ matrix.spec.toolchain && format('{0}/toolchains/{1}.cmake', github.workspace, matrix.spec.toolchain) || '' }} -S ${{ github.workspace }} -B ${{runner.workspace}}/build ${{matrix.spec.cmake_generator_args}}
+          echo cmake -DCMAKE_TOOLCHAIN_FILE="${{ env.TOOLCHAIN }}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+          cmake -DCMAKE_TOOLCHAIN_FILE=${{ env.TOOLCHAIN }} -S ${{ github.workspace }} -B ${{runner.workspace}}/build ${{matrix.spec.cmake_opts}}
           cmake --build ${{runner.workspace}}/build
 
       - name: test
@@ -72,9 +72,13 @@ jobs:
 
       - name: upload artifacts
         uses: actions/upload-artifact@v3
+        env:
+          EXE_SUFFIX: ${{ runner.os == 'Windows' && '.exe' || '' }}
+          BUILD_TYPE: ${{ matrix.spec.build_type }} && ${{ matrix.spec.build_type }} || 'Debug' }}
+          BUILD_DIR: ${{ contains(${{ matrix.spec.toolchain }}, 'msvc') && format('{0}/', env.BUILD_TYPE) || '' }}
         with:
           name: ziti-prox-c-${{ matrix.spec.toolchain || runner.os }}
-          path: ${{ runner.workspace }}/build/programs/ziti-prox-c/ziti-prox-c${{ runner.os == 'Windows' && '.exe' || '' }}
+          path: ${{ runner.workspace }}/build/programs/ziti-prox-c/${{ env.BUILD_DIR }}ziti-prox-c${{ env.EXE_SUFFIX }}
       - name: upload SDK artifacts
         uses: actions/upload-artifact@v3
         with:
