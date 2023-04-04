@@ -1,14 +1,16 @@
-cmake_minimum_required(VERSION 3.14)
-include(git.cmake)
+cmake_minimum_required(VERSION 3.22)
+
+include(cmake/version.cmake)
+get_version(${CMAKE_CURRENT_LIST_DIR}/version.txt ver)
+
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_C_STANDARD 99)
 project(ziti-sdk
         VERSION ${ver}
         LANGUAGES C CXX
         )
-
-option(ZITI_BUILD_PROGRAMS "Build programs." ON)
-option(ZITI_BUILD_TESTS "Build tests." ON)
+include(cmake/project-is-top-level.cmake)
+include(cmake/variables.cmake)
 
 option(HAVE_LIBSODIUM "use and link installed shared libsodium library" OFF)
 
@@ -41,8 +43,6 @@ else()
 endif()
 
 message("cross-compiling ${CMAKE_CROSSCOMPILING}")
-
-enable_testing()
 
 if (DEFINED ENV{BUILD_NUMBER})
     set(ZITI_BUILDNUM $ENV{BUILD_NUMBER})
@@ -89,11 +89,15 @@ endif()
 
 add_subdirectory(library)
 
-if (ZITI_BUILD_PROGRAMS)
-    add_subdirectory(programs)
+if (PROJECT_IS_TOP_LEVEL)
+    option(BUILD_EXAMPLES "Build examples tree." "${ziti_DEVELOPER_MODE}")
+    if (BUILD_EXAMPLES)
+        add_subdirectory(programs)
+    endif ()
 endif ()
 
-if (ZITI_BUILD_TESTS)
+if (ziti_DEVELOPER_MODE)
+    ENABLE_TESTING()
     add_subdirectory(tests)
 endif ()
 

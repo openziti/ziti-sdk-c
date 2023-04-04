@@ -1,0 +1,130 @@
+{
+  "version": 2,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 14,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "dev-mode",
+      "hidden": true,
+      "cacheVariables": {
+        "ziti_DEVELOPER_MODE": "ON",
+        "VCPKG_MANIFEST_FEATURES": "test;samples"
+      }
+    },
+    {
+      "name": "vcpkg",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      }
+    },
+    {
+      "name": "vcpkg-win64-static",
+      "hidden": true,
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
+      }
+    },
+    {
+      "name": "ninja",
+      "hidden": true,
+      "generator": "Ninja"
+    },
+    {
+      "name": "ninja-multi-config",
+      "hidden": true,
+      "generator": "Ninja Multi-Config"
+    },
+    {
+      "name": "ci-std",
+      "description": "This preset makes sure the project actually builds with at least the specified standard",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_C_EXTENSIONS": "ON",
+        "CMAKE_C_STANDARD": "99",
+        "CMAKE_C_STANDARD_REQUIRED": "ON",
+        "CMAKE_CXX_EXTENSIONS": "OFF",
+        "CMAKE_CXX_STANDARD": "11",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON"
+      }
+    },
+    {
+      "name": "flags-unix",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_C_FLAGS": "",
+        "CMAKE_CXX_FLAGS": ""
+      }
+    },
+    {
+      "name": "flags-windows",
+      "description": "Note that all the flags after /W4 are required for MSVC to conform to the language standard",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_C_FLAGS": "/utf-8 /W4 /permissive- /volatile:iso /Zc:preprocessor",
+        "CMAKE_CXX_FLAGS": "/utf-8 /W4 /permissive- /volatile:iso /Zc:preprocessor /Zc:__cplusplus /Zc:externConstexpr /Zc:throwingNew /EHsc"
+      }
+    },
+    {
+      "name": "ci-unix",
+      "hidden": true,
+      "inherits": [
+        "flags-unix",
+        "ci-std",
+        "ninja-multi-config"
+      ],
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "ci-win64",
+      "inherits": [
+        "flags-windows",
+        "ci-std",
+        "ninja"
+      ],
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "hidden": true
+    },
+    {
+      "name": "ci-build",
+      "binaryDir": "${sourceDir}/build",
+      "hidden": true
+    },
+    {
+      "name": "ci-macOS",
+      "inherits": [
+        "ci-build",
+        "ci-unix",
+        "dev-mode",
+        "vcpkg"
+      ]
+    },
+    {
+      "name": "ci-ubuntu",
+      "inherits": [
+        "ci-build",
+        "ci-unix",
+        "vcpkg",
+        "dev-mode"
+      ]
+    },
+    {
+      "name": "ci-windows",
+      "inherits": [
+        "ci-build",
+        "ci-win64",
+        "dev-mode",
+        "vcpkg",
+        "vcpkg-win64-static"
+      ]
+    }
+  ]
+}
