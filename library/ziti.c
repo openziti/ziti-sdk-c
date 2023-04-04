@@ -20,7 +20,6 @@
 #include <uv.h>
 #include "utils.h"
 #include "zt_internal.h"
-#include <http_parser.h>
 #include <posture.h>
 #include <auth_queries.h>
 
@@ -134,36 +133,18 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
     // load ca from ziti config if present
     const char *ca, *cert;
     size_t ca_len = parse_ref(cfg->id.ca, &ca);
-    size_t cert_len = parse_ref(cfg->id.cert, &cert);
     tls_context *tls = default_tls_context(ca, ca_len);
+    tlsuv_private_key_t pk;
 
     if (cfg->id.key == NULL) {
-	TRY(ziti, ("TLS key should be provided", ZITI_INVALID_CONFIG));
+        TRY(ziti, ("TLS key should be provided", ZITI_INVALID_CONFIG));
     }
 
-    if (strncmp(cfg->id.key, "pkcs11://", strlen("pkcs11://")) == 0) {
-        char path[MAXPATHLEN] = {0};
-        char pin[32] = {0};
-        char slot[32] = {0};
-        char id[32] = {0};
-
-        char *p = cfg->id.key + strlen("pkcs11://");
-        char *endp = strchr(p, '?');
-        char *q = endp + 1;
-        if (endp == NULL) {
-            TRY(ziti, ("invalid pkcs11 key specification", ZITI_INVALID_CONFIG));
-        }
-        sprintf(path, "%*.*s", (int) (endp - p), (int) (endp - p), p);
-
-        TRY(ziti, parse_getopt(q, "pin", pin, sizeof(pin)));
-        TRY(ziti, parse_getopt(q, "slot", slot, sizeof(slot)));
-        TRY(ziti, parse_getopt(q, "id", id, sizeof(id)));
-
-        tls->api->set_own_cert_pkcs11(tls->ctx, cert, cert_len, path, pin, slot, id);
-    } else {
-        const char *key;
-        size_t key_len = parse_ref(cfg->id.key, &key);
-        tls->api->set_own_cert(tls->ctx, cert, cert_len, key, key_len);
+    TRY(ziti, load_key_internal(tls, &pk, cfg->id.key));
+    TRY(ziti, tls->api->set_own_key(tls->ctx, pk));
+    if (cfg->id.cert) {
+        size_t cert_len = parse_ref(cfg->id.cert, &cert);
+        TRY(ziti, tls->api->set_own_cert(tls->ctx, cert, cert_len));
     }
 
     CATCH(ziti) {
@@ -175,13 +156,14 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
 }
 
 int ziti_set_client_cert(ziti_context ztx, const char *cert_buf, size_t cert_len, const char *key_buf, size_t key_len) {
-    int ret = ztx->tlsCtx->api->set_own_cert(ztx->tlsCtx, cert_buf, cert_len, key_buf, key_len);
-
-    if(ret != 0) {
-        return ZITI_INVALID_CERT_KEY_PAIR;
+    tlsuv_private_key_t pk;
+    if (ztx->tlsCtx->api->load_key(&pk, key_buf, key_len) == 0 &&
+        ztx->tlsCtx->api->set_own_key(ztx->tlsCtx, pk) == 0 &&
+        ztx->tlsCtx->api->set_own_cert(ztx->tlsCtx, cert_buf, cert_len) == 0) {
+        return ZITI_OK;
     }
 
-    return ZITI_OK;
+    return ZITI_INVALID_CERT_KEY_PAIR;
 }
 
 int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {

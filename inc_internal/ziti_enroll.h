@@ -43,7 +43,7 @@ typedef struct enroll_cfg_s {
     char *CA;
 
     const char *private_key;
-    tls_private_key pk;
+    tlsuv_private_key_t pk;
     const char *own_cert;
     const char *name;
 

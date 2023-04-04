@@ -14,7 +14,7 @@
 
 #include <inttypes.h>
 #include <stdlib.h>
-#include <http_parser.h>
+//#include <http_parser.h>
 #include <assert.h>
 
 #include "zt_internal.h"
@@ -234,16 +234,11 @@ static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, c
     ch->name = strdup(ch_name);
     CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, ztx->api_session->identity->name);
 
-    struct http_parser_url ingress;
-    http_parser_url_init(&ingress);
-    http_parser_parse_url(url, strlen(url), 0, &ingress);
+    struct tlsuv_url_s ingress;
+    tlsuv_parse_url(&ingress, url);
 
-    char host[128];
-    int hostlen = ingress.field_data[UF_HOST].len;
-    int hostoffset = ingress.field_data[UF_HOST].off;
-    snprintf(host, sizeof(host), "%*.*s", hostlen, hostlen, url + hostoffset);
-
-    ch->host = strdup(host);
+    ch->host = calloc(1, ingress.hostname_len + 1);
+    snprintf(ch->host, ingress.hostname_len + 1, "%.*s", (int) ingress.hostname_len, ingress.hostname);
     ch->port = ingress.port;
     model_map_set(&ztx->channels, ch->name, ch);
     return ch;

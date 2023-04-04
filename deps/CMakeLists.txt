@@ -4,9 +4,8 @@ include(FetchContent)
 
 FetchContent_Declare(tlsuv
         GIT_REPOSITORY https://github.com/openziti/tlsuv.git
-        GIT_TAG v0.20.0
+        GIT_TAG v0.21.0
         )
-set(ENABLE_TLSUV_TESTS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(tlsuv)
 
 

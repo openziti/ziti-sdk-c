@@ -19,6 +19,8 @@
 #include <stdarg.h>
 
 #include "utils.h"
+#include "tlsuv/http.h"
+#include "ziti/errors.h"
 
 #if _WIN32
 #include <time.h>
@@ -471,7 +473,8 @@ size_t str_split(const char *str, const char *delim, model_list *result) {
                 size_t tok_len = sep++ - s;
                 val = calloc(1, tok_len + 1);
                 strncpy(val, s, tok_len);
-            } else {
+            }
+            else {
                 val = strdup(s);
             }
             model_list_append(result, val);
@@ -480,4 +483,43 @@ size_t str_split(const char *str, const char *delim, model_list *result) {
     }
 
     return count;
+}
+
+#define CHECK_OPT(v, o) if (strncmp(v, #o "=", strlen(#o "=")) == 0) { \
+                    (o) = (v) + strlen(#o "="); \
+                    continue; \
+                }
+
+int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *keystr) {
+    struct tlsuv_url_s uri;
+    int rc;
+    if (tlsuv_parse_url(&uri, keystr) == 0) {
+        if (uri.scheme_len == strlen("pkcs11") && strncmp(uri.scheme, "pkcs11", uri.scheme_len) == 0) {
+            char lib[MAXPATHLEN] = "";
+            strncpy(lib, uri.path, uri.path_len);
+
+            const char *slot = NULL, *pin = NULL, *id = NULL, *label = NULL;
+
+            model_list opts = {0};
+            str_split(uri.query, "&", &opts);
+            char *opt;
+            MODEL_LIST_FOREACH(opt, opts) {
+                CHECK_OPT(opt, slot);
+                CHECK_OPT(opt, pin);
+                CHECK_OPT(opt, id);
+                CHECK_OPT(opt, label);
+            }
+            rc = tls->api->load_pkcs11_key(key, lib, slot, pin, id, label);
+            model_list_clear(&opts, free);
+            return rc != 0 ? ZITI_INVALID_CONFIG : 0;
+        }
+
+        if (uri.scheme_len == strlen("file") && strncmp(uri.scheme, "file", uri.scheme_len) == 0) {
+            rc = tls->api->load_key(key, uri.path, uri.path_len);
+            return rc != 0 ? ZITI_INVALID_CONFIG : 0;
+        }
+    }
+
+    rc = tls->api->load_key(key, keystr, strlen(keystr));
+    return rc != 0 ? ZITI_INVALID_CONFIG : 0;
 }
