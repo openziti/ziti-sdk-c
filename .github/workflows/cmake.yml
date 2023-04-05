@@ -26,9 +26,10 @@ jobs:
     steps:
       - name: Install Crossbuild tools
         if: startsWith(matrix.spec.runner, 'ubuntu')
-        run: |
-          sudo apt update -y
-          sudo apt install -y crossbuild-essential-armhf crossbuild-essential-arm64
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: crossbuild-essential-armhf crossbuild-essential-arm64
+          version: 1.0
 
       - uses: actions/checkout@v3
         with:
