@@ -16,33 +16,38 @@ jobs:
       fail-fast: false
       matrix:
         spec:
-        - { name: 'Linux x86_64', runner: 'ubuntu-18.04' }
-        - { name: 'Linux ARM', runner: 'ubuntu-18.04', toolchain: 'Linux-arm', no_tests: 'true' }
-        - { name: 'Linux ARM64', runner: 'ubuntu-18.04', toolchain: 'Linux-arm64', no_tests: 'true' }
+        - { name: 'Linux x86_64', runner: 'ubuntu-20.04' }
+        - { name: 'Linux ARM', runner: 'ubuntu-20.04', toolchain: 'Linux-arm', no_tests: 'true' }
+        - { name: 'Linux ARM64', runner: 'ubuntu-20.04', toolchain: 'Linux-arm64', no_tests: 'true' }
         - { name: 'MacOS x86_64', runner: 'macOS-11' }
         - { name: 'MacOS arm64', runner: 'macOS-11', toolchain:  'macOS-arm64', no_tests: 'true' }
         - { name: 'Windows x86_64', runner: 'windows-2019' }
+        - { name: 'Windows ARM64', runner: 'windows-2019', toolchain: 'Windows-arm64-msvc', cmake_opts: '-A ARM64', no_tests: 'true' }
 
     steps:
       - name: Install Crossbuild tools
-        if: matrix.spec.runner == 'ubuntu-18.04'
+        if: matrix.spec.runner == 'ubuntu-20.04'
         run: |
           sudo apt update -y
           sudo apt install -y crossbuild-essential-armhf crossbuild-essential-arm64
+
+      - name: Add msbuild to PATH
+        if: matrix.spec.runner == 'windows-2019'
+        uses: microsoft/setup-msbuild@v1.1
 
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
       - run: |
-          echo "BUILD_NUMBER = ${BUILD_NUMBER}"
+          echo "BUILD_NUMBER = ${{ env.BUILD_NUMBER }}"
           cmake -E make_directory ${{ runner.workspace }}/build
 
       - name: setup/build CMake
         env:
           TOOLCHAIN: ${{ matrix.spec.toolchain && format('{0}/toolchains/{1}.cmake', github.workspace, matrix.spec.toolchain) || '' }}
         run: |
-          echo   cmake -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-          cmake -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+          echo cmake -DCMAKE_TOOLCHAIN_FILE="${{ env.TOOLCHAIN }}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
+          cmake -DCMAKE_TOOLCHAIN_FILE=${{ env.TOOLCHAIN }} -S ${{ github.workspace }} -B ${{runner.workspace}}/build ${{matrix.spec.cmake_opts}}
           cmake --build ${{runner.workspace}}/build
 
       - name: test
@@ -67,9 +72,12 @@ jobs:
 
       - name: upload artifacts
         uses: actions/upload-artifact@v3
+        env:
+          EXE_SUFFIX: ${{ runner.os == 'Windows' && '.exe' || '' }}
+          BUILD_DIR: ${{ runner.os == 'Windows' && format('{0}/', matrix.spec.build_type && matrix.spec.build_type || 'Debug') || '' }}
         with:
           name: ziti-prox-c-${{ matrix.spec.toolchain || runner.os }}
-          path: ${{ runner.workspace }}/build/programs/ziti-prox-c/ziti-prox-c${{ runner.os == 'Windows' && '.exe' || '' }}
+          path: ${{ runner.workspace }}/build/programs/ziti-prox-c/${{ env.BUILD_DIR }}ziti-prox-c${{ env.EXE_SUFFIX }}
       - name: upload SDK artifacts
         uses: actions/upload-artifact@v3
         with:
