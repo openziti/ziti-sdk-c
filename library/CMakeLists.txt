@@ -1,3 +1,6 @@
+find_package(unofficial-sodium REQUIRED)
+set(sodium_libs unofficial-sodium::sodium)
+
 set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/errors.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/error_defs.h
@@ -67,8 +70,8 @@ set_property(TARGET ziti ziti_dll PROPERTY C_STANDARD 11)
 target_sources(ziti PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 target_sources(ziti_dll PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 
-target_link_libraries(ziti PUBLIC tlsuv sodium)
-target_link_libraries(ziti_dll PUBLIC tlsuv sodium)
+target_link_libraries(ziti PUBLIC tlsuv ${sodium_libs})
+target_link_libraries(ziti_dll PUBLIC tlsuv ${sodium_libs})
 
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     target_link_libraries(ziti PUBLIC atomic)

@@ -5,10 +5,8 @@
     "libuv",
     "openssl",
     "zlib",
-    "llhttp"
-  ],
-  "default-features": [
-    "tls"
+    "llhttp",
+    "libsodium"
   ],
   "features": {
     "test": {

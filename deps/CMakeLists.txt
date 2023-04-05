@@ -21,8 +21,5 @@ add_library(subcommand INTERFACE)
 target_include_directories(subcommand INTERFACE ${subcommand_SOURCE_DIR})
 
 
-if (NOT HAVE_LIBSODIUM)
-    include(libsodium.cmake)
-endif ()
 
 
