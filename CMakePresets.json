@@ -97,7 +97,8 @@
       "name": "ci-win-arm64",
       "inherits": [
         "flags-windows",
-        "ci-std"
+        "ci-std",
+        "ninja-multi-config"
       ],
       "architecture": {
         "value": "AMR64",
