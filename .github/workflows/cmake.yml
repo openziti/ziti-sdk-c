@@ -81,7 +81,7 @@ jobs:
           BUILD_DIR: ${{ runner.os == 'Windows' && format('{0}/', matrix.spec.build_type && matrix.spec.build_type || 'Debug') || '' }}
         with:
           name: ziti-prox-c-${{ matrix.spec.toolchain || runner.os }}
-          path: ./build/programs/ziti-prox-c/${{ env.BUILD_DIR }}ziti-prox-c${{ env.EXE_SUFFIX }}
+          path: ./build/programs/ziti-prox-c/**/ziti-prox-c*
       - name: upload SDK artifacts
         uses: actions/upload-artifact@v3
         with:

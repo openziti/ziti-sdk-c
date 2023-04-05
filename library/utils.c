@@ -51,6 +51,16 @@
 #define ZITI_OS UKNOWN
 #endif
 
+#ifndef MAXPATHLEN
+#ifdef _MAX_PATH
+#define MAXPATHLEN _MAX_PATH
+#elif _WIN32
+#define MAXPATHLEN 260
+#else
+#define MAXPATHLEN 4096
+#endif
+#endif
+
 /*
  * from https://sourceforge.net/p/predef/wiki/Architectures/
  */

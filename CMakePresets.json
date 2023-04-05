@@ -39,6 +39,11 @@
       "generator": "Ninja Multi-Config"
     },
     {
+      "name": "vs-2022",
+      "hidden": true,
+      "generator": "Visual Studio 17 2022"
+    },
+    {
       "name": "ci-std",
       "description": "This preset makes sure the project actually builds with at least the specified standard",
       "hidden": true,
@@ -85,7 +90,7 @@
       "inherits": [
         "flags-windows",
         "ci-std",
-        "ninja"
+        "vs-2022"
       ],
       "architecture": {
         "value": "x64",
@@ -98,7 +103,7 @@
       "inherits": [
         "flags-windows",
         "ci-std",
-        "ninja-multi-config"
+        "vs-2022"
       ],
       "architecture": {
         "value": "AMR64",
@@ -178,8 +183,8 @@
         "vcpkg"
       ],
       "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "arm64-windows-static-md",
-        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Windows-arm64-msvc.cmake"
+        "CMAKE_GENERATOR_PLATFORM": "ARM64",
+        "VCPKG_TARGET_TRIPLET": "arm64-windows-static-md"
       }
     }
   ]

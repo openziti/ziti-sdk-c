@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include <stdlib.h>
-//#include <http_parser.h>
 #include "utils.h"
 #include "zt_internal.h"
 #include <ziti_ctrl.h>

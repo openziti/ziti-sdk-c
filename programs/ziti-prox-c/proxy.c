@@ -21,7 +21,7 @@
 #include <utils.h>
 #include <ziti/ziti.h>
 
-#if(WIN32)
+#if(_WIN32)
 #define strsignal(s) "_windows_unimplemented_"
 #endif
 

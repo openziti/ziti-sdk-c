@@ -14,7 +14,6 @@
 
 #include <inttypes.h>
 #include <stdlib.h>
-//#include <http_parser.h>
 #include <assert.h>
 
 #include "zt_internal.h"
