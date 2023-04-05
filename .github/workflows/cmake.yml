@@ -16,12 +16,12 @@ jobs:
       fail-fast: false
       matrix:
         spec:
-        - { name: 'Linux x86_64', runner: 'ubuntu-18.04' }
-        - { name: 'Linux ARM', runner: 'ubuntu-18.04', toolchain: 'Linux-arm', no_tests: 'true' }
-        - { name: 'Linux ARM64', runner: 'ubuntu-18.04', toolchain: 'Linux-arm64', no_tests: 'true' }
-        - { name: 'MacOS x86_64', runner: 'macOS-11' }
-        - { name: 'MacOS arm64', runner: 'macOS-11', toolchain:  'macOS-arm64', no_tests: 'true' }
-        - { name: 'Windows x86_64', runner: 'windows-2019' }
+          - { name: 'Linux x86_64', runner: 'ubuntu-20.04', preset: 'ci-linux' }
+          - { name: 'Linux ARM', runner: 'ubuntu-20.04', preset: 'ci-linux-arm', no_tests: 'true' }
+          - { name: 'Linux ARM64', runner: 'ubuntu-20.04', preset: 'ci-linux-arm64', no_tests: 'true' }
+    #        - { name: 'MacOS x86_64', runner: 'macOS-11' }
+    #        - { name: 'MacOS arm64', runner: 'macOS-11', toolchain:  'macOS-arm64', no_tests: 'true' }
+    #        - { name: 'Windows x86_64', runner: 'windows-2019' }
 
     steps:
       - name: Install Crossbuild tools
@@ -33,17 +33,25 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
+      - uses: lukka/get-cmake@latest
+
+      - uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '19af97cba8ca48474e4ad15a24ed50271a9ecdac'
+
       - run: |
           echo "BUILD_NUMBER = ${BUILD_NUMBER}"
           cmake -E make_directory ${{ runner.workspace }}/build
 
-      - name: setup/build CMake
-        env:
-          TOOLCHAIN: ${{ matrix.spec.toolchain && format('{0}/toolchains/{1}.cmake', github.workspace, matrix.spec.toolchain) || '' }}
-        run: |
-          echo   cmake -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-          cmake -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-          cmake --build ${{runner.workspace}}/build
+      - uses: lukka/run-cmake@v10
+        name: Configure CMake
+        with:
+          configurePreset: ${{ matrix.spec.preset }}
+          configurePresetAdditionalArgs: "[ `-B`, `${{ runner.workspace }}/build` ]"
+
+      - name: build CMake
+        run: cmake --build ${{runner.workspace}}/build
 
       - name: test
         if: matrix.spec.no_tests != 'true'

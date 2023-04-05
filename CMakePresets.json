@@ -108,13 +108,29 @@
       ]
     },
     {
-      "name": "ci-ubuntu",
+      "name": "ci-linux",
       "inherits": [
         "ci-build",
         "ci-unix",
         "vcpkg",
         "dev-mode"
       ]
+    },
+    {
+      "name": "ci-linux-arm64",
+      "inherits": "ci-linux",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-linux",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Linux-arm64.cmake"
+      }
+    },
+    {
+      "name": "ci-linux-arm",
+      "inherits": "ci-linux",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm-linux",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Linux-arm.cmake"
+      }
     },
     {
       "name": "ci-windows",
