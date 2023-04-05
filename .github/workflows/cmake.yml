@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Install Crossbuild tools
-        if: matrix.spec.runner == 'ubuntu-18.04'
+        if: startsWith(matrix.spec.runner, 'ubuntu')
         run: |
           sudo apt update -y
           sudo apt install -y crossbuild-essential-armhf crossbuild-essential-arm64
