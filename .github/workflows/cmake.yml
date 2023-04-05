@@ -41,22 +41,18 @@ jobs:
         with:
           vcpkgGitCommitId: '19af97cba8ca48474e4ad15a24ed50271a9ecdac'
 
-      - run: |
-          echo "BUILD_NUMBER = ${BUILD_NUMBER}"
-          cmake -E make_directory ${{ runner.workspace }}/build
-
       - uses: lukka/run-cmake@v10
         name: Configure CMake
         with:
           configurePreset: ${{ matrix.spec.preset }}
-          configurePresetAdditionalArgs: "[ `-B`, `${{ runner.workspace }}/build` ]"
+          configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
 
       - name: build CMake
-        run: cmake --build ${{runner.workspace}}/build
+        run: cmake --build ./build
 
       - name: test
         if: matrix.spec.no_tests != 'true'
-        working-directory: ${{runner.workspace}}/build
+        working-directory: ./build
         run: ctest -VV --no-compress-output -R quick_tests
 
       - name: integration tests
@@ -65,22 +61,22 @@ jobs:
           ZITI_TEST_IDENTITY: ${{ runner.workspace }}/test_id.json
           ZITI_LOG: 4
         if: matrix.spec.no_tests != 'true' && env.TEST_ID != ''
-        working-directory: ${{runner.workspace}}/build
+        working-directory: ./build
         shell: bash
         run: |
           echo "${TEST_ID}" > "${ZITI_TEST_IDENTITY}"
           ctest -VV --no-compress-output -R zitilib_tests
 
       - name: make artifacts
-        run: cmake --build ${{runner.workspace}}/build --target ziti-prox-c --target package
+        run: cmake --build ./build --target ziti-prox-c --target package
 
       - name: upload artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ziti-prox-c-${{ matrix.spec.toolchain || runner.os }}
-          path: ${{ runner.workspace }}/build/programs/ziti-prox-c/ziti-prox-c${{ runner.os == 'Windows' && '.exe' || '' }}
+          path: ./build/programs/ziti-prox-c/ziti-prox-c${{ runner.os == 'Windows' && '.exe' || '' }}
       - name: upload SDK artifacts
         uses: actions/upload-artifact@v3
         with:
           name: ziti-sdk-${{ matrix.spec.toolchain || runner.os }}
-          path: ${{ runner.workspace }}/build/package/ziti-sdk-*
+          path: ./build/package/ziti-sdk-*
