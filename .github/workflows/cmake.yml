@@ -37,7 +37,7 @@ jobs:
 
       - uses: lukka/get-cmake@latest
 
-      - uses: lukka/run-vcpkg@v11
+      - uses: lukka/run-vcpkg@v10
         with:
           vcpkgGitCommitId: '19af97cba8ca48474e4ad15a24ed50271a9ecdac'
 
