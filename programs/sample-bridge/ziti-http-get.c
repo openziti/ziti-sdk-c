@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 #include <ziti/zitilib.h>
 #include <ziti/ziti.h>
-#include <http_parser.h>
+#include <tlsuv/http.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -44,17 +44,18 @@ int main(int argc, char *argv[]) {
     const char *prog = strrchr(argv[0], '/');
     if (prog == NULL) {
         prog = argv[0];
-    } else {
+    }
+    else {
         prog++;
     }
 
     const char *path = argv[1];
 
-    struct http_parser_url url = {0};
-    http_parser_parse_url(argv[2], strlen(argv[2]), 0, &url);
+    struct tlsuv_url_s url = {0};
+    tlsuv_parse_url(&url, argv[2]);
 
     char hostname[256];
-    snprintf(hostname, sizeof(hostname), "%.*s", (int) url.field_data[UF_HOST].len, argv[2] + url.field_data[UF_HOST].off);
+    snprintf(hostname, sizeof(hostname), "%.*s", (int) url.hostname_len, url.hostname);
     int port = (url.port != 0) ? url.port : 80;
 
     Ziti_lib_init();
@@ -82,8 +83,8 @@ int main(int argc, char *argv[]) {
                        "User-Agent: %s/%s\r\n"
                        "Connection: close\r\n"
                        "Accept: */*\r\n\r\n",
-                       url.field_data[UF_PATH].len, argv[2] + url.field_data[UF_PATH].off,
-                       url.field_data[UF_HOST].len, argv[2] + url.field_data[UF_HOST].off,
+                       (int) url.path_len, url.path,
+                       (int) url.hostname_len, url.hostname,
                        prog, ziti_get_version()->version);
 
     rc = write(soc, req, len);
