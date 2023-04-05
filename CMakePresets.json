@@ -108,6 +108,19 @@
       ]
     },
     {
+      "name": "ci-macOS-arm64",
+      "inherits": [
+        "ci-build",
+        "ci-unix",
+        "dev-mode",
+        "vcpkg"
+      ],
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-osx",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/macOS-arm64.cmake"
+      }
+    },
+    {
       "name": "ci-linux",
       "inherits": [
         "ci-build",
