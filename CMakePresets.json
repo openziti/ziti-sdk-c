@@ -94,6 +94,19 @@
       "hidden": true
     },
     {
+      "name": "ci-win-arm64",
+      "inherits": [
+        "flags-windows",
+        "ci-std",
+        "ninja"
+      ],
+      "architecture": {
+        "value": "AMR64",
+        "strategy": "external"
+      },
+      "hidden": true
+    },
+    {
       "name": "ci-build",
       "binaryDir": "${sourceDir}/build",
       "hidden": true
@@ -155,6 +168,19 @@
         "vcpkg",
         "vcpkg-win64-static"
       ]
+    },
+    {
+      "name": "ci-windows-arm64",
+      "inherits": [
+        "ci-build",
+        "ci-win-arm64",
+        "dev-mode",
+        "vcpkg"
+      ],
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-windows-static-md",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Windows-arm64-msvc.cmake"
+      }
     }
   ]
 }
