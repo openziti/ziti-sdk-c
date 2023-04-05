@@ -22,7 +22,7 @@ jobs:
           - { name: 'MacOS x86_64', runner: 'macOS-11', preset: 'ci-macOS' }
           - { name: 'MacOS arm64', runner: 'macOS-11', preset: 'ci-macOS-arm64', no_tests: 'true' }
           - { name: 'Windows x86_64', runner: 'windows-2019', preset: 'ci-windows' }
-
+          - { name: 'Windows ARM64', runner: 'windows-2019', toolchain: 'Windows-arm64-msvc', cmake_opts: '-A ARM64', no_tests: 'true' }
     steps:
       - name: Install Crossbuild tools
         if: startsWith(matrix.spec.runner, 'ubuntu')
@@ -30,6 +30,10 @@ jobs:
         with:
           packages: crossbuild-essential-armhf crossbuild-essential-arm64
           version: 1.0
+
+      - name: Add msbuild to PATH
+        if: matrix.spec.runner == 'windows-2019'
+        uses: microsoft/setup-msbuild@v1.1
 
       - uses: actions/checkout@v3
         with:
@@ -72,9 +76,12 @@ jobs:
 
       - name: upload artifacts
         uses: actions/upload-artifact@v3
+        env:
+          EXE_SUFFIX: ${{ runner.os == 'Windows' && '.exe' || '' }}
+          BUILD_DIR: ${{ runner.os == 'Windows' && format('{0}/', matrix.spec.build_type && matrix.spec.build_type || 'Debug') || '' }}
         with:
           name: ziti-prox-c-${{ matrix.spec.toolchain || runner.os }}
-          path: ./build/programs/ziti-prox-c/ziti-prox-c${{ runner.os == 'Windows' && '.exe' || '' }}
+          path: ./build/programs/ziti-prox-c/${{ env.BUILD_DIR }}ziti-prox-c${{ env.EXE_SUFFIX }}
       - name: upload SDK artifacts
         uses: actions/upload-artifact@v3
         with:
