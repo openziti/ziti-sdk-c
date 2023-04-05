@@ -1,8 +1,6 @@
-include(FetchContent)
-FetchContent_Declare(Catch2
-        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG v3.1.0)
-FetchContent_MakeAvailable(Catch2)
+
+find_package(Catch2 CONFIG REQUIRED)
+message("catch2 is ${Catch2_CONFIG}")
 
 add_executable(all_tests
         test_ziti_model.cpp
@@ -29,12 +27,12 @@ target_include_directories(all_tests
 
 target_link_libraries(all_tests
         PRIVATE ziti
-        PRIVATE Catch2WithMain)
+        PRIVATE Catch2::Catch2 Catch2::Catch2WithMain)
 
 add_executable(zitilib-tests zitilib-tests.cpp)
 target_link_libraries(zitilib-tests
         PRIVATE ziti
-        PRIVATE Catch2WithMain)
+        PRIVATE Catch2::Catch2WithMain)
 
 include(CTest)
 add_test(quick_tests all_tests -d yes "~[integ]~[metrics]")

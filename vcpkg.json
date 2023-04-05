@@ -13,8 +13,7 @@
       "description": "Dependencies for testing",
       "dependencies": [
         {
-          "name": "catch2",
-          "version>=": "2.13.9#1"
+          "name": "catch2"
         }
       ]
     },
@@ -28,11 +27,5 @@
       ]
     }
   },
-  "overrides": [
-    {
-      "name": "catch2",
-      "version": "2.13.9#1"
-    }
-  ],
   "builtin-baseline": "f14984af3738e69f197bf0e647a8dca12de92996"
 }
