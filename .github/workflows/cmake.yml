@@ -21,8 +21,8 @@ jobs:
           - { name: 'Linux ARM64', runner: 'ubuntu-20.04', preset: 'ci-linux-arm64', no_tests: 'true' }
           - { name: 'MacOS x86_64', runner: 'macOS-11', preset: 'ci-macOS' }
           - { name: 'MacOS arm64', runner: 'macOS-11', preset: 'ci-macOS-arm64', no_tests: 'true' }
-          - { name: 'Windows x86_64', runner: 'windows-2019', preset: 'ci-windows' }
-          - { name: 'Windows ARM64', runner: 'windows-2019', preset: 'ci-windows-arm64', no_tests: 'true' }
+          - { name: 'Windows x86_64', runner: 'windows-2022', preset: 'ci-windows' }
+          - { name: 'Windows ARM64', runner: 'windows-2022', preset: 'ci-windows-arm64', no_tests: 'true' }
     steps:
       - name: Install Crossbuild tools
         if: startsWith(matrix.spec.runner, 'ubuntu')
