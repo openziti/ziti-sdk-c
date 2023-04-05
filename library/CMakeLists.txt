@@ -134,35 +134,5 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../includes/
         COMPONENT ziti-sdk
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-set(ziti_DEPS_DIR ${CMAKE_BINARY_DIR}/_deps)
-if (NOT USE_OPENSSL)
-    install(FILES ${ziti_DEPS_DIR}/mbedtls-src/LICENSE
-            COMPONENT ziti-sdk
-            DESTINATION ${CMAKE_INSTALL_DOCDIR}/mbedtls)
-endif ()
-if (NOT HAVE_LIBUV)
-    install(FILES ${ziti_DEPS_DIR}/libuv-src/LICENSE
-            COMPONENT ziti-sdk
-            DESTINATION ${CMAKE_INSTALL_DOCDIR}/libuv)
-endif ()
-install(FILES ${tlsuv_SOURCE_DIR}/LICENSE
-        COMPONENT ziti-sdk
-        DESTINATION ${CMAKE_INSTALL_DOCDIR}/tlsuv)
-install(FILES ${ziti_DEPS_DIR}/tlsuv-src/deps/uv_link_t/README.md
-        COMPONENT ziti-sdk
-        DESTINATION ${CMAKE_INSTALL_DOCDIR}/uv_link_t)
-install(FILES ${ziti_DEPS_DIR}/http_parser-src/LICENSE-MIT
-        COMPONENT ziti-sdk
-        DESTINATION ${CMAKE_INSTALL_DOCDIR}/http-parser)
-
-if (NOT WIN32)
-    # no license file windows pre-built bundle
-    if (NOT HAVE_LIBSODIUM)
-        install(FILES ${CMAKE_BINARY_DIR}/_deps/libsodium-src/LICENSE
-                COMPONENT ziti-sdk
-                DESTINATION ${CMAKE_INSTALL_DOCDIR}/libsodium)
-    endif ()
-endif ()
-
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/ziti.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 
