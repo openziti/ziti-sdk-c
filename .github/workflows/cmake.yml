@@ -39,20 +39,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: lukka/get-cmake@latest
-
-      - uses: lukka/run-vcpkg@v10
+      - name: run build for ${{ matrix.spec.preset }}
+        uses: ./.github/actions/build
         with:
-          vcpkgGitCommitId: '19af97cba8ca48474e4ad15a24ed50271a9ecdac'
+          target: ${{ matrix.spec.preset }}
 
-      - uses: lukka/run-cmake@v10
-        name: Configure CMake
-        with:
-          configurePreset: ${{ matrix.spec.preset }}
-          configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
-
-      - name: build CMake
-        run: cmake --build ./build
+#      - uses: lukka/get-cmake@latest
+#
+#      - uses: lukka/run-vcpkg@v10
+#        with:
+#          vcpkgGitCommitId: '19af97cba8ca48474e4ad15a24ed50271a9ecdac'
+#
+#      - uses: lukka/run-cmake@v10
+#        name: Configure CMake
+#        with:
+#          configurePreset: ${{ matrix.spec.preset }}
+#          configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
+#
+#      - name: build CMake
+#        run: cmake --build ./build
 
       - name: test
         if: matrix.spec.no_tests != 'true'
