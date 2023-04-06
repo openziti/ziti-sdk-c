@@ -16,13 +16,13 @@ jobs:
       fail-fast: false
       matrix:
         spec:
-          - { name: 'Linux x86_64', runner: 'ubuntu-20.04', target: 'linux-x64' }
-          - { name: 'Linux ARM', runner: 'ubuntu-20.04', target: 'clinux-arm', no_tests: 'true' }
-          - { name: 'Linux ARM64', runner: 'ubuntu-20.04', target: 'linux-arm64', no_tests: 'true' }
-          - { name: 'MacOS x86_64', runner: 'macOS-11', target: 'macOS-x64' }
-          - { name: 'MacOS arm64', runner: 'macOS-11', target: 'macOS-arm64', no_tests: 'true' }
-          - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64' }
-          - { name: 'Windows ARM64', runner: 'windows-2022', target: 'windows-arm64', no_tests: 'true' }
+          - { name: 'Linux x86_64', runner: 'ubuntu-20.04', target: 'linux-x64', test: 'true' }
+          - { name: 'Linux ARM', runner: 'ubuntu-20.04', target: 'linux-arm' }
+          - { name: 'Linux ARM64', runner: 'ubuntu-20.04', target: 'linux-arm64' }
+          - { name: 'MacOS x86_64', runner: 'macOS-11', target: 'macOS-x64', test: 'true' }
+          - { name: 'MacOS arm64', runner: 'macOS-11', target: 'macOS-arm64' }
+          - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64', test: 'true' }
+          - { name: 'Windows ARM64', runner: 'windows-2022', target: 'windows-arm64' }
     steps:
       - name: Install Crossbuild tools
         if: startsWith(matrix.spec.runner, 'ubuntu')
@@ -43,38 +43,39 @@ jobs:
         uses: ./.github/actions/build
         with:
           target: ${{ matrix.spec.target }}
+          tests: ${{ matrix.spec.test }}
 
 #      - uses: lukka/get-cmake@latest
 #
 #      - uses: lukka/run-vcpkg@v10
 #        with:
 #          vcpkgGitCommitId: '19af97cba8ca48474e4ad15a24ed50271a9ecdac'
-#
-#      - uses: lukka/run-cmake@v10
-#        name: Configure CMake
-#        with:
-#          configurePreset: ${{ matrix.spec.preset }}
-#          configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
-#
-#      - name: build CMake
-#        run: cmake --build ./build
+      #
+      #      - uses: lukka/run-cmake@v10
+      #        name: Configure CMake
+      #        with:
+      #          configurePreset: ${{ matrix.spec.preset }}
+      #          configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
+      #
+      #      - name: build CMake
+      #        run: cmake --build ./build
 
-      - name: test
-        if: matrix.spec.no_tests != 'true'
-        working-directory: ./build
-        run: ctest -VV --no-compress-output -R quick_tests
-
-      - name: integration tests
-        env:
-          TEST_ID: ${{ secrets.ZITI_TEST_IDENTITY }}
-          ZITI_TEST_IDENTITY: ${{ runner.workspace }}/test_id.json
-          ZITI_LOG: 4
-        if: matrix.spec.no_tests != 'true' && env.TEST_ID != ''
-        working-directory: ./build
-        shell: bash
-        run: |
-          echo "${TEST_ID}" > "${ZITI_TEST_IDENTITY}"
-          ctest -VV --no-compress-output -R zitilib_tests
+      #      - name: test
+      #        if: matrix.spec.no_tests != 'true'
+      #        working-directory: ./build
+      #        run: ctest -VV --no-compress-output -R quick_tests
+      #
+      #      - name: integration tests
+      #        env:
+      #          TEST_ID: ${{ secrets.ZITI_TEST_IDENTITY }}
+      #          ZITI_TEST_IDENTITY: ${{ runner.workspace }}/test_id.json
+      #          ZITI_LOG: 4
+      #        if: matrix.spec.no_tests != 'true' && env.TEST_ID != ''
+      #        working-directory: ./build
+      #        shell: bash
+      #        run: |
+      #          echo "${TEST_ID}" > "${ZITI_TEST_IDENTITY}"
+      #          ctest -VV --no-compress-output -R zitilib_tests
 
       - name: upload artifacts
         uses: actions/upload-artifact@v3

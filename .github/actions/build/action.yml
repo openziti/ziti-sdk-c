@@ -42,3 +42,20 @@ runs:
       run: cmake --build ./build --config ${{ inputs.config }} --target ziti-prox-c-pack --target package
       shell: bash
 
+    - name: test
+      if: input.test == 'true'
+      working-directory: ./build
+      shell: bash
+      run: ctest -VV --no-compress-output -R quick_tests
+
+    - name: integration tests
+      env:
+        TEST_ID: ${{ secrets.ZITI_TEST_IDENTITY }}
+        ZITI_TEST_IDENTITY: ${{ runner.workspace }}/test_id.json
+        ZITI_LOG: "4"
+      if: input.test == 'true' && env.TEST_ID != ''
+      working-directory: ./build
+      shell: bash
+      run: |
+        echo "${TEST_ID}" > "${ZITI_TEST_IDENTITY}"
+        ctest -VV --no-compress-output -R zitilib_tests
