@@ -1,0 +1,63 @@
+name: Reusable build
+description: Reusable CMake build
+
+inputs:
+  target:
+    required: true
+    description: build target
+
+  test:
+    required: true
+    description: run tests
+
+  config:
+    default: RelWithDebInfo
+    description: build type
+
+  test_id:
+    description: Ziti Test Identity
+
+runs:
+  using: "composite"
+  steps:
+    - name: simple build
+      run: echo "target = ${{ inputs.target }}"
+      shell: bash
+
+    - uses: lukka/get-cmake@latest
+
+    - uses: lukka/run-vcpkg@v10
+      with:
+        vcpkgGitCommitId: '19af97cba8ca48474e4ad15a24ed50271a9ecdac'
+
+    - uses: lukka/run-cmake@v10
+      name: Configure CMake
+      with:
+        configurePreset: ci-${{ inputs.target }}
+        configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
+
+    - name: build CMake
+      run: cmake --build ./build --config ${{ inputs.config }}
+      shell: bash
+
+    - name: bundle artifacts
+      run: cmake --build ./build --config ${{ inputs.config }} --target ziti-prox-c-pack --target package
+      shell: bash
+
+    - name: test
+      if: inputs.test == 'true'
+      working-directory: ./build
+      shell: bash
+      run: ctest -VV --no-compress-output -R quick_tests
+
+    - name: integration tests
+      env:
+        TEST_ID: ${{ inputs.test_id }}
+        ZITI_TEST_IDENTITY: ${{ runner.workspace }}/test_id.json
+        ZITI_LOG: "4"
+      if: inputs.test == 'true' && inputs.test_id != ''
+      working-directory: ./build
+      shell: bash
+      run: |
+        echo "${TEST_ID}" > "${ZITI_TEST_IDENTITY}"
+        ctest -VV --no-compress-output -R zitilib_tests

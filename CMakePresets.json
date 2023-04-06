@@ -117,7 +117,7 @@
       "hidden": true
     },
     {
-      "name": "ci-macOS",
+      "name": "ci-macOS-x64",
       "inherits": [
         "ci-build",
         "ci-unix",
@@ -140,7 +140,7 @@
       }
     },
     {
-      "name": "ci-linux",
+      "name": "ci-linux-x64",
       "inherits": [
         "ci-build",
         "ci-unix",
@@ -150,7 +150,7 @@
     },
     {
       "name": "ci-linux-arm64",
-      "inherits": "ci-linux",
+      "inherits": "ci-linux-x64",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm64-linux",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Linux-arm64.cmake"
@@ -158,14 +158,14 @@
     },
     {
       "name": "ci-linux-arm",
-      "inherits": "ci-linux",
+      "inherits": "ci-linux-x64",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm-linux",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Linux-arm.cmake"
       }
     },
     {
-      "name": "ci-windows",
+      "name": "ci-windows-x64",
       "inherits": [
         "ci-build",
         "ci-win64",

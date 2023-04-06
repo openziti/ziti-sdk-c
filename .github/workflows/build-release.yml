@@ -1,6 +1,7 @@
 name: Publish Release
 
 on:
+  workflow_dispatch:
   release:
     types: [ published ]
 
@@ -14,47 +15,37 @@ jobs:
       fail-fast: false
       matrix:
         spec:
-        - { name: 'Linux x86_64', runner: 'ubuntu-18.04' }
-        - { name: 'Linux ARM', runner: 'ubuntu-18.04', toolchain: 'Linux-arm', no_tests: 'true' }
-        - { name: 'Linux ARM64', runner: 'ubuntu-18.04', toolchain: 'Linux-arm64', no_tests: 'true' }
-        - { name: 'MacOS x86_64', runner: 'macOS-11' }
-        - { name: 'MacOS arm64', runner: 'macOS-11', toolchain: 'macOS-arm64', no_tests: 'true' }
-        - { name: 'Windows x86_64', runner: 'windows-2019' }
+          - { name: 'Linux x86_64', runner: 'ubuntu-20.04', target: 'linux-x64', test: 'true' }
+          - { name: 'Linux ARM', runner: 'ubuntu-20.04', target: 'linux-arm' }
+          - { name: 'Linux ARM64', runner: 'ubuntu-20.04', target: 'linux-arm64' }
+          - { name: 'MacOS x86_64', runner: 'macOS-11', target: 'macOS-x64', test: 'true' }
+          - { name: 'MacOS arm64', runner: 'macOS-11', target: 'macOS-arm64' }
+          - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64', test: 'true' }
+          - { name: 'Windows ARM64', runner: 'windows-2022', target: 'windows-arm64' }
 
     steps:
+      - name: Install Crossbuild tools
+        if: startsWith(matrix.spec.runner, 'ubuntu')
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+            packages: crossbuild-essential-armhf crossbuild-essential-arm64
+            version: 1.0
+
+      - name: Add msbuild to PATH
+        if: startsWith(matrix.spec.runner, 'windows')
+        uses: microsoft/setup-msbuild@v1.1
+
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: Install Crossbuild tools
-        if: matrix.spec.runner == 'ubuntu-18.04'
-        run: |
-          sudo apt update -y
-          sudo apt install -y crossbuild-essential-armhf crossbuild-essential-arm64
+      - name: run build for ${{ matrix.spec.target }}
+        uses: ./.github/actions/build
+        with:
+          target: ${{ matrix.spec.target }}
+          test: false
+          config: Release
 
-      - name: setup/build CMake
-        env:
-          TOOLCHAIN: ${{ matrix.spec.toolchain && format('{0}/toolchains/{1}.cmake', github.workspace, matrix.spec.toolchain) || '' }}
-        run: |
-          echo "build number = ${BUILD_NUMBER}"
-          cmake -E make_directory ${{runner.workspace}}/build
-          cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" -S ${{ github.workspace }} -B ${{runner.workspace}}/build
-          cmake --build ${{runner.workspace}}/build --config Release
-
-      - name: make artifacts
-        run: cmake --build ${{runner.workspace}}/build --config Release --target ziti-prox-c-pack --target package
-
-#      - name: zip artifacts
-#        if: runner.os != 'Windows'
-#        run: 7z a -tzip ziti-prox-c-${{ runner.os }}.zip ${{runner.workspace}}/build/programs/ziti-prox-c/ziti-prox-c
-#      - name: zip artifacts (WIN)
-#        if: runner.os == 'Windows'
-#        run: 7z a -tzip ziti-prox-c-${{ runner.os }}.zip ${{runner.workspace}}/build/programs/ziti-prox-c/Debug/ziti-prox-c.exe
-#      - name: Get release
-#        id: get_release
-#        uses: bruceadams/get-release@v1.2.2
-#        env:
-#          GITHUB_TOKEN: ${{ github.token }}
       - name: upload SDK release bundle
         uses: softprops/action-gh-release@v0.1.13
         if: startsWith(github.ref, 'refs/tags/')
