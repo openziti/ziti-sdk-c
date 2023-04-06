@@ -1272,11 +1272,10 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
     MODEL_MAP_FOR(it, ziti_contexts) {
         ztx_wrap_t *wrap = model_map_it_value(it);
         const char *ctrl = wrap->ztx ? ziti_get_controller(wrap->ztx) : wrap->opts.controller;
-        struct http_parser_url url;
-        http_parser_url_init(&url);
-        http_parser_parse_url(ctrl, strlen(ctrl), 0, &url);
+        struct tlsuv_url_s url;
+        tlsuv_parse_url(&url, ctrl);
 
-        if (strncmp(host, ctrl + url.field_data[UF_HOST].off, url.field_data[UF_HOST].len) == 0) {
+        if (strncmp(host, url.hostname, url.hostname_len) == 0) {
             return -1;
         }
 

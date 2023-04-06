@@ -1,18 +1,16 @@
-/*
-Copyright 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2023.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <ziti/ziti.h>
 
@@ -76,7 +74,7 @@ struct enroll_cert {
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <JWT file> <ID file> [key_file] [cert_file]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <JWT file> <ID file> [ <key_file> [ <cert_file> ] ]\n", argv[0]);
         exit(1);
     }
 
@@ -117,13 +115,28 @@ int main(int argc, char **argv) {
     fgets(jwt, sizeof(jwt), jwt_file);
     fclose(jwt_file);
 
+    const char *key = NULL;
+    const char *cert = NULL;
+    if (argc >= 4) {
+        key = argv[3];
+        if (argc >= 5) {
+            cert = argv[4];
+        }
+    }
 
     Ziti_lib_init();
     char *cfg;
     size_t len;
-    int rc = Ziti_enroll_identity(jwt, NULL, NULL, &cfg, &len);
+    int rc = Ziti_enroll_identity(jwt, key, cert, &cfg, &len);
     if (rc == ZITI_OK) {
-        printf("%.*s\n", (int)len, cfg);
+        FILE *id_file = fopen(argv[2], "w");
+        if (id_file) {
+            fprintf(id_file, "%.*s", (int) len, cfg);
+            printf("ziti identity is save in %s\n", argv[1]);
+        }
+        else {
+            printf("err = %d(%s)\n", errno, strerror(errno));
+        }
     } else {
         printf("err = %d(%s)\n", rc, ziti_errorstr(rc));
     }

@@ -18,8 +18,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <uv.h>
-#include <http_parser.h>
 #include <stdlib.h>
+#include <tlsuv/tlsuv.h>
 #include <tlsuv/queue.h>
 #include <ziti/ziti_log.h>
 #include "ziti/model_collections.h"
@@ -115,6 +115,8 @@ if (!uv_is_closing((uv_handle_t*)(h))) uv_close((uv_handle_t*)(h), (uv_close_cb)
  * @return number of tokens
  */
 extern size_t str_split(const char *str, const char *delim, model_list *result);
+
+int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *keystr);
 
 #ifdef __cplusplus
 }

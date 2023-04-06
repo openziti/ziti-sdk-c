@@ -14,6 +14,7 @@
 
 #include "catch2_includes.hpp"
 
+#include <cstring>
 #include "message.h"
 #include "edge_protocol.h"
 

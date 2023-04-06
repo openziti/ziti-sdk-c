@@ -1,18 +1,16 @@
-/*
-Copyright 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2023.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <stdlib.h>
 #include <string.h>
@@ -170,12 +168,12 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
         if (enroll_req->ecfg->private_key == NULL) {
             ziti_err = ZITI_KEY_GENERATION_FAILED;
             TRY(TLS, tls->api->generate_key(&enroll_req->ecfg->pk));
-            TRY(TLS, tls->api->write_key_to_pem(enroll_req->ecfg->pk, &enroll_req->ecfg->private_key, &len));
+            TRY(TLS,
+                enroll_req->ecfg->pk->to_pem(enroll_req->ecfg->pk, (char **) &enroll_req->ecfg->private_key, &len));
         }
         else {
             ziti_err = ZITI_KEY_LOAD_FAILED;
-            TRY(TLS, tls->api->load_key(&enroll_req->ecfg->pk, enroll_req->ecfg->private_key,
-                                        strlen(enroll_req->ecfg->private_key) + 1));
+            load_key_internal(tls, &enroll_req->ecfg->pk, enroll_req->ecfg->private_key);
         }
 
         ziti_err = ZITI_CSR_GENERATION_FAILED;
@@ -188,10 +186,11 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
                                                NULL));
     }
     else if (strcmp("ottca", enroll_req->ecfg->zej->method) == 0 || strcmp("ca", enroll_req->ecfg->zej->method) == 0) {
+        tlsuv_private_key_t pk;
         ziti_err = ZITI_KEY_LOAD_FAILED;
-        TRY(TLS, tls->api->set_own_cert(tls->ctx,
-                                        enroll_req->ecfg->own_cert, strlen(enroll_req->ecfg->own_cert),
-                                        enroll_req->ecfg->private_key, strlen(enroll_req->ecfg->private_key)));
+        TRY(TLS, tls->api->load_key(&pk, enroll_req->ecfg->private_key, strlen(enroll_req->ecfg->private_key)));
+        TRY(TLS, tls->api->set_own_key(tls->ctx, pk));
+        TRY(TLS, tls->api->set_own_cert(tls->ctx, enroll_req->ecfg->own_cert, strlen(enroll_req->ecfg->own_cert)));
     }
 
     enroll_req->ecfg->CA = ca;
