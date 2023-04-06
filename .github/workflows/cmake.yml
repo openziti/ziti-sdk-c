@@ -46,38 +46,6 @@ jobs:
           test: ${{ matrix.spec.test }}
           test_id: ${{ secrets.ZITI_TEST_IDENTITY }}
 
-#      - uses: lukka/get-cmake@latest
-#
-#      - uses: lukka/run-vcpkg@v10
-#        with:
-#          vcpkgGitCommitId: '19af97cba8ca48474e4ad15a24ed50271a9ecdac'
-      #
-      #      - uses: lukka/run-cmake@v10
-      #        name: Configure CMake
-      #        with:
-      #          configurePreset: ${{ matrix.spec.preset }}
-      #          configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
-      #
-      #      - name: build CMake
-      #        run: cmake --build ./build
-
-      #      - name: test
-      #        if: matrix.spec.no_tests != 'true'
-      #        working-directory: ./build
-      #        run: ctest -VV --no-compress-output -R quick_tests
-      #
-      #      - name: integration tests
-      #        env:
-      #          TEST_ID: ${{ secrets.ZITI_TEST_IDENTITY }}
-      #          ZITI_TEST_IDENTITY: ${{ runner.workspace }}/test_id.json
-      #          ZITI_LOG: 4
-      #        if: matrix.spec.no_tests != 'true' && env.TEST_ID != ''
-      #        working-directory: ./build
-      #        shell: bash
-      #        run: |
-      #          echo "${TEST_ID}" > "${ZITI_TEST_IDENTITY}"
-      #          ctest -VV --no-compress-output -R zitilib_tests
-
       - name: upload artifacts
         uses: actions/upload-artifact@v3
         with:
