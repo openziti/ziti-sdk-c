@@ -157,7 +157,7 @@
       }
     },
     {
-      "name": "c-linux-arm",
+      "name": "ci-linux-arm",
       "inherits": "ci-linux-x64",
       "cacheVariables": {
         "VCPKG_TARGET_TRIPLET": "arm-linux",
