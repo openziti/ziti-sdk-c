@@ -52,10 +52,10 @@ runs:
 
     - name: integration tests
       env:
-        TEST_ID: ${{ secrets.ZITI_TEST_IDENTITY }}
+        TEST_ID: ${{ inputs.test_id }}
         ZITI_TEST_IDENTITY: ${{ runner.workspace }}/test_id.json
         ZITI_LOG: "4"
-      if: inputs.test == 'true' && env.TEST_ID != ''
+      if: inputs.test == 'true' && inputs.test_id != ''
       working-directory: ./build
       shell: bash
       run: |
