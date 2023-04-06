@@ -32,7 +32,7 @@ jobs:
           version: 1.0
 
       - name: Add msbuild to PATH
-        if: matrix.spec.runner == 'windows-2019'
+        if: startsWith(matrix.spec.runner, 'windows')
         uses: microsoft/setup-msbuild@v1.1
 
       - uses: actions/checkout@v3
@@ -44,6 +44,7 @@ jobs:
         with:
           target: ${{ matrix.spec.target }}
           tests: ${{ matrix.spec.test }}
+          test_id: ${{ secrets.ZITI_TEST_IDENTITY }}
 
 #      - uses: lukka/get-cmake@latest
 #

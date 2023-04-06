@@ -11,9 +11,11 @@ inputs:
     description: run tests
 
   config:
-    default: Release
+    default: RelWithDebugInfo
     description: build type
 
+  test_id:
+    description: Ziti Test Identity
 
 runs:
   using: "composite"
