@@ -1,0 +1,36 @@
+name: Reusable build
+description: Reusable CMake build
+
+inputs:
+  target:
+    required: true
+    description: build target
+
+  test:
+    required: true
+    description: run tests
+
+
+runs:
+  using: "composite"
+  steps:
+    - name: simple build
+      run: echo "target = ${{ inputs.target }}"
+      shell: bash
+
+    - uses: lukka/get-cmake@latest
+
+    - uses: lukka/run-vcpkg@v10
+      with:
+        vcpkgGitCommitId: '19af97cba8ca48474e4ad15a24ed50271a9ecdac'
+
+    - uses: lukka/run-cmake@v10
+      name: Configure CMake
+      with:
+        configurePreset: ${{ inputs.target }}
+        configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
+
+    - name: build CMake
+      run: cmake --build ./build
+      shell: bash
+
