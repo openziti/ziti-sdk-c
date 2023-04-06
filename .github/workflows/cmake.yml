@@ -43,7 +43,7 @@ jobs:
         uses: ./.github/actions/build
         with:
           target: ${{ matrix.spec.target }}
-          tests: ${{ matrix.spec.test }}
+          test: ${{ matrix.spec.test }}
           test_id: ${{ secrets.ZITI_TEST_IDENTITY }}
 
 #      - uses: lukka/get-cmake@latest
