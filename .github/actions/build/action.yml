@@ -10,6 +10,10 @@ inputs:
     required: true
     description: run tests
 
+  config:
+    default: Release
+    description: build type
+
 
 runs:
   using: "composite"
@@ -27,10 +31,14 @@ runs:
     - uses: lukka/run-cmake@v10
       name: Configure CMake
       with:
-        configurePreset: ${{ inputs.target }}
+        configurePreset: ci-${{ inputs.target }}
         configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
 
     - name: build CMake
-      run: cmake --build ./build
+      run: cmake --build ./build --config ${{ inputs.config }}
+      shell: bash
+
+    - name: bundle artifacts
+      run: cmake --build ./build --config ${{ inputs.config }} --target ziti-prox-c-pack --target package
       shell: bash
 

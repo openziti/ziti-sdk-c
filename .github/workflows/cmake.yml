@@ -16,13 +16,13 @@ jobs:
       fail-fast: false
       matrix:
         spec:
-          - { name: 'Linux x86_64', runner: 'ubuntu-20.04', preset: 'ci-linux' }
-          - { name: 'Linux ARM', runner: 'ubuntu-20.04', preset: 'ci-linux-arm', no_tests: 'true' }
-          - { name: 'Linux ARM64', runner: 'ubuntu-20.04', preset: 'ci-linux-arm64', no_tests: 'true' }
-          - { name: 'MacOS x86_64', runner: 'macOS-11', preset: 'ci-macOS' }
-          - { name: 'MacOS arm64', runner: 'macOS-11', preset: 'ci-macOS-arm64', no_tests: 'true' }
-          - { name: 'Windows x86_64', runner: 'windows-2022', preset: 'ci-windows' }
-          - { name: 'Windows ARM64', runner: 'windows-2022', preset: 'ci-windows-arm64', no_tests: 'true' }
+          - { name: 'Linux x86_64', runner: 'ubuntu-20.04', target: 'linux-x64' }
+          - { name: 'Linux ARM', runner: 'ubuntu-20.04', target: 'clinux-arm', no_tests: 'true' }
+          - { name: 'Linux ARM64', runner: 'ubuntu-20.04', target: 'linux-arm64', no_tests: 'true' }
+          - { name: 'MacOS x86_64', runner: 'macOS-11', target: 'macOS-x64' }
+          - { name: 'MacOS arm64', runner: 'macOS-11', target: 'macOS-arm64', no_tests: 'true' }
+          - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64' }
+          - { name: 'Windows ARM64', runner: 'windows-2022', target: 'windows-arm64', no_tests: 'true' }
     steps:
       - name: Install Crossbuild tools
         if: startsWith(matrix.spec.runner, 'ubuntu')
@@ -39,10 +39,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: run build for ${{ matrix.spec.preset }}
+      - name: run build for ${{ matrix.spec.target }}
         uses: ./.github/actions/build
         with:
-          target: ${{ matrix.spec.preset }}
+          target: ${{ matrix.spec.target }}
 
 #      - uses: lukka/get-cmake@latest
 #
@@ -76,19 +76,13 @@ jobs:
           echo "${TEST_ID}" > "${ZITI_TEST_IDENTITY}"
           ctest -VV --no-compress-output -R zitilib_tests
 
-      - name: make artifacts
-        run: cmake --build ./build --target ziti-prox-c --target package
-
       - name: upload artifacts
         uses: actions/upload-artifact@v3
-        env:
-          EXE_SUFFIX: ${{ runner.os == 'Windows' && '.exe' || '' }}
-          BUILD_DIR: ${{ runner.os == 'Windows' && format('{0}/', matrix.spec.build_type && matrix.spec.build_type || 'Debug') || '' }}
         with:
-          name: ziti-prox-c-${{ matrix.spec.toolchain || runner.os }}
-          path: ./build/programs/ziti-prox-c/**/ziti-prox-c*
+          name: ziti-prox-c-${{ matrix.spec.target }}
+          path: ./build/programs/ziti-prox-c/**/ziti-prox-c*.zip
       - name: upload SDK artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ziti-sdk-${{ matrix.spec.toolchain || runner.os }}
+          name: ziti-sdk-${{ matrix.spec.target }}
           path: ./build/package/ziti-sdk-*
