@@ -530,6 +530,9 @@ int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *ke
         }
     }
 
+    if (strncmp("pem:", keystr, strlen("pem:")) == 0) {
+        keystr += strlen("pem:");
+    }
     rc = tls->api->load_key(key, keystr, strlen(keystr));
     return rc != 0 ? ZITI_INVALID_CONFIG : 0;
 }
