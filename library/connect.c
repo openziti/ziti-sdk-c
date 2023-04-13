@@ -167,6 +167,16 @@ static void free_conn_req(struct ziti_conn_req *r) {
 int close_conn_internal(struct ziti_conn *conn) {
     if (conn->state == Closed && conn->write_reqs <= 0 && model_map_size(&conn->children) == 0) {
         CONN_LOG(DEBUG, "removing");
+
+        while (!TAILQ_EMPTY(&conn->wreqs)) {
+            struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
+            TAILQ_REMOVE(&conn->wreqs, req, _next);
+            if (req->cb) {
+                req->cb(conn, ZITI_INVALID_STATE, req->ctx);
+            }
+            free(req);
+        }
+
         if (conn->close_cb) {
             conn->close_cb(conn);
         }
