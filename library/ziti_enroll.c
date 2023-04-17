@@ -237,11 +237,23 @@ static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enr
     else {
         ZITI_LOG(DEBUG, "successfully enrolled with controller %s", ctrl->url);
 
-        ziti_config cfg;
+        ziti_config cfg = {0};
         cfg.controller_url = strdup(enroll_req->ecfg->zej->controller);
         cfg.id.ca = strdup(enroll_req->ecfg->CA);
         cfg.id.key = strdup(enroll_req->ecfg->private_key);
-        cfg.id.cert = er->cert ? strdup(er->cert) : strdup(enroll_req->ecfg->own_cert);
+        if (er->cert) {
+            tls_cert c = NULL;
+            enroll_req->ecfg->tls->api->load_cert(&c, er->cert, strlen(er->cert));
+            int rc = enroll_req->ecfg->pk->store_certificate(enroll_req->ecfg->pk, c);
+            if (rc != 0) {
+                ZITI_LOG(INFO, "failed to store cert with key");
+                cfg.id.cert = strdup(er->cert);
+            } else {
+                ZITI_LOG(INFO, "store cert success");
+            }
+        } else {
+            cfg.id.cert = strdup(enroll_req->ecfg->own_cert);
+        }
 
         if (enroll_req->enroll_cb) {
             enroll_req->enroll_cb(&cfg, ZITI_OK, NULL, enroll_req->external_enroll_ctx);

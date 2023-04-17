@@ -54,7 +54,7 @@ jobs:
             ./build/package/ziti-sdk*
             ./build/programs/ziti-prox-c/ziti-prox-c-*.zip
 
-      - name: upload pre-release artifacts(ziti-prox-c)
+      - name: "upload pre-release artifacts: ziti-prox-c"
         uses: actions/upload-artifact@v3
         if: !startsWith(github.ref, 'refs/tags/')
         with:
