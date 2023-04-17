@@ -51,6 +51,7 @@ jobs:
         with:
           name: ziti-prox-c-${{ matrix.spec.target }}
           path: ./build/programs/ziti-prox-c/**/ziti-prox-c*.zip
+
       - name: upload SDK artifacts
         uses: actions/upload-artifact@v3
         with:
