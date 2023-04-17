@@ -56,14 +56,12 @@ jobs:
 
       - name: "upload pre-release artifacts: ziti-prox-c"
         uses: actions/upload-artifact@v3
-        if: !startsWith(github.ref, 'refs/tags/')
         with:
           name: ziti-prox-c-${{ matrix.spec.target }}
           path: ./build/programs/ziti-prox-c/**/ziti-prox-c*.zip
 
       - name: upload SDK pre-release artifacts
         uses: actions/upload-artifact@v3
-        if: !startsWith(github.ref, 'refs/tags/')
         with:
           name: ziti-sdk-${{ matrix.spec.target }}
           path: ./build/package/ziti-sdk-*
