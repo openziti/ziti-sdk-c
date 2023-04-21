@@ -70,7 +70,7 @@ int verify_controller_jwt(tls_cert cert, void *ctx) {
 }
 
 static int check_cert_required(enroll_cfg *ecfg) {
-    if (strcmp(ecfg->zej->method, "ca") == 0 || strcmp(ecfg->zej->method, "ottca") == 0) {
+    if (ecfg->zej->method == ziti_enrollment_methods.ca || ecfg->zej->method == ziti_enrollment_methods.ottca) {
         if (ecfg->own_cert == NULL || ecfg->private_key == 0) {
             return ZITI_ENROLLMENT_CERTIFICATE_REQUIRED;
         }
@@ -93,7 +93,6 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
 
     tls_context *tls = default_tls_context("", 0); // no default CAs
     PREPF(ziti, ziti_errorstr);
-    PREPF(TLS, tls->api->strerror);
 
     NEWP(ecfg, enroll_cfg);
     ecfg->external_enroll_cb = enroll_cb;
@@ -122,10 +121,6 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
     enroll_req->loop = loop;
     enroll_req->ecfg = ecfg;
     ziti_ctrl_get_well_known_certs(ctrl, well_known_certs_cb, enroll_req);
-
-    CATCH(TLS) {
-        TRY(ziti, ZITI_INVALID_CONFIG);
-    }
 
     CATCH(ziti) {
         if (enroll_cb) {
@@ -163,8 +158,19 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     ZITI_LOG(TRACE, "CA PEM:\n%s", ca);
 
     tls_context *tls = default_tls_context(ca, (strlen(ca) + 1));
+    if (enroll_req->ecfg->private_key != NULL) {
+        ziti_err = ZITI_KEY_LOAD_FAILED;
+        if (load_key_internal(tls, &enroll_req->ecfg->pk, enroll_req->ecfg->private_key) != 0) {
+            ZITI_LOG(WARN, "failed to load private key[%s]", enroll_req->ecfg->private_key);
+            if (enroll_req->ecfg->zej->method == ziti_enrollment_methods.ott &&
+                strncmp(enroll_req->ecfg->private_key, "pkcs11://", strlen("pkcs11://")) == 0) {
+                ZITI_LOG(INFO, "attempting to generate pkcs11 key");
+                TRY(TLS, gen_p11_key_internal(tls, &enroll_req->ecfg->pk, enroll_req->ecfg->private_key));
+            }
+        }
+    }
 
-    if (strcmp("ott", enroll_req->ecfg->zej->method) == 0) {
+    if (enroll_req->ecfg->zej->method == ziti_enrollment_methods.ott) {
         size_t len;
         if (enroll_req->ecfg->private_key == NULL) {
             ziti_err = ZITI_KEY_GENERATION_FAILED;
@@ -173,14 +179,6 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
                 enroll_req->ecfg->pk->to_pem(enroll_req->ecfg->pk, (char **) &enroll_req->ecfg->private_key, &len));
         }
         else {
-            ziti_err = ZITI_KEY_LOAD_FAILED;
-            if (load_key_internal(tls, &enroll_req->ecfg->pk, enroll_req->ecfg->private_key) != 0) {
-                ZITI_LOG(WARN, "failed to load private key[%s]", enroll_req->ecfg->private_key);
-                if (strncmp(enroll_req->ecfg->private_key, "pkcs11://", strlen("pkcs11://")) == 0) {
-                    ZITI_LOG(INFO, "attempting to generate pkcs11 key");
-                    TRY(TLS, gen_p11_key_internal(tls, &enroll_req->ecfg->pk, enroll_req->ecfg->private_key));
-                }
-            }
         }
 
         ziti_err = ZITI_CSR_GENERATION_FAILED;
@@ -192,11 +190,10 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
                                                "CN", enroll_req->ecfg->zej->subject,
                                                NULL));
     }
-    else if (strcmp("ottca", enroll_req->ecfg->zej->method) == 0 || strcmp("ca", enroll_req->ecfg->zej->method) == 0) {
-        tlsuv_private_key_t pk;
+    else if (enroll_req->ecfg->zej->method == ziti_enrollment_methods.ottca ||
+             enroll_req->ecfg->zej->method == ziti_enrollment_methods.ca) {
         ziti_err = ZITI_KEY_LOAD_FAILED;
-        TRY(TLS, tls->api->load_key(&pk, enroll_req->ecfg->private_key, strlen(enroll_req->ecfg->private_key)));
-        TRY(TLS, tls->api->set_own_key(tls->ctx, pk));
+        TRY(TLS, tls->api->set_own_key(tls->ctx, enroll_req->ecfg->pk));
         TRY(TLS, tls->api->set_own_cert(tls->ctx, enroll_req->ecfg->own_cert, strlen(enroll_req->ecfg->own_cert)));
     }
 
@@ -244,11 +241,19 @@ static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enr
     else {
         ZITI_LOG(DEBUG, "successfully enrolled with controller %s", ctrl->url);
 
-        ziti_config cfg;
+        ziti_config cfg = {0};
         cfg.controller_url = strdup(enroll_req->ecfg->zej->controller);
         cfg.id.ca = strdup(enroll_req->ecfg->CA);
         cfg.id.key = strdup(enroll_req->ecfg->private_key);
-        cfg.id.cert = er->cert ? strdup(er->cert) : strdup(enroll_req->ecfg->own_cert);
+
+        tls_cert c = NULL;
+        if (enroll_req->ecfg->tls->api->load_cert(&c, er->cert, strlen(er->cert)) == 0 &&
+            enroll_req->ecfg->pk->store_certificate(enroll_req->ecfg->pk, c) == 0) {
+            ZITI_LOG(INFO, "stored certificate to PKCS#11 token");
+        }
+        else {
+            cfg.id.cert = er->cert ? strdup(er->cert) : strdup(enroll_req->ecfg->own_cert);
+        }
 
         if (enroll_req->enroll_cb) {
             enroll_req->enroll_cb(&cfg, ZITI_OK, NULL, enroll_req->external_enroll_ctx);
