@@ -673,11 +673,12 @@ static void ctrl_enroll_http_cb(tlsuv_http_resp_t *http_resp, void *data) {
 }
 
 void
-ziti_ctrl_enroll(ziti_controller *ctrl, const char *method, const char *token, const char *csr, const char *name,
+ziti_ctrl_enroll(ziti_controller *ctrl, ziti_enrollment_method method, const char *token, const char *csr,
+                 const char *name,
                  void (*cb)(ziti_enrollment_resp *, const ziti_error *, void *),
                  void *ctx) {
     char path[1024];
-    snprintf(path, sizeof(path), "/enroll?method=%s", method);
+    snprintf(path, sizeof(path), "/enroll?method=%s", ziti_enrollment_methods.name(method));
 
     if (token) {
         strcat(path, "&token=");

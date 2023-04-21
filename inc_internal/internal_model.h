@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2022.  NetFoundry Inc.
+// Copyright (c) 2020-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -66,8 +66,14 @@ XX(cause, string, map, cause, __VA_ARGS__)
 XX(alg, string, none, alg, __VA_ARGS__) \
 XX(typ, string, none, typ, __VA_ARGS__)
 
+#define ZITI_ENROLLMENT_METHOD(XX, ...) \
+XX(ott, __VA_ARGS__)                    \
+XX(ottca, __VA_ARGS__)                    \
+XX(ca, __VA_ARGS__)
+
+
 #define ZITI_ENROLLMENT_JWT_MODEL(XX, ...) \
-XX(method, string, none, em, __VA_ARGS__) \
+XX(method, ziti_enrollment_method, none, em, __VA_ARGS__) \
 XX(controller, string, none, iss, __VA_ARGS__) \
 XX(subject, string, none, sub, __VA_ARGS__) \
 XX(token, string, none, jti, __VA_ARGS__)
@@ -169,6 +175,8 @@ XX(fingerprint, string, none, fingerprint, __VA_ARGS__)
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+DECLARE_ENUM(ziti_enrollment_method, ZITI_ENROLLMENT_METHOD)
 
 DECLARE_MODEL(ziti_identity_data, ZITI_IDENTITY_DATA_MODEL)
 
