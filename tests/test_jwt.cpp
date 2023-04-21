@@ -1,18 +1,16 @@
-/*
-Copyright 2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2023.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/matchers/catch_matchers_string.hpp"
@@ -58,11 +56,11 @@ TEST_CASE("load_jwt","[integ]") {
 
     load_jwt(conf, ecfg, &zejh, &zej);
 
-    REQUIRE_THAT(zejh->alg, Catch::Matchers::Equals("RS256"));
+    CHECK_THAT(zejh->alg, Catch::Matchers::Equals("RS256"));
 
-    REQUIRE_THAT(zej->controller, Catch::Matchers::Equals("https://demo.ziti.netfoundry.io:1080"));
-    REQUIRE_THAT(zej->method, Catch::Matchers::Equals("ott"));
-    REQUIRE_THAT(zej->subject, Catch::Matchers::Equals("c17291f4-37fe-4cdb-9f57-3eb757b648f5"));
-    REQUIRE_THAT(zej->token, Catch::Matchers::Equals("f581d770-fffc-11e9-a81a-000d3a1b4b17"));
+    CHECK_THAT(zej->controller, Catch::Matchers::Equals("https://demo.ziti.netfoundry.io:1080"));
+    CHECK(zej->method == ziti_enrollment_methods.ott);
+    CHECK_THAT(zej->subject, Catch::Matchers::Equals("c17291f4-37fe-4cdb-9f57-3eb757b648f5"));
+    CHECK_THAT(zej->token, Catch::Matchers::Equals("f581d770-fffc-11e9-a81a-000d3a1b4b17"));
 
 }

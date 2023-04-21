@@ -387,10 +387,10 @@ TEST_CASE("parse-enrollment-jwt", "[model]") {
 
     ziti_enrollment_jwt ej;
     int rc = parse_ziti_enrollment_jwt(&ej, json, (int) strlen(json));
-    REQUIRE_THAT(ej.method, Equals("ott"));
-    REQUIRE_THAT(ej.controller, Equals("https://demo.ziti.netfoundry.io:1080"));
-    REQUIRE_THAT(ej.subject, Equals("c17291f4-37fe-4cdb-9f57-3eb757b648f5"));
-    REQUIRE_THAT(ej.token, Equals("f581d770-fffc-11e9-a81a-000d3a1b4b17"));
+    CHECK(ej.method == ziti_enrollment_methods.ott);
+    CHECK_THAT(ej.controller, Equals("https://demo.ziti.netfoundry.io:1080"));
+    CHECK_THAT(ej.subject, Equals("c17291f4-37fe-4cdb-9f57-3eb757b648f5"));
+    CHECK_THAT(ej.token, Equals("f581d770-fffc-11e9-a81a-000d3a1b4b17"));
     free_ziti_enrollment_jwt(&ej);
 }
 
