@@ -1,24 +1,19 @@
-/*
-Copyright 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2023.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <string.h>
 #include <zt_internal.h>
-#include <utils.h>
-#include "internal_model.h"
-#include "ziti_enroll.h"
 
 #define MAX_JWT_LEN 8196
 
@@ -93,7 +88,7 @@ int load_jwt_file(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollme
     size_t jwt_file_len = (size_t) MAX_JWT_LEN;
     ecfg->raw_jwt = calloc(1, jwt_file_len + 1);
     size_t rc = fread(ecfg->raw_jwt, 1, jwt_file_len, jwt_input);
-    if (rc < 0) {
+    if (rc <= 0) {
         ZITI_LOG(WARN, "failed to read JWT file: %d(%s)", errno, strerror(errno));
         fclose(jwt_input);
         return ZITI_JWT_INVALID;
@@ -101,7 +96,7 @@ int load_jwt_file(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollme
     jwt_file_len = rc;
     fclose(jwt_input);
 
-    ZITI_LOG(DEBUG, "jwt file content is: \n%.*s", jwt_file_len, ecfg->raw_jwt);
+    ZITI_LOG(DEBUG, "jwt file content is: \n%.*s", (int) jwt_file_len, ecfg->raw_jwt);
 
     return parse_jwt_content(ecfg, zejh, zej);
 }
@@ -126,7 +121,7 @@ int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jw
 
 int load_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **zejh, ziti_enrollment_jwt **zej) {
 
-    ZITI_LOG(DEBUG, "jwt file content is: \n%.*s", strlen(ecfg->raw_jwt), ecfg->raw_jwt);
+    ZITI_LOG(VERBOSE, "jwt file content is: \n%.*s", (int) strlen(ecfg->raw_jwt), ecfg->raw_jwt);
 
     return parse_jwt_content(ecfg, zejh, zej);
 }

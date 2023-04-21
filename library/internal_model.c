@@ -36,6 +36,8 @@ typedef uint32_t in_addr_t;
     if ((lh) == NULL) { return -1; } \
     if ((rh) == NULL) { return 1; }
 
+IMPL_ENUM(ziti_enrollment_method, ZITI_ENROLLMENT_METHOD)
+
 IMPL_MODEL(ziti_posture_query, ZITI_POSTURE_QUERY_MODEL)
 
 IMPL_MODEL(ziti_posture_query_set, ZITI_POSTURE_QUERY_SET_MODEL)
