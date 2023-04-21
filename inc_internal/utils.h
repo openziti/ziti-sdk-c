@@ -118,6 +118,8 @@ extern size_t str_split(const char *str, const char *delim, model_list *result);
 
 int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *keystr);
 
+int gen_p11_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *keyuri);
+
 #ifdef __cplusplus
 }
 #endif

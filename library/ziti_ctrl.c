@@ -405,7 +405,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_
     ctrl->api_session_token = NULL;
     ctrl->instance_id = NULL;
 
-    CTRL_LOG(INFO, "ziti controller client initialized");
+    CTRL_LOG(DEBUG, "ziti controller client initialized");
 
     return ZITI_OK;
 }

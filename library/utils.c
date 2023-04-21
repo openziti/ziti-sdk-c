@@ -500,10 +500,13 @@ size_t str_split(const char *str, const char *delim, model_list *result) {
                     continue; \
                 }
 
-int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *keystr) {
+typedef int (*parse_cb)(tls_context *tls, void *ctx, const char *lib, const char *slot, const char *pin, const char *id,
+                        const char *label);
+
+static int parse_pkcs11_uri(const char *keyuri, tls_context *tls, void *ctx, parse_cb cb) {
     struct tlsuv_url_s uri;
     int rc;
-    if (tlsuv_parse_url(&uri, keystr) == 0) {
+    if (tlsuv_parse_url(&uri, keyuri) == 0) {
         if (uri.scheme_len == strlen("pkcs11") && strncmp(uri.scheme, "pkcs11", uri.scheme_len) == 0) {
             char lib[MAXPATHLEN] = "";
             strncpy(lib, uri.path, uri.path_len);
@@ -519,11 +522,33 @@ int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *ke
                 CHECK_OPT(opt, id);
                 CHECK_OPT(opt, label);
             }
-            rc = tls->api->load_pkcs11_key(key, lib, slot, pin, id, label);
-            model_list_clear(&opts, free);
-            return rc != 0 ? ZITI_INVALID_CONFIG : 0;
-        }
 
+            rc = cb(tls, ctx, lib, slot, pin, id, label);
+            model_list_clear(&opts, free);
+            return rc;
+        }
+    }
+
+    return ZITI_INVALID_CONFIG;
+}
+
+static int pkcs11_load(tls_context *tls, tlsuv_private_key_t *key, const char *lib, const char *slot, const char *pin,
+                       const char *id, const char *label) {
+    if (tls->api->load_pkcs11_key(key, lib, slot, pin, id, label)) {
+        return ZITI_INVALID_CONFIG;
+    }
+    return ZITI_OK;
+}
+
+int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *keystr) {
+    struct tlsuv_url_s uri;
+    int rc;
+
+    if (parse_pkcs11_uri(keystr, tls, key, (parse_cb) pkcs11_load) == 0) {
+        return 0;
+    }
+
+    if (tlsuv_parse_url(&uri, keystr) == 0) {
         if (uri.scheme_len == strlen("file") && strncmp(uri.scheme, "file", uri.scheme_len) == 0) {
             rc = tls->api->load_key(key, uri.path, uri.path_len);
             return rc != 0 ? ZITI_INVALID_CONFIG : 0;
@@ -535,4 +560,16 @@ int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *ke
     }
     rc = tls->api->load_key(key, keystr, strlen(keystr));
     return rc != 0 ? ZITI_INVALID_CONFIG : 0;
+}
+
+static int pkcs11_gen(tls_context *tls, tlsuv_private_key_t *key, const char *lib, const char *slot, const char *pin,
+                      const char *id, const char *label) {
+    if (tls->api->generate_pkcs11_key(key, lib, slot, pin, label)) {
+        return ZITI_KEY_GENERATION_FAILED;
+    }
+    return ZITI_OK;
+}
+
+int gen_p11_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *keyuri) {
+    return parse_pkcs11_uri(keyuri, tls, key, (parse_cb) pkcs11_gen);
 }

@@ -36,7 +36,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
 static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *ctx);
 
 int verify_controller_jwt(tls_cert cert, void *ctx) {
-    ZITI_LOG(INFO, "verifying JWT signature");
+    ZITI_LOG(DEBUG, "verifying JWT signature");
 
     enroll_cfg *ecfg = ctx;
     enum hash_algo md;
@@ -118,6 +118,7 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
 
     NEWP(enroll_req, struct ziti_enroll_req);
     enroll_req->enroll_cb = enroll_cb;
+    enroll_req->external_enroll_ctx = enroll_ctx;
     enroll_req->loop = loop;
     enroll_req->ecfg = ecfg;
     ziti_ctrl_get_well_known_certs(ctrl, well_known_certs_cb, enroll_req);
@@ -136,16 +137,16 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
 }
 
 static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *err, void *req) {
-    ZITI_LOG(DEBUG, "base64_encoded_pkcs7 is: %s", base64_encoded_pkcs7);
     PREPF(ziti, ziti_errorstr);
 
     int ziti_err;
     struct ziti_enroll_req *enroll_req = req;
     if ((NULL == base64_encoded_pkcs7) || (NULL != err)) {
         ZITI_LOG(DEBUG, "err->message is: %s", err->message);
-	TRY(ziti, ZITI_JWT_VERIFICATION_FAILED);
+        TRY(ziti, ZITI_JWT_VERIFICATION_FAILED);
     }
 
+    ZITI_LOG(VERBOSE, "base64_encoded_pkcs7 is: %s", base64_encoded_pkcs7);
     PREPF(TLS, enroll_req->ecfg->tls->api->strerror);
     tls_cert chain = NULL;
     ziti_err = ZITI_PKCS7_ASN1_PARSING_FAILED;
@@ -173,7 +174,13 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
         }
         else {
             ziti_err = ZITI_KEY_LOAD_FAILED;
-            load_key_internal(tls, &enroll_req->ecfg->pk, enroll_req->ecfg->private_key);
+            if (load_key_internal(tls, &enroll_req->ecfg->pk, enroll_req->ecfg->private_key) != 0) {
+                ZITI_LOG(WARN, "failed to load private key[%s]", enroll_req->ecfg->private_key);
+                if (strncmp(enroll_req->ecfg->private_key, "pkcs11://", strlen("pkcs11://")) == 0) {
+                    ZITI_LOG(INFO, "attempting to generate pkcs11 key");
+                    TRY(TLS, gen_p11_key_internal(tls, &enroll_req->ecfg->pk, enroll_req->ecfg->private_key));
+                }
+            }
         }
 
         ziti_err = ZITI_CSR_GENERATION_FAILED;
