@@ -106,7 +106,13 @@
         "vs-2022"
       ],
       "architecture": "ARM64",
-      "hidden": true
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_GENERATOR_PLATFORM": "ARM64",
+        "VCPKG_TARGET_ARCHITECTURE": "arm64",
+        "VCPKG_TARGET_TRIPLET": "arm64-windows",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Windows-arm64-msvc.cmake"
+      }
     },
     {
       "name": "ci-build",
@@ -178,11 +184,7 @@
         "ci-win-arm64",
         "dev-mode",
         "vcpkg"
-      ],
-      "cacheVariables": {
-        "CMAKE_GENERATOR_PLATFORM": "ARM64",
-        "VCPKG_TARGET_TRIPLET": "arm64-windows-static-md"
-      }
+      ]
     }
   ]
 }
