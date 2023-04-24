@@ -105,10 +105,7 @@
         "ci-std",
         "vs-2022"
       ],
-      "architecture": {
-        "value": "AMR64",
-        "strategy": "external"
-      },
+      "architecture": "ARM64",
       "hidden": true
     },
     {
