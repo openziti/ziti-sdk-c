@@ -110,7 +110,7 @@
       "cacheVariables": {
         "CMAKE_GENERATOR_PLATFORM": "ARM64",
         "VCPKG_TARGET_ARCHITECTURE": "arm64",
-        "VCPKG_TARGET_TRIPLET": "arm64-windows",
+        "VCPKG_TARGET_TRIPLET": "arm64-windows-static-md",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Windows-arm64-msvc.cmake"
       }
     },
