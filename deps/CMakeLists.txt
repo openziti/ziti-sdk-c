@@ -4,7 +4,7 @@ include(FetchContent)
 
 FetchContent_Declare(tlsuv
         GIT_REPOSITORY https://github.com/openziti/tlsuv.git
-        GIT_TAG v0.23.0
+        GIT_TAG v0.23.1
         )
 FetchContent_MakeAvailable(tlsuv)
 
