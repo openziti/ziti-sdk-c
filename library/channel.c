@@ -850,7 +850,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             reconnect_channel(ch, false);
         }
     } else {
-        CH_LOG(ERROR, "failed to connect [%d/%s]", status, uv_strerror(status));
+        CH_LOG(ERROR, "failed to connect to ER[%s] [%d/%s]", ch->name, status, uv_strerror(status));
 
         while (!LIST_EMPTY(&ch->conn_reqs)) {
             struct ch_conn_req *r = LIST_FIRST(&ch->conn_reqs);
