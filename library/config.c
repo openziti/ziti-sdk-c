@@ -47,12 +47,18 @@ static int load_config_file(const char *filename, ziti_config *cfg) {
     size_t config_len = (size_t) stats.st_size;
     char *config = malloc(config_len);
     size_t rc;
-    if ((rc = fread(config, 1, config_len, file)) != config_len) {
-        ZITI_LOG(WARN, "failed to read config in full [%zd/%zd]: %s(%d)", rc, config_len, strerror(errno), errno);
+    size_t read = 0;
+    while (read < config_len) {
+        rc = fread(config, 1, config_len - read, file);
+        if (rc == 0) {
+            break;
+        }
+        read += rc;
     }
+
     fclose(file);
 
-    if (parse_ziti_config(cfg, config, config_len) < 0) {
+    if (parse_ziti_config(cfg, config, read) < 0) {
         free(config);
         return ZITI_INVALID_CONFIG;
     }

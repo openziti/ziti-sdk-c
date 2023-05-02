@@ -509,7 +509,16 @@ static int parse_pkcs11_uri(const char *keyuri, tls_context *tls, void *ctx, par
     if (tlsuv_parse_url(&uri, keyuri) == 0) {
         if (uri.scheme_len == strlen("pkcs11") && strncmp(uri.scheme, "pkcs11", uri.scheme_len) == 0) {
             char lib[MAXPATHLEN] = "";
+#ifdef _WIN32
+            if (uri.path[0] == '/' && uri.path[2] == ':') {
+                strncpy_s(lib, sizeof(lib), uri.path + 1, uri.path_len - 1);
+            } else {
+                ZITI_LOG(ERROR, "invalid pkcs11 key URI, `pkcs11:///C:/...` format expected");
+                return -1;
+            }
+#else
             strncpy(lib, uri.path, uri.path_len);
+#endif
 
             const char *slot = NULL, *pin = NULL, *id = NULL, *label = NULL;
 
