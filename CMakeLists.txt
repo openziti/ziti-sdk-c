@@ -76,7 +76,9 @@ endif ()
 
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 
-include(CPack)
+if(NOT CPack_CMake_INCLUDED)
+    include(CPack)
+endif()
 
 # use prefix length to trim path for logging, see utils.c
 if (CMAKE_GENERATOR STREQUAL "Ninja" AND CMAKE_BINARY_DIR MATCHES "${CMAKE_SOURCE_DIR}")
