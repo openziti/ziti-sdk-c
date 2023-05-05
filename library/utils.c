@@ -289,7 +289,16 @@ static void init_debug(uv_loop_t *loop) {
         tlsuv_set_debug(tlsuv_level, tlsuv_logger);
     }
 
-    ziti_debug_out = stderr;
+    char *logfile = getenv("ZITI_LOG_FILE");
+    if (logfile) {
+        ziti_debug_out = fopen(logfile, "a");
+        if (ziti_debug_out == NULL) {
+            fprintf(stderr, "failed to create log file: %s", strerror(errno));
+            exit(1);
+        }
+    } else {
+        ziti_debug_out = stderr;
+    }
 
     starttime = uv_now(loop);
 
