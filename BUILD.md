@@ -12,7 +12,7 @@ site](https://openziti.github.io/ziti/overview.html).
 
 ## Building Requirements
 
-* [Cmake (3.12+)](https://cmake.org/install/)
+* [Cmake (3.22+)](https://cmake.org/install/)
 * make sure cmake is on your path or replace the following `cmake` commands with the fully qualified path to the binary
 * [vcpkg](https://github.com/microsoft/vcpkg) is now used for dependencies.
 
