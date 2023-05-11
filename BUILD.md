@@ -12,21 +12,25 @@ site](https://openziti.github.io/ziti/overview.html).
 
 ## Building Requirements
 
-* [Cmake (3.22+)](https://cmake.org/install/)
+* [cmake](https://cmake.org/install/)
 * make sure cmake is on your path or replace the following `cmake` commands with the fully qualified path to the binary
 * [vcpkg](https://github.com/microsoft/vcpkg) is now used for dependencies.
 
 ### Setting up vcpkg
 
+To setup vcpkg you'll need to clone the actual vcpkg repository. The first step will have you set this environment variable.
+It should be set to somewhere durable, such as wherever you check your projects into. The example commands below use $HOME/%USERPROFILE%
+but you should probably change this to your liking.
+
 Linux/MacOS:
 
-* set/export an environment variable named `VCPKG_ROOT`. for example (use an appropriate location): `export VCPKG_ROOT=/tmp/git/vcpkg`
+* set/export an environment variable named `VCPKG_ROOT`. for example (use an appropriate location): `export VCPKG_ROOT=${HOME}/vcpkg`
 * create the directory: `mkdir -p ${VCPKG_ROOT}`
 * clone the vcpkg project: `git clone git@github.com:microsoft/vcpkg.git ${VCPKG_ROOT}`
 * run the bootstrap-vcpkg for your platform: `${VCPKG_ROOT}/bootstrap-vcpkg.sh`
 
 Windows: 
-* set/export an environment variable named `VCPKG_ROOT`. for example (use an appropriate location): `SET VCPKG_ROOT=c:\temp\git\vcpkg`
+* set/export an environment variable named `VCPKG_ROOT`. for example (use an appropriate location): `SET VCPKG_ROOT=%USERPROFILE%\vcpkg`
 * create the directory: `mkdir %VCPKG_ROOT%`
 * clone the vcpkg project: `git clone git@github.com:microsoft/vcpkg.git %VCPKG_ROOT%`
 * run the bootstrap-vcpkg for your platform: `%VCPKG_ROOT%/bootstrap-vcpkg.bat`
