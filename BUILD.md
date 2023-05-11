@@ -18,17 +18,15 @@ site](https://openziti.github.io/ziti/overview.html).
 
 ### Setting up vcpkg
 
-Setting up vcpkg should hopefully be easy:
-
 Linux/MacOS:
 
-* set/export an environment variable named `VCPKG_ROOT`. for example: `export VCPKG_ROOT=/tmp/git/vcpkg`
+* set/export an environment variable named `VCPKG_ROOT`. for example (use an appropriate location): `export VCPKG_ROOT=/tmp/git/vcpkg`
 * create the directory: `mkdir -p ${VCPKG_ROOT}`
 * clone the vcpkg project: `git clone git@github.com:microsoft/vcpkg.git ${VCPKG_ROOT}`
 * run the bootstrap-vcpkg for your platform: `${VCPKG_ROOT}/bootstrap-vcpkg.sh`
 
 Windows: 
-* set/export an environment variable named `VCPKG_ROOT`. for example: `SET VCPKG_ROOT=c:\temp\git\vcpkg`
+* set/export an environment variable named `VCPKG_ROOT`. for example (use an appropriate location): `SET VCPKG_ROOT=c:\temp\git\vcpkg`
 * create the directory: `mkdir %VCPKG_ROOT%`
 * clone the vcpkg project: `git clone git@github.com:microsoft/vcpkg.git %VCPKG_ROOT%`
 * run the bootstrap-vcpkg for your platform: `%VCPKG_ROOT%/bootstrap-vcpkg.bat`
