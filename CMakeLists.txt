@@ -12,6 +12,8 @@ project(ziti-sdk
 include(cmake/project-is-top-level.cmake)
 include(cmake/variables.cmake)
 
+set(tlsuv_DIR "" CACHE FILEPATH "developer option: use local tlsuv checkout")
+
 option(HAVE_LIBSODIUM "use and link installed shared libsodium library" OFF)
 
 message("project version: ${PROJECT_VERSION}")

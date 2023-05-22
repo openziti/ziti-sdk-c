@@ -28,14 +28,13 @@ typedef uint16_t in_port_t;
 #endif
 #else
 #include <unistd.h>
-#define SOCKET_ERROR -1
+#define SOCKET_ERROR (-1)
 #endif
 
 #include <ziti/zitilib.h>
 #include <ziti/ziti.h>
 #include <ziti/ziti_log.h>
 #include "zt_internal.h"
-#include "utils.h"
 
 static bool is_blocking(ziti_socket_t s);
 
@@ -364,9 +363,7 @@ static void init_in4addr_loopback() {
 #else
 #define init_in4addr_loopback() {}
 #endif
-static const char* errno_str(int err) {
-    return strerror(errno);
-}
+
 /**
  * create bridge socket and connect client socket to it
  * @param clt_sock client socket

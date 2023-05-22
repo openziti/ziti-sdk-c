@@ -1,13 +1,18 @@
-project(ziti-deps)
 
 include(FetchContent)
 
-FetchContent_Declare(tlsuv
-        GIT_REPOSITORY https://github.com/openziti/tlsuv.git
-        GIT_TAG v0.23.3
-        )
-FetchContent_MakeAvailable(tlsuv)
+if (tlsuv_DIR)
+    add_subdirectory(${tlsuv_DIR}
+            ${CMAKE_CURRENT_BINARY_DIR}/tlsuv)
+else ()
 
+    FetchContent_Declare(tlsuv
+            GIT_REPOSITORY https://github.com/openziti/tlsuv.git
+            GIT_TAG v0.23.4
+            )
+    FetchContent_MakeAvailable(tlsuv)
+
+endif (tlsuv_DIR)
 
 FetchContent_Declare(subcommand
         GIT_REPOSITORY https://github.com/openziti/subcommands.c.git
