@@ -248,6 +248,7 @@ static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enr
 
         tls_cert c = NULL;
         if (enroll_req->ecfg->tls->api->load_cert(&c, er->cert, strlen(er->cert)) == 0 &&
+            enroll_req->ecfg->pk->store_certificate != NULL &&
             enroll_req->ecfg->pk->store_certificate(enroll_req->ecfg->pk, c) == 0) {
             ZITI_LOG(INFO, "stored certificate to PKCS#11 token");
         }
