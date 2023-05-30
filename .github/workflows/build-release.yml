@@ -9,28 +9,23 @@ jobs:
   build:
     name: ${{ matrix.spec.name }}
     runs-on: ${{ matrix.spec.runner }}
+    container:
+      image: ${{ matrix.spec.builder }}
     env:
       BUILD_NUMBER: ${{ github.run_number }}
     strategy:
       fail-fast: false
       matrix:
         spec:
-          - { name: 'Linux x86_64', runner: 'ubuntu-20.04', target: 'linux-x64', test: 'true' }
-          - { name: 'Linux ARM', runner: 'ubuntu-20.04', target: 'linux-arm' }
-          - { name: 'Linux ARM64', runner: 'ubuntu-20.04', target: 'linux-arm64' }
-          - { name: 'MacOS x86_64', runner: 'macOS-11', target: 'macOS-x64', test: 'true' }
+          - { name: 'Linux x86_64', runner: 'ubuntu-20.04', target: 'linux-x64', builder: 'openziti/ziti-cmake' }
+          - { name: 'Linux ARM', runner: 'ubuntu-20.04', target: 'linux-arm', builder: 'openziti/ziti-cmake' }
+          - { name: 'Linux ARM64', runner: 'ubuntu-20.04', target: 'linux-arm64', builder: 'openziti/ziti-cmake' }
+          - { name: 'MacOS x86_64', runner: 'macOS-11', target: 'macOS-x64' }
           - { name: 'MacOS arm64', runner: 'macOS-11', target: 'macOS-arm64' }
-          - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64', test: 'true' }
+          - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64' }
           - { name: 'Windows ARM64', runner: 'windows-2022', target: 'windows-arm64' }
 
     steps:
-      - name: Install Crossbuild tools
-        if: startsWith(matrix.spec.runner, 'ubuntu')
-        uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-            packages: crossbuild-essential-armhf crossbuild-essential-arm64
-            version: 1.0
-
       - name: Add msbuild to PATH
         if: startsWith(matrix.spec.runner, 'windows')
         uses: microsoft/setup-msbuild@v1.1
