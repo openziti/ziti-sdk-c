@@ -26,13 +26,6 @@ jobs:
           - { name: 'Windows ARM64', runner: 'windows-2022', target: 'windows-arm64' }
 
     steps:
-      - name: Install Crossbuild tools
-        if: startsWith(matrix.spec.runner, 'ubuntu')
-        uses: awalsh128/cache-apt-pkgs-action@latest
-        with:
-            packages: crossbuild-essential-armhf crossbuild-essential-arm64
-            version: 1.0
-
       - name: Add msbuild to PATH
         if: startsWith(matrix.spec.runner, 'windows')
         uses: microsoft/setup-msbuild@v1.1
