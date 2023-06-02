@@ -6,7 +6,9 @@
 # consumers can trivially build and package the project
 if (PROJECT_IS_TOP_LEVEL)
     option(ziti_DEVELOPER_MODE "Enable developer mode" OFF)
-    option(BUILD_SHARED_LIBS "Build shared libs." OFF)
+    option(BUILD_SHARED_LIBS "Build shared libs." ON)
+    option(BUILD_STATIC_LIBS "Build static libs." ON)
+
 endif ()
 
 # ---- Warning guard ----
