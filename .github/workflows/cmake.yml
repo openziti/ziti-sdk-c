@@ -1,8 +1,7 @@
 name: C/C++ CI
 
 on:
-  push:
-    branches: [ '**' ]
+  workflow_dispatch:
   pull_request:
     branches: [ main ]
 
@@ -18,9 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         spec:
-          - { name: 'Linux x86_64', runner: 'ubuntu-20.04', target: 'linux-x64', builder: 'openziti/ziti-cmake', test: 'true' }
-          - { name: 'Linux ARM', runner: 'ubuntu-20.04', target: 'linux-arm', builder: 'openziti/ziti-cmake' }
-          - { name: 'Linux ARM64', runner: 'ubuntu-20.04', target: 'linux-arm64', builder: 'openziti/ziti-cmake' }
+          - { name: 'Linux x86_64', runner: 'ubuntu-20.04', target: 'linux-x64', builder: 'openziti/ziti-builder', test: 'true' }
+          - { name: 'Linux ARM', runner: 'ubuntu-20.04', target: 'linux-arm', builder: 'openziti/ziti-builder' }
+          - { name: 'Linux ARM64', runner: 'ubuntu-20.04', target: 'linux-arm64', builder: 'openziti/ziti-builder' }
           - { name: 'MacOS x86_64', runner: 'macOS-11', target: 'macOS-x64', test: 'true' }
           - { name: 'MacOS arm64', runner: 'macOS-11', target: 'macOS-arm64' }
           - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64', test: 'true' }
