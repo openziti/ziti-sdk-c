@@ -3,7 +3,6 @@ cmake_minimum_required(VERSION 3.22)
 include(cmake/version.cmake)
 get_version(${CMAKE_CURRENT_LIST_DIR}/version.txt ver GIT_BRANCH GIT_COMMIT_HASH)
 
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_C_STANDARD 99)
 project(ziti-sdk
         VERSION ${ver}

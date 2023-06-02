@@ -1,5 +1,22 @@
-find_package(unofficial-sodium REQUIRED)
-set(sodium_libs unofficial-sodium::sodium)
+if (TARGET sodium)
+    set(sodium_libs sodium)
+    get_target_property(sodium_loc sodium LOCATION)
+    message("sodium is ${sodium_loc}")
+else ()
+    find_package(unofficial-sodium)
+    if (unofficial-sodium_FOUND)
+        set(sodium_libs unofficial-sodium::sodium)
+        get_target_property(sodium_loc unofficial-sodium::sodium LOCATION)
+        message("sodium is ${sodium_loc}")
+    else ()
+        find_package(PkgConfig)
+        pkg_check_modules(sodium libsodium)
+        set(sodium_libs ${sodium_LIBRARIES})
+    endif ()
+endif ()
+if (NOT sodium_libs)
+    message(FATAL_ERROR "could not find required library[sodium]")
+endif ()
 
 set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/errors.h
@@ -46,79 +63,81 @@ SET(ZITI_INCLUDE_DIRS
     PRIVATE ${tlsuv_SOURCE_DIR}/src
 )
 
-add_library(ziti     STATIC ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
-add_library(ziti_dll SHARED ${ZITI_SRC_FILES} ${ZITI_HEADER_FILES} )
-set_target_properties(ziti_dll PROPERTIES OUTPUT_NAME "ziti")
-
-# disable using the 'lib' prefix when crosscompiling
-if (WIN32)
-set_target_properties(ziti ziti_dll PROPERTIES PREFIX "")
-#without this libsodioum was complaining:
-endif()
-
-# when building on windows an "import library" is generated which is overwriting the
-# static library (ziti.lib) (google/see /IMPLIB (Name Import Library))
-# work around discovered at stack overflow:
-#     https://stackoverflow.com/questions/34575066/how-to-prevent-cmake-from-issuing-implib
-#
-# I chose to set the suffix and not the prefix
-# set_target_properties(ziti_dll PROPERTIES IMPORT_PREFIX "import-lib-")
-set_target_properties(ziti_dll PROPERTIES IMPORT_SUFFIX ".imp.lib")
-
-set_property(TARGET ziti ziti_dll PROPERTY C_STANDARD 11)
-
-target_sources(ziti PRIVATE ${ZITI_PRIVATE_SRC_FILES})
-target_sources(ziti_dll PRIVATE ${ZITI_PRIVATE_SRC_FILES})
-
-target_link_libraries(ziti PUBLIC tlsuv ${sodium_libs})
-target_link_libraries(ziti_dll PUBLIC tlsuv ${sodium_libs})
-
-if (CMAKE_SYSTEM_NAME MATCHES "Linux")
-    target_link_libraries(ziti PUBLIC atomic)
-    target_link_libraries(ziti_dll PUBLIC atomic)
-endif ()
-
-if (NOT WIN32)
-    target_link_libraries(ziti PUBLIC m)
-    target_link_libraries(ziti_dll PUBLIC m)
-endif ()
-
-target_include_directories(ziti     ${ZITI_INCLUDE_DIRS})
-target_include_directories(ziti_dll ${ZITI_INCLUDE_DIRS})
-set_target_properties(ziti_dll PROPERTIES OUTPUT_NAME "ziti")
-
 set(ziti_compile_defs
         BUILD_DATE=${BUILD_DATE}
         ZITI_VERSION=${PROJECT_VERSION}
         ZITI_BRANCH=${GIT_BRANCH}
         ZITI_COMMIT=${GIT_COMMIT_HASH}
         PRIVATE ZITI_LOG_MODULE="${PROJECT_NAME}"
-        )
-
-if (ZITI_BUILDNUM)
-    list(APPEND ziti_compile_defs
-            ZITI_BUILDNUM=${ZITI_BUILDNUM}
-            )
-endif()
-
-target_compile_definitions(ziti PUBLIC
-        ${ziti_compile_defs}
 )
 
-target_compile_definitions(ziti_dll PUBLIC
-        ${ziti_compile_defs}
-        INTERFACE USING_ZITI_SHARED=1
-        PRIVATE BUILDING_ZITI_SHARED=1
-)
+function(config_ziti_library target)
+    target_sources(${target} PRIVATE
+            ${ZITI_SRC_FILES}
+            ${ZITI_HEADER_FILES})
 
-if (WIN32)
-    # on windows GDI defines ERROR which conflicts with the SDK declaration of DEBUG_LEVELS in utils.h
-    target_compile_definitions(ziti     PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
-    target_compile_definitions(ziti_dll PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
+    if (WIN32)
+        set_target_properties(${target} PROPERTIES PREFIX "")
+        #without this libsodium was complaining:
+    endif ()
 
-    target_link_libraries(ziti     PUBLIC crypt32 netapi32)
-    target_link_libraries(ziti_dll PUBLIC crypt32 netapi32)
-endif()
+    set_target_properties(${target} PROPERTIES
+            C_STANDARD 11
+            POSITION_INDEPENDENT_CODE ON
+    )
+
+    target_sources(${target} PRIVATE ${ZITI_PRIVATE_SRC_FILES})
+
+    target_link_libraries(${target} PUBLIC tlsuv ${sodium_libs})
+
+    if (CMAKE_SYSTEM_NAME MATCHES "Linux")
+        target_link_libraries(${target} PUBLIC atomic)
+    endif ()
+
+    if (NOT WIN32)
+        target_link_libraries(${target} PUBLIC m)
+    endif ()
+
+    target_include_directories(${target} ${ZITI_INCLUDE_DIRS})
+    target_compile_definitions(${target} PUBLIC
+            ${ziti_compile_defs}
+    )
+
+    if (WIN32)
+        # on windows GDI defines ERROR which conflicts with the SDK declaration of DEBUG_LEVELS in utils.h
+        target_compile_definitions(${target} PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
+        target_link_libraries(${target} PUBLIC crypt32 netapi32)
+    endif ()
+    install(TARGETS ${target}
+            COMPONENT ziti-sdk
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+endfunction(config_ziti_library)
+
+add_library(ziti STATIC)
+config_ziti_library(ziti)
+
+if (BUILD_SHARED_LIBS)
+    add_library(ziti_dll SHARED)
+    config_ziti_library(ziti_dll)
+    set_target_properties(ziti_dll PROPERTIES OUTPUT_NAME "ziti")
+
+    # when building on windows an "import library" is generated which is overwriting the
+    # static library (ziti.lib) (google/see /IMPLIB (Name Import Library))
+    # work around discovered at stack overflow:
+    #     https://stackoverflow.com/questions/34575066/how-to-prevent-cmake-from-issuing-implib
+    #
+    # I chose to set the suffix and not the prefix
+    # set_target_properties(ziti_dll PROPERTIES IMPORT_PREFIX "import-lib-")
+    set_target_properties(ziti_dll PROPERTIES
+            IMPORT_SUFFIX ".imp.lib"
+            OUTPUT_NAME "ziti")
+
+    target_compile_definitions(ziti_dll PUBLIC
+            INTERFACE USING_ZITI_SHARED=1
+            PRIVATE BUILDING_ZITI_SHARED=1
+    )
+endif ()
 
 set(includedir ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR})
 set(libdir ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
@@ -127,11 +146,6 @@ set(prefix ${CMAKE_INSTALL_PREFIX})
 configure_file(${PROJECT_SOURCE_DIR}/ziti.pc.in ${CMAKE_CURRENT_BINARY_DIR}/ziti.pc @ONLY)
 
 set(CMAKE_INSTALL_DOCDIR share/doc)
-
-install(TARGETS ziti ziti_dll
-        COMPONENT ziti-sdk
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        )
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../includes/
         COMPONENT ziti-sdk
