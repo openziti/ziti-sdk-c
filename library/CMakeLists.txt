@@ -71,7 +71,7 @@ set(ziti_compile_defs
         PRIVATE ZITI_LOG_MODULE="${PROJECT_NAME}"
 )
 
-function(config_library target)
+function(config_ziti_library target)
     target_sources(${target} PRIVATE
             ${ZITI_SRC_FILES}
             ${ZITI_HEADER_FILES})
@@ -112,14 +112,14 @@ function(config_library target)
             COMPONENT ziti-sdk
             DESTINATION ${CMAKE_INSTALL_LIBDIR}
     )
-endfunction(config_library)
+endfunction(config_ziti_library)
 
 add_library(ziti STATIC)
-config_library(ziti)
+config_ziti_library(ziti)
 
 if (BUILD_SHARED_LIBS)
     add_library(ziti_dll SHARED)
-    config_library(ziti_dll)
+    config_ziti_library(ziti_dll)
     set_target_properties(ziti_dll PROPERTIES OUTPUT_NAME "ziti")
 
     # when building on windows an "import library" is generated which is overwriting the
