@@ -1,15 +1,9 @@
 name: C/C++ CI
 
 on:
-  push:
-    branches: [ '**' ]
+  workflow_dispatch:
   pull_request:
     branches: [ main ]
-
-# cancel older, redundant runs of same workflow on same branch
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
 
 jobs:
   build:
