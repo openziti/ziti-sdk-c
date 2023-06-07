@@ -1,7 +1,5 @@
 if (TARGET sodium)
     set(sodium_libs sodium)
-    get_target_property(sodium_loc sodium LOCATION)
-    message("sodium is ${sodium_loc}")
 else ()
     find_package(unofficial-sodium)
     if (unofficial-sodium_FOUND)
