@@ -1,18 +1,16 @@
-/*
-Copyright 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2023.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef ZITI_SDK_ENDIAN_INTERNAL_H
 #define ZITI_SDK_ENDIAN_INTERNAL_H
@@ -26,6 +24,7 @@ limitations under the License.
 #  include <endian.h>
 #elif defined (__APPLE__)
 #  include <libkern/OSByteOrder.h>
+#  define htole16(x) OSSwapHostToLittleInt16(x)
 #  define htole32(x) OSSwapHostToLittleInt32(x)
 #  define htole64(x) OSSwapHostToLittleInt64(x)
 #  define le32toh(x) OSSwapLittleToHostInt32(x)

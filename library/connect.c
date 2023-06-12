@@ -1117,8 +1117,8 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
             if (req->listen_opts != NULL) {
                 ziti_listen_opts *opts = req->listen_opts;
                 char *identity = opts->identity;
-                int term_cost = get_terminator_cost(opts, conn->conn_req->service_id, conn->ziti_ctx);
-                int term_prec = get_terminator_precedence(opts, conn->conn_req->service_id, conn->ziti_ctx);
+                uint16_t term_cost = get_terminator_cost(opts, conn->conn_req->service_id, conn->ziti_ctx);
+                uint8_t term_prec = get_terminator_precedence(opts, conn->conn_req->service_id, conn->ziti_ctx);
 
                 if (opts->bind_using_edge_identity) {
                     if (opts->identity != NULL) {
@@ -1135,17 +1135,16 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
                     nheaders++;
                 }
                 if (term_cost > 0) {
-                    int32_t cost = htole32(term_cost);
+                    uint16_t cost = htole16(term_cost);
                     headers[nheaders].header_id = CostHeader;
                     headers[nheaders].value = (uint8_t *) &cost;
                     headers[nheaders].length = sizeof(cost);
                     nheaders++;
                 }
                 if (term_prec != PRECEDENCE_DEFAULT) {
-                    int32_t precedence = htole32(term_prec);
                     headers[nheaders].header_id = PrecedenceHeader;
-                    headers[nheaders].value = (uint8_t *) &precedence;
-                    headers[nheaders].length = sizeof(precedence);
+                    headers[nheaders].value = &term_prec;
+                    headers[nheaders].length = sizeof(term_prec);
                     nheaders++;
                 }
             }
