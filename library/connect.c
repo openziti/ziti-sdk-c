@@ -40,11 +40,10 @@ enum conn_state {
     conn_states(state_enum)
 };
 
-static const char* conn_state_str[] = {
+static const char *conn_state_str[] = {
 #define state_str(ST) #ST ,
         conn_states(state_str)
 };
-
 
 
 struct ziti_conn_req {
@@ -194,7 +193,6 @@ int close_conn_internal(struct ziti_conn *conn) {
             model_map_removel(&conn->parent->children, conn->conn_id);
         }
 
-        LIST_REMOVE(conn, next);
         FREE(conn->rx);
         FREE(conn->tx);
 
@@ -283,32 +281,27 @@ static int send_message(struct ziti_conn *conn, message *m, struct ziti_write_re
 }
 
 static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
-    struct ziti_conn *conn = ctx;
+    uintptr_t cid = (uintptr_t) ctx;
+    uint32_t conn_id = (uint32_t) cid;
     ziti_context ztx = ch->ctx;
 
     // check if it is still a valid connection;
     // connection may be completed and gone by the time this channel gets connected
-    struct ziti_conn *c;
-    LIST_FOREACH(c, &ch->ctx->connections, next) {
-        if (c == conn) { break; }
-    }
-    if (c == NULL) {
-        ZTX_LOG(VERBOSE, "ch[%d] connection(%p) is gone", ch->id, ctx);
+    struct ziti_conn *conn = model_map_getl(&ztx->connections, (long) conn_id);
+    if (conn == NULL) {
+        ZTX_LOG(VERBOSE, "ch[%d] connection(id = %d) is gone", ch->id, conn_id);
         return;
     }
 
     // if channel was already selected
     if (conn->channel != NULL) {
         CONN_LOG(TRACE, "is already using another channel");
-    }
-    else {
+    } else {
         if (status < 0) {
             ZTX_LOG(ERROR, "ch[%d] failed to connect [%d/%s]", ch->id, status, uv_strerror(status));
-        }
-        else if (conn->conn_req && conn->conn_req->failed) {
+        } else if (conn->conn_req && conn->conn_req->failed) {
             CONN_LOG(DEBUG, "request already timed out or closed");
-        }
-        else { // first channel to connect
+        } else { // first channel to connect
             CONN_LOG(DEBUG, "selected ch[%s] status[%d]", ch->name, status);
 
             ziti_channel_start_connection(conn, ch);
@@ -393,6 +386,7 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
     ziti_edge_router **er;
     ziti_channel_t *best_ch = NULL;
     uint64_t best_latency = UINT64_MAX;
+    uintptr_t conn_id = conn->conn_id;
 
     for (er = session->edge_routers; *er != NULL; er++) {
         const char *tls = model_map_get(&(*er)->protocols, "tls");
@@ -411,10 +405,9 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
                     best_ch = ch;
                     best_latency = ch->latency;
                 }
-            }
-            else {
+            } else {
                 CONN_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, tls, session->id);
-                ziti_channel_connect(ztx, ch_name, tls, on_channel_connected, conn);
+                ziti_channel_connect(ztx, ch_name, tls, on_channel_connected, (void *) conn_id);
             }
             free(ch_name);
         }
@@ -423,38 +416,34 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
     if (best_ch) {
         CONN_LOG(DEBUG, "selected ch[%s] for best latency(%llu ms)", best_ch->name,
                  (unsigned long long) best_ch->latency);
-        on_channel_connected(best_ch, conn, ZITI_OK);
+        on_channel_connected(best_ch, (void *) conn_id, ZITI_OK);
     }
 
     return 0;
 }
 
-static void connect_get_service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
+static void connect_get_service_cb(ziti_context ztx, ziti_service *s, int status, void *ctx) {
     struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
-    struct ziti_ctx *ztx = conn->ziti_ctx;
 
-    if (err != NULL) {
-        CONN_LOG(ERROR, "failed to load service (%s): %s(%s)", conn->service, err->code, err->message);
-    }
-    if (s == NULL) {
-        complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
-    }
-    else {
+    if (status == ZITI_OK) {
         CONN_LOG(DEBUG, "got service[%s] id[%s]", s->name, s->id);
-        for (int i = 0; s->permissions[i] != NULL; i++) {
-            if (*s->permissions[i] == ziti_session_types.Dial) {
-                 s->perm_flags |= ZITI_CAN_DIAL;
-            }
-            if (*s->permissions[i] == ziti_session_types.Bind) {
-                s->perm_flags |= ZITI_CAN_BIND;
-            }
+
+        if (!ziti_service_has_permission(s, req->session_type)) {
+            CONN_LOG(WARN, "not authorized to %s", ziti_session_types.name(req->session_type));
+            complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
+            return;
         }
 
-        model_map_set(&ztx->services, s->name, s);
         req->service_id = strdup(s->id);
         conn->encrypted = s->encryption;
         process_connect(conn);
+    } else if (status == ZITI_SERVICE_UNAVAILABLE) {
+        CONN_LOG(ERROR, "service[%s] is not available for ztx[%s]", conn->service, ztx->api_session->identity->name);
+        complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
+    } else {
+        CONN_LOG(WARN, "failed to load service[%s]: %d/%s", conn->service, status, ziti_errorstr(status));
+        complete_conn_req(conn, status);
     }
 }
 
@@ -478,8 +467,7 @@ static void connect_get_net_session_cb(ziti_net_session *s, const ziti_error *er
         } else {
             complete_conn_req(conn, e);
         }
-    }
-    else {
+    } else {
         req->session = s;
         s->service_id = strdup(req->service_id);
         if (req->session_type == ziti_session_types.Dial) {
@@ -504,21 +492,14 @@ static void process_connect(struct ziti_conn *conn) {
     struct ziti_ctx *ztx = conn->ziti_ctx;
     uv_loop_t *loop = ztx->loop;
 
-    // find service
-    ziti_service *service = model_map_get(&ztx->services, conn->service);
-    if (req->service_id == NULL) {
-        if (service == NULL) {
-            CONN_LOG(DEBUG, "service[%s] not loaded yet, requesting it", conn->service);
-            ziti_ctrl_get_service(&ztx->controller, conn->service, connect_get_service_cb, conn);
-            return;
-        }
-        req->service_id = strdup(service->id);
-        conn->encrypted = service->encryption;
-    }
 
-    if (!ziti_service_has_permission(service, req->session_type)) {
-        CONN_LOG(WARN, "not authorized to %s", ziti_session_types.name(req->session_type));
-        complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
+    // find service
+    if (req->service_id == NULL) {
+        // connect_get_service_cb will re-enter process_connect() if service is already cached in the context
+        int rc = ziti_service_available(ztx, conn->service, connect_get_service_cb, conn);
+        if (rc != ZITI_OK) {
+            complete_conn_req(conn, rc);
+        }
         return;
     }
 
@@ -532,14 +513,14 @@ static void process_connect(struct ziti_conn *conn) {
                  conn->service);
         ziti_ctrl_get_session(&ztx->controller, req->service_id, req->session_type, connect_get_net_session_cb, conn);
         return;
-    }
-    else {
+    } else {
         req->conn_timeout = calloc(1, sizeof(uv_timer_t));
         uv_timer_init(loop, req->conn_timeout);
         req->conn_timeout->data = conn;
         uv_timer_start(req->conn_timeout, connect_timeout, conn->timeout, 0);
 
-        CONN_LOG(DEBUG, "starting %s connection for service[%s] with session[%s]", ziti_session_types.name(req->session_type), conn->service, req->session->id);
+        CONN_LOG(DEBUG, "starting %s connection for service[%s] with session[%s]",
+                 ziti_session_types.name(req->session_type), conn->service, req->session->id);
         ziti_connect(ztx, req->session, conn);
     }
 }
@@ -638,8 +619,7 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
 
     if (conn->encrypted) {
         crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL, req->buf, req->len, NULL, 0, 0);
-    }
-    else {
+    } else {
         memcpy(m->body, req->buf, req->len);
     }
 
@@ -693,8 +673,7 @@ static int ziti_disconnect(struct ziti_conn *conn) {
         conn->disconnecting = true;
         ziti_disconnect_async(conn);
         return ZITI_OK;
-    }
-    else {
+    } else {
         conn_set_state(conn, conn->close ? Closed : Disconnected);
     }
     return ZITI_OK;
@@ -722,9 +701,9 @@ int establish_crypto(ziti_connection conn, message *msg) {
         if (conn->encrypted) {
             CONN_LOG(ERROR, "failed to establish crypto for encrypted service: did not receive peer key");
             return ZITI_CRYPTO_FAIL;
-        }
-        else {
-            CONN_LOG(VERBOSE, "encryption not set up: peer_key_sent[%d] conn->encrypted[%d]", (int)peer_key_sent, (int)conn->encrypted);
+        } else {
+            CONN_LOG(VERBOSE, "encryption not set up: peer_key_sent[%d] conn->encrypted[%d]", (int) peer_key_sent,
+                     (int) conn->encrypted);
             // service is not required to be encrypted and hosting side did not send the key
             return ZITI_OK;
         }
@@ -781,7 +760,7 @@ static void on_flush(uv_idle_t *fl) {
     }
 }
 
-static void flush_connection (ziti_connection conn) {
+static void flush_connection(ziti_connection conn) {
     if (conn->flusher) {
         CONN_LOG(TRACE, "starting flusher");
         uv_idle_start(conn->flusher, on_flush);
@@ -900,8 +879,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
             conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
             return;
         }
-    }
-    else if (msg->header.body_len > 0) {
+    } else if (msg->header.body_len > 0) {
         plain_text = malloc(msg->header.body_len);
         memcpy(plain_text, msg->body, msg->header.body_len);
         buffer_append(conn->inbound, plain_text, msg->header.body_len);
@@ -958,8 +936,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
                         // already removed or different one
                         // req reference is no longer valid
                         req->session = NULL;
-                    }
-                    else if (s == req->session) {
+                    } else if (s == req->session) {
                         model_map_remove(&conn->ziti_ctx->sessions, req->service_id);
                     }
                 }
@@ -969,8 +946,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
                 ziti_channel_rem_receiver(conn->channel, conn->conn_id);
                 conn->channel = NULL;
                 restart_connect(conn);
-            }
-            else {
+            } else {
                 CONN_LOG(ERROR, "failed to %s, reason=%*.*s",
                          conn->state == Binding ? "bind" : "connect",
                          msg->header.body_len, msg->header.body_len, msg->body);
@@ -988,21 +964,18 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
                 }
                 conn_set_state(conn, rc == ZITI_OK ? Connected : Disconnected);
                 complete_conn_req(conn, rc);
-            }
-            else if (conn->state == Binding) {
+            } else if (conn->state == Binding) {
                 CONN_LOG(TRACE, "bound");
                 conn_set_state(conn, Bound);
                 complete_conn_req(conn, ZITI_OK);
-            }
-            else if (conn->state == Accepting) {
+            } else if (conn->state == Accepting) {
                 CONN_LOG(TRACE, "accepted");
                 if (conn->encrypted) {
                     send_crypto_header(conn);
                 }
                 conn_set_state(conn, Connected);
                 complete_conn_req(conn, ZITI_OK);
-            }
-            else if (conn->state >= Timedout) {
+            } else if (conn->state >= Timedout) {
                 CONN_LOG(WARN, "received connect reply for closed/timedout");
                 ziti_disconnect(conn);
             }
@@ -1152,8 +1125,8 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
     }
 
     req->waiter =
-    ziti_channel_send_for_reply(ch, content_type, headers, nheaders, s->token, strlen(s->token),
-                                connect_reply_cb, conn);
+            ziti_channel_send_for_reply(ch, content_type, headers, nheaders, s->token, strlen(s->token),
+                                        connect_reply_cb, conn);
 
     return ZITI_OK;
 }
@@ -1199,7 +1172,7 @@ static void rebind_cb(ziti_connection conn, int status) {
     if (status == ZITI_OK) {
         conn->conn_req->retry_count = 0;
         CONN_LOG(DEBUG, "re-bound successfully");
-    } else if (status == ZITI_SERVICE_UNAVAILABLE) {
+    } else if (status == ZITI_SERVICE_UNAVAILABLE || status == ZITI_DISABLED) {
         CONN_LOG(WARN, "failed to re-bind [%d/%s]", status, ziti_errorstr(status));
         conn->client_cb(conn, NULL, status, NULL);
     } else {
@@ -1207,7 +1180,7 @@ static void rebind_cb(ziti_connection conn, int status) {
         int backoff_count = 1 << MIN(conn->conn_req->retry_count, 5);
         uint32_t random;
         uv_random(conn->ziti_ctx->loop, NULL, &random, sizeof(random), 0, NULL);
-        long backoff_time = (long)(random % (backoff_count * 5000));
+        long backoff_time = (long) (random % (backoff_count * 5000));
         CONN_LOG(DEBUG, "failed to re-bind[%d/%s], retrying in %ldms", status, ziti_errorstr(status), backoff_time);
         if (conn->conn_req->conn_timeout == NULL) {
             conn->conn_req->conn_timeout = calloc(1, sizeof(uv_timer_t));
@@ -1545,8 +1518,8 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
             bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
             rc = conn->encrypted ? establish_crypto(clt, msg) : ZITI_OK;
             if (rc != ZITI_OK) {
-                CONN_LOG(ERROR, "failed to establish crypto with caller[%.*s]", (int)source_identity_sz,
-                         caller_id_sent ? (char*)source_identity : "");
+                CONN_LOG(ERROR, "failed to establish crypto with caller[%.*s]", (int) source_identity_sz,
+                         caller_id_sent ? (char *) source_identity : "");
                 reject_dial_request(conn, msg, ziti_errorstr(rc));
                 clt->state = Closed; // put directly into Closed state
                 break;
@@ -1597,13 +1570,14 @@ static uint16_t get_terminator_cost(ziti_listen_opts *opts, const char *service,
 
     if (ztx->identity_data) {
         int *cp = model_map_get(&ztx->identity_data->service_hosting_costs, service);
-        if (cp) return (uint16_t )*cp;
+        if (cp) return (uint16_t) *cp;
 
-        return (uint16_t)ztx->identity_data->default_hosting_cost;
+        return (uint16_t) ztx->identity_data->default_hosting_cost;
     }
 
     return 0;
 }
+
 static uint8_t get_terminator_precedence(ziti_listen_opts *opts, const char *service, ziti_context ztx) {
     if (opts->terminator_precedence > 0) return opts->terminator_precedence;
 
@@ -1612,7 +1586,7 @@ static uint8_t get_terminator_precedence(ziti_listen_opts *opts, const char *ser
         precedence = precedence ? precedence : ztx->identity_data->default_hosting_precendence;
 
         if (precedence) {
-            if (strcmp("failed", precedence) == 0) return  PRECEDENCE_FAILED;
+            if (strcmp("failed", precedence) == 0) return PRECEDENCE_FAILED;
             if (strcmp("required", precedence) == 0) return PRECEDENCE_REQUIRED;
         }
     }

@@ -172,7 +172,6 @@ struct ziti_conn {
     crypto_secretstream_xchacha20poly1305_state crypt_i;
     bool encrypted;
 
-    LIST_ENTRY(ziti_conn) next;
 };
 
 struct process {
@@ -234,7 +233,8 @@ struct ziti_ctx {
 
     // map<erUrl,ziti_channel>
     model_map channels;
-    LIST_HEAD(conns, ziti_conn) connections;
+    // map<id,ziti_conn>
+    model_map connections;
 
     uint32_t conn_seq;
 
