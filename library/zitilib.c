@@ -1225,7 +1225,34 @@ ZITI_FUNC
 int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hints, struct addrinfo **addrlist) {
     in_port_t portnum = port ? (in_port_t) strtol(port, NULL, 10) : 0;
     ZITI_LOG(DEBUG, "host[%s] port[%s]", host, port);
-    struct addrinfo *res = calloc(1, sizeof(struct addrinfo));
+
+    /**
+     * Linux and FreeBSD freeaddrinfo(ai) frees ai->canonname and ai, but not ai->ai_addr.
+     * ai is allocated large enough to carry the sockaddr
+     */
+    union sockaddr_union {
+      struct sockaddr      sa;
+      struct sockaddr_in   in4;
+      struct sockaddr_in6  in6;
+    };
+
+    struct result_storage {
+        struct addrinfo addrinfo;
+        union sockaddr_union sockaddr;
+    } *store = calloc(1, sizeof *store);
+
+    if (!store)
+        goto error;
+
+    struct addrinfo *res = &store->addrinfo;
+    union sockaddr_union *addr = &store->sockaddr;
+
+    res->ai_family = AF_UNSPEC;
+    res->ai_socktype = 0;
+    res->ai_protocol = 0;
+
+    addr->sa.sa_family = AF_UNSPEC;
+
     if (hints) {
         res->ai_socktype = hints->ai_socktype;
         switch (hints->ai_socktype) {
@@ -1239,27 +1266,59 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
                 res->ai_protocol = 0;
                 break;
             default: // no other protocols are supported
-                return -1;
+                goto error;
+        }
+
+        switch (hints->ai_family) {
+            case AF_INET:
+            case AF_INET6:
+            case AF_UNSPEC:
+                res->ai_family = hints->ai_family;
+                break;
+            default: // unsupported address family
+                goto error;
         }
     }
 
-    struct sockaddr_in *addr4 = calloc(1, sizeof(struct sockaddr_in6));
-    int rc = 0;
-    if ((rc = uv_ip4_addr(host, portnum, addr4)) == 0) {
-        ZITI_LOG(DEBUG, "host[%s] port[%s] rc = %d", host, port, rc);
+    if (!host) {
+        size_t salen;
 
-        res->ai_family = AF_INET;
-        res->ai_addr = (struct sockaddr *) addr4;
-        res->ai_addrlen = sizeof(struct sockaddr_in);
-
+        switch (res->ai_family) {
+            case AF_INET:
+            case AF_UNSPEC:
+                salen = sizeof addr->in4;
+                addr->in4.sin_family = AF_INET;
+                addr->in4.sin_port = htons(portnum);
+                addr->in4.sin_addr.s_addr = INADDR_LOOPBACK;
+                break;
+            case AF_INET6:
+                salen = sizeof addr->in6;
+                addr->in6.sin6_family = AF_INET6;
+                addr->in6.sin6_port = htons(portnum);
+                addr->in6.sin6_addr = in6addr_loopback;
+                break;
+        }
+        res->ai_family = addr->sa.sa_family;
+        res->ai_addr = &addr->sa;
+        res->ai_addrlen = salen;
         *addrlist = res;
         return 0;
-    } else if (uv_ip6_addr(host, portnum, (struct sockaddr_in6 *) addr4) == 0) {
-        ZITI_LOG(INFO, "host[%s] port[%s] rc = %d", host, port, rc);
+    } else if ((res->ai_family == AF_UNSPEC || res->ai_family == AF_INET)
+        && uv_ip4_addr(host, portnum, &addr->in4) == 0) {
+        ZITI_LOG(DEBUG, "host[%s] port[%s]", host, port);
+
+        res->ai_family = AF_INET;
+        res->ai_addr = &addr->sa;
+        res->ai_addrlen = sizeof addr->in4;
+        *addrlist = res;
+        return 0;
+    } else if ((res->ai_family == AF_UNSPEC || res->ai_family == AF_INET6)
+        && uv_ip6_addr(host, portnum, &addr->in6) == 0) {
+        ZITI_LOG(INFO, "host[%s] port[%s]", host, port);
 
         res->ai_family = AF_INET6;
-        res->ai_addr = (struct sockaddr *) addr4;
-        res->ai_addrlen = sizeof(struct sockaddr_in6);
+        res->ai_addr = &addr->sa;
+        res->ai_addrlen = sizeof addr->in6;
         *addrlist = res;
         return 0;
     }
@@ -1273,14 +1332,14 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
         tlsuv_parse_url(&url, ctrl);
 
         if (strncmp(host, url.hostname, url.hostname_len) == 0) {
-            return -1;
+            goto error;
         }
 
         if (wrap->ztx) {
             MODEL_MAP_FOR(chit, wrap->ztx->channels) {
                 ziti_channel_t *ch = model_map_it_value(chit);
                 if (strcmp(ch->host, host) == 0) {
-                    return -1;
+                    goto error;
                 }
             }
         }
@@ -1300,21 +1359,25 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
     int err = await_future(f);
     set_error(err);
 
-    if (err == 0) {
-        addr4->sin_family = AF_INET;
-        addr4->sin_port = htons(portnum);
-        addr4->sin_addr.s_addr = (in_addr_t)(uintptr_t)f->result;
+    if (err != 0)
+        goto error;
 
-        res->ai_family = AF_INET;
-        res->ai_addr = (struct sockaddr *) addr4;
-        res->ai_socktype = hints->ai_socktype;
+    addr->in4.sin_family = AF_INET;
+    addr->in4.sin_port = htons(portnum);
+    addr->in4.sin_addr.s_addr = (in_addr_t)(uintptr_t)f->result;
 
-        res->ai_addrlen = sizeof(*addr4);
-        *addrlist = res;
-    }
+    res->ai_family = AF_INET;
+    res->ai_addr = &addr->sa;
+    res->ai_addrlen = sizeof addr->in4;
+    *addrlist = res;
+
     destroy_future(f);
 
-    return err == 0 ? 0 : -1;
+    return 0;
+
+error:
+    free(store);
+    return -1;
 }
 
 int Ziti_check_socket(ziti_socket_t fd) {
