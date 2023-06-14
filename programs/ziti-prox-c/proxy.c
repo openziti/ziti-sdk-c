@@ -401,7 +401,7 @@ static void service_check_cb(ziti_context ztx, ziti_service *service, int status
     }
 
     struct binding *b = model_map_get(&app_ctx->bindings, service->name);
-    if (b && (service->perm_flags & ZITI_CAN_BIND) != 0) {
+    if (b && status == ZITI_OK && (service->perm_flags & ZITI_CAN_BIND) != 0) {
         if (b->conn == NULL) {
             ziti_conn_init(ztx, &b->conn, b);
             ziti_listen(b->conn, b->service_name, binding_listen_cb, binding_client_cb);
