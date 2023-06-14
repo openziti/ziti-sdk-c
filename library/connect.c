@@ -194,7 +194,6 @@ int close_conn_internal(struct ziti_conn *conn) {
             model_map_removel(&conn->parent->children, conn->conn_id);
         }
 
-        LIST_REMOVE(conn, next);
         FREE(conn->rx);
         FREE(conn->tx);
 
@@ -283,17 +282,15 @@ static int send_message(struct ziti_conn *conn, message *m, struct ziti_write_re
 }
 
 static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
-    struct ziti_conn *conn = ctx;
+    uintptr_t cid = (uintptr_t) ctx;
+    uint32_t conn_id = (uint32_t) cid;
     ziti_context ztx = ch->ctx;
 
     // check if it is still a valid connection;
     // connection may be completed and gone by the time this channel gets connected
-    struct ziti_conn *c;
-    LIST_FOREACH(c, &ch->ctx->connections, next) {
-        if (c == conn) { break; }
-    }
-    if (c == NULL) {
-        ZTX_LOG(VERBOSE, "ch[%d] connection(%p) is gone", ch->id, ctx);
+    struct ziti_conn *conn = model_map_getl(&ztx->connections, (long) conn_id);
+    if (conn == NULL) {
+        ZTX_LOG(VERBOSE, "ch[%d] connection(id = %d) is gone", ch->id, conn_id);
         return;
     }
 
@@ -393,6 +390,7 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
     ziti_edge_router **er;
     ziti_channel_t *best_ch = NULL;
     uint64_t best_latency = UINT64_MAX;
+    uintptr_t conn_id = conn->conn_id;
 
     for (er = session->edge_routers; *er != NULL; er++) {
         const char *tls = model_map_get(&(*er)->protocols, "tls");
@@ -414,7 +412,7 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
             }
             else {
                 CONN_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, tls, session->id);
-                ziti_channel_connect(ztx, ch_name, tls, on_channel_connected, conn);
+                ziti_channel_connect(ztx, ch_name, tls, on_channel_connected, (void *) conn_id);
             }
             free(ch_name);
         }
@@ -423,7 +421,7 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
     if (best_ch) {
         CONN_LOG(DEBUG, "selected ch[%s] for best latency(%llu ms)", best_ch->name,
                  (unsigned long long) best_ch->latency);
-        on_channel_connected(best_ch, conn, ZITI_OK);
+        on_channel_connected(best_ch, (void *) conn_id, ZITI_OK);
     }
 
     return 0;

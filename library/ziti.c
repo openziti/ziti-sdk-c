@@ -640,14 +640,16 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         printer(ctx, "ch[%d](%s) ", ch->id, url);
         if (ziti_channel_is_connected(ch)) {
             printer(ctx, "connected [latency=%" PRIu64 "]\n", ch->latency);
-        } else {
+        }
+        else {
             printer(ctx, "Disconnected\n");
         }
     }
 
     printer(ctx, "\n==================\nConnections:\n");
     ziti_connection conn;
-    LIST_FOREACH(conn, &ztx->connections, next) {
+    const char *id;
+    MODEL_MAP_FOREACH(id, conn, &ztx->connections) {
         if (conn->parent == NULL) {
             printer(ctx, "conn[%d]: state[%s] service[%s] using ch[%d] %s\n",
                     conn->conn_id, ziti_conn_state(conn), conn->service,
@@ -682,7 +684,7 @@ int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {
     TAILQ_INIT(&c->wreqs);
 
     *conn = c;
-    LIST_INSERT_HEAD(&ctx->connections, c, next);
+    model_map_setl(&ctx->connections, (long) c->conn_id, c);
     return ZITI_OK;
 }
 
@@ -1558,24 +1560,24 @@ const ziti_version *ziti_get_version() {
 static void grim_reaper(uv_prepare_t *p) {
     ziti_context ztx = p->data;
 
-    int total = 0;
-    int count = 0;
+    size_t total = model_map_size(&ztx->connections);
+    size_t count = 0;
 
-    ziti_connection conn = LIST_FIRST(&ztx->connections);
-    if (conn == NULL && !ztx->enabled) {
+    if (total == 0 && !ztx->enabled) {
         // context disabled and no connections
         uv_prepare_stop(p);
         return;
     }
 
-    while (conn != NULL) {
-        ziti_connection try_close = conn;
-        total++;
-        conn = LIST_NEXT(conn, next);
-        count += close_conn_internal(try_close);
+    model_map_iter it = model_map_iterator(&ztx->connections);
+    while (it != NULL) {
+        ziti_connection try_close = model_map_it_value(it);
+        int closed = close_conn_internal(try_close);
+        it = closed ? model_map_it_remove(it) : model_map_it_next(it);
+        count += closed;
     }
     if (count > 0) {
-        ZTX_LOG(DEBUG, "reaped %d closed (out of %d total) connections", count, total);
+        ZTX_LOG(DEBUG, "reaped %zd closed (out of %zd total) connections", count, total);
     }
 }
 
