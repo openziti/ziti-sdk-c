@@ -733,12 +733,17 @@ static void set_service_flags(ziti_service *s) {
 
 static void service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
     struct service_req_s *req = ctx;
-    int rc = ZITI_SERVICE_UNAVAILABLE;
+    int rc = err ? err->err : ZITI_OK;
 
     if (s != NULL) {
         set_service_flags(s);
-        model_map_set(&req->ztx->services, s->name, s);
-        rc = ZITI_OK;
+        ziti_service *old = model_map_set(&req->ztx->services, s->name, s);
+        free_ziti_service_ptr(old);
+    }
+    else {
+        if (rc == ZITI_NOT_FOUND) {
+            rc = ZITI_SERVICE_UNAVAILABLE;
+        }
     }
 
     req->cb(req->ztx, s, rc, req->cb_ctx);

@@ -429,32 +429,30 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
     return 0;
 }
 
-static void connect_get_service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
+static void connect_get_service_cb(ziti_context ztx, ziti_service *s, int status, void *ctx) {
     struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
-    struct ziti_ctx *ztx = conn->ziti_ctx;
 
-    if (err != NULL) {
-        CONN_LOG(ERROR, "failed to load service (%s): %s(%s)", conn->service, err->code, err->message);
-    }
-    if (s == NULL) {
-        complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
-    }
-    else {
+    if (status == ZITI_OK) {
         CONN_LOG(DEBUG, "got service[%s] id[%s]", s->name, s->id);
-        for (int i = 0; s->permissions[i] != NULL; i++) {
-            if (*s->permissions[i] == ziti_session_types.Dial) {
-                 s->perm_flags |= ZITI_CAN_DIAL;
-            }
-            if (*s->permissions[i] == ziti_session_types.Bind) {
-                s->perm_flags |= ZITI_CAN_BIND;
-            }
+
+        if (!ziti_service_has_permission(s, req->session_type)) {
+            CONN_LOG(WARN, "not authorized to %s", ziti_session_types.name(req->session_type));
+            complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
+            return;
         }
 
-        model_map_set(&ztx->services, s->name, s);
         req->service_id = strdup(s->id);
         conn->encrypted = s->encryption;
         process_connect(conn);
+    }
+    else if (status == ZITI_SERVICE_UNAVAILABLE) {
+        CONN_LOG(ERROR, "service[%s] is not available for ztx[%s]", conn->service, ztx->api_session->identity->name);
+        complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
+    }
+    else {
+        CONN_LOG(WARN, "failed to load service[%s]: %d/%s", conn->service, status, ziti_errorstr(status));
+        complete_conn_req(conn, status);
     }
 }
 
@@ -504,21 +502,14 @@ static void process_connect(struct ziti_conn *conn) {
     struct ziti_ctx *ztx = conn->ziti_ctx;
     uv_loop_t *loop = ztx->loop;
 
-    // find service
-    ziti_service *service = model_map_get(&ztx->services, conn->service);
-    if (req->service_id == NULL) {
-        if (service == NULL) {
-            CONN_LOG(DEBUG, "service[%s] not loaded yet, requesting it", conn->service);
-            ziti_ctrl_get_service(&ztx->controller, conn->service, connect_get_service_cb, conn);
-            return;
-        }
-        req->service_id = strdup(service->id);
-        conn->encrypted = service->encryption;
-    }
 
-    if (!ziti_service_has_permission(service, req->session_type)) {
-        CONN_LOG(WARN, "not authorized to %s", ziti_session_types.name(req->session_type));
-        complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
+    // find service
+    if (req->service_id == NULL) {
+        // connect_get_service_cb will re-enter process_connect() if service is already cached in the context
+        int rc = ziti_service_available(ztx, conn->service, connect_get_service_cb, conn);
+        if (rc != ZITI_OK) {
+            complete_conn_req(conn, rc);
+        }
         return;
     }
 
@@ -539,7 +530,8 @@ static void process_connect(struct ziti_conn *conn) {
         req->conn_timeout->data = conn;
         uv_timer_start(req->conn_timeout, connect_timeout, conn->timeout, 0);
 
-        CONN_LOG(DEBUG, "starting %s connection for service[%s] with session[%s]", ziti_session_types.name(req->session_type), conn->service, req->session->id);
+        CONN_LOG(DEBUG, "starting %s connection for service[%s] with session[%s]",
+                 ziti_session_types.name(req->session_type), conn->service, req->session->id);
         ziti_connect(ztx, req->session, conn);
     }
 }
@@ -1199,15 +1191,17 @@ static void rebind_cb(ziti_connection conn, int status) {
     if (status == ZITI_OK) {
         conn->conn_req->retry_count = 0;
         CONN_LOG(DEBUG, "re-bound successfully");
-    } else if (status == ZITI_SERVICE_UNAVAILABLE) {
+    }
+    else if (status == ZITI_SERVICE_UNAVAILABLE || status == ZITI_DISABLED) {
         CONN_LOG(WARN, "failed to re-bind [%d/%s]", status, ziti_errorstr(status));
         conn->client_cb(conn, NULL, status, NULL);
-    } else {
+    }
+    else {
         conn->conn_req->retry_count++;
         int backoff_count = 1 << MIN(conn->conn_req->retry_count, 5);
         uint32_t random;
         uv_random(conn->ziti_ctx->loop, NULL, &random, sizeof(random), 0, NULL);
-        long backoff_time = (long)(random % (backoff_count * 5000));
+        long backoff_time = (long) (random % (backoff_count * 5000));
         CONN_LOG(DEBUG, "failed to re-bind[%d/%s], retrying in %ldms", status, ziti_errorstr(status), backoff_time);
         if (conn->conn_req->conn_timeout == NULL) {
             conn->conn_req->conn_timeout = calloc(1, sizeof(uv_timer_t));

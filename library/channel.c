@@ -69,8 +69,6 @@ static void reconnect_cb(uv_timer_t *t);
 
 static void on_channel_connect_internal(uv_connect_t *req, int status);
 
-static void on_write(uv_write_t *req, int status);
-
 static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id);
 
 static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err);
@@ -178,8 +176,14 @@ int ziti_close_channels(struct ziti_ctx *ztx, int err) {
 
 static void close_handle_cb(uv_handle_t *h) {
     tlsuv_stream_t *tls = (tlsuv_stream_t *) h;
+    ziti_channel_t *ch = tls->data;
     tlsuv_stream_free(tls);
     free(tls);
+
+    ziti_channel_free(ch);
+    free(ch);
+
+
 }
 
 int ziti_channel_close(ziti_channel_t *ch, int err) {
@@ -192,14 +196,8 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
 
         uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
         ch->timer = NULL;
-        ch->connection->data = NULL;
         tlsuv_stream_close(ch->connection, close_handle_cb);
-
-
         ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ctx);
-
-        ziti_channel_free(ch);
-        free(ch);
     }
     return r;
 }
