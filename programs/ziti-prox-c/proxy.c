@@ -96,6 +96,7 @@ struct client {
 uv_loop_t *global_loop;
 
 static int process_args(int argc, char *argv[]);
+
 void mfa_auth_event_handler(ziti_context ztx);
 
 int main(int argc, char *argv[]) {
@@ -182,11 +183,11 @@ static void signal_cb(uv_signal_t *s, int signum) {
             debug_dump(s->data);
             break;
 #ifndef _WIN32
-            case SIGUSR2: {
-                struct proxy_app_ctx *ctx = s->data;
-                ziti_set_enabled(ctx->ziti, !ziti_is_enabled(ctx->ziti));
-                break;
-            }
+        case SIGUSR2: {
+            struct proxy_app_ctx *ctx = s->data;
+            ziti_set_enabled(ctx->ziti, !ziti_is_enabled(ctx->ziti));
+            break;
+        }
 #endif
 
         default:
@@ -318,8 +319,7 @@ static void on_ziti_accept(ziti_connection clt, int status) {
             if (s->type == UV_UDP) {
                 ziti_conn_bridge_idle_timeout(clt, 10000);
             }
-        }
-        else {
+        } else {
             ZITI_LOG(WARN, "failed to bridge ziti connection and backend handle");
             ziti_close(clt, NULL);
             uv_close(s, (uv_close_cb) free);
@@ -372,8 +372,7 @@ static void binding_client_cb(ziti_connection srv, ziti_connection clt, int stat
                 if (rc != 0) {
                     ZITI_LOG(WARN, "failed to connect UDP handle: %d/%s", rc, uv_strerror(rc));
                     ziti_close(clt, NULL);
-                }
-                else {
+                } else {
                     ziti_conn_set_data(clt, udp);
                     ziti_accept(clt, on_ziti_accept, NULL);
                 }
@@ -425,7 +424,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, ziti_get_controller(ztx));
                 app_ctx->ziti = ztx;
             } else {
-                ZITI_LOG(ERROR, "controller is not available: %s/%s", ziti_errorstr(event->event.ctx.ctrl_status), event->event.ctx.err);
+                ZITI_LOG(ERROR, "controller is not available: %s/%s", ziti_errorstr(event->event.ctx.ctrl_status),
+                         event->event.ctx.err);
             }
             break;
 
@@ -451,7 +451,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                         for (int idx = 0; policy->posture_queries[idx] != NULL; idx++) {
                             ziti_posture_query *query = policy->posture_queries[idx];
 
-                            if (strcmp(query->query_type, "MFA") == 0 && query->timeoutRemaining != NULL && *query->timeoutRemaining == 0) {
+                            if (strcmp(query->query_type, "MFA") == 0 && query->timeoutRemaining != NULL &&
+                                *query->timeoutRemaining == 0) {
                                 mfa_auth_event_handler(ztx);
                             }
                         }
@@ -463,10 +464,12 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
         case ZitiRouterEvent:
             switch (event->event.router.status) {
                 case EdgeRouterAdded:
-                    ZITI_LOG(INFO, "ziti added edge router %s address=%s", event->event.router.name, event->event.router.address);
+                    ZITI_LOG(INFO, "ziti added edge router %s address=%s", event->event.router.name,
+                             event->event.router.address);
                     break;
                 case EdgeRouterConnected:
-                    ZITI_LOG(INFO, "ziti connected to edge router %s, version = %s", event->event.router.name, event->event.router.version);
+                    ZITI_LOG(INFO, "ziti connected to edge router %s, version = %s", event->event.router.name,
+                             event->event.router.version);
                     break;
                 case EdgeRouterDisconnected:
                     ZITI_LOG(INFO, "ziti disconnected from edge router %s", event->event.router.name);
@@ -558,6 +561,7 @@ void mfa_auth_event_handler(ziti_context ztx) {
 }
 
 static struct proxy_app_ctx app_ctx = {0};
+
 void run(int argc, char **argv) {
 
     PREPF(uv, uv_strerror);
@@ -668,8 +672,7 @@ int run_opts(int argc, char **argv) {
                 debug_set = true;
                 if (optarg) {
                     debug_level = (int) strtol(optarg, NULL, 10);
-                }
-                else {
+                } else {
                     debug_level++;
                 }
                 break;
@@ -762,7 +765,7 @@ static int ver_verbose = 0;
 int version_opts(int argc, char **argv) {
     static struct option long_options[] = {
             {"verbose", no_argument, NULL, 'v'},
-            {NULL,      0,           NULL, 0}
+            {NULL, 0, NULL, 0}
     };
 
     int c, option_index, errors = 0;
@@ -820,8 +823,9 @@ static int process_args(int argc, char *argv[]) {
 char *pxoxystrndup(const char *s, int n) {
     size_t len = strnlen(s, n);
     char *new = (char *) malloc(len + 1);
-    if (new == NULL)
+    if (new == NULL) {
         return NULL;
+    }
     new[len] = '\0';
     return (char *) memcpy(new, s, len);
 }

@@ -182,8 +182,6 @@ static void close_handle_cb(uv_handle_t *h) {
 
     ziti_channel_free(ch);
     free(ch);
-
-
 }
 
 int ziti_channel_close(ziti_channel_t *ch, int err) {
