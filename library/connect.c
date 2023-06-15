@@ -14,6 +14,7 @@
 
 #include <stdlib.h>
 #include <posture.h>
+#include <assert.h>
 
 #include "endian_internal.h"
 #include "win32_compat.h"
@@ -375,7 +376,7 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
         return ZITI_INVALID_STATE;
     }
 
-    if (session->edge_routers == NULL) {
+    if (model_list_size(&session->edge_routers) == 0) {
         CONN_LOG(ERROR, "no edge routers available for service[%s] session[%s]", conn->service, session->id);
         complete_conn_req(conn, ZITI_GATEWAY_UNAVAILABLE);
         return ZITI_GATEWAY_UNAVAILABLE;
@@ -383,22 +384,19 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
 
     conn->channel = NULL;
 
-    ziti_edge_router **er;
+    ziti_edge_router *er;
     ziti_channel_t *best_ch = NULL;
     uint64_t best_latency = UINT64_MAX;
     uintptr_t conn_id = conn->conn_id;
 
-    for (er = session->edge_routers; *er != NULL; er++) {
-        const char *tls = model_map_get(&(*er)->protocols, "tls");
+    MODEL_LIST_FOREACH(er, session->edge_routers) {
+        const char *tls = model_map_get(&er->protocols, "tls");
         if (tls == NULL) {
-            tls = model_map_get(&(*er)->ingress, "tls");
+            tls = model_map_get(&er->ingress, "tls");
         }
 
         if (tls) {
-            size_t ch_name_len = strlen((*er)->name) + strlen(tls) + 2;
-            char *ch_name = malloc(ch_name_len);
-            snprintf(ch_name, ch_name_len, "%s@%s", (*er)->name, tls);
-            ziti_channel_t *ch = model_map_get(&ztx->channels, ch_name);
+            ziti_channel_t *ch = model_map_get(&ztx->channels, tls);
 
             if (ch != NULL && ch->state == Connected) {
                 if (ch->latency < best_latency) {
@@ -406,15 +404,14 @@ static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, s
                     best_latency = ch->latency;
                 }
             } else {
-                CONN_LOG(TRACE, "connecting to %s(%s) for session[%s]", (*er)->name, tls, session->id);
-                ziti_channel_connect(ztx, ch_name, tls, on_channel_connected, (void *) conn_id);
+                CONN_LOG(TRACE, "connecting to %s(%s) for session[%s]", er->name, tls, session->id);
+                ziti_channel_connect(ztx, er->name, tls, on_channel_connected, (void *) conn_id);
             }
-            free(ch_name);
         }
     }
 
     if (best_ch) {
-        CONN_LOG(DEBUG, "selected ch[%s] for best latency(%llu ms)", best_ch->name,
+        CONN_LOG(DEBUG, "selected ch[%s@%s] for best latency(%llu ms)", best_ch->name, best_ch->url,
                  (unsigned long long) best_ch->latency);
         on_channel_connected(best_ch, (void *) conn_id, ZITI_OK);
     }
@@ -561,7 +558,6 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
     conn->flusher = calloc(1, sizeof(uv_idle_t));
     uv_idle_init(conn->ziti_ctx->loop, conn->flusher);
     conn->flusher->data = conn;
-
 
     process_connect(conn);
     return ZITI_OK;

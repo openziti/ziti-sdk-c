@@ -72,6 +72,7 @@ typedef struct ziti_channel {
     uv_loop_t *loop;
     struct ziti_ctx *ctx;
     char *name;
+    char *url;
     char *version;
     char *host;
     int port;
@@ -262,7 +263,8 @@ extern "C" {
 
 bool ziti_is_session_valid(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type);
 
-void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type);
+void
+ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type);
 
 void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
 
@@ -271,6 +273,8 @@ void ziti_force_api_session_refresh(ziti_context ztx);
 int ziti_close_channels(ziti_context ztx, int err);
 
 bool ziti_channel_is_connected(ziti_channel_t *ch);
+
+uint64_t ziti_channel_latency(ziti_channel_t *ch);
 
 int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb, void *ctx);
 

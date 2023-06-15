@@ -37,7 +37,7 @@ XX(ingress, string, map, urls, __VA_ARGS__) /* deprecated */
 XX(token, string, none, token, __VA_ARGS__)\
 XX(id, string, none, id, __VA_ARGS__) \
 XX(session_type, string, none, type, __VA_ARGS__) \
-XX(edge_routers, ziti_edge_router, array, edgeRouters, __VA_ARGS__) \
+XX(edge_routers, ziti_edge_router, list, edgeRouters, __VA_ARGS__) \
 XX(service_id, string, none, NULL, __VA_ARGS__)
 
 #define ZITI_PROCESS_MODEL(XX, ...) \
