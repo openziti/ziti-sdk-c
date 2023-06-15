@@ -92,11 +92,16 @@ TEST_CASE("multi-edge-router session", "[model]") {
     ziti_net_session *s;
     int rc = parse_ziti_net_session_ptr(&s, ns, (int) strlen(ns));
 
-    REQUIRE(s->edge_routers[0] != nullptr);
-    REQUIRE(s->edge_routers[1] != nullptr);
-    REQUIRE(s->edge_routers[2] == nullptr);
+    REQUIRE(model_list_size(&s->edge_routers) == 2);
 
-    const char *tls = (const char*)model_map_get(&s->edge_routers[1]->ingress, "tls");
+    auto it = model_list_iterator(&s->edge_routers);
+    auto er = (ziti_edge_router *) model_list_it_element(it);
+    auto tls = (const char *) model_map_get(&er->ingress, "tls");
+    REQUIRE_THAT(tls, Catch::Matchers::Matches("tls://ec2-18-223-205-231.us-east-2.compute.amazonaws.com:3022"));
+
+    it = model_list_it_next(it);
+    er = (ziti_edge_router *) model_list_it_element(it);
+    tls = (const char *) model_map_get(&er->ingress, "tls");
     REQUIRE_THAT(tls, Catch::Matchers::Matches("tls://ec2-18-188-224-88.us-east-2.compute.amazonaws.com:3022"));
 
     free_ziti_net_session(s);
