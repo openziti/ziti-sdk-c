@@ -51,6 +51,8 @@ SET(ZITI_SRC_FILES
         pool.c
         model_collections.c
         authenticators.c
+        crypto.c
+        bind.c
         )
 
 SET(ZITI_INCLUDE_DIRS

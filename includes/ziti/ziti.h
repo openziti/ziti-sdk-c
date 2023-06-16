@@ -287,7 +287,7 @@ typedef struct ziti_listen_opts_s {
     uint16_t terminator_cost;
     uint8_t terminator_precedence;
     int connect_timeout_seconds;
-    //int max_connections;  // todo implement
+    int max_connections;
     char *identity;
     bool bind_using_edge_identity;
 } ziti_listen_opts;

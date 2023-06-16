@@ -650,13 +650,15 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     ziti_connection conn;
     const char *id;
     MODEL_MAP_FOREACH(id, conn, &ztx->connections) {
-        if (conn->parent == NULL) {
+        if (conn->type == Transport && conn->parent == NULL) {
             printer(ctx, "conn[%d]: state[%s] service[%s] using ch[%d] %s\n",
                     conn->conn_id, ziti_conn_state(conn), conn->service,
                     conn->channel ? conn->channel->id : -1,
                     conn->channel ? conn->channel->name : "(none)");
+        }
 
-            model_map_iter it = model_map_iterator(&conn->children);
+        if (conn->type == Server) {
+            model_map_iter it = model_map_iterator(&conn->server.children);
             while (it != NULL) {
                 uint32_t child_id = model_map_it_lkey(it);
                 ziti_connection child = model_map_it_value(it);
@@ -675,13 +677,8 @@ int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {
     NEWP(c, struct ziti_conn);
     c->ziti_ctx = ztx;
     c->data = data;
-    c->channel = NULL;
     c->timeout = ctx->ziti_timeout;
-    c->edge_msg_seq = 1;
     c->conn_id = ztx->conn_seq++;
-    c->inbound = new_buffer();
-    TAILQ_INIT(&c->in_q);
-    TAILQ_INIT(&c->wreqs);
 
     *conn = c;
     model_map_setl(&ctx->connections, (long) c->conn_id, c);
@@ -1567,8 +1564,8 @@ static void grim_reaper(uv_prepare_t *p) {
 
     model_map_iter it = model_map_iterator(&ztx->connections);
     while (it != NULL) {
-        ziti_connection try_close = model_map_it_value(it);
-        int closed = close_conn_internal(try_close);
+        ziti_connection conn = model_map_it_value(it);
+        int closed = conn->closer(conn);
         it = closed ? model_map_it_remove(it) : model_map_it_next(it);
         count += closed;
     }
