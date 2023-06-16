@@ -151,6 +151,7 @@ void ziti_channel_free(ziti_channel_t *ch) {
     free_buffer(ch->incoming);
     pool_destroy(ch->in_msg_pool);
     FREE(ch->name);
+    FREE(ch->url);
     FREE(ch->version);
     FREE(ch->host);
 }
@@ -223,10 +224,15 @@ bool ziti_channel_is_connected(ziti_channel_t *ch) {
     return ch->state == Connected;
 }
 
+uint64_t ziti_channel_latency(ziti_channel_t *ch) {
+    return ch->latency;
+}
+
 static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, const char *url) {
     ziti_channel_t *ch = calloc(1, sizeof(ziti_channel_t));
     ziti_channel_init(ztx, ch, channel_counter++, ztx->tlsCtx);
     ch->name = strdup(ch_name);
+    ch->url = strdup(url);
     CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, ztx->api_session->identity->name);
 
     struct tlsuv_url_s ingress;
@@ -235,7 +241,7 @@ static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, c
     ch->host = calloc(1, ingress.hostname_len + 1);
     snprintf(ch->host, ingress.hostname_len + 1, "%.*s", (int) ingress.hostname_len, ingress.hostname);
     ch->port = ingress.port;
-    model_map_set(&ztx->channels, ch->name, ch);
+    model_map_set(&ztx->channels, url, ch);
     return ch;
 }
 
@@ -264,7 +270,7 @@ static void check_connecting_state(ziti_channel_t *ch) {
 }
 
 int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url, ch_connect_cb cb, void *cb_ctx) {
-    ziti_channel_t *ch = model_map_get(&ztx->channels, ch_name);
+    ziti_channel_t *ch = model_map_get(&ztx->channels, url);
 
     if (ch != NULL) {
         ZTX_LOG(DEBUG, "existing ch[%d](%s) found for ingress[%s]", ch->id, ch_state_str(ch), url);
@@ -692,12 +698,11 @@ static void reconnect_cb(uv_timer_t *t) {
         ch->state = Connecting;
 
         ch->connection->data = ch;
-        CH_LOG(DEBUG, "connecting to %s:%d", ch->host, ch->port);
+        CH_LOG(DEBUG, "connecting to %s", ch->url);
         int rc = tlsuv_stream_connect(req, ch->connection, ch->host, ch->port, on_channel_connect_internal);
         if (rc != 0) {
             on_channel_connect_internal(req, rc);
-        }
-        else {
+        } else {
             uv_timer_start(ch->timer, ch_connect_timeout, CONNECT_TIMEOUT, 0);
         }
     }

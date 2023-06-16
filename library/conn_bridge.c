@@ -297,7 +297,11 @@ ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
             }
         }
     } else {
-        BR_LOG(WARN, "closing bridge due to error: %zd(%s)", len, ziti_errorstr((int) len));
+        if (len == ZITI_CONN_CLOSED) {
+            BR_LOG(VERBOSE, "closing bridge");
+        } else {
+            BR_LOG(WARN, "closing bridge due to error: %zd(%s)", len, ziti_errorstr((int) len));
+        }
         close_bridge(br);
     }
     return 0;
