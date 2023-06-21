@@ -27,15 +27,15 @@ using namespace std;
 #else
 #if defined(__linux)
 
-/* gcc 4.8 does not have <stdatomic.h> and does not set the flag */
+/* 20230621:NFRAGALE@NETFOUNDRY:Build assurance against missing macro in features.h. */
 #  if defined __GNUC__ && defined __GNUC_MINOR__ && ! __clang__
 #    include <features.h>
-/* 20230621:NFRAGALE@NETFOUNDRY:Build assurance against missing macro in features.h. */
 #    ifndef __GNUC_PREREQ
 #      define __GNUC_PREREQ(maj, min) ((__GNUC__ << 16) + __GNUC_MINOR__ >= ((maj) << 16) + (min))
 #    else
 #      define __GNUC_PREREQ(maj, min) 0
 #    endif
+/* gcc 4.8 does not have <stdatomic.h> and does not set the flag */
 #    if ! __GNUC_PREREQ(4,9)
 #      define __STDC_NO_ATOMICS__ 1
 #    endif
