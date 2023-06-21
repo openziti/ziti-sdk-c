@@ -27,16 +27,19 @@ using namespace std;
 #else
 #if defined(__linux)
 
+/* 20230621:NFRAGALE@NETFOUNDRY:Build assurance against a missing macro in features.h. */
+#  if defined __GNUC__ && defined __GNUC_MINOR__ && ! __clang__
+#    include <features.h>
+#    ifndef __GNUC_PREREQ
+#      define __GNUC_PREREQ(maj, min) ((__GNUC__ << 16) + __GNUC_MINOR__ >= ((maj) << 16) + (min))
+#    endif
 /* gcc 4.8 does not have <stdatomic.h> and does not set the flag */
-#if __GNUC__ && !__clang__
-#include <features.h>
-# if ! __GNUC_PREREQ(4,9)
-#   define __STDC_NO_ATOMICS__ 1
-# endif
-#endif
+#    if ! __GNUC_PREREQ(4,9)
+#      define __STDC_NO_ATOMICS__ 1
+#    endif
+#  endif
 
 # if __STDC_NO_ATOMICS__
-
 #   include <bits/atomic.h>
 
 #   define atomic_llong uatomic_fast64_t
