@@ -27,7 +27,7 @@ using namespace std;
 #else
 #if defined(__linux)
 
-/* 20230621:NFRAGALE@NETFOUNDRY:Build assurance against missing macro in features.h. */
+/* 20230621:NFRAGALE@NETFOUNDRY:Build assurance against a missing macro in features.h. */
 #  if defined __GNUC__ && defined __GNUC_MINOR__ && ! __clang__
 #    include <features.h>
 #    ifndef __GNUC_PREREQ
