@@ -38,6 +38,10 @@ enum conn_state {
 
 void init_transport_conn(struct ziti_conn *conn);
 
+int ziti_close_server(struct ziti_conn *conn);
+
+message *create_message(struct ziti_conn *conn, uint32_t content, size_t body_len);
+
 #ifdef __cplusplus
 }
 #endif

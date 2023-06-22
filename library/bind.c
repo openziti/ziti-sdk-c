@@ -21,6 +21,10 @@
 #include "connect.h"
 
 #define DEFAULT_MAX_BINDINGS 3
+#define REBIND_DELAY 1000
+#define REFRESH_DELAY (30 * 1000)
+
+#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "server[%u.%u] " fmt, conn->ziti_ctx->id, conn->conn_id, ##__VA_ARGS__)
 
 struct binding_s {
     struct ziti_conn *conn;
@@ -35,14 +39,19 @@ static uint8_t get_terminator_precedence(const ziti_listen_opts *opts, const cha
 
 static void get_service_cb(ziti_context, ziti_service *service, int status, void *ctx);
 
-static int close_server(ziti_connection server);
+static int dispose(ziti_connection server);
 
 static void start_binding(struct binding_s *b);
 
+static void stop_binding(struct binding_s *b);
+
 static void remove_binding(struct binding_s *b);
+
+static void schedule_rebind(struct ziti_conn *conn, bool now);
 
 static void session_cb(ziti_net_session *session, const ziti_error *err, void *ctx);
 
+static void notify_status(struct ziti_conn *conn, int err);
 
 int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts *listen_opts,
               ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb) {
@@ -53,7 +62,7 @@ int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts 
     if (!conn->ziti_ctx->enabled) return ZITI_DISABLED;
 
     conn->type = Server;
-    conn->closer = close_server;
+    conn->disposer = dispose;
     conn->service = strdup(service);
     conn->server.cost = get_terminator_cost(listen_opts, service, conn->ziti_ctx);
     conn->server.precedence = get_terminator_precedence(listen_opts, service, conn->ziti_ctx);
@@ -80,18 +89,19 @@ int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts 
 
 static void rebind_delay_cb(uv_timer_t *t) {
     ziti_connection conn = t->data;
+
     if (conn->server.session) {
         ziti_ctrl_get_session(&conn->ziti_ctx->controller, conn->server.session->id, session_cb, conn);
     } else {
-        ziti_ctrl_create_session(&conn->ziti_ctx->controller, conn->service,
-                                 ziti_session_types.Bind, session_cb, conn);
+        ziti_service_available(conn->ziti_ctx, conn->service, get_service_cb, conn);
     }
 }
 
 static void process_bindings(struct ziti_conn *conn) {
     ziti_net_session *ns = conn->server.session;
+    struct ziti_ctx *ztx = conn->ziti_ctx;
 
-    size_t target = MIN(conn->server.max_bindings, model_list_size(&ns->edge_routers));
+    size_t target = MIN(conn->server.max_bindings, model_map_size(&ztx->channels));
     size_t bind_count = model_map_size(&conn->server.bindings);
     if (bind_count >= target) {
         return;
@@ -102,10 +112,10 @@ static void process_bindings(struct ziti_conn *conn) {
     const char *url;
     MODEL_LIST_FOREACH(er, ns->edge_routers) {
         MODEL_MAP_FOREACH(proto, url, &er->protocols) {
-
+            CONN_LOG(INFO, "checking %s[%s]", er->name, url);
             if (model_map_get(&conn->server.bindings, url) == NULL) {
-                ziti_channel_t *ch = model_map_get(&conn->ziti_ctx->channels, url);
-                if (ziti_channel_is_connected(ch)) {
+                ziti_channel_t *ch = model_map_get(&ztx->channels, url);
+                if (ch && ziti_channel_is_connected(ch)) {
                     NEWP(b, struct binding_s);
                     b->conn = conn;
                     b->ch = ch;
@@ -116,21 +126,41 @@ static void process_bindings(struct ziti_conn *conn) {
         }
     }
 
-    if (model_map_size(&conn->server.bindings) < target) {
-        uv_timer_start(conn->server.timer, rebind_delay_cb, 5000, 0);
-    }
+    schedule_rebind(conn, model_map_size(&conn->server.bindings) < target);
 }
+
+static void schedule_rebind(struct ziti_conn *conn, bool now) {
+    uint64_t delay = now ? REBIND_DELAY : REFRESH_DELAY;
+    uv_timer_start(conn->server.timer, rebind_delay_cb, delay, 0);
+}
+
 
 static void session_cb(ziti_net_session *session, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
     if (err) {
-        ZITI_LOG(WARN, "failed to get session for service[%s]: %d/%s", conn->service, err->err, err->code);
+        CONN_LOG(WARN, "failed to get session for service[%s]: %d/%s", conn->service, err->err, err->code);
+        if (err->err == ZITI_NOT_FOUND) {
+            const char *id;
+            struct binding_s *b;
+            MODEL_MAP_FOREACH(id, b, &conn->server.bindings) {
+                stop_binding(b);
+            }
+
+            if (conn->server.session) {
+                free_ziti_net_session_ptr(conn->server.session);
+                conn->server.session = NULL;
+                schedule_rebind(conn, true);
+            } else {
+                // here if we could not create Bind session
+                notify_status(conn, ZITI_SERVICE_UNAVAILABLE);
+            }
+        } else {
+            schedule_rebind(conn, true);
+        }
     } else {
         ziti_net_session *old = conn->server.session;
         conn->server.session = session;
-        if (conn->server.listen_cb) {
-            conn->server.listen_cb(conn, ZITI_OK);
-        }
+        notify_status(conn, ZITI_OK);
 
         free_ziti_net_session(old);
 
@@ -144,14 +174,15 @@ static void get_service_cb(ziti_context ztx, ziti_service *service, int status, 
         if (ziti_service_has_permission(service, ziti_session_types.Bind)) {
             ziti_ctrl_create_session(&ztx->controller, service->id, ziti_session_types.Bind, session_cb, conn);
         } else {
-            ZITI_LOG(WARN, "not authorized to Bind service[%s]", service->name);
-            conn->server.listen_cb(conn, ZITI_SERVICE_UNAVAILABLE);
+            CONN_LOG(WARN, "not authorized to Bind service[%s]", service->name);
+            notify_status(conn, ZITI_SERVICE_UNAVAILABLE);
         }
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
-        ZITI_LOG(WARN, "service[%s] is not available", service->name);
-        conn->server.listen_cb(conn, ZITI_SERVICE_UNAVAILABLE);
+        CONN_LOG(WARN, "service[%s] is not available", service->name);
+        notify_status(conn, ZITI_SERVICE_UNAVAILABLE);
     } else {
-
+        CONN_LOG(WARN, "failed to get service[%s] details, scheduling re-try", conn->service);
+        schedule_rebind(conn, true);
     }
 }
 
@@ -184,10 +215,27 @@ static uint8_t get_terminator_precedence(const ziti_listen_opts *opts, const cha
     return PRECEDENCE_DEFAULT;
 }
 
-static int close_server(ziti_connection server) {
+static int dispose(ziti_connection server) {
     assert(server->type == Server);
-    // TODO
-    return 0;
+
+    if (model_map_size(&server->server.bindings)) {
+        ZITI_LOG(VERBOSE, "waiting for bindings to clear");
+        return 0;
+    }
+
+    if (model_map_size(&server->server.children) > 0) {
+        ZITI_LOG(VERBOSE, "waiting for children to terminate");
+        return 0;
+    }
+
+    server->server.timer->data = NULL;
+    uv_close((uv_handle_t *) server->server.timer, (uv_close_cb) free);
+    server->server.timer = NULL;
+
+    free_ziti_net_session_ptr(server->server.session);
+    free(server->service);
+    free(server);
+    return 1;
 }
 
 static void process_dial(struct binding_s *b, message *msg) {
@@ -261,24 +309,26 @@ static void on_message(struct binding_s *b, message *msg, int code) {
 
 static void bind_reply_cb(void *ctx, message *msg, int code) {
     struct binding_s *b = ctx;
-    ZITI_LOG(INFO, "received msg ct[%X] code[%d]", msg->header.content, code);
+    struct ziti_conn *conn = b->conn;
+    CONN_LOG(INFO, "received msg ct[%X] code[%d]", msg->header.content, code);
     if (code == ZITI_OK && msg->header.content == ContentTypeStateConnected) {
-        ZITI_LOG(DEBUG, "conn[%d] bound successfully over ch[%s]", b->conn->conn_id, b->ch->name);
+        CONN_LOG(DEBUG, "bound successfully over ch[%s]", b->ch->url);
     } else {
-        ZITI_LOG(DEBUG, "conn[%d] failed to bind over ch[%s]", b->conn->conn_id, b->ch->name);
+        CONN_LOG(DEBUG, "failed to bind over ch[%s]", b->ch->url);
         remove_binding(b);
     }
     pool_return_obj(msg);
 }
 
 void start_binding(struct binding_s *b) {
-    ziti_net_session *s = b->conn->server.session;
-    ZITI_LOG(TRACE, "ch[%d] => Edge Connect request token[%s]", b->ch->id, s->token);
+    struct ziti_conn *conn = b->conn;
+    ziti_net_session *s = conn->server.session;
+    CONN_LOG(TRACE, "ch[%d] => Edge Connect request token[%s]", b->ch->id, s->token);
     init_key_pair(&b->key_pair);
-    ziti_channel_add_receiver(b->ch, b->conn->conn_id, b,
+    ziti_channel_add_receiver(b->ch, conn->conn_id, b,
                               (void (*)(void *, message *, int)) on_message);
 
-    int32_t conn_id = htole32(b->conn->conn_id);
+    int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(0);
 
     hdr_t headers[] = {
@@ -315,25 +365,25 @@ void start_binding(struct binding_s *b) {
             }
     };
     int nheaders = 3;
-    if (b->conn->server.identity != NULL) {
+    if (conn->server.identity != NULL) {
         headers[nheaders].header_id = TerminatorIdentityHeader;
-        headers[nheaders].value = (uint8_t *) b->conn->server.identity;
-        headers[nheaders].length = strlen(b->conn->server.identity);
+        headers[nheaders].value = (uint8_t *) conn->server.identity;
+        headers[nheaders].length = strlen(conn->server.identity);
         nheaders++;
     }
 
-    if (b->conn->server.cost > 0) {
-        uint16_t cost = htole16(b->conn->server.cost);
+    if (conn->server.cost > 0) {
+        uint16_t cost = htole16(conn->server.cost);
         headers[nheaders].header_id = CostHeader;
         headers[nheaders].value = (uint8_t *) &cost;
         headers[nheaders].length = sizeof(cost);
         nheaders++;
     }
 
-    if (b->conn->server.precedence != PRECEDENCE_DEFAULT) {
+    if (conn->server.precedence != PRECEDENCE_DEFAULT) {
         headers[nheaders].header_id = PrecedenceHeader;
-        headers[nheaders].value = &b->conn->server.precedence;
-        headers[nheaders].length = sizeof(b->conn->server.precedence);
+        headers[nheaders].value = &conn->server.precedence;
+        headers[nheaders].length = sizeof(conn->server.precedence);
         nheaders++;
     }
 
@@ -342,7 +392,66 @@ void start_binding(struct binding_s *b) {
 }
 
 static void remove_binding(struct binding_s *b) {
-    ziti_channel_rem_receiver(b->ch, b->conn->conn_id);
-    model_map_remove(&b->conn->server.bindings, b->ch->url);
+    struct ziti_conn *conn = b->conn;
+    ziti_channel_rem_receiver(b->ch, conn->conn_id);
+    model_map_remove(&conn->server.bindings, b->ch->url);
+    CONN_LOG(INFO, "binding[%s] removed", b->ch->url);
     free(b);
+
+    schedule_rebind(conn, true);
+}
+
+void on_unbind(void *ctx, message *m, int code) {
+    struct binding_s *b = ctx;
+    struct ziti_conn *conn = b->conn;
+
+    CONN_LOG(INFO, "binding[%s] unbind resp: ct[%X] %.*s", b->ch->url, m->header.content, m->header.body_len, m->body);
+    int32_t conn_id = htole32(b->conn->conn_id);
+    hdr_t headers[] = {
+            {
+                    .header_id = ConnIdHeader,
+                    .length = sizeof(conn_id),
+                    .value = (uint8_t *) &conn_id
+            },
+    };
+    ziti_channel_send(b->ch, ContentTypeStateClosed, headers, 1, NULL, 0, NULL);
+    remove_binding(ctx);
+    pool_return_obj(m);
+}
+
+static void stop_binding(struct binding_s *b) {
+    ziti_net_session *s = b->conn->server.session;
+    int32_t conn_id = htole32(b->conn->conn_id);
+    hdr_t headers[] = {
+            {
+                    .header_id = ConnIdHeader,
+                    .length = sizeof(conn_id),
+                    .value = (uint8_t *) &conn_id
+            },
+    };
+    ziti_channel_send_for_reply(b->ch, ContentTypeUnbind, headers, 1,
+                                s->token, strlen(s->token), on_unbind, b);
+}
+
+int ziti_close_server(struct ziti_conn *conn) {
+    const char *id;
+    struct binding_s *b;
+    uv_timer_stop(conn->server.timer);
+    MODEL_MAP_FOREACH(id, b, &conn->server.bindings) {
+        CONN_LOG(VERBOSE, "stopping binding[%s]", id);
+        stop_binding(b);
+    }
+    return ZITI_OK;
+}
+
+static void notify_status(struct ziti_conn *conn, int err) {
+    assert(conn->type == Server);
+
+    // first notification
+    if (conn->server.listen_cb) {
+        conn->server.listen_cb(conn, err);
+        conn->server.listen_cb = NULL;
+    } else if (err != ZITI_OK) {
+        conn->server.client_cb(conn, NULL, err, NULL);
+    }
 }

@@ -1565,7 +1565,7 @@ static void grim_reaper(uv_prepare_t *p) {
     model_map_iter it = model_map_iterator(&ztx->connections);
     while (it != NULL) {
         ziti_connection conn = model_map_it_value(it);
-        int closed = conn->closer(conn);
+        int closed = conn->close ? conn->disposer(conn) : 0;
         it = closed ? model_map_it_remove(it) : model_map_it_next(it);
         count += closed;
     }

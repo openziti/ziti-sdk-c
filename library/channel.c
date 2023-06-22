@@ -460,7 +460,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
             return;
         }
 
-        CH_LOG(ERROR, "could not find waiter for reply_to = %d", reply_to);
+        CH_LOG(ERROR, "could not find waiter for reply_to = %d ct[%X]", reply_to, m->header.content);
     }
 
     if (ch->state == Connecting) {

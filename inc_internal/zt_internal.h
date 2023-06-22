@@ -162,7 +162,7 @@ struct ziti_conn {
     uint32_t conn_id;
     void *data;
 
-    int (*closer)(struct ziti_conn *self);
+    int (*disposer)(struct ziti_conn *self);
 
     ziti_close_cb close_cb;
     bool close;

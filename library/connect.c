@@ -237,7 +237,7 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
     free(req);
 }
 
-static message *create_message(struct ziti_conn *conn, uint32_t content, size_t body_len) {
+message *create_message(struct ziti_conn *conn, uint32_t content, size_t body_len) {
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(conn->edge_msg_seq++);
     hdr_t headers[] = {
@@ -1167,6 +1167,10 @@ int ziti_close(ziti_connection conn, ziti_close_cb close_cb) {
 
     conn->close = true;
     conn->close_cb = close_cb;
+
+    if (conn->type == Server) {
+        return ziti_close_server(conn);
+    }
     return ziti_disconnect(conn);
 }
 
@@ -1343,7 +1347,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
 
 void init_transport_conn(struct ziti_conn *c) {
     c->type = Transport;
-    c->closer = close_conn_internal;
+    c->disposer = close_conn_internal;
 
     TAILQ_INIT(&c->in_q);
     TAILQ_INIT(&c->wreqs);
