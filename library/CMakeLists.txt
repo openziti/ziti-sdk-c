@@ -18,7 +18,6 @@ endif ()
 
 set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/errors.h
-        ${PROJECT_SOURCE_DIR}/includes/ziti/error_defs.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/enums.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_src.h

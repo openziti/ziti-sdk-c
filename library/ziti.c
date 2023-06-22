@@ -1040,7 +1040,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
     if (error) {
         ZTX_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
                 ztx_controller(ztx));
-        if (error->err == ZITI_NOT_AUTHORIZED) {
+        if (error->err == ZITI_AUTHENTICATION_FAILED) {
             ZTX_LOG(WARN, "api session is no longer valid. Trying to re-auth");
             ziti_re_auth(ztx);
         } else if (error->err == ZITI_PARTIALLY_AUTHENTICATED) {
@@ -1345,7 +1345,7 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
     } else {
         ZTX_LOG(VERBOSE, "transitioning to unauthenticated, unhandled status[%s]", ziti_errorstr(status));
         ziti_set_unauthenticated(ztx); //disable?
-        update_ctrl_status(ztx, ZITI_NOT_AUTHORIZED, NULL);
+        update_ctrl_status(ztx, ZITI_AUTHENTICATION_FAILED, NULL);
     }
 }
 
@@ -1436,7 +1436,7 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
         ZTX_LOG(WARN, "failed to get api session from ctrl[%s] api_session_state[%d] %s[%d] %s",
                 ztx_controller(ztx), ztx->api_session_state, err->code, errCode, err->message);
 
-        if (errCode == ZITI_NOT_AUTHORIZED) {
+        if (errCode == ZITI_AUTHENTICATION_FAILED) {
             if (ztx->api_session || !init_req->start) {
                 ZTX_LOG(DEBUG, "received NOT_AUTHORIZED attempting re-auth");
                 ziti_set_unauthenticated(ztx);
