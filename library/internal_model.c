@@ -281,7 +281,7 @@ int ziti_address_match(const ziti_address *addr, const ziti_address *range) {
         if (addr->addr.cidr.bits < range->addr.cidr.bits) { return -1; }
 
         if (addr->addr.cidr.af == AF_INET) {
-            in_addr_t mask = htonl((-1) << (32 - range->addr.cidr.bits));
+            in_addr_t mask = range->addr.cidr.bits == 0 ? 0 : htonl(-1UL << (32 - range->addr.cidr.bits));
             return (((struct in_addr *) &addr->addr.cidr.ip)->s_addr & mask) == (((struct in_addr *) &range->addr.cidr.ip)->s_addr & mask) ?
                    (int) addr->addr.cidr.bits - (int) range->addr.cidr.bits : -1;
         } else if (addr->addr.cidr.af == AF_INET6) {
