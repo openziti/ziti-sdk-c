@@ -184,6 +184,9 @@ int parse_ziti_address_str(ziti_address *addr, const char *addr_str) {
     char *slash = strchr(addr_str, '/');
     unsigned long bits;
     char ip[64];
+
+    memset(addr, '\0', sizeof *addr);
+
     if (slash) {
         char *endp;
         bits = strtoul(slash + 1, &endp, 10);
