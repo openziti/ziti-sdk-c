@@ -197,7 +197,8 @@ int parse_ziti_address_str(ziti_address *addr, const char *addr_str) {
         size_t iplen = (slash - addr_str > sizeof(ip)) ? sizeof(ip) : slash - addr_str;
         snprintf(ip, sizeof(ip), "%.*s", (int) iplen, addr_str);
     } else {
-        strncpy(ip, addr_str, sizeof(ip));
+        strncpy(ip, addr_str, sizeof ip -1);
+        ip[sizeof ip-1] = '\0';
     }
     if (rc >= 0) {
         addr->type = ziti_address_cidr;
@@ -210,7 +211,8 @@ int parse_ziti_address_str(ziti_address *addr, const char *addr_str) {
         } else {
             if (!slash) {
                 addr->type = ziti_address_hostname;
-                strncpy(addr->addr.hostname, addr_str, sizeof(addr->addr.hostname));
+                strncpy(addr->addr.hostname, addr_str, sizeof addr->addr.hostname-1);
+                addr->addr.hostname[sizeof addr->addr.hostname-1] = '\0';
             } else {
                 rc = -1;
             }
