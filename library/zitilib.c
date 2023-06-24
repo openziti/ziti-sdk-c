@@ -1287,12 +1287,18 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
             case AF_INET:
             case AF_UNSPEC:
                 salen = sizeof addr->in4;
+#ifdef HAVE_SOCKADDR_IN_SIN_LEN
+                addr->in4.sin_len = salen;
+#endif /* HAVE_SOCKADDR_IN_SIN_LEN */
                 addr->in4.sin_family = AF_INET;
                 addr->in4.sin_port = htons(portnum);
                 addr->in4.sin_addr.s_addr = INADDR_LOOPBACK;
                 break;
             case AF_INET6:
                 salen = sizeof addr->in6;
+#ifdef HAVE_SOCKADDR_IN6_SIN6_LEN
+                addr->in6.sin6_len = salen;
+#endif /* HAVE_SOCKADDR_IN6_SIN6_LEN */
                 addr->in6.sin6_family = AF_INET6;
                 addr->in6.sin6_port = htons(portnum);
                 addr->in6.sin6_addr = in6addr_loopback;
@@ -1362,6 +1368,9 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
     if (err != 0)
         goto error;
 
+#ifdef HAVE_SOCKADDR_IN_SIN_LEN
+    addr->in4.sin_len = sizeof addr->in4;
+#endif /* HAVE_SOCKADDR_IN_SIN_LEN */
     addr->in4.sin_family = AF_INET;
     addr->in4.sin_port = htons(portnum);
     addr->in4.sin_addr.s_addr = (in_addr_t)(uintptr_t)f->result;
