@@ -658,12 +658,16 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         }
 
         if (conn->type == Server) {
+            printer(ctx, "conn[%d]: server service[%s] terminators[%ld]\n",
+                    conn->conn_id, conn->service, model_map_size(&conn->server.bindings));
+
             model_map_iter it = model_map_iterator(&conn->server.children);
             while (it != NULL) {
                 uint32_t child_id = model_map_it_lkey(it);
                 ziti_connection child = model_map_it_value(it);
-                printer(ctx, "\tchild[%d]: state[%s] caller_id[%s]\n",
-                        child_id, ziti_conn_state(child), ziti_conn_source_identity(child)
+                printer(ctx, "\tchild[%d]: state[%s] caller_id[%s] ch[%d] %s\n",
+                        child_id, ziti_conn_state(child), ziti_conn_source_identity(child),
+                        child->channel->id, child->channel->name
                 );
                 it = model_map_it_next(it);
             }

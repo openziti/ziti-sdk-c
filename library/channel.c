@@ -150,6 +150,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
 void ziti_channel_free(ziti_channel_t *ch) {
     free_buffer(ch->incoming);
     pool_destroy(ch->in_msg_pool);
+    ch->in_msg_pool = NULL;
     FREE(ch->name);
     FREE(ch->url);
     FREE(ch->version);

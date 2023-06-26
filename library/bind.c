@@ -337,7 +337,6 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
         CONN_LOG(DEBUG, "failed to bind over ch[%s]", b->ch->url);
         remove_binding(b);
     }
-    pool_return_obj(msg);
 }
 
 void start_binding(struct binding_s *b) {
@@ -436,7 +435,6 @@ void on_unbind(void *ctx, message *m, int code) {
     };
     ziti_channel_send(b->ch, ContentTypeStateClosed, headers, 1, NULL, 0, NULL);
     remove_binding(ctx);
-    pool_return_obj(m);
 }
 
 static void stop_binding(struct binding_s *b) {
