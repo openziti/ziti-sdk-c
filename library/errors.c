@@ -16,7 +16,7 @@
 
 #define ZITI_ERRORS(XX) \
     XX(OK, "OK") \
-    XX(CONFIG_NOT_FOUND, "Configuration not found") \
+    XX(CONFIG_NOT_FOUND, "configuration not found") \
     XX(JWT_NOT_FOUND, "JWT not found") \
     XX(JWT_INVALID, "JWT not accepted by controller") \
     XX(JWT_INVALID_FORMAT, "JWT has invalid format") \
@@ -28,14 +28,15 @@
     XX(KEY_GENERATION_FAILED, "error generating private key") \
     XX(KEY_LOAD_FAILED, "error loading TLS key") \
     XX(CSR_GENERATION_FAILED, "error generating a CSR") \
-    XX(INVALID_CONFIG, "Configuration is invalid") \
-    XX(NOT_AUTHORIZED, "Not Authorized") \
-    XX(CONTROLLER_UNAVAILABLE, "Ziti Controller is not available") \
-    XX(GATEWAY_UNAVAILABLE, "Ziti Edge Router is not available") \
-    XX(SERVICE_UNAVAILABLE, "Service not available") \
-    XX(EOF, "Connection closed") \
-    XX(TIMEOUT, "Operation did not complete in time") \
-    XX(CONNABORT, "Connection to edge router terminated") \
+    XX(INVALID_CONFIG, "configuration is invalid")  \
+    XX(AUTHENTICATION_FAILED, "failed to authenticate") \
+    XX(NOT_AUTHORIZED, "not authorized") \
+    XX(CONTROLLER_UNAVAILABLE, "ziti controller is not available") \
+    XX(GATEWAY_UNAVAILABLE, "ziti edge router is not available") \
+    XX(SERVICE_UNAVAILABLE, "service not available") \
+    XX(EOF, "end of data") \
+    XX(TIMEOUT, "operation did not complete in time") \
+    XX(CONNABORT, "connection to edge router terminated") \
     XX(INVALID_STATE, "invalid state") \
     XX(CRYPTO_FAIL, "crypto failure") \
     XX(CONN_CLOSED, "connection is closed") \
