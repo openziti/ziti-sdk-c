@@ -15,6 +15,7 @@
 
 #include <assert.h>
 #include "ziti/ziti.h"
+#include "endian_internal.h"
 #include "utils.h"
 #include "zt_internal.h"
 
