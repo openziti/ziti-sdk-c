@@ -231,8 +231,8 @@ int parse_ziti_address_str(ziti_address *addr, const char *addr_str) {
     } else {
 invalid_cidr:
         addr->type = ziti_address_hostname;
-        strncpy(addr->addr.hostname, addr_str, sizeof addr->addr.hostname-1);
-        addr->addr.hostname[sizeof addr->addr.hostname-1] = '\0';
+        strncpy(addr->addr.hostname, addr_str, sizeof(addr->addr.hostname)-1);
+        addr->addr.hostname[sizeof(addr->addr.hostname)-1] = '\0';
     }
 
     return 0;
