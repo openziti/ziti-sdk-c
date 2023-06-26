@@ -182,6 +182,7 @@ struct ziti_conn {
             model_map bindings;
             model_map children;
             uv_timer_t *timer;
+            unsigned int attempt;
         } server;
 
         struct {
