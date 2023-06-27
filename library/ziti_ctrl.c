@@ -609,11 +609,54 @@ ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb
     start_request(ctrl->client, "GET", path, ctrl_resp_cb, resp);
 }
 
-void ziti_ctrl_get_session(
+void ziti_ctrl_refresh_session(
         ziti_controller *ctrl, const char *service_id, ziti_session_type type,
         void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx) {
 
-    if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
+    if (!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
+
+    char *content = malloc(128);
+    size_t len = snprintf(content, 128,
+                          "{\"serviceId\": \"%s\", \"type\": \"%s\"}",
+                          service_id, ziti_session_types.name(type));
+
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_net_session_ptr;
+    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/sessions", ctrl_resp_cb, resp);
+    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_data(req, content, len, free_body_cb);
+}
+
+void ziti_ctrl_get_session(
+        ziti_controller *ctrl, const char *session_id,
+        void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx) {
+
+    if (!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
+
+    char req_path[128];
+    snprintf(req_path, sizeof(req_path), "/sessions/%s", session_id);
+
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_net_session_ptr;
+    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+
+    tlsuv_http_req_t *req = start_request(ctrl->client, "GET", req_path, ctrl_resp_cb, resp);
+    tlsuv_http_req_header(req, "Content-Type", "application/json");
+}
+
+void ziti_ctrl_create_session(
+        ziti_controller *ctrl, const char *service_id, ziti_session_type type,
+        void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx) {
+
+    if (!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
     char *content = malloc(128);
     size_t len = snprintf(content, 128,

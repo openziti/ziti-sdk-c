@@ -150,6 +150,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
 void ziti_channel_free(ziti_channel_t *ch) {
     free_buffer(ch->incoming);
     pool_destroy(ch->in_msg_pool);
+    ch->in_msg_pool = NULL;
     FREE(ch->name);
     FREE(ch->url);
     FREE(ch->version);
@@ -460,7 +461,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
             return;
         }
 
-        CH_LOG(ERROR, "could not find waiter for reply_to = %d", reply_to);
+        CH_LOG(ERROR, "could not find waiter for reply_to = %d ct[%X]", reply_to, m->header.content);
     }
 
     if (ch->state == Connecting) {
