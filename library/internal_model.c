@@ -180,40 +180,62 @@ static int cmp_ziti_address0(ziti_address *lh, ziti_address *rh) {
 }
 
 int parse_ziti_address_str(ziti_address *addr, const char *addr_str) {
-    int rc = 0;
     char *slash = strchr(addr_str, '/');
     unsigned long bits;
-    char ip[64];
-    if (slash) {
-        char *endp;
-        bits = strtoul(slash + 1, &endp, 10);
-        if (*endp != '\0') {
-            rc = -1;
-        }
+    const char *ip;
+    char buf[64];
 
-        size_t iplen = (slash - addr_str > sizeof(ip)) ? sizeof(ip) : slash - addr_str;
-        snprintf(ip, sizeof(ip), "%.*s", (int) iplen, addr_str);
+    memset(addr, '\0', sizeof *addr);
+
+    if (slash) {
+        char *endp = NULL;
+
+        /**
+         * parse prefix length, which is defined as a sequence of one or more decimal digits.
+         */
+        errno = 0;
+        bits = strtoul(slash + 1, &endp, 10);
+        if (errno || !endp || *endp != '\0')
+            goto invalid_cidr;
+
+        /**
+         * prefix length must start with a decimal. zero is only allowed if
+         * the prefix length is exactly one digit
+         */
+        if (slash == addr_str
+            || slash[1] < '0' || slash[1] > '9' || (slash[1] == '0' && slash[2] != '\0'))
+            goto invalid_cidr;
+
+        size_t iplen = slash - addr_str;
+        if (iplen >= sizeof buf)
+            goto invalid_cidr;
+
+        memcpy(buf, addr_str, iplen);
+        buf[iplen] = '\0';
+        ip = buf;
     } else {
-        strncpy(ip, addr_str, sizeof(ip));
+        ip = addr_str;
     }
-    if (rc >= 0) {
-        addr->type = ziti_address_cidr;
-        if (inet_pton(AF_INET, ip, (struct in_addr *) &addr->addr.cidr.ip) == 1) {
-            addr->addr.cidr.af = AF_INET;
-            addr->addr.cidr.bits = slash ? bits : 32;
-        } else if (inet_pton(AF_INET6, ip, &addr->addr.cidr.ip) == 1) {
-            addr->addr.cidr.af = AF_INET6;
-            addr->addr.cidr.bits = slash ? bits : 128;
-        } else {
-            if (!slash) {
-                addr->type = ziti_address_hostname;
-                strncpy(addr->addr.hostname, addr_str, sizeof(addr->addr.hostname));
-            } else {
-                rc = -1;
-            }
-        }
+
+    addr->type = ziti_address_cidr;
+    if (inet_pton(AF_INET, ip, (struct in_addr *) &addr->addr.cidr.ip) == 1) {
+        if ((bits = slash ? bits : 32) > 32)
+            goto invalid_cidr;
+        addr->addr.cidr.af = AF_INET;
+        addr->addr.cidr.bits = bits;
+    } else if (inet_pton(AF_INET6, ip, &addr->addr.cidr.ip) == 1) {
+        if ((bits = slash ? bits : 128) > 128)
+            goto invalid_cidr;
+        addr->addr.cidr.af = AF_INET6;
+        addr->addr.cidr.bits = bits;
+    } else {
+invalid_cidr:
+        addr->type = ziti_address_hostname;
+        strncpy(addr->addr.hostname, addr_str, sizeof(addr->addr.hostname)-1);
+        addr->addr.hostname[sizeof(addr->addr.hostname)-1] = '\0';
     }
-    return rc;
+
+    return 0;
 }
 
 static int parse_ziti_address0(ziti_address *addr, const char *json, void *tok) {
