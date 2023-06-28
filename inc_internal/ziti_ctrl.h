@@ -80,13 +80,18 @@ void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, const ziti_error 
 void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_service_update *, const ziti_error *, void *),
                                    void *ctx);
 
-void ziti_ctrl_get_services(ziti_controller *ctrl, void (*srv_cb)(ziti_service_array, const ziti_error *, void *), void *ctx);
+void ziti_ctrl_get_services(ziti_controller *ctrl, void (*srv_cb)(ziti_service_array, const ziti_error *, void *),
+                            void *ctx);
 
 void ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name,
                            void (*srv_cb)(ziti_service *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_get_session(
+void ziti_ctrl_create_session(
         ziti_controller *ctrl, const char *service_id, ziti_session_type type,
+        void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx);
+
+void ziti_ctrl_get_session(
+        ziti_controller *ctrl, const char *session_id,
         void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_get_sessions(

@@ -132,46 +132,89 @@ struct ziti_write_req_s {
     TAILQ_ENTRY(ziti_write_req_s) _next;
 };
 
-struct ziti_conn {
-    char *service;
-    char *source_identity;
-    struct ziti_conn_req *conn_req;
-
-    uint32_t edge_msg_seq;
-    uint32_t conn_id;
-
-    struct ziti_ctx *ziti_ctx;
-    ziti_channel_t *channel;
-    ziti_data_cb data_cb;
-    ziti_client_cb client_cb;
-    ziti_close_cb close_cb;
-    conn_state state;
-    bool fin_sent;
-    int fin_recv; // 0 - not received, 1 - received, 2 - called app data cb
-    bool close;
-    bool disconnecting;
-    int timeout;
-
-    TAILQ_HEAD(, message_s) in_q;
-    buffer *inbound;
-    uv_idle_t *flusher;
-    TAILQ_HEAD(, ziti_write_req_s) wreqs;
-    int write_reqs;
-
-    void *data;
-
-    model_map children;
-    struct ziti_conn *parent;
-    uint32_t dial_req_seq;
-
+struct key_pair {
     uint8_t sk[crypto_kx_SECRETKEYBYTES];
     uint8_t pk[crypto_kx_PUBLICKEYBYTES];
+};
+
+struct key_exchange {
     uint8_t *rx;
     uint8_t *tx;
+};
 
-    crypto_secretstream_xchacha20poly1305_state crypt_o;
-    crypto_secretstream_xchacha20poly1305_state crypt_i;
+int init_key_pair(struct key_pair *kp);
+
+int init_crypto(struct key_exchange *key_ex, struct key_pair *kp, uint8_t *peer_key, bool server);
+
+void free_key_exchange(struct key_exchange *key_ex);
+
+enum ziti_conn_type {
+    None,
+    Transport,
+    Server,
+};
+
+struct ziti_conn {
+    struct ziti_ctx *ziti_ctx;
+    enum ziti_conn_type type;
+    char *service;
+    char *source_identity;
+    uint32_t conn_id;
+    void *data;
+
+    int (*disposer)(struct ziti_conn *self);
+
+    ziti_close_cb close_cb;
+    bool close;
     bool encrypted;
+
+    union {
+        struct {
+            char *identity;
+            uint16_t cost;
+            uint8_t precedence;
+            int max_bindings;
+
+            ziti_listen_cb listen_cb;
+            ziti_client_cb client_cb;
+
+            ziti_net_session *session;
+            model_map bindings;
+            model_map children;
+            uv_timer_t *timer;
+            unsigned int attempt;
+        } server;
+
+        struct {
+            struct key_pair key_pair;
+            struct ziti_conn_req *conn_req;
+
+            uint32_t edge_msg_seq;
+
+            ziti_channel_t *channel;
+            ziti_data_cb data_cb;
+            conn_state state;
+            bool fin_sent;
+            int fin_recv; // 0 - not received, 1 - received, 2 - called app data cb
+            bool disconnecting;
+            int timeout;
+
+            TAILQ_HEAD(, message_s) in_q;
+            buffer *inbound;
+            uv_idle_t *flusher;
+            TAILQ_HEAD(, ziti_write_req_s) wreqs;
+            int write_reqs;
+
+            struct ziti_conn *parent;
+            uint32_t dial_req_seq;
+
+            struct key_exchange key_ex;
+
+            crypto_secretstream_xchacha20poly1305_state crypt_o;
+            crypto_secretstream_xchacha20poly1305_state crypt_i;
+        };
+    };
+
 
 };
 
@@ -305,14 +348,13 @@ int load_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **zej
 
 int load_tls(ziti_config *cfg, tls_context **tls);
 
-int ziti_bind(ziti_connection conn, const char *service, ziti_listen_opts *listen_opts, ziti_listen_cb listen_cb,
-              ziti_client_cb on_clt_cb);
+int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts *listen_opts,
+              ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb);
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg);
 
 void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, int status);
 
-int close_conn_internal(struct ziti_conn *conn);
 
 const char *ziti_conn_state(ziti_connection conn);
 
@@ -330,13 +372,15 @@ void ziti_set_api_session(ziti_context ztx, ziti_api_session *session);
 
 void ziti_set_unauthenticated(ziti_context ztx);
 
-void ziti_force_service_update(ziti_context ztx, const char* service_id);
+void ziti_force_service_update(ziti_context ztx, const char *service_id);
 
 void ziti_services_refresh(ziti_context ztx, bool now);
 
 extern void ziti_send_event(ziti_context ztx, const ziti_event_t *e);
 
-extern uv_timer_t* new_ztx_timer(ziti_context ztx);
+void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, int32_t req_id, const char *reason);
+
+extern uv_timer_t *new_ztx_timer(ziti_context ztx);
 
 #ifdef __cplusplus
 }

@@ -445,6 +445,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             if (event->event.service.changed != NULL) {
                 for (ziti_service **sp = event->event.service.changed; *sp != NULL; sp++) {
                     ziti_service *service = *sp;
+                    service_check_cb(ztx, *sp, ZITI_OK, app_ctx);
 
                     MODEL_MAP_FOR(it, service->posture_query_map) {
                         ziti_posture_query_set *policy = model_map_it_value(it);
