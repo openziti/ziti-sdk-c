@@ -64,6 +64,8 @@ static void version_cb(ziti_version *v, const ziti_error *err, void *ctx);
 
 static void api_session_cb(ziti_api_session *session, const ziti_error *err, void *ctx);
 
+static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, void *ctx);
+
 static void ziti_init_async(ziti_context ztx, void *data);
 
 static void ziti_re_auth(ziti_context ztx);
@@ -1216,6 +1218,10 @@ static void refresh_cb(uv_timer_t *t) {
         return;
     }
 
+    if (!ztx->no_current_edge_routers) {
+        ziti_ctrl_current_edge_routers(&ztx->controller, edge_routers_cb, ztx);
+    }
+
     if (ztx->no_service_updates_api) {
         ziti_ctrl_get_services(&ztx->controller, update_services, ztx);
     } else {
@@ -1270,9 +1276,11 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
         const char *tls = model_map_get(&er->protocols, "tls");
 
         if (tls) {
-            ZTX_LOG(TRACE, "connecting to %s(%s)", er->name, tls);
-            ziti_channel_connect(ztx, er->name, tls, NULL, NULL);
-            model_map_remove(&curr_routers, er->name);
+            // check if it is already in the list
+            if (model_map_remove(&curr_routers, tls) == NULL) {
+                ZTX_LOG(TRACE, "connecting to %s(%s)", er->name, tls);
+                ziti_channel_connect(ztx, er->name, tls, NULL, NULL);
+            }
         } else {
             ZTX_LOG(DEBUG, "edge router %s does not have TLS edge listener", er->name);
         }
@@ -1285,7 +1293,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
 
     model_map_iter it = model_map_iterator(&curr_routers);
     while (it != NULL) {
-        er_url = model_map_it_value(it);
+        er_url = model_map_it_key(it);
         ch = model_map_remove(&ztx->channels, er_url);
         ZTX_LOG(INFO, "removing channel[%s@%s]: no longer available", ch->name, er_url);
         ziti_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE);
@@ -1339,10 +1347,6 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
 
         ziti_services_refresh(ztx, true);
         ziti_posture_init(ztx, 20);
-
-        if (!ztx->no_current_edge_routers) {
-            ziti_ctrl_current_edge_routers(&ztx->controller, edge_routers_cb, ztx);
-        }
     } else {
         ZTX_LOG(VERBOSE, "transitioning to unauthenticated, unhandled status[%s]", ziti_errorstr(status));
         ziti_set_unauthenticated(ztx); //disable?
