@@ -91,6 +91,7 @@ int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts 
 
 static void rebind_delay_cb(uv_timer_t *t) {
     ziti_connection conn = t->data;
+    CONN_LOG(DEBUG, "staring re-bind");
 
     if (conn->server.session) {
         ziti_ctrl_get_session(&conn->ziti_ctx->controller, conn->server.session->id, session_cb, conn);
@@ -106,6 +107,7 @@ static void process_bindings(struct ziti_conn *conn) {
     size_t target = MIN(conn->server.max_bindings, model_map_size(&ztx->channels));
     size_t bind_count = model_map_size(&conn->server.bindings);
     if (bind_count >= target) {
+        schedule_rebind(conn, false);
         return;
     }
 
