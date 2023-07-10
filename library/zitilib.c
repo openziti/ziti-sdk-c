@@ -1223,6 +1223,10 @@ void Ziti_freeaddrinfo(struct addrinfo *addrlist) {
 
 ZITI_FUNC
 int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hints, struct addrinfo **addrlist) {
+    if (host == NULL) {
+        return EAI_NONAME;
+    }
+
     in_port_t portnum = port ? (in_port_t) strtol(port, NULL, 10) : 0;
     ZITI_LOG(DEBUG, "host[%s] port[%s]", host, port);
     struct addrinfo *res = calloc(1, sizeof(struct addrinfo));
