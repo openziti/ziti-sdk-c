@@ -657,6 +657,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
                     conn->conn_id, ziti_conn_state(conn), conn->service,
                     FIELD_OR_ELSE(conn->channel, id, -1),
                     FIELD_OR_ELSE(conn->channel, name, "(none)")
+            );
         }
 
         if (conn->type == Server) {
