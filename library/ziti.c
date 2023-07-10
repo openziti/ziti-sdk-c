@@ -1314,7 +1314,7 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
         ztx->identity_data = data;
     }
 
-    update_ctrl_status(ztx, FIELD_OR_ELSE(err, err, 0), FIELD_OR_NULL(err, message));
+    update_ctrl_status(ztx, FIELD_OR_ELSE(err, err, 0), FIELD_OR_ELSE(err, message, NULL));
 }
 
 void update_session_data(ziti_api_session *session, const ziti_error *err, void *ctx) {
