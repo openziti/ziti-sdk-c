@@ -54,6 +54,8 @@ extern "C" {
 #define typeof __typeof
 #elif defined(__typeof__)
 #define typeof __typeof__
+#else
+#define typeof(x)
 #endif
 #endif
 
