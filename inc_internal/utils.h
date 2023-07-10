@@ -48,7 +48,7 @@ extern "C" {
 
     typedef unsigned int uint;
 
-#define typeof(x) __typeof__(x)
+#define typeof(x)
 
 #endif
 
