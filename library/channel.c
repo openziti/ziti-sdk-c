@@ -446,6 +446,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
     int32_t reply_to;
     bool is_reply = message_get_int32_header(m, ReplyForHeader, &reply_to);
 
+    uint32_t ct = m->header.content;
     if (is_reply) {
         LIST_FOREACH(w, &ch->waiters, next) {
             if (w->seq == reply_to) {
@@ -461,21 +462,21 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
             return;
         }
 
-        CH_LOG(ERROR, "could not find waiter for reply_to = %d ct[%X]", reply_to, m->header.content);
+        CH_LOG(ERROR, "could not find waiter for reply_to = %d ct[%X]", reply_to, ct);
     }
 
     if (ch->state == Connecting) {
-        if (m->header.content == ContentTypeResultType) {
+        if (ct == ContentTypeResultType) {
             CH_LOG(WARN, "lost hello reply waiter");
             hello_reply_cb(ch, m, ZITI_OK);
             pool_return_obj(m);
             return;
         }
 
-        CH_LOG(ERROR, "received unexpected message ct[%04X] in Connecting state", m->header.content);
+        CH_LOG(ERROR, "received unexpected message ct[%04X] in Connecting state", ct);
     }
 
-    if (is_edge(m->header.content)) {
+    if (is_edge(ct)) {
         int32_t conn_id = 0;
         bool has_conn_id = message_get_int32_header(m, ConnIdHeader, &conn_id);
         struct msg_receiver *conn = has_conn_id ? find_receiver(ch, conn_id) : NULL;
@@ -483,11 +484,15 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
         if (conn) {
             conn->receive(conn->receiver, m, ZITI_OK);
         } else {
-            CH_LOG(ERROR, "received message without conn_id or for unknown connection ct[%04X] conn_id[%d]", m->header.content, conn_id);
+            // close confirmation is OK if connection is gone already
+            if (ct != ContentTypeStateClosed) {
+                CH_LOG(WARN, "received message without conn_id or for unknown connection ct[%04X] conn_id[%d]",
+                       ct, conn_id);
+            }
             pool_return_obj(m);
         }
     } else {
-        CH_LOG(WARN, "unsupported content type [%04X]", m->header.content);
+        CH_LOG(WARN, "unsupported content type [%04X]", ct);
         pool_return_obj(m);
     }
 }
