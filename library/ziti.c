@@ -655,8 +655,8 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         if (conn->type == Transport && conn->parent == NULL) {
             printer(ctx, "conn[%d]: state[%s] service[%s] using ch[%d] %s\n",
                     conn->conn_id, ziti_conn_state(conn), conn->service,
-                    conn->channel ? conn->channel->id : -1,
-                    conn->channel ? conn->channel->name : "(none)");
+                    FIELD_OR_ELSE(conn->channel, id, -1),
+                    FIELD_OR_ELSE(conn->channel, name, "(none)")
         }
 
         if (conn->type == Server) {
@@ -669,7 +669,8 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
                 ziti_connection child = model_map_it_value(it);
                 printer(ctx, "\tchild[%d]: state[%s] caller_id[%s] ch[%d] %s\n",
                         child_id, ziti_conn_state(child), ziti_conn_source_identity(child),
-                        child->channel->id, child->channel->name
+                        FIELD_OR_ELSE(child->channel, id, -1),
+                        FIELD_OR_ELSE(child->channel, name, "(none)")
                 );
                 it = model_map_it_next(it);
             }

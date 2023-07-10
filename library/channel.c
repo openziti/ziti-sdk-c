@@ -794,7 +794,7 @@ static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_
             buf->len = suggested_size;
         }
     } else {
-        CH_LOG(WARN, "can't alloc message");
+        CH_LOG(DEBUG, "message pool is empty. stop reading until available");
 
         buf->len = 0;
         buf->base = NULL;
