@@ -193,11 +193,11 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
 
         on_channel_close(ch, err, 0);
         ch->state = Closed;
+        ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ctx);
 
         uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
         ch->timer = NULL;
         tlsuv_stream_close(ch->connection, close_handle_cb);
-        ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ctx);
     }
     return r;
 }
