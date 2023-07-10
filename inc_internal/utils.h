@@ -47,16 +47,9 @@ extern "C" {
 #    endif
 
     typedef unsigned int uint;
-#endif
 
-#ifndef typeof
-#if defined(__typeof)
-#define typeof __typeof
-#elif defined(__typeof__)
-#define typeof __typeof__
-#else
-#define typeof(x)
-#endif
+#define typeof(x) __typeof__(x)
+
 #endif
 
 extern const char *ziti_get_build_version(int verbose);
@@ -66,7 +59,6 @@ extern const char *ziti_git_branch();
 extern const char *ziti_git_commit();
 
 extern void hexDump(char *desc, void *addr, int len);
-
 
 int lt_zero(int v);
 
