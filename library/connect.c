@@ -573,6 +573,12 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
         conn->write_reqs--;
         free(req);
         return;
+    } else if (req->close) {
+        // conn->state will be set on_disconnect callback
+        message *m = create_message(conn, ContentTypeStateClosed, 0);
+        send_message(conn, m, req);
+        // conn->write_reqs will be decremented and wreq freed in on_write_completed
+        return;
     }
 
     if (req->cb) {
@@ -615,12 +621,11 @@ static void ziti_disconnect_async(struct ziti_conn *conn) {
         case Connected:
         case CloseWrite:
         case Timedout: {
-            message *m = create_message(conn, ContentTypeStateClosed, 0);
             NEWP(wr, struct ziti_write_req_s);
             wr->conn = conn;
             wr->cb = on_disconnect;
-            conn->write_reqs++;
-            send_message(conn, m, wr);
+            TAILQ_INSERT_TAIL(&conn->wreqs, wr, _next);
+            flush_connection(conn);
             break;
         }
 
