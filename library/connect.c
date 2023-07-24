@@ -623,6 +623,7 @@ static void ziti_disconnect_async(struct ziti_conn *conn) {
         case Timedout: {
             NEWP(wr, struct ziti_write_req_s);
             wr->conn = conn;
+            wr->close = true;
             wr->cb = on_disconnect;
             TAILQ_INSERT_TAIL(&conn->wreqs, wr, _next);
             flush_connection(conn);
