@@ -121,6 +121,7 @@ struct ziti_write_req_s {
     uint8_t *buf;
     size_t len;
     bool eof;
+    bool close;
 
     struct message_s *message;
     ziti_write_cb cb;
