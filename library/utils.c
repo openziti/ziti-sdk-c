@@ -573,6 +573,12 @@ int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *ke
 
 static int pkcs11_gen(tls_context *tls, tlsuv_private_key_t *key, const char *lib, const char *slot, const char *pin,
                       const char *id, const char *label) {
+
+    if (tls->api->generate_pkcs11_key == NULL) {
+        ZITI_LOG(WARN, "pkcs11 key generation is not supported by TLS driver[%s]", tls->api->version());
+        return ZITI_KEY_GENERATION_FAILED;
+    }
+
     if (tls->api->generate_pkcs11_key(key, lib, slot, pin, label)) {
         return ZITI_KEY_GENERATION_FAILED;
     }
