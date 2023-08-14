@@ -100,17 +100,17 @@ access to it).
 | `Ziti_connect_addr(sock, hostname, port)`      | connects given socket to the specified intercept address           |
 
 ```c
-     ziti_socket_t sock = Ziti_socket(SOCK_STREAM);
-int error = Ziti_connect(sock, ztx, "my-secure-service", NULL);
-
-// use sock as normal socket
-do {
-write(sock, ...);
-read(sock, ...);
-
-} while (!done);
-
-close(sock);
+      ziti_socket_t sock = Ziti_socket(SOCK_STREAM);
+      int error = Ziti_connect(sock, ztx, "my-secure-service", NULL);
+      
+      // use sock as normal socket
+      do {
+          write(sock, ...);
+          read(sock, ...);
+      
+      } while (!done);
+      
+      close(sock);
 
 ```
 
@@ -123,21 +123,20 @@ close(sock);
 | `Ziti_accept(srv, caller, caller_len)`     | accepts incoming connection and returns peer socket/handle                  |
 
 ```c
-     ziti_socket_t srv = Ziti_socket(SOCK_STREAM);
-int error = Ziti_bind(srv, ztx, "my-secure-service", NULL);
-Ziti_listen(srv, 10); // sets accept backlog
-
-do {
-char caller[128];
-ziti_socket_t clt = Ziti_accept(srv, caller, (int)sizeof(caller));
-
-// use client as normal socket
-process_client(clt);
-
-} while (!done);
-
-close(srv);
-
+      ziti_socket_t srv = Ziti_socket(SOCK_STREAM);
+      int error = Ziti_bind(srv, ztx, "my-secure-service", NULL);
+      Ziti_listen(srv, 10); // sets accept backlog
+      
+      do {
+          char caller[128];
+          ziti_socket_t clt = Ziti_accept(srv, caller, (int)sizeof(caller));
+          
+          // use client as normal socket
+          process_client(clt);
+      
+      } while (!done);
+      
+      close(srv);
 ```
 
 ## Getting Help
