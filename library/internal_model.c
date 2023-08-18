@@ -132,6 +132,10 @@ IMPL_ENUM(ziti_session_type, ZITI_SESSION_TYPE_ENUM)
 
 IMPL_ENUM(ziti_protocol, ZITI_PROTOCOL_ENUM)
 
+IMPL_MODEL(ziti_create_api_cert_req, ZITI_CREATE_API_CERT_REQ)
+
+IMPL_MODEL(ziti_create_api_cert_resp, ZITI_CREATE_API_CERT_RESP)
+
 bool ziti_service_has_permission(const ziti_service *service, ziti_session_type sessionType) {
     if (sessionType == ziti_session_types.Dial) {
         return (service->perm_flags & ZITI_CAN_DIAL) != 0;
