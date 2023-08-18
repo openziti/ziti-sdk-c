@@ -92,6 +92,13 @@ XX(COULD_NOT_VALIDATE, ZITI_NOT_AUTHORIZED)
 
 #define CTRL_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ctrl[%s] " fmt, ctrl->client->host, ##__VA_ARGS__)
 
+#define MAKE_RESP(ctrl, cb, parser, ctx) prepare_resp(ctrl, (ctrl_resp_cb_t)(cb), (body_parse_fn)(parser), ctx)
+
+typedef struct ctrl_resp ctrl_resp_t;
+typedef void (*ctrl_cb_t)(void *, const ziti_error *, ctrl_resp_t *);
+typedef void (*ctrl_resp_cb_t)(void *, const ziti_error *, void *);
+typedef int (*body_parse_fn)(void *, const char *, size_t);
+
 struct ctrl_resp {
     int status;
     char *body;
@@ -108,17 +115,18 @@ struct ctrl_resp {
     unsigned int recd;
     void **resp_array;
 
-    int (*body_parse_func)(void *, const char *, size_t);
-
-    void (*resp_cb)(void *, const ziti_error *, void *);
+    body_parse_fn body_parse_func;
+    ctrl_resp_cb_t resp_cb;
 
     void *ctx;
 
     char *new_address;
     ziti_controller *ctrl;
 
-    void (*ctrl_cb)(void *, const ziti_error *, struct ctrl_resp *);
+    ctrl_cb_t ctrl_cb;
 };
+
+static struct ctrl_resp *prepare_resp(ziti_controller *ctrl, ctrl_resp_cb_t cb, body_parse_fn parser, void *ctx);
 
 static void ctrl_paging_req(struct ctrl_resp *resp);
 
@@ -277,10 +285,6 @@ static void ctrl_service_cb(ziti_service **services, ziti_error *e, struct ctrl_
     free(services);
 }
 
-static void ctrl_services_cb(ziti_service **services, ziti_error *e, struct ctrl_resp *resp) {
-    ctrl_default_cb(services, e, resp);
-}
-
 static void free_body_cb(tlsuv_http_req_t *req, const char *body, ssize_t len) {
     free((char *) body);
 }
@@ -375,7 +379,7 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, const char *b, ssize_t len) {
         ziti_error err = {
                 .err = ZITI_CONTROLLER_UNAVAILABLE,
                 .code = "CONTROLLER_UNAVAILABLE",
-                .message = (char *) uv_strerror(len),
+                .message = (char *) uv_strerror((int)len),
         };
 
         if (len == UV_ECANCELED) {
@@ -438,12 +442,8 @@ int ziti_ctrl_close(ziti_controller *ctrl) {
 }
 
 void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ziti_version *, const ziti_error *err, void *ctx), void *ctx) {
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_version_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_version_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_version_ptr, ctx);
+    resp->ctrl_cb = (ctrl_cb_t)ctrl_version_cb;
 
     start_request(ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
 }
@@ -481,19 +481,16 @@ void ziti_ctrl_login(
     size_t body_len;
     char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_api_session_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_login_cb;
+
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_api_session_ptr, ctx);
+    resp->ctrl_cb = (ctrl_cb_t)ctrl_login_cb;
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/authenticate?method=cert", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }
 
-static bool verify_api_session(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
+static bool verify_api_session(ziti_controller *ctrl, ctrl_resp_cb_t cb, void *ctx) {
     if(ctrl->api_session_token == NULL) {
         CTRL_LOG(WARN, "no API session");
         ziti_error err = {
@@ -511,38 +508,24 @@ static bool verify_api_session(ziti_controller *ctrl, void(*cb)(void *, const zi
 void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_data *, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_identity_data_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_identity_data_ptr, ctx);
     start_request(ctrl->client, "GET", "/current-identity", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_api_session_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_login_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_api_session_ptr, ctx);
+    resp->ctrl_cb = (ctrl_cb_t) ctrl_login_cb;
 
-    tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/current-api-session", ctrl_resp_cb, resp);
+    start_request(ctrl->client, "GET", "/current-api-session", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, cb, ctx)) return;
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = NULL; /* no body */
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_logout_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
+    resp->ctrl_cb = (ctrl_cb_t) ctrl_logout_cb;
 
     start_request(ctrl->client, "DELETE", "/current-api-session", ctrl_resp_cb, resp);
 }
@@ -550,25 +533,14 @@ void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, const ziti_error 
 void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_service_update *, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_service_update_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_service_update_ptr, ctx);
     start_request(ctrl->client, "GET", "/current-api-session/service-updates", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service_array, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_service_array;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_services_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_service_array, ctx);
 
     resp->paging = true;
     resp->base_path = "/services";
@@ -579,13 +551,7 @@ void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void (*cb)(ziti_edge_
                                     void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_edge_router_array;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_edge_router_array, ctx);
     resp->paging = true;
     resp->base_path = "/current-identity/edge-routers";
     ctrl_paging_req(resp);
@@ -599,37 +565,10 @@ ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb
     char path[1024];
     snprintf(path, sizeof(path), "/services?filter=name=\"%s\"", service_name);
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_service_array;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_service_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_service_array, ctx);
+    resp->ctrl_cb = (ctrl_cb_t) ctrl_service_cb;
 
     start_request(ctrl->client, "GET", path, ctrl_resp_cb, resp);
-}
-
-void ziti_ctrl_refresh_session(
-        ziti_controller *ctrl, const char *service_id, ziti_session_type type,
-        void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx) {
-
-    if (!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
-
-    char *content = malloc(128);
-    size_t len = snprintf(content, 128,
-                          "{\"serviceId\": \"%s\", \"type\": \"%s\"}",
-                          service_id, ziti_session_types.name(type));
-
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_net_session_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
-    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/sessions", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
-    tlsuv_http_req_data(req, content, len, free_body_cb);
 }
 
 void ziti_ctrl_get_session(
@@ -641,13 +580,7 @@ void ziti_ctrl_get_session(
     char req_path[128];
     snprintf(req_path, sizeof(req_path), "/sessions/%s", session_id);
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_net_session_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_net_session_ptr, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", req_path, ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
 }
@@ -663,13 +596,7 @@ void ziti_ctrl_create_session(
                           "{\"serviceId\": \"%s\", \"type\": \"%s\"}",
                           service_id, ziti_session_types.name(type));
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_net_session_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_net_session_ptr, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/sessions", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
     tlsuv_http_req_data(req, content, len, free_body_cb);
@@ -677,16 +604,9 @@ void ziti_ctrl_create_session(
 
 void ziti_ctrl_get_sessions(
         ziti_controller *ctrl, void (*cb)(ziti_net_session **, const ziti_error *, void *), void *ctx) {
+    if(!verify_api_session(ctrl, (ctrl_resp_cb_t)cb, ctx)) return;
 
-    if(!verify_api_session(ctrl, cb, ctx)) return;
-
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_net_session_array;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_net_session_array, ctx);
     resp->paging = true;
     resp->base_path = "/sessions";
     ctrl_paging_req(resp);
@@ -728,12 +648,7 @@ ziti_ctrl_enroll(ziti_controller *ctrl, ziti_enrollment_method method, const cha
         strcat(path, token);
     }
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_enrollment_resp_ptr;   //   "  "  "
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_enrollment_resp_ptr, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", path, ctrl_enroll_http_cb, resp);
     if (csr) {
@@ -752,42 +667,17 @@ ziti_ctrl_enroll(ziti_controller *ctrl, ziti_enrollment_method method, const cha
 
 void
 ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, const ziti_error *, void *), void *ctx) {
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
     resp->resp_text_plain = true;   // Make no attempt in ctrl_resp_cb to parse response as JSON
-    resp->body_parse_func = NULL;   //   "  "  "  
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/.well-known/est/cacerts", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Accept", "application/pkcs7-mime");
 }
 
-void ziti_ctrl_get_public_cert(ziti_controller *ctrl, enroll_cfg *ecfg, void (*cb)(ziti_config *, const ziti_error *, void *),
-                               void *ctx) {
-
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->resp_text_plain = true;   // Make no attempt in ctrl_resp_cb to parse response as JSON
-    resp->body_parse_func = NULL;   //   "  "  "  
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
-    start_request(ctrl->client, "GET", "/", ctrl_resp_cb, resp);
-}
-
 void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
                   void(*cb)(ziti_pr_response *, const ziti_error *, void *), void *ctx) {
-    if (!verify_api_session(ctrl, cb, ctx)) { return; }
+    if (!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_pr_response_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_default_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_pr_response_ptr, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/posture-response", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
@@ -796,14 +686,9 @@ void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
 
 void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len,
                        void(*cb)(ziti_pr_response *, const ziti_error *, void *), void *ctx) {
-    if (!verify_api_session(ctrl, cb, ctx)) { return; }
+    if (!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_pr_response_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = (void (*)(void *, const ziti_error *, struct ctrl_resp *)) ctrl_default_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_pr_response_ptr, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/posture-response-bulk", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
@@ -830,13 +715,7 @@ static void ctrl_paging_req(struct ctrl_resp *resp) {
 void ziti_ctrl_login_mfa(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = NULL;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/authenticate/mfa", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
@@ -845,27 +724,16 @@ void ziti_ctrl_login_mfa(ziti_controller *ctrl, char *body, size_t body_len, voi
 void ziti_ctrl_post_mfa(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = NULL;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/current-identity/mfa", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
     tlsuv_http_req_data(req, NULL, 0, free_body_cb);
 }
 
 void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, const ziti_error *, void *), void *ctx) {
-    if (!verify_api_session(ctrl, cb, ctx)) { return; }
+    if (!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_mfa_enrollment_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_mfa_enrollment_ptr, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/current-identity/mfa", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
@@ -874,13 +742,7 @@ void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, c
 void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char *code, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = NULL;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "DELETE", "/current-identity/mfa", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
     tlsuv_http_req_header(req, "mfa-validation-code", code);
@@ -889,27 +751,16 @@ void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char *code, void(*cb)(void *, c
 void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = NULL;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
-
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/current-identity/mfa/verify", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }
 
 void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char *code, void(*cb)(ziti_mfa_recovery_codes *, const ziti_error *, void *), void *ctx) {
-    if (!verify_api_session(ctrl, cb, ctx)) { return; }
+    if (!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_mfa_recovery_codes_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_mfa_recovery_codes_ptr, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/current-identity/mfa/recovery-codes", ctrl_resp_cb,
                                           resp);
@@ -920,12 +771,7 @@ void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char *code, void(*c
 void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = NULL;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/current-identity/mfa/recovery-codes", ctrl_resp_cb,
                                           resp);
@@ -934,14 +780,9 @@ void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t
 }
 
 void ziti_ctrl_extend_cert_authenticator(ziti_controller *ctrl, const char *authenticatorId, const char *csr, void(*cb)(ziti_extend_cert_authenticator_resp*, const ziti_error *, void *), void *ctx) {
-    if(!verify_api_session(ctrl, cb, ctx)) return;
+    if(!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) return;
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = (int (*)(void *, const char *, size_t)) parse_ziti_extend_cert_authenticator_resp_ptr;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_extend_cert_authenticator_resp_ptr, ctx);
 
     char path[128];
     snprintf(path, sizeof(path), "/current-identity/authenticators/%s/extend", authenticatorId);
@@ -960,12 +801,7 @@ void ziti_ctrl_extend_cert_authenticator(ziti_controller *ctrl, const char *auth
 void ziti_ctrl_verify_extend_cert_authenticator(ziti_controller *ctrl, const char *authenticatorId, const char *client_cert, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, cb, ctx)) return;
 
-    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
-    resp->body_parse_func = NULL;
-    resp->resp_cb = (void (*)(void *, const ziti_error *, void *)) cb;
-    resp->ctx = ctx;
-    resp->ctrl = ctrl;
-    resp->ctrl_cb = ctrl_default_cb;
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
 
     char path[256];
     snprintf(path, sizeof(path), "/current-identity/authenticators/%s/extend-verify", authenticatorId);
@@ -979,4 +815,35 @@ void ziti_ctrl_verify_extend_cert_authenticator(ziti_controller *ctrl, const cha
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", path, ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
+}
+
+void ziti_ctrl_create_api_certificate(ziti_controller *ctrl, const char *csr_pem,
+                                      void(*cb)(ziti_create_api_cert_resp *, const ziti_error *, void *), void *ctx) {
+
+    if(!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) return;
+
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_create_api_cert_resp_ptr, ctx);
+
+    const char *path = "/current-api-session/certificates";
+
+    ziti_create_api_cert_req cert_req = {
+            .client_cert_csr = (char*)csr_pem
+    };
+
+    size_t body_len;
+    char *body = ziti_create_api_cert_req_to_json(&cert_req, 0, &body_len);
+
+    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", path, ctrl_resp_cb, resp);
+    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_data(req, body, body_len, free_body_cb);
+}
+
+static struct ctrl_resp *prepare_resp(ziti_controller *ctrl, ctrl_resp_cb_t cb, body_parse_fn parser, void *ctx) {
+    struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    resp->body_parse_func = parser;
+    resp->resp_cb = cb;
+    resp->ctx = ctx;
+    resp->ctrl = ctrl;
+    resp->ctrl_cb = ctrl_default_cb;
+    return resp;
 }
