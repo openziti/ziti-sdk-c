@@ -543,7 +543,7 @@ static int parse_pkcs11_uri(const char *keyuri, tls_context *tls, void *ctx, par
 
 static int pkcs11_load(tls_context *tls, tlsuv_private_key_t *key, const char *lib, const char *slot, const char *pin,
                        const char *id, const char *label) {
-    if (tls->api->load_pkcs11_key(key, lib, slot, pin, id, label)) {
+    if (tls->load_pkcs11_key(key, lib, slot, pin, id, label)) {
         return ZITI_INVALID_CONFIG;
     }
     return ZITI_OK;
@@ -559,7 +559,7 @@ int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *ke
 
     if (tlsuv_parse_url(&uri, keystr) == 0) {
         if (uri.scheme_len == strlen("file") && strncmp(uri.scheme, "file", uri.scheme_len) == 0) {
-            rc = tls->api->load_key(key, uri.path, uri.path_len);
+            rc = tls->load_key(key, uri.path, uri.path_len);
             return rc != 0 ? ZITI_INVALID_CONFIG : 0;
         }
     }
@@ -567,19 +567,19 @@ int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *ke
     if (strncmp("pem:", keystr, strlen("pem:")) == 0) {
         keystr += strlen("pem:");
     }
-    rc = tls->api->load_key(key, keystr, strlen(keystr));
+    rc = tls->load_key(key, keystr, strlen(keystr));
     return rc != 0 ? ZITI_INVALID_CONFIG : 0;
 }
 
 static int pkcs11_gen(tls_context *tls, tlsuv_private_key_t *key, const char *lib, const char *slot, const char *pin,
                       const char *id, const char *label) {
 
-    if (tls->api->generate_pkcs11_key == NULL) {
-        ZITI_LOG(WARN, "pkcs11 key generation is not supported by TLS driver[%s]", tls->api->version());
+    if (tls->generate_pkcs11_key == NULL) {
+        ZITI_LOG(WARN, "pkcs11 key generation is not supported by TLS driver[%s]", tls->version());
         return ZITI_KEY_GENERATION_FAILED;
     }
 
-    if (tls->api->generate_pkcs11_key(key, lib, slot, pin, label)) {
+    if (tls->generate_pkcs11_key(key, lib, slot, pin, label)) {
         return ZITI_KEY_GENERATION_FAILED;
     }
     return ZITI_OK;
