@@ -133,7 +133,7 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
     PREP(ziti);
 
     // load ca from ziti config if present
-    const char *ca, *cert;
+    const char *ca;
     size_t ca_len = parse_ref(cfg->id.ca, &ca);
     tls_context *tls = default_tls_context(ca, ca_len);
     tlsuv_private_key_t pk;
@@ -143,13 +143,13 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
     }
 
     TRY(ziti, load_key_internal(tls, &pk, cfg->id.key));
-    TRY(ziti, tls->set_own_key(tls, pk));
+    tls_cert c = NULL;
     if (cfg->id.cert) {
+        const char *cert;
         size_t cert_len = parse_ref(cfg->id.cert, &cert);
-        tls_cert c;
         TRY(ziti, tls->load_cert(&c, cert, cert_len));
-        TRY(ziti, tls->set_own_cert(tls, c));
     }
+    TRY(ziti, tls->set_own_cert(tls, pk, c));
 
     CATCH(ziti) {
         return ERR(ziti);
@@ -171,9 +171,7 @@ int ziti_set_client_cert(ziti_context ztx, const char *cert_buf, size_t cert_len
         return ZITI_INVALID_AUTHENTICATOR_CERT;
     }
 
-    // ignore return -- this will return error since old cert won't match
-    ztx->tlsCtx->set_own_key(ztx->tlsCtx, pk);
-    if (ztx->tlsCtx->set_own_cert(ztx->tlsCtx, c)) {
+    if (ztx->tlsCtx->set_own_cert(ztx->tlsCtx, pk, c)) {
         return ZITI_INVALID_CERT_KEY_PAIR;
     }
 
@@ -1358,10 +1356,10 @@ static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e,
             ZTX_LOG(ERROR, "failed to parse supplied session cert");
         }
 
-        int rc = ztx->tlsCtx->set_own_key(ztx->tlsCtx, ztx->sessionKey);
-        ZTX_LOG(INFO, "set session key: %d", rc);
-        rc = ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->sessonCert);
-        ZTX_LOG(INFO, "set session cert: %d", rc);
+        int rc = ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->sessionKey, ztx->sessonCert);
+        if (rc != 0) {
+            ZTX_LOG(ERROR, "failed to set session cert: %d", rc);
+        }
 
         free_ziti_create_api_cert_resp_ptr(resp);
     }

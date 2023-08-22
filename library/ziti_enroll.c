@@ -193,10 +193,9 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     else if (enroll_req->ecfg->zej->method == ziti_enrollment_methods.ottca ||
              enroll_req->ecfg->zej->method == ziti_enrollment_methods.ca) {
         ziti_err = ZITI_KEY_LOAD_FAILED;
-        TRY(TLS, tls->set_own_key(tls, enroll_req->ecfg->pk));
         tls_cert cert;
         TRY(TLS, tls->load_cert(&cert, enroll_req->ecfg->own_cert, strlen(enroll_req->ecfg->own_cert)));
-        TRY(TLS, tls->set_own_cert(tls, cert));
+        TRY(TLS, tls->set_own_cert(tls, enroll_req->ecfg->pk, cert));
     }
 
     enroll_req->ecfg->CA = ca;
