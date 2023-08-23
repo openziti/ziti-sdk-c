@@ -242,6 +242,9 @@ struct ziti_ctx {
     ziti_controller controller;
     uint32_t id;
 
+    tlsuv_private_key_t sessionKey;
+    char *sessionCsr;
+    tls_cert sessonCert;
     tls_context *tlsCtx;
 
     bool closing;

@@ -201,6 +201,6 @@ TEST_CASE("controller_test","[integ]") {
 
     ziti_ctrl_close(&ctrl);
     uv_run(loop, UV_RUN_DEFAULT);
-    tls->api->free_ctx(tls);
+    tls->free_ctx(tls);
     free_ziti_config(&config);
 }

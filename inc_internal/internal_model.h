@@ -158,12 +158,19 @@ XX(recovery_codes, string, array, recoveryCodes, __VA_ARGS__)
 #define ZITI_EXTEND_CERT_AUTHENTICATOR_REQ(XX, ...) \
 XX(client_cert_csr, string, none, clientCertCsr, __VA_ARGS__)
 
+#define ZITI_CREATE_API_CERT_REQ(XX, ...) \
+XX(client_cert_csr, string, none, csr, __VA_ARGS__)
+
 #define ZITI_VERIFY_EXTEND_CERT_AUTHENTICATOR_REQ(XX, ...) \
 XX(client_cert, string, none, clientCert, __VA_ARGS__)
 
 #define ZITI_EXTEND_CERT_AUTHENTICATOR_RESP(XX, ...) \
 XX(client_cert_pem, string, none, clientCert, __VA_ARGS__) \
 XX(cas_pem, string, none, ca, __VA_ARGS__)
+
+#define ZITI_CREATE_API_CERT_RESP(XX, ...) \
+XX(client_cert_pem, string, none, certificate, __VA_ARGS__) \
+XX(cas_pem, string, none, cas, __VA_ARGS__)
 
 #define ZITI_AUTHENTICATOR_MODEL(XX, ...) \
 XX(id, string, none, id, __VA_ARGS__) \
@@ -229,6 +236,10 @@ DECLARE_MODEL(ziti_verify_extend_cert_authenticator_req, ZITI_VERIFY_EXTEND_CERT
 DECLARE_MODEL(ziti_authenticator, ZITI_AUTHENTICATOR_MODEL)
 
 DECLARE_MODEL(ziti_extend_cert_authenticator_resp, ZITI_EXTEND_CERT_AUTHENTICATOR_RESP)
+
+DECLARE_MODEL(ziti_create_api_cert_req, ZITI_CREATE_API_CERT_REQ)
+
+DECLARE_MODEL(ziti_create_api_cert_resp, ZITI_CREATE_API_CERT_RESP)
 
 #ifdef __cplusplus
 }

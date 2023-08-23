@@ -133,7 +133,7 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
     PREP(ziti);
 
     // load ca from ziti config if present
-    const char *ca, *cert;
+    const char *ca;
     size_t ca_len = parse_ref(cfg->id.ca, &ca);
     tls_context *tls = default_tls_context(ca, ca_len);
     tlsuv_private_key_t pk;
@@ -143,11 +143,13 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
     }
 
     TRY(ziti, load_key_internal(tls, &pk, cfg->id.key));
-    TRY(ziti, tls->api->set_own_key(tls->ctx, pk));
+    tls_cert c = NULL;
     if (cfg->id.cert) {
+        const char *cert;
         size_t cert_len = parse_ref(cfg->id.cert, &cert);
-        TRY(ziti, tls->api->set_own_cert(tls->ctx, cert, cert_len));
+        TRY(ziti, tls->load_cert(&c, cert, cert_len));
     }
+    TRY(ziti, tls->set_own_cert(tls, pk, c));
 
     CATCH(ziti) {
         return ERR(ziti);
@@ -159,13 +161,21 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
 
 int ziti_set_client_cert(ziti_context ztx, const char *cert_buf, size_t cert_len, const char *key_buf, size_t key_len) {
     tlsuv_private_key_t pk;
-    if (ztx->tlsCtx->api->load_key(&pk, key_buf, key_len) == 0 &&
-        ztx->tlsCtx->api->set_own_key(ztx->tlsCtx, pk) == 0 &&
-        ztx->tlsCtx->api->set_own_cert(ztx->tlsCtx, cert_buf, cert_len) == 0) {
-        return ZITI_OK;
+    tls_cert c;
+    if (ztx->tlsCtx->load_key(&pk, key_buf, key_len)) {
+        return ZITI_KEY_LOAD_FAILED;
     }
 
-    return ZITI_INVALID_CERT_KEY_PAIR;
+    if (ztx->tlsCtx->load_cert(&c, cert_buf, cert_len)) {
+        pk->free(pk);
+        return ZITI_INVALID_AUTHENTICATOR_CERT;
+    }
+
+    if (ztx->tlsCtx->set_own_cert(ztx->tlsCtx, pk, c)) {
+        return ZITI_INVALID_CERT_KEY_PAIR;
+    }
+
+    return ZITI_OK;
 }
 
 int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
@@ -410,7 +420,7 @@ static void ziti_init_async(ziti_context ztx, void *data) {
             ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
             time_str, start_time.tv_usec / 1000);
     ZTX_LOG(INFO, "using tlsuv[%s], tls[%s]", tlsuv_version(),
-            ztx->tlsCtx->api->version ? ztx->tlsCtx->api->version() : "unspecified");
+            ztx->tlsCtx->version ? ztx->tlsCtx->version() : "unspecified");
     ZTX_LOG(INFO, "Loading ziti context with controller[%s]", ztx_controller(ztx));
 
     if (ziti_ctrl_init(loop, &ztx->controller, ztx_controller(ztx), ztx->tlsCtx) != ZITI_OK) {
@@ -502,7 +512,7 @@ static void free_ztx(uv_handle_t *h) {
     ziti_ctrl_close(&ztx->controller);
 
     if (ztx->tlsCtx != ztx->opts->tls) {
-        ztx->tlsCtx->api->free_ctx(ztx->tlsCtx);
+        ztx->tlsCtx->free_ctx(ztx->tlsCtx);
     }
     ziti_auth_query_free(ztx->auth_queries);
     ziti_posture_checks_free(ztx->posture_checks);
@@ -1330,6 +1340,32 @@ void update_session_data(ziti_api_session *session, const ziti_error *err, void 
     }
 }
 
+static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e, void *ctx) {
+    ziti_context ztx = ctx;;
+    if (e) {
+        ZTX_LOG(ERROR, "failed to create session cert: %d/%s", e->err, e->message);
+    } else {
+        ZTX_LOG(DEBUG, "received API session certificate");
+        ZTX_LOG(VERBOSE, "cert => %s", resp->client_cert_pem);
+
+        if (ztx->sessonCert) {
+            ztx->tlsCtx->free_cert(&ztx->sessonCert);
+        }
+
+        if (ztx->tlsCtx->load_cert(&ztx->sessonCert, resp->client_cert_pem, strlen(resp->client_cert_pem)) != 0) {
+            ZTX_LOG(ERROR, "failed to parse supplied session cert");
+        }
+
+        int rc = ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->sessionKey, ztx->sessonCert);
+        if (rc != 0) {
+            ZTX_LOG(ERROR, "failed to set session cert: %d", rc);
+        }
+
+        free_ziti_create_api_cert_resp_ptr(resp);
+    }
+    FREE(ztx->sessionCsr);
+}
+
 static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) {
     ZTX_LOG(VERBOSE, "post auth query callback starting with status[%s]", ziti_errorstr(status));
     if (status == ZITI_OK) {
@@ -1346,6 +1382,23 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
         if (session->auth_queries != NULL && *session->auth_queries != NULL) {
             ziti_ctrl_current_api_session(&ztx->controller, update_session_data, ztx);
         }
+
+        if (ztx->sessionKey == NULL) {
+            char common_name[128];
+            snprintf(common_name, sizeof(common_name), "%s-%u-%" PRIu64,
+                     APP_ID ? APP_ID : "ziti-sdk-c",
+                     ztx->id, uv_now(ztx->loop));
+
+            ztx->tlsCtx->generate_key(&ztx->sessionKey);
+            ztx->tlsCtx->generate_csr_to_pem(ztx->sessionKey, &ztx->sessionCsr, NULL,
+                                             "O", "OpenZiti",
+                                             "OU", "ziti-sdk",
+                                             "CN", common_name,
+                                             NULL);
+
+            ziti_ctrl_create_api_certificate(&ztx->controller, ztx->sessionCsr, on_create_cert, ztx);
+        }
+
 
         ziti_services_refresh(ztx, true);
         ziti_posture_init(ztx, 20);

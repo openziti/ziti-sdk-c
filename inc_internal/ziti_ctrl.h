@@ -70,6 +70,8 @@ void ziti_ctrl_login(ziti_controller *ctrl, model_list *cfg_types, void (*cb)(zi
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
 
+void ziti_ctrl_create_api_certificate(ziti_controller *ctrl, const char *csr_pem, void(*cb)(ziti_create_api_cert_resp *, const ziti_error *, void *), void *ctx);
+
 void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_data *, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void(*cb)(ziti_edge_router_array, const ziti_error *, void *),
