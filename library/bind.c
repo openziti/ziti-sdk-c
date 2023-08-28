@@ -32,6 +32,7 @@ struct binding_s {
     struct ziti_conn *conn;
     ziti_channel_t *ch;
     struct key_pair key_pair;
+    bool bound;
 };
 
 
@@ -100,16 +101,19 @@ static void rebind_delay_cb(uv_timer_t *t) {
     }
 }
 
+static struct binding_s* new_binding(struct ziti_conn *conn, ziti_channel_t *ch) {
+    NEWP(b, struct binding_s);
+    b->conn = conn;
+    b->ch = ch;
+    init_key_pair(&b->key_pair);
+    return b;
+}
+
 static void process_bindings(struct ziti_conn *conn) {
     ziti_net_session *ns = conn->server.session;
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
     size_t target = MIN(conn->server.max_bindings, model_map_size(&ztx->channels));
-    size_t bind_count = model_map_size(&conn->server.bindings);
-    if (bind_count >= target) {
-        schedule_rebind(conn, false);
-        return;
-    }
 
     ziti_edge_router *er;
     const char *proto;
@@ -117,20 +121,32 @@ static void process_bindings(struct ziti_conn *conn) {
     MODEL_LIST_FOREACH(er, ns->edge_routers) {
         MODEL_MAP_FOREACH(proto, url, &er->protocols) {
             CONN_LOG(DEBUG, "checking %s[%s]", er->name, url);
-            if (model_map_get(&conn->server.bindings, url) == NULL) {
-                ziti_channel_t *ch = model_map_get(&ztx->channels, url);
-                if (ch && ziti_channel_is_connected(ch)) {
-                    NEWP(b, struct binding_s);
-                    b->conn = conn;
-                    b->ch = ch;
-                    model_map_set(&conn->server.bindings, url, b);
+            ziti_channel_t *ch = model_map_get(&ztx->channels, url);
+            if (ch == NULL || !ziti_channel_is_connected(ch)) {
+                CONN_LOG(DEBUG, "%s[%s] is not connected", er->name, url);
+                continue;
+            }
+
+            struct binding_s *b = model_map_get(&conn->server.bindings, url);
+            if (b != NULL) {
+                if (b->bound) {
+                    target--;
+                } else {
+                    assert(ch == b->ch);
                     start_binding(b);
+                    target--;
                 }
+            } else  {
+                b = new_binding(conn, ch);
+                model_map_set(&conn->server.bindings, url, b);
+                start_binding(b);
+                target--;
             }
         }
+        if (target <= 0) break;
     }
 
-    schedule_rebind(conn, model_map_size(&conn->server.bindings) < target);
+    schedule_rebind(conn, target > 0);
 }
 
 static void schedule_rebind(struct ziti_conn *conn, bool now) {
@@ -173,8 +189,8 @@ static void session_cb(ziti_net_session *session, const ziti_error *err, void *c
             const char *id;
             struct binding_s *b;
             MODEL_MAP_FOREACH(id, b, &conn->server.bindings) {
-        stop_binding(b);
-    }
+                stop_binding(b);
+            }
 
             // our session is stale
             if (conn->server.session) {
@@ -312,7 +328,9 @@ static void on_message(struct binding_s *b, message *msg, int code) {
     struct ziti_conn *conn = b->conn;
     if (code != ZITI_OK) {
         ZITI_LOG(WARN, "binding failed: %d/%s", code, ziti_errorstr(code));
-        remove_binding(b);
+        b->bound = false;
+        schedule_rebind(conn, true);
+//        remove_binding(b);
     } else {
         ZITI_LOG(DEBUG, "received msg ct[%x] code[%d] from %s", msg->header.content, code, b->ch->name);
         switch (msg->header.content) {
@@ -337,6 +355,7 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
     CONN_LOG(TRACE, "received msg ct[%X] code[%d]", msg->header.content, code);
     if (code == ZITI_OK && msg->header.content == ContentTypeStateConnected) {
         CONN_LOG(DEBUG, "bound successfully over ch[%s]", b->ch->url);
+        b->bound = true;
     } else {
         CONN_LOG(DEBUG, "failed to bind over ch[%s]", b->ch->url);
         remove_binding(b);
@@ -347,7 +366,6 @@ void start_binding(struct binding_s *b) {
     struct ziti_conn *conn = b->conn;
     ziti_net_session *s = conn->server.session;
     CONN_LOG(TRACE, "ch[%d] => Edge Connect request token[%s]", b->ch->id, s->token);
-    init_key_pair(&b->key_pair);
     ziti_channel_add_receiver(b->ch, conn->conn_id, b,
                               (void (*)(void *, message *, int)) on_message);
 
