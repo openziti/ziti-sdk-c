@@ -1407,7 +1407,9 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
                 free(old_ca);
                 ztx->tlsCtx = new_tls;
                 ztx->controller.client->tls = ztx->tlsCtx;
+                new_pem = NULL; // owned by ztx->config
             } else {
+                ztx->config.id.ca = old_ca;
                 ZITI_LOG(ERROR, "failed to create TLS context with updated CA bundle");
             }
         }
