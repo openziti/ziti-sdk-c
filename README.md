@@ -1,3 +1,5 @@
+![Ziggy using the ziti-sdk-c](https://raw.githubusercontent.com/openziti/branding/main/images/banners/C.jpg)
+
 # OpenZiti C SDK
 ![Build Status](https://github.com/openziti/ziti-sdk-c/actions/workflows/cmake.yml/badge.svg?branch=main)
 
