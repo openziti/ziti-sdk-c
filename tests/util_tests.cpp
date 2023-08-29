@@ -16,7 +16,12 @@
 #include "catch2/matchers/catch_matchers_string.hpp"
 #include "utils.h"
 
+#if _WIN32
+#include <io.h>
+#define dup2(o,n) _dup2(o,n)
+#else
 #include <unistd.h>
+#endif
 
 TEST_CASE("read_file", "[util]") {
     const char *test_path = TO_STRING(ZITI_TEST_DIR) "/ctrl_tests.cpp";
