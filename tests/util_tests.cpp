@@ -16,6 +16,8 @@
 #include "catch2/matchers/catch_matchers_string.hpp"
 #include "utils.h"
 
+#include <unistd.h>
+
 TEST_CASE("read_file", "[util]") {
     const char *test_path = TO_STRING(ZITI_TEST_DIR) "/ctrl_tests.cpp";
     char *content = nullptr;
