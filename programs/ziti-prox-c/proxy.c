@@ -412,7 +412,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     struct proxy_app_ctx *app_ctx = ziti_app_ctx(ztx);
     switch (event->type) {
         case ZitiAPIEvent:
-            ZITI_LOG(INFO, "update API URL to %s", event->event.api.new_ctrl_address);
+            if (event->event.api.new_ctrl_address) ZITI_LOG(INFO, "update API URL to %s", event->event.api.new_ctrl_address);
+            if (event->event.api.new_ca_bundle) ZITI_LOG(INFO, "update CA bundle to %s", event->event.api.new_ca_bundle);
             break;
 
         case ZitiContextEvent:

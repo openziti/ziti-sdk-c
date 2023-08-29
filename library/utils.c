@@ -588,3 +588,77 @@ static int pkcs11_gen(tls_context *tls, tlsuv_private_key_t *key, const char *li
 int gen_p11_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *keyuri) {
     return parse_pkcs11_uri(keyuri, tls, key, (parse_cb) pkcs11_gen);
 }
+
+int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
+    char filename[MAXPATHLEN];
+    if (pathlen >= MAXPATHLEN) return UV_ENOMEM;
+    uv_file f = -1;
+    uv_fs_t fs_req = {0};
+
+    if (pathlen > 0) {
+        strncpy(filename, path, pathlen);
+        filename[pathlen] = 0;
+        path = filename;
+    }
+
+    size_t content_len = 0;
+    char *content_buf = NULL;
+    int rc = 0;
+
+    if (strcmp(path, "-") == 0) {
+        if (*content == NULL) {
+            ZITI_LOG(ERROR, "buffer is required when reading stdin");
+            return UV_EINVAL;
+        }
+        content_buf = *content;
+        content_len = *size;
+        f = fileno(stdin);
+    } else {
+        struct stat stats;
+        rc = uv_fs_stat(NULL, &fs_req, path, NULL);
+        if (rc) {
+            ZITI_LOG(ERROR, "%s - %s", path, uv_strerror(rc));
+            return rc;
+        }
+        content_len = fs_req.statbuf.st_size;
+        if (*content != NULL) {
+            if (*size > 0 && *size < content_len) {
+                ZITI_LOG(ERROR, "%s - not enough space to read", path);
+                return UV_ENOMEM;
+            }
+            content_buf = *content;
+        }
+
+        uv_fs_req_cleanup(&fs_req);
+        f = uv_fs_open(NULL, &fs_req, path, 0, O_RDONLY, NULL);
+    }
+
+    if (f == -1) {
+        ZITI_LOG(ERROR, "%s - %s", path, strerror(errno));
+        return rc;
+    }
+
+    if (content_buf == NULL) {
+        content_buf = malloc(content_len + 1);
+    }
+
+    size_t read = 0;
+    while (read < content_len) {
+        uv_fs_req_cleanup(&fs_req);
+
+        uv_buf_t buf = uv_buf_init(content_buf + read, content_len - read);
+        rc = uv_fs_read(NULL, &fs_req, f, &buf, 1, -1, NULL);
+        if (rc == 0) {
+            break;
+        }
+        read += rc;
+    }
+
+    uv_fs_req_cleanup(&fs_req);
+    uv_fs_close(NULL, &fs_req, f, NULL);
+    content_buf[read] = 0;
+    *content = content_buf;
+    *size = read;
+
+    return ZITI_OK;
+}

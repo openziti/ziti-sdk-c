@@ -14,7 +14,8 @@ add_executable(all_tests
         pool_tests.cpp
         catch2_includes.hpp
         ziti_src_tests.cpp
-        message_tests.cpp)
+        message_tests.cpp
+        util_tests.cpp)
 
 if (WIN32)
     set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
@@ -22,6 +23,8 @@ else ()
     set_property(TARGET all_tests PROPERTY CXX_STANDARD 14)
 endif ()
 
+target_compile_definitions(all_tests
+        PRIVATE ZITI_TEST_DIR=${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(all_tests
         PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 

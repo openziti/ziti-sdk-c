@@ -239,6 +239,7 @@ typedef STAILQ_HEAD(work_q, ztx_work_s) ztx_work_q;
 
 struct ziti_ctx {
     ziti_options *opts;
+    ziti_config config;
     ziti_controller controller;
     uint32_t id;
 

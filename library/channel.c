@@ -705,6 +705,7 @@ static void reconnect_cb(uv_timer_t *t) {
 
         ch->connection->data = ch;
         CH_LOG(DEBUG, "connecting to %s", ch->url);
+        ch->connection->tls = ch->ctx->tlsCtx;
         int rc = tlsuv_stream_connect(req, ch->connection, ch->host, ch->port, on_channel_connect_internal);
         if (rc != 0) {
             on_channel_connect_internal(req, rc);

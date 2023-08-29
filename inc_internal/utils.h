@@ -66,6 +66,9 @@ typedef const char *(*fmt_error_t)(int);
 
 typedef int *(*cond_error_t)(int);
 
+#define TO_STRING(m) to_string_(m)
+#define to_string_(m) #m
+
 #define NEWP(var, type) type *var = calloc(1, sizeof(type))
 #define VAL_OR_ELSE(v, def) ((v) != NULL ? (v) : (def))
 #define FREE(v)  do { if ((v) != NULL) { free((void*)(v)); (v) = NULL; } } while(0)
@@ -123,6 +126,8 @@ extern size_t str_split(const char *str, const char *delim, model_list *result);
 int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *keystr);
 
 int gen_p11_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *keyuri);
+
+int load_file(const char *path, size_t pathlen, char **content, size_t *size);
 
 #ifdef __cplusplus
 }

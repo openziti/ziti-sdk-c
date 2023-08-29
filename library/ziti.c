@@ -182,34 +182,42 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
     ziti_log_init(loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
     metrics_init(loop, 5);
 
+    ziti_context ctx = NULL;
     PREPF(ziti, ziti_errorstr);
 
     if (options->config == NULL && (options->controller == NULL || options->tls == NULL)) {
         ZITI_LOG(ERROR, "config or controller/tls has to be set");
         return ZITI_INVALID_CONFIG;
     }
+    ctx = calloc(1, sizeof(*ctx));
 
-    ziti_config cfg = {0};
     if (options->config != NULL) {
-        TRY(ziti, load_config(options->config, &cfg));
+        TRY(ziti, load_config(options->config, &ctx->config));
     }
-    if (options->controller == NULL) {
-        if (cfg.controller_url == NULL) {
-            ZITI_LOG(ERROR, "controller URL should be provided");
-            return ZITI_INVALID_CONFIG;
-        }
 
-        options->controller = strdup(cfg.controller_url);
+    if (options->controller == NULL) {
+        TRY(ziti, (ctx->config.controller_url == NULL ? ZITI_INVALID_CONFIG : ZITI_OK));
+        options->controller = strdup(ctx->config.controller_url);
+    }
+
+    if (strncmp(ctx->config.id.ca, "file://", strlen("file://")) == 0) {
+        struct tlsuv_url_s url;
+        TRY(ziti, tlsuv_parse_url(&url, ctx->config.id.ca));
+
+        char *ca = NULL;
+        size_t ca_len;
+        int rc = load_file(url.path, url.path_len, &ca, &ca_len);
+        if (rc == 0) {
+            FREE(ctx->config.id.ca);
+            ctx->config.id.ca = ca;
+        }
     }
 
     tls_context *tls = options->tls;
     if (tls == NULL) {
-        TRY(ziti, load_tls(&cfg, &tls));
+        TRY(ziti, load_tls(&ctx->config, &tls));
     }
 
-    free_ziti_config(&cfg);
-
-    NEWP(ctx, struct ziti_ctx);
     ctx->opts = options;
     ctx->tlsCtx = tls;
     ctx->loop = loop;
@@ -226,6 +234,8 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
     ziti_queue_work(ctx, ziti_init_async, init_req);
 
     CATCH(ziti) {
+        free_ziti_config(&ctx->config);
+        free(ctx);
         return ERR(ziti);
     }
 
@@ -1366,6 +1376,55 @@ static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e,
     FREE(ztx->sessionCsr);
 }
 
+static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
+    tls_cert new_bundle = NULL;
+    char *new_pem = NULL;
+    if (err == NULL) {
+        size_t pem_size;
+
+        if (ztx->tlsCtx->parse_pkcs7_certs(&new_bundle, pkcs7, strlen((pkcs7)))) {
+            ZITI_LOG(ERROR, "failed to parse updated CA bundle");
+            goto error;
+        }
+        if (ztx->tlsCtx->write_cert_to_pem(new_bundle, 1, &new_pem, &pem_size)) {
+            ZITI_LOG(ERROR, "failed to format new CA bundle");
+            goto error;
+        }
+
+        if (strcmp(new_pem, ztx->config.id.ca) != 0) {
+            char *old_ca = ztx->config.id.ca;
+            ztx->config.id.ca = new_pem;
+
+            tls_context *new_tls = NULL;
+            if (load_tls(&ztx->config, &new_tls) == 0) {
+                ziti_send_event(ztx, &(ziti_event_t){
+                        .type = ZitiAPIEvent,
+                        .event.api = {
+                                .new_ca_bundle = new_pem,
+                        }
+                });
+                free(old_ca);
+                ztx->tlsCtx = new_tls;
+                ztx->controller.client->tls = ztx->tlsCtx;
+                new_pem = NULL; // owned by ztx->config
+            } else {
+                ztx->config.id.ca = old_ca;
+                ZITI_LOG(ERROR, "failed to create TLS context with updated CA bundle");
+            }
+        }
+    } else {
+        ZITI_LOG(ERROR, "failed to get CA bundle from controller: %s", err->message);
+    }
+
+    error:
+    free(pkcs7);
+    free(new_pem);
+    if (new_bundle) {
+        ztx->tlsCtx->free_cert(&new_bundle);
+    }
+}
+
 static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) {
     ZTX_LOG(VERBOSE, "post auth query callback starting with status[%s]", ziti_errorstr(status));
     if (status == ZITI_OK) {
@@ -1376,6 +1435,7 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
 
         update_ctrl_status(ztx, ZITI_OK, NULL);
 
+        ziti_ctrl_get_well_known_certs(&ztx->controller, ca_bundle_cb, ztx);
         ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
 
         //if we had auth queries, refresh state to zero out
