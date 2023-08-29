@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <errno.h>
-#include <stdio.h>
-#include <sys/stat.h>
 #include <string.h>
 #include <stdlib.h>
 #include <utils.h>
@@ -31,34 +28,16 @@ void ziti_set_app_info(const char *app_id, const char *app_version) {
 }
 
 static int load_config_file(const char *filename, ziti_config *cfg) {
-    struct stat stats;
-    int s = stat(filename, &stats);
-    if (s == -1) {
-        ZITI_LOG(ERROR, "%s - %s", filename, strerror(errno));
+    size_t config_len = 0;
+    char *config = NULL;
+    int rc = load_file(filename, 0, &config, &config_len);
+
+    if (rc != 0) {
+        ZITI_LOG(ERROR, "%s - %s", filename, uv_strerror(rc));
         return ZITI_CONFIG_NOT_FOUND;
     }
 
-    FILE *file = fopen(filename, "r");
-    if (file == NULL) {
-        ZITI_LOG(ERROR, "%s - %s", filename, strerror(errno));
-        return ZITI_CONFIG_NOT_FOUND;
-    }
-
-    size_t config_len = (size_t) stats.st_size;
-    char *config = malloc(config_len);
-    size_t rc;
-    size_t read = 0;
-    while (read < config_len) {
-        rc = fread(config, 1, config_len - read, file);
-        if (rc == 0) {
-            break;
-        }
-        read += rc;
-    }
-
-    fclose(file);
-
-    if (parse_ziti_config(cfg, config, read) < 0) {
+    if (parse_ziti_config(cfg, config, config_len) < 0) {
         free(config);
         return ZITI_INVALID_CONFIG;
     }

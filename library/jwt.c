@@ -63,38 +63,14 @@ int parse_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **ze
 }
 
 int load_jwt_file(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **zejh, ziti_enrollment_jwt **zej) {
-
-    FILE *jwt_input;
-    if (strcmp(filename, "-") == 0) {
-        ZITI_LOG(DEBUG, "reading JWT from standard input");
-        jwt_input = stdin;
-    } else {
-        ZITI_LOG(DEBUG, "reading JWT from file: %s", filename);
-
-        struct stat stats;
-        int s = stat(filename, &stats);
-        if (s == -1) {
-            ZITI_LOG(ERROR, "%s - %s", filename, strerror(errno));
-            return ZITI_JWT_NOT_FOUND;
-        }
-
-        jwt_input = fopen(filename, "r");
-        if (jwt_input == NULL) {
-            ZITI_LOG(ERROR, "failed to open file(%s): %d(%s)", filename, errno, strerror(errno));
-        }
-    }
-
-
     size_t jwt_file_len = (size_t) MAX_JWT_LEN;
     ecfg->raw_jwt = calloc(1, jwt_file_len + 1);
-    size_t rc = fread(ecfg->raw_jwt, 1, jwt_file_len, jwt_input);
-    if (rc <= 0) {
-        ZITI_LOG(WARN, "failed to read JWT file: %d(%s)", errno, strerror(errno));
-        fclose(jwt_input);
-        return ZITI_JWT_INVALID;
+
+    int rc = load_file(filename, 0, &ecfg->raw_jwt, &jwt_file_len);
+    if (rc != 0) {
+        ZITI_LOG(ERROR, "%s - %s", filename, uv_strerror(rc));
+        return ZITI_JWT_NOT_FOUND;
     }
-    jwt_file_len = rc;
-    fclose(jwt_input);
 
     ZITI_LOG(DEBUG, "jwt file content is: \n%.*s", (int) jwt_file_len, ecfg->raw_jwt);
 
