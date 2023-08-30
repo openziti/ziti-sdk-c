@@ -133,7 +133,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
 
     ch->connection = calloc(1, sizeof(*ch->connection));
     tlsuv_stream_init(ch->loop, ch->connection, tls);
-    tlsuv_stream_keepalive(ch->connection, true, ctx->opts->router_keepalive);
+    tlsuv_stream_keepalive(ch->connection, true, ctx->opts.router_keepalive);
     tlsuv_stream_nodelay(ch->connection, true);
     ch->connection->data = ch;
 

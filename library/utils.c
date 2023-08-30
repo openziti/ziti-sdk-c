@@ -86,7 +86,7 @@ static const char *basename(const char *path);
 const char *ziti_get_build_version(int verbose) {
     if (verbose) {
         return "\n\tVersion:\t" to_str(ZITI_VERSION)
-               "\n\tBuild Date:\t" to_str(BUILD_DATE)
+               "\n\tBuild Date:\t" __DATE__ " " __TIME__
                "\n\tGit Branch:\t" to_str(ZITI_BRANCH)
                "\n\tGit SHA:\t" to_str(ZITI_COMMIT)
                "\n\tOS:\t" to_str(ZITI_OS)
@@ -158,6 +158,17 @@ void ziti_log_init(uv_loop_t *loop, int level, log_writer log_func) {
     }
 
     ziti_log_set_level(level, NULL);
+
+    uv_timeval64_t start_time;
+    uv_gettimeofday(&start_time);
+
+    char time_str[32];
+    ziti_fmt_time(time_str, sizeof(time_str), &start_time);
+
+    ZITI_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
+            ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
+            time_str, start_time.tv_usec / 1000);
+
 }
 
 void ziti_log_set_level(int level, const char *marker) {

@@ -63,7 +63,6 @@ SET(ZITI_INCLUDE_DIRS
 )
 
 set(ziti_compile_defs
-        BUILD_DATE=${BUILD_DATE}
         ZITI_VERSION=${PROJECT_VERSION}
         ZITI_BRANCH=${GIT_BRANCH}
         ZITI_COMMIT=${GIT_COMMIT_HASH}

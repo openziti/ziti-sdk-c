@@ -41,12 +41,12 @@ static int load_config_file(const char *filename, ziti_config *cfg) {
         free(config);
         return ZITI_INVALID_CONFIG;
     }
-
+    cfg->cfg_source = realpath(filename, NULL);
     free(config);
     return ZITI_OK;
 }
 
-int load_config(const char *cfgstr, ziti_config *cfg) {
+int ziti_load_config(ziti_config *cfg, const char* cfgstr) {
     if (!cfgstr) {
         return ZITI_INVALID_CONFIG;
     }
@@ -55,7 +55,7 @@ int load_config(const char *cfgstr, ziti_config *cfg) {
     int rc = parse_ziti_config(cfg, cfgstr, strlen(cfgstr));
 
     if (rc < 0) {
-        ZITI_LOG(DEBUG, "trying to load config from file");
+        ZITI_LOG(DEBUG, "trying to load config from file[%s]", cfgstr);
         rc = load_config_file(cfgstr, cfg);
     }
 

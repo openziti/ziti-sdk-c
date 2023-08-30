@@ -310,8 +310,8 @@ void ziti_send_posture_data(ziti_context ztx) {
         resp->obsolete = false;
         if (!resp->pending) {
             resp->pending = true;
-            if (ztx->opts->pq_domain_cb != NULL) {
-                ztx->opts->pq_domain_cb(ztx, domainInfo->query->id, ziti_pr_handle_domain);
+            if (ztx->opts.pq_domain_cb != NULL) {
+                ztx->opts.pq_domain_cb(ztx, domainInfo->query->id, ziti_pr_handle_domain);
             } else {
                 ZTX_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_DOMAIN_TYPE,
                          domainInfo->service->name, domainInfo->query_set->policy_id, domainInfo->query->id);
@@ -329,8 +329,8 @@ void ziti_send_posture_data(ziti_context ztx) {
         resp->obsolete = false;
         if (!resp->pending) {
             resp->pending = true;
-            if (ztx->opts->pq_mac_cb != NULL) {
-                ztx->opts->pq_mac_cb(ztx, macInfo->query->id, ziti_pr_handle_mac);
+            if (ztx->opts.pq_mac_cb != NULL) {
+                ztx->opts.pq_mac_cb(ztx, macInfo->query->id, ziti_pr_handle_mac);
             } else {
                 ZTX_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_MAC_TYPE,
                          macInfo->service->name, macInfo->query_set->policy_id, macInfo->query->id);
@@ -347,8 +347,8 @@ void ziti_send_posture_data(ziti_context ztx) {
         resp->obsolete = false;
         if (!resp->pending) {
             resp->pending = true;
-            if (ztx->opts->pq_os_cb != NULL) {
-                ztx->opts->pq_os_cb(ztx, osInfo->query->id, ziti_pr_handle_os);
+            if (ztx->opts.pq_os_cb != NULL) {
+                ztx->opts.pq_os_cb(ztx, osInfo->query->id, ziti_pr_handle_os);
             } else {
                 ZTX_LOG(VERBOSE, "using default %s cb for: service %s, policy: %s, check: %s", PC_OS_TYPE,
                          osInfo->service->name, osInfo->query_set->policy_id, osInfo->query->id);
@@ -361,7 +361,7 @@ void ziti_send_posture_data(ziti_context ztx) {
         const char *path;
         struct query_info *info;
 
-        ziti_pq_process_cb proc_cb = ztx->opts->pq_process_cb;
+        ziti_pq_process_cb proc_cb = ztx->opts.pq_process_cb;
         if (proc_cb == NULL) {
             proc_cb = default_pq_process;
             ZTX_LOG(VERBOSE, "using default cb for process queries");

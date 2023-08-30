@@ -142,7 +142,7 @@ TEST_CASE("controller_test","[integ]") {
 
 
     PREP(ziti);
-    TRY(ziti, load_config(conf, &config));
+    TRY(ziti, ziti_load_config(&config, conf));
     TRY(ziti, load_tls(&config, &tls));
     TRY(ziti, ziti_ctrl_init(loop, &ctrl, config.controller_url, tls));
 
