@@ -150,6 +150,11 @@ static void process_bindings(struct ziti_conn *conn) {
 }
 
 static void schedule_rebind(struct ziti_conn *conn, bool now) {
+    if (!ziti_is_enabled(conn->ziti_ctx)) {
+        uv_timer_stop(conn->server.timer);
+        return;
+    }
+
     uint64_t delay = REFRESH_DELAY;
 
     if (now) {
@@ -329,8 +334,11 @@ static void on_message(struct binding_s *b, message *msg, int code) {
     if (code != ZITI_OK) {
         ZITI_LOG(WARN, "binding failed: %d/%s", code, ziti_errorstr(code));
         b->bound = false;
-        schedule_rebind(conn, true);
-//        remove_binding(b);
+        if (code == ZITI_DISABLED) {
+            remove_binding(b);
+        } else {
+            schedule_rebind(conn, true);
+        }
     } else {
         ZITI_LOG(DEBUG, "received msg ct[%x] code[%d] from %s", msg->header.content, code, b->ch->name);
         switch (msg->header.content) {
