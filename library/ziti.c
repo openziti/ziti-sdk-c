@@ -1450,7 +1450,9 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
                      ztx->id, uv_now(ztx->loop));
 
             ztx->tlsCtx->generate_key(&ztx->sessionKey);
-            ztx->tlsCtx->generate_csr_to_pem(ztx->sessionKey, &ztx->sessionCsr, NULL,
+
+            size_t csr_len;
+            ztx->tlsCtx->generate_csr_to_pem(ztx->sessionKey, &ztx->sessionCsr, &csr_len,
                                              "O", "OpenZiti",
                                              "OU", "ziti-sdk",
                                              "CN", common_name,
