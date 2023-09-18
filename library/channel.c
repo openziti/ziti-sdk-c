@@ -849,7 +849,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
         if (ch->ctx->api_session != NULL && ch->ctx->api_session->token != NULL) {
             CH_LOG(DEBUG, "connected");
             tlsuv_stream_t *mbed = (tlsuv_stream_t *) req->handle;
-            tlsuv_stream_read(mbed, channel_alloc_cb, on_channel_data);
+            tlsuv_stream_read_start(mbed, channel_alloc_cb, on_channel_data);
             ch->reconnect_count = 0;
             send_hello(ch, ch->ctx->api_session);
         } else {
