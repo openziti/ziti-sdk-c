@@ -889,7 +889,7 @@ static void api_session_refresh(uv_timer_t *t) {
             struct ziti_init_req *req = calloc(1, sizeof(struct ziti_init_req));
             req->ztx = ztx;
             if (ztx->active_session_request) {
-                ZTX_LOG(WARN, "active refresh request: skipping");
+                ZTX_LOG(DEBUG, "active refresh request: skipping");
             } else {
                 ztx->active_session_request = true;
                 ZTX_LOG(DEBUG, "api_session_refresh refreshing api session by querying controller");
