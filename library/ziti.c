@@ -129,20 +129,15 @@ static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout
     return ZITI_INVALID_CONFIG;
 }
 
-int load_tls(ziti_config *cfg, tls_context **ctx) {
+static int init_tls_from_config(tls_context *tls, ziti_config *cfg) {
     PREP(ziti);
 
-    // load ca from ziti config if present
-    const char *ca;
-    size_t ca_len = parse_ref(cfg->id.ca, &ca);
-    tls_context *tls = default_tls_context(ca, ca_len);
     tlsuv_private_key_t pk;
 
-    if (cfg->id.key == NULL) {
-        TRY(ziti, ("TLS key should be provided", ZITI_INVALID_CONFIG));
-    }
+    TRY(ziti, cfg->id.key == NULL ? ZITI_INVALID_CONFIG : ZITI_OK);
 
     TRY(ziti, load_key_internal(tls, &pk, cfg->id.key));
+
     tls_cert c = NULL;
     if (cfg->id.cert) {
         const char *cert;
@@ -154,9 +149,25 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
     CATCH(ziti) {
         return ERR(ziti);
     }
-
-    *ctx = tls;
     return ZITI_OK;
+}
+
+int load_tls(ziti_config *cfg, tls_context **ctx) {
+
+    // load ca from ziti config if present
+    const char *ca;
+    size_t ca_len = parse_ref(cfg->id.ca, &ca);
+    tls_context *tls = default_tls_context(ca, ca_len);
+
+    int rc = init_tls_from_config(tls, cfg);
+
+    if (rc == ZITI_OK) {
+        *ctx = tls;
+    } else {
+        tls->free_ctx(tls);
+        *ctx = NULL;
+    }
+    return rc;
 }
 
 int ziti_set_client_cert(ziti_context ztx, const char *cert_buf, size_t cert_len, const char *key_buf, size_t key_len) {
@@ -263,6 +274,17 @@ void ziti_set_unauthenticated(ziti_context ztx) {
     free_ziti_api_session(ztx->api_session);
     FREE(ztx->api_session);
     ztx->api_session_state = ZitiApiSessionStateUnauthenticated;
+
+    if (ztx->sessionKey) {
+        init_tls_from_config(ztx->tlsCtx, &ztx->config);
+        if (ztx->sessonCert) {
+            ztx->tlsCtx->free_cert(&ztx->sessonCert);
+            ztx->sessonCert = NULL;
+        }
+
+        ztx->sessionKey->free(ztx->sessionKey);
+        ztx->sessionKey = NULL;
+    }
 
     ziti_ctrl_clear_api_session(&ztx->controller);
 }
