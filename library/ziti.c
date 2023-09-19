@@ -1470,6 +1470,8 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
             ziti_ctrl_current_api_session(&ztx->controller, update_session_data, ztx);
         }
 
+        // disable this until we figure out expiration and rolling requirements
+#if ENABLE_SESSION_CERTIFICATES
         if (ztx->sessionKey == NULL) {
             char common_name[128];
             snprintf(common_name, sizeof(common_name), "%s-%u-%" PRIu64,
@@ -1487,6 +1489,7 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
 
             ziti_ctrl_create_api_certificate(&ztx->controller, ztx->sessionCsr, on_create_cert, ztx);
         }
+#endif
 
 
         ziti_services_refresh(ztx, true);
