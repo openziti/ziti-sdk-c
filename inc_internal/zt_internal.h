@@ -252,6 +252,7 @@ struct ziti_ctx {
     bool enabled;
     int ctrl_status;
 
+    bool active_session_request;
     ziti_api_session *api_session;
     uv_timeval64_t api_session_expires_at;
     ziti_api_session_state api_session_state;

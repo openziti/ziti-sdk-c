@@ -866,8 +866,13 @@ static void api_session_refresh(uv_timer_t *t) {
         if (ztx->api_session_state == ZitiApiSessionStatePartiallyAuthenticated || ztx->api_session_state == ZitiApiSessionStateFullyAuthenticated) {
             struct ziti_init_req *req = calloc(1, sizeof(struct ziti_init_req));
             req->ztx = ztx;
-            ZTX_LOG(DEBUG, "api_session_refresh refreshing api session by querying controller");
-            ziti_ctrl_current_api_session(&ztx->controller, api_session_cb, req);
+            if (ztx->active_session_request) {
+                ZTX_LOG(WARN, "active refresh request: skipping");
+            } else {
+                ztx->active_session_request = true;
+                ZTX_LOG(DEBUG, "api_session_refresh refreshing api session by querying controller");
+                ziti_ctrl_current_api_session(&ztx->controller, api_session_cb, req);
+            }
         } else {
             ZTX_LOG(DEBUG, "api_session_refresh refreshing api session skipped, waiting for api session state change");
         }
@@ -1541,6 +1546,7 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
     struct ziti_init_req *init_req = ctx;
     ziti_context ztx = init_req->ztx;
     ztx->loop_thread = uv_thread_self();
+    ztx->active_session_request = false;
 
     int errCode = err ? err->err : ZITI_OK;
 
