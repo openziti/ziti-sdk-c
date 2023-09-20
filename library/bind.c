@@ -454,17 +454,22 @@ void on_unbind(void *ctx, message *m, int code) {
     struct binding_s *b = ctx;
     struct ziti_conn *conn = b->conn;
 
-    CONN_LOG(TRACE, "binding[%s] unbind resp: ct[%X] %.*s", b->ch->url, m->header.content, m->header.body_len, m->body);
-    int32_t conn_id = htole32(b->conn->conn_id);
-    hdr_t headers[] = {
-            {
-                    .header_id = ConnIdHeader,
-                    .length = sizeof(conn_id),
-                    .value = (uint8_t *) &conn_id
-            },
-    };
-    ziti_channel_send(b->ch, ContentTypeStateClosed, headers, 1, NULL, 0, NULL);
-    remove_binding(ctx);
+    if (m) {
+        CONN_LOG(TRACE, "binding[%s] unbind resp: ct[%X] %.*s",
+                 b->ch->url, m->header.content, m->header.body_len, m->body);
+        int32_t conn_id = htole32(b->conn->conn_id);
+        hdr_t headers[] = {
+                {
+                        .header_id = ConnIdHeader,
+                        .length = sizeof(conn_id),
+                        .value = (uint8_t *) &conn_id
+                },
+        };
+        ziti_channel_send(b->ch, ContentTypeStateClosed, headers, 1, NULL, 0, NULL);
+    } else {
+        CONN_LOG(TRACE, "failed to receive unbind response because channel was disconnected: %d/%s", code, ziti_errorstr(code));
+    }
+    remove_binding(b);
 }
 
 static void stop_binding(struct binding_s *b) {
