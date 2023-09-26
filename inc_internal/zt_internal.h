@@ -245,7 +245,7 @@ struct ziti_ctx {
 
     tlsuv_private_key_t sessionKey;
     char *sessionCsr;
-    tls_cert sessonCert;
+    tls_cert sessionCert;
     tls_context *tlsCtx;
 
     bool closing;
