@@ -19,11 +19,16 @@
 
 #if _WIN32
 #include <stdint.h>
+#include <lmwksta.h>
+#include <LMAPIbuf.h>
+#pragma comment(lib, "netapi32.lib")
+
 typedef uint32_t in_addr_t;
 #define strcasecmp stricmp
 #else
 
 #include <arpa/inet.h>
+#include <unistd.h>
 
 #endif
 
@@ -164,6 +169,47 @@ int ziti_service_get_config(ziti_service *service, const char *cfg_type, void *c
     };
 
     return ZITI_OK;
+}
+
+static uv_once_t info_once;
+static ziti_env_info s_info;
+static void ziti_info_init() {
+    static uv_utsname_t os_info;
+    static char s_hostname[UV_MAXHOSTNAMESIZE];
+    static char s_domain[UV_MAXHOSTNAMESIZE];
+
+    uv_os_uname(&os_info);
+    s_info.os = os_info.sysname;
+    s_info.os_release = os_info.release;
+    s_info.os_version = os_info.version;
+    s_info.arch = os_info.machine;
+    size_t len = sizeof(s_hostname);
+    uv_os_gethostname(s_hostname, &len);
+#if _WIN32
+    DWORD domain_len = sizeof(s_domain);
+    DWORD rc = 0;
+    rc = GetComputerNameExA(ComputerNameDnsDomain, s_domain, &domain_len);
+
+    if (domain_len == 0) {
+        WKSTA_INFO_100 *info;
+        rc = NetWkstaGetInfo(NULL, 100, (LPBYTE *) &info);
+        if (rc == 0) {
+            wsprintfA(s_domain, "%ls", info->wki100_langroup);
+        }
+        NetApiBufferFree(info);
+    }
+#else
+    len = sizeof(s_domain);
+    getdomainname(s_domain, len);
+#endif
+
+    s_info.hostname = s_hostname;
+    s_info.domain = s_domain;
+}
+
+const ziti_env_info* get_env_info() {
+    uv_once(&info_once, ziti_info_init);
+    return &s_info;
 }
 
 static int cmp_ziti_address0(ziti_address *lh, ziti_address *rh) {

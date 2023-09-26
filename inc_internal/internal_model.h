@@ -90,11 +90,13 @@ XX(app_version, string, none, appVersion, __VA_ARGS__)
 XX(os, string, none, os, __VA_ARGS__) \
 XX(os_release, string, none, osRelease, __VA_ARGS__) \
 XX(os_version, string, none, osVersion, __VA_ARGS__) \
-XX(arch, string, none, arch, __VA_ARGS__)
+XX(arch, string, none, arch, __VA_ARGS__)            \
+XX(hostname, string, none, hostname, __VA_ARGS__)    \
+XX(domain, string, none, domain, __VA_ARGS__)
 
 #define ZITI_AUTH_REQ(XX, ...) \
 XX(sdk_info, ziti_sdk_info, none, sdkInfo, __VA_ARGS__) \
-XX(env_info, ziti_env_info, none, envInfo, __VA_ARGS__) \
+XX(env_info, ziti_env_info, ptr, envInfo, __VA_ARGS__) \
 XX(config_types, string, list, configTypes, __VA_ARGS__)
 
 #define ZITI_ENROLLMENT_RESP(XX, ...) \
