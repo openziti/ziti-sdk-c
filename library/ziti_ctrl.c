@@ -454,9 +454,6 @@ void ziti_ctrl_login(
         void(*cb)(ziti_api_session *, const ziti_error *, void *),
         void *ctx) {
 
-    uv_utsname_t osInfo;
-    uv_os_uname(&osInfo);
-
     ziti_auth_req authreq = {
             .sdk_info = {
                     .type = "ziti-sdk-c",
@@ -466,12 +463,7 @@ void ziti_ctrl_login(
                     .app_id = (char *) APP_ID,
                     .app_version = (char *) APP_VERSION,
             },
-            .env_info = {
-                    .os = osInfo.sysname,
-                    .os_release = osInfo.release,
-                    .os_version = osInfo.version,
-                    .arch = osInfo.machine,
-            },
+            .env_info = (ziti_env_info *)get_env_info(),
             .config_types = {0}
     };
     if (cfg_types) {
