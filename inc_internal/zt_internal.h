@@ -386,6 +386,8 @@ extern void ziti_send_event(ziti_context ztx, const ziti_event_t *e);
 
 void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, int32_t req_id, const char *reason);
 
+const ziti_env_info* get_env_info();
+
 extern uv_timer_t *new_ztx_timer(ziti_context ztx);
 
 #ifdef __cplusplus

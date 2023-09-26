@@ -15,6 +15,8 @@
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/matchers/catch_matchers_string.hpp"
 #include "utils.h"
+#include "internal_model.h"
+#include "zt_internal.h"
 
 #if _WIN32
 #include <io.h>
@@ -79,4 +81,11 @@ TEST_CASE("read_file_stdin", "[util]") {
 
     free(content);
     uv_fs_req_cleanup(&req);
+}
+
+TEST_CASE("check hostname/domainname") {
+
+    const ziti_env_info *info = get_env_info();
+    printf("hostname = %s\n", info->hostname);
+    printf("domain = %s\n", info->domain);
 }
