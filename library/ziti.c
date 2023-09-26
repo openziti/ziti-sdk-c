@@ -211,7 +211,7 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
         options->controller = strdup(ctx->config.controller_url);
     }
 
-    if (strncmp(ctx->config.id.ca, "file://", strlen("file://")) == 0) {
+    if (ctx->config.id.ca && strncmp(ctx->config.id.ca, "file://", strlen("file://")) == 0) {
         struct tlsuv_url_s url;
         TRY(ziti, tlsuv_parse_url(&url, ctx->config.id.ca));
 
@@ -277,9 +277,9 @@ void ziti_set_unauthenticated(ziti_context ztx) {
 
     if (ztx->sessionKey) {
         init_tls_from_config(ztx->tlsCtx, &ztx->config);
-        if (ztx->sessonCert) {
-            ztx->tlsCtx->free_cert(&ztx->sessonCert);
-            ztx->sessonCert = NULL;
+        if (ztx->sessionCert) {
+            ztx->tlsCtx->free_cert(&ztx->sessionCert);
+            ztx->sessionCert = NULL;
         }
 
         ztx->sessionKey->free(ztx->sessionKey);
@@ -1385,15 +1385,15 @@ static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e,
         ZTX_LOG(DEBUG, "received API session certificate");
         ZTX_LOG(VERBOSE, "cert => %s", resp->client_cert_pem);
 
-        if (ztx->sessonCert) {
-            ztx->tlsCtx->free_cert(&ztx->sessonCert);
+        if (ztx->sessionCert) {
+            ztx->tlsCtx->free_cert(&ztx->sessionCert);
         }
 
-        if (ztx->tlsCtx->load_cert(&ztx->sessonCert, resp->client_cert_pem, strlen(resp->client_cert_pem)) != 0) {
+        if (ztx->tlsCtx->load_cert(&ztx->sessionCert, resp->client_cert_pem, strlen(resp->client_cert_pem)) != 0) {
             ZTX_LOG(ERROR, "failed to parse supplied session cert");
         }
 
-        int rc = ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->sessionKey, ztx->sessonCert);
+        int rc = ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->sessionKey, ztx->sessionCert);
         if (rc != 0) {
             ZTX_LOG(ERROR, "failed to set session cert: %d", rc);
         }
@@ -1419,7 +1419,7 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
             goto error;
         }
 
-        if (strcmp(new_pem, ztx->config.id.ca) != 0) {
+        if (ztx->config.id.ca && strcmp(new_pem, ztx->config.id.ca) != 0) {
             char *old_ca = ztx->config.id.ca;
             ztx->config.id.ca = new_pem;
 
