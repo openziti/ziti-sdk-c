@@ -1805,9 +1805,15 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
 
     ziti_context ctx = calloc(1, sizeof(*ctx));
 
-    if (strncmp(config->id.ca, "file://", strlen("file://")) == 0) {
+    char *cfg_ca = config->id.ca;
+    if (cfg_ca == NULL) {
+        ZITI_LOG(WARN, "config is missing CA bundle");
+        cfg_ca = "";
+    }
+
+    if (strncmp(cfg_ca, "file://", strlen("file://")) == 0) {
         struct tlsuv_url_s url;
-        if (tlsuv_parse_url(&url, config->id.ca) != 0) {
+        if (tlsuv_parse_url(&url, cfg_ca) != 0) {
             ZITI_LOG(ERROR, "invalid CA bundle reference[]");
             return ZITI_INVALID_CONFIG;
         }
@@ -1820,7 +1826,7 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
             ctx->config.id.ca = ca;
         }
     } else {
-        ctx->config.id.ca = strdup(config->id.ca);
+        ctx->config.id.ca = strdup(cfg_ca);
     }
 
     ctx->config.controller_url = strdup(config->controller_url);

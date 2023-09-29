@@ -41,7 +41,7 @@ static int load_config_file(const char *filename, ziti_config *cfg) {
         free(config);
         return ZITI_INVALID_CONFIG;
     }
-    cfg->cfg_source = realpath(filename, NULL);
+    cfg->cfg_source = strdup(filename);
     free(config);
     return ZITI_OK;
 }
