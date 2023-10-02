@@ -39,7 +39,7 @@
 #endif
 #endif
 
-#define ztx_controller(ztx) ((ztx)->controller.url ? (ztx)->controller.url : (ztx)->opts->controller)
+#define ztx_controller(ztx) ((ztx)->controller.url ? (ztx)->controller.url : (ztx)->config.controller_url)
 
 static const char *ALL_CONFIG_TYPES[] = {
         "all",
@@ -85,6 +85,16 @@ static void api_session_refresh(uv_timer_t *t);
 static void shutdown_and_free(ziti_context ztx);
 
 static uint32_t ztx_seq;
+
+static const char *all_configs[] = { "all", NULL };
+
+static ziti_options default_options = {
+        .disabled = false,
+        .config_types = all_configs,
+        .refresh_interval = 0,
+        .router_keepalive = 15,
+        .api_page_size = 25,
+};
 
 static size_t parse_ref(const char *val, const char **res) {
     size_t len = 0;
@@ -196,19 +206,14 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
     ziti_context ctx = NULL;
     PREPF(ziti, ziti_errorstr);
 
-    if (options->config == NULL && (options->controller == NULL || options->tls == NULL)) {
+    if (options->config == NULL) {
         ZITI_LOG(ERROR, "config or controller/tls has to be set");
         return ZITI_INVALID_CONFIG;
     }
     ctx = calloc(1, sizeof(*ctx));
 
     if (options->config != NULL) {
-        TRY(ziti, load_config(options->config, &ctx->config));
-    }
-
-    if (options->controller == NULL) {
-        TRY(ziti, (ctx->config.controller_url == NULL ? ZITI_INVALID_CONFIG : ZITI_OK));
-        options->controller = strdup(ctx->config.controller_url);
+        TRY(ziti, ziti_load_config(&ctx->config, options->config));
     }
 
     if (ctx->config.id.ca && strncmp(ctx->config.id.ca, "file://", strlen("file://")) == 0) {
@@ -224,12 +229,10 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
         }
     }
 
-    tls_context *tls = options->tls;
-    if (tls == NULL) {
-        TRY(ziti, load_tls(&ctx->config, &tls));
-    }
+    tls_context *tls = NULL;
+    TRY(ziti, load_tls(&ctx->config, &tls));
 
-    ctx->opts = options;
+    ctx->opts = *options;
     ctx->tlsCtx = tls;
     ctx->loop = loop;
     ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
@@ -442,15 +445,6 @@ static void ziti_init_async(ziti_context ztx, void *data) {
 	     .type = ZitiContextEvent,
     };
 
-    uv_timeval64_t start_time;
-    uv_gettimeofday(&start_time);
-
-    char time_str[32];
-    ziti_fmt_time(time_str, sizeof(time_str), &start_time);
-
-    ZTX_LOG(INFO, "Ziti C SDK version %s @%s(%s) starting at (%s.%03d)",
-            ziti_get_build_version(false), ziti_git_commit(), ziti_git_branch(),
-            time_str, start_time.tv_usec / 1000);
     ZTX_LOG(INFO, "using tlsuv[%s], tls[%s]", tlsuv_version(),
             ztx->tlsCtx->version ? ztx->tlsCtx->version() : "unspecified");
     ZTX_LOG(INFO, "Loading ziti context with controller[%s]", ztx_controller(ztx));
@@ -463,8 +457,8 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     }
 
     ziti_ctrl_set_redirect_cb(&ztx->controller, on_ctrl_change, ztx);
-    if (ztx->opts->api_page_size != 0) {
-        ziti_ctrl_set_page_size(&ztx->controller, ztx->opts->api_page_size);
+    if (ztx->opts.api_page_size != 0) {
+        ziti_ctrl_set_page_size(&ztx->controller, ztx->opts.api_page_size);
     }
 
     ztx->api_session_timer = new_ztx_timer(ztx);
@@ -475,9 +469,9 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ztx->reaper->data = ztx;
     uv_unref((uv_handle_t *) ztx->reaper);
 
-    ZTX_LOG(DEBUG, "using metrics interval: %d", (int) ztx->opts->metrics_type);
-    metrics_rate_init(&ztx->up_rate, ztx->opts->metrics_type);
-    metrics_rate_init(&ztx->down_rate, ztx->opts->metrics_type);
+    ZTX_LOG(DEBUG, "using metrics interval: %d", (int) ztx->opts.metrics_type);
+    metrics_rate_init(&ztx->up_rate, ztx->opts.metrics_type);
+    metrics_rate_init(&ztx->down_rate, ztx->opts.metrics_type);
 
     if (init_req->start) {
         ziti_start_internal(ztx, NULL);
@@ -490,18 +484,31 @@ static void ziti_init_async(ziti_context ztx, void *data) {
 
 int ziti_init(const char *config, uv_loop_t *loop, ziti_event_cb event_cb, int events, void *app_ctx) {
 
-    NEWP(opts, ziti_options);
-    opts->config = config;
-    opts->events = events;
-    opts->event_cb = event_cb;
-    opts->app_ctx = app_ctx;
-    opts->config_types = ALL_CONFIG_TYPES;
+    ziti_config cfg = {0};
+    PREPF(ziti, ziti_errorstr);
+    TRY(ziti, ziti_load_config(&cfg, config));
 
-    return ziti_init_opts(opts, loop);
+    ziti_context ztx;
+    ziti_options opts = {
+            .config = config,
+            .events = events,
+            .event_cb = event_cb,
+            .app_ctx = app_ctx,
+            .config_types = ALL_CONFIG_TYPES,
+    };
+
+    TRY(ziti, ziti_context_init(&ztx, &cfg));
+    TRY(ziti, ziti_context_set_options(ztx, &opts));
+    TRY(ziti, ziti_context_run(ztx, loop));
+
+    CATCH(ziti) {}
+    free_ziti_config(&cfg);
+
+    return ERR(ziti);
 }
 
 extern void *ziti_app_ctx(ziti_context ztx) {
-    return ztx->opts->app_ctx;
+    return ztx->opts.app_ctx;
 }
 
 const char *ziti_get_controller(ziti_context ztx) {
@@ -542,10 +549,8 @@ static void free_ztx(uv_handle_t *h) {
     ziti_context ztx = h->data;
 
     ziti_ctrl_close(&ztx->controller);
+    ztx->tlsCtx->free_ctx(ztx->tlsCtx);
 
-    if (ztx->tlsCtx != ztx->opts->tls) {
-        ztx->tlsCtx->free_ctx(ztx->tlsCtx);
-    }
     ziti_auth_query_free(ztx->auth_queries);
     ziti_posture_checks_free(ztx->posture_checks);
     model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
@@ -618,11 +623,11 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     printer(ctx, "\n=================\nZiti Context:\n");
     printer(ctx, "ID:\t%d\n", ztx->id);
     printer(ctx, "Enabled:\t%s\n", ziti_is_enabled(ztx) ? "true" : "false");
-    printer(ctx, "Config:\t%s\n", ztx->opts->config);
+    printer(ctx, "Config:\t%s\n", ztx->opts.config);
     printer(ctx, "Controller:\t%s\n", ztx_controller(ztx));
     printer(ctx, "Config types:\n");
-    for (int i = 0; ztx->opts->config_types && ztx->opts->config_types[i]; i++) {
-        printer(ctx, "\t%s\n", ztx->opts->config_types[i]);
+    for (int i = 0; ztx->opts.config_types && ztx->opts.config_types[i]; i++) {
+        printer(ctx, "\t%s\n", ztx->opts.config_types[i]);
     }
     printer(ctx, "Identity:\t");
     if (ztx->identity_data) {
@@ -757,8 +762,8 @@ const char *ziti_conn_source_identity(ziti_connection conn) {
 
 
 void ziti_send_event(ziti_context ztx, const ziti_event_t *e) {
-    if ((ztx->opts->events & e->type) && ztx->opts->event_cb) {
-        ztx->opts->event_cb(ztx, e);
+    if ((ztx->opts.events & e->type) && ztx->opts.event_cb) {
+        ztx->opts.event_cb(ztx, e);
     }
 }
 
@@ -939,8 +944,8 @@ void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const 
     model_list_append(&cfgs, ZITI_INTERCEPT_CFG_V1);
     model_list_append(&cfgs, ZITI_CLIENT_CFG_V1);
 
-    for (int i = 0; ztx->opts->config_types && ztx->opts->config_types[i]; i++) {
-        model_list_append(&cfgs, (void *) ztx->opts->config_types[i]);
+    for (int i = 0; ztx->opts.config_types && ztx->opts.config_types[i]; i++) {
+        model_list_append(&cfgs, (void *) ztx->opts.config_types[i]);
     }
 
     ziti_ctrl_login(&ztx->controller, &cfgs, cb, ctx);
@@ -1279,13 +1284,13 @@ static void refresh_cb(uv_timer_t *t) {
 }
 
 void ziti_services_refresh(ziti_context ztx, bool now) {
-    if (now || ztx->opts->refresh_interval > 0) {
+    if (now || ztx->opts.refresh_interval > 0) {
         if (now) {
             ZTX_LOG(VERBOSE, "forcing service refresh");
         } else {
-            ZTX_LOG(VERBOSE, "scheduling service refresh %ld seconds from now", ztx->opts->refresh_interval);
+            ZTX_LOG(VERBOSE, "scheduling service refresh %ld seconds from now", ztx->opts.refresh_interval);
         }
-        uint64_t timeout = now ? 0 : (ztx->opts->refresh_interval * 1000);
+        uint64_t timeout = now ? 0 : (ztx->opts.refresh_interval * 1000);
         uv_timer_start(ztx->service_refresh_timer, refresh_cb, timeout, 0);
     }
 }
@@ -1600,7 +1605,7 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
                 // notify service removal, and state
                 ziti_set_impossible_to_authenticate(ztx);
 
-                ZTX_LOG(ERROR, "identity[%s] cannot authenticate with ctrl[%s]", ztx->opts->config,
+                ZTX_LOG(ERROR, "identity[%s] cannot authenticate with ctrl[%s]", ztx->config.cfg_source,
                         ztx_controller(ztx));
                 ziti_event_t service_event = {
                         .type = ZitiServiceEvent,
@@ -1699,7 +1704,7 @@ void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const 
 static const ziti_version sdk_version = {
         .version = to_str(ZITI_VERSION),
         .revision = to_str(ZITI_COMMIT),
-        .build_date = to_str(BUILD_DATE)
+        .build_date = __DATE__ " " __TIME__,
 };
 
 const ziti_version *ziti_get_version() {
@@ -1782,4 +1787,100 @@ void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data) {
     uv_mutex_unlock(&ztx->w_lock);
 
     uv_async_send(&ztx->w_async);
+}
+
+int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
+    if (config == NULL || config->controller_url == NULL) {
+        ZITI_LOG(ERROR, "config or controller/tls has to be set");
+        return ZITI_INVALID_CONFIG;
+    }
+
+    ziti_context ctx = calloc(1, sizeof(*ctx));
+
+    char *cfg_ca = config->id.ca;
+    if (cfg_ca == NULL) {
+        ZITI_LOG(WARN, "config is missing CA bundle");
+        cfg_ca = "";
+    }
+
+    if (strncmp(cfg_ca, "file://", strlen("file://")) == 0) {
+        struct tlsuv_url_s url;
+        if (tlsuv_parse_url(&url, cfg_ca) != 0) {
+            ZITI_LOG(ERROR, "invalid CA bundle reference[]");
+            return ZITI_INVALID_CONFIG;
+        }
+
+        char *ca = NULL;
+        size_t ca_len;
+        int rc = load_file(url.path, url.path_len, &ca, &ca_len);
+        if (rc == 0) {
+            FREE(ctx->config.id.ca);
+            ctx->config.id.ca = ca;
+        }
+    } else {
+        ctx->config.id.ca = strdup(cfg_ca);
+    }
+
+    ctx->config.controller_url = strdup(config->controller_url);
+    if (config->id.key) ctx->config.id.key = strdup(config->id.key);
+    if (config->id.cert) ctx->config.id.cert = strdup(config->id.cert);
+
+    ctx->opts = default_options;
+
+    *ztx = ctx;
+    return ZITI_OK;
+}
+
+
+int ziti_context_set_options(ziti_context ztx, const ziti_options *options) {
+    if (options == NULL) {
+        ztx->opts = default_options;
+    } else {
+#define copy_opt(f) if (options->f != 0) ztx->opts.f = options->f
+
+        copy_opt(config_types);
+        copy_opt(refresh_interval);
+        copy_opt(api_page_size);
+        copy_opt(event_cb);
+        copy_opt(events);
+        copy_opt(app_ctx);
+        copy_opt(router_keepalive);
+        copy_opt(pq_domain_cb);
+        copy_opt(pq_mac_cb);
+        copy_opt(pq_os_cb);
+        copy_opt(pq_process_cb);
+
+#undef copy_opt
+    }
+    return ZITI_OK;
+}
+
+int ziti_context_run(ziti_context ztx, uv_loop_t *loop) {
+    if (ztx->loop) {
+        return ZITI_INVALID_STATE;
+    }
+    PREPF(ziti, ziti_errorstr);
+
+    tls_context *tls = NULL;
+    TRY(ziti, load_tls(&ztx->config, &tls));
+
+    ztx->tlsCtx = tls;
+    ztx->loop = loop;
+    ztx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
+    ztx->ctrl_status = ZITI_WTF;
+
+    STAILQ_INIT(&ztx->w_queue);
+    uv_async_init(loop, &ztx->w_async, ztx_work_async);
+    ztx->w_async.data = ztx;
+    uv_mutex_init(&ztx->w_lock);
+
+    NEWP(init_req, struct ziti_init_req);
+    init_req->start = !ztx->opts.disabled;
+    ziti_queue_work(ztx, ziti_init_async, init_req);
+
+    CATCH(ziti) {
+        return ERR(ziti);
+    }
+
+    return ZITI_OK;
 }

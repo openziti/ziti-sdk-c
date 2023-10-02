@@ -1,21 +1,20 @@
-/*
-Copyright (c) 2021 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2021-2023.  NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <ziti/ziti.h>
 #include <string.h>
+#include "ziti/ziti_log.h"
 
 struct app_ctx {
     uv_loop_t *loop;
@@ -47,21 +46,32 @@ static void bind_service(struct app_ctx *app, ziti_context ztx, ziti_service *s,
 
 int main(int argc, char *argv[]) {
     uv_loop_t *loop = uv_default_loop();
+    ziti_log_init(loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 
     struct app_ctx ctx = {
             .loop = loop,
     };
 
-    ziti_options ziti_opts = {
+    ziti_config cfg;
+    ziti_context ztx = NULL;
+
+#define check(op) do{ \
+int err = (op); if (err != ZITI_OK) { \
+fprintf(stderr, "ERROR: %s", ziti_errorstr(err)); \
+exit(err);\
+}}while(0)
+
+    check(ziti_load_config(&cfg, argv[1]));
+    check(ziti_context_init(&ztx, &cfg));
+    check(ziti_context_set_options(ztx, &(ziti_options){
             .app_ctx = &ctx,
             .refresh_interval = 60,
             .config_types = config_types,
-            .config = argv[1],
             .event_cb = on_ziti_event,
             .events = ZitiContextEvent | ZitiServiceEvent,
-    };
+    }));
 
-    ziti_init_opts(&ziti_opts, loop);
+    ziti_context_run(ztx, loop);
 
     uv_run(loop, UV_RUN_DEFAULT);
 }
@@ -116,7 +126,7 @@ static void ziti_proxy_close_cb(ziti_connection c) {
     uv_close((uv_handle_t *) &hc->tcp, on_tcp_close);
 }
 
-static ssize_t on_ziti_data(ziti_connection c, uint8_t *b, ssize_t len) {
+static ssize_t on_ziti_data(ziti_connection c, const uint8_t *b, ssize_t len) {
     host_connection *hc = ziti_conn_data(c);
 
     if (len > 0) {
@@ -128,12 +138,10 @@ static ssize_t on_ziti_data(ziti_connection c, uint8_t *b, ssize_t len) {
 
         wr->data = copy;
         uv_write(wr, (uv_stream_t *) &hc->tcp, &buf, 1, on_tcp_write);
-    }
-    else if (len == ZITI_EOF) {
+    } else if (len == ZITI_EOF) {
         uv_shutdown_t *sr = calloc(1, sizeof(uv_shutdown_t));
         uv_shutdown(sr, (uv_stream_t *) &hc->tcp, on_tcp_shutdown);
-    }
-    else {
+    } else {
         uv_read_stop((uv_stream_t *) &hc->tcp);
         ziti_close(hc->ziti_conn, ziti_proxy_close_cb);
     }
@@ -144,8 +152,7 @@ static void alloc_cb(uv_handle_t *h, size_t len, uv_buf_t *b) {
     b->base = malloc(len);
     if (b->base) {
         b->len = len;
-    }
-    else {
+    } else {
         b->len = 0;
     }
 }
@@ -164,12 +171,10 @@ static void on_tcp_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
     host_connection *hc = s->data;
     if (len > 0) {
         ziti_write(hc->ziti_conn, (uint8_t *) buf->base, len, on_ziti_write, buf->base);
-    }
-    else {
+    } else {
         if (len == UV_EOF) {
             ziti_close_write(hc->ziti_conn);
-        }
-        else {
+        } else {
             printf("tcp peer closed: %s\n", uv_strerror(len));
             ziti_close(hc->ziti_conn, ziti_proxy_close_cb);
         }
@@ -200,8 +205,7 @@ static void listen_cb(ziti_connection server, int status) {
     host_binding *b = ziti_conn_data(server);
     if (status == ZITI_OK) {
         printf("successfully bound to service[%s]\n", b->service_name);
-    }
-    else {
+    } else {
         fprintf(stderr, "failed to bind to service[%s]\n", b->service_name);
         // TODO close/retry?
     }

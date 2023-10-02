@@ -60,6 +60,8 @@ extern const char *ziti_git_commit();
 
 extern void hexDump(char *desc, void *addr, int len);
 
+void ziti_fmt_time(char *time_str, size_t time_str_len, uv_timeval64_t *tv);
+
 int lt_zero(int v);
 
 typedef const char *(*fmt_error_t)(int);

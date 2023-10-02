@@ -572,6 +572,7 @@ void run(int argc, char **argv) {
     uv_loop_init(loop);
     global_loop = loop;
 
+    ziti_log_init(global_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
 
     for (int i = 0; i < argc; i++) {
 
@@ -590,18 +591,23 @@ void run(int argc, char **argv) {
         model_map_set(&app_ctx.listeners, service_name, l);
     }
 
+    ziti_config cfg;
+    ziti_context ztx;
+
+    ziti_load_config(&cfg, config);
+    ziti_context_init(&ztx, &cfg);
+
     ziti_options opts = {
-            .config = config,
             .events = -1,
             .event_cb = on_ziti_event,
             .refresh_interval = 60,
-            .router_keepalive = 10,
             .app_ctx = &app_ctx,
             .config_types = my_configs,
             .metrics_type = INSTANT,
     };
+    ziti_context_set_options(ztx, &opts);
 
-    ziti_init_opts(&opts, loop);
+    ziti_context_run(ztx, loop);
 
 
 #if __unix__ || __unix

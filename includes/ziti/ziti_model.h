@@ -50,7 +50,8 @@ XX(ca, string, none, ca, __VA_ARGS__)
 
 #define ZITI_CONFIG_MODEL(XX, ...) \
 XX(controller_url, string, none, ztAPI, __VA_ARGS__) \
-XX(id, ziti_id_cfg, none, id, __VA_ARGS__)
+XX(id, ziti_id_cfg, none, id, __VA_ARGS__)           \
+XX(cfg_source, string, none, , __VA_ARGS__)
 
 #define ZITI_API_PATH_MODEL(XX, ...) \
 XX(path, string, none, path, __VA_ARGS__)

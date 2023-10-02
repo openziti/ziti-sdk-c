@@ -1,4 +1,4 @@
-// Copyright (c) 2022.  NetFoundry Inc.
+// Copyright (c) 2022-2023.  NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ TEST_CASE("httpbin.ziti:ziti_src", "[integ]") {
 
     source_test test;
     test.loop = uv_loop_new();
+
     int rc = ziti_init(cfg, test.loop, [](ziti_context ztx, const ziti_event_t *ev){
         auto t = (source_test*)ziti_app_ctx(ztx);
         switch (ev->type) {

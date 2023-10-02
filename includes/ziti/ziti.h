@@ -224,9 +224,7 @@ typedef void (*ziti_event_cb)(ziti_context ztx, const ziti_event_t *event);
  * @see ziti_init_opts()
  */
 typedef struct ziti_options_s {
-    const char *config;
-    const char *controller;
-    tls_context *tls;
+    ZITI_DEPRECATED("ignored, will be removed") const char *config;
 
     bool disabled; // if true initial state will be disabled
     const char **config_types;
@@ -422,6 +420,18 @@ extern int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb e
 ZITI_FUNC
 extern void ziti_set_app_info(const char *app_id, const char *app_version);
 
+ZITI_FUNC
+extern int ziti_load_config(ziti_config *config, const char* path);
+
+ZITI_FUNC
+extern int ziti_context_init(ziti_context *ztx, const ziti_config *config);
+
+ZITI_FUNC
+extern int ziti_context_set_options(ziti_context ztx, const ziti_options *options);
+
+ZITI_FUNC
+extern int ziti_context_run(ziti_context ztx, uv_loop_t *loop);
+
 /**
  * @brief Initializes a Ziti Edge identity.
  * 
@@ -441,8 +451,9 @@ extern void ziti_set_app_info(const char *app_id, const char *app_version);
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  *
  * @see ziti_init_opts()
- * @deprecated
+ * @deprecated use #ziti_config_from_file,#ziti_context_init,#ziti_context_run sequence
  */
+ZITI_DEPRECATED("use ziti_config_from_file,ziti_context_init,ziti_context_run sequence")
 ZITI_FUNC
 extern int ziti_init(const char *config, uv_loop_t *loop, ziti_event_cb evnt_cb, int events, void *app_ctx);
 
@@ -460,6 +471,7 @@ extern int ziti_init(const char *config, uv_loop_t *loop, ziti_event_cb evnt_cb,
  *
  * @see ziti_init()
  */
+ZITI_DEPRECATED("use ziti_config_from_file,ziti_context_init,ziti_context_set_options,ziti_context_run sequence")
 ZITI_FUNC
 extern int ziti_init_opts(ziti_options *options, uv_loop_t *loop);
 

@@ -27,15 +27,25 @@ int main(int argc, char *argv[]) {
     const char *ws_service = argv[2];
 
     uv_loop_t *l = uv_loop_new();
+    ziti_config cfg;
+    ziti_context ztx = NULL;
 
-    ziti_options opts = {
-            .config = config,
-            .router_keepalive = 15,
+    ziti_log_init(l, ZITI_LOG_DEFAULT_LEVEL, NULL);
+
+#define check(op) do{ \
+int err = (op); if (err != ZITI_OK) { \
+fprintf(stderr, "ERROR: %s", ziti_errorstr(err)); \
+exit(err);\
+}}while(0)
+
+    check(ziti_load_config(&cfg, argv[1]));
+    check(ziti_context_init(&ztx, &cfg));
+    check(ziti_context_set_options(ztx, &(ziti_options){
             .event_cb = init_cb,
             .events = ZitiContextEvent,
-            .app_ctx = ws_service,
-    };
-    ziti_init_opts(&opts, l);
+    }));
+
+    ziti_context_run(ztx, l);
 
     uv_run(l, UV_RUN_DEFAULT);
 

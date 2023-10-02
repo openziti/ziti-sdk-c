@@ -238,8 +238,8 @@ struct ztx_work_s {
 typedef STAILQ_HEAD(work_q, ztx_work_s) ztx_work_q;
 
 struct ziti_ctx {
-    ziti_options *opts;
     ziti_config config;
+    ziti_options opts;
     ziti_controller controller;
     uint32_t id;
 
@@ -346,8 +346,6 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
 
 void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter);
 
-int load_config(const char *cfgstr, ziti_config *cfg);
-
 int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **, ziti_enrollment_jwt **);
 
 int load_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **zejh, ziti_enrollment_jwt **zej);
@@ -366,7 +364,6 @@ const char *ziti_conn_state(ziti_connection conn);
 
 int establish_crypto(ziti_connection conn, message *msg);
 
-void ziti_fmt_time(char *time_str, size_t time_str_len, uv_timeval64_t *tv);
 
 void hexify(const uint8_t *bin, size_t bin_len, char sep, char **buf);
 
