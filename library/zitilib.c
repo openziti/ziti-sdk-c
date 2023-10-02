@@ -300,27 +300,45 @@ static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
     }
 
     ZITI_LOG(DEBUG, "loading identity from %s", (char *) arg);
+    ziti_config cfg = {0};
+    ziti_context ztx = NULL;
+
+    rc = ziti_load_config(&cfg, (const char*)arg);
+    if (rc != ZITI_OK) goto error;
+
+    rc = ziti_context_init(&ztx, &cfg);
+    if (rc != ZITI_OK) goto error;
+
     wrap = calloc(1, sizeof(struct ztx_wrap));
-    wrap->opts.app_ctx = wrap;
-    wrap->opts.config = strdup(arg);
-    wrap->opts.event_cb = on_ctx_event;
-    wrap->opts.events = ZitiContextEvent | ZitiServiceEvent;
-    wrap->opts.refresh_interval = 60;
-    wrap->opts.config_types = configs;
+    rc = ziti_context_set_options(ztx, &(ziti_options){
+            .app_ctx = wrap,
+            .event_cb = on_ctx_event,
+            .events = ZitiContextEvent | ZitiServiceEvent,
+            .refresh_interval = 60,
+            .config_types = configs,
+    });
+    if (rc != ZITI_OK) goto error;
+
     wrap->services_loaded = new_future();
     TAILQ_INIT(&wrap->futures);
     if (f) {
         TAILQ_INSERT_TAIL(&wrap->futures, f, _next);
     }
+    rc = ziti_context_run(ztx, l);
+    if (rc != ZITI_OK) goto error;
 
-    rc = ziti_init_opts(&wrap->opts, l);
+    model_map_set(&ziti_contexts, arg, wrap);
+
+error:
+
+    free_ziti_config(&cfg);
+
     if (rc != ZITI_OK) {
         fail_future(f, rc);
         ZITI_LOG(WARN, "fail to load identity file[%s]: %d/%s", (const char *) arg, rc, ziti_errorstr(rc));
         free(wrap);
         return;
     }
-    model_map_set(&ziti_contexts, arg, wrap);
 
 }
 

@@ -92,6 +92,7 @@ static ziti_options default_options = {
         .disabled = false,
         .config_types = all_configs,
         .refresh_interval = 0,
+        .router_keepalive = 15,
         .api_page_size = 25,
 };
 
