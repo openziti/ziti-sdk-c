@@ -260,6 +260,7 @@ struct ziti_ctx {
     uv_timeval64_t session_received_at;
     ziti_identity_data *identity_data;
 
+    bool services_loaded;
     // map<name,ziti_service>
     model_map services;
     // map<service_id,ziti_net_session>

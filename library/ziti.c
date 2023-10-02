@@ -787,16 +787,16 @@ static void set_service_flags(ziti_service *s) {
 
 static void service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
     struct service_req_s *req = ctx;
-    int rc = err ? err->err : ZITI_OK;
+    int rc = ZITI_SERVICE_UNAVAILABLE;
 
     if (s != NULL) {
         set_service_flags(s);
         ziti_service *old = model_map_set(&req->ztx->services, s->name, s);
         free_ziti_service_ptr(old);
-    }
-    else {
-        if (rc == ZITI_NOT_FOUND) {
-            rc = ZITI_SERVICE_UNAVAILABLE;
+        rc = ZITI_OK;
+    } else {
+        if (err) {
+            rc = err->err;
         }
     }
 
@@ -1188,9 +1188,11 @@ static void update_services(ziti_service_array services, const ziti_error *error
         model_map_set(&ztx->services, s->name, s);
     }
 
-    if (addIdx > 0 || remIdx > 0 || chIdx > 0) {
-        ZTX_LOG(DEBUG, "sending service event %zd added, %zd removed, %zd changed", addIdx, remIdx, chIdx);
+    if (!ztx->services_loaded || (addIdx + remIdx + chIdx) > 0) {
+        ZTX_LOG(DEBUG, "sending service event initial[%s] %zd added, %zd removed, %zd changed",
+                ztx->services_loaded ? "false" : "true", addIdx, remIdx, chIdx);
         ziti_send_event(ztx, &ev);
+        ztx->services_loaded = true;
     } else {
         ZTX_LOG(VERBOSE, "no services added, changed, or removed");
     }
