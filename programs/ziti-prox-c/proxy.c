@@ -598,11 +598,9 @@ void run(int argc, char **argv) {
     ziti_context_init(&ztx, &cfg);
 
     ziti_options opts = {
-            .config = config,
             .events = -1,
             .event_cb = on_ziti_event,
             .refresh_interval = 60,
-            .router_keepalive = 10,
             .app_ctx = &app_ctx,
             .config_types = my_configs,
             .metrics_type = INSTANT,

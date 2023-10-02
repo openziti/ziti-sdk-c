@@ -225,8 +225,6 @@ typedef void (*ziti_event_cb)(ziti_context ztx, const ziti_event_t *event);
  */
 typedef struct ziti_options_s {
     ZITI_DEPRECATED("ignored, will be removed") const char *config;
-    ZITI_DEPRECATED("ignored, will be removed") const char *controller;
-    ZITI_DEPRECATED("ignored, will be removed") tls_context *tls;
 
     bool disabled; // if true initial state will be disabled
     const char **config_types;

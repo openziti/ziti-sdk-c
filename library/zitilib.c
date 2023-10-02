@@ -1290,7 +1290,9 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
     // this way Ziti context can operate even if resolve was high-jacked (e.g. zitify)
     MODEL_MAP_FOR(it, ziti_contexts) {
         ztx_wrap_t *wrap = model_map_it_value(it);
-        const char *ctrl = wrap->ztx ? ziti_get_controller(wrap->ztx) : wrap->opts.controller;
+        if (wrap->ztx == NULL) continue;
+
+        const char *ctrl = ziti_get_controller(wrap->ztx);
         struct tlsuv_url_s url;
         tlsuv_parse_url(&url, ctrl);
 

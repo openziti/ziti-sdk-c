@@ -206,7 +206,7 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
     ziti_context ctx = NULL;
     PREPF(ziti, ziti_errorstr);
 
-    if (options->config == NULL && (options->controller == NULL || options->tls == NULL)) {
+    if (options->config == NULL) {
         ZITI_LOG(ERROR, "config or controller/tls has to be set");
         return ZITI_INVALID_CONFIG;
     }
@@ -214,11 +214,6 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
 
     if (options->config != NULL) {
         TRY(ziti, ziti_load_config(&ctx->config, options->config));
-    }
-
-    if (options->controller == NULL) {
-        TRY(ziti, (ctx->config.controller_url == NULL ? ZITI_INVALID_CONFIG : ZITI_OK));
-        options->controller = strdup(ctx->config.controller_url);
     }
 
     if (ctx->config.id.ca && strncmp(ctx->config.id.ca, "file://", strlen("file://")) == 0) {
@@ -234,10 +229,8 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
         }
     }
 
-    tls_context *tls = options->tls;
-    if (tls == NULL) {
-        TRY(ziti, load_tls(&ctx->config, &tls));
-    }
+    tls_context *tls = NULL;
+    TRY(ziti, load_tls(&ctx->config, &tls));
 
     ctx->opts = *options;
     ctx->tlsCtx = tls;
@@ -556,10 +549,8 @@ static void free_ztx(uv_handle_t *h) {
     ziti_context ztx = h->data;
 
     ziti_ctrl_close(&ztx->controller);
+    ztx->tlsCtx->free_ctx(ztx->tlsCtx);
 
-    if (ztx->tlsCtx != ztx->opts.tls) {
-        ztx->tlsCtx->free_ctx(ztx->tlsCtx);
-    }
     ziti_auth_query_free(ztx->auth_queries);
     ziti_posture_checks_free(ztx->posture_checks);
     model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
