@@ -90,6 +90,8 @@ else()
     string(LENGTH "${CMAKE_SOURCE_DIR}/" SOURCE_PATH_SIZE)
 endif()
 
+include(cmake/check-headers.cmake)
+
 add_subdirectory(library)
 
 if (PROJECT_IS_TOP_LEVEL)
