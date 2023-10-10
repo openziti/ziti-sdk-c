@@ -615,6 +615,22 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
     const char *service;
     ziti_intercept_cfg_v1 *intercept;
 
+    // check for service matching host
+    ziti_service *s = model_map_get(&wrap->ztx->services, host);
+    if (s != NULL) {
+        ZITI_LOG(DEBUG, "hostname matches service name %s", host);
+        service = s->name;
+        return service;
+    }
+
+    MODEL_MAP_FOREACH(service, s, &wrap->ztx->services) {
+        ZITI_LOG(WARN, "=> %s", service);
+        if (strcasecmp(service, host) == 0) {
+            ZITI_LOG(DEBUG, "hostname matches service name %s", host);
+            return service;
+        }
+    }
+
     ziti_protocol proto = 0;
     switch (type) {
         case SOCK_STREAM:
@@ -1208,23 +1224,23 @@ static void resolve_cb(void *r, future_t *f) {
     struct conn_req_s *req = r;
 
     ZITI_LOG(DEBUG, "resolving %s", req->host);
-    const char *service_name;
-    MODEL_MAP_FOR(it, ziti_contexts) {
-        ztx_wrap_t *wrap = model_map_it_value(it);
-        service_name = find_service(wrap, 0, req->host, req->port);
-        if (service_name) {
-            ZITI_LOG(DEBUG, "%s:%d => %s", req->host, req->port, service_name);
-            break;
-        }
-    }
-
-    if (service_name == NULL) {
-        fail_future(f, EAI_NONAME);
-        return;
-    }
-
     in_addr_t ip = (in_addr_t)(intptr_t)model_map_get(&host_to_ip, req->host);
     if (ip == 0) {
+        const char *service_name;
+        MODEL_MAP_FOR(it, ziti_contexts) {
+            ztx_wrap_t *wrap = model_map_it_value(it);
+            service_name = find_service(wrap, 0, req->host, req->port);
+            if (service_name) {
+                ZITI_LOG(DEBUG, "%s:%d => %s", req->host, req->port, service_name);
+                break;
+            }
+        }
+
+        if (service_name == NULL) {
+            fail_future(f, EAI_NONAME);
+            return;
+        }
+
         ip = htonl(++addr_counter);
         ZITI_LOG(DEBUG, "assigned %s => %x", req->host, ip);
         model_map_set(&host_to_ip, req->host, (void *) (uintptr_t) ip);
@@ -1239,31 +1255,63 @@ void Ziti_freeaddrinfo(struct addrinfo *addrlist) {
     uv_freeaddrinfo(addrlist);
 }
 
+static bool is_internal(const char *host) {
+    // refuse resolving controller/router addresses here
+    // this way Ziti context can operate even if resolve was high-jacked (e.g. zitify)
+    MODEL_MAP_FOR(it, ziti_contexts) {
+        ztx_wrap_t *wrap = model_map_it_value(it);
+        if (wrap->ztx == NULL) continue;
+
+        const char *ctrl = ziti_get_controller(wrap->ztx);
+        struct tlsuv_url_s url;
+        tlsuv_parse_url(&url, ctrl);
+
+        if (strncmp(host, url.hostname, url.hostname_len) == 0) {
+            return true;
+        }
+
+        if (wrap->ztx) {
+            MODEL_MAP_FOR(chit, wrap->ztx->channels) {
+                ziti_channel_t *ch = model_map_it_value(chit);
+                if (strcmp(ch->host, host) == 0) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 ZITI_FUNC
 int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hints, struct addrinfo **addrlist) {
     if (host == NULL) {
         return EAI_NONAME;
     }
 
-    in_port_t portnum = port ? (in_port_t) strtol(port, NULL, 10) : 0;
-    ZITI_LOG(DEBUG, "host[%s] port[%s]", host, port);
-    struct addrinfo *res = calloc(1, sizeof(struct addrinfo));
+    int socktype = 0;
+    int proto = 0;
     if (hints) {
-        res->ai_socktype = hints->ai_socktype;
+        socktype = hints->ai_socktype;
         switch (hints->ai_socktype) {
-            case SOCK_STREAM:
-                res->ai_protocol = IPPROTO_TCP;
-                break;
-            case SOCK_DGRAM:
-                res->ai_protocol = IPPROTO_UDP;
-                break;
-            case 0: // any type
-                res->ai_protocol = 0;
-                break;
+            case SOCK_STREAM:proto = IPPROTO_TCP;break;
+            case SOCK_DGRAM:proto = IPPROTO_UDP;break;
+            case 0:proto = 0;break;// any type
             default: // no other protocols are supported
                 return -1;
         }
     }
+
+    // refuse resolving controller/router addresses here
+    // this way Ziti context can operate even if resolve was high-jacked (e.g. zitify)
+    if (is_internal(host)) {
+        return -1;
+    }
+
+    in_port_t portnum = port ? (in_port_t) strtol(port, NULL, 10) : 0;
+    ZITI_LOG(DEBUG, "host[%s] port[%s]", host, port);
+    struct addrinfo *res = calloc(1, sizeof(struct addrinfo));
+    res->ai_socktype = socktype;
+    res->ai_protocol = proto;
 
     struct sockaddr_in *addr4 = calloc(1, sizeof(struct sockaddr_in6));
     int rc = 0;
@@ -1284,30 +1332,6 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
         res->ai_addrlen = sizeof(struct sockaddr_in6);
         *addrlist = res;
         return 0;
-    }
-
-    // refuse resolving controller/router addresses here
-    // this way Ziti context can operate even if resolve was high-jacked (e.g. zitify)
-    MODEL_MAP_FOR(it, ziti_contexts) {
-        ztx_wrap_t *wrap = model_map_it_value(it);
-        if (wrap->ztx == NULL) continue;
-
-        const char *ctrl = ziti_get_controller(wrap->ztx);
-        struct tlsuv_url_s url;
-        tlsuv_parse_url(&url, ctrl);
-
-        if (strncmp(host, url.hostname, url.hostname_len) == 0) {
-            return -1;
-        }
-
-        if (wrap->ztx) {
-            MODEL_MAP_FOR(chit, wrap->ztx->channels) {
-                ziti_channel_t *ch = model_map_it_value(chit);
-                if (strcmp(ch->host, host) == 0) {
-                    return -1;
-                }
-            }
-        }
     }
 
     MODEL_MAP_FOR(it, ziti_contexts) {
@@ -1335,6 +1359,9 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
 
         res->ai_addrlen = sizeof(*addr4);
         *addrlist = res;
+    } else {
+        free(res);
+        free(addr4);
     }
     destroy_future(f);
 
