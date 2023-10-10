@@ -624,7 +624,6 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
     }
 
     MODEL_MAP_FOREACH(service, s, &wrap->ztx->services) {
-        ZITI_LOG(WARN, "=> %s", service);
         if (strcasecmp(service, host) == 0) {
             ZITI_LOG(DEBUG, "hostname matches service name %s", host);
             return service;
