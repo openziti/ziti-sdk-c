@@ -33,6 +33,7 @@ struct binding_s {
     ziti_channel_t *ch;
     struct key_pair key_pair;
     bool bound;
+    struct waiter_s *waiter;
 };
 
 
@@ -360,9 +361,13 @@ static void on_message(struct binding_s *b, message *msg, int code) {
 static void bind_reply_cb(void *ctx, message *msg, int code) {
     struct binding_s *b = ctx;
     struct ziti_conn *conn = b->conn;
+
+    b->waiter = NULL;
     CONN_LOG(TRACE, "received msg ct[%X] code[%d]", msg->header.content, code);
     if (code == ZITI_OK && msg->header.content == ContentTypeStateConnected) {
         CONN_LOG(DEBUG, "bound successfully over ch[%s]", b->ch->url);
+        ziti_channel_add_receiver(b->ch, (int)conn->conn_id, b,
+                                  (void (*)(void *, message *, int)) on_message);
         b->bound = true;
     } else {
         CONN_LOG(DEBUG, "failed to bind over ch[%s]", b->ch->url);
@@ -374,8 +379,6 @@ void start_binding(struct binding_s *b) {
     struct ziti_conn *conn = b->conn;
     ziti_net_session *s = conn->server.session;
     CONN_LOG(TRACE, "ch[%d] => Edge Connect request token[%s]", b->ch->id, s->token);
-    ziti_channel_add_receiver(b->ch, conn->conn_id, b,
-                              (void (*)(void *, message *, int)) on_message);
 
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(0);
@@ -436,12 +439,21 @@ void start_binding(struct binding_s *b) {
         nheaders++;
     }
 
-    ziti_channel_send_for_reply(b->ch, ContentTypeBind, headers, nheaders, s->token, strlen(s->token), bind_reply_cb,
-                                b);
+    if (b->waiter) {
+        ziti_channel_remove_waiter(b->ch, b->waiter);
+    }
+
+    b->waiter = ziti_channel_send_for_reply(b->ch, ContentTypeBind,
+                                            headers, nheaders,
+                                            s->token, strlen(s->token), bind_reply_cb,
+                                            b);
 }
 
 static void remove_binding(struct binding_s *b) {
     struct ziti_conn *conn = b->conn;
+    if (b->waiter) {
+        ziti_channel_remove_waiter(b->ch, b->waiter);
+    }
     ziti_channel_rem_receiver(b->ch, conn->conn_id);
     model_map_remove(&conn->server.bindings, b->ch->url);
     CONN_LOG(DEBUG, "binding[%s] removed", b->ch->url);
@@ -453,6 +465,7 @@ static void remove_binding(struct binding_s *b) {
 void on_unbind(void *ctx, message *m, int code) {
     struct binding_s *b = ctx;
     struct ziti_conn *conn = b->conn;
+    b->waiter = NULL;
 
     if (m) {
         CONN_LOG(TRACE, "binding[%s] unbind resp: ct[%X] %.*s",
@@ -482,8 +495,13 @@ static void stop_binding(struct binding_s *b) {
                     .value = (uint8_t *) &conn_id
             },
     };
-    ziti_channel_send_for_reply(b->ch, ContentTypeUnbind, headers, 1,
-                                s->token, strlen(s->token), on_unbind, b);
+    if (b->waiter) {
+        ziti_channel_remove_waiter(b->ch, b->waiter);
+    }
+    b->waiter = ziti_channel_send_for_reply(b->ch, ContentTypeUnbind,
+                                            headers, 1,
+                                            s->token, strlen(s->token),
+                                            on_unbind, b);
 }
 
 int ziti_close_server(struct ziti_conn *conn) {
