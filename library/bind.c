@@ -486,7 +486,24 @@ void on_unbind(void *ctx, message *m, int code) {
 }
 
 static void stop_binding(struct binding_s *b) {
+
+    // stop accepting incoming requests
+    ziti_channel_rem_receiver(b->ch, b->conn->conn_id);
+    if (b->waiter) {
+        ziti_channel_remove_waiter(b->ch, b->waiter);
+        b->waiter = NULL;
+    }
+
+    // no need to send unbind message
+    if (!ziti_channel_is_connected(b->ch)) {
+        return;
+    }
+
     ziti_net_session *s = b->conn->server.session;
+    if (s == NULL) {
+        return;
+    }
+
     int32_t conn_id = htole32(b->conn->conn_id);
     hdr_t headers[] = {
             {
@@ -495,9 +512,6 @@ static void stop_binding(struct binding_s *b) {
                     .value = (uint8_t *) &conn_id
             },
     };
-    if (b->waiter) {
-        ziti_channel_remove_waiter(b->ch, b->waiter);
-    }
     b->waiter = ziti_channel_send_for_reply(b->ch, ContentTypeUnbind,
                                             headers, 1,
                                             s->token, strlen(s->token),
