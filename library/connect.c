@@ -329,9 +329,11 @@ static void connect_timeout(uv_timer_t *timer) {
 
     if (conn->state == Connecting) {
         if (ch == NULL) {
-            CONN_LOG(WARN, "connect timeout: no suitable edge router");
+            CONN_LOG(WARN, "connect timeout: no suitable edge router for service[%s]", conn->service);
         } else {
-            CONN_LOG(WARN, "failed to establish connection in %dms on ch[%d]", conn->timeout, ch->id);
+
+            CONN_LOG(WARN, "failed to establish connection to service[%s] in %dms on ch[%d]",
+                     conn->service, conn->timeout, ch->id);
         }
         complete_conn_req(conn, ZITI_TIMEOUT);
         ziti_disconnect(conn);
@@ -667,6 +669,9 @@ static void crypto_wr_cb(ziti_connection conn, ssize_t status, void *ctx) {
 }
 
 int establish_crypto(ziti_connection conn, message *msg) {
+    if (!conn->encrypted) {
+        return ZITI_OK;
+    }
 
     if (conn->state != Connecting && conn->state != Accepting) {
         CONN_LOG(ERROR, "cannot establish crypto in state[%s]", ziti_conn_state(conn));
@@ -687,7 +692,6 @@ int establish_crypto(ziti_connection conn, message *msg) {
             return ZITI_OK;
         }
     }
-    conn->encrypted = true;
 
     int rc = init_crypto(&conn->key_ex, &conn->key_pair, peer_key, conn->state == Accepting);
 
@@ -927,9 +931,12 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
         case ContentTypeStateConnected:
             if (conn->state == Connecting) {
                 CONN_LOG(TRACE, "connected");
-                int rc = establish_crypto(conn, msg);
-                if (rc == ZITI_OK && conn->encrypted) {
-                    send_crypto_header(conn);
+                int rc = ZITI_OK;
+                if (conn->encrypted) {
+                    rc = establish_crypto(conn, msg);
+                    if (rc == ZITI_OK) {
+                        send_crypto_header(conn);
+                    }
                 }
                 conn_set_state(conn, rc == ZITI_OK ? Connected : Disconnected);
                 complete_conn_req(conn, rc);
