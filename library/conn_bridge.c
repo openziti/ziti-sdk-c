@@ -240,7 +240,9 @@ static void close_bridge(struct ziti_bridge_s *br) {
 }
 
 static void on_shutdown(uv_shutdown_t *sr, int status) {
-    if (status != 0) {
+    // ignore UV_ECANCELED, it just means that stream was closed
+    // before shutdown was processed
+    if (status != 0 && status != UV_ECANCELED) {
         struct ziti_bridge_s *br = sr->handle->data;
         BR_LOG(WARN, "shutdown failed: %d(%s)", status, uv_strerror(status));
         close_bridge(sr->handle->data);
