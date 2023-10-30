@@ -106,7 +106,10 @@ typedef struct ziti_channel {
 
     buffer *incoming;
 
+
     pool_t *in_msg_pool;
+    char header_buf[HEADER_SIZE];
+    size_t header_read;
     message *in_next;
     size_t in_body_offset;
 

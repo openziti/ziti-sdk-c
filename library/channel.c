@@ -79,6 +79,8 @@ static void ch_connect_timeout(uv_timer_t *t);
 
 static void hello_reply_cb(void *ctx, message *msg, int err);
 
+static void ch_start_read(ziti_channel_t *ch);
+
 static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf);
 static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf);
 static void process_inbound(ziti_channel_t *ch);
@@ -155,6 +157,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     ch->in_body_offset = 0;
     ch->incoming = new_buffer();
     ch->in_msg_pool = pool_new(POOLED_MESSAGE_SIZE, INBOUND_POOL_SIZE, (void (*)(void *)) message_free);
+    pool_set_available_cb(ch->in_msg_pool, (pool_available_cb) ch_start_read, ch);
 
     ch->waiters = (model_map){0};
 
@@ -831,22 +834,35 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
 }
 
 static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-    tlsuv_stream_t *mbed = (tlsuv_stream_t *) handle;
-    ziti_channel_t *ch = mbed->data;
-    if (ch->in_next || pool_has_available(ch->in_msg_pool)) {
-        buf->base = (char *) malloc(suggested_size);
-        if (buf->base == NULL) {
-            ZITI_LOG(ERROR, "failed to allocate %zd bytes. Prepare for crash", suggested_size);
-            buf->len = 0;
-        } else {
-            buf->len = suggested_size;
-        }
-    } else {
-        CH_LOG(DEBUG, "message pool is empty. stop reading until available");
+    tlsuv_stream_t *tls_stream = (tlsuv_stream_t *) handle;
+    ziti_channel_t *ch = tls_stream->data;
 
-        buf->len = 0;
-        buf->base = NULL;
+    // channel incoming message process
+
+    // 1 - reading header
+    if (ch->in_next == NULL && ch->header_read < HEADER_SIZE) {
+        buf->base = ch->header_buf + ch->header_read;
+        buf->len = HEADER_SIZE - ch->header_read;
+        return;
     }
+
+    // 2 - new incoming message
+    if (ch->in_next == NULL) {
+        ch->in_next = message_new_from_header(ch->in_msg_pool, ch->header_buf);
+        ch->in_body_offset = 0;
+    }
+
+    if (ch->in_next == NULL) {
+        CH_LOG(DEBUG, "message pool is empty. stop reading until available");
+        // message pool was dry, cause UV_ENOBUFS
+        buf->base = NULL;
+        buf->len = 0;
+        return;
+    }
+
+    // 3 - read directly into the message body
+    buf->base = (char*)(ch->in_next->headers + ch->in_body_offset);
+    buf->len = ch->in_next->msgbuflen - ch->in_body_offset;
 }
 
 static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
@@ -924,4 +940,9 @@ static const char *get_timeout_cb(ziti_channel_t *ch) {
     TIMEOUT_CALLBACKS(to_lbl)
 
     return "unknown";
+}
+
+void ch_start_read(ziti_channel_t *ch) {
+    CH_LOG(DEBUG, "starting read");
+    tlsuv_stream_read_start(ch->connection, channel_alloc_cb, on_channel_data);
 }

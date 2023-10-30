@@ -172,7 +172,9 @@ message *message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE]) {
     size_t msgbuflen = HEADER_SIZE + h.headers_len + h.body_len;
     message *m = pool ? pool_alloc_obj(pool) : alloc_unpooled_obj(sizeof(message) + msgbuflen,
                                                                   (void (*)(void *)) message_free);
-
+    if (m == NULL) {
+        return NULL;
+    }
     m->msgbuflen = msgbuflen;
 
     size_t msgsize = sizeof(message) + msgbuflen;
