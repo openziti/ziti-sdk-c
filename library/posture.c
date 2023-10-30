@@ -26,11 +26,9 @@
 
 #pragma comment(lib, "netapi32.lib")
 #pragma comment(lib, "bcrypt.lib")
+#include <VersionHelpers.h>
+#include <windows.h>
 
-// provided by libuv
-typedef NTSTATUS (NTAPI *sRtlGetVersion)
-        (PRTL_OSVERSIONINFOW lpVersionInformation);
-extern sRtlGetVersion pRtlGetVersion;
 
 #elif __APPLE__ && __MACH__
    #include <TargetConditionals.h>
@@ -668,19 +666,36 @@ static void ziti_pr_handle_process(ziti_context ztx, const char *id, const char 
     ziti_collect_pr(ztx, path, obj, obj_len);
 }
 
-static void default_pq_os(ziti_context ztx, const char *id, ziti_pr_os_cb response_cb) {
+#if _WIN32
+typedef NTSTATUS (NTAPI *sRtlGetVersion)
+        (PRTL_OSVERSIONINFOW lpVersionInformation);
+
+static sRtlGetVersion get_win32_version_f() {
+    static sRtlGetVersion s_func;
+    if (s_func == NULL) {
+        HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+        s_func = (sRtlGetVersion) GetProcAddress(ntdll, "RtlGetVersion");
+    }
+    return s_func;
+}
+static
+
+#endif // _WIN32
+
+void default_pq_os(ziti_context ztx, const char *id, ziti_pr_os_cb response_cb) {
     const char *os;
     const char *ver;
     const char *build;
 #if _WIN32
     OSVERSIONINFOEXW os_info = {0};
     os_info.dwOSVersionInfoSize = sizeof(os_info);
-    if (pRtlGetVersion) {
-        pRtlGetVersion((PRTL_OSVERSIONINFOW) &os_info);
+    sRtlGetVersion version_f = get_win32_version_f();
+    if (version_f) {
+        version_f((PRTL_OSVERSIONINFOW) &os_info);
     } else {
         /* Silence GetVersionEx() deprecation warning. */
 #pragma warning(suppress : 4996)
-        GetVersionExW(&os_info);
+        GetVersionExW((LPOSVERSIONINFOW) &os_info);
     }
 
     switch (os_info.wProductType) {
