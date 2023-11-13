@@ -51,7 +51,7 @@ typedef struct ziti_controller_s {
     void *redirect_ctx;
 } ziti_controller;
 
-int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctlr, const char *url, tls_context *tls);
+int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_context *tls);
 
 int ziti_ctrl_cancel(ziti_controller *ctrl);
 
