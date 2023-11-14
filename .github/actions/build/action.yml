@@ -30,7 +30,7 @@ runs:
       with:
         vcpkgGitCommitId: '19af97cba8ca48474e4ad15a24ed50271a9ecdac'
 
-    - uses: lukka/run-cmake@v10
+    - uses: lukka/run-cmake@v10.6
       name: Configure CMake
       with:
         configurePreset: ci-${{ inputs.target }}
