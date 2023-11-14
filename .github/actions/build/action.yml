@@ -24,7 +24,7 @@ runs:
       run: echo "target = ${{ inputs.target }}"
       shell: bash
 
-    - uses: lukka/get-cmake@latest
+    - uses: lukka/get-cmake@v3.27.6
 
     - uses: lukka/run-vcpkg@v10
       with:
