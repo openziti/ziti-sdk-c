@@ -909,7 +909,7 @@ static void api_session_refresh(uv_timer_t *t) {
 void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx) {
     bool is_expired = is_api_session_expired(ztx);
 
-    ZTX_LOG(INFO, "starting to re-auth with ctlr[%s] api_session_status[%d] api_session_expired[%s]",
+    ZTX_LOG(INFO, "starting to re-auth with ctrl[%s] api_session_status[%d] api_session_expired[%s]",
             ztx_controller(ztx), ztx->api_session_state, is_expired ? "TRUE" : "FALSE");
 
     bool is_auth_started = ztx->api_session_state == ZitiApiSessionStateAuthStarted;

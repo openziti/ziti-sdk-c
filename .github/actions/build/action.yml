@@ -24,13 +24,13 @@ runs:
       run: echo "target = ${{ inputs.target }}"
       shell: bash
 
-    - uses: lukka/get-cmake@latest
+    - uses: lukka/get-cmake@v3.27.6
 
     - uses: lukka/run-vcpkg@v10
       with:
         vcpkgGitCommitId: '19af97cba8ca48474e4ad15a24ed50271a9ecdac'
 
-    - uses: lukka/run-cmake@v10
+    - uses: lukka/run-cmake@v10.6
       name: Configure CMake
       with:
         configurePreset: ci-${{ inputs.target }}
