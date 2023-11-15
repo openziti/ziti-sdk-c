@@ -6,7 +6,8 @@
     "openssl",
     "zlib",
     "llhttp",
-    "libsodium"
+    "libsodium",
+    "protobuf-c"
   ],
   "features": {
     "test": {
