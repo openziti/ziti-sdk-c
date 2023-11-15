@@ -79,8 +79,6 @@ static int check_cert_required(enroll_cfg *ecfg) {
 }
 
 int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx) {
-    ziti_log_init(loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
-
     uv_timeval64_t start_time;
     uv_gettimeofday(&start_time);
 
