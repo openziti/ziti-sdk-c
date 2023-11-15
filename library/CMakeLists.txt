@@ -16,6 +16,27 @@ if (NOT sodium_libs)
     message(FATAL_ERROR "could not find required library[sodium]")
 endif ()
 
+set(CMAKE_FIND_DEBUG_MODE ON)
+include(FindPkgConfig)
+pkg_search_module(PBUFC libprotobuf-c)
+message(NOTICE "protobuf-c: ${PBUFC_INCLUDE_DIRS}")
+set(CMAKE_FIND_DEBUG_MODE OFF)
+
+if (ziti_DEVELOPER_MODE)
+    find_program(PROTO_GEN protoc)
+    find_program(PROTO_GEN_C protoc-gen-c)
+    if (PROTO_GEN AND PROTO_GEN_C)
+        message(NOTICE "protobuf generator: ${PROTO_GEN}")
+        set(PROTO_FILES
+                edge_client.proto
+                google/protobuf/timestamp.proto
+        )
+        add_custom_target(generate-protobuf
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/proto
+                COMMAND protoc --c_out=. -I ${PBUFC_INCLUDE_DIRS} -I. ${PROTO_FILES}
+        )
+    endif ()
+endif ()
 set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/errors.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti.h
@@ -53,11 +74,14 @@ SET(ZITI_SRC_FILES
         authenticators.c
         crypto.c
         bind.c
+        proto/edge_client.pb-c.c
+        proto/google/protobuf/timestamp.pb-c.c
         )
 
 SET(ZITI_INCLUDE_DIRS
     PUBLIC ../includes
     PRIVATE ../inc_internal
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/proto
     PRIVATE ${PROJECT_BINARY_DIR}/include
     PRIVATE ${tlsuv_SOURCE_DIR}/src
 )
