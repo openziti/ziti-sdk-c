@@ -108,6 +108,11 @@ static void close_server_cb(uv_handle_t *h) {
     ZITI_LOG(DEBUG, "listener closed for %s", l->service_name);
 }
 
+static void close_binding_cb(ziti_connection conn) {
+    struct binding *b = ziti_conn_data(conn);
+    ZITI_LOG(DEBUG, "binding closed for %s", b->service_name);
+}
+
 static void shutdown_timer_cb(uv_timer_t *t) {
     uv_loop_t *l = t->loop;
 
@@ -120,6 +125,7 @@ static void free_listener(struct listener *l) {
 }
 
 static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
+    ZITI_LOG(INFO, "stopping");
     PREPF(uv, uv_strerror);
 
     // shutdown listeners
@@ -127,6 +133,13 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
         struct listener *l = model_map_it_value(it);
         if (uv_is_active((const uv_handle_t *) &l->server)) {
             uv_close((uv_handle_t *) &l->server, close_server_cb);
+        }
+    }
+
+    MODEL_MAP_FOR(it, app_ctx->bindings) {
+        struct binding *b = model_map_it_value(it);
+        if (b->conn) {
+            ziti_close(b->conn, close_binding_cb);
         }
     }
 
@@ -564,6 +577,18 @@ void mfa_auth_event_handler(ziti_context ztx) {
 
 static struct proxy_app_ctx app_ctx = {0};
 
+static void stopper_alloc(uv_handle_t *h, size_t i, uv_buf_t *pBuf) {
+    static char buf[1024];
+    *pBuf = uv_buf_init(buf, sizeof(buf));
+}
+
+static void stopper_recv(uv_udp_t *u, ssize_t len,
+                         const uv_buf_t *b,
+                         const struct sockaddr *addr, unsigned int flags) {
+    process_stop(u->loop, &app_ctx);
+    uv_close((uv_handle_t *) u, NULL);
+}
+
 void run(int argc, char **argv) {
 
     PREPF(uv, uv_strerror);
@@ -573,6 +598,15 @@ void run(int argc, char **argv) {
     global_loop = loop;
 
     ziti_log_init(global_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
+
+    // test shutting down by sending a UDP packet
+    uv_udp_t stopper;
+    struct sockaddr_in stopper_addr;
+    uv_udp_init(loop, &stopper);
+    uv_ip4_addr("127.0.0.1", 12345, &stopper_addr);
+    uv_udp_bind(&stopper, (const struct sockaddr *) &stopper_addr, 0);
+    uv_udp_recv_start(&stopper, stopper_alloc, stopper_recv);
+    uv_unref((uv_handle_t *) &stopper);
 
     for (int i = 0; i < argc; i++) {
 
