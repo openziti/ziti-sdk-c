@@ -45,11 +45,9 @@ static void get_service_cb(ziti_context, ziti_service *service, int status, void
 
 static int dispose(ziti_connection server);
 
-static void start_binding(struct binding_s *b);
+static void start_binding(struct binding_s *b, ziti_channel_t *ch);
 
 static void stop_binding(struct binding_s *b);
-
-static void remove_binding(struct binding_s *b);
 
 static void schedule_rebind(struct ziti_conn *conn, bool now);
 
@@ -102,10 +100,9 @@ static void rebind_delay_cb(uv_timer_t *t) {
     }
 }
 
-static struct binding_s* new_binding(struct ziti_conn *conn, ziti_channel_t *ch) {
+static struct binding_s* new_binding(struct ziti_conn *conn) {
     NEWP(b, struct binding_s);
     b->conn = conn;
-    b->ch = ch;
     init_key_pair(&b->key_pair);
     return b;
 }
@@ -133,14 +130,13 @@ static void process_bindings(struct ziti_conn *conn) {
                 if (b->bound) {
                     target--;
                 } else {
-                    assert(ch == b->ch);
-                    start_binding(b);
+                    start_binding(b, ch);
                     target--;
                 }
             } else  {
-                b = new_binding(conn, ch);
+                b = new_binding(conn);
                 model_map_set(&conn->server.bindings, url, b);
-                start_binding(b);
+                start_binding(b, ch);
                 target--;
             }
         }
@@ -265,6 +261,17 @@ static uint8_t get_terminator_precedence(const ziti_listen_opts *opts, const cha
 static int dispose(ziti_connection server) {
     assert(server->type == Server);
 
+    model_map_iter it = model_map_iterator(&server->server.bindings);
+    while(it) {
+        struct binding_s *b = model_map_it_value(it);
+        if (!b->bound && b->waiter == NULL) {
+            it = model_map_it_remove(it);
+            free(b);
+        } else {
+            it = model_map_it_next(it);
+        }
+    }
+
     if (model_map_size(&server->server.bindings)) {
         ZITI_LOG(VERBOSE, "waiting for bindings to clear");
         return 0;
@@ -275,9 +282,11 @@ static int dispose(ziti_connection server) {
         return 0;
     }
 
-    server->server.timer->data = NULL;
-    uv_close((uv_handle_t *) server->server.timer, (uv_close_cb) free);
-    server->server.timer = NULL;
+    if (server->server.timer != NULL) {
+        server->server.timer->data = NULL;
+        uv_close((uv_handle_t *) server->server.timer, (uv_close_cb) free);
+        server->server.timer = NULL;
+    }
 
     free_ziti_net_session_ptr(server->server.session);
     free(server->service);
@@ -336,7 +345,8 @@ static void on_message(struct binding_s *b, message *msg, int code) {
         ZITI_LOG(WARN, "binding failed: %d/%s", code, ziti_errorstr(code));
         b->bound = false;
         if (code == ZITI_DISABLED) {
-            remove_binding(b);
+            stop_binding(b);
+            uv_timer_stop(b->conn->server.timer);
         } else {
             schedule_rebind(conn, true);
         }
@@ -345,7 +355,8 @@ static void on_message(struct binding_s *b, message *msg, int code) {
         switch (msg->header.content) {
             case ContentTypeStateClosed:
                 CONN_LOG(DEBUG, "binding[%s] was closed: %.*s", b->ch->url, msg->header.body_len, msg->body);
-                remove_binding(b);
+                stop_binding(b);
+                schedule_rebind(b->conn, true);
                 break;
             case ContentTypeDial:
                 process_dial(b, msg);
@@ -371,14 +382,18 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
         b->bound = true;
     } else {
         CONN_LOG(DEBUG, "failed to bind over ch[%s]", b->ch->url);
-        remove_binding(b);
+        b->bound = false;
+        ziti_channel_rem_receiver(b->ch, conn->conn_id);
+        b->ch = NULL;
     }
 }
 
-void start_binding(struct binding_s *b) {
+void start_binding(struct binding_s *b, ziti_channel_t *ch) {
     struct ziti_conn *conn = b->conn;
     ziti_net_session *s = conn->server.session;
-    CONN_LOG(TRACE, "ch[%d] => Edge Connect request token[%s]", b->ch->id, s->token);
+    CONN_LOG(TRACE, "ch[%d] => Edge Bind request token[%s]", ch->id, s->token);
+
+    b->ch = ch;
 
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(0);
@@ -449,19 +464,6 @@ void start_binding(struct binding_s *b) {
                                             b);
 }
 
-static void remove_binding(struct binding_s *b) {
-    struct ziti_conn *conn = b->conn;
-    if (b->waiter) {
-        ziti_channel_remove_waiter(b->ch, b->waiter);
-    }
-    ziti_channel_rem_receiver(b->ch, conn->conn_id);
-    model_map_remove(&conn->server.bindings, b->ch->url);
-    CONN_LOG(DEBUG, "binding[%s] removed", b->ch->url);
-    free(b);
-
-    schedule_rebind(conn, true);
-}
-
 void on_unbind(void *ctx, message *m, int code) {
     struct binding_s *b = ctx;
     struct ziti_conn *conn = b->conn;
@@ -482,11 +484,16 @@ void on_unbind(void *ctx, message *m, int code) {
     } else {
         CONN_LOG(TRACE, "failed to receive unbind response because channel was disconnected: %d/%s", code, ziti_errorstr(code));
     }
-    remove_binding(b);
+    ziti_channel_rem_receiver(b->ch, b->conn->conn_id);
+    b->bound = false;
+    b->ch = NULL;
 }
 
 static void stop_binding(struct binding_s *b) {
 
+    if (b->ch == NULL) {
+        return;
+    }
     // stop accepting incoming requests
     ziti_channel_rem_receiver(b->ch, b->conn->conn_id);
     if (b->waiter) {
@@ -516,6 +523,7 @@ static void stop_binding(struct binding_s *b) {
                                             headers, 1,
                                             s->token, strlen(s->token),
                                             on_unbind, b);
+    b->bound = false;
 }
 
 int ziti_close_server(struct ziti_conn *conn) {
