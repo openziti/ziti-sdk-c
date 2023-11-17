@@ -66,6 +66,7 @@ int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts 
     conn->type = Server;
     conn->disposer = dispose;
     conn->service = strdup(service);
+    uv_random(NULL, NULL, conn->server.listener_id, sizeof(conn->server.listener_id), 0 , NULL);
     conn->server.cost = get_terminator_cost(listen_opts, service, conn->ziti_ctx);
     conn->server.precedence = get_terminator_precedence(listen_opts, service, conn->ziti_ctx);
     conn->server.max_bindings = listen_opts && listen_opts->max_connections > 0 ?
@@ -414,6 +415,11 @@ void start_binding(struct binding_s *b, ziti_channel_t *ch) {
                     .length = sizeof(b->key_pair.pk),
                     .value = b->key_pair.pk,
             },
+            {
+                    .header_id = ListenerId,
+                    .length = sizeof(b->conn->server.listener_id),
+                    .value = (uint8_t*)b->conn->server.listener_id,
+            },
             // blank hdr_t's to be filled in if needed by options
             {
                     .header_id = -1,
@@ -431,7 +437,7 @@ void start_binding(struct binding_s *b, ziti_channel_t *ch) {
                     .value = NULL,
             }
     };
-    int nheaders = 3;
+    int nheaders = 4;
     if (conn->server.identity != NULL) {
         headers[nheaders].header_id = TerminatorIdentityHeader;
         headers[nheaders].value = (uint8_t *) conn->server.identity;
@@ -518,9 +524,15 @@ static void stop_binding(struct binding_s *b) {
                     .length = sizeof(conn_id),
                     .value = (uint8_t *) &conn_id
             },
+            {
+                    .header_id = ListenerId,
+                    .length = sizeof(b->conn->server.listener_id),
+                    .value = (uint8_t*)b->conn->server.listener_id,
+            },
+
     };
     b->waiter = ziti_channel_send_for_reply(b->ch, ContentTypeUnbind,
-                                            headers, 1,
+                                            headers, 2,
                                             s->token, strlen(s->token),
                                             on_unbind, b);
     b->bound = false;

@@ -184,6 +184,7 @@ struct ziti_conn {
             model_map children;
             uv_timer_t *timer;
             unsigned int attempt;
+            char listener_id[32];
         } server;
 
         struct {
