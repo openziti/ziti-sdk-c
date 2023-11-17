@@ -70,6 +70,16 @@ enum header_id {
     CryptoMethodHeader = 1009,
     FlagsHeader = 1010,
     AppDataHeader = 1011,
+    RouterProvidedConnId = 1012,
+    HealthStatusHeader = 1013,
+    ErrorCodeHeader = 1014,
+    TimestampHeader = 1015,
+    TraceHopCountHeader = 1016,
+    TraceHopTypeHeader = 1017,
+    TraceHopIdHeader = 1018,
+    TraceSourceRequestIdHeader = 1019,
+    TraceError = 1020,
+    ListenerId = 1021,
 };
 
 enum crypto_method {
