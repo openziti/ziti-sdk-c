@@ -181,7 +181,7 @@ static void session_cb(ziti_net_session *session, const ziti_error *err, void *c
             conn->server.session = session;
             notify_status(conn, ZITI_OK);
 
-            free_ziti_net_session(old);
+            free_ziti_net_session_ptr(old);
 
             process_bindings(conn);
             break;
@@ -348,6 +348,7 @@ static void on_message(struct binding_s *b, message *msg, int code) {
         if (code == ZITI_DISABLED) {
             stop_binding(b);
             uv_timer_stop(b->conn->server.timer);
+            notify_status(b->conn, code);
         } else {
             schedule_rebind(conn, true);
         }
@@ -556,6 +557,15 @@ static void notify_status(struct ziti_conn *conn, int err) {
     if (conn->server.listen_cb) {
         conn->server.listen_cb(conn, err);
         conn->server.listen_cb = NULL;
+        return;
+    }
+
+    if (conn->server.client_cb == NULL) return;
+
+    if (err == ZITI_DISABLED) {
+        // only notify once, app is expected to call ziti_close()
+        conn->server.client_cb(conn, NULL, err, NULL);
+        conn->server.client_cb = NULL;
     } else if (err != ZITI_OK) {
         conn->server.client_cb(conn, NULL, err, NULL);
     }
