@@ -108,6 +108,16 @@ struct msg_receiver {
     void (*receive)(void *receiver, message *m, int code);
 };
 
+static void ch_init_stream(ziti_channel_t *ch) {
+    if (ch->connection == NULL) {
+        ch->connection = calloc(1, sizeof(*ch->connection));
+        tlsuv_stream_init(ch->loop, ch->connection, ch->ctx->tlsCtx);
+        tlsuv_stream_keepalive(ch->connection, true, 30);
+        tlsuv_stream_nodelay(ch->connection, true);
+        ch->connection->data = ch;
+    }
+}
+
 static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t id, tls_context *tls) {
     ch->ctx = ctx;
     ch->loop = ctx->loop;
@@ -130,12 +140,6 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     ch->in_msg_pool = pool_new(POOLED_MESSAGE_SIZE, INBOUND_POOL_SIZE, (void (*)(void *)) message_free);
 
     LIST_INIT(&ch->waiters);
-
-    ch->connection = calloc(1, sizeof(*ch->connection));
-    tlsuv_stream_init(ch->loop, ch->connection, tls);
-    tlsuv_stream_keepalive(ch->connection, true, ctx->opts.router_keepalive);
-    tlsuv_stream_nodelay(ch->connection, true);
-    ch->connection->data = ch;
 
     ch->timer = calloc(1, sizeof(uv_timer_t));
     uv_timer_init(ch->loop, ch->timer);
@@ -174,6 +178,12 @@ int ziti_close_channels(struct ziti_ctx *ztx, int err) {
     }
     model_list_clear(&ch_ids, NULL);
     return ZITI_OK;
+}
+
+static void on_tls_close(uv_handle_t *s) {
+    tlsuv_stream_t *tls = (tlsuv_stream_t *) s;
+    tlsuv_stream_free(tls);
+    free(tls);
 }
 
 static void close_handle_cb(uv_handle_t *h) {
@@ -588,7 +598,8 @@ static void latency_timeout(uv_timer_t *t) {
         ch->latency_waiter = NULL;
         ch->latency = UINT64_MAX;
 
-        tlsuv_stream_close(ch->connection, NULL);
+        tlsuv_stream_close(ch->connection, on_tls_close);
+        ch->connection = NULL;
         on_channel_close(ch, ZITI_TIMEOUT, UV_ETIMEDOUT);
     }
 }
@@ -645,7 +656,8 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
 
         ch->state = Disconnected;
         ch->notify_cb(ch, EdgeRouterUnavailable, ch->notify_ctx);
-        tlsuv_stream_close(ch->connection, NULL);
+        tlsuv_stream_close(ch->connection, on_tls_close);
+        ch->connection = NULL;
         reconnect_channel(ch, false);
     }
 
@@ -684,7 +696,8 @@ static void ch_connect_timeout(uv_timer_t *t) {
         CH_LOG(WARN, "diagnostics: no conn_req in connect timeout");
     }
     reconnect_channel(ch, false);
-    tlsuv_stream_close(ch->connection, NULL);
+    tlsuv_stream_close(ch->connection, on_tls_close);
+    ch->connection = NULL;
 }
 
 static void reconnect_cb(uv_timer_t *t) {
@@ -702,10 +715,10 @@ static void reconnect_cb(uv_timer_t *t) {
         req->data = ch;
 
         ch->state = Connecting;
+        ch_init_stream(ch);
 
-        ch->connection->data = ch;
         CH_LOG(DEBUG, "connecting to %s", ch->url);
-        ch->connection->tls = ch->ctx->tlsCtx;
+
         int rc = tlsuv_stream_connect(req, ch->connection, ch->host, ch->port, on_channel_connect_internal);
         if (rc != 0) {
             on_channel_connect_internal(req, rc);
@@ -854,7 +867,8 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             send_hello(ch, ch->ctx->api_session);
         } else {
             CH_LOG(WARN, "api session invalidated, while connecting");
-            tlsuv_stream_close(ch->connection, NULL);
+            tlsuv_stream_close(ch->connection, on_tls_close);
+            ch->connection = NULL;
             reconnect_channel(ch, false);
         }
     } else {

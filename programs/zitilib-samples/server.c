@@ -117,6 +117,7 @@ int main(int argc, char *argv[]) {
 
     ziti_socket_t clt;
     char readbuf[8 * 1024];
+    int keep_going = 1;
 
     do {
         char caller[128];
@@ -135,6 +136,10 @@ int main(int argc, char *argv[]) {
             count = read(clt, readbuf, sizeof(readbuf));
             if (count > 0) {
                 printf("read %zd bytes\n", count);
+                if (strncmp("quit", readbuf, strlen("quit")) == 0) {
+                    keep_going = 0;
+                    break;
+                }
                 total += count;
                 len = snprintf(msg, sizeof(msg), "you[%s] sent %zd bytes", caller, total);
                 write(clt, msg, len);
@@ -145,10 +150,10 @@ int main(int argc, char *argv[]) {
         write(clt, msg, len);
         close(clt);
         printf("client is done after sending %zd bytes\n", total);
-    } while (1);
+    } while (keep_going);
 
     DONE:
     if (srv != SOCKET_ERROR)
-        close(srv);
+        Ziti_close(srv);
     Ziti_lib_shutdown();
 }
