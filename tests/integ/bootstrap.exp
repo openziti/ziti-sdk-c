@@ -5,6 +5,8 @@ proc abort errs {
     puts "test failed: $errs"
     exit 2
 }
+set ziti $env(ZITI_CLI)
+puts "ziti = $ziti"
 
 set enroller $env(ENROLLER)
 puts "enroller = $env(ENROLLER)"
@@ -12,7 +14,7 @@ puts "enroller = $env(ENROLLER)"
 puts "Starting Ziti Quickstart"
 puts "========================"
 
-spawn ziti edge quickstart --home $env(QUICKSTART_HOME)
+spawn $ziti edge quickstart --home $env(QUICKSTART_HOME)
 set qs_id @spawn_id
 # wait until ER is connected
 expect {
@@ -29,34 +31,34 @@ expect_before {
    "connection refused" { abort "QS not started" }
 }
 
-spawn ziti edge create identity test-client -a client -o test-client.jwt
+spawn $ziti edge create identity test-client -a client -o test-client.jwt
 expect {
      "New identity test-client created" {}
      "error" { abort $expect_out(buffer) }
      eof { abort "unexpected" }
 }
 
-spawn ziti edge create identity test-server -a server -o test-server.jwt
+spawn $ziti edge create identity test-server -a server -o test-server.jwt
 expect {
     "New identity test-server created" {}
     "error" { error $expect_out(buffer) }
 }
 
-spawn ziti edge create service test-service
+spawn $ziti edge create service test-service
 expect {
      "New service test-service created" { }
      -re "error(.*)" { error $expect_out(1,string) }
      eof { error "not cool" }
 }
 
-spawn ziti edge create service-policy servers-bind Bind --identity-roles \#server --service-roles \#all
+spawn $ziti edge create service-policy servers-bind Bind --identity-roles \#server --service-roles \#all
 expect {
     "New service policy servers-bind created" {}
     -re "error(.*)" { error $expect_out(1,string) }
     eof { error "not cool" }
 }
 
-spawn ziti edge create service-policy clients-dial Dial --identity-roles \#client --service-roles \#all
+spawn $ziti edge create service-policy clients-dial Dial --identity-roles \#client --service-roles \#all
 expect {
     "New service policy clients-dial created" {}
     -re "error(.*)" { error $expect_out(1,string) }
