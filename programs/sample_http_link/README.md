@@ -10,7 +10,7 @@ This sample demonstrates some key OpenZiti concepts:
 
 ## Prerequisites
 * You'll want to follow the steps in [BUILD.md](../../BUILD.md) to compile the sample programs.
-* You will need an OpenZiti network, if you don't have one, try one of the [quickstarts](https://openziti.io/docs/category/network/). 
+* You will need an OpenZiti network, if you don't have one, try one of the [quickstarts](https://openziti.io/docs/learn/quickstarts/). 
 
 ## Setup
 ### Create Identities
@@ -23,7 +23,7 @@ ensure you update the attributes. Here's how you would generate them.
 ziti edge create identity device httpbin.server -a httpbinServerEndpoints -o httpbin.server.jwt
 ziti edge create identity device httpbin.client -a httpbinClientEndpoints -o httpbin.client.jwt
 ```
-### Enroll The Identities
+### Enroll the Identities
 The identities need to be [enrolled](https://openziti.io/docs/learn/core-concepts/identities/enrolling) so the 
 controller knows about them.
 ```
@@ -31,13 +31,13 @@ ziti edge enroll httpbin.server.jwt
 ziti edge enroll httpbin.client.jwt
 ```
 
-### Create A Host Service Config
+### Create a Host Service Config
 It is easier to create the service config before the actual service. The config can then be supplied when creating the 
 service.
 ```
 ziti edge create config httpbin-host.v1 host.v1 '{"protocol":"tcp", "address":"httpbin.org","port":80}'
 ```
-### Create A Service
+### Create a Service
 Create a service and attach the previously created host config using the `--configs` flag.
 ```
 ziti edge create service httpbin --configs httpbin-host.v1
@@ -52,7 +52,7 @@ ziti edge create service-policy httpbin-binding Bind --service-roles '@httpbin' 
 ziti edge create service-policy httpbin-dialing Dial --service-roles '@httpbin' --identity-roles '#httpbinClientEndpoints'
 ```
 
-## Start A Tunneler
+### Start a Tunneler
 Download the appropriate Ziti Tunneler for your operating system [here](https://github.com/openziti/ziti-tunnel-sdk-c/releases/latest).
 
 Start the tunneler, providing it with the server identity file (`httpbin.server.json`). Be sure to update the path to 
@@ -61,7 +61,7 @@ final destination (http://httpbin.org).
 ```
 sudo ./ziti-edge-tunnel run -i httpbin.server.json
 ```
-## Run The Sample
+## Run the Sample
 Run the sample, providing it with the client identity file (`httpbin.client.json`). Be sure to update the path to point 
 to your identity file as necessary
 ```
