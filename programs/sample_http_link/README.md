@@ -9,7 +9,8 @@ This sample demonstrates some key OpenZiti concepts:
 * Service Policies to authorize identities to perform `dial` or `bind`.
 
 ## Prerequisites
-You'll want to follow the steps in [BUILD.md](../../BUILD.md) to compile the sample programs.
+* You'll want to follow the steps in [BUILD.md](../../BUILD.md) to compile the sample programs.
+* You will need an OpenZiti network, if you don't have one, try one of the [quickstarts](https://openziti.io/docs/category/network/). 
 
 ## Setup
 ### Create Identities
