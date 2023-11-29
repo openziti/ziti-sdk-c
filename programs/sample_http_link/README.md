@@ -55,7 +55,8 @@ ziti edge create service-policy httpbin-dialing Dial --service-roles '@httpbin' 
 Download the appropriate Ziti Tunneler for your operating system [here](https://github.com/openziti/ziti-tunnel-sdk-c/releases/latest).
 
 Start the tunneler, providing it with the server identity file (`httpbin.server.json`). Be sure to update the path to 
-point to your identity file as necessary.
+point to your identity file as necessary. The tunneler will handle offloading traffic from the OpenZiti network to its 
+final destination (http://httpbin.org).
 ```
 sudo ./ziti-edge-tunnel run -i httpbin.server.json
 ```
@@ -64,4 +65,16 @@ Run the sample, providing it with the client identity file (`httpbin.client.json
 to your identity file as necessary
 ```
 ./sample_http_link httpbin.client.json
+```
+## Cleanup
+To clean up the network, use the following commands
+```
+# Remove Service Policies
+ziti edge delete service-policies httpbin-binding httpbin-dialing
+# Remove the Service
+ziti edge delete service httpbin
+# Remove the confgs
+ziti edge delete configs httpbin-host.v1
+# Remove the identities
+ziti edge delete identities httpbin.client httpbin.server
 ```
