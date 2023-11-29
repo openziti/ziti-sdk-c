@@ -5,6 +5,8 @@ if (NOT EXPECTOR)
     return()
 endif ()
 
+find_program(GOLANG_EXE NAMES go REQUIRED)
+
 add_executable(integ-tests
         main.cpp)
 target_link_libraries(integ-tests
@@ -18,10 +20,11 @@ else ()
     set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
 endif ()
 
-execute_process(
-        COMMAND go build -o ${CMAKE_CURRENT_BINARY_DIR} github.com/openziti/ziti/ziti
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+add_custom_target(ziti-cli ALL
+        COMMAND ${CMAKE_COMMAND} -E env GOBIN=${CMAKE_CURRENT_BINARY_DIR} ${GOLANG_EXE} install -v github.com/openziti/ziti/ziti@v0.31
+        BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/ziti
 )
+
 set(ZITI_CLI ${CMAKE_CURRENT_BINARY_DIR}/ziti)
 
 set(qs_home ${CMAKE_CURRENT_BINARY_DIR}/qs-home)
@@ -33,7 +36,7 @@ add_test(NAME quickstart-bootstrap
 set_tests_properties(quickstart-bootstrap PROPERTIES
         FIXTURES_SETUP QS
         ENVIRONMENT "ZITI_CLI=${ZITI_CLI};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>"
-        DEPENDS "sample_enroll"
+        DEPENDS "sample_enroll;ziti-cli"
 )
 
 add_test(NAME quickstart-test
