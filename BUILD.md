@@ -6,7 +6,7 @@ tool chain used. These steps should work properly for you but if your OS has var
 ## Prerequisites
 
 This repository expects the user to have at least a basic understanding of what a Ziti Network
-is. To use this library it is also required to have a functioning Ziti Network availalbe to use.
+is. To use this library it is also required to have a functioning Ziti Network available to use.
 To learn more about what Ziti is or how to learn how to setup a Ziti Network head over to [the official documentation
 site](https://openziti.github.io/ziti/overview.html).
 
