@@ -55,8 +55,8 @@ runs:
         TEST_ID: ${{ inputs.test_id }}
         ZITI_TEST_IDENTITY: ${{ runner.workspace }}/test_id.json
         ZITI_LOG: "4"
-      if: inputs.test == 'true' && inputs.test_id != ''
+      if: inputs.test == 'true'
       working-directory: ./build
       shell: bash
       run: |
-        ctest -VV --no-compress-output -R quickstart-test
+        ctest -VV --no-compress-output -C ${{ inputs.config }} -R quickstart-test

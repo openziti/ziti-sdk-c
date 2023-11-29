@@ -12,8 +12,11 @@ target_link_libraries(integ-tests
         PRIVATE Catch2::Catch2WithMain
 )
 
-set_property(TARGET integ-tests PROPERTY CXX_STANDARD 20)
-
+if (WIN32)
+    set_property(TARGET integ-tests PROPERTY CXX_STANDARD 20)
+else ()
+    set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
+endif ()
 
 execute_process(
         COMMAND go build -o . github.com/openziti/ziti/ziti
