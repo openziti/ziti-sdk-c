@@ -1,0 +1,19 @@
+#!expect
+
+set tester $env(TEST_EXE)
+puts "test driver = $tester"
+
+puts "Starting Ziti Quickstart"
+puts "========================"
+spawn ./ziti edge quickstart --already-initialized --home $env(QUICKSTART_HOME)
+set qs_id $spawn_id
+
+expect {
+    "Router connected" { }
+    eof { error "qs not started" }
+}
+
+spawn $tester
+expect {
+    -re "test cases: (.*) failed" { error "$expect_out(1,string)" }
+}

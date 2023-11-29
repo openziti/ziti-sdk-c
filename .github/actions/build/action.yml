@@ -59,5 +59,4 @@ runs:
       working-directory: ./build
       shell: bash
       run: |
-        echo "${TEST_ID}" > "${ZITI_TEST_IDENTITY}"
-        ctest -VV --no-compress-output -R zitilib_tests
+        ctest -VV --no-compress-output -R quickstart-test

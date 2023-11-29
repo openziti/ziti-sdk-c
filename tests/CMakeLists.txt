@@ -42,3 +42,5 @@ add_test(quick_tests all_tests -d yes "~[integ]~[metrics]")
 
 add_test(zitilib_tests zitilib-tests -d yes)
 
+add_subdirectory(integ)
+
