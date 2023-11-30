@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
         FILE *id_file = fopen(argv[2], "w");
         if (id_file) {
             fprintf(id_file, "%.*s", (int) len, cfg);
-            printf("ziti identity is save in %s\n", argv[1]);
+            printf("ziti identity is saved in %s\n", argv[2]);
         }
         else {
             printf("err = %d(%s)\n", errno, strerror(errno));

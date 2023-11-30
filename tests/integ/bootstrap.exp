@@ -1,0 +1,89 @@
+#!expect
+
+set timeout 20
+proc abort errs {
+    puts "test failed: $errs"
+    exit 2
+}
+set ziti $env(ZITI_CLI)
+puts "ziti = $ziti"
+
+set enroller $env(ENROLLER)
+puts "enroller = $env(ENROLLER)"
+
+puts "Starting Ziti Quickstart"
+puts "========================"
+
+spawn $ziti edge quickstart --home $env(QUICKSTART_HOME)
+set qs_id @spawn_id
+# wait until ER is connected
+expect {
+    "finished sychronizing api sessions" { }
+    timeout { error "qs not started in time" }
+    eof { error "qs not started" }
+}
+
+puts "Configure model"
+puts "==============="
+log_user 1
+
+expect_before {
+   timeout { abort "timeout" }
+   "connection refused" { abort "QS not started" }
+}
+
+spawn $ziti edge create identity test-client -a client -o test-client.jwt
+expect {
+     "New identity test-client created" {}
+     "error" { abort $expect_out(buffer) }
+     eof { abort "unexpected" }
+}
+
+spawn $ziti edge create identity test-server -a server -o test-server.jwt
+expect {
+    "New identity test-server created" {}
+    "error" { error $expect_out(buffer) }
+}
+
+spawn $ziti edge create service test-service
+expect {
+     "New service test-service created" { }
+     -re "error(.*)" { error $expect_out(1,string) }
+     eof { error "not cool" }
+}
+
+spawn $ziti edge create service-policy servers-bind Bind --identity-roles \#server --service-roles \#all
+expect {
+    "New service policy servers-bind created" {}
+    -re "error(.*)" { error $expect_out(1,string) }
+    eof { error "not cool" }
+}
+
+spawn $ziti edge create service-policy clients-dial Dial --identity-roles \#client --service-roles \#all
+expect {
+    "New service policy clients-dial created" {}
+    -re "error(.*)" { error $expect_out(1,string) }
+    eof { error "not cool" }
+}
+
+spawn $enroller ./test-server.jwt ./test-server.json
+expect {
+    "ziti identity is saved in ./test-server.json" {}
+    eof { error "test-server not enrolled" }
+}
+
+spawn $enroller ./test-client.jwt ./test-client.json
+expect {
+    "ziti identity is saved in ./test-client.json" {}
+    eof { error "test-client not enrolled" }
+}
+
+
+
+
+
+
+
+
+
+

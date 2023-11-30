@@ -24,6 +24,10 @@ runs:
       run: echo "target = ${{ inputs.target }}"
       shell: bash
 
+    - uses: actions/setup-go@v4
+      with:
+        go-version: '1.20.x'
+
     - uses: lukka/get-cmake@v3.27.6
 
     - uses: lukka/run-vcpkg@v10
@@ -55,9 +59,8 @@ runs:
         TEST_ID: ${{ inputs.test_id }}
         ZITI_TEST_IDENTITY: ${{ runner.workspace }}/test_id.json
         ZITI_LOG: "4"
-      if: inputs.test == 'true' && inputs.test_id != ''
+      if: inputs.test == 'true'
       working-directory: ./build
       shell: bash
       run: |
-        echo "${TEST_ID}" > "${ZITI_TEST_IDENTITY}"
-        ctest -VV --no-compress-output -R zitilib_tests
+        ctest -VV --no-compress-output -C ${{ inputs.config }} -R quickstart-test
