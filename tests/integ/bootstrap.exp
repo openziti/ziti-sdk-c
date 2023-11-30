@@ -1,6 +1,6 @@
 #!expect
 
-set timeout 10
+set timeout 20
 proc abort errs {
     puts "test failed: $errs"
     exit 2
@@ -18,7 +18,8 @@ spawn $ziti edge quickstart --home $env(QUICKSTART_HOME)
 set qs_id @spawn_id
 # wait until ER is connected
 expect {
-    "Router connected" { }
+    "finished sychronizing api sessions" { }
+    timeout { error "qs not started in time" }
     eof { error "qs not started" }
 }
 

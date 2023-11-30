@@ -12,7 +12,8 @@ spawn $ziti edge quickstart --already-initialized --home $env(QUICKSTART_HOME)
 set qs_id $spawn_id
 
 expect {
-    "Router connected" { }
+    "finished sychronizing api sessions" { }
+    timeout { error "qs not started in time" }
     eof { error "qs not started" }
 }
 
