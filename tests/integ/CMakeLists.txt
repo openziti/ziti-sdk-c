@@ -35,7 +35,7 @@ add_test(NAME quickstart-bootstrap
 )
 set_tests_properties(quickstart-bootstrap PROPERTIES
         FIXTURES_SETUP QS
-        ENVIRONMENT "ZITI_CLI=${ZITI_CLI};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>"
+        ENVIRONMENT "ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>"
         DEPENDS "sample_enroll;ziti-cli"
 )
 
@@ -46,7 +46,7 @@ add_test(NAME quickstart-test
 set_tests_properties(quickstart-test PROPERTIES
         FIXTURES_REQUIRED QS
         DEPENDS "integ-tests"
-        ENVIRONMENT "ZITI_CLI=${ZITI_CLI};QUICKSTART_HOME=${qs_home};TEST_EXE=$<TARGET_FILE:integ-tests>"
+        ENVIRONMENT "ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};TEST_EXE=$<TARGET_FILE:integ-tests>"
 )
 
 add_test(NAME quickstart-cleanup
