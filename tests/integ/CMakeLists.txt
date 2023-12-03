@@ -21,11 +21,11 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
 add_executable(integ-tests
         main.cpp
         legacy-auth.cpp
+        oidc-tests.cpp
 )
 target_include_directories(integ-tests
         PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include
-        PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal
-)
+        PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 target_link_libraries(integ-tests
         PRIVATE ziti
         PRIVATE Catch2::Catch2WithMain
