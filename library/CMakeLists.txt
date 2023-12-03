@@ -16,6 +16,8 @@ if (NOT sodium_libs)
     message(FATAL_ERROR "could not find required library[sodium]")
 endif ()
 
+find_package(json-c CONFIG REQUIRED)
+
 set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/errors.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti.h
@@ -53,6 +55,7 @@ SET(ZITI_SRC_FILES
         authenticators.c
         crypto.c
         bind.c
+        oidc.c
         )
 
 SET(ZITI_INCLUDE_DIRS
@@ -86,7 +89,7 @@ function(config_ziti_library target)
 
     target_sources(${target} PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 
-    target_link_libraries(${target} PUBLIC tlsuv ${sodium_libs})
+    target_link_libraries(${target} PUBLIC tlsuv ${sodium_libs} json-c::json-c)
 
     if (CMAKE_SYSTEM_NAME MATCHES "Linux")
         target_link_libraries(${target} PUBLIC atomic)
