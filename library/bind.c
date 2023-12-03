@@ -487,7 +487,8 @@ void on_unbind(void *ctx, message *m, int code) {
                         .value = (uint8_t *) &conn_id
                 },
         };
-        ziti_channel_send(b->ch, ContentTypeStateClosed, headers, 1, NULL, 0, NULL);
+        message *close_msg = message_new(NULL, ContentTypeStateClosed, headers, 1, 0);
+        ziti_channel_send_message(b->ch, close_msg, NULL);
     } else {
         CONN_LOG(TRACE, "failed to receive unbind response because channel was disconnected: %d/%s", code, ziti_errorstr(code));
     }

@@ -19,7 +19,7 @@
 #include "utils.h"
 #include "endian_internal.h"
 
-static uint8_t *read_int32(const uint8_t *p, uint32_t *val) {
+static const uint8_t *read_int32(const uint8_t *p, uint32_t *val) {
     *val = le32toh(*(uint32_t *) p);
     return p + sizeof(uint32_t);
 }
@@ -84,7 +84,7 @@ uint8_t *write_hdr(const hdr_t *h, uint8_t *buf) {
 }
 
 int parse_hdrs(uint8_t *buf, uint32_t len, hdr_t **hp) {
-    uint8_t *p = buf;
+    const uint8_t *p = buf;
 
     hdr_t *headers = NULL;
     int count = 0;
