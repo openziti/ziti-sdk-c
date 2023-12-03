@@ -6,7 +6,8 @@
     "openssl",
     "zlib",
     "llhttp",
-    "libsodium"
+    "libsodium",
+    "json-c"
   ],
   "features": {
     "test": {

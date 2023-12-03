@@ -9,8 +9,21 @@ execute_process(COMMAND ${EXPECTOR} -v)
 
 find_program(GOLANG_EXE NAMES go REQUIRED)
 
+set(test_client_json ${CMAKE_CURRENT_BINARY_DIR}/test-client.json)
+set(test_server_json ${CMAKE_CURRENT_BINARY_DIR}/test-server.json)
+
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
+        ${CMAKE_CURRENT_BINARY_DIR}/include/test-data.h
+        @ONLY
+)
+
 add_executable(integ-tests
-        main.cpp)
+        main.cpp
+        oidc-tests.cpp
+)
+target_include_directories(integ-tests
+        PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include
+        PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 target_link_libraries(integ-tests
         PRIVATE ziti
         PRIVATE Catch2::Catch2WithMain
@@ -22,7 +35,7 @@ else ()
     set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
 endif ()
 
-set(ZITI_CLI_VER "v0.31.0" CACHE STRING "ziti version for integration tests")
+set(ZITI_CLI_VER "ha-staging" CACHE STRING "ziti version for integration tests")
 add_custom_target(ziti-cli ALL
         COMMAND ${CMAKE_COMMAND} -E env GOBIN=${CMAKE_CURRENT_BINARY_DIR}
         ${GOLANG_EXE} install github.com/openziti/ziti/ziti@${ZITI_CLI_VER}

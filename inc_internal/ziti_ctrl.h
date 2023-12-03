@@ -19,7 +19,6 @@
 #include <tlsuv/http.h>
 #include "internal_model.h"
 #include "ziti/ziti_model.h"
-#include "zt_internal.h"
 
 #ifdef __cplusplus
 extern "C" {
