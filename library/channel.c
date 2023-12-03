@@ -881,6 +881,9 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             free(r);
         }
 
+        tlsuv_stream_close(ch->connection, on_tls_close);
+        ch->connection = NULL;
+
         if (ch->state != Closed) {
             ch->state = Disconnected;
             reconnect_channel(ch, false);
