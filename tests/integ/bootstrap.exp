@@ -71,12 +71,14 @@ expect {
     "ziti identity is saved in ./test-server.json" {}
     eof { error "test-server not enrolled" }
 }
+wait
 
 spawn $enroller ./test-client.jwt ./test-client.json
 expect {
     "ziti identity is saved in ./test-client.json" {}
     eof { error "test-client not enrolled" }
 }
+wait
 
 
 
