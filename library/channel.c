@@ -122,7 +122,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     ch->ctx = ctx;
     ch->loop = ctx->loop;
     ch->id = id;
-    ch->msg_seq = -1;
+//    ch->msg_seq = 0;
 
     char hostname[MAXHOSTNAMELEN];
     size_t hostlen = sizeof(hostname);
@@ -363,6 +363,9 @@ void on_channel_send(uv_write_t *w, int status) {
 
 int ziti_channel_send_message(ziti_channel_t *ch, message *msg, struct ziti_write_req_s *ziti_write) {
     uv_buf_t buf = uv_buf_init((char *) msg->msgbufp, msg->msgbuflen);
+    message_set_seq(msg, &ch->msg_seq);
+    CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", msg->header.content, msg->header.seq, msg->header.body_len);
+
     NEWP(req, uv_write_t);
     if (ziti_write == NULL) {
         ziti_write = calloc(1, sizeof(struct ziti_write_req_s));
@@ -386,7 +389,7 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
                       uint32_t body_len,
                       struct ziti_write_req_s *ziti_write) {
     message *m = message_new(NULL, content, hdrs, nhdrs, body_len);
-    message_set_seq(m, ch->msg_seq++);
+    message_set_seq(m, &ch->msg_seq);
     CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", content, m->header.seq, body_len);
     memcpy(m->body, body, body_len);
 
@@ -406,8 +409,7 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
                             reply_cb rep_cb, void *reply_ctx) {
     struct waiter_s *result = NULL;
     message *m = message_new(NULL, content, hdrs, nhdrs, body_len);
-    message_set_seq(m, ch->msg_seq++);
-    CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", content, m->header.seq, body_len);
+    message_set_seq(m, &ch->msg_seq);
     memcpy(m->body, body, body_len);
 
     if (rep_cb != NULL) {
@@ -838,6 +840,8 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
                 CH_LOG(INFO, "channel was closed [%zd/%s]", len, uv_strerror(len));
                 // propagate close
                 on_channel_close(ch, ZITI_CONNABORT, len);
+                tlsuv_stream_close(ch->connection, on_tls_close);
+                ch->connection = NULL;
                 break;
 
             default:

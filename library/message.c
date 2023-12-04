@@ -230,7 +230,10 @@ message *message_new(pool_t *pool, uint32_t content, const hdr_t *hdrs, int nhdr
     return m;
 }
 
-void message_set_seq(message *m, uint32_t seq) {
-    m->header.seq = seq;
+void message_set_seq(message *m, uint32_t *seq) {
+    if (m->header.seq == 0) {
+        *seq += 1;
+        m->header.seq = *seq;
+    }
     header_to_buffer(&m->header, m->msgbufp);
 }
