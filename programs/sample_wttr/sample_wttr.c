@@ -29,7 +29,7 @@ exit(code);\
 static size_t total;
 static ziti_context ziti;
 
-ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
+ssize_t on_data(ziti_connection c, const uint8_t *buf, ssize_t len) {
     if (len == ZITI_EOF) {
 
         printf("request completed: %s\n", ziti_errorstr(len));

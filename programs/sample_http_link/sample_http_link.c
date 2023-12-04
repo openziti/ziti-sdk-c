@@ -45,7 +45,7 @@ void resp_cb(tlsuv_http_resp_t *resp, void *data) {
     printf("\n");
 }
 
-void body_cb(tlsuv_http_req_t *req, const char *body, ssize_t len) {
+void body_cb(tlsuv_http_req_t *req, char *body, ssize_t len) {
     if (len == UV_EOF) {
         printf("\n\n====================\nRequest completed\n");
         ziti_shutdown(ziti);
