@@ -132,7 +132,7 @@ static void ctrl_paging_req(struct ctrl_resp *resp);
 
 static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp);
 
-static void ctrl_body_cb(tlsuv_http_req_t *req, const char *b, ssize_t len);
+static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len);
 
 static tlsuv_http_req_t *
 start_request(tlsuv_http_t *http, const char *method, const char *path, tlsuv_http_resp_cb cb, struct ctrl_resp *resp) {
@@ -285,11 +285,11 @@ static void ctrl_service_cb(ziti_service **services, ziti_error *e, struct ctrl_
     free(services);
 }
 
-static void free_body_cb(tlsuv_http_req_t *req, const char *body, ssize_t len) {
+static void free_body_cb(tlsuv_http_req_t *req, char *body, ssize_t len) {
     free((char *) body);
 }
 
-static void ctrl_body_cb(tlsuv_http_req_t *req, const char *b, ssize_t len) {
+static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
     struct ctrl_resp *resp = req->data;
     ziti_controller *ctrl = resp->ctrl;
 

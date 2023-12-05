@@ -130,7 +130,7 @@ void on_connect(ziti_connection conn, int status) {
 
 static size_t total;
 
-ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
+ssize_t on_data(ziti_connection c, const uint8_t *buf, ssize_t len) {
     if (len == ZITI_EOF) {
 
         printf("request completed: %s\n", ziti_errorstr(len));
@@ -152,7 +152,7 @@ ssize_t on_data(ziti_connection c, uint8_t *buf, ssize_t len) {
 static uv_signal_t sig;
 static void on_signal(uv_signal_t *h, int signal) {
     ziti_context ztx = h->data;
-    ziti_dump(ztx, fprintf, stdout);
+    ziti_dump(ztx, (int (*)(void *, const char *, ...)) fprintf, stdout);
 }
 
 static void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {

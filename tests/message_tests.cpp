@@ -34,12 +34,13 @@ TEST_CASE("simple", "[model]") {
             },
     };
     auto content1 = "this is a message";
+    uint32_t s1 = 3333;
     auto m1 = message_new(p, ContentTypeData, headers, 2, strlen(content1));
     strncpy(reinterpret_cast<char *>(m1->body), content1, strlen(content1));
-    message_set_seq(m1, 3333);
+    message_set_seq(m1, &s1);
 
     auto m2 = message_new_from_header(p, m1->msgbufp);
-    CHECK(m2->header.seq == 3333);
+    CHECK(m2->header.seq == 3334);
     CHECK(m2->msgbuflen == m1->msgbuflen);
     memcpy(m2->msgbufp, m1->msgbufp, m1->msgbuflen);
     m2->nhdrs = parse_hdrs(m2->headers, m2->header.headers_len, &m2->hdrs);
@@ -75,13 +76,16 @@ TEST_CASE("large", "[model]") {
                     .value = (uint8_t *) "bar"
             },
     };
+    uint32_t seq = 3333;
     auto content1 = "this is a very long message, it won't fint into the pooled message structure";
     auto m1 = message_new(p, ContentTypeData, headers, 2, strlen(content1));
     strncpy(reinterpret_cast<char *>(m1->body), content1, strlen(content1));
-    message_set_seq(m1, 3333);
+    message_set_seq(m1, &seq);
+
 
     auto m2 = message_new_from_header(p, m1->msgbufp);
-    CHECK(m2->header.seq == 3333);
+    CHECK(m2->header.seq == 3334);
+    CHECK(seq == 3334);
     CHECK(m2->msgbuflen == m1->msgbuflen);
     memcpy(m2->msgbufp, m1->msgbufp, m1->msgbuflen);
     m2->nhdrs = parse_hdrs(m2->headers, m2->header.headers_len, &m2->hdrs);
@@ -116,13 +120,15 @@ TEST_CASE("large unpooled", "[model]") {
                     .value = (uint8_t *) "bar"
             },
     };
+    uint32_t seq = 3333;
     auto content1 = "this is a very long message, it won't fint into the pooled message structure";
     auto m1 = message_new(p, ContentTypeData, headers, 2, strlen(content1));
     strncpy(reinterpret_cast<char *>(m1->body), content1, strlen(content1));
-    message_set_seq(m1, 3333);
+    message_set_seq(m1, &seq);
 
     auto m2 = message_new_from_header(nullptr, m1->msgbufp);
-    CHECK(m2->header.seq == 3333);
+    CHECK(m2->header.seq == 3334);
+    CHECK(seq == 3334);
     CHECK(m2->msgbuflen == m1->msgbuflen);
     memcpy(m2->msgbufp, m1->msgbufp, m1->msgbuflen);
     m2->nhdrs = parse_hdrs(m2->headers, m2->header.headers_len, &m2->hdrs);
