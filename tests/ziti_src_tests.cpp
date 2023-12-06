@@ -60,7 +60,7 @@ TEST_CASE("httpbin.ziti:ziti_src", "[integ]") {
                     auto t = (source_test*)ctx;
                     t->code = resp->code;
 
-                    resp->body_cb = [](tlsuv_http_req_t *req, char *body, ssize_t len){
+                    resp->body_cb = [](tlsuv_http_req_t *req, const char *body, ssize_t len){
                         auto t = (source_test*)req->data;
                         if (len > 0)
                             t->body.append(body, len);
