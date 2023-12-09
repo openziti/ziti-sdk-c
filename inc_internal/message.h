@@ -99,7 +99,7 @@ message *message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE]);
 
 message *message_new(pool_t *pool, uint32_t content, const hdr_t *headers, int nheaders, size_t body_len);
 
-void message_set_seq(message *m, uint32_t *seq);
+void message_set_seq(message *m, uint32_t seq);
 
 
 #ifdef __cplusplus
