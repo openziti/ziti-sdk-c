@@ -606,6 +606,7 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
     if (pathlen >= MAXPATHLEN) return UV_ENOMEM;
     uv_file f = -1;
     uv_fs_t fs_req = {0};
+    int err = 0;
 
     if (pathlen > 0) {
         strncpy(filename, path, pathlen);
@@ -622,7 +623,7 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
 
     if (f < 0) {
         ZITI_LOG(ERROR, "%s - %s", path, uv_strerror(f));
-        return rc;
+        return f;
     }
 
     string_buf_t *content_buf = NULL;
@@ -651,7 +652,9 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
             return rc;
         }
 
-        string_buf_appendn(content_buf, b, rc);
+        if (string_buf_appendn(content_buf, b, rc) == -1) {
+            err = UV_ENOMEM;
+        }
     }
 
     uv_fs_req_cleanup(&fs_req);
@@ -667,5 +670,5 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
 
     delete_string_buf(content_buf);
 
-    return ZITI_OK;
+    return err;
 }

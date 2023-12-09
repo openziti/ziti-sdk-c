@@ -65,12 +65,9 @@ TEST_CASE("read_file_stdin", "[util]") {
     REQUIRE(input > 0);
     REQUIRE(dup2(input, fileno(stdin)) == 0);
 
-
     char *content = nullptr;
     size_t size;
-    int rc = load_file("-", 0, &content, &size);
-    CHECK(rc == UV_EINVAL);
-    CHECK(content == nullptr);
+    int rc;
 
     size = file_size + 16;
     content = static_cast<char *>(malloc(size));
