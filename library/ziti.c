@@ -559,6 +559,7 @@ static void free_ztx(uv_handle_t *h) {
     free_ziti_identity_data(ztx->identity_data);
     FREE(ztx->identity_data);
     FREE(ztx->last_update);
+    free_ziti_config(&ztx->config);
 
     ziti_event_t ev = {0};
     ev.type = ZitiContextEvent;

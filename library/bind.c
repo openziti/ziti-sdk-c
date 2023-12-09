@@ -181,7 +181,7 @@ static void session_cb(ziti_net_session *session, const ziti_error *err, void *c
             conn->server.session = session;
             notify_status(conn, ZITI_OK);
 
-            free_ziti_net_session(old);
+            free_ziti_net_session_ptr(old);
 
             process_bindings(conn);
             break;
