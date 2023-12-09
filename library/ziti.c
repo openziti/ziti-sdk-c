@@ -559,6 +559,7 @@ static void free_ztx(uv_handle_t *h) {
     free_ziti_identity_data(ztx->identity_data);
     FREE(ztx->identity_data);
     FREE(ztx->last_update);
+    free_ziti_config(&ztx->config);
 
     ziti_event_t ev = {0};
     ev.type = ZitiContextEvent;
@@ -1840,8 +1841,10 @@ int ziti_context_set_options(ziti_context ztx, const ziti_options *options) {
     } else {
 #define copy_opt(f) if (options->f != 0) ztx->opts.f = options->f
 
+        copy_opt(disabled);
         copy_opt(config_types);
         copy_opt(refresh_interval);
+        copy_opt(metrics_type);
         copy_opt(api_page_size);
         copy_opt(event_cb);
         copy_opt(events);
