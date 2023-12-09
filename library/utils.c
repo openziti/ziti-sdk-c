@@ -21,6 +21,7 @@
 #include "utils.h"
 #include "tlsuv/http.h"
 #include "ziti/errors.h"
+#include "ziti/ziti_buffer.h"
 
 #if _WIN32
 #include <time.h>
@@ -612,64 +613,59 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
         path = filename;
     }
 
-    size_t content_len = 0;
-    char *content_buf = NULL;
     int rc = 0;
-
     if (strcmp(path, "-") == 0) {
-        if (*content == NULL) {
-            ZITI_LOG(ERROR, "buffer is required when reading stdin");
-            return UV_EINVAL;
-        }
-        content_buf = *content;
-        content_len = *size;
         f = fileno(stdin);
     } else {
-        struct stat stats;
-        rc = uv_fs_stat(NULL, &fs_req, path, NULL);
-        if (rc) {
-            ZITI_LOG(ERROR, "%s - %s", path, uv_strerror(rc));
-            return rc;
-        }
-        content_len = fs_req.statbuf.st_size;
-        if (*content != NULL) {
-            if (*size > 0 && *size < content_len) {
-                ZITI_LOG(ERROR, "%s - not enough space to read", path);
-                return UV_ENOMEM;
-            }
-            content_buf = *content;
-        }
-
-        uv_fs_req_cleanup(&fs_req);
         f = uv_fs_open(NULL, &fs_req, path, 0, O_RDONLY, NULL);
     }
 
-    if (f == -1) {
-        ZITI_LOG(ERROR, "%s - %s", path, strerror(errno));
+    if (f < 0) {
+        ZITI_LOG(ERROR, "%s - %s", path, uv_strerror(f));
         return rc;
     }
 
-    if (content_buf == NULL) {
-        content_buf = malloc(content_len + 1);
+    string_buf_t *content_buf = NULL;
+    size_t max_size = UINT32_MAX; // arbitrary large limit
+    if (*content != NULL) {
+        max_size = *size;
+        content_buf = new_fixed_string_buf(*content, max_size);
+    } else {
+        content_buf = new_string_buf();
     }
 
-    size_t read = 0;
-    while (read < content_len) {
+    while (string_buf_size(content_buf) < max_size) {
         uv_fs_req_cleanup(&fs_req);
 
-        uv_buf_t buf = uv_buf_init(content_buf + read, content_len - read);
+        char b[16 * 1024];
+        uv_buf_t buf = uv_buf_init(b, sizeof(b));
+
         rc = uv_fs_read(NULL, &fs_req, f, &buf, 1, -1, NULL);
         if (rc == 0) {
             break;
         }
-        read += rc;
+
+        if (rc < 0) {
+            ZITI_LOG(ERROR, "reading file[%s]:  %d/%s", path, rc, uv_strerror(rc));
+            delete_string_buf(content_buf);
+            return rc;
+        }
+
+        string_buf_appendn(content_buf, b, rc);
     }
 
     uv_fs_req_cleanup(&fs_req);
     uv_fs_close(NULL, &fs_req, f, NULL);
-    content_buf[read] = 0;
-    *content = content_buf;
-    *size = read;
+
+    if (*content == NULL) {
+        *content = string_buf_to_string(content_buf, size);
+    } else {
+        size_t read = string_buf_size(content_buf);
+        (*content)[read] = '\0';
+        *size = read;
+    }
+
+    delete_string_buf(content_buf);
 
     return ZITI_OK;
 }
