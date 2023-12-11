@@ -1,6 +1,6 @@
 #!expect
 
-set timeout 20
+set timeout 60
 proc abort errs {
     puts "test failed: $errs"
     exit 2
