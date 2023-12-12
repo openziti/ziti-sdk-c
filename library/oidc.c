@@ -175,13 +175,16 @@ static void free_auth_req(auth_req *req) {
 
     if (req->json_parser) {
         json_tokener_free(req->json_parser);
+        req->json_parser = NULL;
     }
     free(req);
 }
 
 static void failed_auth_req(auth_req *req, const char *error) {
-    ZITI_LOG(WARN, "OIDC authorization failed: %s", error);
-    req->clt->token_cb(req->clt, ZITI_AUTHENTICATION_FAILED, NULL);
+    if (req->clt->token_cb) {
+        ZITI_LOG(WARN, "OIDC authorization failed: %s", error);
+        req->clt->token_cb(req->clt, ZITI_AUTHENTICATION_FAILED, NULL);
+    }
     free_auth_req(req);
 }
 
@@ -290,7 +293,6 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
 
     const char *path = get_endpoint_path(clt, "authorization_endpoint");
     tlsuv_http_req_t *http_req = tlsuv_http_req(&clt->http, "POST", path, auth_cb, req);
-    tlsuv_http_req_header(http_req, "Accept", "*/*");
     int rc = tlsuv_http_req_form(http_req, 6, (tlsuv_http_pair[]) {
             {"client_id",             "native"},
             {"scope",                 "openid offline_access"},
@@ -308,7 +310,9 @@ static void http_close_cb(tlsuv_http_t *h) {
     oidc_close_cb cb = clt->close_cb;
     json_object_put(clt->config);
     json_object_put(clt->tokens);
-    cb(clt);
+    if (cb) {
+        cb(clt);
+    }
 }
 
 int oidc_client_refresh(oidc_client_t *clt) {
@@ -324,6 +328,7 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
     if (clt->close_cb) {
         return UV_EALREADY;
     }
+    clt->token_cb = NULL;
     clt->close_cb = cb;
     tlsuv_http_close(&clt->http, http_close_cb);
     uv_close((uv_handle_t *) clt->timer, (uv_close_cb) free);
@@ -344,7 +349,7 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
     }
     struct json_object *refresher = json_object_object_get(clt->tokens, "refresh_token");
     struct json_object *ttl = json_object_object_get(clt->tokens, "expires_in");
-    if (refresher && ttl) {
+    if (clt->timer && refresher && ttl) {
         int32_t t = json_object_get_int(ttl);
         if (t > 15) {
             t -= 15;
