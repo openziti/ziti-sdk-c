@@ -1,3 +1,4 @@
 
 #define TEST_CLIENT "@test_client_json@"
 #define TEST_SERVER "@test_server_json@"
+#define TEST_SERVICE "@test_service@"
