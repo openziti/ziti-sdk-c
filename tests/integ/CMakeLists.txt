@@ -11,6 +11,7 @@ find_program(GOLANG_EXE NAMES go REQUIRED)
 
 set(test_client_json ${CMAKE_CURRENT_BINARY_DIR}/test-client.json)
 set(test_server_json ${CMAKE_CURRENT_BINARY_DIR}/test-server.json)
+set(test_service test-service)
 
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
         ${CMAKE_CURRENT_BINARY_DIR}/include/test-data.h
