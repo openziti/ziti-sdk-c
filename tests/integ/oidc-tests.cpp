@@ -24,7 +24,7 @@
 #include <test-data.h>
 
 TEST_CASE("ha-oidc", "[integ]") {
-    auto l = uv_loop_new();
+    auto l = uv_default_loop();
     ziti_log_init(l, 4, NULL);
     ziti_config cfg;
     REQUIRE(ziti_load_config(&cfg, TEST_CLIENT) == ZITI_OK);
@@ -88,5 +88,4 @@ TEST_CASE("ha-oidc", "[integ]") {
     free_ziti_config(&cfg);
 
     uv_loop_close(l);
-    free(l);
 }
