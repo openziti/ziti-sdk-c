@@ -248,6 +248,8 @@ DECLARE_MODEL(ziti_create_api_cert_req, ZITI_CREATE_API_CERT_REQ)
 
 DECLARE_MODEL(ziti_create_api_cert_resp, ZITI_CREATE_API_CERT_RESP)
 
+bool ziti_has_capability(const ziti_version *v, ziti_ctrl_cap c);
+
 #ifdef __cplusplus
 }
 #endif

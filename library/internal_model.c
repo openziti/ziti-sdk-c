@@ -524,4 +524,17 @@ int ziti_intercept_from_client_cfg(ziti_intercept_cfg_v1 *intercept, const ziti_
     return 0;
 }
 
+bool ziti_has_capability(const ziti_version *v, ziti_ctrl_cap c) {
+    if (v != NULL && v->capabilities != NULL) {
+        ziti_ctrl_cap **cap;
+        for (int idx = 0; v->capabilities[idx] != NULL; idx++) {
+            if (*v->capabilities[idx] == c) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+
 IMPL_MODEL_FUNCS(ziti_address)
