@@ -11,6 +11,7 @@ find_program(GOLANG_EXE NAMES go REQUIRED)
 
 set(test_client_json ${CMAKE_CURRENT_BINARY_DIR}/test-client.json)
 set(test_server_json ${CMAKE_CURRENT_BINARY_DIR}/test-server.json)
+set(test_service test-service)
 
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
         ${CMAKE_CURRENT_BINARY_DIR}/include/test-data.h
@@ -20,6 +21,7 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
 add_executable(integ-tests
         main.cpp
         oidc-tests.cpp
+        ctrl_tests.cpp
 )
 target_include_directories(integ-tests
         PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include
