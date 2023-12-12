@@ -43,7 +43,7 @@ typedef struct ziti_controller_s {
 
     ziti_version version;
 
-    char *api_session_token;
+    bool has_token;
     char *instance_id;
 
     ziti_ctrl_redirect_cb redirect_cb;
@@ -51,6 +51,8 @@ typedef struct ziti_controller_s {
 } ziti_controller;
 
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_context *tls);
+
+int ziti_ctrl_set_token(ziti_controller *ctrl, const char *access_token);
 
 int ziti_ctrl_cancel(ziti_controller *ctrl);
 

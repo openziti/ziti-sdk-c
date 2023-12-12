@@ -247,7 +247,7 @@ static void ctrl_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *re
 }
 
 void ziti_ctrl_clear_api_session(ziti_controller *ctrl) {
-    FREE(ctrl->api_session_token);
+    ctrl->has_token = false;
     if (ctrl->client) {
         CTRL_LOG(DEBUG, "clearing api session token for ziti_controller");
         tlsuv_http_header(ctrl->client, "zt-session", NULL);
@@ -263,9 +263,8 @@ static void ctrl_login_cb(ziti_api_session *s, ziti_error *e, struct ctrl_resp *
 
     if (s) {
         CTRL_LOG(DEBUG, "authenticated successfully session[%s]", s->id);
-        FREE(resp->ctrl->api_session_token);
-        resp->ctrl->api_session_token = strdup(s->token);
-        tlsuv_http_header(resp->ctrl->client, "zt-session", s->token);
+        ctrl->has_token = true;
+        tlsuv_http_header(ctrl->client, "zt-session", s->token);
     }
     ctrl_default_cb(s, e, resp);
 }
@@ -274,8 +273,8 @@ static void ctrl_logout_cb(void *s, ziti_error *e, struct ctrl_resp *resp) {
     ziti_controller *ctrl = resp->ctrl;
     CTRL_LOG(DEBUG, "logged out");
 
-    FREE(resp->ctrl->api_session_token);
-    tlsuv_http_header(resp->ctrl->client, "zt-session", NULL);
+    ctrl->has_token = false;
+    tlsuv_http_header(ctrl->client, "zt-session", NULL);
     ctrl_default_cb(s, e, resp);
 }
 
@@ -406,10 +405,30 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_
     tlsuv_http_idle_keepalive(ctrl->client, ZITI_CTRL_KEEPALIVE);
     tlsuv_http_connect_timeout(ctrl->client, ZITI_CTRL_TIMEOUT);
     tlsuv_http_header(ctrl->client, "Accept", "application/json");
-    ctrl->api_session_token = NULL;
+    ctrl->has_token = false;
     ctrl->instance_id = NULL;
 
     CTRL_LOG(DEBUG, "ziti controller client initialized");
+
+    return ZITI_OK;
+}
+
+int ziti_ctrl_set_token(ziti_controller *ctrl, const char *token) {
+    if (token == NULL) {
+        tlsuv_http_header(ctrl->client, "Authorization", NULL);
+        ctrl->has_token = false;
+        return 0;
+    }
+
+    string_buf_t *b = new_string_buf();
+    string_buf_fmt(b, "Bearer %s", token);
+    char *header = string_buf_to_string(b, NULL);
+
+    ctrl->has_token = true;
+    tlsuv_http_header(ctrl->client, "Authorization", header);
+
+    free(header);
+    delete_string_buf(b);
 
     return ZITI_OK;
 }
@@ -433,7 +452,6 @@ int ziti_ctrl_cancel(ziti_controller *ctrl) {
 
 int ziti_ctrl_close(ziti_controller *ctrl) {
     free_ziti_version(&ctrl->version);
-    FREE(ctrl->api_session_token);
     FREE(ctrl->instance_id);
     FREE(ctrl->url);
     tlsuv_http_close(ctrl->client, on_http_close);
@@ -483,7 +501,7 @@ void ziti_ctrl_login(
 }
 
 static bool verify_api_session(ziti_controller *ctrl, ctrl_resp_cb_t cb, void *ctx) {
-    if(ctrl->api_session_token == NULL) {
+    if(!ctrl->has_token) {
         CTRL_LOG(WARN, "no API session");
         ziti_error err = {
                 .err = ZITI_AUTHENTICATION_FAILED,
@@ -545,7 +563,7 @@ void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void (*cb)(ziti_edge_
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_edge_router_array, ctx);
     resp->paging = true;
-    resp->base_path = "/current-identity/edge-routers";
+        resp->base_path = "/current-identity/edge-routers";
     ctrl_paging_req(resp);
 }
 
@@ -554,13 +572,16 @@ ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb
                       void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    char path[1024];
-    snprintf(path, sizeof(path), "/services?filter=name=\"%s\"", service_name);
+    char name_clause[1024];
+    snprintf(name_clause, sizeof(name_clause), "name=\"%s\"", service_name);
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_service_array, ctx);
     resp->ctrl_cb = (ctrl_cb_t) ctrl_service_cb;
 
-    start_request(ctrl->client, "GET", path, ctrl_resp_cb, resp);
+    tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/services", ctrl_resp_cb, resp);
+    tlsuv_http_req_query(req, 1, &(tlsuv_http_pair){
+        "filter", name_clause
+    });
 }
 
 void ziti_ctrl_get_session(
