@@ -67,7 +67,7 @@ XX(OIDC_AUTH, __VA_ARGS__)
 XX(version, string, none, version, __VA_ARGS__) \
 XX(revision, string, none, revision, __VA_ARGS__) \
 XX(build_date, string, none, buildDate, __VA_ARGS__) \
-XX(capabilities, ziti_ctrl_cap, list, capabilities, __VA_ARGS__) \
+XX(capabilities, ziti_ctrl_cap, array, capabilities, __VA_ARGS__) \
 XX(api_versions, ziti_api_versions, ptr, apiVersions, __VA_ARGS__)
 
 #define ZITI_IDENTITY_MODEL(XX, ...) \
