@@ -40,8 +40,16 @@ enum content_type {
     ContentTypeBind = 60790,
     ContentTypeUnbind = 60791,
     ContentTypeStateSessionEnded = 60792,
-	ContentTypeProbe             = 60793,
-	ContentTypeUpdateBind        = 60794,
+    ContentTypeProbe = 60793,
+    ContentTypeUpdateBind = 60794,
+
+    ContentTypeUpdateTokenType = 60800,
+    ContentTypeUpdateTokenSuccessType = 60801,
+    ContentTypeUpdateTokenFailureType = 60802,
+
+    ContentTypePostureResponseType = 10800,
+    ContentTypePostureResponseSuccessType = 10801,
+
 };
 
 enum header_id {
