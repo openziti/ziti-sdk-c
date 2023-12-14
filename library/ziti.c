@@ -70,7 +70,8 @@ static void ziti_init_async(ziti_context ztx, void *data);
 
 static void ziti_re_auth(ziti_context ztx);
 
-static void grim_reaper(uv_prepare_t *p);
+static void ztx_prepare(uv_prepare_t *prep);
+static void grim_reaper(ziti_context ztx);
 
 static void ztx_work_async(uv_async_t *ar);
 
@@ -419,7 +420,7 @@ uv_timer_t* new_ztx_timer(ziti_context ztx) {
 static void ziti_start_internal(ziti_context ztx, void *init_req) {
     if (!ztx->enabled) {
         ztx->enabled = true;
-        uv_prepare_start(ztx->reaper, grim_reaper);
+        uv_prepare_start(ztx->prepper, ztx_prepare);
         ziti_ctrl_get_version(&ztx->controller, version_cb, ztx);
         ziti_set_unauthenticated(ztx);
 
@@ -464,10 +465,10 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ztx->api_session_timer = new_ztx_timer(ztx);
     ztx->service_refresh_timer = new_ztx_timer(ztx);
 
-    ztx->reaper = calloc(1, sizeof(uv_prepare_t));
-    uv_prepare_init(loop, ztx->reaper);
-    ztx->reaper->data = ztx;
-    uv_unref((uv_handle_t *) ztx->reaper);
+    ztx->prepper = calloc(1, sizeof(uv_prepare_t));
+    uv_prepare_init(loop, ztx->prepper);
+    ztx->prepper->data = ztx;
+    uv_unref((uv_handle_t *) ztx->prepper);
 
     ZTX_LOG(DEBUG, "using metrics interval: %d", (int) ztx->opts.metrics_type);
     metrics_rate_init(&ztx->up_rate, ztx->opts.metrics_type);
@@ -583,8 +584,8 @@ static void shutdown_and_free(ziti_context ztx) {
         return;
     }
 
-    grim_reaper(ztx->reaper);
-    CLOSE_AND_NULL(ztx->reaper);
+    grim_reaper(ztx);
+    CLOSE_AND_NULL(ztx->prepper);
     CLOSE_AND_NULL(ztx->api_session_timer);
     CLOSE_AND_NULL(ztx->service_refresh_timer);
 
@@ -1714,15 +1715,13 @@ const ziti_version *ziti_get_version() {
     return &sdk_version;
 }
 
-static void grim_reaper(uv_prepare_t *p) {
-    ziti_context ztx = p->data;
+static void grim_reaper(ziti_context ztx) {
 
     size_t total = model_map_size(&ztx->connections);
     size_t count = 0;
 
     if (total == 0 && !ztx->enabled) {
         // context disabled and no connections
-        uv_prepare_stop(p);
         return;
     }
 
@@ -1735,6 +1734,27 @@ static void grim_reaper(uv_prepare_t *p) {
     }
     if (count > 0) {
         ZTX_LOG(DEBUG, "reaped %zd closed (out of %zd total) connections", count, total);
+    }
+}
+
+void ztx_prepare(uv_prepare_t *prep) {
+    ziti_context ztx = prep->data;
+
+    grim_reaper(ztx);
+
+    // prepare channels for IO
+    // NOTE: stalled ziti connections are flushed with idle handlers,
+    // which run before prepare, which means that message
+    // buffers could be returned to their corresponding channels
+    // therefore enabling channel read if it was blocked
+    const char *id;
+    ziti_channel_t *ch;
+    MODEL_MAP_FOREACH(id, ch, &ztx->channels) {
+        ziti_channel_prepare(ch);
+    }
+
+    if (!ztx->enabled) {
+        uv_prepare_stop(ztx->prepper);
     }
 }
 
