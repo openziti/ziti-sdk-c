@@ -73,8 +73,9 @@ void *alloc_unpooled_obj(size_t size, void (*clear_func)(void *)) {
         obj->size = size;
         obj->pool = NULL;
         obj->clear_func = clear_func;
+        return obj->obj;
     }
-    return obj->obj;
+    return NULL;
 }
 
 void *pool_alloc_obj(pool_t *pool) {
