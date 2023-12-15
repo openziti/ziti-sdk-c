@@ -205,7 +205,7 @@ struct ziti_conn {
             buffer *inbound;
             uv_idle_t *flusher;
             TAILQ_HEAD(, ziti_write_req_s) wreqs;
-            int write_reqs;
+            TAILQ_HEAD(, ziti_write_req_s) pending_wreqs;
 
             struct ziti_conn *parent;
             uint32_t dial_req_seq;
