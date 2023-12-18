@@ -76,7 +76,16 @@ int main(int argc, char** argv) {
 #endif
 
     loop = uv_default_loop();
-    DIE(ziti_init(argv[1], loop, on_ziti_init, ZitiContextEvent, NULL));
+
+    ziti_config cfg;
+    ziti_context ztx;
+    DIE(ziti_load_config(&cfg, argv[1]));
+    DIE(ziti_context_init(&ztx, &cfg));
+    DIE(ziti_context_set_options(ztx, &(ziti_options){
+            .event_cb = on_ziti_init,
+            .events = ZitiContextEvent,
+    }));
+    DIE(ziti_context_run(ztx, loop));
 
     // loop will finish after the request is complete and ziti_shutdown is called
     uv_run(loop, UV_RUN_DEFAULT);

@@ -41,8 +41,8 @@ TEST_CASE("httpbin.ziti:ziti_src", "[integ]") {
     source_test test;
     test.loop = uv_loop_new();
 
-    int rc = ziti_init(cfg, test.loop, [](ziti_context ztx, const ziti_event_t *ev){
-        auto t = (source_test*)ziti_app_ctx(ztx);
+    auto handler = [](ziti_context ztx, const ziti_event_t *ev) {
+        auto t = (source_test *) ziti_app_ctx(ztx);
         switch (ev->type) {
             case ZitiContextEvent: {
                 auto ctx_ev = ev->event.ctx;
@@ -56,30 +56,42 @@ TEST_CASE("httpbin.ziti:ziti_src", "[integ]") {
 
                 ziti_src_init(t->loop, &t->src, nullptr, ztx);
                 tlsuv_http_init_with_src(t->loop, &t->clt, "http://httpbin.ziti", &t->src);
-                tlsuv_http_req(&t->clt, "GET", "/json", [](tlsuv_http_resp_t *resp, void *ctx){
-                    auto t = (source_test*)ctx;
+                tlsuv_http_req(&t->clt, "GET", "/json", [](tlsuv_http_resp_t *resp, void *ctx) {
+                    auto t = (source_test *) ctx;
                     t->code = resp->code;
 
-                    resp->body_cb = [](tlsuv_http_req_t *req, char *body, ssize_t len){
-                        auto t = (source_test*)req->data;
+                    resp->body_cb = [](tlsuv_http_req_t *req, char *body, ssize_t len) {
+                        auto t = (source_test *) req->data;
                         if (len > 0)
                             t->body.append(body, len);
                         else if (len == UV_EOF) {
                             t->done = true;
                             ziti_shutdown(t->ztx);
                         } else {
-                            t->err = (int)len;
+                            t->err = (int) len;
                             t->done = true;
                             ziti_shutdown(t->ztx);
                         }
                     };
-                    }, t);
+                }, t);
                 break;
             default:
                 FAIL("unexpected event");
         }
-    }, ZitiContextEvent|ZitiServiceEvent, &test);
-    REQUIRE(rc == 0);
+    };
+
+    ziti_config zfg;
+    ziti_context ztx;
+    ziti_options zopts = {
+            .app_ctx = &test,
+            .events = ZitiContextEvent | ZitiServiceEvent,
+            .event_cb = handler,
+    };
+
+    REQUIRE(ziti_load_config(&zfg, cfg) == ZITI_OK);
+    REQUIRE(ziti_context_init(&ztx, &zfg) == ZITI_OK);
+    REQUIRE(ziti_context_set_options(ztx, &zopts) == ZITI_OK);
+    REQUIRE(ziti_context_run(ztx, test.loop) == ZITI_OK);
 
     uv_timer_t t = {0};
     uv_timer_init(test.loop, &t);

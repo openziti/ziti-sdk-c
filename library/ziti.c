@@ -117,29 +117,6 @@ static size_t parse_ref(const char *val, const char **res) {
     return len;
 }
 
-static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout) {
-    size_t optlen = strlen(opt);
-    do {
-        // found it
-        if (strncasecmp(q, opt, optlen) == 0 && (q[optlen] == '=' || q[optlen] == 0)) {
-            const char *val = q + optlen + 1;
-            char *end = strchr(val, '&');
-            int vlen = (int) (end == NULL ? strlen(val) : end - val);
-            snprintf(out, maxout, "%*.*s", vlen, vlen, val);
-            return ZITI_OK;
-
-        } else { // skip to next '&'
-            q = strchr(q, '&');
-            if (q == NULL) {
-                break;
-            }
-            q += 1;
-        }
-    } while (q != NULL);
-    out[0] = '\0';
-    return ZITI_INVALID_CONFIG;
-}
-
 static int init_tls_from_config(tls_context *tls, ziti_config *cfg) {
     PREP(ziti);
 
