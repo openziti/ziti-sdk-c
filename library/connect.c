@@ -55,7 +55,7 @@ static bool flush_to_client(ziti_connection conn);
 
 static void process_connect(struct ziti_conn *conn);
 
-static int send_fin_message(ziti_connection conn);
+static int send_fin_message(ziti_connection conn, struct ziti_write_req_s *wr);
 
 static void queue_edge_message(struct ziti_conn *conn, message *msg, int code);
 
@@ -145,8 +145,7 @@ static void free_conn_req(struct ziti_conn_req *r) {
 static int close_conn_internal(struct ziti_conn *conn) {
     assert(conn->type == Transport);
 
-    if (conn->state == Closed && conn->write_reqs <= 0) {
-        CONN_LOG(DEBUG, "removing");
+    if (conn->state == Closed) {
 
         while (!TAILQ_EMPTY(&conn->wreqs)) {
             struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
@@ -157,6 +156,12 @@ static int close_conn_internal(struct ziti_conn *conn) {
             free(req);
         }
 
+        if (!TAILQ_EMPTY(&conn->pending_wreqs)) {
+            CONN_LOG(DEBUG, "waiting for pending write requests");
+            return 0;
+        }
+
+        CONN_LOG(DEBUG, "removing");
         if (conn->close_cb) {
             conn->close_cb(conn);
         }
@@ -213,7 +218,6 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
         return;
     }
     CONN_LOG(TRACE, "status %d", status);
-    conn->write_reqs--;
 
     if (req->timeout != NULL) {
         uv_timer_stop(req->timeout);
@@ -233,6 +237,8 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
 
         req->cb(conn, status, req->ctx);
     }
+
+    TAILQ_REMOVE(&conn->pending_wreqs, req, _next);
 
     free(req);
 }
@@ -554,7 +560,6 @@ static void ziti_write_timeout(uv_timer_t *t) {
     struct ziti_write_req_s *req = t->data;
     struct ziti_conn *conn = req->conn;
 
-    conn->write_reqs--;
     req->timeout = NULL;
     req->conn = NULL;
 
@@ -571,35 +576,33 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
 
     if (req->eof) {
         conn_set_state(conn, CloseWrite);
-        send_fin_message(conn);
-        conn->write_reqs--;
-        free(req);
-        return;
+        send_fin_message(conn, req);
     } else if (req->close) {
         // conn->state will be set on_disconnect callback
         message *m = create_message(conn, ContentTypeStateClosed, 0);
         send_message(conn, m, req);
-        // conn->write_reqs will be decremented and wreq freed in on_write_completed
-        return;
-    }
-
-    if (req->cb) {
-        req->timeout = calloc(1, sizeof(uv_timer_t));
-        uv_timer_init(conn->ziti_ctx->loop, req->timeout);
-        req->timeout->data = req;
-        uv_timer_start(req->timeout, ziti_write_timeout, conn->timeout, 0);
-    }
-
-    size_t total_len = req->len + (conn->encrypted ? crypto_secretstream_xchacha20poly1305_abytes() : 0);
-    message *m = create_message(conn, ContentTypeData, total_len);
-
-    if (conn->encrypted) {
-        crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL, req->buf, req->len, NULL, 0, 0);
     } else {
-        memcpy(m->body, req->buf, req->len);
-    }
+        if (req->cb) {
+            req->timeout = calloc(1, sizeof(uv_timer_t));
+            uv_timer_init(conn->ziti_ctx->loop, req->timeout);
+            req->timeout->data = req;
+            uv_timer_start(req->timeout, ziti_write_timeout, conn->timeout, 0);
+        }
 
-    send_message(conn, m, req);
+        message *m = req->message;
+        if (m == NULL) {
+            size_t total_len = req->len + (conn->encrypted ? crypto_secretstream_xchacha20poly1305_abytes() : 0);
+            m = create_message(conn, ContentTypeData, total_len);
+
+            if (conn->encrypted) {
+                crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL, req->buf, req->len, NULL, 0,
+                                                           0);
+            } else {
+                memcpy(m->body, req->buf, req->len);
+            }
+        }
+        send_message(conn, m, req);
+    }
 }
 
 static void on_disconnect(ziti_connection conn, ssize_t status, void *ctx) {
@@ -710,9 +713,10 @@ static int send_crypto_header(ziti_connection conn) {
         crypto_secretstream_xchacha20poly1305_init_push(&conn->crypt_o, m->body, conn->key_ex.tx);
         NEWP(wr, struct ziti_write_req_s);
         wr->conn = conn;
-        wr->cb = crypto_wr_cb;
-        conn->write_reqs++;
-        send_message(conn, m, wr);
+        wr->message = m;
+
+        TAILQ_INSERT_TAIL(&conn->wreqs, wr, _next);
+        flush_connection(conn);
     }
     return ZITI_OK;
 }
@@ -752,12 +756,13 @@ static bool flush_to_service(ziti_connection conn) {
         TAILQ_REMOVE(&conn->wreqs, req, _next);
 
         if (conn->state == Connected) {
-            conn->write_reqs++;
+            if (req->conn) {
+                TAILQ_INSERT_TAIL(&conn->pending_wreqs, req, _next);
+            }
             ziti_write_req(req);
             count++;
         } else {
             CONN_LOG(DEBUG, "got write req in invalid state[%s]", conn_state_str[conn->state]);
-            conn->write_reqs--;
 
             if (req->cb) {
                 req->cb(conn, ZITI_INVALID_STATE, req->ctx);
@@ -1145,7 +1150,7 @@ int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb
     return 0;
 }
 
-static int send_fin_message(ziti_connection conn) {
+static int send_fin_message(ziti_connection conn, struct ziti_write_req_s *wr) {
     CONN_LOG(DEBUG, "sending FIN");
     ziti_channel_t *ch = conn->channel;
     int32_t conn_id = htole32(conn->conn_id);
@@ -1168,7 +1173,6 @@ static int send_fin_message(ziti_connection conn) {
                     .value = (uint8_t *) &flags
             },
     };
-    NEWP(wr, struct ziti_write_req_s);
     message *m = message_new(NULL, ContentTypeData, headers, 3, 0);
     return ziti_channel_send_message(ch, m, wr);
 }
@@ -1364,5 +1368,6 @@ void init_transport_conn(struct ziti_conn *c) {
 
     TAILQ_INIT(&c->in_q);
     TAILQ_INIT(&c->wreqs);
+    TAILQ_INIT(&c->pending_wreqs);
     c->inbound = new_buffer();
 }
