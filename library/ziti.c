@@ -93,7 +93,6 @@ static ziti_options default_options = {
         .disabled = false,
         .config_types = all_configs,
         .refresh_interval = 0,
-        .router_keepalive = 15,
         .api_page_size = 25,
 };
 
@@ -432,15 +431,6 @@ void ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
     *down = metrics_rate_get(&ztx->down_rate);
 }
 
-int ziti_set_timeout(ziti_context ztx, int timeout) {
-    if (timeout > 0) {
-        ztx->ziti_timeout = timeout;
-    } else {
-        ztx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
-    }
-    return ZITI_OK;
-}
-
 static void free_ztx(uv_handle_t *h) {
     ziti_context ztx = h->data;
 
@@ -629,7 +619,6 @@ int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {
     NEWP(c, struct ziti_conn);
     c->ziti_ctx = ztx;
     c->data = data;
-    c->timeout = ctx->ziti_timeout;
     c->conn_id = ztx->conn_seq++;
 
     *conn = c;
@@ -1474,7 +1463,6 @@ void ziti_set_api_session(ziti_context ztx, ziti_api_session *session) {
 static void api_session_cb(ziti_api_session *session, const ziti_error *err, void *ctx) {
     struct ziti_init_req *init_req = ctx;
     ziti_context ztx = init_req->ztx;
-    ztx->loop_thread = uv_thread_self();
     ztx->active_session_request = false;
 
     int errCode = err ? err->err : ZITI_OK;
@@ -1501,7 +1489,7 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
                 errCode = ztx->ctrl_status; // do not trigger event yet
             } else {
                 // cannot login or re-auth -- identity no longer valid
-                // notify service removal, and state
+                // notify sziti_set_impossible_to_authenticateervice removal, and state
                 ziti_set_impossible_to_authenticate(ztx);
 
                 ZTX_LOG(ERROR, "identity[%s] cannot authenticate with ctrl[%s]", ztx->config.cfg_source,
@@ -1785,7 +1773,6 @@ int ziti_context_run(ziti_context ztx, uv_loop_t *loop) {
 
     ztx->tlsCtx = tls;
     ztx->loop = loop;
-    ztx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
     ztx->ctrl_status = ZITI_WTF;
 
     STAILQ_INIT(&ztx->w_queue);

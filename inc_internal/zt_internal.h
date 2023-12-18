@@ -281,7 +281,6 @@ struct ziti_ctx {
     uv_prepare_t *prepper;
 
     uv_loop_t *loop;
-    uv_thread_t loop_thread;
 
     // map<erUrl,ziti_channel>
     model_map channels;
@@ -289,9 +288,6 @@ struct ziti_ctx {
     model_map connections;
 
     uint32_t conn_seq;
-
-    /* options */
-    int ziti_timeout;
 
     /* context wide metrics */
     rate_t up_rate;

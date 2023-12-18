@@ -46,7 +46,7 @@ extern "C" {
 #define ZITI_CAN_BIND 2U
 
 /**
- * The default timeout in milliseconds for connections and write operations to succeed.
+ * The default timeout in milliseconds for connection operations to succeed.
  */
 #define ZITI_DEFAULT_TIMEOUT 10000
 
@@ -496,24 +496,6 @@ extern const ziti_identity *ziti_get_identity(ziti_context ztx);
  */
 ZITI_FUNC
 extern void ziti_get_transfer_rates(ziti_context ztx, double *up, double *down);
-
-/**
- * @brief Sets connect and write timeouts(in millis).
- *
- * The #ZITI_DEFAULT_TIMEOUT is used if this function is not invoked prior to initializing connections. This value is only
- * referenced when initializing new connections via ziti_conn_init(). Any connection initialized before this function will
- * have the whatever timeout was set at the time of initialization.
- *
- * Note: There is no check to verify the timeout specified is not "too small". Setting this value to a very small value
- * may lead to a large number of timeouts.
- * 
- * @param ztx the Ziti Edge identity context to set a timeout on
- * @param timeout the value in milliseconds of the timeout (must be > 0)
- *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
- */
-ZITI_FUNC
-extern int ziti_set_timeout(ziti_context ztx, int timeout);
 
 /**
  * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #ziti_context.

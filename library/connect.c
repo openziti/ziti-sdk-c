@@ -530,6 +530,8 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
         if (dial_opts->connect_timeout_seconds > 0) {
             conn->timeout = dial_opts->connect_timeout_seconds * 1000;
         }
+    } else {
+        conn->timeout = ZITI_DEFAULT_TIMEOUT;
     }
 
     conn->data_cb = data_cb;
