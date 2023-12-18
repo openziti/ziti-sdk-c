@@ -79,6 +79,10 @@ static void ch_connect_timeout(uv_timer_t *t);
 
 static void hello_reply_cb(void *ctx, message *msg, int err);
 
+static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf);
+static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf);
+static void process_inbound(ziti_channel_t *ch);
+
 // global channel sequence
 static uint32_t channel_counter = 0;
 
@@ -116,6 +120,23 @@ static void ch_init_stream(ziti_channel_t *ch) {
         tlsuv_stream_nodelay(ch->connection, true);
         ch->connection->data = ch;
     }
+}
+
+int ziti_channel_prepare(ziti_channel_t *ch) {
+    process_inbound(ch);
+
+    // process_inbound() may consume all message buffers from the pool,
+    // but it will put ziti connection(s) into `flush` state
+    // activating uv_idle_t handle, causing zero-timeout IO
+    // and a flush attempt on the next loop iteration
+    if (ch->state == Connected) {
+        if (pool_has_available(ch->in_msg_pool) || ch->in_next != NULL) {
+            tlsuv_stream_read_start(ch->connection, channel_alloc_cb, on_channel_data);
+        } else {
+            tlsuv_stream_read_stop(ch->connection);
+        }
+    }
+    return 0;
 }
 
 static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t id, tls_context *tls) {
@@ -823,13 +844,14 @@ static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_
 }
 
 static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
-    tlsuv_stream_t *mbed = (tlsuv_stream_t *) s;
-    ziti_channel_t *ch = mbed->data;
+    tlsuv_stream_t *ssl = (tlsuv_stream_t *) s;
+    ziti_channel_t *ch = ssl->data;
 
     if (len < 0) {
         free(buf->base);
         switch (len) {
             case UV_ENOBUFS:
+                tlsuv_stream_read_stop(ssl);
                 CH_LOG(VERBOSE, "blocked until messages are processed");
                 return;
             case UV_EOF:

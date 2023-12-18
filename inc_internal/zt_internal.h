@@ -278,7 +278,7 @@ struct ziti_ctx {
 
     uv_timer_t *api_session_timer;
     uv_timer_t *service_refresh_timer;
-    uv_prepare_t *reaper;
+    uv_prepare_t *prepper;
 
     uv_loop_t *loop;
     uv_thread_t loop_thread;
@@ -328,6 +328,8 @@ bool ziti_channel_is_connected(ziti_channel_t *ch);
 uint64_t ziti_channel_latency(ziti_channel_t *ch);
 
 int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb, void *ctx);
+
+int ziti_channel_prepare(ziti_channel_t *ch);
 
 int ziti_channel_close(ziti_channel_t *ch, int err);
 
