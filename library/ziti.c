@@ -177,63 +177,6 @@ int ziti_set_client_cert(ziti_context ztx, const char *cert_buf, size_t cert_len
     return ZITI_OK;
 }
 
-int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
-    ziti_log_init(loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
-    metrics_init(loop, 5);
-
-    ziti_context ctx = NULL;
-    PREPF(ziti, ziti_errorstr);
-
-    if (options->config == NULL) {
-        ZITI_LOG(ERROR, "config or controller/tls has to be set");
-        return ZITI_INVALID_CONFIG;
-    }
-    ctx = calloc(1, sizeof(*ctx));
-
-    if (options->config != NULL) {
-        TRY(ziti, ziti_load_config(&ctx->config, options->config));
-    }
-
-    if (ctx->config.id.ca && strncmp(ctx->config.id.ca, "file://", strlen("file://")) == 0) {
-        struct tlsuv_url_s url;
-        TRY(ziti, tlsuv_parse_url(&url, ctx->config.id.ca));
-
-        char *ca = NULL;
-        size_t ca_len;
-        int rc = load_file(url.path, url.path_len, &ca, &ca_len);
-        if (rc == 0) {
-            FREE(ctx->config.id.ca);
-            ctx->config.id.ca = ca;
-        }
-    }
-
-    tls_context *tls = NULL;
-    TRY(ziti, load_tls(&ctx->config, &tls));
-
-    ctx->opts = *options;
-    ctx->tlsCtx = tls;
-    ctx->loop = loop;
-    ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
-    ctx->ctrl_status = ZITI_WTF;
-
-    STAILQ_INIT(&ctx->w_queue);
-    uv_async_init(loop, &ctx->w_async, ztx_work_async);
-    ctx->w_async.data = ctx;
-    uv_mutex_init(&ctx->w_lock);
-
-    NEWP(init_req, struct ziti_init_req);
-    init_req->start = !options->disabled;
-    ziti_queue_work(ctx, ziti_init_async, init_req);
-
-    CATCH(ziti) {
-        free_ziti_config(&ctx->config);
-        free(ctx);
-        return ERR(ziti);
-    }
-
-    return ZITI_OK;
-}
-
 extern bool ziti_is_enabled(ziti_context ztx) {
     return ztx->enabled;
 }
@@ -458,31 +401,6 @@ static void ziti_init_async(ziti_context ztx, void *data) {
         ziti_send_event(ztx, &ev);
     }
     free(init_req);
-}
-
-int ziti_init(const char *config, uv_loop_t *loop, ziti_event_cb event_cb, int events, void *app_ctx) {
-
-    ziti_config cfg = {0};
-    PREPF(ziti, ziti_errorstr);
-    TRY(ziti, ziti_load_config(&cfg, config));
-
-    ziti_context ztx;
-    ziti_options opts = {
-            .config = config,
-            .events = events,
-            .event_cb = event_cb,
-            .app_ctx = app_ctx,
-            .config_types = ALL_CONFIG_TYPES,
-    };
-
-    TRY(ziti, ziti_context_init(&ztx, &cfg));
-    TRY(ziti, ziti_context_set_options(ztx, &opts));
-    TRY(ziti, ziti_context_run(ztx, loop));
-
-    CATCH(ziti) {}
-    free_ziti_config(&cfg);
-
-    return ERR(ziti);
 }
 
 extern void *ziti_app_ctx(ziti_context ztx) {
@@ -1846,7 +1764,6 @@ int ziti_context_set_options(ziti_context ztx, const ziti_options *options) {
         copy_opt(event_cb);
         copy_opt(events);
         copy_opt(app_ctx);
-        copy_opt(router_keepalive);
         copy_opt(pq_domain_cb);
         copy_opt(pq_mac_cb);
         copy_opt(pq_os_cb);
