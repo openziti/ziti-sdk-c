@@ -18,7 +18,7 @@ spawn $ziti edge quickstart --home $env(QUICKSTART_HOME)
 set qs_id @spawn_id
 # wait until ER is connected
 expect {
-    "finished sychronizing api sessions" { }
+    "finished synchronizing api sessions" { }
     timeout { error "qs not started in time" }
     eof { error "qs not started" }
 }
