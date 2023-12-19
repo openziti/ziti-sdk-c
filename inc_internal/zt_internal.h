@@ -55,7 +55,7 @@ typedef void (*ch_notify_state)(ziti_channel_t *ch, ziti_router_status status, v
 typedef int ch_state;
 typedef int conn_state;
 
-typedef struct ziti_channel {
+struct ziti_channel {
     uv_loop_t *loop;
     struct ziti_ctx *ztx;
     char *name;

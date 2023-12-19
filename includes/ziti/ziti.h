@@ -46,7 +46,7 @@ extern "C" {
 #define ZITI_CAN_BIND 2U
 
 /**
- * The default timeout in milliseconds for connections and write operations to succeed.
+ * The default timeout in milliseconds for connection operations to succeed.
  */
 #define ZITI_DEFAULT_TIMEOUT 10000
 
@@ -55,13 +55,13 @@ extern "C" {
  *
  * The Ziti C SDK will use this pointer to initialize and track the memory needed during
  * normal usage. This structure is opaque to the API user but is necessary for normal Ziti
- * SDK operation. After a successful initialization via ziti_init() the pointer will be
+ * SDK operation. After a successful initialization via ziti_context_init() the pointer will be
  * initialized. The context is necessary for many of the C SDK functions and is passed
  * as a parameter in many of the callbacks. ziti_shutdown() should be invoked when the Ziti
  * connections are no longer needed. The Ziti C SDK will reclaim any allocated memory at this
  * time.
  *
- * @see ziti_init(), ziti_shutdown()
+ * @see ziti_context_init(), ziti_shutdown()
  */
 typedef struct ziti_ctx *ziti_context;
 
@@ -219,9 +219,9 @@ typedef void (*ziti_pq_process_cb)(ziti_context ztx, const char *id, const char 
 typedef void (*ziti_event_cb)(ziti_context ztx, const ziti_event_t *event);
 
 /**
- * @brief ziti_context initialization options
+ * @brief ziti_context runtime options
  *
- * @see ziti_init_opts()
+ * @see ziti_context_set_options()
  */
 typedef struct ziti_options_s {
     ZITI_DEPRECATED("ignored, will be removed") const char *config;
@@ -232,8 +232,6 @@ typedef struct ziti_options_s {
     unsigned int api_page_size;
     long refresh_interval; //the duration in seconds between checking for updates from the controller
     rate_type metrics_type; //an enum describing the metrics to collect
-
-    int router_keepalive;
 
     //posture query cbs
     ziti_pq_mac_cb pq_mac_cb;
@@ -375,7 +373,7 @@ typedef void (*ziti_write_cb)(ziti_connection conn, ssize_t status, void *write_
  * status code in this callback.
  *
  * This callback also receives a Ziti identity json salvo if the enrollment was successful. 
- * This identity should be persisted into a file, and used in subsequent calls to ziti_init().
+ * This identity should be persisted into a file, and used in subsequent calls to ziti_load_config().
  *
  * @param cfg identity config object, NULL if enrollment fails for any reason
  * @param status enrollment success or error code
@@ -441,49 +439,6 @@ ZITI_FUNC
 extern int ziti_context_run(ziti_context ztx, uv_loop_t *loop);
 
 /**
- * @brief Initializes a Ziti Edge identity.
- * 
- * This function is used to initialize a Ziti Edge identity. The Ziti C SDK is based around the [libuv](http://libuv.org/)
- * library and maintains similar semantics.  This function is used to setup the chain of callbacks
- * needed once the loop begins to execute.
- *
- * This function will initialize the Ziti C SDK using the default TLS engine [mbed](https://tls.mbed.org/). If a
- * different TLS engine is desired use ziti_init_opts().
- *
- * @param config location of identity configuration
- * @param loop libuv event loop
- * @param event_cb callback to be called for subscribed events
- * @param events event subscriptions, should be composed of `ziti_event_type` values
- * @param app_ctx additional context to be passed into #ziti_init_cb callback
- *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
- *
- * @see ziti_init_opts()
- * @deprecated use #ziti_config_from_file,#ziti_context_init,#ziti_context_run sequence
- */
-ZITI_DEPRECATED("use ziti_config_from_file,ziti_context_init,ziti_context_run sequence")
-ZITI_FUNC
-extern int ziti_init(const char *config, uv_loop_t *loop, ziti_event_cb evnt_cb, int events, void *app_ctx);
-
-/**
- * @brief Initialize Ziti Edge identity context with the provided options.
- *
- * This function is a more flexible version of ziti_init() with the ability to specify tls_context, controller,
- * and refresh options.
- *
- * @param options options to initialize with
- * @param loop libuv event loop
- * @param init_ctx additional context to be passed into the #ziti_options.ziti_init_cb callback
- *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
- *
- * @see ziti_init()
- */
-ZITI_DEPRECATED("use ziti_config_from_file,ziti_context_init,ziti_context_set_options,ziti_context_run sequence")
-ZITI_FUNC
-extern int ziti_init_opts(ziti_options *options, uv_loop_t *loop);
-
-/**
  * return if context is enabled
  * @param ztx ziti context
  * @return
@@ -503,7 +458,7 @@ extern void ziti_set_enabled(ziti_context ztx, bool enabled);
  * @brief returns ziti_options.app_ctx for the given Ziti context.
  *
  * @param ztx
- * @return application context that was used during ziti_init
+ * @return application context that was passed as ziti_oprions.app_ctx
  */
 ZITI_FUNC
 extern void *ziti_app_ctx(ziti_context ztx);

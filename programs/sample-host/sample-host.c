@@ -215,7 +215,16 @@ int main(int argc, char **argv) {
 
     service = argv[3];
 
-    DIE(ziti_init(argv[2], loop, on_ziti_init, ZitiContextEvent, loop));
+    ziti_config cfg;
+    ziti_context ztx;
+    DIE(ziti_load_config(&cfg, argv[2]));
+    DIE(ziti_context_init(&ztx, &cfg));
+    DIE(ziti_context_set_options(ztx, &(ziti_options){
+        .event_cb = on_ziti_init,
+        .events = ZitiContextEvent,
+    }));
+
+    DIE(ziti_context_run(ztx, loop));
 
     uv_signal_init(loop, &sig);
     // loop will finish after the request is complete and ziti_shutdown is called
