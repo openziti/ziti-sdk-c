@@ -82,11 +82,10 @@ TEST_CASE("httpbin.ziti:ziti_src", "[integ]") {
 
     ziti_config zfg;
     ziti_context ztx;
-    ziti_options zopts = {
-            .app_ctx = &test,
-            .events = ZitiContextEvent | ZitiServiceEvent,
-            .event_cb = handler,
-    };
+    ziti_options zopts = {nullptr};
+    zopts.app_ctx = &test;
+    zopts.events = ZitiContextEvent | ZitiServiceEvent;
+    zopts.event_cb = handler;
 
     REQUIRE(ziti_load_config(&zfg, cfg) == ZITI_OK);
     REQUIRE(ziti_context_init(&ztx, &zfg) == ZITI_OK);
