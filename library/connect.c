@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2023. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -78,6 +78,9 @@ const char *ziti_conn_state(ziti_connection conn) {
 static void conn_set_state(struct ziti_conn *conn, enum conn_state state) {
     CONN_LOG(VERBOSE, "transitioning %s => %s", conn_state_str[conn->state], conn_state_str[state]);
     conn->state = state;
+    if (state == Connected) {
+        conn->connect_time = uv_now(conn->ziti_ctx->loop) - conn->start;
+    }
 }
 
 static ziti_dial_opts *clone_ziti_dial_opts(const ziti_dial_opts *dial_opts) {
@@ -539,6 +542,8 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
     uv_idle_init(conn->ziti_ctx->loop, conn->flusher);
     conn->flusher->data = conn;
 
+    conn->start = uv_now(conn->ziti_ctx->loop);
+
     process_connect(conn);
     return ZITI_OK;
 }
@@ -742,6 +747,7 @@ static void flush_connection(ziti_connection conn) {
         CONN_LOG(TRACE, "starting flusher");
         uv_idle_start(conn->flusher, on_flush);
     }
+    conn->last_activity = uv_now(conn->ziti_ctx->loop);
 }
 
 static bool flush_to_service(ziti_connection conn) {

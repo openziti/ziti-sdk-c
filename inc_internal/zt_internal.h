@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2023. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -214,6 +214,12 @@ struct ziti_conn {
 
             crypto_secretstream_xchacha20poly1305_state crypt_o;
             crypto_secretstream_xchacha20poly1305_state crypt_i;
+
+            // stats
+            bool bridged;
+            uint64_t start;
+            uint64_t connect_time;
+            uint64_t last_activity;
         };
     };
 

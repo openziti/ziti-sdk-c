@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2023. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -82,6 +82,7 @@ extern int ziti_conn_bridge(ziti_connection conn, uv_handle_t *handle, uv_close_
 
     uv_handle_set_data(handle, br);
     ziti_conn_set_data(conn, br);
+    conn->bridged = true;
 
     ziti_conn_set_data_cb(conn, on_ziti_data);
     int rc = (br->input->type == UV_UDP) ?
@@ -175,6 +176,7 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
 
     uv_handle_set_data(br->input, br);
     ziti_conn_set_data(conn, br);
+    conn->bridged = true;
 
     ziti_conn_set_data_cb(conn, on_ziti_data);
     int rc = uv_read_start((uv_stream_t *) br->input, bridge_alloc, on_input);

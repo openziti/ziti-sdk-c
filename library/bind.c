@@ -1,9 +1,9 @@
-// Copyright (c) 2023.  NetFoundry Inc.
+// Copyright (c) 2023. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -311,6 +311,7 @@ static void process_dial(struct binding_s *b, message *msg) {
     ziti_connection client;
     ziti_conn_init(conn->ziti_ctx, &client, NULL);
     init_transport_conn(client);
+    client->start = uv_now(conn->ziti_ctx->loop);
 
     if (peer_key_sent) {
         client->encrypted = true;

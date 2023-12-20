@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2023. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -622,6 +622,7 @@ int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
 
 
 void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
+    uint64_t now = uv_now(ztx->loop);
     printer(ctx, "\n=================\nZiti Context:\n");
     printer(ctx, "ID:\t%d\n", ztx->id);
     printer(ctx, "Enabled:\t%s\n", ziti_is_enabled(ztx) ? "true" : "false");
@@ -707,6 +708,8 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
                     FIELD_OR_ELSE(conn->channel, id, -1),
                     FIELD_OR_ELSE(conn->channel, name, "(none)")
             );
+            printer(ctx, "\tconnect_time[%" PRIu64 "], idle_time[%" PRIu64 "ms]\n",
+                    conn->connect_time, now - conn->last_activity);
         }
 
         if (conn->type == Server) {
@@ -722,6 +725,8 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
                         FIELD_OR_ELSE(child->channel, id, -1),
                         FIELD_OR_ELSE(child->channel, name, "(none)")
                 );
+                printer(ctx, "\t\taccept_time[%" PRIu64 "], idle_time[%" PRIu64 "ms]\n",
+                        child->connect_time, now - child->last_activity);
                 it = model_map_it_next(it);
             }
         }
