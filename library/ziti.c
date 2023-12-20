@@ -739,7 +739,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
                         child->connect_time, now - child->last_activity, child->sent, child->received,
                         buffer_available(child->inbound));
                 if (conn_bridge_info(child, bridge_info, sizeof(bridge_info)) == ZITI_OK) {
-                    printer(ctx, "\tbridge: %s\n", bridge_info);
+                    printer(ctx, "\t\tbridge: %s\n", bridge_info);
                 }
                 it = model_map_it_next(it);
             }
