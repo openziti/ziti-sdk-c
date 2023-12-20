@@ -23,7 +23,8 @@
 static const char *INVALID_SESSION = "Invalid Session";
 static const int MAX_CONNECT_RETRY = 3;
 
-#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%u.%u/%s] " fmt, conn->ziti_ctx->id, conn->conn_id, conn_state_str[conn->state], ##__VA_ARGS__)
+#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%u.%u/%.*s/%s] " fmt, \
+conn->ziti_ctx->id, conn->conn_id, (int)sizeof(conn->marker), conn->marker, conn_state_str[conn->state], ##__VA_ARGS__)
 
 
 
@@ -518,6 +519,11 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
         return ZITI_INVALID_STATE;
     }
 
+    char marker[6];
+    uv_random(NULL, NULL, marker, sizeof(marker), 0, NULL);
+    sodium_bin2base64(conn->marker, sizeof(conn->marker), marker, sizeof(marker),
+                      sodium_base64_VARIANT_URLSAFE_NO_PADDING);
+
     NEWP(req, struct ziti_conn_req);
     conn->service = strdup(service);
     conn->conn_req = req;
@@ -606,6 +612,7 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
                 memcpy(m->body, req->buf, req->len);
             }
         }
+        conn->sent += req->len;
         send_message(conn, m, req);
     }
 }
@@ -854,6 +861,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
                 CONN_LOG(VERBOSE, "decrypted %lld bytes", plain_len);
                 buffer_append(conn->inbound, plain_text, plain_len);
                 metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) plain_len);
+                conn->received += plain_len;
             }
         }
 
@@ -1013,6 +1021,11 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
                     .value = (uint8_t *) &conn_id
             },
             {
+                    .header_id = ConnectionMarkerHeader,
+                    .length = sizeof(conn->marker),
+                    .value = (uint8_t *) conn->marker,
+            },
+            {
                     .header_id = SeqHeader,
                     .length = sizeof(msg_seq),
                     .value = (uint8_t *) &msg_seq
@@ -1044,7 +1057,7 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
                     .value = NULL,
             }
     };
-    int nheaders = 3;
+    int nheaders = 4;
     if (conn->encrypted) {
         init_key_pair(&conn->key_pair);
         nheaders++;

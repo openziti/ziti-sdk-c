@@ -80,6 +80,10 @@ enum header_id {
     TraceSourceRequestIdHeader = 1019,
     TraceError = 1020,
     ListenerId = 1021,
+    ConnTypeHeader = 1022,
+    SupportsInspectHeader = 1023,
+    SupportsBindSuccessHeader = 1024,
+    ConnectionMarkerHeader = 1025,
 };
 
 enum crypto_method {

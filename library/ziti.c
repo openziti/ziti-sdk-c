@@ -698,18 +698,27 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         }
     }
 
-    printer(ctx, "\n==================\nConnections:\n");
+    printer(ctx, "\n==================\n"
+                 "Connections:\n");
     ziti_connection conn;
     const char *id;
+    char bridge_info[128];
     MODEL_MAP_FOREACH(id, conn, &ztx->connections) {
+
         if (conn->type == Transport && conn->parent == NULL) {
-            printer(ctx, "conn[%d]: state[%s] service[%s] using ch[%d] %s\n",
-                    conn->conn_id, ziti_conn_state(conn), conn->service,
+            printer(ctx, "conn[%d/%s]: state[%s] service[%s] using ch[%d/%s]\n",
+                    conn->conn_id, conn->marker, ziti_conn_state(conn), conn->service,
                     FIELD_OR_ELSE(conn->channel, id, -1),
                     FIELD_OR_ELSE(conn->channel, name, "(none)")
             );
-            printer(ctx, "\tconnect_time[%" PRIu64 "], idle_time[%" PRIu64 "ms]\n",
-                    conn->connect_time, now - conn->last_activity);
+            printer(ctx, "\tconnect_time[%" PRIu64 "] idle_time[%" PRIu64 "ms] "
+                         "sent[%" PRIu64 "] recv[%" PRIu64 "] recv_buff[%" PRIu64 "]\n",
+                    conn->connect_time, now - conn->last_activity, conn->sent, conn->received,
+                    buffer_available(conn->inbound));
+
+            if (conn_bridge_info(conn, bridge_info, sizeof(bridge_info)) == ZITI_OK) {
+                printer(ctx, "\tbridge: %s\n", bridge_info);
+            }
         }
 
         if (conn->type == Server) {
@@ -720,13 +729,18 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
             while (it != NULL) {
                 uint32_t child_id = model_map_it_lkey(it);
                 ziti_connection child = model_map_it_value(it);
-                printer(ctx, "\tchild[%d]: state[%s] caller_id[%s] ch[%d] %s\n",
-                        child_id, ziti_conn_state(child), ziti_conn_source_identity(child),
+                printer(ctx, "\tchild[%d/%s]: state[%s] caller_id[%s] ch[%d/%s]\n",
+                        child_id, child->marker, ziti_conn_state(child), ziti_conn_source_identity(child),
                         FIELD_OR_ELSE(child->channel, id, -1),
                         FIELD_OR_ELSE(child->channel, name, "(none)")
                 );
-                printer(ctx, "\t\taccept_time[%" PRIu64 "], idle_time[%" PRIu64 "ms]\n",
-                        child->connect_time, now - child->last_activity);
+                printer(ctx, "\t\taccept_time[%" PRIu64 "] idle_time[%" PRIu64 "ms] "
+                             "sent[%" PRIu64 "] recv[%" PRIu64 "] recv_buff[%" PRIu64 "]\n",
+                        child->connect_time, now - child->last_activity, child->sent, child->received,
+                        buffer_available(child->inbound));
+                if (conn_bridge_info(child, bridge_info, sizeof(bridge_info)) == ZITI_OK) {
+                    printer(ctx, "\tbridge: %s\n", bridge_info);
+                }
                 it = model_map_it_next(it);
             }
         }

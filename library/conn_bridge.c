@@ -53,6 +53,8 @@ static void close_bridge(struct ziti_bridge_s *br);
 
 static void on_input(uv_stream_t *s, ssize_t len, const uv_buf_t *b);
 static void on_udp_input(uv_udp_t *udp, ssize_t len, const uv_buf_t *b, const struct sockaddr *addr, unsigned int flags);
+static int fmt_addr(struct sockaddr_storage *ss, char *host, size_t host_len, int *port);
+
 
 extern int ziti_conn_bridge(ziti_connection conn, uv_handle_t *handle, uv_close_cb on_close) {
     if (handle == NULL) return UV_EINVAL;
@@ -413,4 +415,72 @@ void on_input(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
             close_bridge(br);
         }
     }
+}
+
+int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen) {
+    if (conn == NULL || !conn->bridged) {
+        return ZITI_INVALID_STATE;
+    }
+
+    struct ziti_bridge_s *br = conn->data;
+    const char *proto = NULL;
+    struct sockaddr_storage local;
+    int local_len = sizeof(local);
+    struct sockaddr_storage remote;
+    int remote_len = sizeof(remote);
+    int lport = 0;
+    int rport = 0;
+    char remote_str[128] = "unknown";
+    char local_str[128] = "unknown";
+    size_t remote_str_size = sizeof(remote_str);
+
+    switch (br->output->type) {
+        case UV_NAMED_PIPE: {
+            char name[256];
+            size_t name_size = sizeof(name);
+            if (uv_pipe_getpeername((const uv_pipe_t *) br->output, name, &name_size) == 0) {
+                snprintf(buf, buflen, "pipe: -> %.*s", (int)name_size, name);
+                return ZITI_OK;
+            } else {
+                return ZITI_INVALID_STATE;
+            }
+        }
+        case UV_TCP:
+            proto = "tcp";
+            uv_tcp_getsockname((const uv_tcp_t *) br->output, (struct sockaddr *) &local, &local_len);
+            uv_tcp_getpeername((const uv_tcp_t *) br->output, (struct sockaddr *) &remote, &remote_len);
+            break;
+        case UV_UDP:
+            uv_udp_getsockname((const uv_udp_t *) br->output, (struct sockaddr *) &local, &local_len);
+            uv_udp_getpeername((const uv_udp_t *) br->output, (struct sockaddr *) &remote, &remote_len);
+            proto = "udp";
+            break;
+        default:
+            return ZITI_INVALID_STATE;
+    }
+
+    fmt_addr(&local, local_str, sizeof(local), &lport);
+    fmt_addr(&remote, remote_str, sizeof(remote_str), &rport);
+
+    snprintf(buf, buflen, "%s: %s:%d -> %s:%d", proto, local_str, lport, remote_str, rport);
+    return ZITI_OK;
+}
+
+static int fmt_addr(struct sockaddr_storage *ss, char *host, size_t host_len, int *port) {
+    void *addr = NULL;
+    if (ss->ss_family == AF_INET) {
+        struct sockaddr_in *in_addr = (struct sockaddr_in *) ss;
+        *port = ntohs(in_addr->sin_port);
+        addr = &in_addr->sin_addr;
+    } else if (ss->ss_family == AF_INET6) {
+        struct sockaddr_in6 *in_addr = (struct sockaddr_in6 *) ss;
+        *port = ntohs(in_addr->sin6_port);
+        addr = &in_addr->sin6_addr;
+    } else {
+        *port = -1;
+        return ZITI_INVALID_STATE;
+    }
+
+    uv_inet_ntop(ss->ss_family, addr, host, host_len);
+    return ZITI_OK;
 }

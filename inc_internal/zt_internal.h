@@ -191,6 +191,9 @@ struct ziti_conn {
             struct key_pair key_pair;
             struct ziti_conn_req *conn_req;
 
+            // 8-byte string
+            char marker[sodium_base64_ENCODED_LEN(6, sodium_base64_VARIANT_URLSAFE_NO_PADDING)];
+
             uint32_t edge_msg_seq;
 
             ziti_channel_t *channel;
@@ -220,6 +223,8 @@ struct ziti_conn {
             uint64_t start;
             uint64_t connect_time;
             uint64_t last_activity;
+            uint64_t sent;
+            uint64_t received;
         };
     };
 
@@ -396,6 +401,8 @@ void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, int32_t req_id, c
 const ziti_env_info* get_env_info();
 
 extern uv_timer_t *new_ztx_timer(ziti_context ztx);
+
+int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen);
 
 #ifdef __cplusplus
 }
