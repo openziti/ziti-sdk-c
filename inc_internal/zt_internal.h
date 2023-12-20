@@ -30,6 +30,7 @@
 #include "edge_protocol.h"
 #include "posture.h"
 #include "authenticators.h"
+#include "auth_method.h"
 
 #include <sodium.h>
 
@@ -267,6 +268,7 @@ struct ziti_ctx {
     bool enabled;
     int ctrl_status;
 
+    ziti_auth_method_t *auth_method;
     bool active_session_request;
     ziti_api_session *api_session;
     uv_timeval64_t api_session_expires_at;
