@@ -711,7 +711,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
                     FIELD_OR_ELSE(conn->channel, id, -1),
                     FIELD_OR_ELSE(conn->channel, name, "(none)")
             );
-            printer(ctx, "\tconnect_time[%" PRIu64 "] idle_time[%" PRIu64 "ms] "
+            printer(ctx, "\tconnect_time[%" PRIu64 "] idle_time[%" PRIu64 "] "
                          "sent[%" PRIu64 "] recv[%" PRIu64 "] recv_buff[%" PRIu64 "]\n",
                     conn->connect_time, now - conn->last_activity, conn->sent, conn->received,
                     buffer_available(conn->inbound));
@@ -734,7 +734,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
                         FIELD_OR_ELSE(child->channel, id, -1),
                         FIELD_OR_ELSE(child->channel, name, "(none)")
                 );
-                printer(ctx, "\t\taccept_time[%" PRIu64 "] idle_time[%" PRIu64 "ms] "
+                printer(ctx, "\t\taccept_time[%" PRIu64 "] idle_time[%" PRIu64 "] "
                              "sent[%" PRIu64 "] recv[%" PRIu64 "] recv_buff[%" PRIu64 "]\n",
                         child->connect_time, now - child->last_activity, child->sent, child->received,
                         buffer_available(child->inbound));
