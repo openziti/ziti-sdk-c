@@ -1,6 +1,7 @@
 ![Ziggy using the ziti-sdk-c](https://raw.githubusercontent.com/openziti/branding/main/images/banners/C.jpg)
 
 # OpenZiti C SDK
+
 ![Build Status](https://github.com/openziti/ziti-sdk-c/actions/workflows/cmake.yml/badge.svg?branch=main)
 
 The OpenZiti C SDK allows developers to create their own custom OpenZiti network endpoint applications.
@@ -42,7 +43,7 @@ target_link_libraries(most-secure-app-ever PRIVATE ziti)
 You will also need other libraries that OpenZiti SDK uses (they are specified in [vcpkg.json](vcpkg.json)):
 
 | library     | usage                          |
-|-------------|--------------------------------|     
+|-------------|--------------------------------|
 | `libuv`     | event loop                     |
 | `openssl`   | TLS                            |
 | `zlib`      | HTTPS compression              |
@@ -78,15 +79,15 @@ There are just three functions that cover SDK initialization and teardown.
 #include <ziti/zitilib.h>
 
 int main(int argc, char *argv[]) {
-    
+
     const char *identity_file = process_args(argc, argv);
-    
+
     Ziti_lib_init();
     ziti_context ztx = Ziti_load_context(identity_file);
-    
+
     ...
-    
-    
+
+
     Ziti_lib_shutdown();
 }
 ```
@@ -104,14 +105,14 @@ access to it).
 ```c
       ziti_socket_t sock = Ziti_socket(SOCK_STREAM);
       int error = Ziti_connect(sock, ztx, "my-secure-service", NULL);
-      
+
       // use sock as normal socket
       do {
           write(sock, ...);
           read(sock, ...);
-      
+
       } while (!done);
-      
+
       close(sock);
 
 ```
@@ -128,23 +129,23 @@ access to it).
       ziti_socket_t srv = Ziti_socket(SOCK_STREAM);
       int error = Ziti_bind(srv, ztx, "my-secure-service", NULL);
       Ziti_listen(srv, 10); // sets accept backlog
-      
+
       do {
           char caller[128];
           ziti_socket_t clt = Ziti_accept(srv, caller, (int)sizeof(caller));
-          
+
           // use client as normal socket
           process_client(clt);
-      
+
       } while (!done);
-      
+
       close(srv);
 ```
 
 ## Getting Help
 
 ------------
-Please use these community resources for getting help. We use GitHub [issues](https://github.com/NetFoundry/ziti-sdk-c/issues) 
+Please use these community resources for getting help. We use GitHub [issues](https://github.com/openziti/ziti-sdk-c/issues)
 for tracking bugs and feature requests and have limited bandwidth to address them.
 
 - Read [the docs](https://docs.openziti.io/)
