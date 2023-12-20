@@ -85,6 +85,9 @@ static void api_session_refresh(uv_timer_t *t);
 
 static void shutdown_and_free(ziti_context ztx);
 
+static void ztx_auth_state_cb(void *, ziti_auth_state , void *);
+
+
 static uint32_t ztx_seq;
 
 static const char *all_configs[] = { "all", NULL };
@@ -973,11 +976,17 @@ void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const 
  * `ziti_re_auth` attempts to re-authenticate with the controller. However
  * this will be ignored if the current `ziti_context` believes it is in a
  * partially authenticated state. If desired, called `ziti_set_unauthenticated`
- * to by pass this state.
+ * to bypass this state.
  * @param ztx
  * @param force
  */
+
+static void version_pre_auth_cb(ziti_version *version, const ziti_error *err, void *ctx);
 static void ziti_re_auth(ziti_context ztx) {
+    ziti_ctrl_get_version(&ztx->controller, version_pre_auth_cb, ztx);
+
+
+
     if (ztx->api_session_state != ZitiApiSessionStateAuthStarted) {
         ZTX_LOG(DEBUG, "re-auth executing, transitioning to unauthenticated");
         ziti_set_unauthenticated(ztx);
@@ -988,7 +997,7 @@ static void ziti_re_auth(ziti_context ztx) {
 
         ziti_re_auth_with_cb(ztx, api_session_cb, init_req);
     } else {
-        ZTX_LOG(DEBUG, "re-auth aborted, re-auth already started");
+        ZTX_LOG(DEBUG, "re-auth ignored: already in progress");
     }
 }
 
@@ -1886,7 +1895,6 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
     return ZITI_OK;
 }
 
-
 int ziti_context_set_options(ziti_context ztx, const ziti_options *options) {
     if (options == NULL) {
         ztx->opts = default_options;
@@ -1939,4 +1947,53 @@ int ziti_context_run(ziti_context ztx, uv_loop_t *loop) {
     }
 
     return ZITI_OK;
+}
+
+static void pre_auth_retry(uv_timer_t *t) {
+    ziti_context ztx = t->data;
+    ziti_re_auth(ztx);
+    uv_close((uv_handle_t *) t, (uv_close_cb) free);
+}
+
+static void version_pre_auth_cb(ziti_version *version, const ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
+    if (err) {
+        ZTX_LOG(WARN, "failed to get controller version: %s/%s", err->code, err->message);
+        uv_timer_t *t = calloc(1, sizeof(*t));
+        uv_timer_init(ztx->loop, t);
+        t->data = ztx;
+        uv_timer_start(t, pre_auth_retry, 5 * 1000, 0);
+    } else {
+        bool ha = ziti_has_capability(version, ziti_ctrl_cap_HA_CONTROLLER);
+
+        if (ha) {
+            // TODO
+        } else {
+            ztx->auth_method = new_legacy_auth(&ztx->controller);
+            ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
+        }
+    }
+
+    free_ziti_version_ptr(version);
+}
+
+static void ztx_auth_state_cb(void *ctx, ziti_auth_state state, void *data) {
+    ziti_context ztx = ctx;
+    switch (state) {
+        case ZitiAuthStateUnauthenticated:
+            ziti_set_unauthenticated(ztx);
+            break;
+        case ZitiAuthStateAuthStarted:
+            ziti_set_auth_started(ztx);
+            break;
+        case ZitiAuthStatePartiallyAuthenticated:
+            ziti_set_partially_authenticated(ztx);
+            break;
+        case ZitiAuthStateFullyAuthenticated:
+            ziti_set_fully_authenticated(ztx);
+            break;
+        case ZitiAuthImpossibleToAuthenticate:
+            ziti_set_impossible_to_authenticate(ztx);
+            break;
+    }
 }
