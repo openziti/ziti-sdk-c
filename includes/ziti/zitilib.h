@@ -65,8 +65,13 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert,
                          char **id_json, unsigned long *id_json_len);
 /**
  * @brief Load Ziti identity.
- * @param identity location of identity configuration
- * @return Ziti Context handle
+ *
+ * First it tries to parse [identity] as identity Json.
+ * if that fails it tries to load it from file using [identity] as the path.
+ *
+ * returns NULL in case of failure. [Ziti_last_error()] will give specific error code.
+ * @param identity identity config JSON or path to a file.
+ * @return Ziti Context handle or NULL if it fails
  */
 ZITI_FUNC
 ziti_context Ziti_load_context(const char *identity);
