@@ -420,8 +420,16 @@ extern int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb e
 ZITI_FUNC
 extern void ziti_set_app_info(const char *app_id, const char *app_version);
 
+/**
+ * Load ziti identity config from memory or file.
+ * First it tries to parse [conf_str] as identity Json.
+ * if that fails it tries to load it from file using [conf_str] as the path.
+ * @param config target ziti_config object
+ * @param conf_str identity config JSON or path to a file.
+ * @return ZITI_OK on success or error code
+ */
 ZITI_FUNC
-extern int ziti_load_config(ziti_config *config, const char* path);
+extern int ziti_load_config(ziti_config *config, const char* conf_str);
 
 ZITI_FUNC
 extern int ziti_context_init(ziti_context *ztx, const ziti_config *config);

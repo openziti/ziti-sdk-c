@@ -60,8 +60,12 @@ int ziti_load_config(ziti_config *cfg, const char* cfgstr) {
     }
 
     if (rc < 0) {
-        free_ziti_config(cfg);
+        return rc;
     }
 
-    return rc;
+    if (cfg->controller_url == NULL || cfg->id.key == NULL) {
+        return ZITI_INVALID_CONFIG;
+    }
+
+    return ZITI_OK;
 }
