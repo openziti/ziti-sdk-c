@@ -421,6 +421,7 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
     if (!ztx->enabled) {
         ztx->enabled = true;
         uv_prepare_start(ztx->prepper, ztx_prepare);
+        ztx->start = uv_now(ztx->loop);
         ziti_ctrl_get_version(&ztx->controller, version_cb, ztx);
         ziti_set_unauthenticated(ztx);
 
@@ -625,8 +626,12 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     uint64_t now = uv_now(ztx->loop);
     printer(ctx, "\n=================\nZiti Context:\n");
     printer(ctx, "ID:\t%d\n", ztx->id);
-    printer(ctx, "Enabled:\t%s\n", ziti_is_enabled(ztx) ? "true" : "false");
-    printer(ctx, "Config:\t%s\n", ztx->opts.config);
+    if (ziti_is_enabled(ztx)) {
+        printer(ctx, "enabled[true] uptime[%" PRIu64 "s]\n", (now -  ztx->start)/1000);
+    } else {
+        printer(ctx, "enabled[false]");
+    }
+    printer(ctx, "Config Source:\t%s\n", ztx->config.cfg_source ? ztx->config.cfg_source : "(none)");
     printer(ctx, "Controller:\t%s\n", ztx_controller(ztx));
     printer(ctx, "Config types:\n");
     for (int i = 0; ztx->opts.config_types && ztx->opts.config_types[i]; i++) {
@@ -1863,6 +1868,9 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
         ctx->config.id.ca = strdup(cfg_ca);
     }
 
+    if (config->cfg_source) {
+        ctx->config.cfg_source = strdup(config->cfg_source);
+    }
     ctx->config.controller_url = strdup(config->controller_url);
     if (config->id.key) ctx->config.id.key = strdup(config->id.key);
     if (config->id.cert) ctx->config.id.cert = strdup(config->id.cert);

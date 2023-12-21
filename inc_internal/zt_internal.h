@@ -307,6 +307,7 @@ struct ziti_ctx {
     int ziti_timeout;
 
     /* context wide metrics */
+    uint64_t start;
     rate_t up_rate;
     rate_t down_rate;
 
