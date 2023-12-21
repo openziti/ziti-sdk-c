@@ -1,9 +1,9 @@
-// Copyright (c) 2023.  NetFoundry Inc.
+// Copyright (c) 2023. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -298,9 +298,11 @@ static int dispose(ziti_connection server) {
 static void process_dial(struct binding_s *b, message *msg) {
     struct ziti_conn *conn = b->conn;
 
-    size_t peer_key_len;
+    size_t peer_key_len, marker_len;
     uint8_t *peer_key;
+    uint8_t  *marker;
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
+    bool marker_sent = message_get_bytes_header(msg, ConnectionMarkerHeader, &marker, &marker_len);
 
     if (!peer_key_sent && conn->encrypted) {
         ZITI_LOG(ERROR, "failed to establish crypto for encrypted service: did not receive peer key");
@@ -311,6 +313,12 @@ static void process_dial(struct binding_s *b, message *msg) {
     ziti_connection client;
     ziti_conn_init(conn->ziti_ctx, &client, NULL);
     init_transport_conn(client);
+    if (marker_sent) {
+        snprintf(client->marker, sizeof(client->marker), "%.*s", (int) marker_len, marker);
+    } else {
+        snprintf(client->marker, sizeof(client->marker), "-");
+    }
+    client->start = uv_now(conn->ziti_ctx->loop);
 
     if (peer_key_sent) {
         client->encrypted = true;

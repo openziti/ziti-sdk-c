@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2023. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -38,6 +38,9 @@
 #if !defined(UUID_STR_LEN)
 #define UUID_STR_LEN 37
 #endif
+
+#define MARKER_BIN_LEN 6
+#define MARKER_CHAR_LEN sodium_base64_ENCODED_LEN(MARKER_BIN_LEN, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
 
 #define ZTX_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ztx[%u] " fmt, ztx->id, ##__VA_ARGS__)
 
@@ -191,6 +194,8 @@ struct ziti_conn {
             struct key_pair key_pair;
             struct ziti_conn_req *conn_req;
 
+            char marker[MARKER_CHAR_LEN];
+
             uint32_t edge_msg_seq;
 
             ziti_channel_t *channel;
@@ -214,6 +219,14 @@ struct ziti_conn {
 
             crypto_secretstream_xchacha20poly1305_state crypt_o;
             crypto_secretstream_xchacha20poly1305_state crypt_i;
+
+            // stats
+            bool bridged;
+            uint64_t start;
+            uint64_t connect_time;
+            uint64_t last_activity;
+            uint64_t sent;
+            uint64_t received;
         };
     };
 
@@ -294,6 +307,7 @@ struct ziti_ctx {
     int ziti_timeout;
 
     /* context wide metrics */
+    uint64_t start;
     rate_t up_rate;
     rate_t down_rate;
 
@@ -390,6 +404,8 @@ void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, int32_t req_id, c
 const ziti_env_info* get_env_info();
 
 extern uv_timer_t *new_ztx_timer(ziti_context ztx);
+
+int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen);
 
 #ifdef __cplusplus
 }

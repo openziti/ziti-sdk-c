@@ -1,7 +1,7 @@
 
 function(get_version version_file version_var branch_var commit_var)
     execute_process(
-            COMMAND git describe --tags HEAD
+            COMMAND git describe --tags --match=[0-9]* HEAD
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             OUTPUT_VARIABLE GIT_INFO
             OUTPUT_STRIP_TRAILING_WHITESPACE

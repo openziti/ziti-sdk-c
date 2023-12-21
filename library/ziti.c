@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2023. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -421,6 +421,7 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
     if (!ztx->enabled) {
         ztx->enabled = true;
         uv_prepare_start(ztx->prepper, ztx_prepare);
+        ztx->start = uv_now(ztx->loop);
         ziti_ctrl_get_version(&ztx->controller, version_cb, ztx);
         ziti_set_unauthenticated(ztx);
 
@@ -622,10 +623,15 @@ int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
 
 
 void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
+    uint64_t now = uv_now(ztx->loop);
     printer(ctx, "\n=================\nZiti Context:\n");
     printer(ctx, "ID:\t%d\n", ztx->id);
-    printer(ctx, "Enabled:\t%s\n", ziti_is_enabled(ztx) ? "true" : "false");
-    printer(ctx, "Config:\t%s\n", ztx->opts.config);
+    if (ziti_is_enabled(ztx)) {
+        printer(ctx, "enabled[true] uptime[%" PRIu64 "s]\n", (now -  ztx->start)/1000);
+    } else {
+        printer(ctx, "enabled[false]");
+    }
+    printer(ctx, "Config Source:\t%s\n", ztx->config.cfg_source ? ztx->config.cfg_source : "(none)");
     printer(ctx, "Controller:\t%s\n", ztx_controller(ztx));
     printer(ctx, "Config types:\n");
     for (int i = 0; ztx->opts.config_types && ztx->opts.config_types[i]; i++) {
@@ -697,16 +703,27 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         }
     }
 
-    printer(ctx, "\n==================\nConnections:\n");
+    printer(ctx, "\n==================\n"
+                 "Connections:\n");
     ziti_connection conn;
     const char *id;
+    char bridge_info[128];
     MODEL_MAP_FOREACH(id, conn, &ztx->connections) {
+
         if (conn->type == Transport && conn->parent == NULL) {
-            printer(ctx, "conn[%d]: state[%s] service[%s] using ch[%d] %s\n",
-                    conn->conn_id, ziti_conn_state(conn), conn->service,
+            printer(ctx, "conn[%d/%s]: state[%s] service[%s] using ch[%d/%s]\n",
+                    conn->conn_id, conn->marker, ziti_conn_state(conn), conn->service,
                     FIELD_OR_ELSE(conn->channel, id, -1),
                     FIELD_OR_ELSE(conn->channel, name, "(none)")
             );
+            printer(ctx, "\tconnect_time[%" PRIu64 "] idle_time[%" PRIu64 "] "
+                         "sent[%" PRIu64 "] recv[%" PRIu64 "] recv_buff[%" PRIu64 "]\n",
+                    conn->connect_time, now - conn->last_activity, conn->sent, conn->received,
+                    buffer_available(conn->inbound));
+
+            if (conn_bridge_info(conn, bridge_info, sizeof(bridge_info)) == ZITI_OK) {
+                printer(ctx, "\tbridge: %s\n", bridge_info);
+            }
         }
 
         if (conn->type == Server) {
@@ -717,11 +734,18 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
             while (it != NULL) {
                 uint32_t child_id = model_map_it_lkey(it);
                 ziti_connection child = model_map_it_value(it);
-                printer(ctx, "\tchild[%d]: state[%s] caller_id[%s] ch[%d] %s\n",
-                        child_id, ziti_conn_state(child), ziti_conn_source_identity(child),
+                printer(ctx, "\tchild[%d/%s]: state[%s] caller_id[%s] ch[%d/%s]\n",
+                        child_id, child->marker, ziti_conn_state(child), ziti_conn_source_identity(child),
                         FIELD_OR_ELSE(child->channel, id, -1),
                         FIELD_OR_ELSE(child->channel, name, "(none)")
                 );
+                printer(ctx, "\t\taccept_time[%" PRIu64 "] idle_time[%" PRIu64 "] "
+                             "sent[%" PRIu64 "] recv[%" PRIu64 "] recv_buff[%" PRIu64 "]\n",
+                        child->connect_time, now - child->last_activity, child->sent, child->received,
+                        buffer_available(child->inbound));
+                if (conn_bridge_info(child, bridge_info, sizeof(bridge_info)) == ZITI_OK) {
+                    printer(ctx, "\t\tbridge: %s\n", bridge_info);
+                }
                 it = model_map_it_next(it);
             }
         }
@@ -1844,6 +1868,9 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
         ctx->config.id.ca = strdup(cfg_ca);
     }
 
+    if (config->cfg_source) {
+        ctx->config.cfg_source = strdup(config->cfg_source);
+    }
     ctx->config.controller_url = strdup(config->controller_url);
     if (config->id.key) ctx->config.id.key = strdup(config->id.key);
     if (config->id.cert) ctx->config.id.cert = strdup(config->id.cert);

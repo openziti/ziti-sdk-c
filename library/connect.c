@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2023. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -23,7 +23,8 @@
 static const char *INVALID_SESSION = "Invalid Session";
 static const int MAX_CONNECT_RETRY = 3;
 
-#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%u.%u/%s] " fmt, conn->ziti_ctx->id, conn->conn_id, conn_state_str[conn->state], ##__VA_ARGS__)
+#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%u.%u/%.*s/%s] " fmt, \
+conn->ziti_ctx->id, conn->conn_id, (int)sizeof(conn->marker), conn->marker, conn_state_str[conn->state], ##__VA_ARGS__)
 
 
 
@@ -78,6 +79,9 @@ const char *ziti_conn_state(ziti_connection conn) {
 static void conn_set_state(struct ziti_conn *conn, enum conn_state state) {
     CONN_LOG(VERBOSE, "transitioning %s => %s", conn_state_str[conn->state], conn_state_str[state]);
     conn->state = state;
+    if (state == Connected) {
+        conn->connect_time = uv_now(conn->ziti_ctx->loop) - conn->start;
+    }
 }
 
 static ziti_dial_opts *clone_ziti_dial_opts(const ziti_dial_opts *dial_opts) {
@@ -515,6 +519,11 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
         return ZITI_INVALID_STATE;
     }
 
+    char marker[MARKER_BIN_LEN];
+    uv_random(NULL, NULL, marker, sizeof(marker), 0, NULL);
+    sodium_bin2base64(conn->marker, sizeof(conn->marker), marker, sizeof(marker),
+                      sodium_base64_VARIANT_URLSAFE_NO_PADDING);
+
     NEWP(req, struct ziti_conn_req);
     conn->service = strdup(service);
     conn->conn_req = req;
@@ -538,6 +547,8 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
     conn->flusher = calloc(1, sizeof(uv_idle_t));
     uv_idle_init(conn->ziti_ctx->loop, conn->flusher);
     conn->flusher->data = conn;
+
+    conn->start = uv_now(conn->ziti_ctx->loop);
 
     process_connect(conn);
     return ZITI_OK;
@@ -601,6 +612,7 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
                 memcpy(m->body, req->buf, req->len);
             }
         }
+        conn->sent += req->len;
         send_message(conn, m, req);
     }
 }
@@ -742,6 +754,7 @@ static void flush_connection(ziti_connection conn) {
         CONN_LOG(TRACE, "starting flusher");
         uv_idle_start(conn->flusher, on_flush);
     }
+    conn->last_activity = uv_now(conn->ziti_ctx->loop);
 }
 
 static bool flush_to_service(ziti_connection conn) {
@@ -848,6 +861,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
                 CONN_LOG(VERBOSE, "decrypted %lld bytes", plain_len);
                 buffer_append(conn->inbound, plain_text, plain_len);
                 metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) plain_len);
+                conn->received += plain_len;
             }
         }
 
@@ -862,6 +876,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
         memcpy(plain_text, msg->body, msg->header.body_len);
         buffer_append(conn->inbound, plain_text, msg->header.body_len);
         metrics_rate_update(&conn->ziti_ctx->down_rate, msg->header.body_len);
+        conn->received += msg->header.body_len;
     }
 
     int32_t flags;
@@ -1007,6 +1022,11 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
                     .value = (uint8_t *) &conn_id
             },
             {
+                    .header_id = ConnectionMarkerHeader,
+                    .length = sizeof(conn->marker),
+                    .value = (uint8_t *) conn->marker,
+            },
+            {
                     .header_id = SeqHeader,
                     .length = sizeof(msg_seq),
                     .value = (uint8_t *) &msg_seq
@@ -1038,7 +1058,7 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
                     .value = NULL,
             }
     };
-    int nheaders = 3;
+    int nheaders = 4;
     if (conn->encrypted) {
         init_key_pair(&conn->key_pair);
         nheaders++;
