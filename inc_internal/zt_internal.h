@@ -39,6 +39,9 @@
 #define UUID_STR_LEN 37
 #endif
 
+#define MARKER_BIN_LEN 6
+#define MARKER_CHAR_LEN sodium_base64_ENCODED_LEN(MARKER_BIN_LEN, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
+
 #define ZTX_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ztx[%u] " fmt, ztx->id, ##__VA_ARGS__)
 
 extern const char *APP_ID;
@@ -191,8 +194,7 @@ struct ziti_conn {
             struct key_pair key_pair;
             struct ziti_conn_req *conn_req;
 
-            // 8-byte string
-            char marker[sodium_base64_ENCODED_LEN(6, sodium_base64_VARIANT_URLSAFE_NO_PADDING)];
+            char marker[MARKER_CHAR_LEN];
 
             uint32_t edge_msg_seq;
 

@@ -519,7 +519,7 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
         return ZITI_INVALID_STATE;
     }
 
-    char marker[6];
+    char marker[MARKER_BIN_LEN];
     uv_random(NULL, NULL, marker, sizeof(marker), 0, NULL);
     sodium_bin2base64(conn->marker, sizeof(conn->marker), marker, sizeof(marker),
                       sodium_base64_VARIANT_URLSAFE_NO_PADDING);
@@ -876,6 +876,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
         memcpy(plain_text, msg->body, msg->header.body_len);
         buffer_append(conn->inbound, plain_text, msg->header.body_len);
         metrics_rate_update(&conn->ziti_ctx->down_rate, msg->header.body_len);
+        conn->received += msg->header.body_len;
     }
 
     int32_t flags;
