@@ -1,18 +1,16 @@
+// Copyright (c) 2023. NetFoundry Inc.
 //
-// 	Copyright NetFoundry Inc.
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
 //
-// 	Licensed under the Apache License, Version 2.0 (the "License");
-// 	you may not use this file except in compliance with the License.
-// 	You may obtain a copy of the License at
+// You may obtain a copy of the License at
+// https://www.apache.org/licenses/LICENSE-2.0
 //
-// 	https://www.apache.org/licenses/LICENSE-2.0
-//
-// 	Unless required by applicable law or agreed to in writing, software
-// 	distributed under the License is distributed on an "AS IS" BASIS,
-// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// 	See the License for the specific language governing permissions and
-// 	limitations under the License.
-//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <oidc.h>
 #include <assert.h>
@@ -48,7 +46,6 @@ struct oidc_req {
 
 typedef struct auth_req {
     oidc_client_t *clt;
-    oidc_token_cb cb;
     char code_verifier[code_verifier_len];
     char code_challenge[code_challenge_len];
     json_tokener *json_parser;
@@ -77,36 +74,46 @@ static void json_parse_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
     }
 
     if (len > 0) {
-        if (req) {
-            json_object *res = json_tokener_parse_ex(req->parser, data, (int) len);
-            if (res) {
-                complete_oidc_req(req, 0, res);
-                r->data = NULL;
-            }
+        ZITI_LOG(INFO, "data: %.*s", (int)len, data);
+        json_object *res = json_tokener_parse_ex(req->parser, data, (int) len);
+        if (res) {
+            int status = r->resp.code == HTTP_STATUS_OK ? 0 : r->resp.code;
+            complete_oidc_req(req, status, res);
+            r->data = NULL;
         }
         return;
     }
 
     if (len == UV_EOF) {
-        if (req) {
-            complete_oidc_req(req, UV_EOF, NULL);
-        }
+        complete_oidc_req(req, UV_EOF, NULL);
         return;
     }
 }
 
 static void parse_cb(tlsuv_http_resp_t *resp, void *ctx) {
-    if (resp->code == HTTP_STATUS_OK) {
+    tlsuv_http_req_t *http_req = resp->req;
+    oidc_req *req = http_req->data;
+
+    if (req == NULL) { // should not happen
+        return;
+    }
+
+    // connection failure
+    if (resp->code < 0) {
+        req->cb(req, resp->code, NULL);
+        free(req);
+        return;
+    }
+
+    const char *ct = tlsuv_http_resp_header(resp, "Content-Type");
+    if (strcmp(ct, "application/json") == 0) {
         resp->body_cb = json_parse_cb;
         return;
     }
 
-    oidc_client_t *oidc = ctx;
-    if (oidc->config_cb) {
-        oidc->config_cb(oidc, resp->code, resp->status);
-        oidc->config_cb = NULL;
-    }
-
+    ZITI_LOG(ERROR, "unexpected content-type: %s", ct);
+    complete_oidc_req(req, ZITI_INVALID_STATE, NULL);
+    resp->req->data = NULL;
 }
 
 int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt, const char *url, tls_context *tls) {
@@ -352,7 +359,7 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
     if (clt->timer && refresher && ttl) {
         int32_t t = json_object_get_int(ttl);
         if (t > 15) {
-            t -= 15;
+            t = 15;
         }
         ZITI_LOG(DEBUG, "scheduling token refresh in %d seconds", t);
         uv_timer_start(clt->timer, refresh_time_cb, t * 1000, 0);
@@ -360,15 +367,26 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
 }
 
 static void refresh_cb(oidc_req *req, int status, json_object *resp) {
+    oidc_client_t *clt = req->client;
     if (status == 0) {
         ZITI_LOG(DEBUG,  "token refresh success");
-        oidc_client_set_tokens(req->client, resp);
+        oidc_client_set_tokens(clt, resp);
+    } else if (status < 0) { // connection failure, try another refresh
+        ZITI_LOG(WARN, "OIDC token refresh failed: %d/%s", status, uv_strerror(status));
+        uv_timer_start(clt->timer, refresh_time_cb, 5 * 1000, 0);
+    } else {
+        ZITI_LOG(WARN, "OIDC token refresh failed: %d", status);
+        oidc_client_start(clt, clt->token_cb);
+        if (resp) {
+            json_object_put(resp);
+        }
     }
 }
 
 static void refresh_time_cb(uv_timer_t *t) {
     uv_unref((uv_handle_t *) t);
     oidc_client_t *clt = t->data;
+    ZITI_LOG(DEBUG, "refreshing OIDC token");
 
     const char *path = get_endpoint_path(clt, "token_endpoint");
     struct json_object *tok = json_object_object_get(clt->tokens, "refresh_token");

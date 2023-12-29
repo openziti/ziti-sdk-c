@@ -16,12 +16,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <ziti/ziti.h>
-#include <uv.h>
 #include "utils.h"
 #include "zt_internal.h"
-#include <posture.h>
+#include <assert.h>
 #include <auth_queries.h>
+#include <posture.h>
+#include <uv.h>
+#include <ziti/ziti.h>
 
 #if _WIN32
 
@@ -294,6 +295,7 @@ void ziti_set_impossible_to_authenticate(ziti_context ztx) {
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthImpossibleToAuthenticate);
     FREE(ztx->session_token);
     ziti_ctrl_clear_api_session(&ztx->controller);
+    ziti_ctrl_set_token(&ztx->controller, NULL);
 }
 
 void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mfa *mfa_q) {
@@ -1273,9 +1275,9 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
         it = model_map_it_remove(it);
         ers_changed = true;
     }
-    
-    // if the list of ERs changed, we want to opportunistically 
-    // refresh sessions to clear out references to old ERs, 
+
+    // if the list of ERs changed, we want to opportunistically
+    // refresh sessions to clear out references to old ERs,
     // and pull new ERs (which could be better for dialing)
 
     // we don't want to evict/refresh session right away
@@ -1299,6 +1301,7 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
         free_ziti_identity_data(ztx->identity_data);
         FREE(ztx->identity_data);
         ztx->identity_data = data;
+        update_ctrl_status(ztx, ZITI_OK, NULL);
     }
 
     update_ctrl_status(ztx, FIELD_OR_ELSE(err, err, 0), FIELD_OR_ELSE(err, message, NULL));
