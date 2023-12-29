@@ -128,7 +128,6 @@ struct ziti_write_req_s {
 
     struct message_s *message;
     ziti_write_cb cb;
-    uv_timer_t *timeout;
     uint64_t start_ts;
 
     void *ctx;
@@ -204,7 +203,6 @@ struct ziti_conn {
             bool fin_sent;
             int fin_recv; // 0 - not received, 1 - received, 2 - called app data cb
             bool disconnecting;
-            int timeout;
 
             TAILQ_HEAD(, message_s) in_q;
             buffer *inbound;
@@ -302,9 +300,6 @@ struct ziti_ctx {
     model_map connections;
 
     uint32_t conn_seq;
-
-    /* options */
-    int ziti_timeout;
 
     /* context wide metrics */
     uint64_t start;

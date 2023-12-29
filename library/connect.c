@@ -27,6 +27,9 @@ static const int MAX_CONNECT_RETRY = 3;
 conn->ziti_ctx->id, conn->conn_id, (int)sizeof(conn->marker), conn->marker, conn_state_str[conn->state], ##__VA_ARGS__)
 
 
+#define DEFAULT_DIAL_OPTS (ziti_dial_opts){ \
+                 .connect_timeout_seconds = ZITI_DEFAULT_TIMEOUT/1000, \
+    }
 
 static const char *conn_state_str[] = {
 #define state_str(ST) #ST ,
@@ -39,8 +42,7 @@ struct ziti_conn_req {
     char *service_id;
     ziti_net_session *session;
     ziti_conn_cb cb;
-    ziti_dial_opts *dial_opts;
-    ziti_listen_opts *listen_opts;
+    ziti_dial_opts dial_opts;
 
     int retry_count;
     uv_timer_t *conn_timeout;
@@ -84,30 +86,19 @@ static void conn_set_state(struct ziti_conn *conn, enum conn_state state) {
     }
 }
 
-static ziti_dial_opts *clone_ziti_dial_opts(const ziti_dial_opts *dial_opts) {
-    if (dial_opts == NULL) {
-        ZITI_LOG(TRACE, "refuse to clone NULL dial_opts");
-        return NULL;
-    }
-    ziti_dial_opts *c = calloc(1, sizeof(ziti_dial_opts));
-    memcpy(c, dial_opts, sizeof(ziti_dial_opts));
-    if (dial_opts->identity != NULL) c->identity = strdup(dial_opts->identity);
+static void clone_ziti_dial_opts(ziti_dial_opts *dest, const ziti_dial_opts *dial_opts) {
+    memcpy(dest, dial_opts, sizeof(ziti_dial_opts));
+    if (dial_opts->identity != NULL) dest->identity = strdup(dial_opts->identity);
     if (dial_opts->app_data != NULL) {
-        c->app_data = malloc(dial_opts->app_data_sz);
-        c->app_data_sz = dial_opts->app_data_sz;
-        memcpy(c->app_data, dial_opts->app_data, dial_opts->app_data_sz);
+        dest->app_data = malloc(dial_opts->app_data_sz);
+        dest->app_data_sz = dial_opts->app_data_sz;
+        memcpy(dest->app_data, dial_opts->app_data, dial_opts->app_data_sz);
     }
-    return c;
 }
 
 static void free_ziti_dial_opts(ziti_dial_opts *dial_opts) {
-    if (dial_opts == NULL) {
-        ZITI_LOG(TRACE, "refuse to free NULL dial_opts");
-        return;
-    }
     FREE(dial_opts->identity);
     FREE(dial_opts->app_data);
-    free(dial_opts);
 }
 
 static ziti_listen_opts *clone_ziti_listen_opts(const ziti_listen_opts *ln_opts) {
@@ -140,8 +131,7 @@ static void free_conn_req(struct ziti_conn_req *r) {
         FREE(r->session);
     }
 
-    free_ziti_dial_opts(r->dial_opts);
-    free_ziti_listen_opts(r->listen_opts);
+    free_ziti_dial_opts(&r->dial_opts);
     FREE(r->service_id);
     free(r);
 }
@@ -222,12 +212,6 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
         return;
     }
     CONN_LOG(TRACE, "status %d", status);
-
-    if (req->timeout != NULL) {
-        uv_timer_stop(req->timeout);
-        uv_close((uv_handle_t *) req->timeout, free_handle);
-        req->timeout = NULL;
-    }
 
     if (status < 0) {
         conn_set_state(conn, Disconnected);
@@ -342,8 +326,8 @@ static void connect_timeout(uv_timer_t *timer) {
             CONN_LOG(WARN, "connect timeout: no suitable edge router for service[%s]", conn->service);
         } else {
 
-            CONN_LOG(WARN, "failed to establish connection to service[%s] in %dms on ch[%d]",
-                     conn->service, conn->timeout, ch->id);
+            CONN_LOG(WARN, "failed to establish connection to service[%s] in %ds on ch[%d]",
+                     conn->service, conn->conn_req->dial_opts.connect_timeout_seconds, ch->id);
         }
         complete_conn_req(conn, ZITI_TIMEOUT);
         ziti_disconnect(conn);
@@ -352,7 +336,7 @@ static void connect_timeout(uv_timer_t *timer) {
     }
 }
 
-static int ziti_connect(struct ziti_ctx *ztx, const ziti_net_session *session, struct ziti_conn *conn) {
+static int ziti_connect(struct ziti_ctx *ztx, ziti_net_session *session, struct ziti_conn *conn) {
     // verify ziti context is still authorized
     if (ztx->api_session == NULL) {
         CONN_LOG(ERROR, "ziti context is not authenticated, cannot connect to service[%s]", conn->service);
@@ -495,7 +479,7 @@ static void process_connect(struct ziti_conn *conn) {
         req->conn_timeout = calloc(1, sizeof(uv_timer_t));
         uv_timer_init(loop, req->conn_timeout);
         req->conn_timeout->data = conn;
-        uv_timer_start(req->conn_timeout, connect_timeout, conn->timeout, 0);
+        uv_timer_start(req->conn_timeout, connect_timeout, req->dial_opts.connect_timeout_seconds * 1000, 0);
 
         CONN_LOG(DEBUG, "starting %s connection for service[%s] with session[%s]",
                  ziti_session_types.name(req->session_type), conn->service, req->session->id);
@@ -531,14 +515,12 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
     req->session_type = ziti_session_types.Dial;
     req->cb = conn_cb;
 
+    req->dial_opts = DEFAULT_DIAL_OPTS;
     if (dial_opts != NULL) {
         // clone dial_opts to survive the async request
-        req->dial_opts = clone_ziti_dial_opts(dial_opts);
+        clone_ziti_dial_opts(&req->dial_opts, dial_opts);
 
         // override connection timeout if set in dial_opts
-        if (dial_opts->connect_timeout_seconds > 0) {
-            conn->timeout = dial_opts->connect_timeout_seconds * 1000;
-        }
     }
 
     conn->data_cb = data_cb;
@@ -567,21 +549,6 @@ int ziti_dial_with_options(ziti_connection conn, const char *service, ziti_dial_
     return do_ziti_dial(conn, service, dial_opts, conn_cb, data_cb);
 }
 
-static void ziti_write_timeout(uv_timer_t *t) {
-    struct ziti_write_req_s *req = t->data;
-    struct ziti_conn *conn = req->conn;
-
-    req->timeout = NULL;
-    req->conn = NULL;
-
-    if (conn->state < Disconnected) {
-        conn_set_state(conn, Disconnected);
-        req->cb(conn, ZITI_TIMEOUT, req->ctx);
-    }
-
-    uv_close((uv_handle_t *) t, free_handle);
-}
-
 static void ziti_write_req(struct ziti_write_req_s *req) {
     struct ziti_conn *conn = req->conn;
 
@@ -593,13 +560,6 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
         message *m = create_message(conn, ContentTypeStateClosed, 0);
         send_message(conn, m, req);
     } else {
-        if (req->cb) {
-            req->timeout = calloc(1, sizeof(uv_timer_t));
-            uv_timer_init(conn->ziti_ctx->loop, req->timeout);
-            req->timeout->data = req;
-            uv_timer_start(req->timeout, ziti_write_timeout, conn->timeout, 0);
-        }
-
         message *m = req->message;
         if (m == NULL) {
             size_t total_len = req->len + (conn->encrypted ? crypto_secretstream_xchacha20poly1305_abytes() : 0);
@@ -697,15 +657,8 @@ int establish_crypto(ziti_connection conn, message *msg) {
     uint8_t *peer_key;
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
     if (!peer_key_sent) {
-        if (conn->encrypted) {
-            CONN_LOG(ERROR, "failed to establish crypto for encrypted service: did not receive peer key");
-            return ZITI_CRYPTO_FAIL;
-        } else {
-            CONN_LOG(VERBOSE, "encryption not set up: peer_key_sent[%d] conn->encrypted[%d]", (int) peer_key_sent,
-                     (int) conn->encrypted);
-            // service is not required to be encrypted and hosting side did not send the key
-            return ZITI_OK;
-        }
+        CONN_LOG(ERROR, "failed to establish crypto for encrypted service: did not receive peer key");
+        return ZITI_CRYPTO_FAIL;
     }
 
     int rc = init_crypto(&conn->key_ex, &conn->key_pair, peer_key, conn->state == Accepting);
@@ -1063,19 +1016,19 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
         init_key_pair(&conn->key_pair);
         nheaders++;
     }
-    if (req->dial_opts != NULL) {
-        if (req->dial_opts->identity != NULL) {
-            headers[nheaders].header_id = TerminatorIdentityHeader;
-            headers[nheaders].value = (uint8_t *) req->dial_opts->identity;
-            headers[nheaders].length = strlen(req->dial_opts->identity);
-            nheaders++;
-        }
-        if (req->dial_opts->app_data != NULL) {
-            headers[nheaders].header_id = AppDataHeader;
-            headers[nheaders].value = req->dial_opts->app_data;
-            headers[nheaders].length = req->dial_opts->app_data_sz;
-            nheaders++;
-        }
+
+    if (req->dial_opts.identity != NULL) {
+        headers[nheaders].header_id = TerminatorIdentityHeader;
+        headers[nheaders].value = (uint8_t *) req->dial_opts.identity;
+        headers[nheaders].length = strlen(req->dial_opts.identity);
+        nheaders++;
+    }
+
+    if (req->dial_opts.app_data != NULL) {
+        headers[nheaders].header_id = AppDataHeader;
+        headers[nheaders].value = req->dial_opts.app_data;
+        headers[nheaders].length = req->dial_opts.app_data_sz;
+        nheaders++;
     }
 
     req->waiter = ziti_channel_send_for_reply(ch, content_type, headers, nheaders,
