@@ -80,6 +80,7 @@ SET(ZITI_SRC_FILES
         proto/edge_client.pb-c.c
         proto/google/protobuf/timestamp.pb-c.c
         legacy_auth.c
+        ha_auth.c
         util/future.c
         )
 

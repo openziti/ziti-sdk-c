@@ -1,30 +1,30 @@
+// Copyright (c) 2023. NetFoundry Inc.
 //
-// 	Copyright NetFoundry Inc.
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
 //
-// 	Licensed under the Apache License, Version 2.0 (the "License");
-// 	you may not use this file except in compliance with the License.
-// 	You may obtain a copy of the License at
+// You may obtain a copy of the License at
+// https://www.apache.org/licenses/LICENSE-2.0
 //
-// 	https://www.apache.org/licenses/LICENSE-2.0
-//
-// 	Unless required by applicable law or agreed to in writing, software
-// 	distributed under the License is distributed on an "AS IS" BASIS,
-// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// 	See the License for the specific language governing permissions and
-// 	limitations under the License.
-//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <catch2/catch_all.hpp>
 #include <ziti/zitilib.h>
 #include <ziti/ziti.h>
-#include "oidc.h"
-#include "ziti/ziti_log.h"
 #include <tlsuv/tlsuv.h>
 
-#include <test-data.h>
+#include "fixtures.h"
+#include "oidc.h"
+#include "ziti/ziti_log.h"
+#include "test-data.h"
 
-TEST_CASE("ha-oidc", "[integ]") {
-    auto l = uv_default_loop();
+
+TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
+    auto l = loop();
     ziti_log_init(l, 4, NULL);
     ziti_config cfg;
     REQUIRE(ziti_load_config(&cfg, TEST_CLIENT) == ZITI_OK);
@@ -87,5 +87,4 @@ TEST_CASE("ha-oidc", "[integ]") {
 
     free_ziti_config(&cfg);
 
-    uv_loop_close(l);
 }

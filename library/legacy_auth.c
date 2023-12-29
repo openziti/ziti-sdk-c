@@ -176,7 +176,7 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
         assert(session);
         free_ziti_api_session_ptr(auth->session);
         auth->session = session;
-        
+
         ziti_auth_query_mfa *ziti_mfa = get_mfa(auth->session);
         if (ziti_mfa) {
             auth->cb(auth->ctx, ZitiAuthStatePartiallyAuthenticated, ziti_mfa);
@@ -186,7 +186,7 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
 
         uint64_t delay = refresh_delay(session);
         uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
-        
+
         return;
     }
 

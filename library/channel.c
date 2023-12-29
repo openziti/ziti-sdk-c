@@ -266,6 +266,7 @@ uint64_t ziti_channel_latency(ziti_channel_t *ch) {
 static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, const char *url) {
     ziti_channel_t *ch = calloc(1, sizeof(ziti_channel_t));
     ziti_channel_init(ztx, ch, channel_counter++, ztx->tlsCtx);
+    const ziti_identity *identity = ziti_get_identity(ztx);
     ch->name = strdup(ch_name);
     ch->url = strdup(url);
     CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, ziti_get_identity(ztx)->name);
