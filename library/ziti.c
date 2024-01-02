@@ -236,7 +236,6 @@ int ziti_init_opts(ziti_options *options, uv_loop_t *loop) {
     ctx->opts = *options;
     ctx->tlsCtx = tls;
     ctx->loop = loop;
-    ctx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
     ctx->ctrl_status = ZITI_WTF;
 
     STAILQ_INIT(&ctx->w_queue);
@@ -538,15 +537,6 @@ void ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
     *down = metrics_rate_get(&ztx->down_rate);
 }
 
-int ziti_set_timeout(ziti_context ztx, int timeout) {
-    if (timeout > 0) {
-        ztx->ziti_timeout = timeout;
-    } else {
-        ztx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
-    }
-    return ZITI_OK;
-}
-
 static void free_ztx(uv_handle_t *h) {
     ziti_context ztx = h->data;
 
@@ -758,7 +748,6 @@ int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {
     NEWP(c, struct ziti_conn);
     c->ziti_ctx = ztx;
     c->data = data;
-    c->timeout = ctx->ziti_timeout;
     c->conn_id = ztx->conn_seq++;
 
     *conn = c;
@@ -1918,7 +1907,6 @@ int ziti_context_run(ziti_context ztx, uv_loop_t *loop) {
 
     ztx->tlsCtx = tls;
     ztx->loop = loop;
-    ztx->ziti_timeout = ZITI_DEFAULT_TIMEOUT;
     ztx->ctrl_status = ZITI_WTF;
 
     STAILQ_INIT(&ztx->w_queue);
