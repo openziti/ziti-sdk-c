@@ -308,7 +308,7 @@ static void process_inspect(struct binding_s *b, message *msg) {
                              "closed[%s] encrypted[%s]",
                              conn->conn_id, conn->service, listener_id,
                              BOOL_STR(conn->close), BOOL_STR(conn->encrypted));
-    CONN_LOG(INFO, "processing inspect: %.*s", (int)ci_len, conn_info);
+    CONN_LOG(DEBUG, "processing inspect: %.*s", (int)ci_len, conn_info);
     message *reply = new_inspect_result(msg->header.seq, conn->conn_id, ConnTypeBind, conn_info, ci_len);
     ziti_channel_send_message(b->ch, reply, NULL);
 }
