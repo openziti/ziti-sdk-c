@@ -16,6 +16,7 @@
 #define ZITI_SDK_MESSAGE_H
 
 #include "pool.h"
+#include "edge_protocol.h"
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -101,6 +102,7 @@ message *message_new(pool_t *pool, uint32_t content, const hdr_t *headers, int n
 
 void message_set_seq(message *m, uint32_t *seq);
 
+message* new_inspect_result(uint32_t req_seq, uint32_t conn_id, connection_type_t type, const char *msg, size_t msglen);
 
 #ifdef __cplusplus
 };
