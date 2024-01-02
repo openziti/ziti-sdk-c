@@ -87,9 +87,14 @@ static void conn_set_state(struct ziti_conn *conn, enum conn_state state) {
 }
 
 static void clone_ziti_dial_opts(ziti_dial_opts *dest, const ziti_dial_opts *dial_opts) {
-    memcpy(dest, dial_opts, sizeof(ziti_dial_opts));
-    if (dial_opts->identity != NULL) dest->identity = strdup(dial_opts->identity);
-    if (dial_opts->app_data != NULL) {
+    *dest = DEFAULT_DIAL_OPTS;
+
+    dest->connect_timeout_seconds = dial_opts->connect_timeout_seconds;
+    if (dial_opts->identity != NULL && dial_opts->identity[0] != '\0') {
+        dest->identity = strdup(dial_opts->identity);
+    }
+
+    if (dial_opts->app_data != NULL && dial_opts->app_data_sz > 0) {
         dest->app_data = malloc(dial_opts->app_data_sz);
         dest->app_data_sz = dial_opts->app_data_sz;
         memcpy(dest->app_data, dial_opts->app_data, dial_opts->app_data_sz);
