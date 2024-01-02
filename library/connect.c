@@ -23,6 +23,8 @@
 static const char *INVALID_SESSION = "Invalid Session";
 static const int MAX_CONNECT_RETRY = 3;
 
+#define BOOL_STR(v) ((v) ? "Y" : "N")
+
 #define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%u.%u/%.*s/%s] " fmt, \
 conn->ziti_ctx->id, conn->conn_id, (int)sizeof(conn->marker), conn->marker, conn_state_str[conn->state], ##__VA_ARGS__)
 
@@ -1235,6 +1237,19 @@ static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {
             default:
                 CONN_LOG(WARN, "disconnecting from state[%d]", st);
         }
+        return;
+    }
+
+    if (msg->header.content == ContentTypeConnInspectRequest) {
+        char conn_info[256];
+        size_t ci_len = snprintf(conn_info, sizeof(conn_info),
+                                 "id[%d/%s] serviceName[%s] closed[%s] encrypted[%s] "
+                                 "recvFIN[%s] sentFIN[%s]",
+                                 conn->conn_id, conn->marker, conn->service, BOOL_STR(conn->close), BOOL_STR(conn->encrypted),
+                                 BOOL_STR(conn->fin_recv), BOOL_STR(conn->fin_sent));
+        message *reply = new_inspect_result(msg->header.seq, conn->conn_id, ConnTypeDial, conn_info, ci_len);
+        ziti_channel_send_message(conn->channel, reply, NULL);
+        pool_return_obj(msg);
         return;
     }
 

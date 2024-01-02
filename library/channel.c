@@ -465,6 +465,7 @@ static bool is_edge(uint32_t content) {
         case ContentTypeDialFailed:
         case ContentTypeBind:
         case ContentTypeUnbind:
+        case ContentTypeConnInspectRequest:
             return true;
         default:
             return false;
@@ -517,8 +518,12 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
         if (conn) {
             conn->receive(conn->receiver, m, ZITI_OK);
         } else {
-            // close confirmation is OK if connection is gone already
-            if (ct != ContentTypeStateClosed) {
+            if (ct == ContentTypeConnInspectRequest) {
+                char msg[128];
+                size_t len = snprintf(msg, sizeof(msg), "invalid conn id [%d]", conn_id);
+                message *reply = new_inspect_result(m->header.seq, conn_id, ConnTypeInvalid, msg, len);
+                ziti_channel_send_message(ch, reply, NULL);
+            } else if (ct != ContentTypeStateClosed) { // close confirmation is OK if connection is gone already
                 CH_LOG(WARN, "received message without conn_id or for unknown connection ct[%04X] conn_id[%d]",
                        ct, conn_id);
             }
@@ -693,15 +698,21 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
 }
 
 static void send_hello(ziti_channel_t *ch, ziti_api_session *session) {
+    uint8_t true_val;
     hdr_t headers[] = {
             {
                     .header_id = SessionTokenHeader,
                     .length = strlen(session->token),
                     .value = (uint8_t *)session->token
-            }
+            },
+            {
+                .header_id = SupportsInspectHeader,
+                .length = sizeof(true_val),
+                .value = &true_val,
+            },
     };
     ch->latency = uv_now(ch->loop);
-    ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 1, ch->token, strlen(ch->token), hello_reply_cb, ch);
+    ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 2, ch->token, strlen(ch->token), hello_reply_cb, ch);
 }
 
 
