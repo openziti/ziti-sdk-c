@@ -338,7 +338,7 @@ static void process_dial(struct binding_s *b, message *msg) {
     }
     client->start = uv_now(conn->ziti_ctx->loop);
 
-    if (peer_key_sent) {
+    if (conn->encrypted) {
         client->encrypted = true;
         if (init_crypto(&client->key_ex, &b->key_pair, peer_key, true) != 0) {
             reject_dial_request(0, b->ch, msg->header.seq, "failed to establish crypto");
