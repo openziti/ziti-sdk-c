@@ -483,11 +483,12 @@ static void process_connect(struct ziti_conn *conn) {
                                  conn);
         return;
     } else {
-        req->conn_timeout = calloc(1, sizeof(uv_timer_t));
-        uv_timer_init(loop, req->conn_timeout);
-        req->conn_timeout->data = conn;
-        uv_timer_start(req->conn_timeout, connect_timeout, req->dial_opts.connect_timeout_seconds * 1000, 0);
-
+        if (req->dial_opts.connect_timeout_seconds > 0) {
+            req->conn_timeout = calloc(1, sizeof(uv_timer_t));
+            uv_timer_init(loop, req->conn_timeout);
+            req->conn_timeout->data = conn;
+            uv_timer_start(req->conn_timeout, connect_timeout, req->dial_opts.connect_timeout_seconds * 1000, 0);
+        }
         CONN_LOG(DEBUG, "starting %s connection for service[%s] with session[%s]",
                  ziti_session_types.name(req->session_type), conn->service, req->session->id);
         ziti_connect(ztx, req->session, conn);
