@@ -698,7 +698,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
 }
 
 static void send_hello(ziti_channel_t *ch, ziti_api_session *session) {
-    uint8_t true_val;
+    uint8_t true_val = true;
     hdr_t headers[] = {
             {
                     .header_id = SessionTokenHeader,
