@@ -237,3 +237,29 @@ void message_set_seq(message *m, uint32_t *seq) {
     }
     header_to_buffer(&m->header, m->msgbufp);
 }
+
+
+message* new_inspect_result(uint32_t req_seq, uint32_t conn_id, connection_type_t type, const char *msg, size_t msglen) {
+    const hdr_t hdrs[] = {
+            {
+                    .header_id = ConnIdHeader,
+                    .length = sizeof(conn_id),
+                    .value = (uint8_t *) &conn_id,
+            },
+            {
+                    .header_id = ConnTypeHeader,
+                    .length = sizeof(type),
+                    .value = &type,
+            },
+            {
+                    .header_id = ReplyForHeader,
+                    .length = sizeof(req_seq),
+                    .value = (uint8_t *) &(req_seq),
+            }
+    };
+    message *reply = message_new(NULL, ContentTypeConnInspectResponse, hdrs, 3, msglen);
+    if (msglen > 0) {
+        strncpy((char *) reply->body, msg, msglen);
+    }
+    return reply;
+}
