@@ -405,8 +405,8 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
     struct ziti_conn *conn = b->conn;
 
     b->waiter = NULL;
-    CONN_LOG(TRACE, "received msg ct[%X] code[%d]", msg->header.content, code);
     if (code == ZITI_OK && msg->header.content == ContentTypeStateConnected) {
+        CONN_LOG(TRACE, "received msg ct[%X] code[%d]", msg->header.content, code);
         CONN_LOG(DEBUG, "bound successfully over ch[%s]", b->ch->url);
         ziti_channel_add_receiver(b->ch, (int)conn->conn_id, b,
                                   (void (*)(void *, message *, int)) on_message);
