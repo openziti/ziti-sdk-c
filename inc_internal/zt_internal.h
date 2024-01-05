@@ -112,7 +112,9 @@ typedef struct ziti_channel {
 
     // map[id->msg_receiver]
     model_map receivers;
-    LIST_HEAD(waiter, waiter_s) waiters;
+
+    // map[msg_seq->waiter_s]
+    model_map waiters;
 
     ch_notify_state notify_cb;
     void *notify_ctx;

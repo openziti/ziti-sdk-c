@@ -92,11 +92,9 @@ struct ch_write_req {
 };
 
 struct waiter_s {
-    int32_t seq;
+    uint32_t seq;
     reply_cb cb;
     void *reply_ctx;
-
-    LIST_ENTRY(waiter_s) next;
 };
 
 struct ch_conn_req {
@@ -160,7 +158,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     ch->incoming = new_buffer();
     ch->in_msg_pool = pool_new(POOLED_MESSAGE_SIZE, INBOUND_POOL_SIZE, (void (*)(void *)) message_free);
 
-    LIST_INIT(&ch->waiters);
+    ch->waiters = (model_map){0};
 
     ch->timer = calloc(1, sizeof(uv_timer_t));
     uv_timer_init(ch->loop, ch->timer);
@@ -376,7 +374,7 @@ void on_channel_send(uv_write_t *w, int status) {
 
     if (status < 0) {
         CH_LOG(ERROR, "write failed [%d/%s]", status, uv_strerror(status));
-        on_channel_close(ch, ZITI_CONN_CLOSED, status);
+        on_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE, status);
     }
 
     free(w);
@@ -401,9 +399,9 @@ int ziti_channel_send_message(ziti_channel_t *ch, message *msg, struct ziti_writ
     int rc = tlsuv_stream_write(req, ch->connection, &buf, on_channel_send);
     if (rc != 0) {
         on_channel_send(req, rc);
+        return ZITI_GATEWAY_UNAVAILABLE;
     }
     return 0;
-
 }
 
 int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
@@ -419,31 +417,37 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
 
 void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter) {
     if (waiter) {
-        LIST_REMOVE(waiter, next);
+        struct waiter_s *w = model_map_removel(&ch->waiters, (long)waiter->seq);
+        assert(w == waiter);
         free(waiter);
     }
 }
 
-struct waiter_s *
-ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
-                            uint32_t body_len,
-                            reply_cb rep_cb, void *reply_ctx) {
+struct waiter_s *ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content,
+                                             const hdr_t *hdrs, int nhdrs,
+                                             const uint8_t *body, uint32_t body_len,
+                                             reply_cb rep_cb, void *reply_ctx) {
+    assert(rep_cb != NULL);
+
     struct waiter_s *result = NULL;
     message *m = message_new(NULL, content, hdrs, nhdrs, body_len);
     message_set_seq(m, &ch->msg_seq);
     memcpy(m->body, body, body_len);
 
-    if (rep_cb != NULL) {
+    uint32_t seq = m->header.seq;
+
+    int rc = ziti_channel_send_message(ch, m, NULL);
+
+    if (rc == ZITI_OK) {
         NEWP(w, struct waiter_s);
-        w->seq = m->header.seq;
+        w->seq = seq;
         w->cb = rep_cb;
         w->reply_ctx = reply_ctx;
-
-        LIST_INSERT_HEAD(&ch->waiters, w, next);
+        model_map_setl(&ch->waiters, (long)w->seq, w);
         result = w;
+    } else {
+        rep_cb(reply_ctx, NULL, rc);
     }
-
-    ziti_channel_send_message(ch, m, NULL);
 
     return result;
 }
@@ -477,19 +481,14 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
 
     m->nhdrs = parse_hdrs(m->headers, m->header.headers_len, &m->hdrs);
 
-    int32_t reply_to;
-    bool is_reply = message_get_int32_header(m, ReplyForHeader, &reply_to);
+    uint32_t reply_to;
+    bool is_reply = message_get_int32_header(m, ReplyForHeader, (int32_t*)&reply_to);
 
     uint32_t ct = m->header.content;
     if (is_reply) {
-        LIST_FOREACH(w, &ch->waiters, next) {
-            if (w->seq == reply_to) {
-                break;
-            }
-        }
+        w = model_map_removel(&ch->waiters, (long)reply_to);
 
         if (w) {
-            LIST_REMOVE(w, next);
             w->cb(w->reply_ctx, m, 0);
             free(w);
             pool_return_obj(m);
@@ -802,14 +801,15 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
         uv_timer_stop(ch->timer);
     }
 
-    while (!LIST_EMPTY(&ch->waiters)) {
-        struct waiter_s *w = LIST_FIRST(&ch->waiters);
-        LIST_REMOVE(w, next);
+    model_map_iter it = model_map_iterator(&ch->waiters);
+    while (it != NULL) {
+        struct waiter_s *w = model_map_it_value(it);
+        it = model_map_it_remove(it);
         w->cb(w->reply_ctx, NULL, ziti_err);
         free(w);
     }
 
-    model_map_iter it = model_map_iterator(&ch->receivers);
+    it = model_map_iterator(&ch->receivers);
     while (it != NULL) {
         struct msg_receiver *con = model_map_it_value(it);
         it = model_map_it_remove(it);
