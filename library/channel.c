@@ -82,6 +82,15 @@ static void hello_reply_cb(void *ctx, message *msg, int err);
 static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf);
 static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf);
 static void process_inbound(ziti_channel_t *ch);
+static void on_tls_close(uv_handle_t *s);
+
+static inline void close_connection(ziti_channel_t *ch) {
+    if (ch->connection) {
+        tlsuv_stream_t *conn = ch->connection;
+        ch->connection = NULL;
+        tlsuv_stream_close(conn, on_tls_close);
+    }
+}
 
 // global channel sequence
 static uint32_t channel_counter = 0;
@@ -625,8 +634,7 @@ static void latency_timeout(uv_timer_t *t) {
         ch->latency_waiter = NULL;
         ch->latency = UINT64_MAX;
 
-        tlsuv_stream_close(ch->connection, on_tls_close);
-        ch->connection = NULL;
+        close_connection(ch);
         on_channel_close(ch, ZITI_TIMEOUT, UV_ETIMEDOUT);
     }
 }
@@ -683,8 +691,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
 
         ch->state = Disconnected;
         ch->notify_cb(ch, EdgeRouterUnavailable, ch->notify_ctx);
-        tlsuv_stream_close(ch->connection, on_tls_close);
-        ch->connection = NULL;
+        close_connection(ch);
         reconnect_channel(ch, false);
     }
 
@@ -729,8 +736,7 @@ static void ch_connect_timeout(uv_timer_t *t) {
         CH_LOG(WARN, "diagnostics: no conn_req in connect timeout");
     }
     reconnect_channel(ch, false);
-    tlsuv_stream_close(ch->connection, on_tls_close);
-    ch->connection = NULL;
+    close_connection(ch);
 }
 
 static void reconnect_cb(uv_timer_t *t) {
@@ -873,8 +879,7 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
                 CH_LOG(INFO, "channel was closed [%zd/%s]", len, uv_strerror(len));
                 // propagate close
                 on_channel_close(ch, ZITI_CONNABORT, len);
-                tlsuv_stream_close(ch->connection, on_tls_close);
-                ch->connection = NULL;
+                close_connection(ch);
                 break;
 
             default:
@@ -904,8 +909,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             send_hello(ch, ch->ctx->api_session);
         } else {
             CH_LOG(WARN, "api session invalidated, while connecting");
-            tlsuv_stream_close(ch->connection, on_tls_close);
-            ch->connection = NULL;
+            close_connection(ch);
             reconnect_channel(ch, false);
         }
     } else {
@@ -918,8 +922,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             free(r);
         }
 
-        tlsuv_stream_close(ch->connection, on_tls_close);
-        ch->connection = NULL;
+        close_connection(ch);
 
         if (ch->state != Closed) {
             ch->state = Disconnected;
@@ -928,6 +931,8 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
     }
     free(req);
 }
+
+
 
 #define TIMEOUT_CALLBACKS(XX) \
 XX(latency_timeout) \
