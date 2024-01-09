@@ -214,18 +214,7 @@ static void on_tls_close(uv_handle_t *s) {
     free(tls);
 }
 
-static void close_handle_cb(uv_handle_t *h) {
-    tlsuv_stream_t *tls = (tlsuv_stream_t *) h;
-    ziti_channel_t *ch = tls->data;
-    tlsuv_stream_free(tls);
-    free(tls);
-
-    ziti_channel_free(ch);
-    free(ch);
-}
-
 int ziti_channel_close(ziti_channel_t *ch, int err) {
-    int r = 0;
     if (ch->state != Closed) {
         CH_LOG(INFO, "closing[%s]", ch->name);
 
@@ -235,9 +224,13 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
 
         uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
         ch->timer = NULL;
-        tlsuv_stream_close(ch->connection, close_handle_cb);
+
+        close_connection(ch);
+
+        ziti_channel_free(ch);
+        free(ch);
     }
-    return r;
+    return 0;
 }
 
 void ziti_channel_add_receiver(ziti_channel_t *ch, int id, void *receiver, void (*receive_f)(void *, message *, int)) {
