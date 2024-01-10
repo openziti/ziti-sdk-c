@@ -324,7 +324,7 @@ static void process_dial(struct binding_s *b, message *msg) {
 
     if (!peer_key_sent && conn->encrypted) {
         ZITI_LOG(ERROR, "failed to establish crypto for encrypted service: did not receive peer key");
-        reject_dial_request(0, b->ch, msg->header.seq, "did not receive peer crypto key");
+        reject_dial_request(conn->conn_id, b->ch, msg->header.seq, "did not receive peer crypto key");
         return;
     }
 

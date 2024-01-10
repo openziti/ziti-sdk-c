@@ -38,6 +38,29 @@ static const char *conn_state_str[] = {
         conn_states(state_str)
 };
 
+struct msg_uuid {
+    union {
+        uint8_t raw[16];
+        struct {
+            uint32_t slug;
+            uint32_t seq;
+            uint64_t ts;
+        };
+    };
+};
+
+struct local_hash {
+    union {
+        uint8_t hash[32];
+        uint32_t i32[8];
+    };
+};
+
+#define UUID_FMT "%08x:%08x:%llx"
+#define UUID_FMT_ARG(u) ((u)->slug),((u)->seq),(long long)((u)->ts)
+#define HASH_FMT "%08x:%08x:%08x:%08x:%08x:%08x:%08x:%08x"
+#define HASH_FMT_ARG(lh) (lh).i32[0],(lh).i32[1],(lh).i32[2],(lh).i32[3], \
+                         (lh).i32[4],(lh).i32[5],(lh).i32[6],(lh).i32[7]
 
 struct ziti_conn_req {
     ziti_session_type session_type;
@@ -241,6 +264,11 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
 message *create_message(struct ziti_conn *conn, uint32_t content, size_t body_len) {
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(conn->edge_msg_seq++);
+    struct msg_uuid uuid = {
+            .ts = uv_now(conn->ziti_ctx->loop),
+            .seq = msg_seq,
+    };
+    int hcount = (content == ContentTypeData) ? 3 : 2;
     hdr_t headers[] = {
             {
                     .header_id = ConnIdHeader,
@@ -251,13 +279,35 @@ message *create_message(struct ziti_conn *conn, uint32_t content, size_t body_le
                     .header_id = SeqHeader,
                     .length = sizeof(msg_seq),
                     .value = (uint8_t *) &msg_seq
+            },
+            { // allocate space for UUID, it will be populated in send_message
+                    .header_id = UUIDHeader,
+                    .length = sizeof(uuid.raw),
+                    .value = uuid.raw
             }
     };
-    return message_new(NULL, content, headers, 2, body_len);
+    return message_new(NULL, content, headers, hcount, body_len);
 }
 
 static int send_message(struct ziti_conn *conn, message *m, struct ziti_write_req_s *wr) {
     ziti_channel_t *ch = conn->channel;
+    if (m->header.content == ContentTypeData) {
+        struct msg_uuid *uuid = NULL;
+        size_t len;
+        message_get_bytes_header(m, UUIDHeader, (uint8_t**)&uuid, &len);
+
+        if (uuid) {
+            assert(len == sizeof(*uuid));
+            struct local_hash h = {0};
+            crypto_hash_sha256(h.hash, m->body, m->header.body_len);
+            int32_t seq;
+            message_get_int32_header(m, SeqHeader, &seq);
+
+            uuid->slug = htole32(h.i32[0]);
+            CONN_LOG(TRACE, "=> ct[%0X] uuid[" UUID_FMT "] edge_seq[%d] len[%d] hash[" HASH_FMT "]",
+                     m->header.content, UUID_FMT_ARG(uuid), seq, m->header.body_len, HASH_FMT_ARG(h));
+        }
+    }
     return ziti_channel_send_message(ch, m, wr);
 }
 
@@ -729,14 +779,16 @@ static bool flush_to_service(ziti_connection conn) {
         struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
         TAILQ_REMOVE(&conn->wreqs, req, _next);
 
-        if (conn->state == Connected) {
+        if (conn->state == Connected || req->close) {
             if (req->conn) {
                 TAILQ_INSERT_TAIL(&conn->pending_wreqs, req, _next);
             }
             ziti_write_req(req);
             count++;
         } else {
-            CONN_LOG(DEBUG, "got write req in invalid state[%s]", conn_state_str[conn->state]);
+            CONN_LOG(DEBUG, "got write msg{ct[%0X]} in invalid state[%s]",
+                     req->message ? req->message->header.content : -1,
+                     conn_state_str[conn->state]);
 
             if (req->cb) {
                 req->cb(conn, ZITI_INVALID_STATE, req->ctx);
@@ -1133,7 +1185,6 @@ int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb
 
 static int send_fin_message(ziti_connection conn, struct ziti_write_req_s *wr) {
     CONN_LOG(DEBUG, "sending FIN");
-    ziti_channel_t *ch = conn->channel;
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(conn->edge_msg_seq++);
     int32_t flags = htole32(EDGE_FIN);
@@ -1155,7 +1206,7 @@ static int send_fin_message(ziti_connection conn, struct ziti_write_req_s *wr) {
             },
     };
     message *m = message_new(NULL, ContentTypeData, headers, 3, 0);
-    return ziti_channel_send_message(ch, m, wr);
+    return send_message(conn, m, wr);
 }
 
 int ziti_close(ziti_connection conn, ziti_close_cb close_cb) {
@@ -1249,7 +1300,7 @@ static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {
                                  conn->conn_id, conn->marker, conn->service, BOOL_STR(conn->close), BOOL_STR(conn->encrypted),
                                  BOOL_STR(conn->fin_recv), BOOL_STR(conn->fin_sent));
         message *reply = new_inspect_result(msg->header.seq, conn->conn_id, ConnTypeDial, conn_info, ci_len);
-        ziti_channel_send_message(conn->channel, reply, NULL);
+        send_message(conn, reply, NULL);
         pool_return_obj(msg);
         return;
     }
@@ -1259,18 +1310,33 @@ static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {
 }
 
 static void process_edge_message(struct ziti_conn *conn, message *msg) {
-
     int rc;
     int32_t seq;
     int32_t conn_id;
+    struct msg_uuid *uuid;
+    size_t uuid_len;
     bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
     bool has_conn_id = message_get_int32_header(msg, ConnIdHeader, &conn_id);
+    assert(has_conn_id && conn_id == conn->conn_id);
 
-    CONN_LOG(TRACE, "<= ct[%04X] edge_seq[%d] body[%d]", msg->header.content, seq, msg->header.body_len);
+    if (message_get_bytes_header(msg, UUIDHeader, (uint8_t **) &uuid, &uuid_len)) {
+        struct local_hash h;
+        crypto_hash_sha256(h.hash, msg->body, msg->header.body_len);
+        CONN_LOG(TRACE, "<= ct[%04X] uuid[" UUID_FMT "] edge_seq[%d] len[%d] ",
+                 msg->header.content, UUID_FMT_ARG(uuid), seq, msg->header.body_len);
+
+        if (uuid->seq != conn->in_msg_seq + 1) {
+            CONN_LOG(WARN, "unexpected msg_seq[%d] previous[%d]", uuid->seq, conn->in_msg_seq);
+        }
+        conn->in_msg_seq = uuid->seq;
+    } else {
+        CONN_LOG(TRACE, "<= ct[%04X] edge_seq[%d] len[%d]", msg->header.content, seq, msg->header.body_len);
+    }
+
 
     switch (msg->header.content) {
         case ContentTypeStateClosed:
-            CONN_LOG(DEBUG, "connection status[%X] conn_id[%d] seq[%d] err[%.*s]", msg->header.content, conn_id, seq,
+            CONN_LOG(DEBUG, "connection status[%X] seq[%d] err[%.*s]", msg->header.content, seq,
                      msg->header.body_len, msg->body);
             bool retry_connect = false;
 

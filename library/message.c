@@ -219,11 +219,18 @@ message *message_new(pool_t *pool, uint32_t content, const hdr_t *hdrs, int nhdr
     // write header
     header_to_buffer(&m->header, m->msgbufp);
 
-    // write headers
+    // write/populate headers
+    m->hdrs = calloc(nhdrs, sizeof(hdr_t));
+    m->nhdrs = nhdrs;
     m->headers = m->msgbufp + HEADER_SIZE;
     m->body = m->headers + m->header.headers_len;
     uint8_t *p = m->headers;
     for (int i = 0; i < nhdrs; i++) {
+        m->hdrs[i] = (hdr_t){
+            .header_id = hdrs[i].header_id,
+            .length = hdrs[i].length,
+            .value = p + 2 * sizeof(uint32_t),
+        };
         p = write_hdr(&hdrs[i], p);
     }
 

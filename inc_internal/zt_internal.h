@@ -199,6 +199,7 @@ struct ziti_conn {
             char marker[MARKER_CHAR_LEN];
 
             uint32_t edge_msg_seq;
+            uint32_t in_msg_seq;
 
             ziti_channel_t *channel;
             ziti_data_cb data_cb;
