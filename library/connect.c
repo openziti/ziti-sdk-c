@@ -624,8 +624,8 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
             m = create_message(conn, ContentTypeData, total_len);
 
             if (conn->encrypted) {
-                crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL, req->buf, req->len, NULL, 0,
-                                                           0);
+                crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL,
+                                                           req->buf, req->len, NULL, 0, 0);
             } else {
                 memcpy(m->body, req->buf, req->len);
             }
@@ -639,7 +639,7 @@ static void on_disconnect(ziti_connection conn, ssize_t status, void *ctx) {
     conn_set_state(conn, conn->close ? Closed : Disconnected);
     ziti_channel_t *ch = conn->channel;
     if (ch) {
-        ziti_channel_rem_receiver(ch, conn->conn_id);
+        ziti_channel_rem_receiver(ch, (int)conn->conn_id);
         conn->channel = NULL;
     }
 }
@@ -867,11 +867,31 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
             unsigned char tag;
             if (msg->header.body_len > 0) {
                 plain_text = malloc(msg->header.body_len - crypto_secretstream_xchacha20poly1305_ABYTES);
+                assert(plain_text != NULL);
                 CONN_LOG(VERBOSE, "decrypting %d bytes", msg->header.body_len);
-                TRY(crypto, crypto_secretstream_xchacha20poly1305_pull(&conn->crypt_i,
-                                                                       plain_text, &plain_len, &tag,
-                                                                       msg->body, msg->header.body_len, NULL, 0));
-                CONN_LOG(VERBOSE, "decrypted %lld bytes", plain_len);
+                int crypto_rc = crypto_secretstream_xchacha20poly1305_pull(&conn->crypt_i,
+                                                                           plain_text, &plain_len, &tag,
+                                                                           msg->body, msg->header.body_len, NULL, 0);
+                if (crypto_rc != 0) {
+                    // try to figure out the cause of crypto error
+                    struct msg_uuid *uuid;
+                    size_t uuid_len;
+                    struct local_hash h;
+                    crypto_hash_sha256(h.hash, msg->body, msg->header.body_len);
+
+                    if (message_get_bytes_header(msg, UUIDHeader, (uint8_t **)&uuid, &uuid_len)) {
+                        CONN_LOG(ERROR, "uuid[" UUID_FMT "] %s corruption hash[" HASH_FMT "]",
+                                 UUID_FMT_ARG(uuid),
+                                 uuid->slug != htole32(h.i32[0]) ? "payload" : "crypto state",
+                                 HASH_FMT_ARG(h));
+                    } else {
+                        CONN_LOG(ERROR, "message/state corruption hash[" HASH_FMT "]",
+                                 HASH_FMT_ARG(h));
+                    }
+
+                    TRY(crypto, crypto_rc);
+                }
+                CONN_LOG(VERBOSE, "decrypted %lld bytes tag[%x]", plain_len, (int)tag);
                 buffer_append(conn->inbound, plain_text, plain_len);
                 metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) plain_len);
                 conn->received += plain_len;

@@ -153,6 +153,9 @@ bool message_get_uint64_header(message *m, int header_id, uint64_t *v) {
 }
 
 bool message_get_bytes_header(message *m, int header_id, uint8_t **v, size_t *len) {
+    *v = NULL;
+    *len = 0;
+
     hdr_t *h = find_header(m, header_id);
     if (h != NULL) {
         *len = h->length;
