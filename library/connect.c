@@ -761,7 +761,7 @@ static void on_flush(uv_idle_t *fl) {
 }
 
 static void flush_connection(ziti_connection conn) {
-    if (conn->flusher) {
+    if (conn->flusher && !uv_is_active((const uv_handle_t *) conn->flusher)) {
         CONN_LOG(TRACE, "starting flusher");
         uv_idle_start(conn->flusher, on_flush);
     }
