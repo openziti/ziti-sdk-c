@@ -87,7 +87,7 @@ static void on_tls_close(uv_handle_t *s);
 static inline void close_connection(ziti_channel_t *ch) {
     if (ch->connection) {
         tlsuv_stream_t *conn = ch->connection;
-        ZITI_LOG(INFO, "closing ch[%d] TLS[%p]", ch->id, conn);
+        CH_LOG(DEBUG, "closing TLS[%p]", conn);
         tlsuv_stream_close(conn, on_tls_close);
     }
 }
