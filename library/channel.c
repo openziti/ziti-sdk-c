@@ -120,12 +120,7 @@ struct msg_receiver {
 };
 
 static void ch_init_stream(ziti_channel_t *ch) {
-
-    if (ch->connection != NULL) {
-        ch->connection->data = NULL;
-        CH_LOG(WARN, "possible stale connection[%p] conn.close_cb[%p]",
-               ch->connection, ch->connection->close_cb);
-    }
+    assert(ch->connection == NULL);
 
     ch->connection = calloc(1, sizeof(*ch->connection));
     tlsuv_stream_init(ch->loop, ch->connection, ch->ctx->tlsCtx);
