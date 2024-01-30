@@ -83,6 +83,7 @@ typedef struct ziti_channel {
     uint32_t id;
     char token[UUID_STR_LEN];
     tlsuv_stream_t *connection;
+    bool reconnect;
 
     // multi purpose timer:
     // - reconnect timeout if not connected
