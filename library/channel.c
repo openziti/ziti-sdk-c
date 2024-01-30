@@ -87,7 +87,7 @@ static void on_tls_close(uv_handle_t *s);
 static inline void close_connection(ziti_channel_t *ch) {
     if (ch->connection) {
         tlsuv_stream_t *conn = ch->connection;
-        ch->connection = NULL;
+        CH_LOG(DEBUG, "closing TLS[%p]", conn);
         tlsuv_stream_close(conn, on_tls_close);
     }
 }
@@ -120,13 +120,14 @@ struct msg_receiver {
 };
 
 static void ch_init_stream(ziti_channel_t *ch) {
-    if (ch->connection == NULL) {
-        ch->connection = calloc(1, sizeof(*ch->connection));
-        tlsuv_stream_init(ch->loop, ch->connection, ch->ctx->tlsCtx);
-        tlsuv_stream_keepalive(ch->connection, true, 30);
-        tlsuv_stream_nodelay(ch->connection, true);
-        ch->connection->data = ch;
-    }
+    assert(ch->connection == NULL);
+
+    ch->connection = calloc(1, sizeof(*ch->connection));
+    tlsuv_stream_init(ch->loop, ch->connection, ch->ctx->tlsCtx);
+    tlsuv_stream_keepalive(ch->connection, true, 30);
+    tlsuv_stream_nodelay(ch->connection, true);
+    ch->connection->data = ch;
+    ch->reconnect = false;
 }
 
 int ziti_channel_prepare(ziti_channel_t *ch) {
@@ -210,8 +211,15 @@ int ziti_close_channels(struct ziti_ctx *ztx, int err) {
 
 static void on_tls_close(uv_handle_t *s) {
     tlsuv_stream_t *tls = (tlsuv_stream_t *) s;
+    ziti_channel_t *ch = tls->data;
+    ch->connection = NULL;
+
     tlsuv_stream_free(tls);
     free(tls);
+
+    if (ch->reconnect) {
+        reconnect_channel(ch, true);
+    }
 }
 
 int ziti_channel_close(ziti_channel_t *ch, int err) {
@@ -739,8 +747,10 @@ static void reconnect_cb(uv_timer_t *t) {
     if (ztx->api_session == NULL || ztx->api_session->token == NULL || ztx->api_session_state != ZitiApiSessionStateFullyAuthenticated) {
         CH_LOG(ERROR, "ziti context is not fully authenticated (api_session_state[%d]), delaying re-connect", ztx->api_session_state);
         reconnect_channel(ch, false);
-    }
-    else {
+    } else if (ch->connection != NULL) {
+        CH_LOG(DEBUG, "connection still closing, deferring reconnect");
+        ch->reconnect = true;
+    } else {
         ch->msg_seq = 0;
 
         uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
@@ -864,20 +874,13 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
                 tlsuv_stream_read_stop(ssl);
                 CH_LOG(VERBOSE, "blocked until messages are processed");
                 return;
-            case UV_EOF:
-            case UV_ECONNRESET:
-            case UV_ECONNABORTED:
-            case UV_ECONNREFUSED:
-            case UV_EPIPE:
-                CH_LOG(INFO, "channel was closed [%zd/%s]", len, uv_strerror(len));
-                // propagate close
-                on_channel_close(ch, ZITI_CONNABORT, len);
-                close_connection(ch);
-                break;
 
             default:
-                CH_LOG(ERROR, "unhandled error on_data [%zd/%s]", len, uv_strerror(len));
-                on_channel_close(ch, ZITI_CONNABORT, len);
+                CH_LOG(INFO, "channel disconnected [%zd/%s]", len, uv_strerror(len));
+                // propagate close
+                on_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE, len);
+                close_connection(ch);
+                break;
         }
     } else if (len == 0) {
         // sometimes SSL message has no payload
@@ -915,7 +918,9 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             free(r);
         }
 
-        close_connection(ch);
+        if (status != UV_ECANCELED) {
+            close_connection(ch);
+        }
 
         if (ch->state != Closed) {
             ch->state = Disconnected;
