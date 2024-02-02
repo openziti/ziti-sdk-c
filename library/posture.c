@@ -455,9 +455,6 @@ static void ziti_pr_post_bulk_cb(ziti_pr_response *pr_resp, const ziti_error *er
         if (err != NULL) {
             ZTX_LOG(ERROR, "error during bulk posture response submission (%d) %s", err->http_code, err->message);
             ztx->posture_checks->must_send = true; //error, must try again
-            if (err->http_code == 404) {
-                ztx->no_bulk_posture_response_api = true;
-            }
         } else {
             ztx->posture_checks->must_send = false; //did not error, can skip submissions
             handle_pr_resp_timer_events(ztx, pr_resp);
@@ -508,11 +505,7 @@ static void ziti_pr_post_cb(ziti_pr_response *pr_resp, const ziti_error *err, vo
 }
 
 static void ziti_pr_send(ziti_context ztx) {
-    if (ztx->no_bulk_posture_response_api) {
-        ziti_pr_send_individually(ztx);
-    } else {
-        ziti_pr_send_bulk(ztx);
-    }
+    ziti_pr_send_bulk(ztx);
 }
 
 static void ziti_pr_send_bulk(ziti_context ztx) {

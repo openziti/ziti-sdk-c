@@ -30,8 +30,7 @@ XX(service_hosting_costs, int, map, serviceHostingCosts, __VA_ARGS__)
 #define ZITI_EDGE_ROUTER_MODEL(XX, ...)\
 XX(name, string, none, name, __VA_ARGS__)\
 XX(hostname, string, none, hostname, __VA_ARGS__) \
-XX(protocols, string, map, supportedProtocols, __VA_ARGS__) \
-XX(ingress, string, map, urls, __VA_ARGS__) /* deprecated */
+XX(protocols, string, map, supportedProtocols, __VA_ARGS__)
 
 #define ZITI_NET_SESSION_MODEL(XX, ...) \
 XX(token, string, none, token, __VA_ARGS__)\

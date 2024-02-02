@@ -1251,10 +1251,8 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
     bool need_update = true;
 
     if (err) { // API not supported - do refresh
-        if (err->http_code == 404) {
-            ZTX_LOG(INFO, "Controller does not support /current-api-session/service-updates API");
-            ztx->no_service_updates_api = true;
-        }
+        ZTX_LOG(WARN, "failed to poll service updates: code[%d] err[%d/%s]",
+                err->http_code, err->err, err->message);
         if (err->err == ZITI_DISABLED) {
             need_update = false;
         }
@@ -1289,15 +1287,9 @@ static void refresh_cb(uv_timer_t *t) {
         return;
     }
 
-    if (!ztx->no_current_edge_routers) {
-        ziti_ctrl_current_edge_routers(&ztx->controller, edge_routers_cb, ztx);
-    }
+    ziti_ctrl_current_edge_routers(&ztx->controller, edge_routers_cb, ztx);
 
-    if (ztx->no_service_updates_api) {
-        ziti_ctrl_get_services(&ztx->controller, update_services, ztx);
-    } else {
-        ziti_ctrl_get_services_update(&ztx->controller, check_service_update, ztx);
-    }
+    ziti_ctrl_get_services_update(&ztx->controller, check_service_update, ztx);
 }
 
 void ziti_services_refresh(ziti_context ztx, bool now) {
@@ -1316,11 +1308,8 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
     ziti_context ztx = ctx;
 
     if (err) {
-        if (err->http_code == 404) {
-            ztx->no_current_edge_routers = true;
-        } else {
-            ZTX_LOG(ERROR, "failed to get current edge routers: %s/%s", err->code, err->message);
-        }
+        ZTX_LOG(ERROR, "failed to get current edge routers: code[%d] %s/%s",
+                err->http_code, err->code, err->message);
         return;
     }
 
@@ -1592,7 +1581,6 @@ void ziti_set_api_session(ziti_context ztx, ziti_api_session *session) {
 static void api_session_cb(ziti_api_session *session, const ziti_error *err, void *ctx) {
     struct ziti_init_req *init_req = ctx;
     ziti_context ztx = init_req->ztx;
-    ztx->loop_thread = uv_thread_self();
     ztx->active_session_request = false;
 
     int errCode = err ? err->err : ZITI_OK;

@@ -285,10 +285,6 @@ struct ziti_ctx {
     // map<service_id,*bool>
     model_map service_forced_updates;
 
-    bool no_service_updates_api; // controller API has no last-update endpoint
-    bool no_bulk_posture_response_api; // controller API does not support bulk posture response submission
-    bool no_current_edge_routers;
-
     char *last_update;
 
     uv_timer_t *api_session_timer;
@@ -296,7 +292,6 @@ struct ziti_ctx {
     uv_prepare_t *prepper;
 
     uv_loop_t *loop;
-    uv_thread_t loop_thread;
 
     // map<erUrl,ziti_channel>
     model_map channels;

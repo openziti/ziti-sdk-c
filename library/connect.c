@@ -416,9 +416,6 @@ static int ziti_connect(struct ziti_ctx *ztx, ziti_net_session *session, struct 
 
     MODEL_LIST_FOREACH(er, session->edge_routers) {
         const char *tls = model_map_get(&er->protocols, "tls");
-        if (tls == NULL) {
-            tls = model_map_get(&er->ingress, "tls");
-        }
 
         if (tls) {
             ziti_channel_t *ch = model_map_get(&ztx->channels, tls);
