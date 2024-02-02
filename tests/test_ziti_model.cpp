@@ -64,46 +64,121 @@ TEST_CASE("posture response response", "[model]") {
 
 TEST_CASE("multi-edge-router session", "[model]") {
 
-    const char *ns = "{\n"
-                     "    \"_links\": {\n"
-                     "      \"self\": {\n"
-                     "        \"href\": \"./sessions/1276df75-3ba3-4658-98ad-fe5a0e96021a\"\n"
-                     "      }\n"
-                     "    },\n"
-                     "    \"edgeRouters\": [\n"
-                     "      {\n"
-                     "        \"hostname\": \"ec2-18-223-205-231.us-east-2.compute.amazonaws.com\",\n"
-                     "        \"name\": \"ziti-bridge-us-east\",\n"
-                     "        \"urls\": {\n"
-                     "          \"tls\": \"tls://ec2-18-223-205-231.us-east-2.compute.amazonaws.com:3022\"\n"
-                     "        }\n"
-                     "      },\n"
-                     "      {\n"
-                     "        \"hostname\": \"ec2-18-188-224-88.us-east-2.compute.amazonaws.com\","
-                     "        \"name\": \"Test123\","
-                     "        \"urls\": {"
-                     "          \"tls\": \"tls://ec2-18-188-224-88.us-east-2.compute.amazonaws.com:3022\""
-                     "        }"
-                     "      }\n"
-                     "    ],\n"
-                     "    \"id\": \"1276df75-3ba3-4658-98ad-fe5a0e96021a\",\n"
-                     "    \"token\": \"caaf0f67-5394-4ddd-b718-bfdc8fcfb367\"\n"
-                     "}";
-
+    const char *session_json = R"(
+{
+  "_links": {
+    "route-path": {
+      "href": "./sessions/cls4w5p6w3nophj1hg3hh9grz/route-path"
+    },
+    "self": {
+      "href": "./sessions/cls4w5p6w3nophj1hg3hh9grz"
+    }
+  },
+  "createdAt": "2024-02-02T17:00:29.768Z",
+  "id": "cls4w5p6w3nophj1hg3hh9grz",
+  "tags": {},
+  "updatedAt": "2024-02-02T17:00:29.768Z",
+  "apiSession": {
+    "_links": {
+      "self": {
+        "href": "./api-sessions/cls4w569t3nnwhj1h5gca2mtb"
+      },
+      "sessions": {
+        "href": "./api-sessions/cls4w569t3nnwhj1h5gca2mtb/sessions"
+      }
+    },
+    "entity": "api-sessions",
+    "id": "cls4w569t3nnwhj1h5gca2mtb"
+  },
+  "apiSessionId": "cls4w569t3nnwhj1h5gca2mtb",
+  "edgeRouters": [
+    {
+      "cost": 0,
+      "disabled": false,
+      "hostname": "eccfca4e-b9ea-45c4-a26c-f61ce2acf6f5.production.netfoundry.io",
+      "isOnline": true,
+      "name": "Mattermost-Public-Edge-aws-ashburn-us-east-1-1",
+      "noTraversal": false,
+      "supportedProtocols": {
+        "tls": "tls://eccfca4e-b9ea-45c4-a26c-f61ce2acf6f5.production.netfoundry.io:443"
+      },
+      "syncStatus": "SYNC_DONE",
+      "urls": {
+        "tls": "tls://eccfca4e-b9ea-45c4-a26c-f61ce2acf6f5.production.netfoundry.io:443"
+      }
+    },
+    {
+      "cost": 0,
+      "disabled": false,
+      "hostname": "cd938be5-bd0b-48b3-8db8-67e4bf62eb10.production.netfoundry.io",
+      "isOnline": true,
+      "name": "Mattermost-Public-Edge-aws-mumbai-ap-south-1-1",
+      "noTraversal": false,
+      "supportedProtocols": {
+        "tls": "tls://cd938be5-bd0b-48b3-8db8-67e4bf62eb10.production.netfoundry.io:443"
+      },
+      "syncStatus": "SYNC_DONE",
+      "urls": {
+        "tls": "tls://cd938be5-bd0b-48b3-8db8-67e4bf62eb10.production.netfoundry.io:443"
+      }
+    },
+    {
+      "cost": 0,
+      "disabled": false,
+      "hostname": "0886eaea-5d1a-440d-b1a2-1db9e6d5c04d.production.netfoundry.io",
+      "isOnline": true,
+      "name": "Mattermost-Public-Edge-aws-boardman-us-west-2-1",
+      "noTraversal": false,
+      "supportedProtocols": {
+        "tls": "tls://0886eaea-5d1a-440d-b1a2-1db9e6d5c04d.production.netfoundry.io:443"
+      },
+      "syncStatus": "SYNC_DONE",
+      "urls": {
+        "tls": "tls://0886eaea-5d1a-440d-b1a2-1db9e6d5c04d.production.netfoundry.io:443"
+      }
+    }
+  ],
+  "identityId": "CKr13vQdE",
+  "service": {
+    "_links": {
+      "configs": {
+        "href": "./services/f.n.2z-Xe/configs"
+      },
+      "self": {
+        "href": "./services/f.n.2z-Xe"
+      },
+      "service-edge-router-policies": {
+        "href": "./services/f.n.2z-Xe/service-edge-router-policies"
+      },
+      "service-policies": {
+        "href": "./services/f.n.2z-Xe/service-policies"
+      },
+      "terminators": {
+        "href": "./services/f.n.2z-Xe/terminators"
+      }
+    },
+    "entity": "services",
+    "id": "f.n.2z-Xe",
+    "name": "mattermost.tools.netfoundry.io"
+  },
+  "serviceId": "f.n.2z-Xe",
+  "token": "f49bbb5c-4623-4ae0-9e88-b6ea226434dc",
+  "type": "Dial"
+})";
     ziti_net_session *s;
-    int rc = parse_ziti_net_session_ptr(&s, ns, (int) strlen(ns));
+    REQUIRE(parse_ziti_net_session_ptr(&s, session_json, (int) strlen(session_json)) == strlen(session_json));
 
-    REQUIRE(model_list_size(&s->edge_routers) == 2);
+    REQUIRE(model_list_size(&s->edge_routers) == 3);
 
     auto it = model_list_iterator(&s->edge_routers);
     auto er = (ziti_edge_router *) model_list_it_element(it);
-    auto tls = (const char *) model_map_get(&er->ingress, "tls");
-    REQUIRE_THAT(tls, Catch::Matchers::Matches("tls://ec2-18-223-205-231.us-east-2.compute.amazonaws.com:3022"));
+    auto tls = (const char *) model_map_get(&er->protocols, "tls");
+    REQUIRE_THAT(tls, Catch::Matchers::Matches("tls://eccfca4e-b9ea-45c4-a26c-f61ce2acf6f5.production.netfoundry.io:443"));
 
     it = model_list_it_next(it);
     er = (ziti_edge_router *) model_list_it_element(it);
-    tls = (const char *) model_map_get(&er->ingress, "tls");
-    REQUIRE_THAT(tls, Catch::Matchers::Matches("tls://ec2-18-188-224-88.us-east-2.compute.amazonaws.com:3022"));
+    tls = (const char *) model_map_get(&er->protocols, "tls");
+    REQUIRE_THAT(tls, Catch::Matchers::Matches("tls://cd938be5-bd0b-48b3-8db8-67e4bf62eb10.production.netfoundry.io:443"));
 
     free_ziti_net_session(s);
     free(s);
