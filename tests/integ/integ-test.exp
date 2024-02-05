@@ -8,7 +8,7 @@ puts "test driver = $tester"
 
 puts "Starting Ziti Quickstart"
 puts "========================"
-spawn $ziti edge quickstart --already-initialized --home $env(QUICKSTART_HOME)
+spawn $ziti edge quickstart --home $env(QUICKSTART_HOME)
 set qs_id $spawn_id
 
 expect {
