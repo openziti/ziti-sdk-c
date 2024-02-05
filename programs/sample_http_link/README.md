@@ -74,7 +74,7 @@ To clean up the network, use the following commands
 ziti edge delete service-policies httpbin-binding httpbin-dialing
 # Remove the Service
 ziti edge delete service httpbin
-# Remove the confgs
+# Remove the configs
 ziti edge delete configs httpbin-host.v1
 # Remove the identities
 ziti edge delete identities httpbin.client httpbin.server

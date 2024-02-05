@@ -623,7 +623,7 @@ static int parse_list(void *field, const char *json, jsmntok_t *tok, type_meta *
 
 static int parse_map(void *mapp, const char *json, jsmntok_t *tok, type_meta *el_meta) {
     if (tok->type != JSMN_OBJECT) {
-        ZITI_LOG(ERROR, "unexspected JSON token near '%.*s', expecting object", 20, json + tok->start);
+        ZITI_LOG(ERROR, "unexpected JSON token near '%.*s', expecting object", 20, json + tok->start);
         return -1;
     }
     model_map *map = mapp;

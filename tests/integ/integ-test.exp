@@ -12,7 +12,7 @@ spawn $ziti edge quickstart --already-initialized --home $env(QUICKSTART_HOME)
 set qs_id $spawn_id
 
 expect {
-    "finished sychronizing api sessions" { }
+    "finished synchronizing api sessions" { }
     timeout { error "qs not started in time" }
     eof { error "qs not started" }
 }
