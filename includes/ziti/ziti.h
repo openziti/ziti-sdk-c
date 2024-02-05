@@ -836,7 +836,7 @@ extern int ziti_conn_bridge(ziti_connection conn, uv_handle_t *handle, uv_close_
 
 /**
  * set idle timeout on bridged connection.
- * @param conn ziti_connection previously bridged wtih [ziti_conn_bridge] or [ziti_conn_bridge_fds]
+ * @param conn ziti_connection previously bridged with [ziti_conn_bridge] or [ziti_conn_bridge_fds]
  * @param millis timeout after which bridge will be closed absent any traffic
  * @return 0 on success, error code on failure
  */
