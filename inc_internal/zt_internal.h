@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2023. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -38,6 +38,9 @@
 #if !defined(UUID_STR_LEN)
 #define UUID_STR_LEN 37
 #endif
+
+#define MARKER_BIN_LEN 6
+#define MARKER_CHAR_LEN sodium_base64_ENCODED_LEN(MARKER_BIN_LEN, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
 
 #define ZTX_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ztx[%u] " fmt, ztx->id, ##__VA_ARGS__)
 
@@ -80,6 +83,7 @@ typedef struct ziti_channel {
     uint32_t id;
     char token[UUID_STR_LEN];
     tlsuv_stream_t *connection;
+    bool reconnect;
 
     // multi purpose timer:
     // - reconnect timeout if not connected
@@ -109,7 +113,9 @@ typedef struct ziti_channel {
 
     // map[id->msg_receiver]
     model_map receivers;
-    LIST_HEAD(waiter, waiter_s) waiters;
+
+    // map[msg_seq->waiter_s]
+    model_map waiters;
 
     ch_notify_state notify_cb;
     void *notify_ctx;
@@ -125,7 +131,6 @@ struct ziti_write_req_s {
 
     struct message_s *message;
     ziti_write_cb cb;
-    uv_timer_t *timeout;
     uint64_t start_ts;
 
     void *ctx;
@@ -191,7 +196,10 @@ struct ziti_conn {
             struct key_pair key_pair;
             struct ziti_conn_req *conn_req;
 
+            char marker[MARKER_CHAR_LEN];
+
             uint32_t edge_msg_seq;
+            uint32_t in_msg_seq;
 
             ziti_channel_t *channel;
             ziti_data_cb data_cb;
@@ -199,13 +207,12 @@ struct ziti_conn {
             bool fin_sent;
             int fin_recv; // 0 - not received, 1 - received, 2 - called app data cb
             bool disconnecting;
-            int timeout;
 
             TAILQ_HEAD(, message_s) in_q;
             buffer *inbound;
             uv_idle_t *flusher;
             TAILQ_HEAD(, ziti_write_req_s) wreqs;
-            int write_reqs;
+            TAILQ_HEAD(, ziti_write_req_s) pending_wreqs;
 
             struct ziti_conn *parent;
             uint32_t dial_req_seq;
@@ -214,6 +221,14 @@ struct ziti_conn {
 
             crypto_secretstream_xchacha20poly1305_state crypt_o;
             crypto_secretstream_xchacha20poly1305_state crypt_i;
+
+            // stats
+            bool bridged;
+            uint64_t start;
+            uint64_t connect_time;
+            uint64_t last_activity;
+            uint64_t sent;
+            uint64_t received;
         };
     };
 
@@ -290,10 +305,8 @@ struct ziti_ctx {
 
     uint32_t conn_seq;
 
-    /* options */
-    int ziti_timeout;
-
     /* context wide metrics */
+    uint64_t start;
     rate_t up_rate;
     rate_t down_rate;
 
@@ -390,6 +403,8 @@ void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, int32_t req_id, c
 const ziti_env_info* get_env_info();
 
 extern uv_timer_t *new_ztx_timer(ziti_context ztx);
+
+int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen);
 
 #ifdef __cplusplus
 }

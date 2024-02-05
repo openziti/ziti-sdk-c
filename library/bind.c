@@ -1,9 +1,9 @@
-// Copyright (c) 2023.  NetFoundry Inc.
+// Copyright (c) 2023. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -215,6 +215,7 @@ static void session_cb(ziti_net_session *session, const ziti_error *err, void *c
 static void get_service_cb(ziti_context ztx, ziti_service *service, int status, void *ctx) {
     struct ziti_conn *conn = ctx;
     if (status == ZITI_OK) {
+        conn->encrypted = service->encryption;
         if (ziti_service_has_permission(service, ziti_session_types.Bind)) {
             ziti_ctrl_create_session(&ztx->controller, service->id, ziti_session_types.Bind, session_cb, conn);
         } else {
@@ -295,24 +296,49 @@ static int dispose(ziti_connection server) {
     return 1;
 }
 
+#define BOOL_STR(v) ((v) ? "Y" : "N")
+
+static void process_inspect(struct binding_s *b, message *msg) {
+    struct ziti_conn *conn = b->conn;
+    char conn_info[256];
+    char listener_id[sodium_base64_ENCODED_LEN(sizeof(conn->server.listener_id), sodium_base64_VARIANT_URLSAFE)];
+    sodium_bin2base64(listener_id, sizeof(listener_id), conn->server.listener_id, sizeof(conn->server.listener_id), sodium_base64_VARIANT_URLSAFE);
+    size_t ci_len = snprintf(conn_info, sizeof(conn_info),
+                             "id[%d] serviceName[%s] listenerId[%s] "
+                             "closed[%s] encrypted[%s]",
+                             conn->conn_id, conn->service, listener_id,
+                             BOOL_STR(conn->close), BOOL_STR(conn->encrypted));
+    CONN_LOG(DEBUG, "processing inspect: %.*s", (int)ci_len, conn_info);
+    message *reply = new_inspect_result(msg->header.seq, conn->conn_id, ConnTypeBind, conn_info, ci_len);
+    ziti_channel_send_message(b->ch, reply, NULL);
+}
+
 static void process_dial(struct binding_s *b, message *msg) {
     struct ziti_conn *conn = b->conn;
 
-    size_t peer_key_len;
+    size_t peer_key_len, marker_len;
     uint8_t *peer_key;
+    uint8_t  *marker;
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
+    bool marker_sent = message_get_bytes_header(msg, ConnectionMarkerHeader, &marker, &marker_len);
 
     if (!peer_key_sent && conn->encrypted) {
         ZITI_LOG(ERROR, "failed to establish crypto for encrypted service: did not receive peer key");
-        reject_dial_request(0, b->ch, msg->header.seq, "did not receive peer crypto key");
+        reject_dial_request(conn->conn_id, b->ch, msg->header.seq, "did not receive peer crypto key");
         return;
     }
 
     ziti_connection client;
     ziti_conn_init(conn->ziti_ctx, &client, NULL);
     init_transport_conn(client);
+    if (marker_sent) {
+        snprintf(client->marker, sizeof(client->marker), "%.*s", (int) marker_len, marker);
+    } else {
+        snprintf(client->marker, sizeof(client->marker), "-");
+    }
+    client->start = uv_now(conn->ziti_ctx->loop);
 
-    if (peer_key_sent) {
+    if (conn->encrypted) {
         client->encrypted = true;
         if (init_crypto(&client->key_ex, &b->key_pair, peer_key, true) != 0) {
             reject_dial_request(0, b->ch, msg->header.seq, "failed to establish crypto");
@@ -363,6 +389,9 @@ static void on_message(struct binding_s *b, message *msg, int code) {
             case ContentTypeDial:
                 process_dial(b, msg);
                 break;
+            case ContentTypeConnInspectRequest:
+                process_inspect(b, msg);
+                break;
             default:
                 ZITI_LOG(ERROR, "unexpected msg[%X] for bound conn[%d]", msg->header.content, conn->conn_id);
         }
@@ -376,8 +405,8 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
     struct ziti_conn *conn = b->conn;
 
     b->waiter = NULL;
-    CONN_LOG(TRACE, "received msg ct[%X] code[%d]", msg->header.content, code);
     if (code == ZITI_OK && msg->header.content == ContentTypeStateConnected) {
+        CONN_LOG(TRACE, "received msg ct[%X] code[%d]", msg->header.content, code);
         CONN_LOG(DEBUG, "bound successfully over ch[%s]", b->ch->url);
         ziti_channel_add_receiver(b->ch, (int)conn->conn_id, b,
                                   (void (*)(void *, message *, int)) on_message);
@@ -397,6 +426,7 @@ void start_binding(struct binding_s *b, ziti_channel_t *ch) {
 
     b->ch = ch;
 
+    uint8_t true_val = 1;
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(0);
 
@@ -412,14 +442,19 @@ void start_binding(struct binding_s *b, ziti_channel_t *ch) {
                     .value = (uint8_t *) &msg_seq
             },
             {
-                    .header_id = PublicKeyHeader,
-                    .length = sizeof(b->key_pair.pk),
-                    .value = b->key_pair.pk,
-            },
-            {
                     .header_id = ListenerId,
                     .length = sizeof(b->conn->server.listener_id),
                     .value = (uint8_t*)b->conn->server.listener_id,
+            },
+            {
+                    .header_id = SupportsInspectHeader,
+                    .length = 1,
+                    .value = &true_val,
+            },
+            {
+                    .header_id = PublicKeyHeader,
+                    .length = sizeof(b->key_pair.pk),
+                    .value = b->key_pair.pk,
             },
             // blank hdr_t's to be filled in if needed by options
             {
@@ -439,6 +474,10 @@ void start_binding(struct binding_s *b, ziti_channel_t *ch) {
             }
     };
     int nheaders = 4;
+    if (conn->encrypted) {
+        nheaders++;
+    }
+
     if (conn->server.identity != NULL) {
         headers[nheaders].header_id = TerminatorIdentityHeader;
         headers[nheaders].value = (uint8_t *) conn->server.identity;

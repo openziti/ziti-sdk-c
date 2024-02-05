@@ -18,6 +18,8 @@ limitations under the License.
 #ifndef ZITI_SDK_EDGE_PROTOCOL_H
 #define ZITI_SDK_EDGE_PROTOCOL_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -42,6 +44,11 @@ enum content_type {
     ContentTypeStateSessionEnded = 60792,
 	ContentTypeProbe             = 60793,
 	ContentTypeUpdateBind        = 60794,
+    ContentTypeHealthEvent         = 60795,
+    ContentTypeTraceRoute          = 60796,
+    ContentTypeTraceRouteResponse  = 60797,
+    ContentTypeConnInspectRequest  = 60798,
+    ContentTypeConnInspectResponse = 60799,
 };
 
 enum header_id {
@@ -80,6 +87,18 @@ enum header_id {
     TraceSourceRequestIdHeader = 1019,
     TraceError = 1020,
     ListenerId = 1021,
+    ConnTypeHeader = 1022,
+    SupportsInspectHeader = 1023,
+    SupportsBindSuccessHeader = 1024,
+    ConnectionMarkerHeader = 1025,
+};
+
+typedef uint8_t connection_type_t;
+enum connection_type {
+    ConnTypeInvalid,
+    ConnTypeDial = 1,
+    ConnTypeBind = 2,
+    ConnTypeUnknown = 3,
 };
 
 enum crypto_method {

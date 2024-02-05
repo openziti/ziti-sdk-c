@@ -153,6 +153,9 @@ bool message_get_uint64_header(message *m, int header_id, uint64_t *v) {
 }
 
 bool message_get_bytes_header(message *m, int header_id, uint8_t **v, size_t *len) {
+    *v = NULL;
+    *len = 0;
+
     hdr_t *h = find_header(m, header_id);
     if (h != NULL) {
         *len = h->length;
@@ -219,11 +222,18 @@ message *message_new(pool_t *pool, uint32_t content, const hdr_t *hdrs, int nhdr
     // write header
     header_to_buffer(&m->header, m->msgbufp);
 
-    // write headers
+    // write/populate headers
+    m->hdrs = calloc(nhdrs, sizeof(hdr_t));
+    m->nhdrs = nhdrs;
     m->headers = m->msgbufp + HEADER_SIZE;
     m->body = m->headers + m->header.headers_len;
     uint8_t *p = m->headers;
     for (int i = 0; i < nhdrs; i++) {
+        m->hdrs[i] = (hdr_t){
+            .header_id = hdrs[i].header_id,
+            .length = hdrs[i].length,
+            .value = p + 2 * sizeof(uint32_t),
+        };
         p = write_hdr(&hdrs[i], p);
     }
 
@@ -236,4 +246,30 @@ void message_set_seq(message *m, uint32_t *seq) {
         m->header.seq = *seq;
     }
     header_to_buffer(&m->header, m->msgbufp);
+}
+
+
+message* new_inspect_result(uint32_t req_seq, uint32_t conn_id, connection_type_t type, const char *msg, size_t msglen) {
+    const hdr_t hdrs[] = {
+            {
+                    .header_id = ConnIdHeader,
+                    .length = sizeof(conn_id),
+                    .value = (uint8_t *) &conn_id,
+            },
+            {
+                    .header_id = ConnTypeHeader,
+                    .length = sizeof(type),
+                    .value = &type,
+            },
+            {
+                    .header_id = ReplyForHeader,
+                    .length = sizeof(req_seq),
+                    .value = (uint8_t *) &(req_seq),
+            }
+    };
+    message *reply = message_new(NULL, ContentTypeConnInspectResponse, hdrs, 3, msglen);
+    if (msglen > 0) {
+        strncpy((char *) reply->body, msg, msglen);
+    }
+    return reply;
 }

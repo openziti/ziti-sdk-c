@@ -82,6 +82,15 @@ static void hello_reply_cb(void *ctx, message *msg, int err);
 static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf);
 static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf);
 static void process_inbound(ziti_channel_t *ch);
+static void on_tls_close(uv_handle_t *s);
+
+static inline void close_connection(ziti_channel_t *ch) {
+    if (ch->connection) {
+        tlsuv_stream_t *conn = ch->connection;
+        CH_LOG(DEBUG, "closing TLS[%p]", conn);
+        tlsuv_stream_close(conn, on_tls_close);
+    }
+}
 
 // global channel sequence
 static uint32_t channel_counter = 0;
@@ -92,11 +101,9 @@ struct ch_write_req {
 };
 
 struct waiter_s {
-    int32_t seq;
+    uint32_t seq;
     reply_cb cb;
     void *reply_ctx;
-
-    LIST_ENTRY(waiter_s) next;
 };
 
 struct ch_conn_req {
@@ -113,13 +120,14 @@ struct msg_receiver {
 };
 
 static void ch_init_stream(ziti_channel_t *ch) {
-    if (ch->connection == NULL) {
-        ch->connection = calloc(1, sizeof(*ch->connection));
-        tlsuv_stream_init(ch->loop, ch->connection, ch->ctx->tlsCtx);
-        tlsuv_stream_keepalive(ch->connection, true, 30);
-        tlsuv_stream_nodelay(ch->connection, true);
-        ch->connection->data = ch;
-    }
+    assert(ch->connection == NULL);
+
+    ch->connection = calloc(1, sizeof(*ch->connection));
+    tlsuv_stream_init(ch->loop, ch->connection, ch->ctx->tlsCtx);
+    tlsuv_stream_keepalive(ch->connection, true, 30);
+    tlsuv_stream_nodelay(ch->connection, true);
+    ch->connection->data = ch;
+    ch->reconnect = false;
 }
 
 int ziti_channel_prepare(ziti_channel_t *ch) {
@@ -160,7 +168,7 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     ch->incoming = new_buffer();
     ch->in_msg_pool = pool_new(POOLED_MESSAGE_SIZE, INBOUND_POOL_SIZE, (void (*)(void *)) message_free);
 
-    LIST_INIT(&ch->waiters);
+    ch->waiters = (model_map){0};
 
     ch->timer = calloc(1, sizeof(uv_timer_t));
     uv_timer_init(ch->loop, ch->timer);
@@ -203,22 +211,18 @@ int ziti_close_channels(struct ziti_ctx *ztx, int err) {
 
 static void on_tls_close(uv_handle_t *s) {
     tlsuv_stream_t *tls = (tlsuv_stream_t *) s;
-    tlsuv_stream_free(tls);
-    free(tls);
-}
-
-static void close_handle_cb(uv_handle_t *h) {
-    tlsuv_stream_t *tls = (tlsuv_stream_t *) h;
     ziti_channel_t *ch = tls->data;
+    ch->connection = NULL;
+
     tlsuv_stream_free(tls);
     free(tls);
 
-    ziti_channel_free(ch);
-    free(ch);
+    if (ch->reconnect) {
+        reconnect_channel(ch, true);
+    }
 }
 
 int ziti_channel_close(ziti_channel_t *ch, int err) {
-    int r = 0;
     if (ch->state != Closed) {
         CH_LOG(INFO, "closing[%s]", ch->name);
 
@@ -228,9 +232,13 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
 
         uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
         ch->timer = NULL;
-        tlsuv_stream_close(ch->connection, close_handle_cb);
+
+        close_connection(ch);
+
+        ziti_channel_free(ch);
+        free(ch);
     }
-    return r;
+    return 0;
 }
 
 void ziti_channel_add_receiver(ziti_channel_t *ch, int id, void *receiver, void (*receive_f)(void *, message *, int)) {
@@ -376,7 +384,7 @@ void on_channel_send(uv_write_t *w, int status) {
 
     if (status < 0) {
         CH_LOG(ERROR, "write failed [%d/%s]", status, uv_strerror(status));
-        on_channel_close(ch, ZITI_CONN_CLOSED, status);
+        on_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE, status);
     }
 
     free(w);
@@ -401,9 +409,9 @@ int ziti_channel_send_message(ziti_channel_t *ch, message *msg, struct ziti_writ
     int rc = tlsuv_stream_write(req, ch->connection, &buf, on_channel_send);
     if (rc != 0) {
         on_channel_send(req, rc);
+        return ZITI_GATEWAY_UNAVAILABLE;
     }
     return 0;
-
 }
 
 int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
@@ -419,31 +427,37 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
 
 void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter) {
     if (waiter) {
-        LIST_REMOVE(waiter, next);
+        struct waiter_s *w = model_map_removel(&ch->waiters, (long)waiter->seq);
+        assert(w == waiter);
         free(waiter);
     }
 }
 
-struct waiter_s *
-ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, int nhdrs, const uint8_t *body,
-                            uint32_t body_len,
-                            reply_cb rep_cb, void *reply_ctx) {
+struct waiter_s *ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content,
+                                             const hdr_t *hdrs, int nhdrs,
+                                             const uint8_t *body, uint32_t body_len,
+                                             reply_cb rep_cb, void *reply_ctx) {
+    assert(rep_cb != NULL);
+
     struct waiter_s *result = NULL;
     message *m = message_new(NULL, content, hdrs, nhdrs, body_len);
     message_set_seq(m, &ch->msg_seq);
     memcpy(m->body, body, body_len);
 
-    if (rep_cb != NULL) {
+    uint32_t seq = m->header.seq;
+
+    int rc = ziti_channel_send_message(ch, m, NULL);
+
+    if (rc == ZITI_OK) {
         NEWP(w, struct waiter_s);
-        w->seq = m->header.seq;
+        w->seq = seq;
         w->cb = rep_cb;
         w->reply_ctx = reply_ctx;
-
-        LIST_INSERT_HEAD(&ch->waiters, w, next);
+        model_map_setl(&ch->waiters, (long)w->seq, w);
         result = w;
+    } else {
+        rep_cb(reply_ctx, NULL, rc);
     }
-
-    ziti_channel_send_message(ch, m, NULL);
 
     return result;
 }
@@ -465,6 +479,7 @@ static bool is_edge(uint32_t content) {
         case ContentTypeDialFailed:
         case ContentTypeBind:
         case ContentTypeUnbind:
+        case ContentTypeConnInspectRequest:
             return true;
         default:
             return false;
@@ -476,19 +491,14 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
 
     m->nhdrs = parse_hdrs(m->headers, m->header.headers_len, &m->hdrs);
 
-    int32_t reply_to;
-    bool is_reply = message_get_int32_header(m, ReplyForHeader, &reply_to);
+    uint32_t reply_to;
+    bool is_reply = message_get_int32_header(m, ReplyForHeader, (int32_t*)&reply_to);
 
     uint32_t ct = m->header.content;
     if (is_reply) {
-        LIST_FOREACH(w, &ch->waiters, next) {
-            if (w->seq == reply_to) {
-                break;
-            }
-        }
+        w = model_map_removel(&ch->waiters, (long)reply_to);
 
         if (w) {
-            LIST_REMOVE(w, next);
             w->cb(w->reply_ctx, m, 0);
             free(w);
             pool_return_obj(m);
@@ -517,8 +527,12 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
         if (conn) {
             conn->receive(conn->receiver, m, ZITI_OK);
         } else {
-            // close confirmation is OK if connection is gone already
-            if (ct != ContentTypeStateClosed) {
+            if (ct == ContentTypeConnInspectRequest) {
+                char msg[128];
+                size_t len = snprintf(msg, sizeof(msg), "invalid conn id [%d]", conn_id);
+                message *reply = new_inspect_result(m->header.seq, conn_id, ConnTypeInvalid, msg, len);
+                ziti_channel_send_message(ch, reply, NULL);
+            } else if (ct != ContentTypeStateClosed) { // close confirmation is OK if connection is gone already
                 CH_LOG(WARN, "received message without conn_id or for unknown connection ct[%04X] conn_id[%d]",
                        ct, conn_id);
             }
@@ -621,8 +635,7 @@ static void latency_timeout(uv_timer_t *t) {
         ch->latency_waiter = NULL;
         ch->latency = UINT64_MAX;
 
-        tlsuv_stream_close(ch->connection, on_tls_close);
-        ch->connection = NULL;
+        close_connection(ch);
         on_channel_close(ch, ZITI_TIMEOUT, UV_ETIMEDOUT);
     }
 }
@@ -679,8 +692,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
 
         ch->state = Disconnected;
         ch->notify_cb(ch, EdgeRouterUnavailable, ch->notify_ctx);
-        tlsuv_stream_close(ch->connection, on_tls_close);
-        ch->connection = NULL;
+        close_connection(ch);
         reconnect_channel(ch, false);
     }
 
@@ -693,15 +705,21 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
 }
 
 static void send_hello(ziti_channel_t *ch, ziti_api_session *session) {
+    uint8_t true_val = 1;
     hdr_t headers[] = {
             {
                     .header_id = SessionTokenHeader,
                     .length = strlen(session->token),
                     .value = (uint8_t *)session->token
-            }
+            },
+            {
+                .header_id = SupportsInspectHeader,
+                .length = sizeof(true_val),
+                .value = &true_val,
+            },
     };
     ch->latency = uv_now(ch->loop);
-    ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 1, ch->token, strlen(ch->token), hello_reply_cb, ch);
+    ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 2, ch->token, strlen(ch->token), hello_reply_cb, ch);
 }
 
 
@@ -719,8 +737,7 @@ static void ch_connect_timeout(uv_timer_t *t) {
         CH_LOG(WARN, "diagnostics: no conn_req in connect timeout");
     }
     reconnect_channel(ch, false);
-    tlsuv_stream_close(ch->connection, on_tls_close);
-    ch->connection = NULL;
+    close_connection(ch);
 }
 
 static void reconnect_cb(uv_timer_t *t) {
@@ -730,8 +747,10 @@ static void reconnect_cb(uv_timer_t *t) {
     if (ztx->api_session == NULL || ztx->api_session->token == NULL || ztx->api_session_state != ZitiApiSessionStateFullyAuthenticated) {
         CH_LOG(ERROR, "ziti context is not fully authenticated (api_session_state[%d]), delaying re-connect", ztx->api_session_state);
         reconnect_channel(ch, false);
-    }
-    else {
+    } else if (ch->connection != NULL) {
+        CH_LOG(DEBUG, "connection still closing, deferring reconnect");
+        ch->reconnect = true;
+    } else {
         ch->msg_seq = 0;
 
         uv_connect_t *req = calloc(1, sizeof(uv_connect_t));
@@ -791,14 +810,15 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
         uv_timer_stop(ch->timer);
     }
 
-    while (!LIST_EMPTY(&ch->waiters)) {
-        struct waiter_s *w = LIST_FIRST(&ch->waiters);
-        LIST_REMOVE(w, next);
+    model_map_iter it = model_map_iterator(&ch->waiters);
+    while (it != NULL) {
+        struct waiter_s *w = model_map_it_value(it);
+        it = model_map_it_remove(it);
         w->cb(w->reply_ctx, NULL, ziti_err);
         free(w);
     }
 
-    model_map_iter it = model_map_iterator(&ch->receivers);
+    it = model_map_iterator(&ch->receivers);
     while (it != NULL) {
         struct msg_receiver *con = model_map_it_value(it);
         it = model_map_it_remove(it);
@@ -854,21 +874,13 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
                 tlsuv_stream_read_stop(ssl);
                 CH_LOG(VERBOSE, "blocked until messages are processed");
                 return;
-            case UV_EOF:
-            case UV_ECONNRESET:
-            case UV_ECONNABORTED:
-            case UV_ECONNREFUSED:
-            case UV_EPIPE:
-                CH_LOG(INFO, "channel was closed [%zd/%s]", len, uv_strerror(len));
-                // propagate close
-                on_channel_close(ch, ZITI_CONNABORT, len);
-                tlsuv_stream_close(ch->connection, on_tls_close);
-                ch->connection = NULL;
-                break;
 
             default:
-                CH_LOG(ERROR, "unhandled error on_data [%zd/%s]", len, uv_strerror(len));
-                on_channel_close(ch, ZITI_CONNABORT, len);
+                CH_LOG(INFO, "channel disconnected [%zd/%s]", len, uv_strerror(len));
+                // propagate close
+                on_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE, len);
+                close_connection(ch);
+                break;
         }
     } else if (len == 0) {
         // sometimes SSL message has no payload
@@ -893,8 +905,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             send_hello(ch, ch->ctx->api_session);
         } else {
             CH_LOG(WARN, "api session invalidated, while connecting");
-            tlsuv_stream_close(ch->connection, on_tls_close);
-            ch->connection = NULL;
+            close_connection(ch);
             reconnect_channel(ch, false);
         }
     } else {
@@ -907,8 +918,9 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             free(r);
         }
 
-        tlsuv_stream_close(ch->connection, on_tls_close);
-        ch->connection = NULL;
+        if (status != UV_ECANCELED) {
+            close_connection(ch);
+        }
 
         if (ch->state != Closed) {
             ch->state = Disconnected;
@@ -917,6 +929,8 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
     }
     free(req);
 }
+
+
 
 #define TIMEOUT_CALLBACKS(XX) \
 XX(latency_timeout) \
