@@ -1306,6 +1306,7 @@ void ziti_services_refresh(ziti_context ztx, bool now) {
 
 static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
+    bool ers_changed = false;
 
     if (err) {
         ZTX_LOG(ERROR, "failed to get current edge routers: code[%d] %s/%s",
@@ -1340,6 +1341,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
             if (model_map_remove(&curr_routers, tls) == NULL) {
                 ZTX_LOG(TRACE, "connecting to %s(%s)", er->name, tls);
                 ziti_channel_connect(ztx, er->name, tls, NULL, NULL);
+                ers_changed = true;
             }
         } else {
             ZTX_LOG(DEBUG, "edge router %s does not have TLS edge listener", er->name);
@@ -1358,6 +1360,22 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
         ZTX_LOG(INFO, "removing channel[%s@%s]: no longer available", ch->name, er_url);
         ziti_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE);
         it = model_map_it_remove(it);
+        ers_changed = true;
+    }
+    
+    // if the list of ERs changed, we want to opportunistically 
+    // refresh sessions to clear out references to old ERs, 
+    // and pull new ERs (which could be better for dialing)
+
+    // we don't want to evict/refresh session right away
+    // because it may have a serviceable ER
+    // just refresh it on demand (next dial)
+    if (ers_changed) {
+        const char *serv;
+        ziti_session *session;
+        MODEL_MAP_FOREACH(serv, session, &ztx->sessions) {
+            session->refresh = true;
+        }
     }
 }
 
