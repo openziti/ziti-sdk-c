@@ -32,10 +32,9 @@ XX(name, string, none, name, __VA_ARGS__)\
 XX(hostname, string, none, hostname, __VA_ARGS__) \
 XX(protocols, string, map, supportedProtocols, __VA_ARGS__)
 
-#define ZITI_NET_SESSION_MODEL(XX, ...) \
+#define ZITI_SESSION_MODEL(XX, ...) \
 XX(token, string, none, token, __VA_ARGS__)\
 XX(id, string, none, id, __VA_ARGS__) \
-XX(session_type, string, none, type, __VA_ARGS__) \
 XX(edge_routers, ziti_edge_router, list, edgeRouters, __VA_ARGS__) \
 XX(service_id, string, none, NULL, __VA_ARGS__)
 
@@ -190,7 +189,7 @@ DECLARE_MODEL(ziti_identity_data, ZITI_IDENTITY_DATA_MODEL)
 
 DECLARE_MODEL(ziti_edge_router, ZITI_EDGE_ROUTER_MODEL)
 
-DECLARE_MODEL(ziti_net_session, ZITI_NET_SESSION_MODEL)
+DECLARE_MODEL(ziti_session, ZITI_SESSION_MODEL)
 
 DECLARE_MODEL(ziti_api_session, ZITI_API_SESSION_MODEL)
 

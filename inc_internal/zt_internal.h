@@ -184,7 +184,7 @@ struct ziti_conn {
             ziti_listen_cb listen_cb;
             ziti_client_cb client_cb;
 
-            ziti_net_session *session;
+            ziti_session *session;
             model_map bindings;
             model_map children;
             uv_timer_t *timer;
@@ -279,7 +279,7 @@ struct ziti_ctx {
     bool services_loaded;
     // map<name,ziti_service>
     model_map services;
-    // map<service_id,ziti_net_session>
+    // map<service_id,ziti_session>
     model_map sessions;
 
     // map<service_id,*bool>
@@ -320,10 +320,10 @@ struct ziti_ctx {
 extern "C" {
 #endif
 
-bool ziti_is_session_valid(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type);
+bool ziti_is_session_valid(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type);
 
 void
-ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type);
+ziti_invalidate_session(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type);
 
 void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
 
