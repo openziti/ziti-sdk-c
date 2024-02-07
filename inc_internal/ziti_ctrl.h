@@ -90,14 +90,14 @@ void ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name,
 
 void ziti_ctrl_create_session(
         ziti_controller *ctrl, const char *service_id, ziti_session_type type,
-        void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx);
+        void (*cb)(ziti_session *, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_get_session(
         ziti_controller *ctrl, const char *session_id,
-        void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx);
+        void (*cb)(ziti_session *, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_get_sessions(
-        ziti_controller *ctrl, void (*cb)(ziti_net_session **, const ziti_error *, void *), void *ctx);
+        ziti_controller *ctrl, void (*cb)(ziti_session **, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, const ziti_error *, void *), void *ctx);
 

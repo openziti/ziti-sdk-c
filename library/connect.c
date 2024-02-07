@@ -65,7 +65,7 @@ struct local_hash {
 struct ziti_conn_req {
     ziti_session_type session_type;
     char *service_id;
-    ziti_net_session *session;
+    ziti_session *session;
     ziti_conn_cb cb;
     ziti_dial_opts dial_opts;
 
@@ -142,22 +142,13 @@ static ziti_listen_opts *clone_ziti_listen_opts(const ziti_listen_opts *ln_opts)
     return c;
 }
 
-static void free_ziti_listen_opts(ziti_listen_opts *ln_opts) {
-    if (ln_opts == NULL) {
-        ZITI_LOG(TRACE, "refuse to free NULL listen_opts");
-        return;
-    }
-    FREE(ln_opts->identity);
-    free(ln_opts);
-}
-
 static void free_conn_req(struct ziti_conn_req *r) {
     if (r->conn_timeout != NULL) {
         uv_close((uv_handle_t *) r->conn_timeout, free_handle);
     }
 
     if (r->session_type == ziti_session_types.Bind && r->session) {
-        free_ziti_net_session(r->session);
+        free_ziti_session(r->session);
         FREE(r->session);
     }
 
@@ -393,7 +384,7 @@ static void connect_timeout(uv_timer_t *timer) {
     }
 }
 
-static int ziti_connect(struct ziti_ctx *ztx, ziti_net_session *session, struct ziti_conn *conn) {
+static int ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct ziti_conn *conn) {
     // verify ziti context is still authorized
     if (ztx->api_session == NULL) {
         CONN_LOG(ERROR, "ziti context is not authenticated, cannot connect to service[%s]", conn->service);
@@ -466,7 +457,7 @@ static void connect_get_service_cb(ziti_context ztx, ziti_service *s, int status
     }
 }
 
-static void connect_get_net_session_cb(ziti_net_session *s, const ziti_error *err, void *ctx) {
+static void connect_get_net_session_cb(ziti_session *s, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
     struct ziti_ctx *ztx = conn->ziti_ctx;
@@ -486,11 +477,11 @@ static void connect_get_net_session_cb(ziti_net_session *s, const ziti_error *er
         req->session = s;
         s->service_id = strdup(req->service_id);
         if (req->session_type == ziti_session_types.Dial) {
-            ziti_net_session *existing = model_map_get(&ztx->sessions, req->service_id);
+            ziti_session *existing = model_map_get(&ztx->sessions, req->service_id);
             // this happens with concurrent connection requests for the same service (common with browsers)
             if (existing) {
                 CONN_LOG(DEBUG, "found session[%s] for service[%s]", existing->id, conn->service);
-                free_ziti_net_session(s);
+                free_ziti_session(s);
                 free(s);
                 req->session = existing;
             } else {
@@ -506,8 +497,7 @@ static void process_connect(struct ziti_conn *conn) {
     struct ziti_conn_req *req = conn->conn_req;
     struct ziti_ctx *ztx = conn->ziti_ctx;
     uv_loop_t *loop = ztx->loop;
-
-
+    
     // find service
     if (req->service_id == NULL) {
         // connect_get_service_cb will re-enter process_connect() if service is already cached in the context
@@ -954,7 +944,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
             if (strncmp(INVALID_SESSION, (const char *) msg->body, msg->header.body_len) == 0) {
                 CONN_LOG(WARN, "session for service[%s] became invalid", conn->service);
                 if (conn->conn_req->session_type == ziti_session_types.Dial) {
-                    ziti_net_session *s = model_map_get(&conn->ziti_ctx->sessions, req->service_id);
+                    ziti_session *s = model_map_get(&conn->ziti_ctx->sessions, req->service_id);
                     if (s != req->session) {
                         // already removed or different one
                         // req reference is no longer valid
@@ -963,7 +953,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
                         model_map_remove(&conn->ziti_ctx->sessions, req->service_id);
                     }
                 }
-                free_ziti_net_session(req->session);
+                free_ziti_session(req->session);
                 FREE(req->session);
 
                 ziti_channel_rem_receiver(conn->channel, conn->conn_id);
@@ -1011,7 +1001,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
 
 static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t *ch) {
     struct ziti_conn_req *req = conn->conn_req;
-    ziti_net_session *s = req->session;
+    ziti_session *s = req->session;
 
     uint32_t content_type;
     switch (conn->state) {
@@ -1029,7 +1019,7 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
     if (!ziti_is_session_valid(conn->ziti_ctx, s, req->service_id, req->session_type)) {
         CONN_LOG(DEBUG, "session is no longer valid");
         if (req->session_type == ziti_session_types.Bind) {
-            free_ziti_net_session(req->session);
+            free_ziti_session(req->session);
             FREE(req->session);
         }
         req->session = NULL;

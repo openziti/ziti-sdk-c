@@ -181,7 +181,7 @@ TEST_CASE("controller_test","[integ]") {
             auto ns = do_get2(ctrl, ziti_ctrl_create_session, (const char *) s->id, *s->permissions[0]);
             REQUIRE(ns != nullptr);
             REQUIRE(ns->token != nullptr);
-            free_ziti_net_session_ptr(ns);
+            free_ziti_session_ptr(ns);
             free_ziti_service_array(&services);
         }
         AND_THEN("logout should succeed") {

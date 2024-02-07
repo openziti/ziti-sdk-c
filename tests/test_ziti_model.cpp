@@ -165,8 +165,8 @@ TEST_CASE("multi-edge-router session", "[model]") {
   "token": "f49bbb5c-4623-4ae0-9e88-b6ea226434dc",
   "type": "Dial"
 })";
-    ziti_net_session *s;
-    REQUIRE(parse_ziti_net_session_ptr(&s, session_json, (int) strlen(session_json)) == strlen(session_json));
+    ziti_session *s;
+    REQUIRE(parse_ziti_session_ptr(&s, session_json, (int) strlen(session_json)) == strlen(session_json));
 
     REQUIRE(model_list_size(&s->edge_routers) == 3);
 
@@ -180,7 +180,7 @@ TEST_CASE("multi-edge-router session", "[model]") {
     tls = (const char *) model_map_get(&er->protocols, "tls");
     REQUIRE_THAT(tls, Catch::Matchers::Matches("tls://cd938be5-bd0b-48b3-8db8-67e4bf62eb10.production.netfoundry.io:443"));
 
-    free_ziti_net_session(s);
+    free_ziti_session(s);
     free(s);
 }
 

@@ -338,7 +338,7 @@ static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
 
     ziti_close_channels(ztx, ZITI_DISABLED);
 
-    model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session_ptr);
+    model_map_clear(&ztx->sessions, (_free_f) free_ziti_session_ptr);
     model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
 
     if (ztx->closing) {
@@ -381,9 +381,9 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
 
         model_map_iter it = model_map_iterator(&ztx->sessions);
         while (it) {
-            ziti_net_session *ns = model_map_it_value(it);
+            ziti_session *ns = model_map_it_value(it);
             it = model_map_it_remove(it);
-            free_ziti_net_session_ptr(ns);
+            free_ziti_session_ptr(ns);
         }
         // close all channels
         ziti_close_channels(ztx, ZITI_DISABLED);
@@ -546,7 +546,7 @@ static void free_ztx(uv_handle_t *h) {
     ziti_auth_query_free(ztx->auth_queries);
     ziti_posture_checks_free(ztx->posture_checks);
     model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
-    model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session_ptr);
+    model_map_clear(&ztx->sessions, (_free_f) free_ziti_session_ptr);
     ziti_set_unauthenticated(ztx);
     free_ziti_identity_data(ztx->identity_data);
     FREE(ztx->identity_data);
@@ -675,7 +675,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     }
 
     printer(ctx, "\n==================\nSessions:\n");
-    ziti_net_session *sess;
+    ziti_session *sess;
     MODEL_MAP_FOREACH(name, sess, &ztx->sessions) {
         printer(ctx, "%s: service_id[%s]\n", sess->id, name);
     }
@@ -953,7 +953,7 @@ void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const 
         uv_timer_stop(ztx->posture_checks->timer);
     }
 
-    model_map_clear(&ztx->sessions, (_free_f) free_ziti_net_session_ptr);
+    model_map_clear(&ztx->sessions, (_free_f) free_ziti_session_ptr);
     FREE(ztx->last_update);
     model_list cfgs = {0};
     model_list_append(&cfgs, ZITI_INTERCEPT_CFG_V1);
@@ -1172,9 +1172,9 @@ static void update_services(ziti_service_array services, const ziti_error *error
             s = model_map_it_value(it);
             ev.event.service.removed[remIdx++] = s;
 
-            ziti_net_session *session = model_map_remove(&ztx->sessions, s->id);
+            ziti_session *session = model_map_remove(&ztx->sessions, s->id);
             if (session) {
-                free_ziti_net_session(session);
+                free_ziti_session(session);
                 free(session);
             }
             it = model_map_it_remove(it);
@@ -1677,22 +1677,22 @@ static void version_cb(ziti_version *v, const ziti_error *err, void *ctx) {
     }
 }
 
-bool ziti_is_session_valid(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type) {
+bool ziti_is_session_valid(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type) {
     if (session == NULL) return false;
 
     if (type == ziti_session_types.Bind) return true;
 
-    ziti_net_session *s = model_map_get(&ztx->sessions, service_id);
+    ziti_session *s = model_map_get(&ztx->sessions, service_id);
     return s == session;
 }
 
-void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const char *service_id, ziti_session_type type) {
+void ziti_invalidate_session(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type) {
     if (session == NULL) {
         return;
     }
 
     if (type == ziti_session_types.Dial) {
-        ziti_net_session *s = model_map_get(&ztx->sessions, service_id);
+        ziti_session *s = model_map_get(&ztx->sessions, service_id);
         if (s != session) {
             // already removed or different one
             // passed reference is no longer valid
@@ -1702,7 +1702,7 @@ void ziti_invalidate_session(ziti_context ztx, ziti_net_session *session, const 
         }
     }
 
-    free_ziti_net_session(session);
+    free_ziti_session(session);
     FREE(session);
 }
 

@@ -565,21 +565,21 @@ ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb
 
 void ziti_ctrl_get_session(
         ziti_controller *ctrl, const char *session_id,
-        void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx) {
+        void (*cb)(ziti_session *, const ziti_error *, void *), void *ctx) {
 
     if (!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
     char req_path[128];
     snprintf(req_path, sizeof(req_path), "/sessions/%s", session_id);
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_net_session_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_session_ptr, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", req_path, ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
 }
 
 void ziti_ctrl_create_session(
         ziti_controller *ctrl, const char *service_id, ziti_session_type type,
-        void (*cb)(ziti_net_session *, const ziti_error *, void *), void *ctx) {
+        void (*cb)(ziti_session *, const ziti_error *, void *), void *ctx) {
 
     if (!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
@@ -588,17 +588,17 @@ void ziti_ctrl_create_session(
                           "{\"serviceId\": \"%s\", \"type\": \"%s\"}",
                           service_id, ziti_session_types.name(type));
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_net_session_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_session_ptr, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/sessions", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
     tlsuv_http_req_data(req, content, len, free_body_cb);
 }
 
 void ziti_ctrl_get_sessions(
-        ziti_controller *ctrl, void (*cb)(ziti_net_session **, const ziti_error *, void *), void *ctx) {
+        ziti_controller *ctrl, void (*cb)(ziti_session **, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, (ctrl_resp_cb_t)cb, ctx)) return;
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_net_session_array, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_session_array, ctx);
     resp->paging = true;
     resp->base_path = "/sessions";
     ctrl_paging_req(resp);

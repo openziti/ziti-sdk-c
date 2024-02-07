@@ -51,7 +51,7 @@ static void stop_binding(struct binding_s *b);
 
 static void schedule_rebind(struct ziti_conn *conn, bool now);
 
-static void session_cb(ziti_net_session *session, const ziti_error *err, void *ctx);
+static void session_cb(ziti_session *session, const ziti_error *err, void *ctx);
 
 static void notify_status(struct ziti_conn *conn, int err);
 
@@ -109,7 +109,7 @@ static struct binding_s* new_binding(struct ziti_conn *conn) {
 }
 
 static void process_bindings(struct ziti_conn *conn) {
-    ziti_net_session *ns = conn->server.session;
+    ziti_session *ns = conn->server.session;
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
     size_t target = MIN(conn->server.max_bindings, model_map_size(&ztx->channels));
@@ -172,16 +172,16 @@ static void schedule_rebind(struct ziti_conn *conn, bool now) {
 }
 
 
-static void session_cb(ziti_net_session *session, const ziti_error *err, void *ctx) {
+static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
     int e = err ? err->err : ZITI_OK;
     switch (e) {
         case ZITI_OK: {
-            ziti_net_session *old = conn->server.session;
+            ziti_session *old = conn->server.session;
             conn->server.session = session;
             notify_status(conn, ZITI_OK);
 
-            free_ziti_net_session_ptr(old);
+            free_ziti_session_ptr(old);
 
             process_bindings(conn);
             break;
@@ -197,7 +197,7 @@ static void session_cb(ziti_net_session *session, const ziti_error *err, void *c
 
             // our session is stale
             if (conn->server.session) {
-                free_ziti_net_session_ptr(conn->server.session);
+                free_ziti_session_ptr(conn->server.session);
                 conn->server.session = NULL;
                 schedule_rebind(conn, true);
             } else {
@@ -290,7 +290,7 @@ static int dispose(ziti_connection server) {
         server->server.timer = NULL;
     }
 
-    free_ziti_net_session_ptr(server->server.session);
+    free_ziti_session_ptr(server->server.session);
     free(server->service);
     free(server);
     return 1;
@@ -421,7 +421,7 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
 
 void start_binding(struct binding_s *b, ziti_channel_t *ch) {
     struct ziti_conn *conn = b->conn;
-    ziti_net_session *s = conn->server.session;
+    ziti_session *s = conn->server.session;
     CONN_LOG(TRACE, "ch[%d] => Edge Bind request token[%s]", ch->id, s->token);
 
     b->ch = ch;
@@ -553,7 +553,7 @@ static void stop_binding(struct binding_s *b) {
         return;
     }
 
-    ziti_net_session *s = b->conn->server.session;
+    ziti_session *s = b->conn->server.session;
     if (s == NULL) {
         return;
     }
