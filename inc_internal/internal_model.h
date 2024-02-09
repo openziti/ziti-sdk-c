@@ -27,10 +27,14 @@ XX(default_hosting_cost, int, none, defaultHostingCost, __VA_ARGS__)            
 XX(service_hosting_precendences, string, map, serviceHostingPrecedences, __VA_ARGS__)\
 XX(service_hosting_costs, int, map, serviceHostingCosts, __VA_ARGS__)
 
+// add other protocols when we support them
+#define ZITI_ER_PROTOCOLS(XX, ...) \
+XX(tls, string, none, tls, __VA_ARGS__)
+
 #define ZITI_EDGE_ROUTER_MODEL(XX, ...)\
 XX(name, string, none, name, __VA_ARGS__)\
 XX(hostname, string, none, hostname, __VA_ARGS__) \
-XX(protocols, string, map, supportedProtocols, __VA_ARGS__)
+XX(protocols, ziti_er_protocols, none, supportedProtocols, __VA_ARGS__)
 
 #define ZITI_SESSION_MODEL(XX, ...) \
 XX(token, string, none, token, __VA_ARGS__)\
@@ -186,6 +190,8 @@ extern "C" {
 DECLARE_ENUM(ziti_enrollment_method, ZITI_ENROLLMENT_METHOD)
 
 DECLARE_MODEL(ziti_identity_data, ZITI_IDENTITY_DATA_MODEL)
+
+DECLARE_MODEL(ziti_er_protocols, ZITI_ER_PROTOCOLS)
 
 DECLARE_MODEL(ziti_edge_router, ZITI_EDGE_ROUTER_MODEL)
 

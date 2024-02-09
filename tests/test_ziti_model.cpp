@@ -172,13 +172,11 @@ TEST_CASE("multi-edge-router session", "[model]") {
 
     auto it = model_list_iterator(&s->edge_routers);
     auto er = (ziti_edge_router *) model_list_it_element(it);
-    auto tls = (const char *) model_map_get(&er->protocols, "tls");
-    REQUIRE_THAT(tls, Catch::Matchers::Matches("tls://eccfca4e-b9ea-45c4-a26c-f61ce2acf6f5.production.netfoundry.io:443"));
+    REQUIRE_THAT(er->protocols.tls, Catch::Matchers::Matches("tls://eccfca4e-b9ea-45c4-a26c-f61ce2acf6f5.production.netfoundry.io:443"));
 
     it = model_list_it_next(it);
     er = (ziti_edge_router *) model_list_it_element(it);
-    tls = (const char *) model_map_get(&er->protocols, "tls");
-    REQUIRE_THAT(tls, Catch::Matchers::Matches("tls://cd938be5-bd0b-48b3-8db8-67e4bf62eb10.production.netfoundry.io:443"));
+    REQUIRE_THAT(er->protocols.tls, Catch::Matchers::Matches("tls://cd938be5-bd0b-48b3-8db8-67e4bf62eb10.production.netfoundry.io:443"));
 
     free_ziti_session(s);
     free(s);
