@@ -118,7 +118,8 @@ static void process_bindings(struct ziti_conn *conn) {
     const char *proto;
     const char *url;
     MODEL_LIST_FOREACH(er, ns->edge_routers) {
-        MODEL_MAP_FOREACH(proto, url, &er->protocols) {
+        url = er->protocols.tls;
+        if(url != NULL) {
             CONN_LOG(DEBUG, "checking %s[%s]", er->name, url);
             ziti_channel_t *ch = model_map_get(&ztx->channels, url);
             if (ch == NULL || !ziti_channel_is_connected(ch)) {

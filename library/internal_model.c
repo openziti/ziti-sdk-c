@@ -69,6 +69,8 @@ IMPL_MODEL(ziti_id_cfg, ZITI_ID_CFG_MODEL)
 
 IMPL_MODEL(ziti_config, ZITI_CONFIG_MODEL)
 
+IMPL_MODEL(ziti_er_protocols, ZITI_ER_PROTOCOLS)
+
 IMPL_MODEL(ziti_edge_router, ZITI_EDGE_ROUTER_MODEL)
 
 IMPL_MODEL(ziti_session, ZITI_SESSION_MODEL)

@@ -1333,7 +1333,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
     ziti_edge_router **erp = ers;
     while (*erp) {
         ziti_edge_router *er = *erp;
-        const char *tls = model_map_get(&er->protocols, "tls");
+        const char *tls = er->protocols.tls;
 
         if (tls) {
             // check if it is already in the list
