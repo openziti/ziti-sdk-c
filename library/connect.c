@@ -81,7 +81,7 @@ static bool flush_to_service(ziti_connection conn);
 
 static bool flush_to_client(ziti_connection conn);
 
-static void process_connect(struct ziti_conn *conn);
+static void process_connect(struct ziti_conn *conn, ziti_session *session);
 
 static int send_fin_message(ziti_connection conn, struct ziti_write_req_s *wr);
 
@@ -89,7 +89,8 @@ static void queue_edge_message(struct ziti_conn *conn, message *msg, int code);
 
 static void process_edge_message(struct ziti_conn *conn, message *msg);
 
-static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t *ch);
+static bool ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct ziti_conn *conn);
+static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t *ch, ziti_session *session);
 
 static int ziti_disconnect(ziti_connection conn);
 
@@ -302,35 +303,6 @@ static int send_message(struct ziti_conn *conn, message *m, struct ziti_write_re
     return ziti_channel_send_message(ch, m, wr);
 }
 
-static void on_channel_connected(ziti_channel_t *ch, void *ctx, int status) {
-    uintptr_t cid = (uintptr_t) ctx;
-    uint32_t conn_id = (uint32_t) cid;
-    ziti_context ztx = ch->ctx;
-
-    // check if it is still a valid connection;
-    // connection may be completed and gone by the time this channel gets connected
-    struct ziti_conn *conn = model_map_getl(&ztx->connections, (long) conn_id);
-    if (conn == NULL) {
-        ZTX_LOG(VERBOSE, "ch[%d] connection(id = %d) is gone", ch->id, conn_id);
-        return;
-    }
-
-    // if channel was already selected
-    if (conn->channel != NULL) {
-        CONN_LOG(TRACE, "is already using another channel");
-    } else {
-        if (status < 0) {
-            ZTX_LOG(ERROR, "ch[%d] failed to connect [%d/%s]", ch->id, status, uv_strerror(status));
-        } else if (conn->conn_req && conn->conn_req->failed) {
-            CONN_LOG(DEBUG, "request already timed out or closed");
-        } else { // first channel to connect
-            CONN_LOG(DEBUG, "selected ch[%s] status[%d]", ch->name, status);
-
-            ziti_channel_start_connection(conn, ch);
-        }
-    }
-}
-
 static void complete_conn_req(struct ziti_conn *conn, int code) {
     if (conn->conn_req && conn->conn_req->cb) {
         if (code != ZITI_OK) {
@@ -384,26 +356,16 @@ static void connect_timeout(uv_timer_t *timer) {
     }
 }
 
-static int ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct ziti_conn *conn) {
-    // verify ziti context is still authorized
-    if (ztx->api_session == NULL) {
-        CONN_LOG(ERROR, "ziti context is not authenticated, cannot connect to service[%s]", conn->service);
-        complete_conn_req(conn, ZITI_INVALID_STATE);
-        return ZITI_INVALID_STATE;
-    }
+static void pending_connect() {
 
-    if (model_list_size(&session->edge_routers) == 0) {
-        CONN_LOG(ERROR, "no edge routers available for service[%s] session[%s]", conn->service, session->id);
-        complete_conn_req(conn, ZITI_GATEWAY_UNAVAILABLE);
-        return ZITI_GATEWAY_UNAVAILABLE;
-    }
+}
 
+static bool ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct ziti_conn *conn) {
     conn->channel = NULL;
 
     ziti_edge_router *er;
     ziti_channel_t *best_ch = NULL;
     uint64_t best_latency = UINT64_MAX;
-    uintptr_t conn_id = conn->conn_id;
 
     MODEL_LIST_FOREACH(er, session->edge_routers) {
         const char *tls = er->protocols.tls;
@@ -416,9 +378,6 @@ static int ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct ziti
                     best_ch = ch;
                     best_latency = ch->latency;
                 }
-            } else {
-                CONN_LOG(TRACE, "connecting to %s(%s) for session[%s]", er->name, tls, session->id);
-                ziti_channel_connect(ztx, er->name, tls, on_channel_connected, (void *) conn_id);
             }
         }
     }
@@ -426,10 +385,11 @@ static int ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct ziti
     if (best_ch) {
         CONN_LOG(DEBUG, "selected ch[%s@%s] for best latency(%llu ms)", best_ch->name, best_ch->url,
                  (unsigned long long) best_ch->latency);
-        on_channel_connected(best_ch, (void *) conn_id, ZITI_OK);
+        ziti_channel_start_connection(conn, best_ch, session);
+        return true;
     }
 
-    return 0;
+    return false;
 }
 
 static void connect_get_service_cb(ziti_context ztx, ziti_service *s, int status, void *ctx) {
@@ -447,7 +407,7 @@ static void connect_get_service_cb(ziti_context ztx, ziti_service *s, int status
 
         req->service_id = strdup(s->id);
         conn->encrypted = s->encryption;
-        process_connect(conn);
+        process_connect(conn, NULL);
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
         CONN_LOG(ERROR, "service[%s] is not available for ztx[%s]", conn->service, ztx->api_session->identity->name);
         complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
@@ -474,28 +434,37 @@ static void connect_get_net_session_cb(ziti_session *s, const ziti_error *err, v
             complete_conn_req(conn, e);
         }
     } else {
-        req->session = s;
         s->service_id = strdup(req->service_id);
-        if (req->session_type == ziti_session_types.Dial) {
-            ziti_session *existing = model_map_get(&ztx->sessions, req->service_id);
-            // this happens with concurrent connection requests for the same service (common with browsers)
-            if (existing) {
-                CONN_LOG(DEBUG, "found session[%s] for service[%s]", existing->id, conn->service);
-                free_ziti_session(s);
-                free(s);
-                req->session = existing;
-            } else {
-                CONN_LOG(DEBUG, "got session[%s] for service[%s]", s->id, conn->service);
-                model_map_set(&ztx->sessions, s->service_id, s);
-            }
+        ziti_session *existing = model_map_set(&ztx->sessions, req->service_id, s);
+        // this happens with concurrent connection requests for the same service (common with browsers)
+        if (existing) {
+            CONN_LOG(DEBUG, "discarding existing session[%s] for service[%s]", existing->id, conn->service);
+            free_ziti_session(existing);
+            free(existing);
+        } else {
+            CONN_LOG(DEBUG, "got session[%s] for service[%s]", s->id, conn->service);
+            model_map_set(&ztx->sessions, s->service_id, s);
         }
-        process_connect(conn);
+        process_connect(conn, s);
     }
 }
 
-static void process_connect(struct ziti_conn *conn) {
+static void process_connect(struct ziti_conn *conn, ziti_session *session) {
+    assert(conn->conn_req);
+    assert(conn->ziti_ctx);
+
     struct ziti_conn_req *req = conn->conn_req;
     struct ziti_ctx *ztx = conn->ziti_ctx;
+
+    assert(req->session_type == ziti_session_types.Dial);
+
+    // verify ziti context is still authorized
+    if (ztx->api_session == NULL) {
+        CONN_LOG(ERROR, "ziti context is not authenticated, cannot connect to service[%s]", conn->service);
+        complete_conn_req(conn, ZITI_INVALID_STATE);
+        return;
+    }
+
     uv_loop_t *loop = ztx->loop;
     
     // find service
@@ -509,26 +478,45 @@ static void process_connect(struct ziti_conn *conn) {
     }
 
     ziti_send_posture_data(ztx);
-    if (req->session == NULL && req->session_type == ziti_session_types.Dial) {
-        req->session = model_map_get(&ztx->sessions, req->service_id);
+    if (session == NULL) {
+        session = model_map_get(&ztx->sessions, req->service_id);
     }
 
-    if (req->session == NULL) {
-        CONN_LOG(DEBUG, "requesting '%s' session for service[%s]", ziti_session_types.name(req->session_type),
-                 conn->service);
-        ziti_ctrl_create_session(&ztx->controller, req->service_id, req->session_type, connect_get_net_session_cb,
-                                 conn);
+    if (session == NULL) {
+        CONN_LOG(DEBUG, "requesting 'Dial' session for service[%s]", conn->service);
+        // this will re-enter with session if create succeeds
+        ziti_ctrl_create_session(&ztx->controller, req->service_id, ziti_session_types.Dial,
+                                 connect_get_net_session_cb, conn);
         return;
-    } else {
-        if (req->dial_opts.connect_timeout_seconds > 0) {
-            req->conn_timeout = calloc(1, sizeof(uv_timer_t));
-            uv_timer_init(loop, req->conn_timeout);
-            req->conn_timeout->data = conn;
-            uv_timer_start(req->conn_timeout, connect_timeout, req->dial_opts.connect_timeout_seconds * 1000, 0);
+    }
+
+    if (model_list_size(&session->edge_routers) == 0) {
+        if (session->refresh) {
+            ziti_ctrl_get_session(&ztx->controller, session->id, connect_get_net_session_cb, conn);
+            return;
+        } else {
+            CONN_LOG(ERROR, "no edge routers available for service[%s] session[%s]", conn->service, session->id);
+            complete_conn_req(conn, ZITI_GATEWAY_UNAVAILABLE);
+            return;
         }
-        CONN_LOG(DEBUG, "starting %s connection for service[%s] with session[%s]",
-                 ziti_session_types.name(req->session_type), conn->service, req->session->id);
-        ziti_connect(ztx, req->session, conn);
+    }
+
+    if (req->dial_opts.connect_timeout_seconds > 0) {
+        req->conn_timeout = calloc(1, sizeof(uv_timer_t));
+        uv_timer_init(loop, req->conn_timeout);
+        req->conn_timeout->data = conn;
+        uv_timer_start(req->conn_timeout, connect_timeout, req->dial_opts.connect_timeout_seconds * 1000, 0);
+    }
+
+    CONN_LOG(DEBUG, "starting Dial connection for service[%s] with session[%s]", conn->service, session->id);
+    if (!ziti_connect(ztx, session, conn)) {
+        CONN_LOG(DEBUG, "no active edge routers, pending ER connection");
+        // TODO deal with pending connect
+        conn_wait_for_er(ztx, session, conn);
+    }
+
+    if (session->refresh) {
+
     }
 }
 
@@ -577,7 +565,7 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
 
     conn->start = uv_now(conn->ziti_ctx->loop);
 
-    process_connect(conn);
+    process_connect(conn, NULL);
     return ZITI_OK;
 }
 
@@ -920,7 +908,7 @@ static void restart_connect(struct ziti_conn *conn) {
     CONN_LOG(DEBUG, "restarting connect sequence");
     conn->channel = NULL;
 
-    process_connect(conn);
+    process_connect(conn, NULL);
 }
 
 void connect_reply_cb(void *ctx, message *msg, int err) {
@@ -999,9 +987,8 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
     }
 }
 
-static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t *ch) {
+static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t *ch, ziti_session *session) {
     struct ziti_conn_req *req = conn->conn_req;
-    ziti_session *s = req->session;
 
     uint32_t content_type;
     switch (conn->state) {
@@ -1016,18 +1003,7 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
             return ZITI_WTF;
     }
 
-    if (!ziti_is_session_valid(conn->ziti_ctx, s, req->service_id, req->session_type)) {
-        CONN_LOG(DEBUG, "session is no longer valid");
-        if (req->session_type == ziti_session_types.Bind) {
-            free_ziti_session(req->session);
-            FREE(req->session);
-        }
-        req->session = NULL;
-        restart_connect(conn);
-        return ZITI_OK;
-    }
-
-    CONN_LOG(TRACE, "ch[%d] => Edge Connect request token[%s]", ch->id, s->token);
+    CONN_LOG(TRACE, "ch[%d] => Edge Connect request token[%s]", ch->id, session->token);
     conn->channel = ch;
     ziti_channel_add_receiver(ch, conn->conn_id, conn,
                               (void (*)(void *, message *, int)) queue_edge_message);
@@ -1099,7 +1075,8 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
     }
 
     req->waiter = ziti_channel_send_for_reply(ch, content_type, headers, nheaders,
-                                              s->token, strlen(s->token), connect_reply_cb, conn);
+                                              session->token, strlen(session->token),
+                                              connect_reply_cb, conn);
 
     return ZITI_OK;
 }
