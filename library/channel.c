@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -85,7 +85,7 @@ static void process_inbound(ziti_channel_t *ch);
 static void on_tls_close(uv_handle_t *s);
 
 static inline void close_connection(ziti_channel_t *ch) {
-    if (ch->connection) {
+    if (ch->connection && ch->connection->close_cb == NULL) {
         tlsuv_stream_t *conn = ch->connection;
         CH_LOG(DEBUG, "closing TLS[%p]", conn);
         tlsuv_stream_close(conn, on_tls_close);
@@ -181,6 +181,10 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
 }
 
 void ziti_channel_free(ziti_channel_t *ch) {
+    if (ch->connection) {
+        ch->connection->data = NULL;
+        ch->connection = NULL;
+    }
     free_buffer(ch->incoming);
     pool_destroy(ch->in_msg_pool);
     ch->in_msg_pool = NULL;
@@ -212,14 +216,17 @@ int ziti_close_channels(struct ziti_ctx *ztx, int err) {
 static void on_tls_close(uv_handle_t *s) {
     tlsuv_stream_t *tls = (tlsuv_stream_t *) s;
     ziti_channel_t *ch = tls->data;
-    ch->connection = NULL;
+
+    if (ch) {
+        ch->connection = NULL;
+        if (ch->reconnect) {
+            ch->reconnect = false;
+            reconnect_channel(ch, true);
+        }
+    }
 
     tlsuv_stream_free(tls);
     free(tls);
-
-    if (ch->reconnect) {
-        reconnect_channel(ch, true);
-    }
 }
 
 int ziti_channel_close(ziti_channel_t *ch, int err) {
@@ -307,6 +314,22 @@ static void check_connecting_state(ziti_channel_t *ch) {
         CH_LOG(DEBUG, "state check: timer is too far into the future!");
         reset = true;
     }
+}
+
+int ziti_channel_force_connect(ziti_channel_t *ch) {
+    if (ch == NULL) {
+        return ZITI_INVALID_STATE;
+    }
+
+    if (ch->state == Closed) {
+        return ZITI_GATEWAY_UNAVAILABLE;
+    }
+
+    if (ch->state == Disconnected) {
+        reconnect_channel(ch, true);
+    }
+
+    return ZITI_OK;
 }
 
 int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url, ch_connect_cb cb, void *cb_ctx) {
@@ -778,6 +801,12 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
 
     uint64_t timeout = 0;
     if (!now) {
+        if (uv_is_active((const uv_handle_t *) ch->timer) &&
+            ch->timer->timer_cb == reconnect_cb) {
+            // reconnect is already scheduled
+            return;
+        }
+
         ch->reconnect_count++;
         int backoff = MIN(ch->reconnect_count, MAX_BACKOFF);
 
@@ -786,8 +815,7 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
 
         timeout = random % ((1U << backoff) * BACKOFF_TIME);
         CH_LOG(INFO, "reconnecting in %" PRIu64 "ms (attempt = %d)", timeout, ch->reconnect_count);
-    }
-    else {
+    } else {
         CH_LOG(INFO, "reconnecting NOW");
     }
     uv_timer_start(ch->timer, reconnect_cb, timeout, 0);
@@ -894,7 +922,8 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
 }
 
 static void on_channel_connect_internal(uv_connect_t *req, int status) {
-    ziti_channel_t *ch = req->data;
+    tlsuv_stream_t *tls = (tlsuv_stream_t *)req->handle;
+    ziti_channel_t *ch = tls->data;
 
     if (status == 0) {
         if (ch->ctx->api_session != NULL && ch->ctx->api_session->token != NULL) {
@@ -908,7 +937,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             close_connection(ch);
             reconnect_channel(ch, false);
         }
-    } else {
+    } else if (ch != NULL) {
         CH_LOG(ERROR, "failed to connect to ER[%s] [%d/%s]", ch->name, status, uv_strerror(status));
 
         while (!LIST_EMPTY(&ch->conn_reqs)) {

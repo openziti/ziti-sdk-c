@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023. NetFoundry Inc.
+// Copyright (c) 2022-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -80,8 +80,6 @@ static void flush_connection(ziti_connection conn);
 static bool flush_to_service(ziti_connection conn);
 
 static bool flush_to_client(ziti_connection conn);
-
-static void process_connect(struct ziti_conn *conn, ziti_session *session);
 
 static int send_fin_message(ziti_connection conn, struct ziti_write_req_s *wr);
 
@@ -329,6 +327,7 @@ static void complete_conn_req(struct ziti_conn *conn, int code) {
         }
 
         flush_connection(conn);
+        model_map_removel(&conn->ziti_ctx->waiting_connections, (long)conn->conn_id);
     } else {
         CONN_LOG(WARN, "connection attempt was already completed");
     }
@@ -356,28 +355,39 @@ static void connect_timeout(uv_timer_t *timer) {
     }
 }
 
-static void pending_connect() {
+static void conn_wait_for_er() {
 
 }
 
 static bool ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct ziti_conn *conn) {
-    conn->channel = NULL;
+    bool result = false;
 
     ziti_edge_router *er;
+    ziti_channel_t *ch;
     ziti_channel_t *best_ch = NULL;
     uint64_t best_latency = UINT64_MAX;
+
+    model_list disconnected = {0};
+
+    conn->channel = NULL;
+
 
     MODEL_LIST_FOREACH(er, session->edge_routers) {
         const char *tls = er->protocols.tls;
 
         if (tls) {
-            ziti_channel_t *ch = model_map_get(&ztx->channels, tls);
+            ch = model_map_get(&ztx->channels, tls);
+            if (ch == NULL) continue;
 
-            if (ch != NULL && ch->state == Connected) {
+            if (ch->state == Connected) {
                 if (ch->latency < best_latency) {
                     best_ch = ch;
                     best_latency = ch->latency;
                 }
+            }
+
+            if (ch->state == Disconnected) {
+                model_list_append(&disconnected, ch);
             }
         }
     }
@@ -386,10 +396,19 @@ static bool ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct zit
         CONN_LOG(DEBUG, "selected ch[%s@%s] for best latency(%llu ms)", best_ch->name, best_ch->url,
                  (unsigned long long) best_ch->latency);
         ziti_channel_start_connection(conn, best_ch, session);
-        return true;
-    }
+        result = true;
+    } else {
+        // if no channels are currently connected
+        // force them to connect
+        MODEL_LIST_FOREACH(ch, disconnected) {
+            ziti_channel_force_connect(ch);
+        }
 
-    return false;
+        CONN_LOG(DEBUG, "waiting for suitable channel");
+        model_map_setl(&ztx->waiting_connections, (long)conn->conn_id, (void*)(uintptr_t)conn->conn_id);
+    }
+    model_list_clear(&disconnected, NULL);
+    return result;
 }
 
 static void connect_get_service_cb(ziti_context ztx, ziti_service *s, int status, void *ctx) {
@@ -417,6 +436,17 @@ static void connect_get_service_cb(ziti_context ztx, ziti_service *s, int status
     }
 }
 
+static void refresh_session_cb(ziti_session *s, const ziti_error *err, void *ctx) {
+    struct ziti_ctx *ztx = ctx;
+    if (err) {
+        ZITI_LOG(WARN, "failed to refresh session");
+    } else if (s != NULL) {
+        ZITI_LOG(DEBUG, "ztx[%d] refreshed session[%s]", ztx->id, s->id);
+        ziti_session *existing = model_map_set(&ztx->sessions, s->service_id, s);
+        free_ziti_session_ptr(existing);
+    }
+}
+
 static void connect_get_net_session_cb(ziti_session *s, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
@@ -434,7 +464,6 @@ static void connect_get_net_session_cb(ziti_session *s, const ziti_error *err, v
             complete_conn_req(conn, e);
         }
     } else {
-        s->service_id = strdup(req->service_id);
         ziti_session *existing = model_map_set(&ztx->sessions, req->service_id, s);
         // this happens with concurrent connection requests for the same service (common with browsers)
         if (existing) {
@@ -449,7 +478,7 @@ static void connect_get_net_session_cb(ziti_session *s, const ziti_error *err, v
     }
 }
 
-static void process_connect(struct ziti_conn *conn, ziti_session *session) {
+void process_connect(struct ziti_conn *conn, ziti_session *session) {
     assert(conn->conn_req);
     assert(conn->ziti_ctx);
 
@@ -512,11 +541,12 @@ static void process_connect(struct ziti_conn *conn, ziti_session *session) {
     if (!ziti_connect(ztx, session, conn)) {
         CONN_LOG(DEBUG, "no active edge routers, pending ER connection");
         // TODO deal with pending connect
-        conn_wait_for_er(ztx, session, conn);
     }
 
     if (session->refresh) {
-
+        CONN_LOG(DEBUG, "refreshing session[%s]", session->id);
+        ziti_ctrl_get_session(&ztx->controller, session->id, refresh_session_cb, ztx);
+        session->refresh = false;
     }
 }
 

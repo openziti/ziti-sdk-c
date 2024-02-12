@@ -298,6 +298,10 @@ struct ziti_ctx {
     // map<id,ziti_conn>
     model_map connections;
 
+    // map<conn_id,conn_id> -- connections waiting for a suitable channel
+    // map to make removal easier
+    model_map waiting_connections;
+
     uint32_t conn_seq;
 
     /* context wide metrics */
@@ -334,6 +338,8 @@ int ziti_close_channels(ziti_context ztx, int err);
 bool ziti_channel_is_connected(ziti_channel_t *ch);
 
 uint64_t ziti_channel_latency(ziti_channel_t *ch);
+
+int ziti_channel_force_connect(ziti_channel_t *ch);
 
 int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb, void *ctx);
 
@@ -400,6 +406,9 @@ const ziti_env_info* get_env_info();
 extern uv_timer_t *new_ztx_timer(ziti_context ztx);
 
 int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen);
+
+void process_connect(struct ziti_conn *conn, ziti_session *session);
+
 
 #ifdef __cplusplus
 }

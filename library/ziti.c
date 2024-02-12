@@ -1796,6 +1796,26 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_c
             shutdown_and_free(ztx);
         }
     }
+
+    if (status == EdgeRouterConnected) {
+        // move all ids to a list
+        model_list ids = {0};
+        MODEL_MAP_FOR(it, ztx->waiting_connections) {
+            model_list_append(&ids, model_map_it_value(it));
+        }
+
+        model_map_clear(&ztx->waiting_connections, NULL);
+
+        model_list_iter id_it = model_list_iterator(&ids);
+        while(id_it != NULL) {
+            uint32_t conn_id = (uint32_t)(uintptr_t)model_list_it_element(id_it);
+            ziti_connection conn = model_map_getl(&ztx->connections, (long)conn_id);
+            if (conn != NULL) {
+                process_connect(conn, NULL);
+            }
+            id_it = model_list_it_remove(id_it);
+        }
+    }
 }
 
 static void ztx_work_async(uv_async_t *ar) {
