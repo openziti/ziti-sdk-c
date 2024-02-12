@@ -1340,7 +1340,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
             // check if it is already in the list
             if (model_map_remove(&curr_routers, tls) == NULL) {
                 ZTX_LOG(TRACE, "connecting to %s(%s)", er->name, tls);
-                ziti_channel_connect(ztx, er->name, tls, NULL, NULL);
+                ziti_channel_connect(ztx, er->name, tls);
                 ers_changed = true;
             }
         } else {

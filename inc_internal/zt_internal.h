@@ -102,7 +102,6 @@ typedef struct ziti_channel {
     ch_state state;
     uint32_t reconnect_count;
 
-    LIST_HEAD(conn_reqs, ch_conn_req) conn_reqs;
     uint32_t msg_seq;
 
     buffer *incoming;
@@ -340,7 +339,7 @@ uint64_t ziti_channel_latency(ziti_channel_t *ch);
 
 int ziti_channel_force_connect(ziti_channel_t *ch);
 
-int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb, void *ctx);
+int ziti_channel_connect(ziti_context ztx, const char *name, const char *url);
 
 int ziti_channel_prepare(ziti_channel_t *ch);
 

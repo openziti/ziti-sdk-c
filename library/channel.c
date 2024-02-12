@@ -95,21 +95,10 @@ static inline void close_connection(ziti_channel_t *ch) {
 // global channel sequence
 static uint32_t channel_counter = 0;
 
-struct ch_write_req {
-    uv_buf_t buf;
-    ziti_channel_t *ch;
-};
-
 struct waiter_s {
     uint32_t seq;
     reply_cb cb;
     void *reply_ctx;
-};
-
-struct ch_conn_req {
-    ch_connect_cb cb;
-    void *ctx;
-    LIST_ENTRY(ch_conn_req) next;
 };
 
 struct msg_receiver {
@@ -160,7 +149,6 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     snprintf(ch->token, sizeof(ch->token), "ziti-sdk-c[%d]@%*.*s", ch->id, (int) hostlen, (int) hostlen, hostname);
 
     ch->state = Initial;
-    LIST_INIT(&ch->conn_reqs);
 
     ch->name = NULL;
     ch->in_next = NULL;
@@ -332,7 +320,7 @@ int ziti_channel_force_connect(ziti_channel_t *ch) {
     return ZITI_OK;
 }
 
-int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url, ch_connect_cb cb, void *cb_ctx) {
+int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url) {
     ziti_channel_t *ch = model_map_get(&ztx->channels, url);
 
     if (ch != NULL) {
@@ -345,29 +333,6 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url,
 
     if (ch->state == Connecting) {
         check_connecting_state(ch);
-    }
-
-    switch (ch->state) {
-        case Connected:
-            if (cb) {
-                cb(ch, cb_ctx, ZITI_OK);
-            }
-            break;
-
-        case Initial:
-        case Connecting:
-        case Disconnected:
-            if (cb != NULL) {
-                NEWP(r, struct ch_conn_req);
-                r->cb = cb;
-                r->ctx = cb_ctx;
-                LIST_INSERT_HEAD(&ch->conn_reqs, r, next);
-            }
-
-            break;
-        default:
-            CH_LOG(ERROR, "should not be here: %s", ziti_errorstr(ZITI_WTF));
-            return ZITI_WTF;
     }
 
     if (ch->state == Initial || ch->state == Disconnected) {
@@ -718,13 +683,6 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         close_connection(ch);
         reconnect_channel(ch, false);
     }
-
-    while (!LIST_EMPTY(&ch->conn_reqs)) {
-        struct ch_conn_req *r = LIST_FIRST(&ch->conn_reqs);
-        LIST_REMOVE(r, next);
-        r->cb(ch, r->ctx, cb_code);
-        free(r);
-    }
 }
 
 static void send_hello(ziti_channel_t *ch, ziti_api_session *session) {
@@ -939,13 +897,6 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
         }
     } else if (ch != NULL) {
         CH_LOG(ERROR, "failed to connect to ER[%s] [%d/%s]", ch->name, status, uv_strerror(status));
-
-        while (!LIST_EMPTY(&ch->conn_reqs)) {
-            struct ch_conn_req *r = LIST_FIRST(&ch->conn_reqs);
-            LIST_REMOVE(r, next);
-            r->cb(ch, r->ctx, status);
-            free(r);
-        }
 
         if (status != UV_ECANCELED) {
             close_connection(ch);
