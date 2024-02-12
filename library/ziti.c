@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023. NetFoundry Inc.
+// Copyright (c) 2022-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -1704,24 +1704,11 @@ bool ziti_is_session_valid(ziti_context ztx, ziti_session *session, const char *
     return s == session;
 }
 
-void ziti_invalidate_session(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type) {
-    if (session == NULL) {
-        return;
-    }
-
+void ziti_invalidate_session(ziti_context ztx, const char *service_id, ziti_session_type type) {
     if (type == ziti_session_types.Dial) {
-        ziti_session *s = model_map_get(&ztx->sessions, service_id);
-        if (s != session) {
-            // already removed or different one
-            // passed reference is no longer valid
-            session = NULL;
-        } else if (s == session) {
-            model_map_remove(&ztx->sessions, session->service_id);
-        }
+        ziti_session *s = model_map_remove(&ztx->sessions, service_id);
+        free_ziti_session_ptr(s);
     }
-
-    free_ziti_session(session);
-    FREE(session);
 }
 
 static const ziti_version sdk_version = {

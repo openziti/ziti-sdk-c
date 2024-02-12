@@ -65,7 +65,6 @@ struct local_hash {
 struct ziti_conn_req {
     ziti_session_type session_type;
     char *service_id;
-    ziti_session *session;
     ziti_conn_cb cb;
     ziti_dial_opts dial_opts;
 
@@ -144,11 +143,6 @@ static ziti_listen_opts *clone_ziti_listen_opts(const ziti_listen_opts *ln_opts)
 static void free_conn_req(struct ziti_conn_req *r) {
     if (r->conn_timeout != NULL) {
         uv_close((uv_handle_t *) r->conn_timeout, free_handle);
-    }
-
-    if (r->session_type == ziti_session_types.Bind && r->session) {
-        free_ziti_session(r->session);
-        FREE(r->session);
     }
 
     free_ziti_dial_opts(&r->dial_opts);
@@ -961,19 +955,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
         case ContentTypeStateClosed:
             if (strncmp(INVALID_SESSION, (const char *) msg->body, msg->header.body_len) == 0) {
                 CONN_LOG(WARN, "session for service[%s] became invalid", conn->service);
-                if (conn->conn_req->session_type == ziti_session_types.Dial) {
-                    ziti_session *s = model_map_get(&conn->ziti_ctx->sessions, req->service_id);
-                    if (s != req->session) {
-                        // already removed or different one
-                        // req reference is no longer valid
-                        req->session = NULL;
-                    } else if (s == req->session) {
-                        model_map_remove(&conn->ziti_ctx->sessions, req->service_id);
-                    }
-                }
-                free_ziti_session(req->session);
-                FREE(req->session);
-
+                ziti_invalidate_session(conn->ziti_ctx, conn->conn_req->service_id, ziti_session_types.Dial);
                 ziti_channel_rem_receiver(conn->channel, conn->conn_id);
                 conn->channel = NULL;
                 restart_connect(conn);
@@ -1359,9 +1341,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
                 case Accepting: {
                     if (strncmp(INVALID_SESSION, (const char *) msg->body, msg->header.body_len) == 0) {
                         CONN_LOG(WARN, "session for service[%s] became invalid", conn->service);
-                        ziti_invalidate_session(conn->ziti_ctx, conn->conn_req->session,
-                                                conn->conn_req->service_id, conn->conn_req->session_type);
-                        conn->conn_req->session = NULL;
+                        ziti_invalidate_session(conn->ziti_ctx, conn->conn_req->service_id, conn->conn_req->session_type);
                         retry_connect = true;
                     }
                     if (retry_connect) {

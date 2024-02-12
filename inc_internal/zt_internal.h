@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023. NetFoundry Inc.
+// Copyright (c) 2022-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -326,8 +326,7 @@ extern "C" {
 
 bool ziti_is_session_valid(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type);
 
-void
-ziti_invalidate_session(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type);
+void ziti_invalidate_session(ziti_context ztx, const char *service_id, ziti_session_type type);
 
 void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
 
