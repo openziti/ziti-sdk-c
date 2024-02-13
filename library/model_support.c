@@ -685,8 +685,8 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
         field_meta *fm = NULL;
         size_t token_len = tok->end - tok->start;
         for (int i = 0; i < meta->field_count; i++) {
-            if (strlen(meta->fields[i].path) == token_len &&
-                strncmp(meta->fields[i].path, json + tok->start, token_len) == 0) {
+            if (strncmp(meta->fields[i].path, json + tok->start, token_len) == 0 &&
+                meta->fields[i].path[token_len] == '\0') {
                 fm = &meta->fields[i];
                 break;
             }
