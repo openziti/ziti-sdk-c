@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023. NetFoundry Inc.
+// Copyright (c) 2022-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -1306,6 +1306,7 @@ void ziti_services_refresh(ziti_context ztx, bool now) {
 
 static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
+    bool ers_changed = false;
 
     if (err) {
         ZTX_LOG(ERROR, "failed to get current edge routers: code[%d] %s/%s",
@@ -1339,7 +1340,8 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
             // check if it is already in the list
             if (model_map_remove(&curr_routers, tls) == NULL) {
                 ZTX_LOG(TRACE, "connecting to %s(%s)", er->name, tls);
-                ziti_channel_connect(ztx, er->name, tls, NULL, NULL);
+                ziti_channel_connect(ztx, er->name, tls);
+                ers_changed = true;
             }
         } else {
             ZTX_LOG(DEBUG, "edge router %s does not have TLS edge listener", er->name);
@@ -1358,6 +1360,22 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
         ZTX_LOG(INFO, "removing channel[%s@%s]: no longer available", ch->name, er_url);
         ziti_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE);
         it = model_map_it_remove(it);
+        ers_changed = true;
+    }
+    
+    // if the list of ERs changed, we want to opportunistically 
+    // refresh sessions to clear out references to old ERs, 
+    // and pull new ERs (which could be better for dialing)
+
+    // we don't want to evict/refresh session right away
+    // because it may have a serviceable ER
+    // just refresh it on demand (next dial)
+    if (ers_changed) {
+        const char *serv;
+        ziti_session *session;
+        MODEL_MAP_FOREACH(serv, session, &ztx->sessions) {
+            session->refresh = true;
+        }
     }
 }
 
@@ -1686,24 +1704,11 @@ bool ziti_is_session_valid(ziti_context ztx, ziti_session *session, const char *
     return s == session;
 }
 
-void ziti_invalidate_session(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type) {
-    if (session == NULL) {
-        return;
-    }
-
+void ziti_invalidate_session(ziti_context ztx, const char *service_id, ziti_session_type type) {
     if (type == ziti_session_types.Dial) {
-        ziti_session *s = model_map_get(&ztx->sessions, service_id);
-        if (s != session) {
-            // already removed or different one
-            // passed reference is no longer valid
-            session = NULL;
-        } else if (s == session) {
-            model_map_remove(&ztx->sessions, session->service_id);
-        }
+        ziti_session *s = model_map_remove(&ztx->sessions, service_id);
+        free_ziti_session_ptr(s);
     }
-
-    free_ziti_session(session);
-    FREE(session);
 }
 
 static const ziti_version sdk_version = {
@@ -1776,6 +1781,26 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_c
         model_map_remove(&ztx->channels, ch->url);
         if (ztx->closing) {
             shutdown_and_free(ztx);
+        }
+    }
+
+    if (status == EdgeRouterConnected) {
+        // move all ids to a list
+        model_list ids = {0};
+        MODEL_MAP_FOR(it, ztx->waiting_connections) {
+            model_list_append(&ids, model_map_it_value(it));
+        }
+
+        model_map_clear(&ztx->waiting_connections, NULL);
+
+        model_list_iter id_it = model_list_iterator(&ids);
+        while(id_it != NULL) {
+            uint32_t conn_id = (uint32_t)(uintptr_t)model_list_it_element(id_it);
+            ziti_connection conn = model_map_getl(&ztx->connections, (long)conn_id);
+            if (conn != NULL) {
+                process_connect(conn, NULL);
+            }
+            id_it = model_list_it_remove(id_it);
         }
     }
 }

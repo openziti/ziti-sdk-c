@@ -40,7 +40,8 @@ XX(protocols, ziti_er_protocols, none, supportedProtocols, __VA_ARGS__)
 XX(token, string, none, token, __VA_ARGS__)\
 XX(id, string, none, id, __VA_ARGS__) \
 XX(edge_routers, ziti_edge_router, list, edgeRouters, __VA_ARGS__) \
-XX(service_id, string, none, NULL, __VA_ARGS__)
+XX(service_id, string, none, serviceId, __VA_ARGS__) \
+XX(refresh, bool, none, , __VA_ARGS__)
 
 #define ZITI_PROCESS_MODEL(XX, ...) \
 XX(path, string, none, path, __VA_ARGS__)

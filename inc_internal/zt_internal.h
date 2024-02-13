@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023. NetFoundry Inc.
+// Copyright (c) 2022-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -102,7 +102,6 @@ typedef struct ziti_channel {
     ch_state state;
     uint32_t reconnect_count;
 
-    LIST_HEAD(conn_reqs, ch_conn_req) conn_reqs;
     uint32_t msg_seq;
 
     buffer *incoming;
@@ -298,6 +297,10 @@ struct ziti_ctx {
     // map<id,ziti_conn>
     model_map connections;
 
+    // map<conn_id,conn_id> -- connections waiting for a suitable channel
+    // map to make removal easier
+    model_map waiting_connections;
+
     uint32_t conn_seq;
 
     /* context wide metrics */
@@ -322,8 +325,7 @@ extern "C" {
 
 bool ziti_is_session_valid(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type);
 
-void
-ziti_invalidate_session(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type);
+void ziti_invalidate_session(ziti_context ztx, const char *service_id, ziti_session_type type);
 
 void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
 
@@ -335,7 +337,9 @@ bool ziti_channel_is_connected(ziti_channel_t *ch);
 
 uint64_t ziti_channel_latency(ziti_channel_t *ch);
 
-int ziti_channel_connect(ziti_context ztx, const char *name, const char *url, ch_connect_cb, void *ctx);
+int ziti_channel_force_connect(ziti_channel_t *ch);
+
+int ziti_channel_connect(ziti_context ztx, const char *name, const char *url);
 
 int ziti_channel_prepare(ziti_channel_t *ch);
 
@@ -400,6 +404,9 @@ const ziti_env_info* get_env_info();
 extern uv_timer_t *new_ztx_timer(ziti_context ztx);
 
 int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen);
+
+void process_connect(struct ziti_conn *conn, ziti_session *session);
+
 
 #ifdef __cplusplus
 }
