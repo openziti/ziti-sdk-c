@@ -110,7 +110,7 @@ function(config_ziti_library target)
 
     target_sources(${target} PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 
-    target_link_libraries(${target} PUBLIC tlsuv ${sodium_libs})
+    target_link_libraries(${target} PUBLIC tlsuv ${sodium_libs} protobuf-c)
 
     if (CMAKE_SYSTEM_NAME MATCHES "Linux")
         target_link_libraries(${target} PUBLIC atomic)
