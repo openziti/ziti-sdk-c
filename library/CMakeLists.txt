@@ -18,8 +18,11 @@ endif ()
 
 set(CMAKE_FIND_DEBUG_MODE ON)
 include(FindPkgConfig)
-pkg_search_module(PBUFC libprotobuf-c)
+pkg_check_modules(PBUFC REQUIRED IMPORTED_TARGET libprotobuf-c)
 message(NOTICE "protobuf-c: ${PBUFC_INCLUDE_DIRS}")
+message(NOTICE "protobuf-c: ${PBUFC_LIBRARIES}")
+message(NOTICE "protobuf-c: ${PBUFC}")
+
 set(CMAKE_FIND_DEBUG_MODE OFF)
 
 if (ziti_DEVELOPER_MODE)
@@ -110,7 +113,7 @@ function(config_ziti_library target)
 
     target_sources(${target} PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 
-    target_link_libraries(${target} PUBLIC tlsuv ${sodium_libs} ${PBUFC_LIBS})
+    target_link_libraries(${target} PUBLIC tlsuv ${sodium_libs} PkgConfig::PBUFC)
 
     if (CMAKE_SYSTEM_NAME MATCHES "Linux")
         target_link_libraries(${target} PUBLIC atomic)
