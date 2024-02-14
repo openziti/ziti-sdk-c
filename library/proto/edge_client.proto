@@ -1,8 +1,10 @@
 syntax = "proto3";
 
-package ziti;
+package ziti.edge_client.pb;
 
 import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/openziti/sdk-golang/pb/edge_client_pb";
 
 enum ContentType {
   Zero = 0;
