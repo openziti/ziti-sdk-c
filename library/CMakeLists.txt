@@ -1,3 +1,5 @@
+include(FindPkgConfig)
+
 if (TARGET sodium)
     set(sodium_libs sodium)
 else ()
@@ -16,14 +18,7 @@ if (NOT sodium_libs)
     message(FATAL_ERROR "could not find required library[sodium]")
 endif ()
 
-set(CMAKE_FIND_DEBUG_MODE ON)
-include(FindPkgConfig)
 pkg_check_modules(PBUFC REQUIRED IMPORTED_TARGET libprotobuf-c)
-message(NOTICE "protobuf-c: ${PBUFC_INCLUDE_DIRS}")
-message(NOTICE "protobuf-c: ${PBUFC_LIBRARIES}")
-message(NOTICE "protobuf-c: ${PBUFC}")
-
-set(CMAKE_FIND_DEBUG_MODE OFF)
 
 if (ziti_DEVELOPER_MODE)
     find_program(PROTO_GEN protoc)
@@ -38,6 +33,7 @@ if (ziti_DEVELOPER_MODE)
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/proto
                 COMMAND protoc --c_out=. -I ${PBUFC_INCLUDE_DIRS} -I. ${PROTO_FILES}
         )
+        message(NOTICE "dev mode: use generate-protobuf target to update protobuf objects")
     endif ()
 endif ()
 set(ZITI_HEADER_FILES
