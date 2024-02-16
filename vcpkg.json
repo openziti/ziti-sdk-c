@@ -7,6 +7,7 @@
     "zlib",
     "llhttp",
     "libsodium",
+    "json-c",
     "protobuf-c"
   ],
   "features": {

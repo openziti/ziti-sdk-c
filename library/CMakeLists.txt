@@ -36,6 +36,9 @@ if (ziti_DEVELOPER_MODE)
         message(NOTICE "dev mode: use generate-protobuf target to update protobuf objects")
     endif ()
 endif ()
+
+find_package(json-c CONFIG REQUIRED)
+
 set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/errors.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti.h
@@ -109,7 +112,12 @@ function(config_ziti_library target)
 
     target_sources(${target} PRIVATE ${ZITI_PRIVATE_SRC_FILES})
 
-    target_link_libraries(${target} PUBLIC tlsuv ${sodium_libs} PkgConfig::PBUFC)
+    target_link_libraries(${target} PUBLIC
+            tlsuv
+            ${sodium_libs}
+            json-c::json-c
+            PkgConfig::PBUFC
+    )
 
     if (CMAKE_SYSTEM_NAME MATCHES "Linux")
         target_link_libraries(${target} PUBLIC atomic)
