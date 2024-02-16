@@ -1,9 +1,9 @@
-// Copyright (c) 2020-2023.  NetFoundry Inc.
+// Copyright (c) 2020-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -42,6 +42,8 @@ typedef uint32_t in_addr_t;
     if ((rh) == NULL) { return 1; }
 
 IMPL_ENUM(ziti_enrollment_method, ZITI_ENROLLMENT_METHOD)
+
+IMPL_ENUM(ziti_ctrl_cap, ZITI_CTRL_CAP_ENUM)
 
 IMPL_MODEL(ziti_posture_query, ZITI_POSTURE_QUERY_MODEL)
 

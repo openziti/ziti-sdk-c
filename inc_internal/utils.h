@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -106,7 +106,7 @@ if (COND(ex)(ERR(ex))) { ERFILE(ex) = __FILENAME__; ERLINE(ex) = __LINE__; _##ex
 
 
 
-#define container_of(ptr, type, member) ((type *) ((ptr) - offsetof(type, member)))
+#define container_of(ptr, type, member) ((type *) ((char*)(ptr) - offsetof(type, member)))
 
 #define CLOSE_AND_NULL(h) do{ if (h) { \
 if (!uv_is_closing((uv_handle_t*)(h))) uv_close((uv_handle_t*)(h), (uv_close_cb)free); \
