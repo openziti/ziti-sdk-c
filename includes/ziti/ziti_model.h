@@ -1,9 +1,9 @@
-// Copyright (c) 2020-2022.  NetFoundry Inc.
+// Copyright (c) 2020-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -59,10 +59,15 @@ XX(path, string, none, path, __VA_ARGS__)
 #define ZITI_API_VERSIONS_MODEL(XX, ...) \
 XX(edge, api_path, map, edge, __VA_ARGS__)
 
+#define ZITI_CTRL_CAP_ENUM(XX, ...) \
+XX(HA_CONTROLLER, __VA_ARGS__)      \
+XX(OIDC_AUTH, __VA_ARGS__)
+
 #define ZITI_VERSION_MODEL(XX, ...) \
 XX(version, string, none, version, __VA_ARGS__) \
 XX(revision, string, none, revision, __VA_ARGS__) \
 XX(build_date, string, none, buildDate, __VA_ARGS__) \
+XX(capabilities, ziti_ctrl_cap, list, capabilities, __VA_ARGS__) \
 XX(api_versions, ziti_api_versions, ptr, apiVersions, __VA_ARGS__)
 
 #define ZITI_IDENTITY_MODEL(XX, ...) \
@@ -205,6 +210,8 @@ ZITI_FUNC bool ziti_protocol_match(ziti_protocol proto, const model_list *proto_
 ZITI_FUNC int ziti_port_match(int port, const model_list *port_range_list);
 
 DECLARE_ENUM(ziti_session_type, ZITI_SESSION_TYPE_ENUM)
+
+DECLARE_ENUM(ziti_ctrl_cap, ZITI_CTRL_CAP_ENUM)
 
 DECLARE_MODEL(api_path, ZITI_API_PATH_MODEL)
 

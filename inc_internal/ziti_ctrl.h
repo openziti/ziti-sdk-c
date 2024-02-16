@@ -1,9 +1,9 @@
-// Copyright (c) 2019-2023.  NetFoundry Inc.
+// Copyright (c) 2019-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -19,7 +19,6 @@
 #include <tlsuv/http.h>
 #include "internal_model.h"
 #include "ziti/ziti_model.h"
-#include "zt_internal.h"
 
 #ifdef __cplusplus
 extern "C" {
