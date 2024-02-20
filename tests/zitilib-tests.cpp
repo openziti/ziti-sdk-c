@@ -23,6 +23,7 @@
 #if _WIN32
 #else
 #include <unistd.h>
+#include <sys/socket.h>
 #endif
 
 class testRunListener : public Catch::EventListenerBase {
