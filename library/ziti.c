@@ -473,6 +473,7 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ZTX_LOG(DEBUG, "using metrics interval: %d", (int) ztx->opts.metrics_type);
     metrics_rate_init(&ztx->up_rate, ztx->opts.metrics_type);
     metrics_rate_init(&ztx->down_rate, ztx->opts.metrics_type);
+    metrics_init(loop, 5);
 
     if (init_req->start) {
         ziti_start_internal(ztx, NULL);
