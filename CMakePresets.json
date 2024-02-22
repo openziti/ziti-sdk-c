@@ -179,8 +179,8 @@
         "CMAKE_MAKE_PROGRAM": "ninja",
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++",
-        "VCPKG_TARGET_TRIPLET": "x64-freebsd"
-        // "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/FreeBSD-x64.cmake"
+        "VCPKG_TARGET_TRIPLET": "x64-freebsd",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/FreeBSD-x64.cmake"
       }
     },
     {

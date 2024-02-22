@@ -123,6 +123,10 @@ function(config_ziti_library target)
         target_link_libraries(${target} PUBLIC atomic)
     endif ()
 
+    if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+        target_link_libraries(${target} PUBLIC endian)
+    endif ()
+
     if (NOT WIN32)
         target_link_libraries(${target} PUBLIC m)
     endif ()
