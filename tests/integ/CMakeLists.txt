@@ -9,8 +9,19 @@ execute_process(COMMAND ${EXPECTOR} -v)
 
 find_program(GOLANG_EXE NAMES go REQUIRED)
 
+set(test_client_json ${CMAKE_CURRENT_BINARY_DIR}/test-client.json)
+set(test_server_json ${CMAKE_CURRENT_BINARY_DIR}/test-server.json)
+
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
+        ${CMAKE_CURRENT_BINARY_DIR}/include/test-data.h
+        @ONLY
+)
+
 add_executable(integ-tests
         main.cpp)
+target_include_directories(integ-tests
+        PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include
+        PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 target_link_libraries(integ-tests
         PRIVATE ziti
         PRIVATE Catch2::Catch2WithMain
