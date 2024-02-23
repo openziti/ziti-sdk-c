@@ -22,7 +22,7 @@ else ()
     set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
 endif ()
 
-set(ZITI_CLI_VER "v0.32.1" CACHE STRING "ziti version for integration tests")
+set(ZITI_CLI_VER "v0.32.2" CACHE STRING "ziti version for integration tests")
 add_custom_target(ziti-cli ALL
         COMMAND ${CMAKE_COMMAND} -E env GOBIN=${CMAKE_CURRENT_BINARY_DIR}
         ${GOLANG_EXE} install github.com/openziti/ziti/ziti@${ZITI_CLI_VER}
