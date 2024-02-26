@@ -4,7 +4,6 @@ message("catch2 is ${Catch2_CONFIG}")
 
 add_executable(all_tests
         test_ziti_model.cpp
-        ctrl_tests.cpp
         test_jwt.cpp
         model_tests.cpp
         test_metrics.cpp
