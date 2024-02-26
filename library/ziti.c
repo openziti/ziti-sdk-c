@@ -557,6 +557,7 @@ static void free_ztx(uv_handle_t *h) {
     ziti_event_t ev = {0};
     ev.type = ZitiContextEvent;
     ev.event.ctx.ctrl_status = ZITI_DISABLED;
+    ev.event.ctx.err = ziti_errorstr(ZITI_DISABLED);
 
     ziti_send_event(ztx, &ev);
 
@@ -1672,7 +1673,7 @@ static void api_session_cb(ziti_api_session *session, const ziti_error *err, voi
 }
 
 static void update_ctrl_status(ziti_context ztx, int errCode, const char *errMsg) {
-    if (ztx->ctrl_status != errCode) {
+    if (ztx->ctrl_status != errCode && ztx->enabled) {
         ziti_event_t ev = {
                 .type = ZitiContextEvent,
                 .event.ctx = {
