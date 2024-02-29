@@ -1968,6 +1968,7 @@ static void version_pre_auth_cb(ziti_version *version, const ziti_error *err, vo
 
         if (ha) {
             // TODO
+            ZTX_LOG(ERROR, "HA mode is not supported");
         } else {
             ztx->auth_method = new_legacy_auth(&ztx->controller);
             ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
