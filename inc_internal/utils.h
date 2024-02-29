@@ -131,6 +131,8 @@ int gen_p11_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char 
 
 int load_file(const char *path, size_t pathlen, char **content, size_t *size);
 
+uint64_t next_backoff(int *count, int max, uint64_t base);
+
 #ifdef __cplusplus
 }
 #endif
