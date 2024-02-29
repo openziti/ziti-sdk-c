@@ -1496,7 +1496,7 @@ static void session_post_auth_query_cb(ziti_context ztx, int status, void *ctx) 
         ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
 
         //if we had auth queries, refresh state to zero out
-        if (session->auth_queries != NULL && *session->auth_queries != NULL) {
+        if (model_list_size(&session->auth_queries) > 0) {
             ziti_ctrl_current_api_session(&ztx->controller, update_session_data, ztx);
         }
 
@@ -1585,7 +1585,7 @@ void ziti_set_api_session(ziti_context ztx, ziti_api_session *session) {
     }
 
 
-    if (session->auth_queries != NULL && *session->auth_queries != NULL) {
+    if (model_list_size(&session->auth_queries) > 0) {
         ziti_set_partially_authenticated(ztx);
         update_ctrl_status(ztx, ZITI_PARTIALLY_AUTHENTICATED, NULL);
     } else {
