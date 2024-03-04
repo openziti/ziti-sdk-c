@@ -15,7 +15,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_session.hpp>
 
-#include <sys/socket.h>
 #include <ziti/zitilib.h>
 #include "catch2/reporters/catch_reporters_all.hpp"
 #include "catch2/matchers/catch_matchers.hpp"
@@ -24,6 +23,7 @@
 #if _WIN32
 #else
 #include <unistd.h>
+#include <sys/socket.h>
 #endif
 
 class testRunListener : public Catch::EventListenerBase {
