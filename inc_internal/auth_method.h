@@ -15,6 +15,8 @@
 #ifndef ZITI_SDK_AUTH_METHOD_H
 #define ZITI_SDK_AUTH_METHOD_H
 
+#include "ziti_ctrl.h"
+
 enum AuthenticationMethod {
     LEGACY,
     HA
@@ -41,7 +43,7 @@ struct ziti_auth_method_s {
     void (*free)(ziti_auth_method_t *self);
 };
 
-ziti_auth_method_t *new_legacy_auth(ziti_controller *);
-ziti_auth_method_t *new_ha_auth(ziti_context);
+ziti_auth_method_t *new_legacy_auth(ziti_controller *ctrl);
+ziti_auth_method_t *new_ha_auth(ziti_context ztx);
 
 #endif // ZITI_SDK_AUTH_METHOD_H
