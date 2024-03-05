@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -672,4 +672,15 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
     *size = read;
 
     return ZITI_OK;
+}
+
+uint64_t next_backoff(int *count, int max, uint64_t base) {
+    int c = *count + 1;
+    int backoff = MIN(c, max);
+
+    uint32_t random;
+    uv_random(NULL, NULL, &random, sizeof(random), 0, NULL);
+
+    *count = c;
+    return random % ((1U << backoff) * base);
 }

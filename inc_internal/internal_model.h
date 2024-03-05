@@ -1,9 +1,9 @@
-// Copyright (c) 2020-2023.  NetFoundry Inc.
+// Copyright (c) 2020-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -55,7 +55,7 @@ XX(updated, timestamp, ptr, updatedAt, __VA_ARGS__) \
 XX(cached_last_activity_at, timestamp, ptr, cachedLastActivityAt, __VA_ARGS__) \
 XX(identity, ziti_identity, ptr, identity, __VA_ARGS__) \
 XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__) \
-XX(auth_queries, ziti_auth_query_mfa, array, authQueries, __VA_ARGS__)         \
+XX(auth_queries, ziti_auth_query_mfa, list, authQueries, __VA_ARGS__)         \
 XX(authenticator_id, string, none, authenticatorId, __VA_ARGS__)
 
 #define ZITI_ERROR_MODEL(XX, ...) \

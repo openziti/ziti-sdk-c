@@ -86,8 +86,13 @@ typedef void *model_list_iter;
 
 ZITI_FUNC size_t model_list_size(const model_list *l);
 
+// insert at the head
+ZITI_FUNC void model_list_push (model_list *l, void *el);
+
+// append to the end
 ZITI_FUNC void model_list_append(model_list *l, void *el);
 
+// remove from the head
 ZITI_FUNC void *model_list_pop(model_list *l);
 
 ZITI_FUNC void *model_list_head(const model_list *l);

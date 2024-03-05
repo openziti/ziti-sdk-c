@@ -1,18 +1,16 @@
-/*
-Copyright (c) 2019-2020 NetFoundry, Inc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Copyright (c) 2019-2024. NetFoundry Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+//
+// You may obtain a copy of the License at
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "auth_queries.h"
 
@@ -125,27 +123,23 @@ void ziti_auth_query_mfa_process(ziti_mfa_auth_ctx *mfa_auth_ctx) {
 }
 
 void ziti_auth_query_process(ziti_context ztx, void(*cb)(ziti_context, int, void *)) {
-    ziti_auth_query_mfa **aq;
-
+    ziti_auth_query_mfa *aq;
     ziti_auth_query_mfa *ziti_mfa = NULL;
-    if (ztx->api_session->auth_queries != NULL) {
-        for (aq = ztx->api_session->auth_queries; *aq != NULL; aq++) {
-            ziti_auth_query_mfa *current_aq = *aq;
-
-            if (strncmp(current_aq->type_id, AUTH_QUERY_TYPE_MFA, strlen(AUTH_QUERY_TYPE_MFA)) == 0 &&
-                strncmp(current_aq->provider, MFA_PROVIDER_ZITI, strlen(MFA_PROVIDER_ZITI)) == 0) {
-                if (ziti_mfa == NULL) {
-                    ziti_mfa = current_aq;
-                } else {
-                    ZTX_LOG(ERROR, "multiple auth queries for [type: %s] [provider: %s], cannot continue", current_aq->type_id, current_aq->provider);
-                    cb(ztx, ZITI_OK, NULL);
-                    return;
-                }
+    MODEL_LIST_FOREACH(aq, ztx->api_session->auth_queries) {
+        if (strcmp(aq->type_id, AUTH_QUERY_TYPE_MFA) == 0 &&
+            strcmp(aq->provider, MFA_PROVIDER_ZITI) == 0) {
+            if (ziti_mfa == NULL) {
+                ziti_mfa = aq;
             } else {
-                ZTX_LOG(ERROR, "could not process authentication query [type: %s] [provider: %s], unknown type or provider", current_aq->type_id, current_aq->provider);
-                cb(ztx, ZITI_WTF, NULL); //fail with unsupported auth query
+                ZTX_LOG(ERROR, "multiple auth queries for [type: %s] [provider: %s], cannot continue", aq->type_id, aq->provider);
+                cb(ztx, ZITI_OK, NULL);
                 return;
             }
+        } else {
+            ZTX_LOG(ERROR, "could not process authentication query [type: %s] [provider: %s], unknown type or provider",
+                    aq->type_id, aq->provider);
+            cb(ztx, ZITI_WTF, NULL); // fail with unsupported auth query
+            return;
         }
     }
 

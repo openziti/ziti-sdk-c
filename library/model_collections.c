@@ -291,6 +291,18 @@ void *model_list_pop(model_list *l) {
     return el;
 }
 
+void model_list_push(model_list *l, void *el) {
+    if (l->impl == NULL) {
+        l->impl = calloc(1, sizeof(*l->impl));
+        LIST_INSERT_HEAD(&l->impl->elements, &l->impl->end, _next);
+    }
+    l->impl->size++;
+    struct model_list_el *entry = calloc(1, sizeof(struct model_list_el));
+    entry->el = el;
+    entry->l = l;
+    LIST_INSERT_HEAD(&l->impl->elements, entry, _next);
+}
+
 void model_list_append(model_list *l, void *el) {
     if (l->impl == NULL) {
         l->impl = calloc(1, sizeof(*l->impl));

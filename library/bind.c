@@ -14,6 +14,8 @@
 
 
 #include <assert.h>
+#include <inttypes.h>
+
 #include "ziti/ziti.h"
 #include "endian_internal.h"
 #include "win32_compat.h"
@@ -162,11 +164,12 @@ static void schedule_rebind(struct ziti_conn *conn, bool now) {
         uv_random(conn->ziti_ctx->loop, NULL, &random, sizeof(random), 0, NULL);
         delay = (uint64_t) (random % (backoff * REBIND_DELAY));
         conn->server.attempt++;
-        CONN_LOG(DEBUG, "scheduling re-bind(attempt=%d) in %ld.%lds", conn->server.attempt, delay / 1000, delay % 1000);
+        CONN_LOG(DEBUG, "scheduling re-bind(attempt=%d) in %" PRIu64 ".%" PRIu64 "s",
+                 conn->server.attempt, delay / 1000, delay % 1000);
 
     } else {
         conn->server.attempt = 0;
-        CONN_LOG(DEBUG, "scheduling re-bind in %ld.%lds", delay / 1000, delay % 1000);
+        CONN_LOG(DEBUG, "scheduling re-bind in %" PRIu64 ".%" PRIu64 "s", delay / 1000, delay % 1000);
     }
 
     uv_timer_start(conn->server.timer, rebind_delay_cb, delay, 0);

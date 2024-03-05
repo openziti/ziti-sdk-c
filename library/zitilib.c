@@ -35,21 +35,12 @@ typedef uint16_t in_port_t;
 #include <ziti/ziti.h>
 #include <ziti/ziti_log.h>
 #include "zt_internal.h"
+#include "util/future.h"
 
 static bool is_blocking(ziti_socket_t s);
 
 ZITI_FUNC
 const char *Ziti_lookup(in_addr_t addr);
-
-typedef struct future_s {
-    uv_mutex_t lock;
-    uv_cond_t cond;
-    bool completed;
-    void *result;
-    int err;
-
-    TAILQ_ENTRY(future_s) _next;
-} future_t;
 
 static const char *configs[] = {
         ZITI_INTERCEPT_CFG_V1,
@@ -57,69 +48,6 @@ static const char *configs[] = {
         NULL,
 };
 
-
-static future_t *new_future() {
-    future_t *f = calloc(1, sizeof(future_t));
-    int rc = uv_mutex_init(&f->lock);
-    if (rc != 0) {
-        fprintf(stderr, "failed to init lock %d/%s\n", rc, uv_strerror(rc));
-    }
-    rc = uv_cond_init(&f->cond);
-    if (rc != 0) {
-        fprintf(stderr, "failed to init cond %d/%s\n", rc, uv_strerror(rc));
-    }
-    return f;
-}
-
-static void destroy_future(future_t *f) {
-    uv_mutex_destroy(&f->lock);
-    uv_cond_destroy(&f->cond);
-    free(f);
-}
-
-static int await_future(future_t *f) {
-    if (f == NULL) {
-        return 0;
-    }
-
-    uv_mutex_lock(&f->lock);
-    while (!f->completed) {
-        uv_cond_wait(&f->cond, &f->lock);
-    }
-    int err = f->err;
-    uv_mutex_unlock(&f->lock);
-    return err;
-}
-
-static int complete_future(future_t *f, void *result) {
-    if (f == NULL) return 0;
-
-    int rc = UV_EINVAL;
-    uv_mutex_lock(&f->lock);
-    if (!f->completed) {
-        f->completed = true;
-        f->result = result;
-        uv_cond_broadcast(&f->cond);
-        rc = 0;
-    }
-    uv_mutex_unlock(&f->lock);
-    return rc;
-}
-
-static int fail_future(future_t *f, int err) {
-    if (f == NULL) return 0;
-
-    int rc = UV_EINVAL;
-    uv_mutex_lock(&f->lock);
-    if (!f->completed) {
-        f->completed = true;
-        f->err = err;
-        uv_cond_broadcast(&f->cond);
-        rc = 0;
-    }
-    uv_mutex_unlock(&f->lock);
-    return rc;
-}
 
 typedef void (*loop_work_cb)(void *arg, future_t *f, uv_loop_t *l);
 
@@ -162,7 +90,8 @@ struct sockaddr_un {
 typedef struct ztx_wrap {
     ziti_options opts;
     ziti_context ztx;
-    TAILQ_HEAD(futures, future_s) futures;
+    // list[future_t]
+    model_list futures;
 
     future_t *services_loaded;
     model_map intercepts;
@@ -187,7 +116,7 @@ typedef struct ziti_sock_s {
     bool server;
     int max_pending;
     model_list backlog;
-    TAILQ_HEAD(, future_s) accept_q;
+    model_list accept_q;
 
 } ziti_sock_t;
 
@@ -215,23 +144,24 @@ static void set_error(int err) {
 
 static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
     ztx_wrap_t *wrap = ziti_app_ctx(ztx);
+    future_t *f;
     if (ev->type == ZitiContextEvent) {
         int err = ev->event.ctx.ctrl_status;
         if (err == ZITI_OK) {
             wrap->ztx = ztx;
-            future_t *f;
-            while (!TAILQ_EMPTY(&wrap->futures)) {
-                f = TAILQ_FIRST(&wrap->futures);
-                TAILQ_REMOVE(&wrap->futures, f, _next);
+            model_list_iter it = model_list_iterator(&wrap->futures);
+            while (it) {
+                f = model_list_it_element(it);
+                it = model_list_it_remove(it);
                 complete_future(f, ztx);
             }
         } else if (err == ZITI_PARTIALLY_AUTHENTICATED) {
             return;
         } else {
-            future_t *f;
-            while (!TAILQ_EMPTY(&wrap->futures)) {
-                f = TAILQ_FIRST(&wrap->futures);
-                TAILQ_REMOVE(&wrap->futures, f, _next);
+            model_list_iter it = model_list_iterator(&wrap->futures);
+            while (it) {
+                f = model_list_it_element(it);
+                it = model_list_it_remove(it);
                 fail_future(f, err);
             }
             if (err == ZITI_DISABLED) {
@@ -276,9 +206,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             FREE(intercept);
         }
 
-        if (!wrap->services_loaded->completed) {
-            complete_future(wrap->services_loaded, NULL);
-        }
+        complete_future(wrap->services_loaded, NULL);
     }
 }
 
@@ -294,7 +222,7 @@ static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
         }
 
         if (f) {
-            TAILQ_INSERT_TAIL(&wrap->futures, f, _next);
+            model_list_append(&wrap->futures, f);
         }
         return;
     }
@@ -320,9 +248,8 @@ static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
     if (rc != ZITI_OK) goto error;
 
     wrap->services_loaded = new_future();
-    TAILQ_INIT(&wrap->futures);
     if (f) {
-        TAILQ_INSERT_TAIL(&wrap->futures, f, _next);
+        model_list_append(&wrap->futures, f);
     }
     rc = ziti_context_run(ztx, l);
     if (rc != ZITI_OK) goto error;
@@ -344,12 +271,12 @@ error:
 
 ziti_context Ziti_load_context(const char *identity) {
     future_t *f = schedule_on_loop(load_ziti_ctx, (void *) identity, true);
-    int err = await_future(f);
+    ziti_context ztx;
+    int err = await_future(f, &ztx);
     set_error(err);
-    ziti_context ztx = (ziti_context) f->result;
     if (err == 0) {
         ztx_wrap_t *wrap = ziti_app_ctx(ztx);
-        await_future(wrap->services_loaded);
+        await_future(wrap->services_loaded, NULL);
     }
     destroy_future(f);
     return ztx;
@@ -534,7 +461,7 @@ ziti_socket_t Ziti_socket(int type) {
     set_error(fd < 0 ? errno : 0);
     if (fd > 0) {
         future_t *f = schedule_on_loop(check_socket, (void *) (uintptr_t) fd, true);
-        await_future(f);
+        await_future(f, NULL);
         destroy_future(f);
     }
     return fd;
@@ -557,7 +484,7 @@ int Ziti_close(ziti_socket_t fd) {
     if (s) {
         ZITI_LOG(DEBUG, "closing ziti socket[%d]", fd);
         future_t *f = schedule_on_loop(close_work, (void *) (uintptr_t) fd, true);
-        await_future(f);
+        await_future(f, NULL);
         destroy_future(f);
         return 0;
     }
@@ -728,12 +655,12 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     if (host == NULL) { return EINVAL; }
     if (port == 0 || port > UINT16_MAX) { return EINVAL; }
 
-    await_future(child_init_future);
+    await_future(child_init_future, NULL);
 
     const char *id;
     ztx_wrap_t *wrap;
     MODEL_MAP_FOREACH(id, wrap, &ziti_contexts) {
-        await_future(wrap->services_loaded);
+        await_future(wrap->services_loaded, NULL);
     }
 
     struct conn_req_s req = {
@@ -747,7 +674,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
 
     int err = 0;
     if (f) {
-        err = await_future(f);
+        err = await_future(f, NULL);
         set_error(err);
         destroy_future(f);
     }
@@ -767,7 +694,7 @@ int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service, co
     };
 
     future_t *f = schedule_on_loop((loop_work_cb) do_ziti_connect, &req, true);
-    int err = await_future(f);
+    int err = await_future(f, NULL);
     set_error(err);
     destroy_future(f);
     return err ? -1 : 0;
@@ -811,7 +738,7 @@ static void on_ziti_accept(ziti_connection client, int status) {
     if (status != ZITI_OK) {
         ZITI_LOG(WARN, "ziti_accept failed!");
         // ziti accept failed, so just put the accept future back into accept_q
-        TAILQ_INSERT_HEAD(&pending->parent->accept_q, pending->accept_f, _next);
+        model_list_push(&pending->parent->accept_q, pending->accept_f);
 
         ziti_close(client, NULL);
         free(pending->caller_id);
@@ -865,12 +792,11 @@ static void on_ziti_client(ziti_connection server, ziti_connection client, int s
     pending->conn = client;
     pending->caller_id = strdup(clt_ctx->caller_id);
 
-    if (!TAILQ_EMPTY(&server_sock->accept_q)) {
-        future_t *accept_f = TAILQ_FIRST(&server_sock->accept_q);
+    future_t *accept_f = model_list_pop(&server_sock->accept_q);
+    if (accept_f) {
         ZITI_LOG(DEBUG, "found waiting accept for fd[%d]", server_sock->fd);
 
         pending->accept_f = accept_f;
-        TAILQ_REMOVE(&server_sock->accept_q, accept_f, _next);
 
         ziti_conn_set_data(client, pending);
         // this should not happen but check anyway
@@ -879,7 +805,7 @@ static void on_ziti_client(ziti_connection server, ziti_connection client, int s
             ziti_close(client, NULL);
             free(pending->caller_id);
             free(pending);
-            TAILQ_INSERT_HEAD(&server_sock->accept_q, accept_f, _next);
+            model_list_push(&server_sock->accept_q, accept_f);
             return;
         }
         send(server_sock->ziti_fd, &notify, sizeof(notify), 0);
@@ -951,7 +877,7 @@ int Ziti_bind(ziti_socket_t socket, ziti_context ztx, const char *service, const
     };
 
     future_t *f = schedule_on_loop((loop_work_cb) do_ziti_bind, &req, true);
-    int err = await_future(f);
+    int err = await_future(f, NULL);
     set_error(err);
     destroy_future(f);
     return err ? -1 : 0;
@@ -969,7 +895,6 @@ static void do_ziti_listen(void *arg, future_t *f, uv_loop_t *l) {
         fail_future(f, EBADF);
     } else {
         if (!zs->server) {
-            TAILQ_INIT(&zs->accept_q);
             zs->server = true;
         }
         zs->max_pending = req->backlog;
@@ -985,7 +910,7 @@ int Ziti_listen(ziti_socket_t socket, int backlog) {
     struct listen_req_s req = {.fd = socket, .backlog = backlog};
     future_t *f = schedule_on_loop(do_ziti_listen, &req, true);
 
-    int err = await_future(f);
+    int err = await_future(f, NULL);
     set_error(err);
     destroy_future(f);
     return err ? -1 : 0;
@@ -1032,7 +957,7 @@ static void do_ziti_accept(void *r, future_t *f, uv_loop_t *l) {
 
         ZITI_LOG(DEBUG, "no pending connections for server fd[%d]", server_fd);
         if (blocking) {
-            TAILQ_INSERT_TAIL(&zs->accept_q, f, _next);
+            model_list_append(&zs->accept_q, f);
         } else {
             fail_future(f, EWOULDBLOCK);
         }
@@ -1045,11 +970,11 @@ ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
     future_t *f = schedule_on_loop(do_ziti_accept, (void *) (uintptr_t) server, true);
     ZITI_LOG(DEBUG, "fd[%d] waiting for future[%p]", server, f);
     ziti_socket_t clt = -1;
-    int err = await_future(f);
+    struct sock_info_s *si;
+    int err = await_future(f, (void **) &si);
     ZITI_LOG(DEBUG, "fd[%d] future[%p] completed err = %d", server, f, err);
 
     if (!err) {
-        struct sock_info_s *si = f->result;
         clt = si->fd;
         if (caller != NULL) {
             strncpy(caller, si->peer, caller_len);
@@ -1072,7 +997,7 @@ ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
 
 void Ziti_lib_shutdown(void) {
     future_t *f = schedule_on_loop(do_shutdown, NULL, true);
-    await_future(f);
+    await_future(f, NULL);
     uv_thread_join(&lib_thread);
     uv_once_t child_once = UV_ONCE_INIT;
     memcpy(&init, &child_once, sizeof(child_once));
@@ -1156,7 +1081,7 @@ static void child_init() {
 
 static void internal_init() {
 #if defined(PTHREAD_ONCE_INIT)
-    pthread_atfork(NULL, NULL, child_init);
+//    pthread_atfork(NULL, NULL, child_init);
 #endif
     init_in4addr_loopback();
     uv_key_create(&err_key);
@@ -1206,9 +1131,10 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert, cha
             .enroll_cert = cert,
     };
     future_t *f = schedule_on_loop((loop_work_cb) do_enroll, &opts, true);
-    int rc = await_future(f);
+    void *result;
+    int rc = await_future(f, &result);
     if (rc == ZITI_OK) {
-        *id_json = f->result;
+        *id_json = result;
         *id_json_len = strlen(*id_json);
     }
     destroy_future(f);
@@ -1335,7 +1261,7 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
 
     MODEL_MAP_FOR(it, ziti_contexts) {
         ztx_wrap_t *ztx = model_map_it_value(it);
-        await_future(ztx->services_loaded);
+        await_future(ztx->services_loaded, NULL);
     }
 
     struct conn_req_s req = {
@@ -1344,13 +1270,14 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
     };
 
     future_t *f = schedule_on_loop((loop_work_cb) resolve_cb, &req, true);
-    int err = await_future(f);
+    uintptr_t result;
+    int err = await_future(f, (void **) &result);
     set_error(err);
 
     if (err == 0) {
         addr4->sin_family = AF_INET;
         addr4->sin_port = htons(portnum);
-        addr4->sin_addr.s_addr = (in_addr_t)(uintptr_t)f->result;
+        addr4->sin_addr.s_addr = (in_addr_t)result;
 
         res->ai_family = AF_INET;
         res->ai_addr = (struct sockaddr *) addr4;
