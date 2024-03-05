@@ -32,6 +32,9 @@ void pool_destroy(pool_t *pool);
 
 bool pool_has_available(pool_t *p);
 
+typedef void (*pool_available_cb)(void *ctx);
+void pool_set_available_cb(pool_t *p, pool_available_cb, void *ctx);
+
 void *pool_alloc_obj(pool_t *pool);
 
 // allocate object that can be freed by [pool_return_obj]
