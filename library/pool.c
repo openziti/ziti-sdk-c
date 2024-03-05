@@ -37,6 +37,9 @@ struct pool_s {
     bool is_closed;
 
     void (*clear_func)(void *);
+
+    pool_available_cb avail_cb;
+    void *avail_ctx;
 };
 
 pool_t *pool_new(size_t objsize, size_t count, void (*clear_func)(void *)) {
@@ -61,6 +64,12 @@ void pool_destroy(pool_t *pool) {
     }
 }
 
+void pool_set_available_cb(pool_t *p, pool_available_cb cb, void *ctx) {
+    assert(p);
+    assert(!p->is_closed);
+    p->avail_cb = cb;
+    p->avail_ctx = ctx;
+}
 bool pool_has_available(pool_t *pool) {
     assert(pool);
     assert(!pool->is_closed);
@@ -137,6 +146,10 @@ void pool_return_obj(void *o) {
             free(pool);
         }
     } else {
+        bool was_empty = LIST_EMPTY(&pool->pool);
         LIST_INSERT_HEAD(&pool->pool, m, _next);
+        if (was_empty && pool->avail_cb) {
+            pool->avail_cb(pool->avail_ctx);
+        }
     }
 }
