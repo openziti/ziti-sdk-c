@@ -323,7 +323,7 @@ static bool is_api_session_expired(ziti_context ztx) {
 
     if (ztx->api_session_expires_at.tv_sec < now.tv_sec) {
         ZTX_LOG(DEBUG, "is_api_session_expired[TRUE] - expires->tv_sec[%" PRIu64 "] < now->tv_sec[%" PRIu64 "]",
-                (uint64_t) ztx->api_session->expires->tv_sec, now.tv_sec);
+                (uint64_t) ztx->api_session->expires.tv_sec, now.tv_sec);
         return true;
     }
 
@@ -1542,30 +1542,31 @@ void ziti_set_api_session(ziti_context ztx, ziti_api_session *session) {
 
     uv_gettimeofday(&ztx->session_received_at);
 
-    if (session->expires) {
+    if (session->expires.tv_sec > 0) {
         int time_diff;
-        if (session->cached_last_activity_at) {
+        if (session->cached_last_activity_at.tv_sec > 0) {
             ZTX_LOG(TRACE, "API supports cached_last_activity_at");
-            time_diff = (int) (ztx->session_received_at.tv_sec - session->cached_last_activity_at->tv_sec);
+            time_diff = (int) (ztx->session_received_at.tv_sec - session->cached_last_activity_at.tv_sec);
         } else {
             ZTX_LOG(TRACE, "API doesn't support cached_last_activity_at - using updated");
-            time_diff = (int) (ztx->session_received_at.tv_sec - session->updated->tv_sec);
+            time_diff = (int) (ztx->session_received_at.tv_sec - session->updated.tv_sec);
         }
         if (abs(time_diff) > 10) {
             ZTX_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
                     time_diff > 0 ? "ahead" : "behind");
         }
 
-        ZTX_LOG(DEBUG, "ziti api session expires in %ld seconds", (long) (session->expires->tv_sec - ztx->session_received_at.tv_sec));
+        ZTX_LOG(DEBUG, "ziti api session expires in %ld seconds",
+                (long) (session->expires.tv_sec - ztx->session_received_at.tv_sec));
 
         long delay_seconds = 0;
 
-        if (session->expireSeconds != NULL) {
-            delay_seconds = *session->expireSeconds;
+        if (session->expireSeconds > 0) {
+            delay_seconds = session->expireSeconds;
         } else {
             // adjust expiration to local time if needed
-            session->expires->tv_sec += time_diff;
-            delay_seconds = (session->expires->tv_sec - ztx->session_received_at.tv_sec);
+            session->expires.tv_sec += time_diff;
+            delay_seconds = (session->expires.tv_sec - ztx->session_received_at.tv_sec);
         }
 
         uv_gettimeofday(&ztx->api_session_expires_at);

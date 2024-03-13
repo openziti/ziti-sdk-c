@@ -409,7 +409,8 @@ static const char *get_utc_time() {
 
         uv_timeval64_t ts;
         uv_gettimeofday(&ts);
-        struct tm *tm = gmtime(&ts.tv_sec);
+        time_t t = ts.tv_sec;
+        struct tm *tm = gmtime(&t);
 
         snprintf(log_timestamp, sizeof(log_timestamp), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
                  1900 + tm->tm_year, tm->tm_mon + 1, tm->tm_mday,
@@ -462,7 +463,8 @@ void ziti_fmt_time(char* time_str, size_t time_str_sz, uv_timeval64_t* tv) {
     if (tv == NULL) {
         strncpy(time_str, "null tv", time_str_sz);
     } else {
-        struct tm* start_tm = gmtime(&tv->tv_sec);
+        time_t t = tv->tv_sec;
+        struct tm* start_tm = gmtime(&t);
         strftime(time_str, time_str_sz, "%Y-%m-%dT%H:%M:%S", start_tm);
     }
 }

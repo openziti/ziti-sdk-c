@@ -63,15 +63,10 @@ static void ziti_mfa_verify_internal_cb(void *empty, const ziti_error *err, void
 static void ziti_mfa_enroll_get_internal_cb(ziti_mfa_enrollment *mfa_enrollment, const ziti_error *err, void *ctx);
 
 char *ziti_mfa_code_body(const char *code) {
-    NEWP(code_req, ziti_mfa_code_req);
-    code_req->code = strdup(code);
-
+    ziti_mfa_code_req req = {0};
+    req.code = (char*)code;
     size_t len;
-    char *body = ziti_mfa_code_req_to_json(code_req, 0, &len);
-
-    FREE(code_req->code);
-    FREE(code_req);
-
+    char *body = ziti_mfa_code_req_to_json(&req, 0, &len);
     return body;
 }
 
