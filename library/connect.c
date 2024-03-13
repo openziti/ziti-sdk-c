@@ -422,7 +422,7 @@ static void connect_get_service_cb(ziti_context ztx, ziti_service *s, int status
         conn->encrypted = s->encryption;
         process_connect(conn, NULL);
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
-        CONN_LOG(ERROR, "service[%s] is not available for ztx[%s]", conn->service, ztx->api_session->identity->name);
+        CONN_LOG(ERROR, "service[%s] is not available for ztx[%s]", conn->service, ziti_get_identity(ztx)->name);
         complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
     } else {
         CONN_LOG(WARN, "failed to load service[%s]: %d/%s", conn->service, status, ziti_errorstr(status));
@@ -1023,6 +1023,7 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(0);
 
+    const ziti_identity *identity = ziti_get_identity(conn->ziti_ctx);
     hdr_t headers[] = {
             {
                     .header_id = ConnIdHeader,
@@ -1041,8 +1042,8 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
             },
             {
                     .header_id = CallerIdHeader,
-                    .length = strlen(conn->ziti_ctx->api_session->identity->name),
-                    .value = conn->ziti_ctx->api_session->identity->name,
+                    .length = strlen(identity->name),
+                    .value = (uint8_t *) identity->name,
             },
             {
                     .header_id = PublicKeyHeader,
