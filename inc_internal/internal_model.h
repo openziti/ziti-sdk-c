@@ -53,7 +53,7 @@ XX(expires, timestamp, none, expiresAt, __VA_ARGS__) \
 XX(expireSeconds, int, none, expirationSeconds, __VA_ARGS__) \
 XX(updated, timestamp, none, updatedAt, __VA_ARGS__) \
 XX(cached_last_activity_at, timestamp, none, cachedLastActivityAt, __VA_ARGS__) \
-XX(identity, ziti_identity, ptr, identity, __VA_ARGS__) \
+XX(identity, ziti_identity, none, identity, __VA_ARGS__) \
 XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__) \
 XX(auth_queries, ziti_auth_query_mfa, list, authQueries, __VA_ARGS__)         \
 XX(authenticator_id, string, none, authenticatorId, __VA_ARGS__)

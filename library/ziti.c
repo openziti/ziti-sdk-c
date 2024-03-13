@@ -527,7 +527,7 @@ const ziti_identity *ziti_get_identity(ziti_context ztx) {
     }
 
     if (ztx->api_session) {
-        return ztx->api_session->identity;
+        return &ztx->api_session->identity;
     }
 
     return NULL;

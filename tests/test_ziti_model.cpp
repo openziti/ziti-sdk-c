@@ -422,7 +422,7 @@ TEST_CASE("parse-api-session", "[model]") {
 
     REQUIRE_THAT(session->id, Equals("f0bd2587-1510-455a-96ca-6f1aea1c04f3"));
     REQUIRE_THAT(session->token, Equals("6fb97fe8-3507-4811-a83a-1d660b1022a3"));
-    struct tm *expiry = gmtime(&session->expires->tv_sec);
+    struct tm *expiry = gmtime(&session->expires.tv_sec);
     REQUIRE(expiry->tm_year == 2019 - 1900);
     REQUIRE(expiry->tm_mon == 10 - 1);
     REQUIRE(expiry->tm_mday == 14);
@@ -430,7 +430,7 @@ TEST_CASE("parse-api-session", "[model]") {
     REQUIRE(expiry->tm_min == 59);
     REQUIRE(expiry->tm_sec == 48);
 
-    REQUIRE_THAT(session->identity->name, Equals("Default Admin"));
+    REQUIRE_THAT(session->identity.name, Equals("Default Admin"));
 
     free_ziti_api_session(session);
     free(session);

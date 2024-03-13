@@ -268,7 +268,7 @@ static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, c
     ziti_channel_init(ztx, ch, channel_counter++, ztx->tlsCtx);
     ch->name = strdup(ch_name);
     ch->url = strdup(url);
-    CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, ztx->api_session->identity->name);
+    CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, ziti_get_identity(ztx)->name);
 
     struct tlsuv_url_s ingress;
     tlsuv_parse_url(&ingress, url);
