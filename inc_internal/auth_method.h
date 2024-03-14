@@ -39,6 +39,7 @@ typedef void (*auth_state_cb)(void *ctx, ziti_auth_state, const void *data);
 struct ziti_auth_method_s {
     enum AuthenticationMethod kind;
     int (*start)(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
+    int (*force_refresh)(ziti_auth_method_t *self);
     int (*submit_mfa)(ziti_auth_method_t *self, const char *code);
     int (*stop)(ziti_auth_method_t *self);
     void (*free)(ziti_auth_method_t *self);
