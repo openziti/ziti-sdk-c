@@ -103,7 +103,7 @@ struct ziti_service_event {
  * `ziti_mfa_auth(...)`
  */
 struct ziti_mfa_auth_event {
-    ziti_auth_query_mfa *auth_query_mfa;
+    const ziti_auth_query_mfa *auth_query_mfa;
 };
 
 /**

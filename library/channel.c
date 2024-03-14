@@ -685,13 +685,13 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
     }
 }
 
-static void send_hello(ziti_channel_t *ch, ziti_api_session *session) {
+static void send_hello(ziti_channel_t *ch, const char *token) {
     uint8_t true_val = 1;
     hdr_t headers[] = {
             {
                     .header_id = SessionTokenHeader,
-                    .length = strlen(session->token),
-                    .value = (uint8_t *)session->token
+                    .length = strlen(token),
+                    .value = (uint8_t *)token
             },
             {
                 .header_id = SupportsInspectHeader,
@@ -725,7 +725,7 @@ static void reconnect_cb(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
     ziti_context ztx = ch->ctx;
 
-    if (ztx->api_session == NULL || ztx->api_session->token == NULL || ztx->api_session_state != ZitiApiSessionStateFullyAuthenticated) {
+    if (ztx->auth_state != ZitiAuthStateFullyAuthenticated || ztx->session_token == NULL) {
         CH_LOG(ERROR, "ziti context is not fully authenticated (api_session_state[%d]), delaying re-connect", ztx->api_session_state);
         reconnect_channel(ch, false);
     } else if (ch->connection != NULL) {
@@ -884,12 +884,12 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
     ziti_channel_t *ch = tls->data;
 
     if (status == 0) {
-        if (ch->ctx->api_session != NULL && ch->ctx->api_session->token != NULL) {
+        if (ch->ctx->session_token != NULL) {
             CH_LOG(DEBUG, "connected");
             tlsuv_stream_t *mbed = (tlsuv_stream_t *) req->handle;
             tlsuv_stream_read_start(mbed, channel_alloc_cb, on_channel_data);
             ch->reconnect_count = 0;
-            send_hello(ch, ch->ctx->api_session);
+            send_hello(ch, ch->ctx->session_token);
         } else {
             CH_LOG(WARN, "api session invalidated, while connecting");
             close_connection(ch);

@@ -88,16 +88,7 @@ void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb status_cb, vo
         status_cb(ztx, ZITI_WTF, status_ctx);
     }
 
-    NEWP(mfa_auth_ctx, ziti_mfa_auth_ctx);
-    mfa_auth_ctx->cb = status_cb;
-    mfa_auth_ctx->cb_ctx = status_ctx;
-    mfa_auth_ctx->ztx = ztx;
-    mfa_auth_ctx->code = strdup(code);
-
-
-    char *body = ziti_mfa_code_body(code);
-
-    ziti_ctrl_login_mfa(&ztx->controller, body, strlen(body), ziti_mfa_auth_internal_cb, mfa_auth_ctx);
+    ztx->auth_method->submit_mfa(ztx->auth_method, code);
 }
 
 void ziti_auth_query_mfa_process(ziti_mfa_auth_ctx *mfa_auth_ctx) {
