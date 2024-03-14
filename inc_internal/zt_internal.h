@@ -269,6 +269,9 @@ struct ziti_ctx {
     int ctrl_status;
 
     ziti_auth_method_t *auth_method;
+    ziti_auth_state auth_state;
+    char *session_token;
+
     bool active_session_request;
     ziti_api_session *api_session;
     uv_timeval64_t api_session_expires_at;

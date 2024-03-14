@@ -32,8 +32,9 @@ typedef enum {
     ZitiAuthImpossibleToAuthenticate,
 } ziti_auth_state;
 
+typedef struct ziti_ctx *ziti_context;
 typedef struct ziti_auth_method_s ziti_auth_method_t;
-typedef void (*auth_state_cb)(void *ctx, ziti_auth_state, void *data);
+typedef void (*auth_state_cb)(void *ctx, ziti_auth_state, const void *data);
 
 struct ziti_auth_method_s {
     enum AuthenticationMethod kind;
