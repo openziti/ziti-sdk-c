@@ -40,6 +40,7 @@ static const char *MFA_PROVIDER_ZITI = "ziti";
 
 static int legacy_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
 static int legacy_auth_stop(ziti_auth_method_t *self);
+static int legacy_auth_refresh(ziti_auth_method_t *self);
 static void legacy_auth_free(ziti_auth_method_t *self);
 static int legacy_auth_mfa(ziti_auth_method_t *self, const char *code);
 static ziti_auth_query_mfa* get_mfa(ziti_api_session *session);
@@ -53,6 +54,7 @@ void auth_timer_cb(uv_timer_t *t);
     (ziti_auth_method_t) {          \
         .kind = LEGACY,             \
         .start = legacy_auth_start, \
+        .force_refresh = legacy_auth_refresh, \
         .stop = legacy_auth_stop,   \
         .free = legacy_auth_free,   \
         .submit_mfa = legacy_auth_mfa, \
@@ -78,6 +80,15 @@ int legacy_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx) {
 
     return ZITI_OK;
 }
+
+int legacy_auth_refresh(ziti_auth_method_t *self) {
+    struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
+    assert(auth->ctx);
+    assert(auth->cb);
+
+    uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
+}
+
 
 int legacy_auth_stop(ziti_auth_method_t *self) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
