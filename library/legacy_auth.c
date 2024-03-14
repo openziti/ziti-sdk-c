@@ -19,6 +19,10 @@
 
 #define MAX_BACKOFF 5
 #define BACKOFF_BASE_DELAY 5000
+#define API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS 60
+#define API_SESSION_DELAY_WINDOW_SECONDS 60
+#define API_SESSION_EXPIRATION_TOO_SMALL_SECONDS 120
+
 
 struct legacy_auth_s {
     ziti_auth_method_t api;
@@ -37,7 +41,11 @@ static const char *MFA_PROVIDER_ZITI = "ziti";
 static int legacy_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
 static int legacy_auth_stop(ziti_auth_method_t *self);
 static void legacy_auth_free(ziti_auth_method_t *self);
+static int legacy_auth_mfa(ziti_auth_method_t *self, const char *code);
 static ziti_auth_query_mfa* get_mfa(ziti_api_session *session);
+static uint64_t refresh_delay(ziti_api_session *);
+
+char *ziti_mfa_code_body(const char *code);
 
 void auth_timer_cb(uv_timer_t *t);
 
@@ -47,6 +55,7 @@ void auth_timer_cb(uv_timer_t *t);
         .start = legacy_auth_start, \
         .stop = legacy_auth_stop,   \
         .free = legacy_auth_free,   \
+        .submit_mfa = legacy_auth_mfa, \
     }
 
 ziti_auth_method_t *new_legacy_auth(ziti_controller *ctrl) {
@@ -89,6 +98,33 @@ void legacy_auth_free(ziti_auth_method_t *self) {
     free(auth);
 }
 
+static void mfa_cb(void *empty, const ziti_error *err, void *ctx) {
+    struct legacy_auth_s *auth = container_of(ctx, struct legacy_auth_s, api);
+
+    if (err == NULL) { // success
+        // refresh session to clear auth_query
+        uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
+    } else {
+        if (err->http_code == HTTP_STATUS_UNAUTHORIZED) {
+            free_ziti_api_session_ptr(auth->session);
+            auth->session = NULL;
+            auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, (void*)err);
+            uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
+        } else {
+            ZITI_LOG(ERROR, "failed to submit MFA code: %d/%s", err->err, err->message);
+            uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
+        }
+    }
+}
+
+static int legacy_auth_mfa(ziti_auth_method_t *self, const char *code) {
+    struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
+
+    char *req = ziti_mfa_code_body(code);
+    ziti_ctrl_login_mfa(auth->ctrl, req, strlen(req), mfa_cb, auth);
+    return 0;
+}
+
 static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx) {
     struct legacy_auth_s *auth = ctx;
     assert(auth->session == NULL);
@@ -106,7 +142,8 @@ static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx
         } else {
             auth->cb(auth->ctx, ZitiAuthStateFullyAuthenticated, session->token);
         }
-
+        uint64_t delay = refresh_delay(session);
+        uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
     } else if (err) {
         ZITI_LOG(WARN, "failed to login to ctrl[%s] %s[%d] %s", auth->ctrl->url, err->code, errCode, err->message);
 
@@ -135,23 +172,26 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
         } else {
             auth->cb(auth->ctx, ZitiAuthStateFullyAuthenticated, session->token);
         }
+
+        uint64_t delay = refresh_delay(session);
+        uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
         
         return;
     }
 
     switch (err->err) {
-    case ZITI_AUTHENTICATION_FAILED:
+        case ZITI_AUTHENTICATION_FAILED:
         // session expired or was deleted, try to re-auth
-        auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, (void *)err);
-        free_ziti_api_session_ptr(auth->session);
-        auth->session = NULL;
-        uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
-        break;
-    default: {
-        uint64_t delay = next_backoff(&auth->backoff, MAX_BACKOFF, BACKOFF_BASE_DELAY);
-        ZITI_LOG(WARN, "failed to refresh API session: %d/%s, retry in %" PRIu64 "ms", err->err, err->message, delay);
-        uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
-    }
+            auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, (void *)err);
+            free_ziti_api_session_ptr(auth->session);
+            auth->session = NULL;
+            uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
+            break;
+        default: {
+            uint64_t delay = next_backoff(&auth->backoff, MAX_BACKOFF, BACKOFF_BASE_DELAY);
+            ZITI_LOG(WARN, "failed to refresh API session: %d/%s, retry in %" PRIu64 "ms", err->err, err->message, delay);
+            uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
+        }
     }
 }
 
@@ -176,4 +216,44 @@ static ziti_auth_query_mfa* get_mfa(ziti_api_session *session) {
         }
     }
     return ziti_mfa;
+}
+
+static uint64_t refresh_delay(ziti_api_session *session) {
+    int time_diff;
+    uv_timeval64_t session_received_at;
+    uv_gettimeofday(&session_received_at);
+
+    if (session->cached_last_activity_at.tv_sec > 0) {
+        ZITI_LOG(TRACE, "API supports cached_last_activity_at");
+        time_diff = (int) (session_received_at.tv_sec - session->cached_last_activity_at.tv_sec);
+    } else {
+        ZITI_LOG(TRACE, "API doesn't support cached_last_activity_at - using updated");
+        time_diff = (int) (session_received_at.tv_sec - session->updated.tv_sec);
+    }
+    if (abs(time_diff) > 10) {
+        ZITI_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
+                time_diff > 0 ? "ahead" : "behind");
+    }
+
+    uint64_t delay_seconds;
+
+    if (session->expireSeconds > 0) {
+        delay_seconds = session->expireSeconds;
+    } else {
+        // adjust expiration to local time if needed
+        session->expires.tv_sec += time_diff;
+        delay_seconds = (session->expires.tv_sec - session_received_at.tv_sec);
+    }
+
+    delay_seconds = delay_seconds - API_SESSION_DELAY_WINDOW_SECONDS; //renew a little early
+
+    if (delay_seconds < API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS) {
+        delay_seconds = API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS;
+        ZITI_LOG(WARN, "api session expiration window is set too small (<%d) and may cause issues with "
+                      "connectivity and api session maintenance, defaulting api session refresh delay [%ds]",
+                API_SESSION_EXPIRATION_TOO_SMALL_SECONDS, API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS);
+    }
+
+    ZITI_LOG(DEBUG, "api session set, next refresh in %" PRIu64 "s", delay_seconds);
+    return delay_seconds * 1000;
 }
