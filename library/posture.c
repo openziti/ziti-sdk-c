@@ -183,20 +183,17 @@ static pr_info *get_resp_info(ziti_context ztx, const char *id) {
 }
 
 void ziti_send_posture_data(ziti_context ztx) {
-    if (ztx->api_session == NULL || ztx->api_session->id == NULL) {
-        ZTX_LOG(DEBUG, "no api_session, can't submit posture responses");
-        return;
-    }
-
-    if(ztx->api_session_state != ZitiApiSessionStateFullyAuthenticated) {
+    if(ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
         ZTX_LOG(DEBUG, "api_session is partially authenticated, can't submit posture responses");
         return;
     }
 
     ZTX_LOG(VERBOSE, "starting to send posture data");
-    bool new_session_id = ztx->posture_checks->previous_api_session_id == NULL || strcmp(ztx->posture_checks->previous_api_session_id, ztx->api_session->id) != 0;
+    bool new_session_id = ztx->posture_checks->previous_api_session_id == NULL ||
+            strcmp(ztx->posture_checks->previous_api_session_id, ztx->session_token) != 0;
 
-    bool new_controller_instance = (ztx->posture_checks->controller_instance_id == NULL && ztx->controller.instance_id != NULL) || strcmp(ztx->posture_checks->controller_instance_id, ztx->controller.instance_id) != 0;
+    bool new_controller_instance = (ztx->posture_checks->controller_instance_id == NULL && ztx->controller.instance_id != NULL) ||
+            strcmp(ztx->posture_checks->controller_instance_id, ztx->controller.instance_id) != 0;
 
     if(new_controller_instance){
         ZTX_LOG(INFO, "first run or potential controller restart detected");
@@ -211,7 +208,7 @@ void ziti_send_posture_data(ziti_context ztx) {
         ztx->posture_checks->must_send = true;
         FREE(ztx->posture_checks->previous_api_session_id);
         FREE(ztx->posture_checks->controller_instance_id);
-        ztx->posture_checks->previous_api_session_id = strdup(ztx->api_session->id);
+        ztx->posture_checks->previous_api_session_id = strdup(ztx->session_token);
         ztx->posture_checks->controller_instance_id = strdup(ztx->controller.instance_id);
     } else {
         ZTX_LOG(DEBUG, "posture checks must_send set to FALSE, new_session_id[%s], must_send_every_time[%s], new_controller_instance[%s]",

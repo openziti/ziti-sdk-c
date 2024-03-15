@@ -270,14 +270,9 @@ struct ziti_ctx {
 
     ziti_auth_method_t *auth_method;
     ziti_auth_state auth_state;
+    // HA access_token(JWT) or legacy ziti_api_session.token
     char *session_token;
 
-    bool active_session_request;
-    ziti_api_session *api_session;
-    uv_timeval64_t api_session_expires_at;
-    ziti_api_session_state api_session_state;
-
-    uv_timeval64_t session_received_at;
     ziti_identity_data *identity_data;
 
     bool services_loaded;
@@ -291,7 +286,6 @@ struct ziti_ctx {
 
     char *last_update;
 
-    uv_timer_t *api_session_timer;
     uv_timer_t *service_refresh_timer;
     uv_prepare_t *prepper;
 
