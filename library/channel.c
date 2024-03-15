@@ -726,7 +726,8 @@ static void reconnect_cb(uv_timer_t *t) {
     ziti_context ztx = ch->ctx;
 
     if (ztx->auth_state != ZitiAuthStateFullyAuthenticated || ztx->session_token == NULL) {
-        CH_LOG(ERROR, "ziti context is not fully authenticated (api_session_state[%d]), delaying re-connect", ztx->api_session_state);
+        CH_LOG(ERROR, "ziti context is not fully authenticated (auth_state[%d]), delaying re-connect",
+               ztx->auth_state);
         reconnect_channel(ch, false);
     } else if (ch->connection != NULL) {
         CH_LOG(DEBUG, "connection still closing, deferring reconnect");
