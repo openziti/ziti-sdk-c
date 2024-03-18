@@ -131,6 +131,7 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt, const char *url, tls_c
     if (rc != 0) {
         return rc;
     }
+    tlsuv_http_set_path_prefix(&clt->http, "");
     tlsuv_http_set_ssl(&clt->http, tls);
 
     clt->timer = calloc(1, sizeof(*clt->timer));

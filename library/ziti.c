@@ -317,7 +317,9 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         free(ztx->session_token);
         ztx->session_token = strdup(session_token);
     }
-
+    if (ztx->auth_method->kind == HA) {
+        ziti_ctrl_set_token(&ztx->controller, session_token);
+    }
     ziti_ctrl_get_well_known_certs(&ztx->controller, ca_bundle_cb, ztx);
     ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
 
@@ -1685,14 +1687,12 @@ static void version_pre_auth_cb(ziti_version *version, const ziti_error *err, vo
             ztx->auth_method = NULL;
         }
 
-
         if (ha) {
-            // TODO
-            ZTX_LOG(ERROR, "HA mode is not supported");
+            ztx->auth_method = new_ha_auth(ztx->loop, ztx->config.controller_url, ztx->tlsCtx);
         } else {
             ztx->auth_method = new_legacy_auth(&ztx->controller);
-            ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
         }
+        ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
     }
 
     free_ziti_version_ptr(version);
