@@ -8,7 +8,7 @@ else ()
 
     FetchContent_Declare(tlsuv
             GIT_REPOSITORY https://github.com/openziti/tlsuv.git
-            GIT_TAG v0.28.3
+            GIT_TAG v0.28.4
             )
     FetchContent_MakeAvailable(tlsuv)
 
