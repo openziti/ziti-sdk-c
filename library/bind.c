@@ -97,7 +97,7 @@ static void rebind_delay_cb(uv_timer_t *t) {
     CONN_LOG(DEBUG, "staring re-bind");
 
     if (conn->server.session) {
-        ziti_ctrl_get_session(&conn->ziti_ctx->controller, conn->server.session->id, session_cb, conn);
+        ziti_ctrl_get_session(ztx_get_controller(conn->ziti_ctx), conn->server.session->id, session_cb, conn);
     } else {
         ziti_service_available(conn->ziti_ctx, conn->service, get_service_cb, conn);
     }
@@ -221,7 +221,7 @@ static void get_service_cb(ziti_context ztx, ziti_service *service, int status, 
     if (status == ZITI_OK) {
         conn->encrypted = service->encryption;
         if (ziti_service_has_permission(service, ziti_session_types.Bind)) {
-            ziti_ctrl_create_session(&ztx->controller, service->id, ziti_session_types.Bind, session_cb, conn);
+            ziti_ctrl_create_session(ztx_get_controller(ztx), service->id, ziti_session_types.Bind, session_cb, conn);
         } else {
             CONN_LOG(WARN, "not authorized to Bind service[%s]", service->name);
             notify_status(conn, ZITI_SERVICE_UNAVAILABLE);
