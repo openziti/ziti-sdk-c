@@ -90,6 +90,15 @@ static void json_parse_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
     }
 }
 
+static void dump_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
+    if (len > 0) {
+        fprintf(stderr, "%.*s\n", (int)len, data);
+    } else {
+        oidc_req *req = r->data;
+        fprintf(stderr, "status = %zd\n", len);
+        complete_oidc_req(req, (int)len, NULL);
+    }
+}
 static void parse_cb(tlsuv_http_resp_t *resp, void *ctx) {
     tlsuv_http_req_t *http_req = resp->req;
     oidc_req *req = http_req->data;
@@ -106,14 +115,15 @@ static void parse_cb(tlsuv_http_resp_t *resp, void *ctx) {
     }
 
     const char *ct = tlsuv_http_resp_header(resp, "Content-Type");
-    if (strcmp(ct, "application/json") == 0) {
+    if (ct && strcmp(ct, "application/json") == 0) {
         resp->body_cb = json_parse_cb;
         return;
     }
 
     ZITI_LOG(ERROR, "unexpected content-type: %s", ct);
-    complete_oidc_req(req, ZITI_INVALID_STATE, NULL);
-    resp->req->data = NULL;
+    resp->body_cb = dump_cb;
+//    complete_oidc_req(req, UV_EINVAL, NULL);
+//    resp->req->data = NULL;
 }
 
 int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt, const char *url, tls_context *tls) {
@@ -142,11 +152,18 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt, const char *url, tls_c
     return 0;
 }
 
+int oidc_client_set_url(oidc_client_t *clt, const char *url) {
+    tlsuv_http_set_url(&clt->http, url);
+    tlsuv_http_set_path_prefix(&clt->http, "");
+    return 0;
+}
+
 static void internal_config_cb(oidc_req *req, int status, json_object *resp) {
     oidc_client_t *clt = req->client;
 
     if (status == 0) {
         assert(json_object_get_type(resp) == json_type_object);
+        json_object_put(clt->config);
         clt->config = resp;
     }
 
@@ -372,7 +389,8 @@ static void refresh_cb(oidc_req *req, int status, json_object *resp) {
     if (status == 0) {
         ZITI_LOG(DEBUG,  "token refresh success");
         oidc_client_set_tokens(clt, resp);
-    } else if (status < 0) { // connection failure, try another refresh
+    } else if (status < 0) {  // connection failure, try another refresh
+        clt->token_cb(clt, status, NULL);
         ZITI_LOG(WARN, "OIDC token refresh failed: %d/%s", status, uv_strerror(status));
         uv_timer_start(clt->timer, refresh_time_cb, 5 * 1000, 0);
     } else {

@@ -33,11 +33,12 @@ struct ha_auth_s {
     auth_state_cb cb;
     void *cb_ctx;
 
+    model_list urls;
     oidc_client_t oidc;
 };
 
 
-ziti_auth_method_t *new_ha_auth(uv_loop_t *l, const char *url, tls_context *tls) {
+ziti_auth_method_t *new_ha_auth(uv_loop_t *l, model_list* urls, tls_context *tls) {
     struct ha_auth_s *auth = calloc(1, sizeof(*auth));
 
     auth->api = (ziti_auth_method_t){
@@ -48,7 +49,12 @@ ziti_auth_method_t *new_ha_auth(uv_loop_t *l, const char *url, tls_context *tls)
         .free = ha_auth_free,
     };
 
-    oidc_client_init(l, &auth->oidc, url, tls);
+    const char *u;
+    MODEL_LIST_FOREACH(u, *urls) {
+        model_list_append(&auth->urls, strdup(u));
+    }
+
+    oidc_client_init(l, &auth->oidc, (char*)model_list_head(&auth->urls), tls);
     return &auth->api;
 }
 
@@ -67,6 +73,11 @@ static void token_cb(oidc_client_t *oidc, int status, const char *token) {
     if (auth->cb) {
         if (status == 0) {
             auth->cb(auth->cb_ctx, ZitiAuthStateFullyAuthenticated, (void*)token);
+        } else if (status == UV_ECONNREFUSED) {
+            // rotate to next url
+            char *url = model_list_pop(&auth->urls);
+            model_list_append(&auth->urls, url);
+            oidc_client_set_url(&auth->oidc, model_list_head(&auth->urls));
         } else {
             char err[128];
             snprintf(err, sizeof(err), "failed to auth: %d", status);

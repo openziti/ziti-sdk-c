@@ -63,7 +63,11 @@ int ziti_load_config(ziti_config *cfg, const char* cfgstr) {
         return rc;
     }
 
-    if (cfg->controller_url == NULL || cfg->id.key == NULL) {
+    if (model_list_size(&cfg->controllers) && cfg->controller_url == NULL) {
+        return ZITI_INVALID_CONFIG;
+    }
+
+    if (cfg->id.key == NULL) {
         return ZITI_INVALID_CONFIG;
     }
 

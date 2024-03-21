@@ -257,6 +257,7 @@ struct ziti_ctx {
     ziti_config config;
     ziti_options opts;
     ziti_controller ctrl;
+    model_list controllers;
     uint32_t id;
 
     model_map ctrl_details;
@@ -268,6 +269,7 @@ struct ziti_ctx {
 
     bool closing;
     bool enabled;
+    bool logout;
     int ctrl_status;
 
     ziti_auth_method_t *auth_method;

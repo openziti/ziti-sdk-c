@@ -54,6 +54,7 @@ struct oidc_client_s {
 
 // init
 int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt, const char *url, tls_context *tls);
+int oidc_client_set_url(oidc_client_t *clt, const char* url);
 
 int oidc_client_set_id(oidc_client_t *clt, const char *client_id);
 
