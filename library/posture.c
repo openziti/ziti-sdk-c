@@ -194,9 +194,13 @@ void ziti_send_posture_data(ziti_context ztx) {
     }
 
     ZTX_LOG(VERBOSE, "starting to send posture data");
-    bool new_session_id = ztx->posture_checks->previous_api_session_id == NULL || strcmp(ztx->posture_checks->previous_api_session_id, ztx->api_session->id) != 0;
+    bool new_session_id = ztx->posture_checks->previous_api_session_id == NULL ||
+            strcmp(ztx->posture_checks->previous_api_session_id, ztx->api_session->id) != 0;
 
-    bool new_controller_instance = (ztx->posture_checks->controller_instance_id == NULL && ztx->controller.instance_id != NULL) || strcmp(ztx->posture_checks->controller_instance_id, ztx->controller.instance_id) != 0;
+    ziti_controller *ctrl = ztx_get_controller(ztx);
+    bool new_controller_instance =
+            (ztx->posture_checks->controller_instance_id == NULL && ctrl->instance_id != NULL) ||
+            strcmp(ztx->posture_checks->controller_instance_id, ctrl->instance_id) != 0;
 
     if(new_controller_instance){
         ZTX_LOG(INFO, "first run or potential controller restart detected");
@@ -212,7 +216,7 @@ void ziti_send_posture_data(ziti_context ztx) {
         FREE(ztx->posture_checks->previous_api_session_id);
         FREE(ztx->posture_checks->controller_instance_id);
         ztx->posture_checks->previous_api_session_id = strdup(ztx->api_session->id);
-        ztx->posture_checks->controller_instance_id = strdup(ztx->controller.instance_id);
+        ztx->posture_checks->controller_instance_id = strdup(ctrl->instance_id);
     } else {
         ZTX_LOG(DEBUG, "posture checks must_send set to FALSE, new_session_id[%s], must_send_every_time[%s], new_controller_instance[%s]",
                 new_session_id ? "TRUE" : "FALSE",
@@ -555,7 +559,7 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
     ZTX_LOG(DEBUG, "sending posture responses [%d]", obj_count);
     ZTX_LOG(TRACE, "bulk posture response: %s", body);
 
-    ziti_pr_post_bulk(&ztx->controller, body, body_len, ziti_pr_post_bulk_cb, ztx);
+    ziti_pr_post_bulk(ztx_get_controller(ztx), body, body_len, ziti_pr_post_bulk_cb, ztx);
     string_buf_free(&buf);
 }
 
@@ -578,7 +582,7 @@ static void ziti_pr_send_individually(ziti_context ztx) {
             cb_ctx->info = new_info;
             cb_ctx->ztx = ztx;
 
-            ziti_pr_post(&ztx->controller, body, strlen(body), ziti_pr_post_cb, cb_ctx);
+            ziti_pr_post(ztx_get_controller(ztx), body, strlen(body), ziti_pr_post_cb, cb_ctx);
             info->should_send = false;
         }
     }
@@ -877,7 +881,7 @@ void ziti_endpoint_state_change(ziti_context ztx, bool woken, bool unlocked) {
 
         char *obj = ziti_pr_endpoint_state_req_to_json(&state_req, 0, &obj_len);
 
-        ziti_pr_post(&ztx->controller, obj, obj_len, ziti_endpoint_state_pr_cb, ztx);
+        ziti_pr_post(ztx_get_controller(ztx), obj, obj_len, ziti_endpoint_state_pr_cb, ztx);
     } else {
         ZTX_LOG(INFO, "endpoint state change reported, but no reason to send data: woken[%s] unlocked[%s]", woken ? "TRUE":"FALSE", unlocked ? "TRUE":"FALSE");
     }
