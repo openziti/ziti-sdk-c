@@ -737,7 +737,7 @@ static int send_crypto_header(ziti_connection conn) {
         wr->conn = conn;
         wr->message = m;
 
-        TAILQ_INSERT_TAIL(&conn->wreqs, wr, _next);
+        TAILQ_INSERT_HEAD(&conn->wreqs, wr, _next);
         flush_connection(conn);
     }
     return ZITI_OK;
