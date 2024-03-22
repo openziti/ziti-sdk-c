@@ -20,7 +20,7 @@
 #endif
 
 
-#if defined(__linux__)
+#if defined(__linux__) || defined(__FreeBSD__)
 #  include <endian.h>
 #elif defined (__APPLE__)
 #  include <libkern/OSByteOrder.h>

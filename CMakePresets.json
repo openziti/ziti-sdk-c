@@ -168,6 +168,22 @@
       }
     },
     {
+      "name": "ci-freebsd-x64",
+      "inherits": [
+        "ci-build",
+        "ci-unix",
+        "dev-mode",
+        "vcpkg"
+      ],
+      "cacheVariables": {
+        "CMAKE_MAKE_PROGRAM": "ninja",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "VCPKG_TARGET_TRIPLET": "x64-freebsd",
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/FreeBSD-x64.cmake"
+      }
+    },
+    {
       "name": "ci-windows-x64",
       "inherits": [
         "ci-build",

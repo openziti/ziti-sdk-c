@@ -25,7 +25,7 @@
 #include <atomic>
 using namespace std;
 #else
-#if defined(__linux)
+#if defined(__linux) || defined(__FreeBSD__)
 
 /* 20230621:NFRAGALE@NETFOUNDRY:Build assurance against a missing macro in features.h. */
 #  if defined __GNUC__ && defined __GNUC_MINOR__ && ! __clang__

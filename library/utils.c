@@ -45,6 +45,8 @@
 #define ZITI_OS Android
 #elif defined(__linux__)
 #define ZITI_OS Linux
+#elif defined(__FreeBSD__)
+#define ZITI_OS FreeBSD
 #elif defined(__APPLE__)
 #define ZITI_OS MacOS
 #else
