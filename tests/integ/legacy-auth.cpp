@@ -228,7 +228,7 @@ TEST_CASE("ztx-legacy-auth", "[integ]") {
             printf("got event: %d => %s \n", event->type, event->event.ctx.err);
             auto test_ctx = (test_context_s*)ziti_app_ctx(ztx);
             test_ctx->event = event->type;
-        },
+        }
     };
 
     ziti_context_set_options(ztx, &opts);
