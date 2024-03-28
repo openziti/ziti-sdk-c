@@ -221,7 +221,7 @@ TEST_CASE("ztx-legacy-auth", "[integ]") {
     };
 
 
-    ziti_options opts = {0};
+    ziti_options opts = {};
     opts.app_ctx = &test_context;
     opts.events = ZitiContextEvent;
     opts.event_cb = [](ziti_context ztx, const ziti_event_t *event){
