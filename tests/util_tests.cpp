@@ -26,7 +26,7 @@
 #endif
 
 TEST_CASE("read_file", "[util]") {
-    const char *test_path = TO_STRING(ZITI_TEST_DIR) "/ctrl_tests.cpp";
+    const char *test_path = TO_STRING(ZITI_TEST_DIR) "/buffer_tests.cpp";
     char *content = nullptr;
     size_t size;
     int rc = load_file(test_path, 0, &content, &size);
@@ -55,7 +55,7 @@ TEST_CASE("read_file_not_found", "[util]") {
 }
 
 TEST_CASE("read_file_stdin", "[util]") {
-    const char *test_path = TO_STRING(ZITI_TEST_DIR) "/ctrl_tests.cpp";
+    const char *test_path = TO_STRING(ZITI_TEST_DIR) "/buffer_tests.cpp";
     uv_fs_t req = {0};
     REQUIRE(uv_fs_stat(nullptr, &req, test_path, nullptr) == 0);
     auto file_size = req.statbuf.st_size;
