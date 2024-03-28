@@ -310,6 +310,24 @@ void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mf
     ziti_send_event(ztx, &ev);
 }
 
+static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
+    if (err) {
+        ZTX_LOG(WARN, "failed to list HA controllers %s/%s", err->code, err->message);
+        return;
+    }
+
+    model_map_clear(&ztx->ctrl_details, (_free_f)free_ziti_controller_detail_ptr);
+    for (int i = 0; ctrls[i] != NULL; i++) {
+        ziti_controller_detail *detail = ctrls[i];
+        api_address *api = model_list_head(&detail->apis.edge);
+        ZTX_LOG(INFO, "controller[%s/%s] url[%s]", detail->name, detail->id, FIELD_OR_NULL(api, url));
+
+        model_map_set(&ztx->ctrl_details, detail->id, detail);
+    }
+    free(ctrls);
+}
+
 void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiApiSessionStateFullyAuthenticated);
 
@@ -322,6 +340,10 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     }
     ziti_ctrl_get_well_known_certs(&ztx->controller, ca_bundle_cb, ztx);
     ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
+
+    if (ztx->auth_method->kind == HA) {
+        ziti_ctrl_list_controllers(&ztx->controller, ctrl_list_cb, ztx);
+    }
 
     // disable this until we figure out expiration and rolling requirements
 #if ENABLE_SESSION_CERTIFICATES
@@ -548,6 +570,7 @@ static void free_ztx(uv_handle_t *h) {
     ziti_ctrl_close(&ztx->controller);
     ztx->tlsCtx->free_ctx(ztx->tlsCtx);
 
+    model_map_clear(&ztx->ctrl_details, (_free_f) free_ziti_controller_detail_ptr);
     ziti_auth_query_free(ztx->auth_queries);
     ziti_posture_checks_free(ztx->posture_checks);
     model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
