@@ -184,6 +184,22 @@ XX(identity_id, string, none, identityId, __VA_ARGS__) \
 XX(cert_pem, string, none, certPem, __VA_ARGS__) \
 XX(fingerprint, string, none, fingerprint, __VA_ARGS__)
 
+#define API_ADDRESS_MODEL(XX, ...) \
+XX(url, string, none, url, __VA_ARGS__) \
+XX(version, string, none, version, __VA_ARGS__)
+
+#define CTRL_APIS_MODEL(XX, ...) \
+XX(edge, api_address, list, edge-client, __VA_ARGS__) \
+XX(oidc, api_address, list, edge-oidc, __VA_ARGS__)
+
+#define ZITI_CONTROLLER_DETAIL(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__) \
+XX(name, string, none, name, __VA_ARGS__) \
+XX(apis, ctrl_apis, none, apiAddresses, __VA_ARGS__) \
+XX(is_online, bool, none, isOnline, __VA_ARGS__) \
+XX(cert_pem, string, none, certPem, __VA_ARGS__) \
+XX(fingerprint, string, none, fingerprint, __VA_ARGS__)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -247,6 +263,12 @@ DECLARE_MODEL(ziti_extend_cert_authenticator_resp, ZITI_EXTEND_CERT_AUTHENTICATO
 DECLARE_MODEL(ziti_create_api_cert_req, ZITI_CREATE_API_CERT_REQ)
 
 DECLARE_MODEL(ziti_create_api_cert_resp, ZITI_CREATE_API_CERT_RESP)
+
+DECLARE_MODEL(api_address, API_ADDRESS_MODEL)
+
+DECLARE_MODEL(ctrl_apis, CTRL_APIS_MODEL)
+
+DECLARE_MODEL(ziti_controller_detail, ZITI_CONTROLLER_DETAIL)
 
 bool ziti_has_capability(const ziti_version *v, ziti_ctrl_cap c);
 
