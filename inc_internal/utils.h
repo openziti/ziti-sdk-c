@@ -48,10 +48,13 @@ extern "C" {
 
     typedef unsigned int uint;
 
-#define typeof(x)
-
 #endif
 
+#if defined(_MSC_VER)
+#define z_typeof(x) __typeof__(x)
+#else
+#define z_typeof(x) typeof(x)
+#endif
 extern const char *ziti_get_build_version(int verbose);
 
 extern const char *ziti_git_branch();
@@ -75,7 +78,7 @@ typedef int *(*cond_error_t)(int);
 #define VAL_OR_ELSE(v, def) ((v) != NULL ? (v) : (def))
 #define FREE(v)  do { if ((v) != NULL) { free((void*)(v)); (v) = NULL; } } while(0)
 #define FIELD_OR_ELSE(obj, field, def) ((obj) ? ((obj)->field) : (def))
-#define FIELD_OR_NULL(obj, field) FIELD_OR_ELSE(obj, field, (typeof((obj)->field))0)
+#define FIELD_OR_NULL(obj, field) FIELD_OR_ELSE(obj, field, (z_typeof((obj)->field))0)
 
 #define FMT(ex) _##ex##_fmt
 #define COND(ex) _##ex##_cond

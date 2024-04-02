@@ -221,15 +221,14 @@ TEST_CASE("ztx-legacy-auth", "[integ]") {
     };
 
 
-    ziti_options opts = {
-        .app_ctx = &test_context,
-        .events = ZitiContextEvent,
-        .event_cb = [](ziti_context ztx, const ziti_event_t *event){
+    ziti_options opts = {};
+    opts.app_ctx = &test_context;
+    opts.events = ZitiContextEvent;
+    opts.event_cb = [](ziti_context ztx, const ziti_event_t *event){
             printf("got event: %d => %s \n", event->type, event->event.ctx.err);
             auto test_ctx = (test_context_s*)ziti_app_ctx(ztx);
             test_ctx->event = event->type;
-        },
-    };
+        };
 
     ziti_context_set_options(ztx, &opts);
 

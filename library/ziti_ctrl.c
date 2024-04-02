@@ -535,6 +535,16 @@ void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_ses
     start_request(ctrl->client, "GET", "/current-api-session", ctrl_resp_cb, resp);
 }
 
+void ziti_ctrl_list_controllers(ziti_controller *ctrl,
+                                void (*cb)(ziti_controller_detail_array, const ziti_error*, void *ctx), void *ctx) {
+    if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
+
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_controller_detail_array, ctx);
+    resp->paging = true;
+    resp->base_path = "/controllers";
+    ctrl_paging_req(resp);
+}
+
 void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, cb, ctx)) return;
 
@@ -567,7 +577,7 @@ void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void (*cb)(ziti_edge_
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_edge_router_array, ctx);
     resp->paging = true;
-        resp->base_path = "/current-identity/edge-routers";
+    resp->base_path = "/current-identity/edge-routers";
     ctrl_paging_req(resp);
 }
 
