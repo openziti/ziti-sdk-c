@@ -256,7 +256,7 @@ typedef STAILQ_HEAD(work_q, ztx_work_s) ztx_work_q;
 struct ziti_ctx {
     ziti_config config;
     ziti_options opts;
-    ziti_controller controller;
+    ziti_controller ctrl;
     uint32_t id;
 
     model_map ctrl_details;
@@ -323,6 +323,8 @@ struct ziti_ctx {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+ziti_controller *ztx_get_controller(ziti_context ztx);
 
 bool ziti_is_session_valid(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type);
 
