@@ -508,14 +508,14 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
     if (session == NULL) {
         CONN_LOG(DEBUG, "requesting 'Dial' session for service[%s]", conn->service);
         // this will re-enter with session if create succeeds
-        ziti_ctrl_create_session(&ztx->controller, req->service_id, ziti_session_types.Dial,
+        ziti_ctrl_create_session(ztx_get_controller(ztx), req->service_id, ziti_session_types.Dial,
                                  connect_get_net_session_cb, conn);
         return;
     }
 
     if (model_list_size(&session->edge_routers) == 0) {
         if (session->refresh) {
-            ziti_ctrl_get_session(&ztx->controller, session->id, connect_get_net_session_cb, conn);
+            ziti_ctrl_get_session(ztx_get_controller(ztx), session->id, connect_get_net_session_cb, conn);
             return;
         } else {
             CONN_LOG(ERROR, "no edge routers available for service[%s] session[%s]", conn->service, session->id);
@@ -539,7 +539,7 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
 
     if (session->refresh) {
         CONN_LOG(DEBUG, "refreshing session[%s]", session->id);
-        ziti_ctrl_get_session(&ztx->controller, session->id, refresh_session_cb, ztx);
+        ziti_ctrl_get_session(ztx_get_controller(ztx), session->id, refresh_session_cb, ztx);
         session->refresh = false;
     }
 }
@@ -737,7 +737,7 @@ static int send_crypto_header(ziti_connection conn) {
         wr->conn = conn;
         wr->message = m;
 
-        TAILQ_INSERT_TAIL(&conn->wreqs, wr, _next);
+        TAILQ_INSERT_HEAD(&conn->wreqs, wr, _next);
         flush_connection(conn);
     }
     return ZITI_OK;
