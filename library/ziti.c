@@ -339,14 +339,15 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         free(ztx->session_token);
         ztx->session_token = strdup(session_token);
     }
+    ziti_controller *ctrl = ztx_get_controller(ztx);
     if (ztx->auth_method->kind == HA) {
-        ziti_ctrl_set_token(&ztx->controller, session_token);
+        ziti_ctrl_set_token(ctrl, session_token);
     }
-    ziti_ctrl_get_well_known_certs(&ztx->controller, ca_bundle_cb, ztx);
-    ziti_ctrl_current_identity(&ztx->controller, update_identity_data, ztx);
+    ziti_ctrl_get_well_known_certs(ctrl, ca_bundle_cb, ztx);
+    ziti_ctrl_current_identity(ctrl, update_identity_data, ztx);
 
     if (ztx->auth_method->kind == HA) {
-        ziti_ctrl_list_controllers(&ztx->controller, ctrl_list_cb, ztx);
+        ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
     }
 
     // disable this until we figure out expiration and rolling requirements
@@ -932,7 +933,7 @@ int ziti_listen_with_options(ziti_connection serv_conn, const char *service, zit
 static void version_pre_auth_cb(ziti_version *version, const ziti_error *err, void *ctx);
 static void ziti_re_auth(ziti_context ztx) {
     // always get controller version to get the right auth method
-    ziti_ctrl_get_version(&ztx->controller, version_pre_auth_cb, ztx);
+    ziti_ctrl_get_version(ztx_get_controller(ztx), version_pre_auth_cb, ztx);
 }
 
 static void set_posture_query_defaults(ziti_service *service) {
@@ -1717,7 +1718,7 @@ static void version_pre_auth_cb(ziti_version *version, const ziti_error *err, vo
         if (ha) {
             ztx->auth_method = new_ha_auth(ztx->loop, ztx->config.controller_url, ztx->tlsCtx);
         } else {
-            ztx->auth_method = new_legacy_auth(&ztx->controller);
+            ztx->auth_method = new_legacy_auth(ztx_get_controller(ztx));
         }
         ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
     }
