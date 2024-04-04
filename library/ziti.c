@@ -119,7 +119,7 @@ static size_t parse_ref(const char *val, const char **res) {
 }
 
 ziti_controller* ztx_get_controller(ziti_context ztx) {
-    return &ztx->ctrl;
+    return model_list_head(&ztx->controllers);
 }
 
 static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout) {

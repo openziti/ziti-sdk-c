@@ -74,7 +74,7 @@ static void json_parse_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
     }
 
     if (len > 0) {
-        ZITI_LOG(INFO, "data: %.*s", (int)len, data);
+        ZITI_LOG(TRACE, "data: %.*s", (int)len, data);
         json_object *res = json_tokener_parse_ex(req->parser, data, (int) len);
         if (res) {
             int status = r->resp.code == HTTP_STATUS_OK ? 0 : r->resp.code;
@@ -376,9 +376,6 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
     struct json_object *ttl = json_object_object_get(clt->tokens, "expires_in");
     if (clt->timer && refresher && ttl) {
         int32_t t = json_object_get_int(ttl);
-        if (t > 15) {
-            t = 15;
-        }
         ZITI_LOG(DEBUG, "scheduling token refresh in %d seconds", t);
         uv_timer_start(clt->timer, refresh_time_cb, t * 1000, 0);
     }
