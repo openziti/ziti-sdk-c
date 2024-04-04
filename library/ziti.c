@@ -561,7 +561,7 @@ extern void *ziti_app_ctx(ziti_context ztx) {
 }
 
 const char *ziti_get_controller(ziti_context ztx) {
-    return ztx_controller(ztx);
+    return ztx_get_controller(ztx)->url;
 }
 
 const ziti_version *ziti_get_controller_version(ziti_context ztx) {
