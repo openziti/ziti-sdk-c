@@ -373,7 +373,7 @@ void on_channel_send(uv_write_t *w, int status) {
 
     if (status < 0) {
         CH_LOG(ERROR, "write failed [%d/%s]", status, uv_strerror(status));
-        on_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE, status);
+        on_channel_close(ch, ZITI_CONNABORT, status);
     }
 
     free(w);
@@ -823,6 +823,10 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
         ch->in_next = NULL;
     }
 
+    if (ziti_err == ZITI_DISABLED || ziti_err == ZITI_GATEWAY_UNAVAILABLE) {
+        return;
+    }
+
     if (ch->state != Closed) {
         if (uv_err == UV_EOF) {
             ZTX_LOG(VERBOSE, "edge router closed connection, trying to refresh api session");
@@ -866,7 +870,7 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
             default:
                 CH_LOG(INFO, "channel disconnected [%zd/%s]", len, uv_strerror(len));
                 // propagate close
-                on_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE, len);
+                on_channel_close(ch, ZITI_CONNABORT, len);
                 close_connection(ch);
                 break;
         }
