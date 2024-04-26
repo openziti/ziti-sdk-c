@@ -272,7 +272,7 @@ error:
 ziti_context Ziti_load_context(const char *identity) {
     future_t *f = schedule_on_loop(load_ziti_ctx, (void *) identity, true);
     ziti_context ztx;
-    int err = await_future(f, &ztx);
+    int err = await_future(f, (void **) &ztx);
     set_error(err);
     if (err == 0) {
         ztx_wrap_t *wrap = ziti_app_ctx(ztx);
