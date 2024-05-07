@@ -204,6 +204,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     enroll_req2->loop = enroll_req->loop;
     enroll_req2->controller = calloc(1, sizeof(ziti_controller));
     TRY(ziti, ziti_ctrl_init(enroll_req2->loop, enroll_req2->controller, enroll_req->ecfg->zej->controller, tls));
+    tlsuv_http_set_path_prefix(enroll_req2->controller->client, "/edge/client/v1");
     enroll_req2->ecfg = enroll_req->ecfg;
 
     ziti_ctrl_enroll(enroll_req2->controller, enroll_req->ecfg->zej->method, enroll_req->ecfg->zej->token,
