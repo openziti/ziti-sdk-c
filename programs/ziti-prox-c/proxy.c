@@ -781,9 +781,14 @@ int run_opts(int argc, char **argv) {
             char host[128], port[6];
             snprintf(host, sizeof(host), "%.*s", (int)url.hostname_len, url.hostname);
             snprintf(port, sizeof(port), "%d", url.port);
-            tlsuv_set_global_connector(
-                tlsuv_new_proxy_connector(tlsuv_PROXY_HTTP, host, port)
-            );
+            tlsuv_connector_t *proxy = tlsuv_new_proxy_connector(tlsuv_PROXY_HTTP, host, port);
+            if (url.username) {
+                char user[128], passwd[128];
+                snprintf(user, sizeof(user), "%.*s", (int)url.username_len, url.username);
+                snprintf(passwd, sizeof(passwd), "%.*s", (int)url.password_len, url.password);
+                proxy->set_auth(proxy, tlsuv_PROXY_BASIC, user, passwd);
+            }
+            tlsuv_set_global_connector(proxy);
             break;
         }
                 
