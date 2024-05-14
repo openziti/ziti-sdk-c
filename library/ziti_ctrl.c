@@ -298,6 +298,10 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
         if (resp->resp_chunked) {
             resp->body = realloc(resp->body, resp->received + len);
         }
+        if (!resp->body) {
+            ZITI_LOG(WARN, "could not process controller response: %zd bytes not allocated for body", len);
+            return;
+        }
         memcpy(resp->body + resp->received, b, len);
         resp->received += len;
     }
