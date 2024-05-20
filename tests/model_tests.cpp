@@ -20,6 +20,8 @@
 #include <iostream>
 #include <tuple>
 
+#include <json-c/json.h>
+
 #define BAR_MODEL(xx, ...)\
 xx(num, int, none, num, __VA_ARGS__)\
 xx(nump, int, ptr, nump, __VA_ARGS__) \
@@ -73,6 +75,13 @@ using namespace Catch::Matchers;
 \"errors\": [\"error1\", \"error2\"] \
 }"
 
+static inline std::string remove_space(const char* s) {
+    std::string r(s);
+    auto end = std::remove_if(r.begin(), r.end(), isspace);
+    r.erase(end, r.end());
+    return r;
+}
+
 static void checkBar1(const Bar &bar) {
     CHECK(bar.num == 42);
     CHECK(!bar.isOK);
@@ -107,7 +116,17 @@ TEST_CASE("new model tests", "[model]") {
 
     checkBar1(bar);
 
-    char *json = Bar_to_json(&bar, 0, nullptr);
+    auto json = Bar_to_json(&bar, 0, nullptr);
+    std::cout << json << std::endl;
+    free(json);
+    free_Bar(&bar);
+
+    auto j = json_tokener_parse(bar_json);
+    REQUIRE(Bar_from_json(&bar, j) == 0);
+    checkBar1(bar);
+    json_object_put(j);
+
+    json = Bar_to_json(&bar, 0, nullptr);
     std::cout << json << std::endl;
     free(json);
     free_Bar(&bar);
@@ -312,7 +331,7 @@ TEST_CASE("test raw json", "[model]") {
                        "}";
     Baz baz;
     REQUIRE(parse_Baz(&baz, json, strlen(json)) == strlen(json));
-    REQUIRE_THAT(baz.bar, Equals(BAR1));
+    REQUIRE_THAT(remove_space(baz.bar), Equals(remove_space(BAR1)));
     REQUIRE(baz.ok);
 
     Bar bar;
@@ -339,7 +358,8 @@ TEST_CASE("model map test", "[model]") {
     REQUIRE(parse_ObjMap(&o, json, strlen(json)) == strlen(json));
     CHECK(o.ok);
     CHECK_THAT((const char *) model_map_get(&o.map, "num"), Equals("42"));
-    CHECK_THAT((const char *) model_map_get(&o.map, "errors"), Equals(R"(["error1", "error2"])"));
+    CHECK_THAT(
+            remove_space((const char *) model_map_get(&o.map, "errors")), Equals(R"(["error1","error2"])"));
 
     char *j = ObjMap_to_json(&o, 0, NULL);
 

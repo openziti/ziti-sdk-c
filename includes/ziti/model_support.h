@@ -24,6 +24,8 @@
 
 #include <string.h>
 
+#include <json-c/json.h>
+
 #include "externs.h"
 #include "model_collections.h"
 #include "types.h"
@@ -81,18 +83,28 @@ DECLARE_MODEL_FUNCS(type)
 #define DECLARE_MODEL_FUNCS(type) \
 typedef type ** type##_array; \
 MODEL_API type_meta* get_##type##_meta();\
-MODEL_API ptr(type) alloc_##type();\
+static inline ptr(type) alloc_##type(){ return (ptr(type))calloc(1,sizeof(type)); }\
 MODEL_API void free_##type(type *v);     \
-MODEL_API void free_##type##_ptr(type *v); \
+static inline void free_##type##_ptr(type *v) { free_##type(v); free(v); }; \
 MODEL_API int cmp_##type(const type *lh, const type *rh); \
 MODEL_API void free_##type##_array(array(type) *ap);\
 MODEL_API int parse_##type(ptr(type) v, const char* json, size_t len);\
 MODEL_API int parse_##type##_ptr(ptr(type) *p, const char* json, size_t len);\
 MODEL_API int parse_##type##_array(array(type) *a, const char* json, size_t len); \
 MODEL_API int parse_##type##_list(list(type) *l, const char* json, size_t len); \
-/** write to fixed buffer */                                 \
 MODEL_API ssize_t type##_to_json_r(const ptr(type) v, int flags, char *outbuf, size_t max); \
-MODEL_API char* type##_to_json(const ptr(type) v, int flags, size_t *len);
+MODEL_API char* type##_to_json(const ptr(type) v, int flags, size_t *len);   \
+static inline int type##_from_json(ptr(type) v, struct json_object *j) { return model_from_json(v, j, get_##type##_meta()); } \
+static inline int type##_ptr_from_json(ptr(type) *v, struct json_object *j) {      \
+    if (j == NULL || json_object_get_type(j) == json_type_null) { *v = NULL; return 0; }  \
+    type_meta *meta = get_##type##_meta();   \
+    *v = (ptr(type))calloc(1, meta->size);                                  \
+    int rc = model_from_json(*v, j, get_##type##_meta());                              \
+    if (rc != 0) { free(*v); *v = NULL;}          \
+    return rc;\
+} \
+static inline int type##_list_from_json(list(type) *l, struct json_object *j) { return model_list_from_json(l, j, get_##type##_meta()); } \
+static inline int type##_array_from_json(array(type) *a, struct json_object *j) { return model_array_from_json((void***)a, j, get_##type##_meta()); }
 
 #define gen_field_meta(n, memtype, modifier, p, partype) {\
 .name = #n, \
@@ -125,10 +137,8 @@ return rc;\
 }\
 int parse_##type##_array(array(type) *a, const char *json, size_t len) { return model_parse_array((void***)a, json, len, &type##_META); }\
 int parse_##type##_list(list(type) *l, const char *json, size_t len) { return model_parse_list(l, json, len, &type##_META); }\
-ptr(type) alloc_##type() { return (ptr(type))calloc(1, sizeof(type)); } \
 int cmp_##type(const type *lh, const type *rh) { return model_cmp(lh, rh, &type##_META); }\
 void free_##type(ptr(type) v) { model_free(v, &type##_META); }                                                  \
-void free_##type##_ptr(ptr(type) v) { free_##type(v); free(v); }                                                \
 void free_##type##_array(array(type) *ap) { model_free_array((void***)ap, &type##_META); }                      \
 MODEL_API ssize_t type##_to_json_r(const ptr(type) v, int flags, char *outbuf, size_t max) {                    \
 return model_to_json_r(v, &type##_META, flags, outbuf, max); } \
@@ -162,11 +172,12 @@ typedef struct field_meta {
 } field_meta;
 
 typedef int (*_parse_f)(void *obj, const char *json, void *tok);
-
 typedef int (*_to_json_f)(const void *obj, void *buf, int indent, int flags);
-
 typedef void (*_free_f)(void *obj);
 typedef int (*_cmp_f)(const void *lh, const void *rh);
+
+typedef int (*from_json_func)(void *obj, struct json_object *json, struct type_meta *meta);
+typedef struct json_object* (*to_json_func)(const void *obj);
 
 typedef struct type_meta {
     const char *name;
@@ -177,6 +188,8 @@ typedef struct type_meta {
     _parse_f parser;
     _to_json_f jsonifier;
     _free_f destroyer;
+    from_json_func from_json;
+    to_json_func to_json;
 } type_meta;
 
 #define MODEL_PARSE_INVALID (-2)
@@ -189,6 +202,10 @@ ZITI_FUNC void model_free_array(void ***ap, type_meta *meta);
 ZITI_FUNC int model_cmp(const void *lh, const void *rh, type_meta *meta);
 
 ZITI_FUNC int model_parse(void *obj, const char *json, size_t len, type_meta *meta);
+
+ZITI_FUNC int model_from_json(void *obj, struct json_object *json, type_meta *meta);
+ZITI_FUNC int model_list_from_json(model_list *l, struct json_object *json, type_meta *meta);
+ZITI_FUNC int model_array_from_json(void ***obj, struct json_object *json, type_meta *meta);
 
 ZITI_FUNC int model_parse_array(void ***arp, const char *json, size_t len, type_meta *meta);
 
@@ -235,7 +252,9 @@ typedef struct {
 ZITI_FUNC type_meta *get_tag_meta();
 
 ZITI_FUNC int parse_enum(void *ptr, const char *json, void *tok, const void *enum_type);
+ZITI_FUNC int enum_from_json(void *ptr, const struct json_object *j, const void *enum_type);
 ZITI_FUNC int json_enum(const void *ptr, void *buf, int indent, int flags, const void *enum_type);
+ZITI_FUNC struct json_object* enum_to_json(const void* ptr, const void *enum_type);
 
 #define mk_enum(v,t) t##_##v,
 #define enum_field(v,t) const t v;
@@ -291,6 +310,12 @@ return parse_enum(e, json, tok, &Enum##s);                              \
 }\
 static int Enum##_json(const ptr(Enum) e, void *buf, int indent, int flags) {     \
 return json_enum(e, buf, indent, flags, &Enum##s);                              \
+}                               \
+static int Enum##_from_json(ptr(Enum) e, struct json_object *j, type_meta *m) {    \
+                                return enum_from_json(e, j, &Enum##s); \
+}                               \
+static struct json_object* Enum##_to_json(const ptr(Enum) e) {         \
+                                return enum_to_json(e, &Enum##s); \
 }\
 static type_meta Enum##_meta = {\
         .name = #Enum,        \
@@ -299,7 +324,9 @@ static type_meta Enum##_meta = {\
         .fields = NULL,       \
         .comparer = (_cmp_f) cmp_##Enum, \
         .parser = (_parse_f) parse_##Enum, \
-        .jsonifier = (_to_json_f) Enum##_json, \
+        .jsonifier = (_to_json_f) Enum##_json,  \
+        .from_json = (from_json_func) Enum##_from_json,         \
+        .to_json = (to_json_func) Enum##_to_json, \
         };           \
 type_meta* get_##Enum##_meta() { return &Enum##_meta; }\
 
