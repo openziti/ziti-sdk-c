@@ -47,7 +47,7 @@
     if ((lh) == NULL) { return -1; } \
     if ((rh) == NULL) { return 1; }
 
-static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *meta);
+static int parse_obj(void *obj, const char *json, jsmntok_t *tok, const type_meta *meta);
 
 jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_t *ntok) {
     size_t tok_cap = 256;
@@ -77,7 +77,7 @@ jsmntok_t* parse_tokens(jsmn_parser *parser, const char *json, size_t len, size_
     return toks;
 }
 
-int model_cmp(const void *lh, const void *rh, type_meta *meta) {
+int model_cmp(const void *lh, const void *rh, const type_meta *meta) {
     null_checks(lh, rh)
 
     if (meta->comparer) {
@@ -87,7 +87,7 @@ int model_cmp(const void *lh, const void *rh, type_meta *meta) {
     int rc = 0;
     for (int i = 0; rc == 0 && i < meta->field_count; i++) {
         field_meta *fm = meta->fields + i;
-        type_meta *ftm = fm->meta();
+        const type_meta *ftm = fm->meta();
 
         void **lf_addr = (void **) ((char *) lh + fm->offset);
         void **rf_addr = (void **) ((char *) rh + fm->offset);
@@ -170,7 +170,7 @@ int model_cmp(const void *lh, const void *rh, type_meta *meta) {
     return rc;
 }
 
-int model_parse_list(model_list *list, const char *json, size_t len, type_meta *meta) {
+int model_parse_list(model_list *list, const char *json, size_t len, const type_meta *meta) {
     struct json_tokener *tok = json_tokener_new();
     json_object *j = json_tokener_parse_ex(tok, json, (int)len);
     int res;
@@ -200,7 +200,7 @@ int model_parse_list(model_list *list, const char *json, size_t len, type_meta *
     return result == 0 ? (int)end : result;
 }
 
-int model_parse_array(void ***arrp, const char *json, size_t len, type_meta *meta) {
+int model_parse_array(void ***arrp, const char *json, size_t len, const type_meta *meta) {
     struct json_tokener *tok = json_tokener_new();
     json_object *j = json_tokener_parse_ex(tok, json, (int)len);
     int res;
@@ -229,7 +229,7 @@ int model_parse_array(void ***arrp, const char *json, size_t len, type_meta *met
     return res == 0 ? (int)end : res;
 }
 
-int model_parse(void *obj, const char *json, size_t len, type_meta *meta) {
+int model_parse(void *obj, const char *json, size_t len, const type_meta *meta) {
     struct json_tokener *tok = json_tokener_new();
     struct json_object *j = json_tokener_parse_ex(tok, json, (int) len);
     int res;
@@ -282,7 +282,7 @@ ssize_t model_to_json_r(const void *obj, const type_meta *meta, int flags, char 
     string_buf_init_fixed(&json, outbuf, max);
     ssize_t result = -1;
     if (write_model_to_buf(obj, meta, &json, 0, flags) == 0) {
-        result = string_buf_size(&json);
+        result = (ssize_t)string_buf_size(&json);
     }
     string_buf_free(&json);
     return result;
@@ -310,7 +310,7 @@ int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf
     bool comma = false;
     for (int i = 0; i < meta->field_count; i++) {
         field_meta *fm = meta->fields + i;
-        type_meta *ftm = fm->meta();
+        const type_meta *ftm = fm->meta();
 
         void **f_addr = (void **) ((char *) obj + fm->offset);
         void *f_ptr = fm->mod == none_mod ? f_addr : (void *) (*f_addr);
@@ -427,7 +427,7 @@ int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf
     return 0;
 }
 
-void model_free_array(void ***ap, type_meta *meta) {
+void model_free_array(void ***ap, const type_meta *meta) {
     if (ap == NULL || *ap == NULL) { return; }
 
     void **el = *ap;
@@ -439,7 +439,7 @@ void model_free_array(void ***ap, type_meta *meta) {
     FREE(*ap);
 }
 
-void model_free(void *obj, type_meta *meta) {
+void model_free(void *obj, const type_meta *meta) {
     if (obj == NULL) { return; }
 
     if (meta->destroyer != NULL) {
@@ -450,7 +450,7 @@ void model_free(void *obj, type_meta *meta) {
         field_meta *fm = &meta->fields[i];
         void **f_addr = (void **) ((char *) obj + fm->offset);
         void *f_ptr = NULL;
-        struct type_meta *field_meta = fm->meta();
+        const type_meta *field_meta = fm->meta();
         if (fm->mod == none_mod) {
             f_ptr = f_addr;
             model_free(f_ptr, field_meta);
@@ -529,7 +529,7 @@ void model_free(void *obj, type_meta *meta) {
     }
 }
 
-static int parse_array(void **arr, const char *json, jsmntok_t *tok, type_meta *el_meta) {
+static int parse_array(void **arr, const char *json, jsmntok_t *tok, const type_meta *el_meta) {
     if (tok->type == JSMN_PRIMITIVE && json[tok->start] == 'n') { //null check
         *arr = NULL;
         return 1;
@@ -568,7 +568,7 @@ static int parse_array(void **arr, const char *json, jsmntok_t *tok, type_meta *
     return processed;
 }
 
-int model_array_from_json(void ***arr, json_object *json, type_meta *el_meta) {
+int model_array_from_json(void ***arr, json_object *json, const type_meta *el_meta) {
     if (json_object_get_type(json) != json_type_array) {
         ZITI_LOG(ERROR, "unexpected token, array as expected");
         return -1;
@@ -606,7 +606,7 @@ int model_array_from_json(void ***arr, json_object *json, type_meta *el_meta) {
     return rc;
 }
 
-int model_list_from_json (model_list *list, json_object *json, type_meta *el_meta) {
+int model_list_from_json (model_list *list, json_object *json, const type_meta *el_meta) {
     if (json_object_get_type(json) != json_type_array) {
         ZITI_LOG(ERROR, "unexpected token, array as expected");
         return -1;
@@ -647,7 +647,7 @@ int model_list_from_json (model_list *list, json_object *json, type_meta *el_met
     return rc;
 }
 
-static int parse_list(void *field, const char *json, jsmntok_t *tok, type_meta *el_meta) {
+static int parse_list(void *field, const char *json, jsmntok_t *tok, const type_meta *el_meta) {
     if (tok->type == JSMN_PRIMITIVE && json[tok->start] == 'n') { //null check
         return 1;
     }
@@ -716,7 +716,7 @@ static int parse_map_from_json(void *mapp, json_object *json, type_meta *el_meta
     return 0;
 }
 
-static int parse_map(void *mapp, const char *json, jsmntok_t *tok, type_meta *el_meta) {
+static int parse_map(void *mapp, const char *json, jsmntok_t *tok, const type_meta *el_meta) {
     if (tok->type != JSMN_OBJECT) {
         ZITI_LOG(ERROR, "unexpected JSON token near '%.*s', expecting object", 20, json + tok->start);
         return -1;
@@ -760,7 +760,7 @@ static int parse_map(void *mapp, const char *json, jsmntok_t *tok, type_meta *el
     return tokens_processed;
 }
 
-static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *meta) {
+static int parse_obj(void *obj, const char *json, jsmntok_t *tok, const type_meta *meta) {
     memset(obj, 0, meta->size);
     if (meta->parser) {
         return meta->parser(obj, json, tok);
@@ -837,7 +837,7 @@ static int parse_obj(void *obj, const char *json, jsmntok_t *tok, type_meta *met
     return tokens_processed;
 }
 
-int model_from_json(void *obj, json_object *json, type_meta *meta) {
+int model_from_json(void *obj, json_object *json, const type_meta *meta) {
     int rc = 0;
     memset(obj, 0, meta->size);
     if (meta->from_json) {
@@ -862,7 +862,7 @@ int model_from_json(void *obj, json_object *json, type_meta *meta) {
 
         void *field = (char *) obj + fm->offset;
         void *ch_obj = field;
-        struct type_meta *ch_meta = fm->meta();
+        const type_meta *ch_meta = fm->meta();
         from_json_func parser = ch_meta->from_json;
         if (parser == NULL) {
             parser = model_from_json;
@@ -898,7 +898,7 @@ int model_from_json(void *obj, json_object *json, type_meta *meta) {
     return rc;
 }
 
-static int int_from_json(int *val, const json_object *j, type_meta *meta) {
+static int int_from_json(int *val, const json_object *j, const type_meta *meta) {
     if (json_object_get_type(j) == json_type_int) {
         *val = (int)json_object_get_int64(j);
         return 0;
@@ -926,7 +926,7 @@ static int _parse_int(int *val, const char *json, jsmntok_t *tok) {
     return -1;
 }
 
-static int bool_from_json(bool *val, struct json_object *json, type_meta *meta) {
+static int bool_from_json(bool *val, struct json_object *json, const type_meta *meta) {
     if (json_object_get_type(json) == json_type_boolean) {
         *val = json_object_get_boolean(json);
         return 0;
@@ -984,7 +984,7 @@ static int _parse_json(char **val, const char *json, jsmntok_t *tok) {
     return processed;
 }
 
-static int string_from_json (string *str, json_object *j, type_meta *meta) {
+static int string_from_json (string *str, json_object *j, const type_meta *meta) {
     if (json_object_get_type(j) == json_type_string) {
         *str = strdup(json_object_get_string(j));
         return 0;
@@ -1419,7 +1419,7 @@ struct generic_enum_s {
     int (*value_ofn)(const char* s, size_t len);
 };
 
-int enum_from_json(void *ptr, const json_object *j, const void *enum_type) {
+int enum_from_json(void *ptr, json_object *j, const void *enum_type) {
     if (json_object_get_type(j) == json_type_string) {
         const struct generic_enum_s *en = enum_type;
         int *enum_p = ptr;
@@ -1461,7 +1461,7 @@ int json_enum(const void *ptr, void *bufp, int indent, int flags, const void *en
 }
 
 
-int model_map_compare(const model_map *lh, const model_map *rh, type_meta *m) {
+int model_map_compare(const model_map *lh, const model_map *rh, const type_meta *m) {
     null_checks(lh, rh)
 
     int rc = 0;
@@ -1610,19 +1610,19 @@ static type_meta tag_META = {
         .to_json = (to_json_func)tag_to_json,
 };
 
-type_meta *get_bool_meta() { return &bool_META; }
+const type_meta *get_bool_meta() { return &bool_META; }
 
-type_meta *get_int_meta() { return &int_META; }
+const type_meta *get_int_meta() { return &int_META; }
 
-type_meta *get_string_meta() { return &string_META; }
+const type_meta *get_string_meta() { return &string_META; }
 
-type_meta *get_timestamp_meta() { return &timestamp_META; }
+const type_meta *get_timestamp_meta() { return &timestamp_META; }
 
-type_meta *get_json_meta() { return &json_META; }
+const type_meta *get_json_meta() { return &json_META; }
 
-type_meta *get_model_map_meta() { return &map_META; }
+const type_meta *get_model_map_meta() { return &map_META; }
 
-type_meta *get_tag_meta() { return &tag_META; }
+const type_meta *get_tag_meta() { return &tag_META; }
 
 static int cmp_duration (const duration *lh, const duration *rh) {
     null_checks(lh, rh)
@@ -1700,7 +1700,8 @@ static int _duration_to_json(duration *d, string_buf_t *buf, int indent, int fla
     int rc = snprintf(json, sizeof(json), "\"%lldms\"", (long long)DURATION_MILLISECONDS(*d));
     return string_buf_append(buf, json);
 }
-type_meta *get_duration_meta() {
+
+const type_meta *get_duration_meta() {
     static type_meta _meta = {
             .name = "duration",
             .comparer = (_cmp_f) cmp_duration,

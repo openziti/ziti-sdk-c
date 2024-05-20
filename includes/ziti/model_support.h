@@ -80,31 +80,30 @@ model(FIELD_DECL, type) \
 } type;\
 DECLARE_MODEL_FUNCS(type)
 
-#define DECLARE_MODEL_FUNCS(type) \
-typedef type ** type##_array; \
-MODEL_API type_meta* get_##type##_meta();\
-static inline ptr(type) alloc_##type(){ return (ptr(type))calloc(1,sizeof(type)); }\
-MODEL_API void free_##type(type *v);     \
-static inline void free_##type##_ptr(type *v) { free_##type(v); free(v); }; \
-MODEL_API int cmp_##type(const type *lh, const type *rh); \
-MODEL_API void free_##type##_array(array(type) *ap);\
-MODEL_API int parse_##type(ptr(type) v, const char* json, size_t len);\
-MODEL_API int parse_##type##_ptr(ptr(type) *p, const char* json, size_t len);\
-MODEL_API int parse_##type##_array(array(type) *a, const char* json, size_t len); \
-MODEL_API int parse_##type##_list(list(type) *l, const char* json, size_t len); \
-MODEL_API ssize_t type##_to_json_r(const ptr(type) v, int flags, char *outbuf, size_t max); \
-MODEL_API char* type##_to_json(const ptr(type) v, int flags, size_t *len);   \
-static inline int type##_from_json(ptr(type) v, struct json_object *j) { return model_from_json(v, j, get_##type##_meta()); } \
-static inline int type##_ptr_from_json(ptr(type) *v, struct json_object *j) {      \
+#define DECLARE_MODEL_FUNCS(T) \
+typedef T ** T##_array; \
+MODEL_API const type_meta* get_##T##_meta();\
+static inline ptr(T) alloc_##T(){ return (ptr(T))calloc(1,sizeof(T)); }\
+MODEL_API void free_##T(T *v);     \
+static inline void free_##T##_ptr(T *v) { free_##T(v); free(v); }; \
+MODEL_API int cmp_##T(const T *lh, const T *rh); \
+MODEL_API void free_##T##_array(array(T) *ap);\
+MODEL_API int parse_##T(ptr(T) v, const char* json, size_t len);\
+MODEL_API int parse_##T##_ptr(ptr(T) *p, const char* json, size_t len);\
+MODEL_API int parse_##T##_array(array(T) *a, const char* json, size_t len); \
+MODEL_API int parse_##T##_list(list(T) *l, const char* json, size_t len); \
+MODEL_API ssize_t T##_to_json_r(const ptr(T) v, int flags, char *outbuf, size_t max); \
+MODEL_API char* T##_to_json(const ptr(T) v, int flags, size_t *len);   \
+static inline int T##_from_json(ptr(T) v, struct json_object *j) { return model_from_json(v, j, get_##T##_meta()); } \
+static inline int T##_ptr_from_json(ptr(T) *v, struct json_object *j) {      \
     if (j == NULL || json_object_get_type(j) == json_type_null) { *v = NULL; return 0; }  \
-    type_meta *meta = get_##type##_meta();   \
-    *v = (ptr(type))calloc(1, meta->size);                                  \
-    int rc = model_from_json(*v, j, get_##type##_meta());                              \
+    *v = (ptr(T))calloc(1, sizeof(T));                                  \
+    int rc = model_from_json(*v, j, get_##T##_meta());                              \
     if (rc != 0) { free(*v); *v = NULL;}          \
     return rc;\
 } \
-static inline int type##_list_from_json(list(type) *l, struct json_object *j) { return model_list_from_json(l, j, get_##type##_meta()); } \
-static inline int type##_array_from_json(array(type) *a, struct json_object *j) { return model_array_from_json((void***)a, j, get_##type##_meta()); }
+static inline int T##_list_from_json(list(T) *l, struct json_object *j) { return model_list_from_json(l, j, get_##T##_meta()); } \
+static inline int T##_array_from_json(array(T) *a, struct json_object *j) { return model_array_from_json((void***)a, j, get_##T##_meta()); }
 
 #define gen_field_meta(n, memtype, modifier, p, partype) {\
 .name = #n, \
@@ -126,23 +125,23 @@ static type_meta type##_META = { \
 };                              \
 IMPL_MODEL_FUNCS(type)
 
-#define IMPL_MODEL_FUNCS(type)  \
-type_meta* get_##type##_meta() { return &type##_META; }\
-int parse_##type(ptr(type) v, const char* json, size_t len) { return model_parse(v, json, len, &type##_META); } \
-int parse_##type##_ptr(ptr(type) *p, const char* json, size_t len) {\
-*p = (type *)calloc(1, type##_META.size); \
-int rc = parse_##type(*p, json, len); \
-if (rc < 0) { free_##type(*p); free(*p); *p = NULL; } \
+#define IMPL_MODEL_FUNCS(T)  \
+const type_meta* get_##T##_meta() { return &T##_META; }\
+int parse_##T(ptr(T) v, const char* json, size_t len) { return model_parse(v, json, len, get_##T##_meta()); } \
+int parse_##T##_ptr(ptr(T) *p, const char* json, size_t len) {\
+*p = (ptr(T))calloc(1, sizeof(T)); \
+int rc = parse_##T(*p, json, len); \
+if (rc < 0) { free_##T(*p); free(*p); *p = NULL; } \
 return rc;\
 }\
-int parse_##type##_array(array(type) *a, const char *json, size_t len) { return model_parse_array((void***)a, json, len, &type##_META); }\
-int parse_##type##_list(list(type) *l, const char *json, size_t len) { return model_parse_list(l, json, len, &type##_META); }\
-int cmp_##type(const type *lh, const type *rh) { return model_cmp(lh, rh, &type##_META); }\
-void free_##type(ptr(type) v) { model_free(v, &type##_META); }                                                  \
-void free_##type##_array(array(type) *ap) { model_free_array((void***)ap, &type##_META); }                      \
-MODEL_API ssize_t type##_to_json_r(const ptr(type) v, int flags, char *outbuf, size_t max) {                    \
-return model_to_json_r(v, &type##_META, flags, outbuf, max); } \
-char* type##_to_json(const ptr(type) v, int flags, size_t *len) { return model_to_json(v, &type##_META, flags, len); }
+int parse_##T##_array(array(T) *a, const char *json, size_t len) { return model_parse_array((void***)a, json, len, get_##T##_meta()); }\
+int parse_##T##_list(list(T) *l, const char *json, size_t len) { return model_parse_list(l, json, len, get_##T##_meta()); }\
+int cmp_##T(const ptr(T) lh, const ptr(T) rh) { return model_cmp(lh, rh, get_##T##_meta()); }\
+void free_##T(ptr(T) v) { model_free(v, get_##T##_meta()); }                                                  \
+void free_##T##_array(array(T) *ap) { model_free_array((void***)ap, get_##T##_meta()); }                      \
+MODEL_API ssize_t T##_to_json_r(const ptr(T) v, int flags, char *outbuf, size_t max) {                    \
+return model_to_json_r(v, get_##T##_meta(), flags, outbuf, max); } \
+char* T##_to_json(const ptr(T) v, int flags, size_t *len) { return model_to_json(v, get_##T##_meta(), flags, len); }
 
 
 #ifdef __cplusplus
@@ -168,7 +167,7 @@ typedef struct field_meta {
     size_t offset;
     enum _field_mod mod;
 
-    struct type_meta *(*meta)();
+    const struct type_meta *(*meta)();
 } field_meta;
 
 typedef int (*_parse_f)(void *obj, const char *json, void *tok);
@@ -176,7 +175,7 @@ typedef int (*_to_json_f)(const void *obj, void *buf, int indent, int flags);
 typedef void (*_free_f)(void *obj);
 typedef int (*_cmp_f)(const void *lh, const void *rh);
 
-typedef int (*from_json_func)(void *obj, struct json_object *json, struct type_meta *meta);
+typedef int (*from_json_func)(void *obj, struct json_object *json, const struct type_meta *meta);
 typedef struct json_object* (*to_json_func)(const void *obj);
 
 typedef struct type_meta {
@@ -195,43 +194,43 @@ typedef struct type_meta {
 #define MODEL_PARSE_INVALID (-2)
 #define MODEL_PARSE_PARTIAL (-3)
 
-ZITI_FUNC void model_free(void *obj, type_meta *meta);
+ZITI_FUNC void model_free(void *obj, const type_meta *meta);
 
-ZITI_FUNC void model_free_array(void ***ap, type_meta *meta);
+ZITI_FUNC void model_free_array(void ***ap, const type_meta *meta);
 
-ZITI_FUNC int model_cmp(const void *lh, const void *rh, type_meta *meta);
+ZITI_FUNC int model_cmp(const void *lh, const void *rh, const type_meta *meta);
 
-ZITI_FUNC int model_parse(void *obj, const char *json, size_t len, type_meta *meta);
+ZITI_FUNC int model_parse(void *obj, const char *json, size_t len, const type_meta *meta);
 
-ZITI_FUNC int model_from_json(void *obj, struct json_object *json, type_meta *meta);
-ZITI_FUNC int model_list_from_json(model_list *l, struct json_object *json, type_meta *meta);
-ZITI_FUNC int model_array_from_json(void ***obj, struct json_object *json, type_meta *meta);
+ZITI_FUNC int model_from_json(void *obj, struct json_object *json, const type_meta *meta);
+ZITI_FUNC int model_list_from_json(model_list *l, struct json_object *json, const type_meta *meta);
+ZITI_FUNC int model_array_from_json(void ***obj, struct json_object *json, const type_meta *meta);
 
-ZITI_FUNC int model_parse_array(void ***arp, const char *json, size_t len, type_meta *meta);
+ZITI_FUNC int model_parse_array(void ***arp, const char *json, size_t len, const type_meta *meta);
 
-ZITI_FUNC int model_parse_list(model_list *list, const char *json, size_t len, type_meta *meta);
+ZITI_FUNC int model_parse_list(model_list *list, const char *json, size_t len, const type_meta *meta);
 
 ZITI_FUNC char *model_to_json(const void *obj, const type_meta *meta, int flags, size_t *len);
 
 ZITI_FUNC ssize_t model_to_json_r(const void *obj, const type_meta *meta, int flags, char *outbuf, size_t max);
 
-ZITI_FUNC extern type_meta *get_bool_meta();
+ZITI_FUNC extern const type_meta *get_bool_meta();
 
-ZITI_FUNC extern type_meta *get_int_meta();
+ZITI_FUNC extern const type_meta *get_int_meta();
 
-ZITI_FUNC extern type_meta *get_string_meta();
+ZITI_FUNC extern const type_meta *get_string_meta();
 
-ZITI_FUNC extern type_meta *get_timestamp_meta();
+ZITI_FUNC extern const type_meta *get_timestamp_meta();
 
-ZITI_FUNC extern type_meta *get_json_meta();
+ZITI_FUNC extern const type_meta *get_json_meta();
 
-ZITI_FUNC extern type_meta *get_model_map_meta();
+ZITI_FUNC extern const type_meta *get_model_map_meta();
 
-ZITI_FUNC extern type_meta *get_duration_meta();
+ZITI_FUNC extern const type_meta *get_duration_meta();
 
 typedef struct timeval timestamp;
 
-int model_map_compare(const model_map *lh, const model_map *rh, type_meta *m);
+int model_map_compare(const model_map *lh, const model_map *rh, const type_meta *m);
 
 typedef enum {
     tag_null,
@@ -249,10 +248,10 @@ typedef struct {
     };
 } tag;
 
-ZITI_FUNC type_meta *get_tag_meta();
+ZITI_FUNC const type_meta *get_tag_meta();
 
 ZITI_FUNC int parse_enum(void *ptr, const char *json, void *tok, const void *enum_type);
-ZITI_FUNC int enum_from_json(void *ptr, const struct json_object *j, const void *enum_type);
+ZITI_FUNC int enum_from_json(void *ptr, struct json_object *j, const void *enum_type);
 ZITI_FUNC int json_enum(const void *ptr, void *buf, int indent, int flags, const void *enum_type);
 ZITI_FUNC struct json_object* enum_to_json(const void* ptr, const void *enum_type);
 
@@ -272,7 +271,7 @@ Enum (*value_of)(const char* n);                  \
 Enum (*value_ofn)(const char* s, size_t n);       \
 Values(enum_field, Enum)                          \
 };                                 \
-MODEL_API type_meta* get_##Enum##_meta();\
+MODEL_API const type_meta* get_##Enum##_meta();\
 extern const struct Enum##_s Enum##s;
 
 #define call_f(f,args) f args
@@ -328,7 +327,7 @@ static type_meta Enum##_meta = {\
         .from_json = (from_json_func) Enum##_from_json,         \
         .to_json = (to_json_func) Enum##_to_json, \
         };           \
-type_meta* get_##Enum##_meta() { return &Enum##_meta; }\
+const type_meta* get_##Enum##_meta() { return &Enum##_meta; }\
 
 #if __cplusplus
 }
