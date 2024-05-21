@@ -250,7 +250,6 @@ typedef struct {
 
 ZITI_FUNC const type_meta *get_tag_meta();
 
-ZITI_FUNC int parse_enum(void *ptr, const char *json, void *tok, const void *enum_type);
 ZITI_FUNC int enum_from_json(void *ptr, struct json_object *j, const void *enum_type);
 ZITI_FUNC int json_enum(const void *ptr, void *buf, int indent, int flags, const void *enum_type);
 ZITI_FUNC struct json_object* enum_to_json(const void* ptr, const void *enum_type);
@@ -304,9 +303,6 @@ Values(enum_field_val,Enum)\
 static int cmp_##Enum(const ptr(Enum) lh, const ptr(Enum) rh) { \
 return get_int_meta()->comparer(lh, rh);               \
 };\
-static int parse_##Enum(ptr(Enum) e, const char* json, void *tok) {     \
-return parse_enum(e, json, tok, &Enum##s);                              \
-}\
 static int Enum##_json(const ptr(Enum) e, void *buf, int indent, int flags) {     \
 return json_enum(e, buf, indent, flags, &Enum##s);                              \
 }                               \
@@ -322,7 +318,6 @@ static type_meta Enum##_meta = {\
         .field_count = 0,     \
         .fields = NULL,       \
         .comparer = (_cmp_f) cmp_##Enum, \
-        .parser = (_parse_f) parse_##Enum, \
         .jsonifier = (_to_json_f) Enum##_json,  \
         .from_json = (from_json_func) Enum##_from_json,         \
         .to_json = (to_json_func) Enum##_to_json, \
