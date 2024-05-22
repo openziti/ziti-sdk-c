@@ -74,7 +74,7 @@ typedef int *(*cond_error_t)(int);
 #if __GNUC__
 #define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
 #elif _MSC_VER
-#define UNUSED(x)
+#define UNUSED(x) UNUSED_ ## x
 #else
 #define UNUSED(x) UNUSED_ ## x
 #endif
