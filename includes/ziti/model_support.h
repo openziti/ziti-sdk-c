@@ -84,16 +84,16 @@ DECLARE_MODEL_FUNCS(type)
 typedef T ** T##_array; \
 MODEL_API const type_meta* get_##T##_meta();\
 static inline ptr(T) alloc_##T(){ return (ptr(T))calloc(1,sizeof(T)); }\
-MODEL_API void free_##T(T *v);     \
-static inline void free_##T##_ptr(T *v) { free_##T(v); free(v); }; \
-MODEL_API int cmp_##T(const T *lh, const T *rh); \
+static inline void free_##T(ptr(T) v) { model_free(v, get_##T##_meta()); }     \
+static inline void free_##T##_ptr(ptr(T) v) { model_free(v, get_##T##_meta()); free(v); }; \
+static inline int cmp_##T(const ptr(T) lh, const ptr(T) rh) { return model_cmp(lh, rh, get_##T##_meta()); } \
 MODEL_API void free_##T##_array(array(T) *ap);\
 MODEL_API int parse_##T(ptr(T) v, const char* json, size_t len);\
 MODEL_API int parse_##T##_ptr(ptr(T) *p, const char* json, size_t len);\
 MODEL_API int parse_##T##_array(array(T) *a, const char* json, size_t len); \
 MODEL_API int parse_##T##_list(list(T) *l, const char* json, size_t len); \
-MODEL_API ssize_t T##_to_json_r(const ptr(T) v, int flags, char *outbuf, size_t max); \
-MODEL_API char* T##_to_json(const ptr(T) v, int flags, size_t *len);   \
+static inline ssize_t T##_to_json_r(const ptr(T) v, int flags, char *outbuf, size_t max) { return model_to_json_r(v, get_##T##_meta(), flags, outbuf, max); } \
+static inline char* T##_to_json(const ptr(T) v, int flags, size_t *len) { return model_to_json(v, get_##T##_meta(), flags, len); }   \
 static inline int T##_from_json(ptr(T) v, struct json_object *j) { return model_from_json(v, j, get_##T##_meta()); } \
 static inline int T##_ptr_from_json(ptr(T) *v, struct json_object *j) {      \
     if (j == NULL || json_object_get_type(j) == json_type_null) { *v = NULL; return 0; }  \
@@ -136,13 +136,7 @@ return rc;\
 }\
 int parse_##T##_array(array(T) *a, const char *json, size_t len) { return model_parse_array((void***)a, json, len, get_##T##_meta()); }\
 int parse_##T##_list(list(T) *l, const char *json, size_t len) { return model_parse_list(l, json, len, get_##T##_meta()); }\
-int cmp_##T(const ptr(T) lh, const ptr(T) rh) { return model_cmp(lh, rh, get_##T##_meta()); }\
-void free_##T(ptr(T) v) { model_free(v, get_##T##_meta()); }                                                  \
-void free_##T##_array(array(T) *ap) { model_free_array((void***)ap, get_##T##_meta()); }                      \
-MODEL_API ssize_t T##_to_json_r(const ptr(T) v, int flags, char *outbuf, size_t max) {                    \
-return model_to_json_r(v, get_##T##_meta(), flags, outbuf, max); } \
-char* T##_to_json(const ptr(T) v, int flags, size_t *len) { return model_to_json(v, get_##T##_meta(), flags, len); }
-
+void free_##T##_array(array(T) *ap) { model_free_array((void***)ap, get_##T##_meta()); }
 
 #ifdef __cplusplus
 extern "C" {
@@ -318,6 +312,7 @@ static type_meta Enum##_meta = {\
         .fields = NULL,       \
         .comparer = (_cmp_f) cmp_##Enum, \
         .jsonifier = (_to_json_f) Enum##_json,  \
+        .destroyer = NULL, \
         .from_json = (from_json_func) Enum##_from_json,         \
         .to_json = (to_json_func) Enum##_to_json, \
         };           \
