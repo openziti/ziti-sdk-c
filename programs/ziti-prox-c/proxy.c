@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -14,6 +14,7 @@
 #define _GNU_SOURCE
 
 #include <uv.h>
+#include <tlsuv/http.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -697,14 +698,16 @@ void run(int argc, char **argv) {
 CommandLine main_cmd;
 #define GLOBAL_FLAGS "[--debug=level|-d[ddd]] [--config|-c=<path>] "
 
+typedef struct tlsuv_url tlsuv_url;
 int run_opts(int argc, char **argv) {
     static struct option long_options[] = {
-            {"debug",    optional_argument, NULL, 'd'},
-            {"config",   required_argument, NULL, 'c'},
-            {"metrics",  optional_argument, NULL, 'm'},
-            {"bind",     required_argument, NULL, 'b'},
-            {"bind-udp", required_argument, NULL, 'B'},
-            {NULL, 0,                       NULL, 0}
+        {"debug",    optional_argument, NULL, 'd'},
+        {"config",   required_argument, NULL, 'c'},
+        {"metrics",  optional_argument, NULL, 'm'},
+        {"bind",     required_argument, NULL, 'b'},
+        {"bind-udp", required_argument, NULL, 'B'},
+        {"proxy",    required_argument, NULL, 'p'},
+        {NULL, 0,                       NULL, 0}
     };
 
     int c, option_index, errors = 0;
@@ -713,7 +716,7 @@ int run_opts(int argc, char **argv) {
 
     optind = 0;
 
-    while ((c = getopt_long(argc, argv, "b:B:c:d:m:",
+    while ((c = getopt_long(argc, argv, "b:B:c:d:m:p:",
                             long_options, &option_index)) != -1) {
         switch (c) {
             case 'd':
@@ -778,11 +781,28 @@ int run_opts(int argc, char **argv) {
                 model_list_clear(&args, free);
                 break;
 
-            default: {
-                fprintf(stderr, "Unknown option \"%c\"\n", c);
-                errors++;
-                break;
+        case 'p': {
+            struct tlsuv_url_s url;
+            tlsuv_parse_url(&url, optarg);
+            char host[128], port[6];
+            snprintf(host, sizeof(host), "%.*s", (int)url.hostname_len, url.hostname);
+            snprintf(port, sizeof(port), "%d", url.port);
+            tlsuv_connector_t *proxy = tlsuv_new_proxy_connector(tlsuv_PROXY_HTTP, host, port);
+            if (url.username) {
+                char user[128], passwd[128];
+                snprintf(user, sizeof(user), "%.*s", (int)url.username_len, url.username);
+                snprintf(passwd, sizeof(passwd), "%.*s", (int)url.password_len, url.password);
+                proxy->set_auth(proxy, tlsuv_PROXY_BASIC, user, passwd);
             }
+            tlsuv_set_global_connector(proxy);
+            break;
+        }
+                
+        default: {
+            fprintf(stderr, "Unknown option \"%c\"\n", c);
+            errors++;
+            break;
+        }
         }
     }
 
