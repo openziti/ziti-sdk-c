@@ -314,18 +314,6 @@ static int ziti_address_from_j(ziti_address *addr, json_object *j, type_meta *m)
     return -1;
 }
 
-static int parse_ziti_address0(ziti_address *addr, const char *json, void *tok) {
-    char *addr_str = NULL;
-    int parsed = get_string_meta()->parser(&addr_str, json, tok);
-
-    if (parsed < 0) { return parsed; }
-
-    int rc = parse_ziti_address_str(addr, addr_str);
-
-    free(addr_str);
-    return rc ? rc : parsed;
-}
-
 int ziti_address_print(char *buf, size_t max, const ziti_address *addr) {
     if (addr->type == ziti_address_hostname) {
         return snprintf(buf, max, "%s", addr->addr.hostname);
@@ -529,7 +517,6 @@ static type_meta ziti_address_META = {
         .name = "ziti_address",
         .size = sizeof(ziti_address),
         .comparer = (_cmp_f) cmp_ziti_address0,
-        .parser = (_parse_f) parse_ziti_address0,
         .jsonifier = (_to_json_f) ziti_address_write_json,
         .from_json = (from_json_func) ziti_address_from_j,
         .to_json = (to_json_func) ziti_address_to_j,

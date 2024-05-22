@@ -184,7 +184,6 @@ typedef struct type_meta {
     const int field_count;
     field_meta *fields;
     _cmp_f comparer;
-    _parse_f parser;
     _to_json_f jsonifier;
     _free_f destroyer;
     from_json_func from_json;
