@@ -937,9 +937,10 @@ static int _timeval_to_json(timestamp *t, string_buf_t *buf, int UNUSED(indent),
     gmtime_r(&t->tv_sec, &tm2);
 #endif
 
-    return string_buf_fmt(buf, "\"%04d-%02d-%02dT%02d:%02d:%02d.%06ldZ\"",
-                      tm2.tm_year + 1900, tm2.tm_mon + 1, tm2.tm_mday,
-                      tm2.tm_hour, tm2.tm_min, tm2.tm_sec, (unsigned long)t->tv_usec);
+    int rc =  string_buf_fmt(buf, "\"%04d-%02d-%02dT%02d:%02d:%02d.%06ldZ\"",
+                             tm2.tm_year + 1900, tm2.tm_mon + 1, tm2.tm_mday,
+                             tm2.tm_hour, tm2.tm_min, tm2.tm_sec, (unsigned long)t->tv_usec);
+    return rc > 0 ? 0 : -1;
 }
 
 static json_object* map_to_json(model_map *map) {

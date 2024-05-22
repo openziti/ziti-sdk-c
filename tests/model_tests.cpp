@@ -117,6 +117,7 @@ TEST_CASE("new model tests", "[model]") {
     checkBar1(bar);
 
     auto json = Bar_to_json(&bar, 0, nullptr);
+    CHECK(json != nullptr);
     std::cout << json << std::endl;
     free(json);
     free_Bar(&bar);
