@@ -128,6 +128,10 @@ XX(protocol, string, none, protocol, __VA_ARGS__) \
 XX(hostname, string, none, hostname, __VA_ARGS__) \
 XX(port, int, none, port, __VA_ARGS__)
 
+#define ZITI_PROXY_SERVER_MODEL(XX, ...) \
+XX(address, string, none, address, __VA_ARGS__) \
+XX(type, string, none, type, __VA_ARGS__)
+
 #define ZITI_HOST_CFG_V1_MODEL(XX, ...) \
 XX(protocol, string, none, protocol, __VA_ARGS__) \
 XX(forward_protocol, bool, none, forwardProtocol, __VA_ARGS__) \
@@ -139,6 +143,7 @@ XX(port, int, none, port, __VA_ARGS__) \
 XX(forward_port, bool, none, forwardPort, __VA_ARGS__) \
 XX(allowed_port_ranges, ziti_port_range, array, allowedPortRanges, __VA_ARGS__) \
 XX(allowed_source_addresses, ziti_address, array, allowedSourceAddresses, __VA_ARGS__) \
+XX(proxy, ziti_proxy_server, none, proxy, __VA_ARGS__) \
 XX(listen_options, ziti_listen_options, ptr, listenOptions, __VA_ARGS__)
 
 #define ZITI_HOST_CFG_V2_MODEL(XX, ...) \
@@ -242,6 +247,8 @@ DECLARE_MODEL(ziti_intercept_cfg_v1, ZITI_INTERCEPT_CFG_V1_MODEL)
 DECLARE_MODEL(ziti_listen_options, ZITI_LISTEN_OPTS_MODEL)
 
 DECLARE_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
+
+DECLARE_MODEL(ziti_proxy_server, ZITI_PROXY_SERVER_MODEL)
 
 DECLARE_MODEL(ziti_host_cfg_v1, ZITI_HOST_CFG_V1_MODEL)
 
