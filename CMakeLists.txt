@@ -1,13 +1,15 @@
 cmake_minimum_required(VERSION 3.22)
 
 include(cmake/version.cmake)
-get_version(${CMAKE_CURRENT_LIST_DIR}/version.txt ver GIT_BRANCH GIT_COMMIT_HASH)
+get_version(${CMAKE_CURRENT_LIST_DIR}/version.txt GIT_VERSION GIT_BRANCH GIT_COMMIT_HASH)
 
-set(CMAKE_C_STANDARD 99)
 project(ziti-sdk
-        VERSION ${ver}
+        DESCRIPTION "OpenZiti C SDK"
+        HOMEPAGE_URL "https://github.com/openziti/ziti-sdk-c"
         LANGUAGES C CXX
-        )
+)
+
+set(PROJECT_VERSION ${GIT_VERSION})
 include(cmake/project-is-top-level.cmake)
 include(cmake/variables.cmake)
 
@@ -19,7 +21,6 @@ message("project version: ${PROJECT_VERSION}")
 message("git info:")
 message("   branch : ${GIT_BRANCH}")
 message("     hash : ${GIT_COMMIT_HASH}")
-message("	  date : ${BUILD_DATE}")
 
 message("")
 message("using ${CMAKE_GENERATOR}")
