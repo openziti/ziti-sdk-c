@@ -3,7 +3,9 @@ name: C/C++ CI
 on:
   workflow_dispatch:
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - release-*
 
 jobs:
   build:
