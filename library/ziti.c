@@ -59,7 +59,7 @@ int code_to_error(const char *code);
 
 static void update_ctrl_status(ziti_context ztx, int code, const char *msg);
 
-static void version_cb(ziti_version *v, const ziti_error *err, void *ctx);
+static void version_cb(const ziti_version *v, const ziti_error *err, void *ctx);
 
 static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, void *ctx);
 
@@ -957,7 +957,8 @@ int ziti_listen_with_options(ziti_connection serv_conn, const char *service, zit
  * @param force
  */
 
-static void version_pre_auth_cb(ziti_version *version, const ziti_error *err, void *ctx);
+static void version_pre_auth_cb(const ziti_version *version, const ziti_error *err, void *ctx);
+
 static void ziti_re_auth(ziti_context ztx) {
     // always get controller version to get the right auth method
     ziti_ctrl_get_version(ztx_get_controller(ztx), version_pre_auth_cb, ztx);
@@ -1453,7 +1454,7 @@ static void update_ctrl_status(ziti_context ztx, int errCode, const char *errMsg
     }
 }
 
-static void version_cb(ziti_version *v, const ziti_error *err, void *ctx) {
+static void version_cb(const ziti_version *v, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err != NULL) {
         ZTX_LOG(ERROR, "failed to get controller version from %s %s(%s)",
@@ -1461,8 +1462,6 @@ static void version_cb(ziti_version *v, const ziti_error *err, void *ctx) {
     } else {
         ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
                 ztx_controller(ztx), v->version, v->revision, v->build_date);
-        free_ziti_version(v);
-        FREE(v);
     }
 }
 
@@ -1721,7 +1720,7 @@ static void pre_auth_retry(uv_timer_t *t) {
     uv_close((uv_handle_t *) t, (uv_close_cb) free);
 }
 
-static void version_pre_auth_cb(ziti_version *version, const ziti_error *err, void *ctx) {
+static void version_pre_auth_cb(const ziti_version *version, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err) {
         ZTX_LOG(WARN, "failed to get controller version: %s/%s", err->code, err->message);
@@ -1756,8 +1755,6 @@ static void version_pre_auth_cb(ziti_version *version, const ziti_error *err, vo
         }
         ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
     }
-
-    free_ziti_version_ptr(version);
 }
 
 static void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {

@@ -1,9 +1,9 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -128,6 +128,8 @@ struct ctrl_resp {
     ctrl_cb_t ctrl_cb;
 };
 
+static void internal_get_version(ziti_controller *ctrl);
+
 static struct ctrl_resp *prepare_resp(ziti_controller *ctrl, ctrl_resp_cb_t cb, body_parse_fn parser, void *ctx);
 
 static void ctrl_paging_req(struct ctrl_resp *resp);
@@ -224,7 +226,21 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
     free(resp);
 }
 
-static void ctrl_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *resp) {
+static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_error *err, void *ctx) {
+    ziti_controller *ctrl = ctx;
+    for (int i = 0; arr[i] != NULL; i++) {
+        ziti_controller_detail *d = arr[i];
+        CTRL_LOG(INFO, "%s", d->id);
+
+        api_address *addr;
+        MODEL_LIST_FOREACH(addr, d->apis.edge) {
+            CTRL_LOG(INFO, "%s/%s", addr->version, addr->url);
+        }
+
+    }
+}
+
+static void internal_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *resp) {
     ziti_controller *ctrl = resp->ctrl;
     if (e) {
         CTRL_LOG(ERROR, "%s(%s)", e->code, e->message);
@@ -232,20 +248,31 @@ static void ctrl_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *re
 
     if (v) {
         free_ziti_version(&ctrl->version);
-        ctrl->version.version = strdup(v->version);
-        ctrl->version.revision = strdup(v->revision);
-        ctrl->version.build_date = strdup(v->build_date);
+        ctrl->version = *v;
 
+        api_path *path = NULL;
         if (v->api_versions) {
-            api_path *path = model_map_get(&v->api_versions->edge, "v1");
-            if (path) {
-                tlsuv_http_set_path_prefix(resp->ctrl->client, path->path);
-            } else {
-                CTRL_LOG(WARN, "controller did not provide expected(v1) API version path");
-            }
+            path = model_map_get(&v->api_versions->edge, "v1");
         }
+
+        if (path) {
+            tlsuv_http_set_path_prefix(resp->ctrl->client, path->path);
+        } else {
+            CTRL_LOG(WARN, "controller did not provide expected(v1) API version path");
+        }
+
+        // data was moved to ctrl.version
+        free(v);
+        v = &ctrl->version;
     }
-    ctrl_default_cb(v, e, resp);
+
+    if (ctrl->version_cb) {
+        ctrl->version_cb(v, e, ctrl->version_cb_ctx);
+    }
+
+    ctrl->version_req = NULL;
+    ctrl->version_cb = NULL;
+    ctrl->version_cb_ctx = NULL;
 }
 
 void ziti_ctrl_clear_api_session(ziti_controller *ctrl) {
@@ -409,6 +436,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_
         return ZITI_INVALID_CONFIG;
     }
 
+    tlsuv_http_set_path_prefix(ctrl->client, "");
     ctrl->client->data = ctrl;
     tlsuv_http_set_ssl(ctrl->client, tls);
     tlsuv_http_idle_keepalive(ctrl->client, ZITI_CTRL_KEEPALIVE);
@@ -418,7 +446,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_
     ctrl->instance_id = NULL;
 
     CTRL_LOG(DEBUG, "ziti controller client initialized");
-
+    internal_get_version(ctrl);
     return ZITI_OK;
 }
 
@@ -438,6 +466,8 @@ int ziti_ctrl_set_token(ziti_controller *ctrl, const char *token) {
 
     free(header);
     delete_string_buf(b);
+
+    ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
 
     return ZITI_OK;
 }
@@ -468,11 +498,26 @@ int ziti_ctrl_close(ziti_controller *ctrl) {
     return ZITI_OK;
 }
 
-void ziti_ctrl_get_version(ziti_controller *ctrl, void(*cb)(ziti_version *, const ziti_error *err, void *ctx), void *ctx) {
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_version_ptr, ctx);
-    resp->ctrl_cb = (ctrl_cb_t)ctrl_version_cb;
+static void internal_get_version(ziti_controller *ctrl) {
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, NULL, parse_ziti_version_ptr, NULL);
+    resp->ctrl_cb = (ctrl_cb_t) internal_version_cb;
 
-    start_request(ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
+    ctrl->version_req = start_request(ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
+}
+
+void ziti_ctrl_get_version(ziti_controller *ctrl, ctrl_version_cb cb, void *ctx) {
+    // already received version just callback with it
+    if (ctrl->version.version != NULL) {
+        cb(&ctrl->version, NULL, ctx);
+    }
+    ctrl->version_cb = cb;
+    ctrl->version_cb_ctx = ctx;
+
+    // if no version present and no active request
+    // /version might have failed previously so try requesting it again
+    if (ctrl->version_req == NULL) {
+        internal_get_version(ctrl);
+    }
 }
 
 void ziti_ctrl_login(
@@ -507,6 +552,8 @@ void ziti_ctrl_login(
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/authenticate?method=cert", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
+
+    ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
 }
 
 static bool verify_api_session(ziti_controller *ctrl, ctrl_resp_cb_t cb, void *ctx) {
@@ -629,6 +676,7 @@ void ziti_ctrl_create_session(
                           service_id, ziti_session_types.name(type));
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_session_ptr, ctx);
+    resp->ctrl = ctrl;
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/sessions", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
     tlsuv_http_req_data(req, content, len, free_body_cb);

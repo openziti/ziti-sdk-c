@@ -33,6 +33,8 @@ extern const char* const PC_ENDPOINT_STATE_TYPE;
 
 typedef void (*ziti_ctrl_redirect_cb)(const char *new_address, void *ctx);
 
+typedef void (*ctrl_version_cb)(const ziti_version *, const ziti_error *, void *);
+
 typedef struct ziti_controller_s {
     uv_loop_t *loop;
     tlsuv_http_t *client;
@@ -42,6 +44,9 @@ typedef struct ziti_controller_s {
     unsigned int page_size;
 
     ziti_version version;
+    ctrl_version_cb version_cb;
+    void *version_cb_ctx;
+    void *version_req;
 
     bool has_token;
     char *instance_id;
@@ -64,7 +69,7 @@ int ziti_ctrl_close(ziti_controller *ctrl);
 
 void ziti_ctrl_clear_api_session(ziti_controller *ctrl);
 
-void ziti_ctrl_get_version(ziti_controller *ctrl, void (*ver_cb)(ziti_version *, const ziti_error *, void *), void *ctx);
+void ziti_ctrl_get_version(ziti_controller *ctrl, ctrl_version_cb cb, void *ctx);
 
 void ziti_ctrl_login(ziti_controller *ctrl, model_list *cfg_types, void (*cb)(ziti_api_session *, const ziti_error *, void *),
                      void *ctx);
