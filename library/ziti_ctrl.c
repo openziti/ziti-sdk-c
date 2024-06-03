@@ -650,6 +650,21 @@ ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb
     });
 }
 
+void ziti_ctrl_list_service_routers(ziti_controller *ctrl, const ziti_service *srv, routers_cb cb, void *ctx) {
+    if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
+
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_service_routers_ptr, ctx);
+    resp->ctrl_cb = (ctrl_cb_t) ctrl_default_cb;
+
+    char path[512];
+    snprintf(path, sizeof(path), "/services/%s/edge-routers", srv->id);
+    tlsuv_http_req_t *req = start_request(ctrl->client, "GET", path, ctrl_resp_cb, resp);
+    tlsuv_http_req_query(req, 2, (tlsuv_http_pair[]){
+            { "offset", "0" },
+            { "limit", "100" }
+    });
+}
+
 void ziti_ctrl_get_session(
         ziti_controller *ctrl, const char *session_id,
         void (*cb)(ziti_session *, const ziti_error *, void *), void *ctx) {
