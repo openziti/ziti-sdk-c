@@ -584,8 +584,8 @@ void ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
 static void free_ztx(uv_handle_t *h) {
     ziti_context ztx = h->data;
 
-    ziti_ctrl_close(ztx_get_controller(ztx));
-    ztx->tlsCtx->free_ctx(ztx->tlsCtx);
+//    ziti_ctrl_close(ztx_get_controller(ztx));
+//    ztx->tlsCtx->free_ctx(ztx->tlsCtx);
 
     model_map_clear(&ztx->ctrl_details, (_free_f) free_ziti_controller_detail_ptr);
     ziti_auth_query_free(ztx->auth_queries);

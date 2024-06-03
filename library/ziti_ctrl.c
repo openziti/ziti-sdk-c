@@ -273,6 +273,8 @@ static void internal_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp
     ctrl->version_req = NULL;
     ctrl->version_cb = NULL;
     ctrl->version_cb_ctx = NULL;
+
+    ctrl_default_cb(NULL, e, resp);
 }
 
 void ziti_ctrl_clear_api_session(ziti_controller *ctrl) {

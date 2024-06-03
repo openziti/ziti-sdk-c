@@ -104,9 +104,14 @@ if (COND(ex)(ERR(ex))) { ERFILE(ex) = __FILENAME__; ERLINE(ex) = __LINE__; _##ex
     }}\
     for (int _##ex##_count = 0;COND(ex)(ERR(ex)) && _##ex##_count == 0; _##ex##_count++)
 
+#define line_idx(i, l) i ## l
 
-#define FOR(idx, arr) for (int (idx) = 0; (idx) < SIZEOF(arr) && (arr)[(idx)] != NULL; (idx)++)
+#define FOR_line(el, arr, LINE) int line_idx(idx,LINE); for ( \
+line_idx(idx,LINE) = 0, (el) = (arr) ? (arr)[line_idx(idx,LINE)] : NULL;   \
+el != NULL; \
+line_idx(idx,LINE)++, (el) = (arr)[line_idx(idx,LINE)]  )
 
+#define FOR(el, arr) FOR_line(el, arr, __LINE__)
 
 
 #define container_of(ptr, type, member) ((type *) ((char*)(ptr) - offsetof(type, member)))
