@@ -42,7 +42,7 @@ else ()
 endif ()
 
 set(ZITI_CLI_VER "v1.1.3" CACHE STRING "ziti version for integration tests")
-add_custom_target(ziti-cli
+add_custom_target(ziti-cli ALL
         COMMAND ${CMAKE_COMMAND} -E env GOBIN=${CMAKE_CURRENT_BINARY_DIR}
         ${GOLANG_EXE} install github.com/openziti/ziti/ziti@${ZITI_CLI_VER}
         BYPRODUCTS ${ZITI_CLI}
