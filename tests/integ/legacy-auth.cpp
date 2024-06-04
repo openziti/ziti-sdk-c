@@ -59,7 +59,7 @@ T *do_get(ziti_controller &ctrl,
     resp_capture<T> resp;
     method(&ctrl, resp_cb, &resp);
     uv_run(ctrl.loop, UV_RUN_DEFAULT);
-    REQUIRE(resp.error.err == 0);
+    CHECK(resp.error.err == 0);
     return resp.resp;
 }
 
@@ -146,7 +146,7 @@ TEST_CASE("controller_test","[integ]") {
     TRY(ziti, ziti_ctrl_init(loop, &ctrl, config.controller_url, tls));
 
     WHEN("get version and login") {
-        ziti_version *v = do_get(ctrl, ziti_ctrl_get_version);
+        auto v = do_get(ctrl, ziti_ctrl_get_version);
         REQUIRE(v != nullptr);
         free_ziti_version(v);
 

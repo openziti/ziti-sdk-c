@@ -163,11 +163,14 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
     if (r->code < 0) {
         int e = ZITI_CONTROLLER_UNAVAILABLE;
         const char *code = "CONTROLLER_UNAVAILABLE";
-        CTRL_LOG(ERROR, "request failed: %d(%s)", r->code, uv_strerror(r->code));
 
+        // cancellation is cased by closing of ziti context
+        // do not log error
         if (r->code == UV_ECANCELED) {
             e = ZITI_DISABLED;
             code = ziti_errorstr(ZITI_DISABLED);
+        } else {
+            CTRL_LOG(ERROR, "request failed: %d(%s)", r->code, uv_strerror(r->code));
         }
 
         ziti_error err = {
@@ -495,7 +498,9 @@ int ziti_ctrl_close(ziti_controller *ctrl) {
     free_ziti_version(&ctrl->version);
     FREE(ctrl->instance_id);
     FREE(ctrl->url);
-    tlsuv_http_close(ctrl->client, on_http_close);
+    if (ctrl->client) {
+        tlsuv_http_close(ctrl->client, on_http_close);
+    }
     ctrl->client = NULL;
     return ZITI_OK;
 }

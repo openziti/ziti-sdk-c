@@ -100,7 +100,7 @@ if (PROJECT_IS_TOP_LEVEL)
     endif ()
 endif ()
 
-if (ziti_DEVELOPER_MODE)
+if (ziti_DEVELOPER_MODE AND NOT CMAKE_CROSSCOMPILING)
     ENABLE_TESTING()
     add_subdirectory(tests)
 endif ()

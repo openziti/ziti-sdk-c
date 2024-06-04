@@ -1280,8 +1280,10 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
     bool ers_changed = false;
 
     if (err) {
-        ZTX_LOG(ERROR, "failed to get current edge routers: code[%d] %s/%s",
-                err->http_code, err->code, err->message);
+        if (err->err != ZITI_DISABLED) {
+            ZTX_LOG(ERROR, "failed to get current edge routers: code[%d] %s/%s",
+                    err->http_code, err->code, err->message);
+        }
         return;
     }
 

@@ -32,14 +32,14 @@ expect_before {
    "connection refused" { abort "QS not started" }
 }
 
-spawn $ziti edge create identity test-client -a client -o test-client.jwt
+spawn $ziti edge create identity test-client -a client -o $env(QUICKSTART_HOME)/test-client.jwt
 expect {
      "New identity test-client created" {}
      "error" { abort $expect_out(buffer) }
      eof { abort "unexpected" }
 }
 
-spawn $ziti edge create identity test-server -a server -o test-server.jwt
+spawn $ziti edge create identity test-server -a server -o $env(QUICKSTART_HOME)/test-server.jwt
 expect {
     "New identity test-server created" {}
     "error" { error $expect_out(buffer) }
@@ -66,16 +66,16 @@ expect {
     eof { error "not cool" }
 }
 
-spawn $enroller ./test-server.jwt ./test-server.json
+spawn $enroller $env(QUICKSTART_HOME)/test-server.jwt $env(QUICKSTART_HOME)/test-server.json
 expect {
-    "ziti identity is saved in ./test-server.json" {}
+    "ziti identity is saved" {}
     eof { error "test-server not enrolled" }
 }
 wait
 
-spawn $enroller ./test-client.jwt ./test-client.json
+spawn $enroller $env(QUICKSTART_HOME)/test-client.jwt $env(QUICKSTART_HOME)/test-client.json
 expect {
-    "ziti identity is saved in ./test-client.json" {}
+    "ziti identity is saved" {}
     eof { error "test-client not enrolled" }
 }
 wait
