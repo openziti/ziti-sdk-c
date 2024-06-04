@@ -118,7 +118,6 @@ TEST_CASE("invalid_controller", "[controller][GH-44]") {
         }
     }
 
-
     CATCH(ziti) {
         FAIL("unexpected error");
     }
@@ -148,7 +147,9 @@ TEST_CASE("controller_test","[integ]") {
     WHEN("get version and login") {
         auto v = do_get(ctrl, ziti_ctrl_get_version);
         REQUIRE(v != nullptr);
-        free_ziti_version(v);
+
+        auto v1 = (const char*)model_map_get(&v->api_versions->edge, "v1");
+        CHECK(v1 != nullptr);
 
         auto s = do_login(ctrl);
         free_ziti_api_session_ptr(s);

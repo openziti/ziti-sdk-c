@@ -178,7 +178,8 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
                 .code = (char *) code,
                 .message = (char *) uv_strerror(r->code),
         };
-        ctrl_default_cb(NULL, &err, resp);
+
+        (resp->ctrl_cb ? resp->ctrl_cb : ctrl_default_cb)(NULL, &err, resp);
     } else {
         CTRL_LOG(VERBOSE, "received headers %s[%s]", r->req->method, r->req->path);
         r->body_cb = ctrl_body_cb;
@@ -231,8 +232,8 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
 
 static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_error *err, void *ctx) {
     ziti_controller *ctrl = ctx;
-    for (int i = 0; arr[i] != NULL; i++) {
-        ziti_controller_detail *d = arr[i];
+    ziti_controller_detail *d;
+    FOR (d, arr) {
         CTRL_LOG(INFO, "%s", d->id);
 
         api_address *addr;
@@ -431,6 +432,7 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
 }
 
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_context *tls) {
+    *ctrl = (ziti_controller){0};
     ctrl->page_size = DEFAULT_PAGE_SIZE;
     ctrl->loop = loop;
     ctrl->url = strdup(url);
@@ -516,6 +518,7 @@ void ziti_ctrl_get_version(ziti_controller *ctrl, ctrl_version_cb cb, void *ctx)
     // already received version just callback with it
     if (ctrl->version.version != NULL) {
         cb(&ctrl->version, NULL, ctx);
+        return;
     }
     ctrl->version_cb = cb;
     ctrl->version_cb_ctx = ctx;
