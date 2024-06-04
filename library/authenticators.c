@@ -82,41 +82,40 @@ static void verify_cb(void* empty, const ziti_error* err, void* ctx){
 }
 
 int ziti_extend_cert_authenticator(ziti_context ztx, const char *csr_pem, ziti_extend_cert_authenticator_cb cb, void *ctx) {
-    if(ztx->api_session == NULL){
-        return ZITI_INVALID_STATE;
-    }
+    // TODO this relies on api_session.authenticator_id
+    // need to normalize it wrt HA when api_session is not available
+    ZITI_LOG(ERROR, "not implemented!!!");
 
-    ZTX_LOG(INFO, "attempting to extend certificate authenticator id: %s", ztx->api_session->authenticator_id);
-    NEWP(wrapped_ctx, authenticator_ctx);
-    wrapped_ctx->ztx = ztx;
-    wrapped_ctx->ctx = ctx;
-    wrapped_ctx->extend_cb = cb;
-    wrapped_ctx->authenticator_id = strdup(ztx->api_session->authenticator_id);
-    wrapped_ctx->csr_pem = strdup(csr_pem);
+//    ZTX_LOG(INFO, "attempting to extend certificate authenticator id: %s", ztx->api_session->authenticator_id);
+//    NEWP(wrapped_ctx, authenticator_ctx);
+//    wrapped_ctx->ztx = ztx;
+//    wrapped_ctx->ctx = ctx;
+//    wrapped_ctx->extend_cb = cb;
+//    wrapped_ctx->authenticator_id = strdup(ztx->api_session->authenticator_id);
+//    wrapped_ctx->csr_pem = strdup(csr_pem);
 
-    ziti_ctrl_extend_cert_authenticator(ztx_get_controller(ztx), wrapped_ctx->authenticator_id,
-                                        wrapped_ctx->csr_pem,
-                                        extend_cb, wrapped_ctx);
-
-    return ZITI_OK;
+    return ZITI_WTF;
 }
 
-int ziti_verify_extend_cert_authenticator(
-        ziti_context ztx, const char *new_cert, ziti_verify_extend_cert_authenticator_cb  cb, void *ctx) {
-    if(ztx->api_session == NULL){
-        return ZITI_INVALID_STATE;
-    }
+int ziti_verify_extend_cert_authenticator(ziti_context ztx, const char *new_cert, ziti_verify_extend_cert_authenticator_cb  cb, void *ctx) {
+    // TODO this relies on api_session.authenticator_id
+    // need to normalize it wrt HA when api_session is not available
+    ZITI_LOG(ERROR, "not implemented!!!");
+    return ZITI_WTF;
 
-    ZTX_LOG(INFO, "attempting to verify certificate authenticator %s", ztx->api_session->authenticator_id);
-
-    NEWP(wrapped_ctx, authenticator_ctx);
-    wrapped_ctx->ztx = ztx;
-    wrapped_ctx->ctx = ctx;
-    wrapped_ctx->verify_cb = cb;
-    wrapped_ctx->authenticator_id = strdup(ztx->api_session->authenticator_id);
-
-    ziti_ctrl_verify_extend_cert_authenticator(ztx_get_controller(ztx), wrapped_ctx->authenticator_id,
-                                               new_cert, verify_cb, wrapped_ctx);
-
-    return ZITI_OK;
+//    if(ztx->api_session == NULL){
+//        return ZITI_INVALID_STATE;
+//    }
+//
+//    ZTX_LOG(INFO, "attempting to verify certificate authenticator %s", ztx->api_session->authenticator_id);
+//
+//    NEWP(wrapped_ctx, authenticator_ctx);
+//    wrapped_ctx->ztx = ztx;
+//    wrapped_ctx->ctx = ctx;
+//    wrapped_ctx->verify_cb = cb;
+//    wrapped_ctx->authenticator_id = strdup(ztx->api_session->authenticator_id);
+//
+//    ziti_ctrl_verify_extend_cert_authenticator(&ztx->controller, wrapped_ctx->authenticator_id, new_cert, verify_cb, wrapped_ctx);
+//
+//    return ZITI_OK;
 }

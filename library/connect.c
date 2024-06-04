@@ -482,7 +482,7 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
     assert(req->session_type == ziti_session_types.Dial);
 
     // verify ziti context is still authorized
-    if (ztx->api_session == NULL) {
+    if (ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
         CONN_LOG(ERROR, "ziti context is not authenticated, cannot connect to service[%s]", conn->service);
         complete_conn_req(conn, ZITI_INVALID_STATE);
         return;

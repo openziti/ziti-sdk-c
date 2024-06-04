@@ -515,6 +515,7 @@ const char *my_configs[] = {
 struct mfa_work {
     uv_work_t w;
     ziti_context ztx;
+    char *code;
 };
 
 void mfa_response_cb(ziti_context ztx, int status, void *ctx);
@@ -540,13 +541,11 @@ void mfa_prompt(struct mfa_work *mfa_wr) {
     prompt_stdin(code, 9);
 
     if (strlen(code) > 0) {
-        ziti_mfa_auth(mfa_wr->ztx, code, mfa_response_cb, mfa_wr);
+        mfa_wr->code = strdup(code);
     } else {
         ZITI_LOG(ERROR, "no mfa token provided, exiting");
         exit(1);
-    };
-
-
+    }
 }
 
 void mfa_response_cb(ziti_context ztx, int status, void *ctx) {
@@ -565,7 +564,14 @@ void mfa_worker(uv_work_t *req) {
 }
 
 void mfa_worker_done(uv_work_t *req, int status) {
-    FREE(req);
+    struct mfa_work *mfa_wr = (struct mfa_work *)req;
+    if (status != 0) {
+        ZITI_LOG(ERROR, "MFA prompt work failed: %s", uv_strerror(status));
+    } else {
+        ziti_mfa_auth(mfa_wr->ztx, mfa_wr->code, mfa_response_cb, mfa_wr);
+    }
+    FREE(mfa_wr->code);
+    FREE(mfa_wr);
 }
 
 void mfa_auth_event_handler(ziti_context ztx) {

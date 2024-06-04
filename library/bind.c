@@ -1,4 +1,4 @@
-// Copyright (c) 2023. NetFoundry Inc.
+// Copyright (c) 2023-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -96,11 +96,7 @@ static void rebind_delay_cb(uv_timer_t *t) {
     ziti_connection conn = t->data;
     CONN_LOG(DEBUG, "staring re-bind");
 
-    if (conn->server.session) {
-        ziti_ctrl_get_session(ztx_get_controller(conn->ziti_ctx), conn->server.session->id, session_cb, conn);
-    } else {
-        ziti_service_available(conn->ziti_ctx, conn->service, get_service_cb, conn);
-    }
+    ziti_service_available(conn->ziti_ctx, conn->service, get_service_cb, conn);
 }
 
 static struct binding_s* new_binding(struct ziti_conn *conn) {
@@ -111,15 +107,15 @@ static struct binding_s* new_binding(struct ziti_conn *conn) {
 }
 
 static void process_bindings(struct ziti_conn *conn) {
-    ziti_session *ns = conn->server.session;
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
     size_t target = MIN(conn->server.max_bindings, model_map_size(&ztx->channels));
 
-    ziti_edge_router *er;
     const char *proto;
     const char *url;
-    MODEL_LIST_FOREACH(er, ns->edge_routers) {
+    for(int idx = 0; conn->server.routers && conn->server.routers[idx]; idx++) {
+        ziti_edge_router *er = conn->server.routers[idx];
+
         url = er->protocols.tls;
         if(url != NULL) {
             CONN_LOG(DEBUG, "checking %s[%s]", er->name, url);
@@ -181,13 +177,11 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
     int e = err ? err->err : ZITI_OK;
     switch (e) {
         case ZITI_OK: {
-            ziti_session *old = conn->server.session;
-            conn->server.session = session;
+            FREE(conn->server.token);
+            conn->server.token = session->token;
+            session->token = NULL;
             notify_status(conn, ZITI_OK);
-
-            free_ziti_session_ptr(old);
-
-            process_bindings(conn);
+            free_ziti_session_ptr(session);
             break;
         }
         case ZITI_NOT_FOUND:
@@ -200,9 +194,8 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
             }
 
             // our session is stale
-            if (conn->server.session) {
-                free_ziti_session_ptr(conn->server.session);
-                conn->server.session = NULL;
+            if (conn->server.token) {
+                FREE(conn->server.token);
                 schedule_rebind(conn, true);
             } else {
                 // here if we could not create Bind session
@@ -216,23 +209,49 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
     }
 }
 
+static void list_routers_cb(ziti_service_routers *srv_routers, const ziti_error *err, void *ctx) {
+    struct ziti_conn *conn = ctx;
+    if (srv_routers) {
+        free_ziti_edge_router_array(&conn->server.routers);
+        conn->server.routers = srv_routers->routers;
+
+        ziti_edge_router *er;
+        FOR(er, srv_routers->routers) {
+            CONN_LOG(DEBUG, "%s/%s", er->name, er->protocols.tls);
+        }
+    }
+    free(srv_routers);
+
+    process_bindings(conn);
+}
+
 static void get_service_cb(ziti_context ztx, ziti_service *service, int status, void *ctx) {
     struct ziti_conn *conn = ctx;
-    if (status == ZITI_OK) {
-        conn->encrypted = service->encryption;
-        if (ziti_service_has_permission(service, ziti_session_types.Bind)) {
-            ziti_ctrl_create_session(ztx_get_controller(ztx), service->id, ziti_session_types.Bind, session_cb, conn);
-        } else {
-            CONN_LOG(WARN, "not authorized to Bind service[%s]", service->name);
-            notify_status(conn, ZITI_SERVICE_UNAVAILABLE);
-        }
-    } else if (status == ZITI_SERVICE_UNAVAILABLE) {
+
+    if (status == ZITI_SERVICE_UNAVAILABLE) {
         CONN_LOG(WARN, "service[%s] is not available", service->name);
         notify_status(conn, ZITI_SERVICE_UNAVAILABLE);
-    } else {
+        return;
+    }
+
+    if (status != ZITI_OK) {
         CONN_LOG(WARN, "failed to get service[%s] details, scheduling re-try", conn->service);
         schedule_rebind(conn, true);
+        return;
     }
+
+    if (!ziti_service_has_permission(service, ziti_session_types.Bind)) {
+        CONN_LOG(WARN, "not authorized to Bind service[%s]", service->name);
+        notify_status(conn, ZITI_SERVICE_UNAVAILABLE);
+        return;
+    }
+
+    conn->encrypted = service->encryption;
+    if (conn->server.token == NULL) {
+        ziti_ctrl_create_session(ztx_get_controller(ztx), service->id, ziti_session_types.Bind, session_cb, conn);
+    }
+
+    ziti_ctrl_list_service_routers(ztx_get_controller(ztx), service, list_routers_cb, conn);
 }
 
 static uint16_t get_terminator_cost(const ziti_listen_opts *opts, const char *service, ziti_context ztx) {
@@ -294,7 +313,8 @@ static int dispose(ziti_connection server) {
         server->server.timer = NULL;
     }
 
-    free_ziti_session_ptr(server->server.session);
+    FREE(server->server.token);
+    free_ziti_edge_router_array(&server->server.routers);
     free(server->service);
     free(server);
     return 1;
@@ -425,8 +445,8 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
 
 void start_binding(struct binding_s *b, ziti_channel_t *ch) {
     struct ziti_conn *conn = b->conn;
-    ziti_session *s = conn->server.session;
-    CONN_LOG(TRACE, "ch[%d] => Edge Bind request token[%s]", ch->id, s->token);
+    char *token = conn->server.token;
+    CONN_LOG(TRACE, "ch[%d] => Edge Bind request token[%s]", ch->id, token);
 
     b->ch = ch;
 
@@ -510,7 +530,7 @@ void start_binding(struct binding_s *b, ziti_channel_t *ch) {
 
     b->waiter = ziti_channel_send_for_reply(b->ch, ContentTypeBind,
                                             headers, nheaders,
-                                            s->token, strlen(s->token), bind_reply_cb,
+                                            token, strlen(token), bind_reply_cb,
                                             b);
 }
 
@@ -557,8 +577,8 @@ static void stop_binding(struct binding_s *b) {
         return;
     }
 
-    ziti_session *s = b->conn->server.session;
-    if (s == NULL) {
+    char *token = b->conn->server.token;
+    if (token == NULL) {
         return;
     }
 
@@ -578,7 +598,7 @@ static void stop_binding(struct binding_s *b) {
     };
     b->waiter = ziti_channel_send_for_reply(b->ch, ContentTypeUnbind,
                                             headers, 2,
-                                            s->token, strlen(s->token),
+                                            token, strlen(token),
                                             on_unbind, b);
     b->bound = false;
 }

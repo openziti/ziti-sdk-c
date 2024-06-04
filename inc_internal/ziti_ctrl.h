@@ -33,6 +33,10 @@ extern const char* const PC_ENDPOINT_STATE_TYPE;
 
 typedef void (*ziti_ctrl_redirect_cb)(const char *new_address, void *ctx);
 
+typedef void (*ctrl_version_cb)(const ziti_version *, const ziti_error *, void *);
+
+typedef void(*routers_cb)(ziti_service_routers *srv_routers, const ziti_error *, void *);
+
 typedef struct ziti_controller_s {
     uv_loop_t *loop;
     tlsuv_http_t *client;
@@ -42,6 +46,9 @@ typedef struct ziti_controller_s {
     unsigned int page_size;
 
     ziti_version version;
+    ctrl_version_cb version_cb;
+    void *version_cb_ctx;
+    void *version_req;
 
     bool has_token;
     char *instance_id;
@@ -64,10 +71,13 @@ int ziti_ctrl_close(ziti_controller *ctrl);
 
 void ziti_ctrl_clear_api_session(ziti_controller *ctrl);
 
-void ziti_ctrl_get_version(ziti_controller *ctrl, void (*ver_cb)(ziti_version *, const ziti_error *, void *), void *ctx);
+void ziti_ctrl_get_version(ziti_controller *ctrl, ctrl_version_cb cb, void *ctx);
 
 void ziti_ctrl_login(ziti_controller *ctrl, model_list *cfg_types, void (*cb)(ziti_api_session *, const ziti_error *, void *),
                      void *ctx);
+
+void ziti_ctrl_list_controllers(ziti_controller *ctrl,
+                                void (*cb)(ziti_controller_detail_array, const ziti_error*, void *ctx), void *ctx);
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
 
@@ -88,6 +98,8 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*srv_cb)(ziti_service_a
 
 void ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name,
                            void (*srv_cb)(ziti_service *, const ziti_error *, void *), void *ctx);
+
+void ziti_ctrl_list_service_routers(ziti_controller *ctrl, const ziti_service *srv, routers_cb, void *ctx);
 
 void ziti_ctrl_create_session(
         ziti_controller *ctrl, const char *service_id, ziti_session_type type,

@@ -30,6 +30,7 @@
 #include "edge_protocol.h"
 #include "posture.h"
 #include "authenticators.h"
+#include "auth_method.h"
 
 #include <sodium.h>
 
@@ -183,7 +184,8 @@ struct ziti_conn {
             ziti_listen_cb listen_cb;
             ziti_client_cb client_cb;
 
-            ziti_session *session;
+            ziti_edge_router_array routers;
+            char *token;
             model_map bindings;
             model_map children;
             uv_timer_t *timer;
@@ -256,7 +258,10 @@ struct ziti_ctx {
     ziti_config config;
     ziti_options opts;
     ziti_controller ctrl;
+    model_list controllers;
     uint32_t id;
+
+    model_map ctrl_details;
 
     tlsuv_private_key_t sessionKey;
     char *sessionCsr;
@@ -265,14 +270,14 @@ struct ziti_ctx {
 
     bool closing;
     bool enabled;
+    bool logout;
     int ctrl_status;
 
-    bool active_session_request;
-    ziti_api_session *api_session;
-    uv_timeval64_t api_session_expires_at;
-    ziti_api_session_state api_session_state;
+    ziti_auth_method_t *auth_method;
+    ziti_auth_state auth_state;
+    // HA access_token(JWT) or legacy ziti_api_session.token
+    char *session_token;
 
-    uv_timeval64_t session_received_at;
     ziti_identity_data *identity_data;
 
     bool services_loaded;
@@ -286,7 +291,6 @@ struct ziti_ctx {
 
     char *last_update;
 
-    uv_timer_t *api_session_timer;
     uv_timer_t *service_refresh_timer;
     uv_prepare_t *prepper;
 

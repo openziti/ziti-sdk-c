@@ -48,10 +48,13 @@ extern "C" {
 
     typedef unsigned int uint;
 
-#define typeof(x)
-
 #endif
 
+#if defined(_MSC_VER)
+#define z_typeof(x) __typeof__(x)
+#else
+#define z_typeof(x) typeof(x)
+#endif
 extern const char *ziti_get_build_version(int verbose);
 
 extern const char *ziti_git_branch();
@@ -75,7 +78,7 @@ typedef int *(*cond_error_t)(int);
 #define VAL_OR_ELSE(v, def) ((v) != NULL ? (v) : (def))
 #define FREE(v)  do { if ((v) != NULL) { free((void*)(v)); (v) = NULL; } } while(0)
 #define FIELD_OR_ELSE(obj, field, def) ((obj) ? ((obj)->field) : (def))
-#define FIELD_OR_NULL(obj, field) FIELD_OR_ELSE(obj, field, (typeof((obj)->field))0)
+#define FIELD_OR_NULL(obj, field) FIELD_OR_ELSE(obj, field, (z_typeof((obj)->field))0)
 
 #define FMT(ex) _##ex##_fmt
 #define COND(ex) _##ex##_cond
@@ -101,9 +104,14 @@ if (COND(ex)(ERR(ex))) { ERFILE(ex) = __FILENAME__; ERLINE(ex) = __LINE__; _##ex
     }}\
     for (int _##ex##_count = 0;COND(ex)(ERR(ex)) && _##ex##_count == 0; _##ex##_count++)
 
+#define line_idx(i, l) i ## l
 
-#define FOR(idx, arr) for (int (idx) = 0; (idx) < SIZEOF(arr) && (arr)[(idx)] != NULL; (idx)++)
+#define FOR_line(el, arr, LINE) int line_idx(idx,LINE); for ( \
+line_idx(idx,LINE) = 0, (el) = (arr) ? (arr)[line_idx(idx,LINE)] : NULL;   \
+el != NULL; \
+line_idx(idx,LINE)++, (el) = (arr)[line_idx(idx,LINE)]  )
 
+#define FOR(el, arr) FOR_line(el, arr, __LINE__)
 
 
 #define container_of(ptr, type, member) ((type *) ((char*)(ptr) - offsetof(type, member)))

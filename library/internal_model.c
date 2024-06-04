@@ -75,6 +75,8 @@ IMPL_MODEL(ziti_er_protocols, ZITI_ER_PROTOCOLS)
 
 IMPL_MODEL(ziti_edge_router, ZITI_EDGE_ROUTER_MODEL)
 
+IMPL_MODEL(ziti_service_routers, ZITI_SERVICE_EDGE_ROUTERS_MODEL)
+
 IMPL_MODEL(ziti_session, ZITI_SESSION_MODEL)
 
 IMPL_MODEL(api_path, ZITI_API_PATH_MODEL)
@@ -144,6 +146,12 @@ IMPL_ENUM(ziti_protocol, ZITI_PROTOCOL_ENUM)
 IMPL_MODEL(ziti_create_api_cert_req, ZITI_CREATE_API_CERT_REQ)
 
 IMPL_MODEL(ziti_create_api_cert_resp, ZITI_CREATE_API_CERT_RESP)
+
+IMPL_MODEL(api_address, API_ADDRESS_MODEL)
+
+IMPL_MODEL(ctrl_apis, CTRL_APIS_MODEL)
+
+IMPL_MODEL(ziti_controller_detail, ZITI_CONTROLLER_DETAIL)
 
 bool ziti_service_has_permission(const ziti_service *service, ziti_session_type sessionType) {
     if (sessionType == ziti_session_types.Dial) {

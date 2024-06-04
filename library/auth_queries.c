@@ -88,16 +88,7 @@ void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb status_cb, vo
         status_cb(ztx, ZITI_WTF, status_ctx);
     }
 
-    NEWP(mfa_auth_ctx, ziti_mfa_auth_ctx);
-    mfa_auth_ctx->cb = status_cb;
-    mfa_auth_ctx->cb_ctx = status_ctx;
-    mfa_auth_ctx->ztx = ztx;
-    mfa_auth_ctx->code = strdup(code);
-
-
-    char *body = ziti_mfa_code_body(code);
-
-    ziti_ctrl_login_mfa(ztx_get_controller(ztx), body, strlen(body), ziti_mfa_auth_internal_cb, mfa_auth_ctx);
+    ztx->auth_method->submit_mfa(ztx->auth_method, code);
 }
 
 void ziti_auth_query_mfa_process(ziti_mfa_auth_ctx *mfa_auth_ctx) {
@@ -115,41 +106,6 @@ void ziti_auth_query_mfa_process(ziti_mfa_auth_ctx *mfa_auth_ctx) {
     } else {
         FREE(mfa_auth_ctx);
     }
-}
-
-void ziti_auth_query_process(ziti_context ztx, void(*cb)(ziti_context, int, void *)) {
-    ziti_auth_query_mfa *aq;
-    ziti_auth_query_mfa *ziti_mfa = NULL;
-    MODEL_LIST_FOREACH(aq, ztx->api_session->auth_queries) {
-        if (strcmp(aq->type_id, AUTH_QUERY_TYPE_MFA) == 0 &&
-            strcmp(aq->provider, MFA_PROVIDER_ZITI) == 0) {
-            if (ziti_mfa == NULL) {
-                ziti_mfa = aq;
-            } else {
-                ZTX_LOG(ERROR, "multiple auth queries for [type: %s] [provider: %s], cannot continue", aq->type_id, aq->provider);
-                cb(ztx, ZITI_OK, NULL);
-                return;
-            }
-        } else {
-            ZTX_LOG(ERROR, "could not process authentication query [type: %s] [provider: %s], unknown type or provider",
-                    aq->type_id, aq->provider);
-            cb(ztx, ZITI_WTF, NULL); // fail with unsupported auth query
-            return;
-        }
-    }
-
-    if (ziti_mfa == NULL) {
-        ztx->auth_queries->outstanding_auth_query_ctx = NULL;
-        cb(ztx, ZITI_OK, NULL); //succeed no mfa to handle
-        return;
-    }
-
-    ziti_mfa_auth_ctx *mfa_auth_ctx = calloc(1, sizeof(ziti_mfa_auth_ctx));
-    mfa_auth_ctx->ztx = ztx;
-    mfa_auth_ctx->cb = cb;
-
-    ZTX_LOG(INFO, "sending auth query mfa authentication event, authentication cannot proceed if not handled");
-    ziti_auth_query_mfa_process(mfa_auth_ctx);
 }
 
 
@@ -261,73 +217,6 @@ void ziti_mfa_verify(ziti_context ztx, char *code, ziti_mfa_cb verify_cb, void *
     char *body = ziti_mfa_code_body(code);
 
     ziti_ctrl_post_mfa_verify(ztx_get_controller(ztx), body, strlen(body), ziti_mfa_verify_internal_cb, mfa_cb_ctx);
-}
-
-void ziti_mfa_re_auth_internal_cb(ziti_api_session *session, const ziti_error *err, void *ctx) {
-    ziti_mfa_auth_ctx *mfa_auth_ctx = ctx;
-    ziti_context ztx = mfa_auth_ctx->ztx;
-
-    if (err != NULL) {
-        ZTX_LOG(ERROR, "error during verify MFA call, could not re-authenticate: %d - %s - %s", err->http_code, err->code, err->message);
-        mfa_auth_ctx->cb(mfa_auth_ctx->ztx, err->err, mfa_auth_ctx->cb_ctx);
-    } else {
-
-        ziti_set_api_session(ztx, session);
-        mfa_auth_ctx->ztx->api_session = session;
-
-        char *body = ziti_mfa_code_body(mfa_auth_ctx->code);
-        ziti_ctrl_login_mfa(ztx_get_controller(mfa_auth_ctx->ztx), body, strlen(body), ziti_mfa_auth_internal_cb, mfa_auth_ctx);
-    }
-}
-
-void ziti_mfa_auth_internal_cb(void *empty, const ziti_error *err, void *ctx) {
-    ziti_mfa_auth_ctx *mfa_auth_ctx = ctx;
-    ziti_context ztx = mfa_auth_ctx->ztx;
-
-    if (err != NULL) {
-        if (err->http_code == 401 && !mfa_auth_ctx->auth_attempted) {
-            // not authenticated, attempt re-auth once
-            mfa_auth_ctx->auth_attempted = true;
-            ziti_set_unauthenticated(ztx);
-            ziti_re_auth_with_cb(mfa_auth_ctx->ztx, ziti_mfa_re_auth_internal_cb, mfa_auth_ctx);
-            return;
-        } else {
-            ZTX_LOG(ERROR, "error during MFA auth call: %d - %s - %s", err->http_code, err->code, err->message);
-
-            if (mfa_auth_ctx->cb != NULL) {
-                mfa_auth_ctx->cb(ztx, err->err, mfa_auth_ctx->cb_ctx);
-            } else {
-                ZTX_LOG(WARN, "no mfa status callback provided, mfa failed, status was: %d", err->err);
-            }
-            FREE(ctx);
-            return;
-        }
-    } else {
-        bool is_auth = false;
-        if (mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx != NULL) {
-            is_auth = true;
-            ziti_mfa_auth_ctx *outstanding_ctx = mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx;
-            mfa_auth_ctx->ztx->auth_queries->outstanding_auth_query_ctx = NULL;
-
-            outstanding_ctx->cb(ztx, ZITI_OK, outstanding_ctx->cb_ctx);
-
-            FREE(outstanding_ctx->code);
-            FREE(outstanding_ctx);
-        }
-
-        if (mfa_auth_ctx->cb != NULL) {
-            mfa_auth_ctx->cb(ztx, ZITI_OK, mfa_auth_ctx->cb_ctx);
-        } else {
-            ZTX_LOG(WARN, "no mfa status callback provided, mfa was a success, status was: %d", err->err);
-        }
-
-        if(!is_auth){
-            //not authenticating, mfa re-check, refresh services
-            ziti_services_refresh(ztx, true);
-        }
-
-        FREE(ctx);
-    }
 }
 
 void ziti_mfa_get_recovery_codes_internal_cb(ziti_mfa_recovery_codes *rc, const ziti_error *err, void *ctx) {

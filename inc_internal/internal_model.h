@@ -36,6 +36,9 @@ XX(name, string, none, name, __VA_ARGS__)\
 XX(hostname, string, none, hostname, __VA_ARGS__) \
 XX(protocols, ziti_er_protocols, none, supportedProtocols, __VA_ARGS__)
 
+#define ZITI_SERVICE_EDGE_ROUTERS_MODEL(XX, ...) \
+XX(routers, ziti_edge_router, array, edgeRouters, __VA_ARGS__)
+
 #define ZITI_SESSION_MODEL(XX, ...) \
 XX(token, string, none, token, __VA_ARGS__)\
 XX(id, string, none, id, __VA_ARGS__) \
@@ -184,6 +187,22 @@ XX(identity_id, string, none, identityId, __VA_ARGS__) \
 XX(cert_pem, string, none, certPem, __VA_ARGS__) \
 XX(fingerprint, string, none, fingerprint, __VA_ARGS__)
 
+#define API_ADDRESS_MODEL(XX, ...) \
+XX(url, string, none, url, __VA_ARGS__) \
+XX(version, string, none, version, __VA_ARGS__)
+
+#define CTRL_APIS_MODEL(XX, ...) \
+XX(edge, api_address, list, edge-client, __VA_ARGS__) \
+XX(oidc, api_address, list, edge-oidc, __VA_ARGS__)
+
+#define ZITI_CONTROLLER_DETAIL(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__) \
+XX(name, string, none, name, __VA_ARGS__) \
+XX(apis, ctrl_apis, none, apiAddresses, __VA_ARGS__) \
+XX(is_online, bool, none, isOnline, __VA_ARGS__) \
+XX(cert_pem, string, none, certPem, __VA_ARGS__) \
+XX(fingerprint, string, none, fingerprint, __VA_ARGS__)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -195,6 +214,8 @@ DECLARE_MODEL(ziti_identity_data, ZITI_IDENTITY_DATA_MODEL)
 DECLARE_MODEL(ziti_er_protocols, ZITI_ER_PROTOCOLS)
 
 DECLARE_MODEL(ziti_edge_router, ZITI_EDGE_ROUTER_MODEL)
+
+DECLARE_MODEL(ziti_service_routers, ZITI_SERVICE_EDGE_ROUTERS_MODEL)
 
 DECLARE_MODEL(ziti_session, ZITI_SESSION_MODEL)
 
@@ -247,6 +268,12 @@ DECLARE_MODEL(ziti_extend_cert_authenticator_resp, ZITI_EXTEND_CERT_AUTHENTICATO
 DECLARE_MODEL(ziti_create_api_cert_req, ZITI_CREATE_API_CERT_REQ)
 
 DECLARE_MODEL(ziti_create_api_cert_resp, ZITI_CREATE_API_CERT_RESP)
+
+DECLARE_MODEL(api_address, API_ADDRESS_MODEL)
+
+DECLARE_MODEL(ctrl_apis, CTRL_APIS_MODEL)
+
+DECLARE_MODEL(ziti_controller_detail, ZITI_CONTROLLER_DETAIL)
 
 bool ziti_has_capability(const ziti_version *v, ziti_ctrl_cap c);
 
