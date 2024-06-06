@@ -59,8 +59,6 @@ int code_to_error(const char *code);
 
 static void update_ctrl_status(ziti_context ztx, int code, const char *msg);
 
-static void version_cb(const ziti_version *v, const ziti_error *err, void *ctx);
-
 static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, void *ctx);
 
 static void ziti_init_async(ziti_context ztx, void *data);
@@ -119,7 +117,7 @@ static size_t parse_ref(const char *val, const char **res) {
 }
 
 ziti_controller* ztx_get_controller(ziti_context ztx) {
-    return model_list_head(&ztx->controllers);
+    return &ztx->ctrl;
 }
 
 static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout) {
@@ -434,6 +432,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
             it = model_map_it_remove(it);
         }
 
+        ztx->auth_method->stop(ztx->auth_method);
         ziti_send_event(ztx, &ev);
         free_ziti_service_array(&ev.event.service.removed);
 
@@ -456,7 +455,6 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
         ztx->logout = false;
         uv_prepare_start(ztx->prepper, ztx_prepare);
         ztx->start = uv_now(ztx->loop);
-        ziti_ctrl_get_version(ztx_get_controller(ztx), version_cb, ztx);
         ziti_set_unauthenticated(ztx);
 
         ziti_re_auth(ztx);
@@ -486,21 +484,10 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ZTX_LOG(INFO, "Loading ziti context with controller[%s]", ztx_controller(ztx));
 
     const char *url;
-    MODEL_LIST_FOREACH(url, ztx->config.controllers) {
-        NEWP(ctrl, ziti_controller);
-        int rc = ziti_ctrl_init(loop, ctrl, url, ztx->tlsCtx);
-        if (rc != ZITI_OK) {
-            ZTX_LOG(WARN, "failed to init controller with url[%s]: %s", url, ziti_errorstr(rc));
-            free(ctrl);
-            continue;
-        }
-
-        model_list_append(&ztx->controllers, ctrl);
-    }
-
-    if (model_list_size(&ztx->controllers) == 0) {
+    int rc = ziti_ctrl_init(loop, &ztx->ctrl, &ztx->config.controllers, ztx->tlsCtx);
+    if (rc != 0) {
         ZITI_LOG(ERROR, "no valid controllers found");
-        ev.event.ctx.ctrl_status = ZITI_INVALID_CONFIG;
+        ev.event.ctx.ctrl_status = rc;
         ziti_send_event(ztx, &ev);
         return;
     }
@@ -584,9 +571,6 @@ void ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
 static void free_ztx(uv_handle_t *h) {
     ziti_context ztx = h->data;
 
-//    ziti_ctrl_close(ztx_get_controller(ztx));
-//    ztx->tlsCtx->free_ctx(ztx->tlsCtx);
-
     model_map_clear(&ztx->ctrl_details, (_free_f) free_ziti_controller_detail_ptr);
     ziti_auth_query_free(ztx->auth_queries);
     ziti_posture_checks_free(ztx->posture_checks);
@@ -598,14 +582,7 @@ static void free_ztx(uv_handle_t *h) {
     FREE(ztx->last_update);
     FREE(ztx->session_token);
 
-    model_list_iter it = model_list_iterator(&ztx->controllers);
-    while(it != NULL) {
-        ziti_controller *ctrl = model_list_it_element(it);
-        ziti_ctrl_close(ctrl);
-        free(ctrl);
-        it = model_list_it_remove(it);
-    }
-
+    ziti_ctrl_close(ztx_get_controller(ztx));
     ztx->tlsCtx->free_ctx(ztx->tlsCtx);
     free_ziti_config(&ztx->config);
 
@@ -1456,17 +1433,6 @@ static void update_ctrl_status(ziti_context ztx, int errCode, const char *errMsg
     }
 }
 
-static void version_cb(const ziti_version *v, const ziti_error *err, void *ctx) {
-    ziti_context ztx = ctx;
-    if (err != NULL) {
-        ZTX_LOG(ERROR, "failed to get controller version from %s %s(%s)",
-                ztx_controller(ztx), err->code, err->message);
-    } else {
-        ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
-                ztx_controller(ztx), v->version, v->revision, v->build_date);
-    }
-}
-
 bool ziti_is_session_valid(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type) {
     if (session == NULL) return false;
 
@@ -1611,7 +1577,10 @@ void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data) {
 }
 
 int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
-    if (config == NULL || config->controller_url == NULL) {
+    if (config == NULL ||
+            (config->controller_url == NULL &&
+             model_list_size(&config->controllers) == 0)
+            ) {
         ZITI_LOG(ERROR, "config or controller/tls has to be set");
         return ZITI_INVALID_CONFIG;
     }
@@ -1731,31 +1700,31 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         t->data = ztx;
         uv_timer_start(t, pre_auth_retry, 5 * 1000, 0);
     } else {
-        bool ha = ziti_has_capability(version, ziti_ctrl_cap_HA_CONTROLLER);
-        ziti_auth_method_t *current = ztx->auth_method;
+        bool ha = ziti_has_capability(version, ziti_ctrl_caps.HA_CONTROLLER);
+        ZTX_LOG(INFO, "connected to %s controller %s version %s(%s %s)",
+                ha ? "HA" : "Legacy",
+                ztx_controller(ztx), version->version, version->revision, version->build_date);
 
-        if (current) {
-            if (ha && current->kind == HA) {
-                return;
-            }
+        enum AuthenticationMethod m = ha ? HA : LEGACY;
 
-            if (!ha && current->kind == LEGACY) {
-                return;
-            }
-
+        if (ztx->auth_method && ztx->auth_method->kind != m) {
             ZITI_LOG(INFO, "current auth method does not match controller, switching to %s method",
                      ha ? "HA" : "LEGACY");
-            current->stop(current);
-            current->free(current);
+            ztx->auth_method->stop(ztx->auth_method);
+            ztx->auth_method->free(ztx->auth_method);
             ztx->auth_method = NULL;
         }
 
-        if (ha) {
-            ztx->auth_method = new_ha_auth(ztx->loop, &ztx->config.controllers, ztx->tlsCtx);
-        } else {
-            ztx->auth_method = new_legacy_auth(ztx_get_controller(ztx));
+        if (!ztx->auth_method) {
+            if (ha) {
+                ztx->auth_method = new_ha_auth(ztx->loop, &ztx->config.controllers, ztx->tlsCtx);
+            } else {
+                ztx->auth_method = new_legacy_auth(ztx_get_controller(ztx));
+            }
+            ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
+        } else if (ztx->auth_state  == ZitiAuthStateUnauthenticated) {
+            ztx->auth_method->force_refresh(ztx->auth_method);
         }
-        ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
     }
 }
 

@@ -40,11 +40,16 @@ typedef void(*routers_cb)(ziti_service_routers *srv_routers, const ziti_error *,
 typedef struct ziti_controller_s {
     uv_loop_t *loop;
     tlsuv_http_t *client;
-    char *url;
+
+    const char *url;
+    model_map endpoints;
+
+    unsigned int active_reqs;
 
     // tuning options
     unsigned int page_size;
 
+    bool is_ha;
     ziti_version version;
     ctrl_version_cb version_cb;
     void *version_cb_ctx;
@@ -57,7 +62,7 @@ typedef struct ziti_controller_s {
     void *redirect_ctx;
 } ziti_controller;
 
-int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, const char *url, tls_context *tls);
+int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls_context *tls);
 
 int ziti_ctrl_set_token(ziti_controller *ctrl, const char *access_token);
 

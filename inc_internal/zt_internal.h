@@ -258,7 +258,6 @@ struct ziti_ctx {
     ziti_config config;
     ziti_options opts;
     ziti_controller ctrl;
-    model_list controllers;
     uint32_t id;
 
     model_map ctrl_details;
