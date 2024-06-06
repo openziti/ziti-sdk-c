@@ -1199,29 +1199,25 @@ static void set_service_posture_policy_map(ziti_service *service) {
 
 static void check_service_update(ziti_service_update *update, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
-    bool need_update = true;
 
-    if (err) { // API not supported - do refresh
+    if (err) {
         ZTX_LOG(WARN, "failed to poll service updates: code[%d] err[%d/%s]",
                 err->http_code, err->err, err->message);
-        if (err->err == ZITI_DISABLED) {
-            need_update = false;
+        // if controller is unavailable just reschedule for later time
+        if (err->err != ZITI_DISABLED) {
+            ziti_services_refresh(ztx, false);
         }
     } else if (ztx->last_update == NULL || strcmp(ztx->last_update, update->last_change) != 0) {
         ZTX_LOG(VERBOSE, "ztx last_update = %s", update->last_change);
         FREE(ztx->last_update);
         ztx->last_update = update->last_change;
+        ziti_ctrl_get_services(ztx_get_controller(ztx), update_services, ztx);
+
     } else {
         ZTX_LOG(VERBOSE, "not updating: last_update is same previous (%s == %s)", update->last_change,
                 ztx->last_update);
         free_ziti_service_update(update);
-        need_update = false;
-
         ziti_services_refresh(ztx, false);
-    }
-
-    if (need_update) {
-        ziti_ctrl_get_services(ztx_get_controller(ztx), update_services, ztx);
     }
     FREE(update);
 }
