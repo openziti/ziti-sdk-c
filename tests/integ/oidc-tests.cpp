@@ -36,7 +36,7 @@ TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
     tls->set_own_cert(tls, key, cert);
 
     oidc_client_t oidcClient;
-    oidc_client_init(l, &oidcClient, cfg.controller_url, tls);
+    oidc_client_init(l, &oidcClient, (const char*)model_list_head(&cfg.controllers), tls);
     struct oidc_cfg_result {
         bool called;
         int status;
