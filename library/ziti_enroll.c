@@ -111,7 +111,10 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
 
     NEWP(ctrl, ziti_controller);
     ecfg->ctrl = ctrl;
-    TRY(ziti, ziti_ctrl_init(loop, ctrl, ecfg->zej->controller, ecfg->tls));
+    model_list endpoints = {0};
+    model_list_append(&endpoints, ecfg->zej->controller);
+    TRY(ziti, ziti_ctrl_init(loop, ctrl, &endpoints, ecfg->tls));
+    model_list_clear(&endpoints, NULL);
 
     NEWP(enroll_req, struct ziti_enroll_req);
     enroll_req->enroll_cb = enroll_cb;
@@ -203,7 +206,12 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     enroll_req2->external_enroll_ctx = enroll_req->ecfg->external_enroll_ctx;
     enroll_req2->loop = enroll_req->loop;
     enroll_req2->controller = calloc(1, sizeof(ziti_controller));
-    TRY(ziti, ziti_ctrl_init(enroll_req2->loop, enroll_req2->controller, enroll_req->ecfg->zej->controller, tls));
+
+    model_list endpoints = {0};
+    model_list_append(&endpoints, enroll_req->ecfg->zej->controller);
+    TRY(ziti, ziti_ctrl_init(enroll_req2->loop, enroll_req2->controller, &endpoints, tls));
+    model_list_clear(&endpoints, NULL);
+
     tlsuv_http_set_path_prefix(enroll_req2->controller->client, "/edge/client/v1");
     enroll_req2->ecfg = enroll_req->ecfg;
 

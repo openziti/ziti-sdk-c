@@ -107,7 +107,11 @@ TEST_CASE("invalid_controller", "[controller][GH-44]") {
     resp_capture<ziti_version> version;
 
     PREP(ziti);
-    TRY(ziti, ziti_ctrl_init(loop, &ctrl, "https://not.a.ziti.controll.er", nullptr));
+    model_list endpoints = {nullptr};
+    model_list_append(&endpoints, (void*)"https://not.a.ziti.controll.er");
+    TRY(ziti, ziti_ctrl_init(loop, &ctrl, &endpoints, nullptr));
+    model_list_clear(&endpoints, nullptr);
+
     WHEN("get version") {
         ziti_ctrl_get_version(&ctrl, resp_cb, &version);
         uv_run(loop, UV_RUN_DEFAULT);
@@ -142,7 +146,7 @@ TEST_CASE("controller_test","[integ]") {
     PREP(ziti);
     TRY(ziti, ziti_load_config(&config, conf));
     TRY(ziti, load_tls(&config, &tls));
-    TRY(ziti, ziti_ctrl_init(loop, &ctrl, config.controller_url, tls));
+    TRY(ziti, ziti_ctrl_init(loop, &ctrl, &config.controllers, tls));
 
     WHEN("get version and login") {
         auto v = do_get(ctrl, ziti_ctrl_get_version);
