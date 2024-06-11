@@ -112,7 +112,7 @@ static void ch_init_stream(ziti_channel_t *ch) {
     assert(ch->connection == NULL);
 
     ch->connection = calloc(1, sizeof(*ch->connection));
-    tlsuv_stream_init(ch->loop, ch->connection, ch->ctx->tlsCtx);
+    tlsuv_stream_init(ch->loop, ch->connection, ch->ztx->tlsCtx);
     tlsuv_stream_keepalive(ch->connection, true, 30);
     tlsuv_stream_nodelay(ch->connection, true);
     ch->connection->data = ch;
@@ -137,7 +137,7 @@ int ziti_channel_prepare(ziti_channel_t *ch) {
 }
 
 static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t id, tls_context *tls) {
-    ch->ctx = ctx;
+    ch->ztx = ctx;
     ch->loop = ctx->loop;
     ch->id = id;
 //    ch->msg_seq = 0;
@@ -223,7 +223,7 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
 
         on_channel_close(ch, err, 0);
         ch->state = Closed;
-        ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ctx);
+        ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ztx);
 
         uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
         ch->timer = NULL;
@@ -303,6 +303,36 @@ static void check_connecting_state(ziti_channel_t *ch) {
         CH_LOG(DEBUG, "state check: timer is too far into the future!");
         reset = true;
     }
+}
+
+static void token_update_cb(void *ctx, message *m, int status) {
+    ziti_channel_t *ch = ctx;
+    if (status != ZITI_OK) {
+        CH_LOG(ERROR, "failed to update token: %d[%s]", status, ziti_errorstr(status));
+    } else if (m->header.content == ContentTypeUpdateTokenSuccessType) {
+        CH_LOG(INFO, "token update success");
+    } else if (m->header.content == ContentTypeUpdateTokenFailureType) {
+        CH_LOG(WARN, "failed to update token: %.*s", m->header.body_len, m->body);
+    }
+}
+
+int ziti_channel_update_token(ziti_channel_t *ch) {
+    if (ch == NULL) {
+        return ZITI_INVALID_STATE;
+    }
+
+    if (ch->state != Connected) {
+        return ZITI_GATEWAY_UNAVAILABLE;
+    }
+
+    const char* token = ziti_get_api_session_token(ch->ztx);
+
+    uint8_t true_val = 1;
+    ziti_channel_send_for_reply(ch, ContentTypeUpdateTokenType,
+                                NULL, 0, token, strlen(token), token_update_cb, ch);
+
+
+    return ZITI_OK;
 }
 
 int ziti_channel_force_connect(ziti_channel_t *ch) {
@@ -724,10 +754,10 @@ static void ch_connect_timeout(uv_timer_t *t) {
 
 static void reconnect_cb(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
-    ziti_context ztx = ch->ctx;
+    ziti_context ztx = ch->ztx;
 
-    if (ztx->auth_state != ZitiAuthStateFullyAuthenticated || ztx->session_token == NULL) {
-        CH_LOG(ERROR, "ziti context is not fully authenticated (auth_state[%d]), delaying re-connect",
+    if (ziti_get_api_session_token(ztx) == NULL) {
+        CH_LOG(INFO, "ziti context is not fully authenticated (auth_state[%d]), delaying re-connect",
                ztx->auth_state);
         reconnect_channel(ch, false);
     } else if (ch->connection != NULL) {
@@ -782,7 +812,7 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
 }
 
 static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
-    ziti_context ztx = ch->ctx;
+    ziti_context ztx = ch->ztx;
 
     if (ch->state == Closed || ch->state == Disconnected) {
         return;
@@ -830,7 +860,7 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
     if (ch->state != Closed) {
         if (uv_err == UV_EOF) {
             ZTX_LOG(VERBOSE, "edge router closed connection, trying to refresh api session");
-            ziti_force_api_session_refresh(ch->ctx);
+            ziti_force_api_session_refresh(ch->ztx);
         }
         reconnect_channel(ch, false);
     }
@@ -890,12 +920,13 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
     ziti_channel_t *ch = tls->data;
 
     if (status == 0) {
-        if (ch->ctx->session_token != NULL) {
+        const char *token = ziti_get_api_session_token(ch->ztx);
+        if (token != NULL) {
             CH_LOG(DEBUG, "connected");
             tlsuv_stream_t *mbed = (tlsuv_stream_t *) req->handle;
             tlsuv_stream_read_start(mbed, channel_alloc_cb, on_channel_data);
             ch->reconnect_count = 0;
-            send_hello(ch, ch->ctx->session_token);
+            send_hello(ch, token);
         } else {
             CH_LOG(WARN, "api session invalidated, while connecting");
             close_connection(ch);
