@@ -310,9 +310,11 @@ static void token_update_cb(void *ctx, message *m, int status) {
     if (status != ZITI_OK) {
         CH_LOG(ERROR, "failed to update token: %d[%s]", status, ziti_errorstr(status));
     } else if (m->header.content == ContentTypeUpdateTokenSuccessType) {
-        CH_LOG(INFO, "token update success");
+        CH_LOG(DEBUG, "token update success");
     } else if (m->header.content == ContentTypeUpdateTokenFailureType) {
         CH_LOG(WARN, "failed to update token: %.*s", m->header.body_len, m->body);
+    } else {
+        CH_LOG(ERROR, "expected ContentType[%04x]", m->header.content);
     }
 }
 
