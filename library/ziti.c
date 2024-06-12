@@ -328,7 +328,8 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
 }
 
 void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
-    ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiApiSessionStateFullyAuthenticated);
+    ZTX_LOG(DEBUG, "setting auth_state[%d] to %d",
+            ztx->auth_state, ZitiAuthStateFullyAuthenticated);
 
     if (ztx->session_token == NULL || strcmp(ztx->session_token, session_token) != 0) {
         free(ztx->session_token);
@@ -337,13 +338,16 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     ziti_controller *ctrl = ztx_get_controller(ztx);
     if (ztx->auth_method->kind == HA) {
         ziti_ctrl_set_token(ztx_get_controller(ztx), session_token);
+        ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
+
+        const char* url;
+        ziti_channel_t *ch;
+        MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
+            ziti_channel_update_token(ch);
+        }
     }
     ziti_ctrl_get_well_known_certs(ctrl, ca_bundle_cb, ztx);
     ziti_ctrl_current_identity(ctrl, update_identity_data, ztx);
-
-    if (ztx->auth_method->kind == HA) {
-        ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
-    }
 
     // disable this until we figure out expiration and rolling requirements
 #if ENABLE_SESSION_CERTIFICATES
@@ -392,6 +396,13 @@ static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
 void ziti_force_api_session_refresh(ziti_context ztx) {
     ZTX_LOG(DEBUG, "forcing session refresh");
     ztx->auth_method->force_refresh(ztx->auth_method);
+}
+
+const char* ziti_get_api_session_token(ziti_context ztx) {
+    if (ztx->auth_state == ZitiAuthStateFullyAuthenticated) {
+        return ztx->session_token;
+    }
+    return NULL;
 }
 
 static void ziti_stop_internal(ziti_context ztx, void *data) {

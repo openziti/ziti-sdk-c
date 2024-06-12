@@ -26,6 +26,7 @@
 
 #define default_cb_url "http://localhost:18889/auth/callback"
 #define default_client_id "native"
+#define default_auth_header "Basic bmF0aXZlOg==" /* native: */
 
 typedef struct oidc_req oidc_req;
 
@@ -92,20 +93,19 @@ static void json_parse_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
 
 static void dump_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
     if (len > 0) {
-        fprintf(stderr, "%.*s\n", (int)len, data);
+        ZITI_LOG(WARN, "unexpected data %.*s", (int)len, data);
     } else {
         oidc_req *req = r->data;
         fprintf(stderr, "status = %zd\n", len);
         complete_oidc_req(req, (int)len, NULL);
     }
 }
+
 static void parse_cb(tlsuv_http_resp_t *resp, void *ctx) {
     tlsuv_http_req_t *http_req = resp->req;
     oidc_req *req = http_req->data;
 
-    if (req == NULL) { // should not happen
-        return;
-    }
+    assert(req != NULL);
 
     // connection failure
     if (resp->code < 0) {
@@ -122,8 +122,6 @@ static void parse_cb(tlsuv_http_resp_t *resp, void *ctx) {
 
     ZITI_LOG(ERROR, "unexpected content-type: %s", ct);
     resp->body_cb = dump_cb;
-//    complete_oidc_req(req, UV_EINVAL, NULL);
-//    resp->req->data = NULL;
 }
 
 int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt, const char *url, tls_context *tls) {
@@ -391,7 +389,7 @@ static void refresh_cb(oidc_req *req, int status, json_object *resp) {
         ZITI_LOG(WARN, "OIDC token refresh failed: %d/%s", status, uv_strerror(status));
         uv_timer_start(clt->timer, refresh_time_cb, 5 * 1000, 0);
     } else {
-        ZITI_LOG(WARN, "OIDC token refresh failed: %d", status);
+        ZITI_LOG(WARN, "OIDC token refresh failed: %d[%s]", status, json_object_to_json_string(resp));
         oidc_client_start(clt, clt->token_cb);
         if (resp) {
             json_object_put(resp);
@@ -407,13 +405,15 @@ static void refresh_time_cb(uv_timer_t *t) {
     const char *path = get_endpoint_path(clt, "token_endpoint");
     struct json_object *tok = json_object_object_get(clt->tokens, "refresh_token");
     oidc_req *refresh_req = new_oidc_req(clt, refresh_cb, clt);
-
+    
     tlsuv_http_req_t *req = tlsuv_http_req(&clt->http, "POST", path, parse_cb, refresh_req);
+    tlsuv_http_req_header(req, "Authorization", default_auth_header);
+    const char *refresher = json_object_get_string(tok);
     tlsuv_http_req_form(req, 4, (tlsuv_http_pair[]) {
-            {"client_id",     clt->client_id},
-            {"grant_type",    "refresh_token"},
-            {"refresh_token", json_object_get_string(tok)},
-            {"scopes",        "openid offline_access"},
+            {"grant_type",           "urn:ietf:params:oauth:grant-type:token-exchange"},
+            {"requested_token_type", "urn:ietf:params:oauth:token-type:refresh_token"},
+            {"subject_token_type",   "urn:ietf:params:oauth:token-type:refresh_token"},
+            {"subject_token",        refresher},
     });
 }
 

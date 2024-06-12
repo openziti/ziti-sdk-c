@@ -720,7 +720,7 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service_array
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_service_array, ctx);
 
     resp->paging = true;
-    resp->base_path = "/services";
+    resp->base_path = "/services?configTypes=all";
     ctrl_paging_req(resp);
 }
 

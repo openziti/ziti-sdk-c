@@ -48,17 +48,6 @@
 extern const char *APP_ID;
 extern const char *APP_VERSION;
 
-typedef enum {
-    ZitiApiSessionStateUnauthenticated,
-    ZitiApiSessionStateAuthStarted,
-
-    ZitiApiSessionStatePartiallyAuthenticated,
-    ZitiApiSessionStateFullyAuthenticated,
-
-    ZitiApiSessionImpossibleToAuthenticate,
-} ziti_api_session_state;
-
-
 typedef struct ziti_channel ziti_channel_t;
 
 typedef void (*reply_cb)(void *ctx, message *m, int err);
@@ -74,7 +63,7 @@ typedef int conn_state;
 
 typedef struct ziti_channel {
     uv_loop_t *loop;
-    struct ziti_ctx *ctx;
+    struct ziti_ctx *ztx;
     char *name;
     char *url;
     char *version;
@@ -336,6 +325,8 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_c
 
 void ziti_force_api_session_refresh(ziti_context ztx);
 
+const char* ziti_get_api_session_token(ziti_context ztx);
+
 int ziti_close_channels(ziti_context ztx, int err);
 
 bool ziti_channel_is_connected(ziti_channel_t *ch);
@@ -343,6 +334,8 @@ bool ziti_channel_is_connected(ziti_channel_t *ch);
 uint64_t ziti_channel_latency(ziti_channel_t *ch);
 
 int ziti_channel_force_connect(ziti_channel_t *ch);
+
+int ziti_channel_update_token(ziti_channel_t *ch);
 
 int ziti_channel_connect(ziti_context ztx, const char *name, const char *url);
 
