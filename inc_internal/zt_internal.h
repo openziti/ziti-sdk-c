@@ -263,6 +263,9 @@ struct ziti_ctx {
 
     ziti_auth_method_t *auth_method;
     ziti_auth_state auth_state;
+    ziti_mfa_cb mfa_cb;
+    void *mfa_ctx;
+
     // HA access_token(JWT) or legacy ziti_api_session.token
     char *session_token;
 

@@ -24,7 +24,7 @@
 
 static void ha_auth_free(ziti_auth_method_t *self);
 static int ha_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
-static int ha_auth_mfa(ziti_auth_method_t *self, const char *code);
+static int ha_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
 static int ha_auth_stop(ziti_auth_method_t *self);
 
 struct ha_auth_s {
@@ -103,7 +103,7 @@ static int ha_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx) 
     return oidc_client_configure(&auth->oidc, config_cb);
 }
 
-static int ha_auth_mfa(ziti_auth_method_t *self, const char *code) {
+static int ha_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb) {
     struct ha_auth_s *auth = HA_AUTH(self);
 
     ZITI_LOG(WARN, "not implemented");

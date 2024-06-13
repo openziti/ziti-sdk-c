@@ -27,6 +27,7 @@
 struct legacy_auth_s {
     ziti_auth_method_t api;
     auth_state_cb cb;
+    auth_mfa_cb mfa_cb;
     void *ctx;
     ziti_controller *ctrl;
     uv_timer_t timer;
@@ -42,7 +43,7 @@ static int legacy_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *c
 static int legacy_auth_stop(ziti_auth_method_t *self);
 static int legacy_auth_refresh(ziti_auth_method_t *self);
 static void legacy_auth_free(ziti_auth_method_t *self);
-static int legacy_auth_mfa(ziti_auth_method_t *self, const char *code);
+static int legacy_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
 static ziti_auth_query_mfa* get_mfa(ziti_api_session *session);
 static uint64_t refresh_delay(ziti_api_session *);
 
@@ -112,6 +113,11 @@ void legacy_auth_free(ziti_auth_method_t *self) {
 static void mfa_cb(void *empty, const ziti_error *err, void *ctx) {
     struct legacy_auth_s *auth = container_of(ctx, struct legacy_auth_s, api);
 
+    if (auth->mfa_cb) {
+        auth->mfa_cb(auth->ctx, err ? err->err : ZITI_OK);
+        auth->mfa_cb = NULL;
+    }
+
     if (err == NULL) { // success
         // refresh session to clear auth_query
         uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
@@ -128,9 +134,10 @@ static void mfa_cb(void *empty, const ziti_error *err, void *ctx) {
     }
 }
 
-static int legacy_auth_mfa(ziti_auth_method_t *self, const char *code) {
+static int legacy_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
 
+    auth->mfa_cb = cb;
     char *req = ziti_mfa_code_body(code);
     ziti_ctrl_login_mfa(auth->ctrl, req, strlen(req), mfa_cb, auth);
     return 0;

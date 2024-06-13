@@ -35,12 +35,13 @@ typedef enum {
 typedef struct ziti_ctx *ziti_context;
 typedef struct ziti_auth_method_s ziti_auth_method_t;
 typedef void (*auth_state_cb)(void *ctx, ziti_auth_state, const void *data);
+typedef void (*auth_mfa_cb)(void *ctx, int status);
 
 struct ziti_auth_method_s {
     enum AuthenticationMethod kind;
     int (*start)(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
     int (*force_refresh)(ziti_auth_method_t *self);
-    int (*submit_mfa)(ziti_auth_method_t *self, const char *code);
+    int (*submit_mfa)(ziti_auth_method_t *self, const char *code, auth_mfa_cb);
     int (*stop)(ziti_auth_method_t *self);
     void (*free)(ziti_auth_method_t *self);
 };
