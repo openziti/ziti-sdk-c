@@ -356,6 +356,7 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
     tlsuv_http_close(&clt->http, http_close_cb);
     uv_close((uv_handle_t *) clt->timer, (uv_close_cb) free);
     clt->timer = NULL;
+    return 0;
 }
 
 static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {

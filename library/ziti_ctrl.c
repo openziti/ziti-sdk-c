@@ -241,7 +241,7 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
         tlsuv_http_set_url(ctrl->client, ctrl->url);
 
         if (resp->ctrl->redirect_cb) {
-            ctrl->redirect_cb(ctrl->url, ctrl->redirect_ctx);
+            ctrl->redirect_cb(ctrl->url, ctrl->cb_ctx);
         }
     }
 
@@ -254,31 +254,45 @@ static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_e
     ziti_controller_detail *d;
     if (err) {
         CTRL_LOG(WARN, "failed to get list of HA controllers: %s", err->message);
+        return;
     }
-    else {
-        model_map old = ctrl->endpoints;
-        ctrl->endpoints = (model_map){0};
-        FOR (d, arr) {
-            api_address *addr = NULL;
-            MODEL_LIST_FOREACH(addr, d->apis.edge) {
-                CTRL_LOG(VERBOSE, "%s/%s", addr->version, addr->url);
-                if (addr && strcmp(addr->version, "v1") == 0) {
-                    break;
-                }
-                addr = NULL;
-            }
 
-            if (addr != NULL) {
-                if (strcmp(addr->url, ctrl->url) == 0) {
-                    ctrl->url = addr->url;
-                }
-                model_map_set(&ctrl->endpoints, addr->url, d);
+    bool change = false;
+    model_map old = ctrl->endpoints;
+    ctrl->endpoints = (model_map){0};
+    FOR (d, arr) {
+        api_address *addr = NULL;
+        MODEL_LIST_FOREACH(addr, d->apis.edge) {
+            CTRL_LOG(VERBOSE, "%s/%s", addr->version, addr->url);
+            if (addr && strcmp(addr->version, "v1") == 0) {
+                break;
+            }
+            addr = NULL;
+        }
+
+        if (addr != NULL) {
+            if (strcmp(addr->url, ctrl->url) == 0) {
+                ctrl->url = addr->url;
+            }
+            model_map_set(&ctrl->endpoints, addr->url, d);
+
+            ziti_controller_detail *old_detail = model_map_remove(&old, addr->url);
+            if (old_detail == NULL) { // new controller discovered
+                change = true;
+            } else {
+                change = change || (old_detail->is_online != d->is_online);
+                free_ziti_controller_detail_ptr(old_detail);
             }
         }
-        model_map_clear(&old, (void (*)(void *)) free_ziti_controller_detail_ptr);
     }
-
+    // if some old details are still in the old map, controller(s) was(ere) removed
+    change = change || (model_map_size(&old) > 0);
+    model_map_clear(&old, (void (*)(void *)) free_ziti_controller_detail_ptr);
     free(arr);
+
+    if (change) {
+        ctrl->change_cb(ctrl->cb_ctx, &ctrl->endpoints);
+    }
 }
 
 static void internal_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *resp) {
@@ -572,9 +586,12 @@ void ziti_ctrl_set_page_size(ziti_controller *ctrl, unsigned int size) {
     ctrl->page_size = size;
 }
 
-void ziti_ctrl_set_redirect_cb(ziti_controller *ctrl, ziti_ctrl_redirect_cb cb, void *ctx) {
-    ctrl->redirect_cb = cb;
-    ctrl->redirect_ctx = ctx;
+void ziti_ctrl_set_callbacks(ziti_controller *ctrl, void *ctx,
+                             ziti_ctrl_redirect_cb redirect_cb,
+                             ziti_ctrl_change_cb change_cb) {
+    ctrl->change_cb = change_cb;
+    ctrl->redirect_cb = redirect_cb;
+    ctrl->cb_ctx = ctx;
 }
 
 static void on_http_close(tlsuv_http_t *clt) {

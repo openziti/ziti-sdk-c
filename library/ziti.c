@@ -48,12 +48,7 @@ static const char *ALL_CONFIG_TYPES[] = {
 struct ziti_init_req {
     ziti_context ztx;
     bool start;
-    int init_status;
 };
-
-const int API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS = 60;
-const int API_SESSION_DELAY_WINDOW_SECONDS = 60;
-const int API_SESSION_EXPIRATION_TOO_SMALL_SECONDS = 120;
 
 int code_to_error(const char *code);
 
@@ -118,29 +113,6 @@ static size_t parse_ref(const char *val, const char **res) {
 
 ziti_controller* ztx_get_controller(ziti_context ztx) {
     return &ztx->ctrl;
-}
-
-static int parse_getopt(const char *q, const char *opt, char *out, size_t maxout) {
-    size_t optlen = strlen(opt);
-    do {
-        // found it
-        if (strncasecmp(q, opt, optlen) == 0 && (q[optlen] == '=' || q[optlen] == 0)) {
-            const char *val = q + optlen + 1;
-            char *end = strchr(val, '&');
-            int vlen = (int) (end == NULL ? strlen(val) : end - val);
-            snprintf(out, maxout, "%*.*s", vlen, vlen, val);
-            return ZITI_OK;
-
-        } else { // skip to next '&'
-            q = strchr(q, '&');
-            if (q == NULL) {
-                break;
-            }
-            q += 1;
-        }
-    } while (q != NULL);
-    out[0] = '\0';
-    return ZITI_INVALID_CONFIG;
 }
 
 static int init_tls_from_config(tls_context *tls, ziti_config *cfg) {
@@ -301,7 +273,7 @@ void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mf
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthStatePartiallyAuthenticated);
     ziti_event_t ev = {
             .type = ZitiMfaAuthEvent,
-            .event.mfa_auth_event = {
+            .mfa_auth_event = {
                     .auth_query_mfa = mfa_q,
             }
     };
@@ -435,17 +407,17 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         ziti_service *svc;
         ziti_event_t ev = {0};
         ev.type = ZitiServiceEvent;
-        ev.event.service.removed = calloc(model_map_size(&ztx->services) + 1, sizeof(ziti_service *));
+        ev.service.removed = calloc(model_map_size(&ztx->services) + 1, sizeof(ziti_service *));
         int idx = 0;
         it = model_map_iterator(&ztx->services);
         while (it) {
-            ev.event.service.removed[idx++] = model_map_it_value(it);
+            ev.service.removed[idx++] = model_map_it_value(it);
             it = model_map_it_remove(it);
         }
 
         ztx->auth_method->stop(ztx->auth_method);
         ziti_send_event(ztx, &ev);
-        free_ziti_service_array(&ev.event.service.removed);
+        free_ziti_service_array(&ev.service.removed);
 
         ziti_ctrl_cancel(ztx_get_controller(ztx));
         // logout
@@ -472,12 +444,38 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
     }
 }
 
-static void on_ctrl_change(const char *new_addr, void *ctx) {
+static void on_ctrl_list_change(ziti_context ztx, const model_map *endpoints) {
+    if (ztx->opts.event_cb && (ztx->opts.events & ZitiContextEvent)) {
+        size_t count = model_map_size(endpoints);
+        struct ctrl_detail_s *details = (count > 0) ? calloc(count, sizeof(struct ctrl_detail_s)) : NULL;
+        size_t idx = 0;
+        const char *url;
+        ziti_controller_detail *d;
+        MODEL_MAP_FOREACH(url, d, endpoints) {
+            details[idx].url = url;
+            details[idx].id = d->id;
+            details[idx].online = d->is_online;
+            idx++;
+        }
+        ziti_send_event(ztx, &(ziti_event_t){
+            .type = ZitiContextEvent,
+            .ctx = {
+                    .err = NULL,
+                    .ctrl_count = count,
+                    .ctrl_details = details,
+            },
+        });
+
+        free(details);
+    }
+}
+
+static void on_ctrl_redirect(const char *new_addr, void *ctx) {
     ziti_context ztx = ctx;
 
     ziti_event_t ev = {
             .type = ZitiAPIEvent,
-            .event.api.new_ctrl_address = new_addr,
+            .api.new_ctrl_address = new_addr,
     };
     ziti_send_event(ztx, &ev);
 }
@@ -498,12 +496,13 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     int rc = ziti_ctrl_init(loop, &ztx->ctrl, &ztx->config.controllers, ztx->tlsCtx);
     if (rc != 0) {
         ZITI_LOG(ERROR, "no valid controllers found");
-        ev.event.ctx.ctrl_status = rc;
+        ev.ctx.ctrl_status = rc;
         ziti_send_event(ztx, &ev);
         return;
     }
 
-    ziti_ctrl_set_redirect_cb(ztx_get_controller(ztx), on_ctrl_change, ztx);
+    ziti_ctrl_set_callbacks(ztx_get_controller(ztx), ztx, on_ctrl_redirect, 
+                            (ziti_ctrl_change_cb) on_ctrl_list_change);
     if (ztx->opts.api_page_size != 0) {
         ziti_ctrl_set_page_size(ztx_get_controller(ztx), ztx->opts.api_page_size);
     }
@@ -523,7 +522,7 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     if (init_req->start) {
         ziti_start_internal(ztx, NULL);
     } else {
-        ev.event.ctx.ctrl_status = ZITI_DISABLED;
+        ev.ctx.ctrl_status = ZITI_DISABLED;
         ziti_send_event(ztx, &ev);
     }
     free(init_req);
@@ -599,8 +598,8 @@ static void free_ztx(uv_handle_t *h) {
 
     ziti_event_t ev = {0};
     ev.type = ZitiContextEvent;
-    ev.event.ctx.ctrl_status = ZITI_DISABLED;
-    ev.event.ctx.err = ziti_errorstr(ZITI_DISABLED);
+    ev.ctx.ctrl_status = ZITI_DISABLED;
+    ev.ctx.err = ziti_errorstr(ZITI_DISABLED);
 
     ziti_send_event(ztx, &ev);
 
@@ -732,7 +731,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
         printer(ctx, "ch[%d](%s@%s) ", ch->id, ch->name, url);
         if (ziti_channel_is_connected(ch)) {
-            printer(ctx, "connected [latency=%" PRIu64 "]\n", ch->latency);
+            printer(ctx, "connected [latency=%" PRIu64 "]\n", ziti_channel_latency(ch));
         }
         else {
             printer(ctx, "Disconnected\n");
@@ -1106,7 +1105,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
     size_t chIdx = 0, addIdx = 0, remIdx = 0;
     ziti_event_t ev = {
             .type = ZitiServiceEvent,
-            .event.service = {
+            .service = {
                     .removed = calloc(current_size + 1, sizeof(ziti_service *)),
                     .changed = calloc(current_size + 1, sizeof(ziti_service *)),
                     .added = calloc(idx + 1, sizeof(ziti_service *)),
@@ -1120,7 +1119,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
 
         if (updt != NULL) {
             if (is_service_updated(ztx, updt, model_map_it_value(it)) != 0) {
-                ev.event.service.changed[chIdx++] = updt;
+                ev.service.changed[chIdx++] = updt;
             } else {
                 // no changes detected, just discard it
                 free_ziti_service(updt);
@@ -1132,7 +1131,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
             // service was removed
             ZTX_LOG(DEBUG, "service[%s] is not longer available", model_map_it_key(it));
             s = model_map_it_value(it);
-            ev.event.service.removed[remIdx++] = s;
+            ev.service.removed[remIdx++] = s;
 
             ziti_session *session = model_map_remove(&ztx->sessions, s->id);
             if (session) {
@@ -1147,21 +1146,21 @@ static void update_services(ziti_service_array services, const ziti_error *error
     it = model_map_iterator(&updates);
     while (it != NULL) {
         s = model_map_it_value(it);
-        ev.event.service.added[addIdx++] = s;
+        ev.service.added[addIdx++] = s;
         it = model_map_it_remove(it);
     }
 
     // process updates
-    for (idx = 0; ev.event.service.changed[idx] != NULL; idx++) {
-        s = ev.event.service.changed[idx];
+    for (idx = 0; ev.service.changed[idx] != NULL; idx++) {
+        s = ev.service.changed[idx];
         ziti_service *old = model_map_set(&ztx->services, s->name, s);
         free_ziti_service(old);
         FREE(old);
     }
 
     // process additions
-    for (idx = 0; ev.event.service.added[idx] != NULL; idx++) {
-        s = ev.event.service.added[idx];
+    for (idx = 0; ev.service.added[idx] != NULL; idx++) {
+        s = ev.service.added[idx];
         model_map_set(&ztx->services, s->name, s);
     }
 
@@ -1175,15 +1174,15 @@ static void update_services(ziti_service_array services, const ziti_error *error
     }
 
     // cleanup
-    for (idx = 0; ev.event.service.removed[idx] != NULL; idx++) {
-        s = ev.event.service.removed[idx];
+    for (idx = 0; ev.service.removed[idx] != NULL; idx++) {
+        s = ev.service.removed[idx];
         free_ziti_service(s);
         free(s);
     }
 
-    free(ev.event.service.removed);
-    free(ev.event.service.added);
-    free(ev.event.service.changed);
+    free(ev.service.removed);
+    free(ev.service.added);
+    free(ev.service.changed);
 
     model_map_clear(&updates, NULL);
     model_map_clear(&ztx->service_forced_updates, NULL);
@@ -1345,14 +1344,13 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
         free_ziti_identity_data(ztx->identity_data);
         FREE(ztx->identity_data);
         ztx->identity_data = data;
-        update_ctrl_status(ztx, ZITI_OK, NULL);
     }
 
-    update_ctrl_status(ztx, FIELD_OR_ELSE(err, err, 0), FIELD_OR_ELSE(err, message, NULL));
+    update_ctrl_status(ztx, FIELD_OR_ELSE(err, err, ZITI_OK), FIELD_OR_ELSE(err, message, NULL));
 }
 
 static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e, void *ctx) {
-    ziti_context ztx = ctx;;
+    ziti_context ztx = ctx;
     if (e) {
         ZTX_LOG(ERROR, "failed to create session cert: %d/%s", e->err, e->message);
     } else {
@@ -1401,7 +1399,7 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
             if (load_tls(&ztx->config, &new_tls) == 0) {
                 ziti_send_event(ztx, &(ziti_event_t){
                         .type = ZitiAPIEvent,
-                        .event.api = {
+                        .api = {
                                 .new_ca_bundle = new_pem,
                         }
                 });
@@ -1431,22 +1429,13 @@ static void update_ctrl_status(ziti_context ztx, int errCode, const char *errMsg
     if (ztx->ctrl_status != errCode && ztx->enabled) {
         ziti_event_t ev = {
                 .type = ZitiContextEvent,
-                .event.ctx = {
+                .ctx = {
                         .ctrl_status = errCode,
                         .err = errMsg,
                 }};
         ztx->ctrl_status = errCode;
         ziti_send_event(ztx, &ev);
     }
-}
-
-bool ziti_is_session_valid(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type) {
-    if (session == NULL) return false;
-
-    if (type == ziti_session_types.Bind) return true;
-
-    ziti_session *s = model_map_get(&ztx->sessions, service_id);
-    return s == session;
 }
 
 void ziti_invalidate_session(ziti_context ztx, const char *service_id, ziti_session_type type) {
@@ -1512,7 +1501,7 @@ void ztx_prepare(uv_prepare_t *prep) {
 void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx) {
     ziti_event_t ev = {
             .type = ZitiRouterEvent,
-            .event.router = {
+            .router = {
                     .name = ch->name,
                     .address = ch->host,
                     .version = ch->version,

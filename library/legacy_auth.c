@@ -87,7 +87,7 @@ int legacy_auth_refresh(ziti_auth_method_t *self) {
     assert(auth->ctx);
     assert(auth->cb);
 
-    uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
+    return uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
 }
 
 

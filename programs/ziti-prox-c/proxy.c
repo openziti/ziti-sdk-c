@@ -426,39 +426,49 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     struct proxy_app_ctx *app_ctx = ziti_app_ctx(ztx);
     switch (event->type) {
         case ZitiAPIEvent:
-            if (event->event.api.new_ctrl_address) ZITI_LOG(INFO, "update API URL to %s", event->event.api.new_ctrl_address);
-            if (event->event.api.new_ca_bundle) ZITI_LOG(INFO, "update CA bundle to %s", event->event.api.new_ca_bundle);
+            if (event->api.new_ctrl_address) ZITI_LOG(INFO, "update API URL to %s", event->api.new_ctrl_address);
+            if (event->api.new_ca_bundle) ZITI_LOG(INFO, "update CA bundle to %s", event->api.new_ca_bundle);
             break;
 
         case ZitiContextEvent:
-            if (event->event.ctx.ctrl_status == ZITI_OK) {
+            if (event->ctx.ctrl_status == ZITI_OK) {
                 const ziti_version *ctrl_ver = ziti_get_controller_version(ztx);
                 const ziti_identity *proxy_id = ziti_get_identity(ztx);
                 ZITI_LOG(INFO, "controller version = %s(%s)[%s]", ctrl_ver->version, ctrl_ver->revision,
                          ctrl_ver->build_date);
-                ZITI_LOG(INFO, "proxy identity = <%s>[%s]@%s", proxy_id->name, proxy_id->id, ziti_get_controller(ztx));
+                if (proxy_id) {
+                    ZITI_LOG(INFO, "proxy identity = <%s>[%s]", proxy_id->name, proxy_id->id);
+                }
                 app_ctx->ziti = ztx;
+
+                for (int i = 0; i < event->ctx.ctrl_count; i++) {
+                    ZITI_LOG(INFO, "ctrl[%s/%s]@%s",
+                             event->ctx.ctrl_details[i].id,
+                             event->ctx.ctrl_details[i].online ? "online" : "offline",
+                             event->ctx.ctrl_details[i].url
+                             );
+                }
             } else {
-                ZITI_LOG(ERROR, "controller is not available: %s/%s", ziti_errorstr(event->event.ctx.ctrl_status),
-                         event->event.ctx.err);
+                ZITI_LOG(ERROR, "controller is not available: %s/%s", ziti_errorstr(event->ctx.ctrl_status),
+                         event->ctx.err);
             }
             break;
 
         case ZitiServiceEvent:
-            if (event->event.service.removed != NULL) {
-                for (ziti_service **sp = event->event.service.removed; *sp != NULL; sp++) {
+            if (event->service.removed != NULL) {
+                for (ziti_service **sp = event->service.removed; *sp != NULL; sp++) {
                     service_check_cb(ztx, *sp, ZITI_SERVICE_UNAVAILABLE, app_ctx);
                 }
             }
 
-            if (event->event.service.added != NULL) {
-                for (ziti_service **sp = event->event.service.added; *sp != NULL; sp++) {
+            if (event->service.added != NULL) {
+                for (ziti_service **sp = event->service.added; *sp != NULL; sp++) {
                     service_check_cb(ztx, *sp, ZITI_OK, app_ctx);
                 }
             }
 
-            if (event->event.service.changed != NULL) {
-                for (ziti_service **sp = event->event.service.changed; *sp != NULL; sp++) {
+            if (event->service.changed != NULL) {
+                for (ziti_service **sp = event->service.changed; *sp != NULL; sp++) {
                     ziti_service *service = *sp;
                     service_check_cb(ztx, *sp, ZITI_OK, app_ctx);
 
@@ -478,23 +488,23 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             break;
 
         case ZitiRouterEvent:
-            switch (event->event.router.status) {
+            switch (event->router.status) {
                 case EdgeRouterAdded:
-                    ZITI_LOG(INFO, "ziti added edge router %s address=%s", event->event.router.name,
-                             event->event.router.address);
+                    ZITI_LOG(INFO, "ziti added edge router %s address=%s", event->router.name,
+                             event->router.address);
                     break;
                 case EdgeRouterConnected:
-                    ZITI_LOG(INFO, "ziti connected to edge router %s, version = %s", event->event.router.name,
-                             event->event.router.version);
+                    ZITI_LOG(INFO, "ziti connected to edge router %s, version = %s", event->router.name,
+                             event->router.version);
                     break;
                 case EdgeRouterDisconnected:
-                    ZITI_LOG(INFO, "ziti disconnected from edge router %s", event->event.router.name);
+                    ZITI_LOG(INFO, "ziti disconnected from edge router %s", event->router.name);
                     break;
                 case EdgeRouterRemoved:
-                    ZITI_LOG(INFO, "ziti removed edge router %s", event->event.router.name);
+                    ZITI_LOG(INFO, "ziti removed edge router %s", event->router.name);
                     break;
                 case EdgeRouterUnavailable:
-                    ZITI_LOG(INFO, "edge router %s is not available", event->event.router.name);
+                    ZITI_LOG(INFO, "edge router %s is not available", event->router.name);
                     break;
             }
             break;

@@ -33,6 +33,8 @@ extern const char* const PC_ENDPOINT_STATE_TYPE;
 
 typedef void (*ziti_ctrl_redirect_cb)(const char *new_address, void *ctx);
 
+typedef void (*ziti_ctrl_change_cb)(void *ctx, const model_map *endpoints);
+
 typedef void (*ctrl_version_cb)(const ziti_version *, const ziti_error *, void *);
 
 typedef void(*routers_cb)(ziti_service_routers *srv_routers, const ziti_error *, void *);
@@ -58,8 +60,9 @@ typedef struct ziti_controller_s {
     bool has_token;
     char *instance_id;
 
+    ziti_ctrl_change_cb change_cb;
     ziti_ctrl_redirect_cb redirect_cb;
-    void *redirect_ctx;
+    void *cb_ctx;
 } ziti_controller;
 
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls_context *tls);
@@ -70,7 +73,9 @@ int ziti_ctrl_cancel(ziti_controller *ctrl);
 
 void ziti_ctrl_set_page_size(ziti_controller *ctrl, unsigned int size);
 
-void ziti_ctrl_set_redirect_cb(ziti_controller *ctrl, ziti_ctrl_redirect_cb cb, void *ctx);
+void ziti_ctrl_set_callbacks(ziti_controller *ctrl, void *ctx,
+                             ziti_ctrl_redirect_cb redirect_cb,
+                             ziti_ctrl_change_cb change_cb);
 
 int ziti_ctrl_close(ziti_controller *ctrl);
 

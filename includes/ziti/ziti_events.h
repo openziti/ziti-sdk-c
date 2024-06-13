@@ -56,6 +56,15 @@ typedef enum {
 struct ziti_context_event {
     int ctrl_status;
     const char *err;
+    size_t ctrl_count;
+    struct ctrl_detail_s *ctrl_details;
+};
+
+struct ctrl_detail_s {
+    const char *id;
+    const char *url;
+    bool online;
+    bool active;
 };
 
 struct ziti_api_event {
@@ -120,7 +129,7 @@ typedef struct ziti_event_s {
         struct ziti_service_event service;
         struct ziti_mfa_auth_event mfa_auth_event;
         struct ziti_api_event api;
-    } event;
+    };
 } ziti_event_t;
 
 #ifdef __cplusplus

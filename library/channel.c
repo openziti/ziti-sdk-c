@@ -236,7 +236,7 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
     return 0;
 }
 
-void ziti_channel_add_receiver(ziti_channel_t *ch, int id, void *receiver, void (*receive_f)(void *, message *, int)) {
+void ziti_channel_add_receiver(ziti_channel_t *ch, uint32_t id, void *receiver, void (*receive_f)(void *, message *, int)) {
     NEWP(r, struct msg_receiver);
     r->id = id;
     r->receiver = receiver;
@@ -246,7 +246,7 @@ void ziti_channel_add_receiver(ziti_channel_t *ch, int id, void *receiver, void 
     CH_LOG(DEBUG, "added receiver[%d]", id);
 }
 
-void ziti_channel_rem_receiver(ziti_channel_t *ch, int id) {
+void ziti_channel_rem_receiver(ziti_channel_t *ch, uint32_t id) {
     struct msg_receiver *r = model_map_removel(&ch->receivers, id);
 
     if (r) {
@@ -328,12 +328,8 @@ int ziti_channel_update_token(ziti_channel_t *ch) {
     }
 
     const char* token = ziti_get_api_session_token(ch->ztx);
-
-    uint8_t true_val = 1;
     ziti_channel_send_for_reply(ch, ContentTypeUpdateTokenType,
                                 NULL, 0, token, strlen(token), token_update_cb, ch);
-
-
     return ZITI_OK;
 }
 
@@ -696,9 +692,9 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
     }
 
     if (success) {
-        uint8_t *erVersion = "<unknown>";
+        const char *erVersion = "<unknown>";
         size_t erVersionLen = strlen(erVersion);
-        message_get_bytes_header(msg, HelloVersionHeader, &erVersion, &erVersionLen);
+        message_get_bytes_header(msg, HelloVersionHeader, (uint8_t **) &erVersion, &erVersionLen);
         CH_LOG(INFO, "connected. EdgeRouter version: %.*s", (int) erVersionLen, erVersion);
         ch->state = Connected;
         FREE(ch->version);
@@ -891,30 +887,31 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
     tlsuv_stream_t *ssl = (tlsuv_stream_t *) s;
     ziti_channel_t *ch = ssl->data;
 
+    if (len == UV_ENOBUFS) {
+        tlsuv_stream_read_stop(ssl);
+        CH_LOG(VERBOSE, "blocked until messages are processed");
+        return;
+    }
+
     if (len < 0) {
         free(buf->base);
-        switch (len) {
-            case UV_ENOBUFS:
-                tlsuv_stream_read_stop(ssl);
-                CH_LOG(VERBOSE, "blocked until messages are processed");
-                return;
+        CH_LOG(INFO, "channel disconnected [%zd/%s]", len, uv_strerror(len));
+        // propagate close
+        on_channel_close(ch, ZITI_CONNABORT, len);
+        close_connection(ch);
+        return;
+    }
 
-            default:
-                CH_LOG(INFO, "channel disconnected [%zd/%s]", len, uv_strerror(len));
-                // propagate close
-                on_channel_close(ch, ZITI_CONNABORT, len);
-                close_connection(ch);
-                break;
-        }
-    } else if (len == 0) {
+    if (len == 0) {
         // sometimes SSL message has no payload
         free(buf->base);
-    } else {
-        CH_LOG(TRACE, "on_data [len=%zd]", len);
-        ch->last_read = uv_now(ch->loop);
-        buffer_append(ch->incoming, buf->base, (uint32_t) len);
-        process_inbound(ch);
+        return;
     }
+
+    CH_LOG(TRACE, "on_data [len=%zd]", len);
+    ch->last_read = uv_now(ch->loop);
+    buffer_append(ch->incoming, buf->base, (uint32_t) len);
+    process_inbound(ch);
 }
 
 static void on_channel_connect_internal(uv_connect_t *req, int status) {
