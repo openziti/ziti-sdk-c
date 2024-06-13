@@ -230,7 +230,7 @@ TEST_CASE("ztx-legacy-auth", "[integ]") {
     opts.app_ctx = &test_context;
     opts.events = ZitiContextEvent;
     opts.event_cb = [](ziti_context ztx, const ziti_event_t *event){
-            printf("got event: %d => %s \n", event->type, event->event.ctx.err);
+            printf("got event: %d => %s \n", event->type, event->ctx.err);
             auto test_ctx = (test_context_s*)ziti_app_ctx(ztx);
             test_ctx->event = event->type;
         };

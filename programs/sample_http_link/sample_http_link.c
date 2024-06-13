@@ -59,7 +59,7 @@ void body_cb(tlsuv_http_req_t *req, char *body, ssize_t len) {
 
 void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
 
-    DIE(ev->event.ctx.ctrl_status);
+    DIE(ev->ctx.ctrl_status);
 
     ziti = ztx;
     ziti_src_init(loop, &zs, "httpbin", ziti);

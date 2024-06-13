@@ -158,10 +158,10 @@ static void on_signal(uv_signal_t *h, int signal) {
 static void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
     if (ev->type != ZitiContextEvent) return;
 
-    if (ev->event.ctx.ctrl_status == ZITI_PARTIALLY_AUTHENTICATED) return;
+    if (ev->ctx.ctrl_status == ZITI_PARTIALLY_AUTHENTICATED) return;
 
-    if (ev->event.ctx.ctrl_status != ZITI_OK) {
-        DIE(ev->event.ctx.ctrl_status);
+    if (ev->ctx.ctrl_status != ZITI_OK) {
+        DIE(ev->ctx.ctrl_status);
         return;
     }
 

@@ -74,7 +74,7 @@ void on_connect(ziti_connection conn, int status) {
 }
 
 void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
-    DIE(ev->event.ctx.ctrl_status);
+    DIE(ev->ctx.ctrl_status);
     ziti = ztx;
 
     ziti_connection conn;
