@@ -82,13 +82,30 @@ extern void ziti_auth_query_free(struct auth_queries *aq) {
     FREE(aq);
 }
 
+static void mfa_cb(ziti_context ztx, int status) {
+    if (ztx->mfa_cb) {
+        ztx->mfa_cb(ztx, status, ztx->mfa_ctx);
+    }
+
+    ztx->mfa_cb = NULL;
+    ztx->mfa_ctx = NULL;
+}
+
 void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb status_cb, void *status_ctx) {
     if (code == NULL) {
         ZTX_LOG(ERROR, "unexpected NULL MFA code");
         status_cb(ztx, ZITI_WTF, status_ctx);
     }
 
-    ztx->auth_method->submit_mfa(ztx->auth_method, code);
+    if (ztx->mfa_cb != NULL) {
+        ZTX_LOG(ERROR, "unexpected state MFA is already in progress");
+        status_cb(ztx, ZITI_INVALID_STATE, status_ctx);
+    }
+
+    ztx->mfa_cb = status_cb;
+    ztx->mfa_ctx = status_ctx;
+
+    ztx->auth_method->submit_mfa(ztx->auth_method, code, (auth_mfa_cb) mfa_cb);
 }
 
 void ziti_auth_query_mfa_process(ziti_mfa_auth_ctx *mfa_auth_ctx) {
@@ -107,7 +124,6 @@ void ziti_auth_query_mfa_process(ziti_mfa_auth_ctx *mfa_auth_ctx) {
         FREE(mfa_auth_ctx);
     }
 }
-
 
 void ziti_mfa_enroll_post_internal_cb(void *empty, const ziti_error *err, void *ctx) {
     ziti_mfa_enroll_cb_ctx *mfa_enroll_cb_ctx = ctx;
