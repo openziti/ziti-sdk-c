@@ -71,6 +71,14 @@ typedef const char *(*fmt_error_t)(int);
 
 typedef int *(*cond_error_t)(int);
 
+#if __GNUC__
+#define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+#elif _MSC_VER
+#define UNUSED(x) UNUSED_ ## x
+#else
+#define UNUSED(x) UNUSED_ ## x
+#endif
+
 #define TO_STRING(m) to_string_(m)
 #define to_string_(m) #m
 

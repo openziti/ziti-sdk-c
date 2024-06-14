@@ -16,6 +16,7 @@
 #include <internal_model.h>
 #include <ziti/ziti_model.h>
 #include <ziti/errors.h>
+#include <json-c/json.h>
 
 #if _WIN32
 #include <stdint.h>
@@ -33,6 +34,7 @@ typedef uint32_t in_addr_t;
 #endif
 
 #include <string.h>
+#include <assert.h>
 #include "ziti/ziti_buffer.h"
 #include "ziti/ziti.h"
 
@@ -304,16 +306,12 @@ invalid_cidr:
     return 0;
 }
 
-static int parse_ziti_address0(ziti_address *addr, const char *json, void *tok) {
-    char *addr_str = NULL;
-    int parsed = get_string_meta()->parser(&addr_str, json, tok);
-
-    if (parsed < 0) { return parsed; }
-
-    int rc = parse_ziti_address_str(addr, addr_str);
-
-    free(addr_str);
-    return rc ? rc : parsed;
+static int ziti_address_from_j(ziti_address *addr, json_object *j, type_meta *m) {
+    if (json_object_get_type(j) == json_type_string) {
+        int rc = parse_ziti_address_str(addr, json_object_get_string(j));
+        return rc;
+    }
+    return -1;
 }
 
 int ziti_address_print(char *buf, size_t max, const ziti_address *addr) {
@@ -326,6 +324,14 @@ int ziti_address_print(char *buf, size_t max, const ziti_address *addr) {
         }
         return snprintf(buf, max, "%s/%d", ip, addr->addr.cidr.bits);
     }
+}
+
+static json_object* ziti_address_to_j(const ziti_address *addr) {
+    char addr_str[256];
+    int n = ziti_address_print(addr_str, sizeof(addr_str), addr);
+    assert(n > 0);
+
+    return json_object_new_string_len(addr_str, n);
 }
 
 static int ziti_address_write_json(const ziti_address *addr, string_buf_t *buf, int indent, int flags) {
@@ -508,10 +514,12 @@ int ziti_intercept_match(const ziti_intercept_cfg_v1 *intercept, ziti_protocol p
 
 
 static type_meta ziti_address_META = {
+        .name = "ziti_address",
         .size = sizeof(ziti_address),
         .comparer = (_cmp_f) cmp_ziti_address0,
-        .parser = (_parse_f) parse_ziti_address0,
         .jsonifier = (_to_json_f) ziti_address_write_json,
+        .from_json = (from_json_func) ziti_address_from_j,
+        .to_json = (to_json_func) ziti_address_to_j,
 };
 
 int ziti_intercept_from_client_cfg(ziti_intercept_cfg_v1 *intercept, const ziti_client_cfg_v1 *client_cfg) {

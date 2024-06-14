@@ -924,23 +924,10 @@ static int is_service_updated(ziti_context ztx, ziti_service *new, ziti_service 
         return 1;
     }
 
-    //check for config change, find meta
-    type_meta *ziti_service_meta = get_ziti_service_meta();
-    int i = 0;
-    bool is_config_found = false;
-    for (i = 0; i < ziti_service_meta->field_count; i++) {
-        if (strcmp(ziti_service_meta->fields[i].name, "config") == 0) {
-            is_config_found = true;
-            break;
-        }
-    }
-
-    if (is_config_found) {
-        type_meta *config_field_meta = ziti_service_meta->fields[i].meta();
-        if (model_map_compare(&old->config, &new->config, config_field_meta) != 0) {
-            ZTX_LOG(VERBOSE, "service [%s] is updated, config changed", new->name);
-            return 1;
-        }
+    // config is a map of raw json
+    if (model_map_compare(&old->config, &new->config, get_json_meta()) != 0) {
+        ZTX_LOG(VERBOSE, "service [%s] is updated, config changed", new->name);
+        return 1;
     }
 
     const char *policy_id;

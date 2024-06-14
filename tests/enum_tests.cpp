@@ -93,9 +93,7 @@ TEST_CASE("default enum", "[model]") {
 TEST_CASE("enum to json", "[model]") {
     FooWithEnum f = {0};
     f.name = (char *) "awesome foo";
-    f.state = States.Bad;/**
- * Declares [Enum] with given [Values]
- */
+    f.state = States.Bad;
 
     char *json = FooWithEnum_to_json(&f, 0, nullptr);
 

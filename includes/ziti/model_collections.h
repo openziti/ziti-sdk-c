@@ -109,9 +109,14 @@ ZITI_FUNC void *model_list_it_element(model_list_iter it);
 
 #define MODEL_LIST_FOR(it, m) for(model_list_iter it = model_list_iterator(&(m)); (it) != NULL; (it) = model_list_it_next(it))
 
-#define MODEL_LIST_FOREACH(el, list) for(model_list_iter it = model_list_iterator((model_list*)&(list)); \
-(it) != NULL && (((el) = model_list_it_element(it)), true);                                 \
-(it) = model_list_it_next(it))
+
+#define MODEL_LIST_FOREACH_l(el, list, line) \
+model_list_iter var(it,line);    \
+for(var(it,line) = model_list_iterator((model_list*)&(list)); \
+var(it,line) != NULL && ((el) = model_list_it_element(var(it,line)), true);                                 \
+var(it,line) = model_list_it_next(var(it,line)))
+
+#define MODEL_LIST_FOREACH(el, list) MODEL_LIST_FOREACH_l(el, list, __LINE__)
 
 
 #ifdef __cplusplus
