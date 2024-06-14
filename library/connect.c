@@ -490,7 +490,7 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
     }
 
     uv_loop_t *loop = ztx->loop;
-    
+
     // find service
     if (req->service_id == NULL) {
         // connect_get_service_cb will re-enter process_connect() if service is already cached in the context
