@@ -146,7 +146,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
     ztx_wrap_t *wrap = ziti_app_ctx(ztx);
     future_t *f;
     if (ev->type == ZitiContextEvent) {
-        int err = ev->event.ctx.ctrl_status;
+        int err = ev->ctx.ctrl_status;
         if (err == ZITI_OK) {
             wrap->ztx = ztx;
             model_list_iter it = model_list_iterator(&wrap->futures);
@@ -171,14 +171,14 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         }
     } else if (ev->type == ZitiServiceEvent) {
 
-        for (int i = 0; ev->event.service.removed && ev->event.service.removed[i] != NULL; i++) {
-            ziti_intercept_cfg_v1 *intercept = model_map_remove(&wrap->intercepts, ev->event.service.removed[i]->name);
+        for (int i = 0; ev->service.removed && ev->service.removed[i] != NULL; i++) {
+            ziti_intercept_cfg_v1 *intercept = model_map_remove(&wrap->intercepts, ev->service.removed[i]->name);
             free_ziti_intercept_cfg_v1(intercept);
             FREE(intercept);
         }
 
-        for (int i = 0; ev->event.service.changed && ev->event.service.changed[i] != NULL; i++) {
-            ziti_service *s = ev->event.service.changed[i];
+        for (int i = 0; ev->service.changed && ev->service.changed[i] != NULL; i++) {
+            ziti_service *s = ev->service.changed[i];
             ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
 
             if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
@@ -189,8 +189,8 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             FREE(intercept);
         }
 
-        for (int i = 0; ev->event.service.added && ev->event.service.added[i] != NULL; i++) {
-            ziti_service *s = ev->event.service.added[i];
+        for (int i = 0; ev->service.added && ev->service.added[i] != NULL; i++) {
+            ziti_service *s = ev->service.added[i];
             ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
             ziti_client_cfg_v1 clt_cfg = {0};
 

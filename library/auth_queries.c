@@ -114,7 +114,7 @@ void ziti_auth_query_mfa_process(ziti_mfa_auth_ctx *mfa_auth_ctx) {
 
         ziti_event_t ev = {
                 .type = ZitiMfaAuthEvent,
-                .event.mfa_auth_event = {
+                .mfa_auth_event = {
                         .auth_query_mfa = mfa_auth_ctx->auth_query_mfa,
                 }
         };

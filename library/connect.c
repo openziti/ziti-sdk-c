@@ -374,9 +374,10 @@ static bool ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct zit
             if (ch == NULL) continue;
 
             if (ch->state == Connected) {
-                if (ch->latency < best_latency) {
+                uint64_t latency = ziti_channel_latency(ch);
+                if (latency < best_latency) {
                     best_ch = ch;
-                    best_latency = ch->latency;
+                    best_latency = latency;
                 }
             }
 
@@ -388,7 +389,7 @@ static bool ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct zit
 
     if (best_ch) {
         CONN_LOG(DEBUG, "selected ch[%s@%s] for best latency(%llu ms)", best_ch->name, best_ch->url,
-                 (unsigned long long) best_ch->latency);
+                 (unsigned long long) best_latency);
         ziti_channel_start_connection(conn, best_ch, session);
         result = true;
     } else {

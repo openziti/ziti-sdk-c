@@ -36,7 +36,7 @@ void on_connect(ziti_connection conn, int status) {
 }
 
 void on_ziti_event(ziti_context ztx, const ziti_event_t *ev) {
-    if (ev->type == ZitiContextEvent && ev->event.ctx.ctrl_status == ZITI_OK) {
+    if (ev->type == ZitiContextEvent && ev->ctx.ctrl_status == ZITI_OK) {
         zcat_opts *opts = ziti_app_ctx(ztx);
         ziti_connection zconn;
         ziti_conn_init(ztx, &zconn, NULL);

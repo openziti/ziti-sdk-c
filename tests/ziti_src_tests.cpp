@@ -45,7 +45,7 @@ TEST_CASE("httpbin.ziti:ziti_src", "[integ]") {
         auto t = (source_test*)ziti_app_ctx(ztx);
         switch (ev->type) {
             case ZitiContextEvent: {
-                auto ctx_ev = ev->event.ctx;
+                auto ctx_ev = ev->ctx;
                 t->ztx = ztx;
                 if (!t->done && ctx_ev.ctrl_status != ZITI_OK)
                     t->err = ctx_ev.ctrl_status;

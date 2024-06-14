@@ -80,7 +80,7 @@ void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     struct app_ctx *ctx = ziti_app_ctx(ztx);
 
     if (event->type == ZitiServiceEvent) {
-        const struct ziti_service_event *se = &event->event.service;
+        const struct ziti_service_event *se = &event->service;
         for (int i = 0; se->added[i] != NULL; i++) {
             ziti_service *s = se->added[i];
             if ((s->perm_flags & ZITI_CAN_BIND) == 0) {

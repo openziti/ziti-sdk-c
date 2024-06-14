@@ -34,8 +34,6 @@
 
 #include <sodium.h>
 
-//#define SIZEOF(arr) (sizeof(arr) / sizeof((arr)[0]))
-
 #if !defined(UUID_STR_LEN)
 #define UUID_STR_LEN 37
 #endif
@@ -51,10 +49,6 @@ extern const char *APP_VERSION;
 typedef struct ziti_channel ziti_channel_t;
 
 typedef void (*reply_cb)(void *ctx, message *m, int err);
-
-typedef void (*send_cb)(int status, void *ctx);
-
-typedef void (*ch_connect_cb)(ziti_channel_t *ch, void *ctx, int status);
 
 typedef void (*ch_notify_state)(ziti_channel_t *ch, ziti_router_status status, void *ctx);
 
@@ -108,7 +102,7 @@ typedef struct ziti_channel {
 
     ch_notify_state notify_cb;
     void *notify_ctx;
-} ziti_channel_t;
+};
 
 struct ziti_write_req_s {
     struct ziti_conn *conn;
@@ -320,8 +314,6 @@ extern "C" {
 
 ziti_controller *ztx_get_controller(ziti_context ztx);
 
-bool ziti_is_session_valid(ziti_context ztx, ziti_session *session, const char *service_id, ziti_session_type type);
-
 void ziti_invalidate_session(ziti_context ztx, const char *service_id, ziti_session_type type);
 
 void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
@@ -346,9 +338,9 @@ int ziti_channel_prepare(ziti_channel_t *ch);
 
 int ziti_channel_close(ziti_channel_t *ch, int err);
 
-void ziti_channel_add_receiver(ziti_channel_t *ch, int id, void *receiver, void (*receive_f)(void *, message *, int));
+void ziti_channel_add_receiver(ziti_channel_t *ch, uint32_t id, void *receiver, void (*receive_f)(void *, message *, int));
 
-void ziti_channel_rem_receiver(ziti_channel_t *ch, int id);
+void ziti_channel_rem_receiver(ziti_channel_t *ch, uint32_t id);
 
 int ziti_channel_send_message(ziti_channel_t *ch, message *msg, struct ziti_write_req_s *ziti_write);
 
