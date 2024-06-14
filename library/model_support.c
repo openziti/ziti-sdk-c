@@ -1,9 +1,9 @@
-// Copyright (c) 2020-2023.  NetFoundry Inc.
+// Copyright (c) 2020-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
 //
+// You may obtain a copy of the License at
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -496,7 +496,7 @@ int model_array_from_json(void ***arr, json_object *json, const type_meta *el_me
     size_t children = json_object_array_length(json);
     void **elems = calloc(children + 1, sizeof(void *));
     int idx;
-    int rc;
+    int rc = 0;
     for (idx = 0; idx < children; idx++) {
         json_object *ch = json_object_array_get_idx(json, idx);
         void *el;
