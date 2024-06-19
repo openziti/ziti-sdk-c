@@ -1,4 +1,5 @@
 
+find_package(CLI11 CONFIG REQUIRED)
 
 add_subdirectory(ziti-prox-c)
 add_subdirectory(host-proxy)
@@ -12,3 +13,5 @@ add_subdirectory(wzcat)
 add_subdirectory(sample-bridge)
 
 add_subdirectory(zitilib-samples)
+
+add_subdirectory(mfa_tester)
