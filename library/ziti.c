@@ -105,6 +105,10 @@ static size_t parse_ref(const char *val, const char **res) {
         if (strncmp("file:", val, 5) == 0) {
             // load file
             *res = val + strlen("file://");
+            struct tlsuv_url_s url;
+            tlsuv_parse_url(&url, val);
+            size_t start = strlen(val) - strlen(url.path);
+            *res = val + start;
             len = strlen(*res) + 1;
         } else if (strncmp("pem:", val, 4) == 0) {
             // load inline PEM
