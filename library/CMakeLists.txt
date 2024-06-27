@@ -18,7 +18,7 @@ if (NOT sodium_libs)
     message(FATAL_ERROR "could not find required library[sodium]")
 endif ()
 
-find_package(Protobuf REQUIRED)
+pkg_check_modules(PBUFC REQUIRED IMPORTED_TARGET libprotobuf-c)
 
 if (ziti_DEVELOPER_MODE)
     find_program(PROTO_GEN protoc)
@@ -76,8 +76,11 @@ SET(ZITI_SRC_FILES
         authenticators.c
         crypto.c
         bind.c
+        oidc.c
         proto/edge_client.pb-c.c
         proto/google/protobuf/timestamp.pb-c.c
+        legacy_auth.c
+        ha_auth.c
         util/future.c
         )
 
@@ -117,7 +120,7 @@ function(config_ziti_library target)
             tlsuv
             ${sodium_libs}
             json-c::json-c
-            protobuf::libprotobuf
+            PkgConfig::PBUFC
     )
 
     if (CMAKE_SYSTEM_NAME MATCHES "Linux")
