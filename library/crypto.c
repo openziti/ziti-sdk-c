@@ -19,7 +19,7 @@ int init_key_pair(struct key_pair *kp) {
     return crypto_kx_keypair(kp->pk, kp->sk);
 }
 
-int init_crypto(struct key_exchange *key_ex, struct key_pair *kp, uint8_t *peer_key, bool server) {
+int init_crypto(struct key_exchange *key_ex, struct key_pair *kp, const uint8_t *peer_key, bool server) {
     free(key_ex->rx);
     free(key_ex->tx);
 
