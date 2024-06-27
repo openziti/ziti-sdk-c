@@ -278,7 +278,7 @@ static int send_message(struct ziti_conn *conn, message *m, struct ziti_write_re
     if (m->header.content == ContentTypeData) {
         struct msg_uuid *uuid = NULL;
         size_t len;
-        message_get_bytes_header(m, UUIDHeader, (uint8_t**)&uuid, &len);
+        message_get_bytes_header(m, UUIDHeader, (uint8_t**) &uuid, &len);
 
         if (uuid) {
             assert(len == sizeof(*uuid));

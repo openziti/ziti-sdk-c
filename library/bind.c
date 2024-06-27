@@ -381,7 +381,7 @@ static void process_dial(struct binding_s *b, message *msg) {
     bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
 
     ziti_client_ctx clt_ctx = {0};
-    message_get_bytes_header(msg, AppDataHeader, (uint8_t **) &clt_ctx.app_data, &clt_ctx.app_data_sz);
+    message_get_bytes_header(msg, AppDataHeader, &clt_ctx.app_data, &clt_ctx.app_data_sz);
     if (caller_id_sent) {
         client->source_identity = strndup((char *) source_identity, source_identity_sz);
         clt_ctx.caller_id = client->source_identity;
