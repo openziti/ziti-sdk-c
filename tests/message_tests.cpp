@@ -46,7 +46,7 @@ TEST_CASE("simple", "[model]") {
     m2->nhdrs = parse_hdrs(m2->headers, m2->header.headers_len, &m2->hdrs);
     CHECK(m2->nhdrs == 2);
 
-    uint8_t *hdrval;
+    const uint8_t *hdrval;
     size_t hdrlen;
     CHECK(message_get_bytes_header(m2, 1, &hdrval, &hdrlen));
     CHECK(strncmp((const char *) headers[0].value, (const char *) hdrval, hdrlen) == 0);
@@ -91,7 +91,7 @@ TEST_CASE("large", "[model]") {
     m2->nhdrs = parse_hdrs(m2->headers, m2->header.headers_len, &m2->hdrs);
     CHECK(m2->nhdrs == 2);
 
-    uint8_t *hdrval;
+    const uint8_t *hdrval;
     size_t hdrlen;
     CHECK(message_get_bytes_header(m2, 1, &hdrval, &hdrlen));
     CHECK(strncmp((const char *) headers[0].value, (const char *) hdrval, hdrlen) == 0);
@@ -134,7 +134,7 @@ TEST_CASE("large unpooled", "[model]") {
     m2->nhdrs = parse_hdrs(m2->headers, m2->header.headers_len, &m2->hdrs);
     CHECK(m2->nhdrs == 2);
 
-    uint8_t *hdrval;
+    const uint8_t *hdrval;
     size_t hdrlen;
     CHECK(message_get_bytes_header(m2, 1, &hdrval, &hdrlen));
     CHECK(strncmp((const char *) headers[0].value, (const char *) hdrval, hdrlen) == 0);
