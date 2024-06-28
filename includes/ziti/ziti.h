@@ -269,7 +269,7 @@ typedef struct ziti_dial_opts_s {
 
 typedef struct ziti_client_ctx_s {
     char *caller_id;
-    uint8_t *app_data;
+    const uint8_t *app_data;
     size_t app_data_sz;
 } ziti_client_ctx;
 
@@ -339,7 +339,7 @@ typedef void (*ziti_conn_cb)(ziti_connection conn, int status);
  *
  * @see ziti_listen(), ZITI_ERRORS
  */
-typedef void (*ziti_client_cb)(ziti_connection serv, ziti_connection client, int status, ziti_client_ctx *ctx);
+typedef void (*ziti_client_cb)(ziti_connection serv, ziti_connection client, int status, const ziti_client_ctx *ctx);
 
 /**
  * @brief Defines the ziti_listen_cb.
