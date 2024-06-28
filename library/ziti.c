@@ -95,7 +95,7 @@ static size_t parse_ref(const char *val, const char **res) {
     *res = NULL;
     if (val != NULL) {
         if (strncmp("file:", val, 5) == 0) {
-            // load file
+            // load file.
             struct tlsuv_url_s url;
             tlsuv_parse_url(&url, val);
             size_t start = strlen(val) - strlen(url.path);
