@@ -43,7 +43,7 @@ typedef struct ziti_controller_s {
     uv_loop_t *loop;
     tlsuv_http_t *client;
 
-    const char *url;
+    char *url;
     model_map endpoints;
 
     unsigned int active_reqs;
