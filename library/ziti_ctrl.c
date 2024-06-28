@@ -185,7 +185,8 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
                 CTRL_LOG(INFO, "attempting to switch endpoint");
                 const char *next_ep = ctrl_next_ep(ctrl, ctrl->url);
                 if (next_ep != NULL) {
-                    ctrl->url = next_ep;
+                    FREE(ctrl->url);
+                    ctrl->url = strdup(next_ep);
                     tlsuv_http_set_url(ctrl->client, next_ep);
                     CTRL_LOG(INFO, "using endpoint[%s]", ctrl->url);
                 }
@@ -236,7 +237,7 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
         CTRL_LOG(INFO, "controller supplied new address[%s]", resp->new_address);
 
         FREE(ctrl->url);
-        ctrl->url = resp->new_address;
+        ctrl->url = strdup(resp->new_address);
         resp->new_address = NULL;
         tlsuv_http_set_url(ctrl->client, ctrl->url);
 
@@ -271,9 +272,6 @@ static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_e
         }
 
         if (addr != NULL) {
-            if (strcmp(addr->url, ctrl->url) == 0) {
-                ctrl->url = addr->url;
-            }
             model_map_set(&ctrl->endpoints, addr->url, d);
 
             ziti_controller_detail *old_detail = model_map_remove(&old, addr->url);
@@ -540,7 +538,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
         model_map_set(&ctrl->endpoints, ep, NULL);
     }
 
-    ctrl->url = ctrl_next_ep(ctrl, NULL);
+    ctrl->url = strdup(ctrl_next_ep(ctrl, NULL));
     CTRL_LOG(INFO, "using %s", ctrl->url);
     if (tlsuv_http_init(loop, ctrl->client, ep) != 0) {
         return ZITI_INVALID_CONFIG;
@@ -605,6 +603,7 @@ int ziti_ctrl_cancel(ziti_controller *ctrl) {
 int ziti_ctrl_close(ziti_controller *ctrl) {
     free_ziti_version(&ctrl->version);
     model_map_clear(&ctrl->endpoints, (void (*)(void *)) free_ziti_controller_detail_ptr);
+    FREE(ctrl->url);
     FREE(ctrl->instance_id);
     if (ctrl->client) {
         tlsuv_http_close(ctrl->client, on_http_close);
