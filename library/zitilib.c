@@ -775,7 +775,7 @@ static void on_ziti_accept(ziti_connection client, int status) {
     free(pending);
 }
 
-static void on_ziti_client(ziti_connection server, ziti_connection client, int status, ziti_client_ctx *clt_ctx) {
+static void on_ziti_client(ziti_connection server, ziti_connection client, int status, const ziti_client_ctx *clt_ctx) {
     ziti_sock_t *server_sock = ziti_conn_data(server);
 
     if (status != ZITI_OK) {

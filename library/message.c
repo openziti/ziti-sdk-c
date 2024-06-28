@@ -152,7 +152,7 @@ bool message_get_uint64_header(message *m, int header_id, uint64_t *v) {
     return false;
 }
 
-bool message_get_bytes_header(message *m, int header_id, const char **v, size_t *len) {
+bool message_get_bytes_header(message *m, int header_id, const uint8_t **v, size_t *len) {
     *v = NULL;
     *len = 0;
 

@@ -360,7 +360,7 @@ static void on_tcp_connect(uv_connect_t *conn_req, int status) {
     free(conn_req);
 }
 
-static void binding_client_cb(ziti_connection srv, ziti_connection clt, int status, ziti_client_ctx *clt_ctx) {
+static void binding_client_cb(ziti_connection srv, ziti_connection clt, int status, const ziti_client_ctx *clt_ctx) {
     struct binding *b = ziti_conn_data(srv);
 
     if (status == ZITI_OK) {

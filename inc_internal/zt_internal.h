@@ -133,7 +133,7 @@ struct key_exchange {
 
 int init_key_pair(struct key_pair *kp);
 
-int init_crypto(struct key_exchange *key_ex, struct key_pair *kp, uint8_t *peer_key, bool server);
+int init_crypto(struct key_exchange *key_ex, struct key_pair *kp, const uint8_t *peer_key, bool server);
 
 void free_key_exchange(struct key_exchange *key_ex);
 

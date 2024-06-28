@@ -341,8 +341,8 @@ static void process_dial(struct binding_s *b, message *msg) {
     struct ziti_conn *conn = b->conn;
 
     size_t peer_key_len, marker_len;
-    uint8_t *peer_key;
-    uint8_t  *marker;
+    const uint8_t *peer_key;
+    const uint8_t *marker;
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
     bool marker_sent = message_get_bytes_header(msg, ConnectionMarkerHeader, &marker, &marker_len);
 
@@ -376,12 +376,12 @@ static void process_dial(struct binding_s *b, message *msg) {
     model_map_setl(&conn->server.children, (long) client->conn_id, client);
 
     client->dial_req_seq = msg->header.seq;
-    uint8_t *source_identity = NULL;
+    const uint8_t *source_identity = NULL;
     size_t source_identity_sz = 0;
     bool caller_id_sent = message_get_bytes_header(msg, CallerIdHeader, &source_identity, &source_identity_sz);
 
     ziti_client_ctx clt_ctx = {0};
-    message_get_bytes_header(msg, AppDataHeader, (uint8_t **) &clt_ctx.app_data, &clt_ctx.app_data_sz);
+    message_get_bytes_header(msg, AppDataHeader, (const uint8_t **) &clt_ctx.app_data, &clt_ctx.app_data_sz);
     if (caller_id_sent) {
         client->source_identity = strndup((char *) source_identity, source_identity_sz);
         clt_ctx.caller_id = client->source_identity;

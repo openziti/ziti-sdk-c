@@ -694,7 +694,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
     if (success) {
         const char *erVersion = "<unknown>";
         size_t erVersionLen = strlen(erVersion);
-        message_get_bytes_header(msg, HelloVersionHeader, (uint8_t **) &erVersion, &erVersionLen);
+        message_get_bytes_header(msg, HelloVersionHeader, (const uint8_t **) &erVersion, &erVersionLen);
         CH_LOG(INFO, "connected. EdgeRouter version: %.*s", (int) erVersionLen, erVersion);
         ch->state = Connected;
         FREE(ch->version);

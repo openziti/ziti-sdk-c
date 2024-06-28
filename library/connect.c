@@ -278,7 +278,7 @@ static int send_message(struct ziti_conn *conn, message *m, struct ziti_write_re
     if (m->header.content == ContentTypeData) {
         struct msg_uuid *uuid = NULL;
         size_t len;
-        message_get_bytes_header(m, UUIDHeader, (uint8_t**)&uuid, &len);
+        message_get_bytes_header(m, UUIDHeader, (const uint8_t **) &uuid, &len);
 
         if (uuid) {
             assert(len == sizeof(*uuid));
@@ -712,7 +712,7 @@ int establish_crypto(ziti_connection conn, message *msg) {
     }
 
     size_t peer_key_len;
-    uint8_t *peer_key;
+    const uint8_t *peer_key;
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
     if (!peer_key_sent) {
         CONN_LOG(ERROR, "failed to establish crypto for encrypted service: did not receive peer key");
@@ -879,7 +879,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
                     struct local_hash h;
                     crypto_hash_sha256(h.hash, msg->body, msg->header.body_len);
 
-                    if (message_get_bytes_header(msg, UUIDHeader, (uint8_t **)&uuid, &uuid_len)) {
+                    if (message_get_bytes_header(msg, UUIDHeader, (const uint8_t **) &uuid, &uuid_len)) {
                         CONN_LOG(ERROR, "uuid[" UUID_FMT "] %s corruption hash[" HASH_FMT "]",
                                  UUID_FMT_ARG(uuid),
                                  uuid->slug != htole32(h.i32[0]) ? "payload" : "crypto state",
@@ -1317,7 +1317,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
     bool has_conn_id = message_get_int32_header(msg, ConnIdHeader, &conn_id);
     assert(has_conn_id && conn_id == conn->conn_id);
 
-    if (message_get_bytes_header(msg, UUIDHeader, (uint8_t **) &uuid, &uuid_len)) {
+    if (message_get_bytes_header(msg, UUIDHeader, (const uint8_t **) &uuid, &uuid_len)) {
         struct local_hash h;
         crypto_hash_sha256(h.hash, msg->body, msg->header.body_len);
         CONN_LOG(TRACE, "<= ct[%04X] uuid[" UUID_FMT "] edge_seq[%d] len[%d] ",

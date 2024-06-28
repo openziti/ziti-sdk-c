@@ -211,7 +211,7 @@ static void listen_cb(ziti_connection server, int status) {
     }
 }
 
-static void on_client(ziti_connection server, ziti_connection conn, int status, ziti_client_ctx *clt_ctx) {
+static void on_client(ziti_connection server, ziti_connection conn, int status, const ziti_client_ctx *clt_ctx) {
     if (status == ZITI_OK) {
         host_binding *binding = ziti_conn_data(server);
         struct app_ctx *app = binding->app;
