@@ -237,8 +237,7 @@ static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enr
         if (enroll_req->enroll_cb) {
             enroll_req->enroll_cb(NULL, ZITI_JWT_INVALID, err->code, enroll_req->external_enroll_ctx);
         }
-    }
-    else {
+    } else {
         ZITI_LOG(DEBUG, "successfully enrolled with controller %s", ctrl->url);
 
         ziti_config cfg = {0};
@@ -247,12 +246,11 @@ static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enr
         cfg.id.key = strdup(enroll_req->ecfg->private_key);
 
         tls_cert c = NULL;
-        if (enroll_req->ecfg->tls->load_cert(&c, er->cert, strlen(er->cert)) == 0 &&
+        if (er->cert != NULL && enroll_req->ecfg->tls->load_cert(&c, er->cert, strlen(er->cert)) == 0 &&
             enroll_req->ecfg->pk->store_certificate != NULL &&
             enroll_req->ecfg->pk->store_certificate(enroll_req->ecfg->pk, c) == 0) {
             ZITI_LOG(INFO, "stored certificate to PKCS#11 token");
-        }
-        else {
+        } else {
             cfg.id.cert = er->cert ? strdup(er->cert) : strdup(enroll_req->ecfg->own_cert);
         }
 
