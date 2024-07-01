@@ -22,8 +22,8 @@ jobs:
           - { name: 'Linux x86_64', runner: 'ubuntu-20.04', target: 'linux-x64', builder: 'openziti/ziti-builder:1.0.11', test: 'true' }
           - { name: 'Linux ARM', runner: 'ubuntu-20.04', target: 'linux-arm', builder: 'openziti/ziti-builder:1.0.11' }
           - { name: 'Linux ARM64', runner: 'ubuntu-20.04', target: 'linux-arm64', builder: 'openziti/ziti-builder:1.0.11' }
-          - { name: 'MacOS x86_64', runner: 'macOS-12', target: 'macOS-x64', test: 'true' }
-          - { name: 'MacOS arm64', runner: 'macOS-12', target: 'macOS-arm64' }
+          - { name: 'MacOS x86_64', runner: 'macOS-13', target: 'macOS-x64', test: 'true' }
+          - { name: 'MacOS arm64', runner: 'macOS-13', target: 'macOS-arm64' }
           - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64', test: 'true' }
           - { name: 'Windows ARM64', runner: 'windows-2022', target: 'windows-arm64' }
     steps:
