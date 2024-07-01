@@ -1,4 +1,4 @@
-// Copyright (c) 2023. NetFoundry Inc.
+// Copyright (c) 2023-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
     ziti_config cfg;
     REQUIRE(ziti_load_config(&cfg, TEST_CLIENT) == ZITI_OK);
     auto tls = default_tls_context(cfg.id.ca, strlen(cfg.id.ca));
-    tls_cert cert;
+    tlsuv_certificate_t cert;
     tlsuv_private_key_t key;
     tls->load_cert(&cert, cfg.id.cert, strlen(cfg.id.cert));
     tls->load_key(&key, cfg.id.key, strlen(cfg.id.key));
@@ -90,7 +90,7 @@ TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
     REQUIRE(closed);
 
 //    key->free(key);
-    tls->free_cert(&cert);
+    cert->free(cert);
     tls->free_ctx(tls);
 
     free_ziti_config(&cfg);

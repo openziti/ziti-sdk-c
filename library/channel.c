@@ -698,7 +698,8 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         CH_LOG(INFO, "connected. EdgeRouter version: %.*s", (int) erVersionLen, erVersion);
         ch->state = Connected;
         FREE(ch->version);
-        ch->version = strndup(erVersion, erVersionLen);
+        ch->version = calloc(1, erVersionLen + 1);
+        memcpy(ch->version, erVersion, erVersionLen);
         ch->notify_cb(ch, EdgeRouterConnected, ch->notify_ctx);
         ch->latency = uv_now(ch->loop) - ch->latency;
         uv_timer_start(ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);

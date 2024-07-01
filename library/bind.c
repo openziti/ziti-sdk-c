@@ -383,7 +383,8 @@ static void process_dial(struct binding_s *b, message *msg) {
     ziti_client_ctx clt_ctx = {0};
     message_get_bytes_header(msg, AppDataHeader, (const uint8_t **) &clt_ctx.app_data, &clt_ctx.app_data_sz);
     if (caller_id_sent) {
-        client->source_identity = strndup((char *) source_identity, source_identity_sz);
+        client->source_identity = calloc(1, source_identity_sz + 1);
+        memcpy(client->source_identity, source_identity, source_identity_sz);
         clt_ctx.caller_id = client->source_identity;
     }
     conn->server.client_cb(conn, client, ZITI_OK, &clt_ctx);
