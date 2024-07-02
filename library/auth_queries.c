@@ -241,6 +241,7 @@ void ziti_mfa_verify_internal_cb(void *empty, const ziti_error *err, void *ctx) 
         ZTX_LOG(ERROR, "error during verify MFA call: %d - %s - %s", err->http_code, err->code, err->message);
         mfa_cb_ctx->cb(mfa_cb_ctx->ztx, err->err, mfa_cb_ctx->cb_ctx);
     } else {
+        ziti_force_api_session_refresh(ztx);
         mfa_cb_ctx->cb(mfa_cb_ctx->ztx, ZITI_OK, mfa_cb_ctx->cb_ctx);
     }
 
