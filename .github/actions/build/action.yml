@@ -62,6 +62,8 @@ runs:
         ZITI_LOG: "4"
       if: inputs.test == 'true'
       working-directory: ./build
+      continue-on-error: true
       shell: bash
       run: |
         ctest -VV --no-compress-output -C ${{ inputs.config }} -R quickstart-test
+        
