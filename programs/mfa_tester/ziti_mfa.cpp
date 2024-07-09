@@ -18,9 +18,11 @@
 
 #include <cassert>
 #include <iostream>
+#include <mutex>
+
+#include <uv.h>
 
 #include "ziti/ziti.h"
-#include <uv.h>
 #include "ziti/ziti_log.h"
 
 typedef void(*prompt_cb)(ziti_context, const char *input);
