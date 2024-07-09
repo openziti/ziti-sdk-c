@@ -54,16 +54,19 @@ static void prompt_done(uv_work_t *req, int status) {
 }
 
 
-static void ztx_prompt(ziti_context ztx, const std::string &prompt, void(*cb)(ziti_context, const char *input)) {
+static bool ztx_prompt(ziti_context ztx, const std::string &prompt, void(*cb)(ziti_context, const char *input)) {
     static prompt_req req;
-    auto lock = req.lock.try_lock();
-    assert(lock);
+    auto locked = req.lock.try_lock();
 
-    req.prompt = prompt;
-    req.input.clear();
-    req.cb = cb;
-    req.req.data = ztx;
-    uv_queue_work(loop, (uv_work_t *) &req, prompt_work, prompt_done);
+    if (locked) {
+        req.prompt = prompt;
+        req.input.clear();
+        req.cb = cb;
+        req.req.data = ztx;
+        uv_queue_work(loop, (uv_work_t *) &req, prompt_work, prompt_done);
+    }
+
+    return locked;
 }
 
 
