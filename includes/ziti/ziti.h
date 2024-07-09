@@ -883,7 +883,7 @@ extern void ziti_mfa_enroll(ziti_context ztx, ziti_mfa_enroll_cb enroll_cb, void
  * @param ctx additional context to be passed into the remove_cb callback
  */
 ZITI_FUNC
-extern void ziti_mfa_remove(ziti_context ztx, char *code, ziti_mfa_cb remove_cb, void *ctx);
+extern void ziti_mfa_remove(ziti_context ztx, const char *code, ziti_mfa_cb remove_cb, void *ctx);
 
 /**
  * @brief Attempts to verify MFA enrollment
@@ -919,7 +919,7 @@ extern void ziti_mfa_verify(ziti_context ztx, char *code, ziti_mfa_cb verify_cb,
  * @param ctx additional context to be passed into the get_cb callback
  */
 ZITI_FUNC
-extern void ziti_mfa_get_recovery_codes(ziti_context ztx, char *code, ziti_mfa_recovery_codes_cb get_cb, void *ctx);
+extern void ziti_mfa_get_recovery_codes(ziti_context ztx, const char *code, ziti_mfa_recovery_codes_cb get_cb, void *ctx);
 
 /**
  * @brief Attempts to generate new recovery codes and retrieve the new recovery codes for MFA

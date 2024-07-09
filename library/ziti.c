@@ -214,6 +214,8 @@ void ziti_set_impossible_to_authenticate(ziti_context ztx) {
 
 void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mfa *mfa_q) {
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthStatePartiallyAuthenticated);
+    update_ctrl_status(ztx, ZITI_PARTIALLY_AUTHENTICATED, NULL);
+
     ziti_event_t ev = {
             .type = ZitiMfaAuthEvent,
             .mfa_auth_event = {

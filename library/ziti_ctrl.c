@@ -288,7 +288,7 @@ static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_e
     model_map_clear(&old, (void (*)(void *)) free_ziti_controller_detail_ptr);
     free(arr);
 
-    if (change) {
+    if (change && ctrl->is_ha) {
         ctrl->change_cb(ctrl->cb_ctx, &ctrl->endpoints);
     }
 }

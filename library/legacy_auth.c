@@ -224,16 +224,14 @@ void auth_timer_cb(uv_timer_t *t) {
 }
 
 static ziti_auth_query_mfa* get_mfa(ziti_api_session *session) {
-    ziti_auth_query_mfa *aq, *ziti_mfa = NULL;
-
+    ziti_auth_query_mfa *aq;
     MODEL_LIST_FOREACH(aq, session->auth_queries) {
         if (strcmp(aq->type_id, AUTH_QUERY_TYPE_MFA) == 0 &&
             strcmp(aq->provider, MFA_PROVIDER_ZITI) == 0) {
-            ziti_mfa = aq;
-            break;
+            return aq;
         }
     }
-    return ziti_mfa;
+    return NULL;
 }
 
 static uint64_t refresh_delay(ziti_api_session *session) {
