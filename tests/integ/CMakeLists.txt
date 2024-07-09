@@ -41,7 +41,7 @@ else ()
     set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
 endif ()
 
-set(ZITI_CLI_VER "v1.1.3" CACHE STRING "ziti version for integration tests")
+set(ZITI_CLI_VER "v1.1.5" CACHE STRING "ziti version for integration tests")
 add_custom_target(ziti-cli ALL
         COMMAND ${CMAKE_COMMAND} -E env GOBIN=${CMAKE_CURRENT_BINARY_DIR}
         ${GOLANG_EXE} install github.com/openziti/ziti/ziti@${ZITI_CLI_VER}
@@ -49,6 +49,8 @@ add_custom_target(ziti-cli ALL
 )
 
 add_custom_target(cleanup-qs
+        COMMAND cat -n /etc/hosts
+        COMMAND cat -n ${qs_home}/ctrl.yaml
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${qs_home}"
 )
 
@@ -88,7 +90,7 @@ set_tests_properties(quickstart-test PROPERTIES
 )
 
 add_test(NAME quickstart-cleanup
-        COMMAND rm -rf ${qs_home}
+        COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target cleanup-qs
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 set_tests_properties(quickstart-cleanup PROPERTIES
