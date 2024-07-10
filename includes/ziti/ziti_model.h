@@ -43,10 +43,19 @@ XX(min_length, int, none, minLength, __VA_ARGS__) \
 XX(max_length, int, none, maxLength, __VA_ARGS__) \
 XX(format, string, none, format, __VA_ARGS__)
 
+#define ZITI_JWT_SIGNER_MODEL(XX, ...) \
+XX(id, string, none, id, __VA_ARGS__) \
+XX(name, string, none, name, __VA_ARGS__) \
+XX(enabled, bool, none, enabled, __VA_ARGS__) \
+XX(provider_url, string, none, externalAuthUrl, __VA_ARGS__) \
+XX(client_id, string, none, audience, __VA_ARGS__)           \
+XX(claim, string, none, claimProperty, __VA_ARGS__)
+
 #define ZITI_ID_CFG_MODEL(XX, ...) \
 XX(cert, string, none, cert, __VA_ARGS__) \
 XX(key, string, none, key, __VA_ARGS__) \
-XX(ca, string, none, ca, __VA_ARGS__)
+XX(ca, string, none, ca, __VA_ARGS__)     \
+XX(oidc, ziti_jwt_signer, ptr, oidc, __VA_ARGS__)
 
 #define ZITI_CONFIG_MODEL(XX, ...) \
 XX(controller_url, string, none, ztAPI, __VA_ARGS__) \
@@ -227,6 +236,8 @@ DECLARE_MODEL(api_path, ZITI_API_PATH_MODEL)
 DECLARE_MODEL(ziti_api_versions, ZITI_API_VERSIONS_MODEL)
 
 DECLARE_MODEL(ziti_version, ZITI_VERSION_MODEL)
+
+DECLARE_MODEL(ziti_jwt_signer, ZITI_JWT_SIGNER_MODEL)
 
 DECLARE_MODEL(ziti_id_cfg, ZITI_ID_CFG_MODEL)
 
