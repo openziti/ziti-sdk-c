@@ -589,7 +589,9 @@ int ziti_ctrl_set_token(ziti_controller *ctrl, const char *token) {
     free(header);
     delete_string_buf(b);
 
-    ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
+    if (ctrl->is_ha) {
+        ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
+    }
 
     return ZITI_OK;
 }
@@ -687,6 +689,45 @@ void ziti_ctrl_login(
     }
 }
 
+
+void ziti_ctrl_login_ext_jwt(ziti_controller *ctrl, const char *jwt,
+                             void (*cb)(ziti_api_session *, const ziti_error *, void *),
+                             void *ctx) {
+    ziti_auth_req authreq = {
+            .sdk_info = {
+                    .type = "ziti-sdk-c",
+                    .version = (char *) ziti_get_build_version(0),
+                    .revision = (char *) ziti_git_commit(),
+                    .branch = (char *) ziti_git_branch(),
+                    .app_id = (char *) APP_ID,
+                    .app_version = (char *) APP_VERSION,
+            },
+            .env_info = (ziti_env_info *)get_env_info(),
+            .config_types = {0}
+    };
+
+    size_t body_len;
+    char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
+
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_api_session_ptr, ctx);
+    resp->ctrl_cb = (ctrl_cb_t)ctrl_login_cb;
+
+    string_buf_t *auth = new_string_buf();
+    string_buf_append(auth, "Bearer ");
+    string_buf_append(auth, jwt);
+    char *auth_hdr = string_buf_to_string(auth, NULL);
+
+    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/authenticate", ctrl_resp_cb, resp);
+    tlsuv_http_req_header(req, "authorization", auth_hdr);
+    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_query(req, 1, &(tlsuv_http_pair){"method", "ext-jwt"});
+    tlsuv_http_req_data(req, body, body_len, free_body_cb);
+
+    free(auth_hdr);
+    string_buf_free(auth);
+}
+
+
 static bool verify_api_session(ziti_controller *ctrl, ctrl_resp_cb_t cb, void *ctx) {
     if(!ctrl->has_token) {
         CTRL_LOG(WARN, "no API session");
@@ -725,6 +766,15 @@ void ziti_ctrl_list_controllers(ziti_controller *ctrl,
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_controller_detail_array, ctx);
     resp->paging = true;
     resp->base_path = "/controllers";
+    ctrl_paging_req(resp);
+}
+
+void ziti_ctrl_list_ext_jwt_signers(
+        ziti_controller *ctrl,
+        void (*cb)(ziti_jwt_signer_array, const ziti_error*, void *ctx), void *ctx) {
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_jwt_signer_array, ctx);
+    resp->paging = true;
+    resp->base_path = "/external-jwt-signers";
     ctrl_paging_req(resp);
 }
 
