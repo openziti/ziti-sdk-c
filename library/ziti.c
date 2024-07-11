@@ -203,6 +203,8 @@ void ziti_set_unauthenticated(ziti_context ztx) {
         ztx->sessionKey = NULL;
     }
 
+    model_map_clear(&ztx->sessions, (void (*)(void *)) free_ziti_session_ptr);
+
     ziti_ctrl_clear_api_session(ztx_get_controller(ztx));
 }
 
@@ -339,12 +341,8 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
             ztx->posture_checks = NULL;
         }
 
-        model_map_iter it = model_map_iterator(&ztx->sessions);
-        while (it) {
-            ziti_session *ns = model_map_it_value(it);
-            it = model_map_it_remove(it);
-            free_ziti_session_ptr(ns);
-        }
+        model_map_clear(&ztx->sessions, (void (*)(void *)) free_ziti_session_ptr);
+
         // close all channels
         ziti_close_channels(ztx, ZITI_DISABLED);
 
@@ -354,7 +352,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         ev.type = ZitiServiceEvent;
         ev.service.removed = calloc(model_map_size(&ztx->services) + 1, sizeof(ziti_service *));
         int idx = 0;
-        it = model_map_iterator(&ztx->services);
+        model_map_iter it = model_map_iterator(&ztx->services);
         while (it) {
             ev.service.removed[idx++] = model_map_it_value(it);
             it = model_map_it_remove(it);
