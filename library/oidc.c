@@ -391,6 +391,7 @@ static void refresh_cb(oidc_req *req, int status, json_object *resp) {
         uv_timer_start(clt->timer, refresh_time_cb, 5 * 1000, 0);
     } else {
         ZITI_LOG(WARN, "OIDC token refresh failed: %d[%s]", status, json_object_to_json_string(resp));
+        clt->token_cb(clt, ZITI_AUTHENTICATION_FAILED, NULL);
         oidc_client_start(clt, clt->token_cb);
         if (resp) {
             json_object_put(resp);
