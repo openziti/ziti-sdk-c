@@ -219,9 +219,11 @@ void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mf
     update_ctrl_status(ztx, ZITI_PARTIALLY_AUTHENTICATED, NULL);
 
     ziti_event_t ev = {
-            .type = ZitiMfaAuthEvent,
-            .mfa_auth_event = {
-                    .auth_query_mfa = mfa_q,
+            .type = ZitiAuthEvent,
+            .auth = {
+                    .action = ziti_auth_prompt_totp,
+                    .type = mfa_q->type_id,
+                    .detail = mfa_q->provider,
             }
     };
 
