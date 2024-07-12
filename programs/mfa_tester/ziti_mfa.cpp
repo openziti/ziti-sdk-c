@@ -17,6 +17,7 @@
 #include <CLI/CLI.hpp>
 
 #include <cassert>
+#include <format>
 #include <iostream>
 #include <mutex>
 
@@ -106,7 +107,7 @@ static void base_run(void(*handler)(ziti_context, const ziti_event_t *)) {
 
     ziti_options opts = {
             .app_ctx = (void *) (handler),
-            .events = ZitiContextEvent | ZitiMfaAuthEvent,
+            .events = ZitiContextEvent | ZitiAuthEvent,
             .event_cb = handler,
     };
     std::cerr << std::endl;
@@ -136,10 +137,10 @@ static void get_codes() {
                 }
                 break;
             }
-            case ZitiMfaAuthEvent: {
-                const ziti_mfa_auth_event &e = ev->mfa_auth_event;
-                std::string prompt = std::string("enter ") + e.auth_query_mfa->type_id + "/" +
-                                     e.auth_query_mfa->provider + " code";
+            case ZitiAuthEvent: {
+                const ziti_auth_event &e = ev->auth;
+                std::string prompt = std::string("enter ") + e.type + "/" +
+                                     e.detail + " code";
                 ztx_prompt(ztx, prompt, [](ziti_context z, const char *code) {
                     ziti_mfa_auth(z, code, [](ziti_context z, int status, void *) {
                         if (status == ZITI_OK) {
@@ -186,10 +187,9 @@ static void test_mfa() {
                 }
                 break;
             }
-            case ZitiMfaAuthEvent: {
-                const ziti_mfa_auth_event &e = ev->mfa_auth_event;
-                std::string prompt = std::string("enter ") + e.auth_query_mfa->type_id + "/" +
-                                     e.auth_query_mfa->provider + " code";
+            case ZitiAuthEvent: {
+                const ziti_auth_event &e = ev->auth;
+                auto prompt = std::format("enter {}/{} code", e.type, e.detail);
                 ztx_prompt(ztx, prompt, [](ziti_context z, const char *code) {
                     ziti_mfa_auth(z, code, [](ziti_context z, int status, void *) {
                         if (status == ZITI_OK) {
@@ -227,10 +227,9 @@ static void enroll_mfa() {
                 }
                 break;
             }
-            case ZitiMfaAuthEvent: {
-                const ziti_mfa_auth_event &e = ev->mfa_auth_event;
-                std::cout << "details: " << e.auth_query_mfa->type_id << "/"
-                          << (e.auth_query_mfa->provider) << std::endl;
+            case ZitiAuthEvent: {
+                const ziti_auth_event &e = ev->auth;
+                std::cout << std::format("details: {}/{}", e.type, e.detail) << std::endl;
                 ziti_shutdown(ztx);
                 break;
             }
@@ -260,19 +259,22 @@ static void delete_mfa() {
                 }
                 break;
             }
-            case ZitiMfaAuthEvent: {
-                const ziti_mfa_auth_event &e = ev->mfa_auth_event;
-                std::string prompt = std::string("enter ") + e.auth_query_mfa->type_id + "/" +
-                                     e.auth_query_mfa->provider + " code";
-                ztx_prompt(ztx, prompt, [](ziti_context z, const char *code) {
-                    ziti_mfa_auth(z, code, [](ziti_context z, int status, void *) {
-                        if (status == ZITI_OK) {
-                            std::cout << "MFA auth success!" << std::endl;
-                        } else {
-                            std::cout << "MFA auth failed: " << status << '/' << ziti_errorstr(status) << std::endl;
-                    }
-                    }, nullptr);
-                });
+            case ZitiAuthEvent: {
+                const ziti_auth_event &e = ev->auth;
+                if (e.action == ziti_auth_prompt_totp) {
+                    auto prompt = std::format("enter {}/{} code", e.type, e.detail);
+                    ztx_prompt(ztx, prompt, [](ziti_context z, const char *code) {
+                        ziti_mfa_auth(z, code, [](ziti_context z, int status, void *) {
+                            if (status == ZITI_OK) {
+                                std::cout << "MFA auth success!" << std::endl;
+                            } else {
+                                std::cout << "MFA auth failed: " << status << '/' << ziti_errorstr(status) << std::endl;
+                            }
+                        }, nullptr);
+                    });
+                } else {
+                    std::cout << "unsupported auth action: " << ev->auth.action << std::endl;
+                }
                 break;
             }
             default:
