@@ -764,7 +764,9 @@ void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void (*cb)(ziti_edge_
     ctrl_paging_req(resp);
 
     // piggy back controller list request
-    ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
+    if (ctrl->is_ha) {
+        ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
+    }
 }
 
 void
