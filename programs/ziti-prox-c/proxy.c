@@ -508,8 +508,14 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                     break;
             }
             break;
-        case ZitiMfaAuthEvent:
-            mfa_auth_event_handler(ztx);
+        case ZitiAuthEvent:
+            if (event->auth.action == ziti_auth_prompt_totp) {
+                ZITI_LOG(INFO, "ziti requires MFA %s/%s", event->auth.type, event->auth.detail);
+                mfa_auth_event_handler(ztx);
+            } else {
+                ZITI_LOG(ERROR, "unhandled auth event %d/%s", event->auth.action, event->auth.type);
+            }
+            break;
 
         default:
             break;
