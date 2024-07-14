@@ -1,4 +1,4 @@
-// Copyright (c) 2023. NetFoundry Inc.
+// Copyright (c) 2023-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ static void ha_auth_free(ziti_auth_method_t *self);
 static int ha_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
 static int ha_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
 static int ha_auth_stop(ziti_auth_method_t *self);
+static int ha_auth_refresh(ziti_auth_method_t *self);
 
 struct ha_auth_s {
     ziti_auth_method_t api;
@@ -45,6 +46,7 @@ ziti_auth_method_t *new_ha_auth(uv_loop_t *l, model_list* urls, tls_context *tls
         .kind = HA,
         .start = ha_auth_start,
         .stop = ha_auth_stop,
+        .force_refresh = ha_auth_refresh,
         .submit_mfa = ha_auth_mfa,
         .free = ha_auth_free,
     };
@@ -115,4 +117,10 @@ static int ha_auth_stop(ziti_auth_method_t *self) {
     auth->cb = NULL;
     auth->cb_ctx = NULL;
     return 0;
+}
+
+static int ha_auth_refresh(ziti_auth_method_t *self) {
+    struct ha_auth_s *auth = HA_AUTH(self);
+
+    return oidc_client_refresh(&auth->oidc);
 }
