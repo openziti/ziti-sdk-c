@@ -9,9 +9,13 @@ execute_process(COMMAND ${EXPECTOR} -v)
 
 find_program(GOLANG_EXE NAMES go REQUIRED)
 
-set(test_client_json ${CMAKE_CURRENT_BINARY_DIR}/test-client.json)
-set(test_server_json ${CMAKE_CURRENT_BINARY_DIR}/test-server.json)
+set(qs_home ${CMAKE_CURRENT_BINARY_DIR}/qs-home)
+set(test_client_jwt ${qs_home}/test-client.jwt)
+set(test_server_jwt ${qs_home}/test-server.jwt)
+set(test_client_json ${qs_home}/test-client.json)
+set(test_server_json ${qs_home}/test-server.json)
 set(test_service test-service)
+set(ZITI_CLI ${CMAKE_CURRENT_BINARY_DIR}/ziti)
 
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
         ${CMAKE_CURRENT_BINARY_DIR}/include/test-data.h
@@ -34,16 +38,33 @@ else ()
     set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
 endif ()
 
-set(ZITI_CLI_VER "v0.32.2" CACHE STRING "ziti version for integration tests")
+set(ZITI_CLI_VER "v1.1.5" CACHE STRING "ziti version for integration tests")
 add_custom_target(ziti-cli ALL
         COMMAND ${CMAKE_COMMAND} -E env GOBIN=${CMAKE_CURRENT_BINARY_DIR}
         ${GOLANG_EXE} install github.com/openziti/ziti/ziti@${ZITI_CLI_VER}
-        BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/ziti
+        BYPRODUCTS ${ZITI_CLI}
 )
 
-set(ZITI_CLI ${CMAKE_CURRENT_BINARY_DIR}/ziti)
+add_custom_target(cleanup-qs
+        COMMAND cat -n /etc/hosts
+        COMMAND cat -n ${qs_home}/ctrl.yaml
+        COMMAND ${CMAKE_COMMAND} -E remove_directory "${qs_home}"
+)
 
-set(qs_home ${CMAKE_CURRENT_BINARY_DIR}/qs-home)
+add_custom_target(run-qs
+        DEPENDS ziti-cli cleanup-qs
+        COMMAND ${CMAKE_COMMAND} -E env
+        ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>
+        ${EXPECTOR} ${CMAKE_CURRENT_SOURCE_DIR}/bootstrap.exp
+        COMMAND ${ZITI_CLI} edge quickstart --home ${qs_home}
+        USES_TERMINAL
+        VERBATIM
+)
+
+set_target_properties(run-qs PROPERTIES
+        ADDITIONAL_CLEAN_FILES ${qs_home}
+)
+
 add_test(NAME quickstart-bootstrap
         COMMAND ${EXPECTOR} ${CMAKE_CURRENT_SOURCE_DIR}/bootstrap.exp
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -66,8 +87,10 @@ set_tests_properties(quickstart-test PROPERTIES
 )
 
 add_test(NAME quickstart-cleanup
-        COMMAND rm -rf ${qs_home}
+        COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target cleanup-qs
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
-set_tests_properties(quickstart-cleanup PROPERTIES FIXTURES_CLEANUP QS)
+set_tests_properties(quickstart-cleanup PROPERTIES
+        FIXTURES_CLEANUP QS
+)
 
