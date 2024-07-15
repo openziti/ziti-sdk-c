@@ -648,7 +648,7 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
         f = uv_fs_open(NULL, &fs_req, path, 0, O_RDONLY, NULL);
     }
 
-    if (f == -1) {
+    if (f < 0) {
         ZITI_LOG(ERROR, "%s - %s", path, strerror(errno));
         return rc;
     }
