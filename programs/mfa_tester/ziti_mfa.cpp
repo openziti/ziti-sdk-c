@@ -17,7 +17,6 @@
 #include <CLI/CLI.hpp>
 
 #include <cassert>
-#include <format>
 #include <iostream>
 #include <mutex>
 
@@ -189,7 +188,7 @@ static void test_mfa() {
             }
             case ZitiAuthEvent: {
                 const ziti_auth_event &e = ev->auth;
-                auto prompt = std::format("enter {}/{} code", e.type, e.detail);
+                auto prompt = std::string("enter ") + e.type + '/' + e.detail + " code";
                 ztx_prompt(ztx, prompt, [](ziti_context z, const char *code) {
                     ziti_mfa_auth(z, code, [](ziti_context z, int status, void *) {
                         if (status == ZITI_OK) {
@@ -229,7 +228,7 @@ static void enroll_mfa() {
             }
             case ZitiAuthEvent: {
                 const ziti_auth_event &e = ev->auth;
-                std::cout << std::format("details: {}/{}", e.type, e.detail) << std::endl;
+                std::cout << "details: " << e.type << '/' << e.detail << std::endl;
                 ziti_shutdown(ztx);
                 break;
             }
@@ -262,7 +261,7 @@ static void delete_mfa() {
             case ZitiAuthEvent: {
                 const ziti_auth_event &e = ev->auth;
                 if (e.action == ziti_auth_prompt_totp) {
-                    auto prompt = std::format("enter {}/{} code", e.type, e.detail);
+                    auto prompt = std::string("enter ") + e.type + '/' + e.detail + " code";
                     ztx_prompt(ztx, prompt, [](ziti_context z, const char *code) {
                         ziti_mfa_auth(z, code, [](ziti_context z, int status, void *) {
                             if (status == ZITI_OK) {
