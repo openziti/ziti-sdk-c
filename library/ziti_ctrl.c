@@ -253,44 +253,52 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
 static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_error *err, void *ctx) {
     ziti_controller *ctrl = ctx;
     ziti_controller_detail *d;
+    bool change = false;
+    model_map new_eps = {0};
+
     if (err) {
         CTRL_LOG(WARN, "failed to get list of HA controllers: %s", err->message);
         return;
     }
 
-    bool change = false;
-    model_map old = ctrl->endpoints;
-    ctrl->endpoints = (model_map){0};
     FOR (d, arr) {
         api_address *addr = NULL;
         MODEL_LIST_FOREACH(addr, d->apis.edge) {
             CTRL_LOG(VERBOSE, "%s/%s", addr->version, addr->url);
-            if (addr && strcmp(addr->version, "v1") == 0) {
+            if (strcmp(addr->version, "v1") == 0) {
                 break;
             }
             addr = NULL;
         }
 
         if (addr != NULL) {
-            model_map_set(&ctrl->endpoints, addr->url, d);
+            model_map_set(&new_eps, addr->url, d);
 
-            ziti_controller_detail *old_detail = model_map_remove(&old, addr->url);
+            ziti_controller_detail *old_detail = model_map_get(&ctrl->endpoints, addr->url);
             if (old_detail == NULL) { // new controller discovered
                 change = true;
             } else {
                 change = change || (old_detail->is_online != d->is_online);
-                free_ziti_controller_detail_ptr(old_detail);
             }
+        } else {
+            free_ziti_controller_detail_ptr(d);
         }
     }
-    // if some old details are still in the old map, controller(s) was(ere) removed
-    change = change || (model_map_size(&old) > 0);
-    model_map_clear(&old, (void (*)(void *)) free_ziti_controller_detail_ptr);
-    free(arr);
 
-    if (change && ctrl->is_ha) {
-        ctrl->change_cb(ctrl->cb_ctx, &ctrl->endpoints);
+    if (model_map_size(&new_eps) == 0) {
+        CTRL_LOG(WARN, "empty new controller list");
+    } else if (change || (model_map_size(&new_eps) != model_map_size(&ctrl->endpoints))) {
+        model_map old = ctrl->endpoints;
+        ctrl->endpoints = new_eps;
+        model_map_clear(&old, (void (*)(void *)) free_ziti_controller_detail_ptr);
+        if (ctrl->is_ha) {
+            ctrl->change_cb(ctrl->cb_ctx, &ctrl->endpoints);
+        }
+    } else {
+        CTRL_LOG(VERBOSE, "no ctrl list change");
+        model_map_clear(&new_eps, (void (*)(void *)) free_ziti_controller_detail_ptr);
     }
+    free(arr);
 }
 
 static void internal_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *resp) {
@@ -484,6 +492,11 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
 
 // pick next random endpoint
 static const char* ctrl_next_ep(ziti_controller *ctrl, const char *current) {
+    if(model_map_size(&ctrl->endpoints) == 0) {
+        CTRL_LOG(WARN, "empty endpoints map");
+        return NULL;
+    }
+    
     ziti_controller_detail *curr = current ?
             model_map_get(&ctrl->endpoints, current) : NULL;
 
@@ -538,7 +551,8 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
         model_map_set(&ctrl->endpoints, ep, NULL);
     }
 
-    ctrl->url = strdup(ctrl_next_ep(ctrl, NULL));
+    const char *initial_ep = ctrl_next_ep(ctrl, NULL);
+    ctrl->url = strdup(initial_ep);
     CTRL_LOG(INFO, "using %s", ctrl->url);
     if (tlsuv_http_init(loop, ctrl->client, ep) != 0) {
         return ZITI_INVALID_CONFIG;
