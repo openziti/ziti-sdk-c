@@ -99,6 +99,7 @@ uv_loop_t *global_loop;
 static int process_args(int argc, char *argv[]);
 
 void mfa_auth_event_handler(ziti_context ztx);
+void ext_auth_event_handler(ziti_context ztx);
 
 int main(int argc, char *argv[]) {
     process_args(argc, argv);
@@ -512,6 +513,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             if (event->auth.action == ziti_auth_prompt_totp) {
                 ZITI_LOG(INFO, "ziti requires MFA %s/%s", event->auth.type, event->auth.detail);
                 mfa_auth_event_handler(ztx);
+            } else if (event->auth.action == ziti_auth_login_external) {
+                ext_auth_event_handler(ztx);
             } else {
                 ZITI_LOG(ERROR, "unhandled auth event %d/%s", event->auth.action, event->auth.type);
             }
@@ -598,6 +601,31 @@ void mfa_auth_event_handler(ziti_context ztx) {
     uv_queue_work(global_loop, &mfa_wr->w, mfa_worker, mfa_worker_done);
 }
 
+static void ext_auth_prompt(uv_work_t *wr) {
+    printf("continue with external signer[Y/n]? ");
+    fflush(stdout);
+
+    char resp[1];
+    prompt_stdin(resp, 1);
+}
+
+static void ext_url_launch(ziti_context ztx, const char *url) {
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), "/usr/bin/open '%s'", url);
+    system(cmd);
+}
+static void ext_auth_done(uv_work_t *wr, int status) {
+    ziti_context ztx = wr->data;
+    ziti_ext_auth(ztx, ext_url_launch);
+    free(wr);
+}
+
+void ext_auth_event_handler(ziti_context ztx) {
+    NEWP(ext_wr, uv_work_t);
+    ext_wr->data = ztx;
+    uv_queue_work(global_loop, ext_wr, ext_auth_prompt, ext_auth_done);
+}
+
 static struct proxy_app_ctx app_ctx = {0};
 
 static void stopper_alloc(uv_handle_t *h, size_t i, uv_buf_t *pBuf) {
@@ -627,8 +655,8 @@ void run(int argc, char **argv) {
     struct sockaddr_in stopper_addr;
     uv_udp_init(loop, &stopper);
     uv_ip4_addr("127.0.0.1", 12345, &stopper_addr);
-    uv_udp_bind(&stopper, (const struct sockaddr *) &stopper_addr, 0);
-    uv_udp_recv_start(&stopper, stopper_alloc, stopper_recv);
+    int rc = uv_udp_bind(&stopper, (const struct sockaddr *) &stopper_addr, 0);
+    rc = uv_udp_recv_start(&stopper, stopper_alloc, stopper_recv);
     uv_unref((uv_handle_t *) &stopper);
 
     for (int i = 0; i < argc; i++) {

@@ -48,7 +48,8 @@ XX(id, string, none, id, __VA_ARGS__) \
 XX(name, string, none, name, __VA_ARGS__) \
 XX(enabled, bool, none, enabled, __VA_ARGS__) \
 XX(provider_url, string, none, externalAuthUrl, __VA_ARGS__) \
-XX(client_id, string, none, audience, __VA_ARGS__)           \
+XX(client_id, string, none, clientId, __VA_ARGS__)           \
+XX(audience, string, none, audience, __VA_ARGS__)           \
 XX(claim, string, none, claimProperty, __VA_ARGS__)
 
 #define ZITI_ID_CFG_MODEL(XX, ...) \

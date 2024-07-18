@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2024. NetFoundry Inc.
+// Copyright (c) 2023. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ static int ha_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
 static int ha_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
 static int ha_auth_stop(ziti_auth_method_t *self);
 static int ha_auth_refresh(ziti_auth_method_t *self);
+static int ha_ext_jwt(ziti_auth_method_t *self, const char *token);
 
 struct ha_auth_s {
     ziti_auth_method_t api;
@@ -36,6 +37,7 @@ struct ha_auth_s {
 
     model_list urls;
     oidc_client_t oidc;
+    ziti_jwt_signer config;
 };
 
 
@@ -49,14 +51,37 @@ ziti_auth_method_t *new_ha_auth(uv_loop_t *l, model_list* urls, tls_context *tls
         .force_refresh = ha_auth_refresh,
         .submit_mfa = ha_auth_mfa,
         .free = ha_auth_free,
+        .set_ext_jwt = ha_ext_jwt,
     };
 
-    const char *u;
-    MODEL_LIST_FOREACH(u, *urls) {
-        model_list_append(&auth->urls, strdup(u));
+    const char *s;
+    MODEL_LIST_FOREACH(s, *urls) {
+        struct tlsuv_url_s u;
+        tlsuv_parse_url(&u, s);
+        char *url;
+        const char *end = NULL;
+        if (u.path) {
+            end = u.path;
+        } else if (u.query) {
+            end = u.query - 1;
+        }
+        if (end == NULL) {
+            url = strdup(s);
+        } else {
+            url = calloc(1, end - s + 1);
+            memcpy(url, s, end - s);
+        }
+        model_list_append(&auth->urls, url);
     }
+    auth->config = (ziti_jwt_signer){
+        .client_id = "native",
+        .name = "ziti-internal-oidc",
+        .enabled = true,
+        .provider_url = (char*) model_list_head(&auth->urls),
+    };
 
-    oidc_client_init(l, &auth->oidc, (char*)model_list_head(&auth->urls), tls);
+
+    oidc_client_init(l, &auth->oidc, &auth->config, tls);
     return &auth->api;
 }
 
@@ -73,13 +98,17 @@ static void ha_auth_free(ziti_auth_method_t *self) {
 static void token_cb(oidc_client_t *oidc, int status, const char *token) {
     struct ha_auth_s *auth = HA_AUTH_FROM_OIDC(oidc);
     if (auth->cb) {
-        if (status == 0) {
+        if (status == OIDC_TOKEN_OK) {
             auth->cb(auth->cb_ctx, ZitiAuthStateFullyAuthenticated, (void*)token);
+        } else if (status == OIDC_TOPT_NEEDED) {
+            auth->cb(auth->cb_ctx, ZitiAuthStatePartiallyAuthenticated,
+                     (void*)&ziti_mfa);
         } else if (status == UV_ECONNREFUSED) {
             // rotate to next url
             char *url = model_list_pop(&auth->urls);
             model_list_append(&auth->urls, url);
-            oidc_client_set_url(&auth->oidc, model_list_head(&auth->urls));
+            auth->config.provider_url = model_list_head(&auth->urls);
+            oidc_client_set_cfg(&auth->oidc, &auth->config);
         } else {
             char err[128];
             snprintf(err, sizeof(err), "failed to auth: %d", status);
@@ -97,6 +126,11 @@ static void config_cb(oidc_client_t *oidc, int status, const char *err) {
     assert(status == 0);
 }
 
+static int ha_ext_jwt(ziti_auth_method_t *self, const char *token) {
+    // TODO
+    return 0;
+}
+
 static int ha_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx) {
     struct ha_auth_s *auth = HA_AUTH(self);
     auth->cb = cb;
@@ -107,7 +141,7 @@ static int ha_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx) 
 
 static int ha_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb) {
     struct ha_auth_s *auth = HA_AUTH(self);
-
+    oidc_client_mfa(&auth->oidc, code);
     ZITI_LOG(WARN, "not implemented");
     return ZITI_WTF;
 }

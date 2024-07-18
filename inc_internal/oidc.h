@@ -17,8 +17,6 @@
 #ifndef ZITI_SDK_OIDC_H
 #define ZITI_SDK_OIDC_H
 
-#include <ziti/model_support.h>
-
 #include <uv.h>
 #include "tlsuv/http.h"
 
@@ -26,11 +24,14 @@
 extern "C" {
 #endif
 
+#define OIDC_TOKEN_OK (0)
+#define OIDC_TOPT_NEEDED (1)
+
 typedef struct oidc_client_s oidc_client_t;
 typedef void (*oidc_config_cb)(oidc_client_t *, int, const char *);
 typedef void (*oidc_token_cb)(oidc_client_t *, int, const char *access_token);
 typedef void (*oidc_close_cb)(oidc_client_t *);
-
+typedef void (*oidc_ext_link_cb)(oidc_client_t *, const char *link, void *ctx);
 
 typedef enum {
     oidc_native,
@@ -41,22 +42,29 @@ struct oidc_client_s {
     void *data;
     tlsuv_http_t http;
 
-    const char *client_id;
+    const struct ziti_jwt_signer_s *signer_cfg;
+
     oidc_auth_mode mode;
     oidc_config_cb config_cb;
     oidc_token_cb token_cb;
     oidc_close_cb close_cb;
 
+    oidc_ext_link_cb link_cb;
+    void *link_ctx;
+
     void *config;
     void *tokens;
     uv_timer_t *timer;
+
+    struct auth_req *request;
 };
 
 // init
-int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt, const char *url, tls_context *tls);
-int oidc_client_set_url(oidc_client_t *clt, const char* url);
+int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
+                     const struct ziti_jwt_signer_s *cfg, tls_context *tls);
+int oidc_client_set_cfg(oidc_client_t *clt, const struct ziti_jwt_signer_s *cfg);
 
-int oidc_client_set_id(oidc_client_t *clt, const char *client_id);
+void oidc_client_set_link_cb(oidc_client_t *clt, oidc_ext_link_cb, void *ctx);
 
 // configure client
 int oidc_client_configure(oidc_client_t *clt, oidc_config_cb);
@@ -64,6 +72,8 @@ int oidc_client_configure(oidc_client_t *clt, oidc_config_cb);
 // acquire access token and start refresh cycle
 // oidc_token_cb will be called on first auth and on every refresh
 int oidc_client_start(oidc_client_t *clt, oidc_token_cb);
+
+int oidc_client_mfa(oidc_client_t *clt, const char *code);
 
 // force token refresh ahead of normal cycle, error if called prior to oidc_client_start
 int oidc_client_refresh(oidc_client_t *clt);

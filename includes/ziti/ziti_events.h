@@ -16,6 +16,8 @@
 #ifndef ZITI_SDK_ZITI_EVENTS_H
 #define ZITI_SDK_ZITI_EVENTS_H
 
+#include "ziti_model.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
