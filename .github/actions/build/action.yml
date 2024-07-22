@@ -20,6 +20,16 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: macOS tools
+      if: runner.os == 'macOS'
+      shell: bash
+      run: brew install autoconf autoconf-archive automake pkg-config
+
+    - name: windows tools
+      if: runner.os == 'Windows'
+      shell: bash
+      run: choco install pkgconfiglite
+
     - name: simple build
       run: echo "target = ${{ inputs.target }}"
       shell: bash
@@ -29,13 +39,11 @@ runs:
         go-version: '1.22.x'
         cache-dependency-path: "**/*.sum"
 
-    - uses: lukka/get-cmake@v3.27.6
+    - uses: lukka/get-cmake@v3.30.1
 
-    - uses: lukka/run-vcpkg@v10
-      with:
-        vcpkgGitCommitId: 'c8696863d371ab7f46e213d8f5ca923c4aef2a00'
+    - uses: lukka/run-vcpkg@v11
 
-    - uses: lukka/run-cmake@v10.6
+    - uses: lukka/run-cmake@v10
       name: Configure CMake
       with:
         configurePreset: ci-${{ inputs.target }}
