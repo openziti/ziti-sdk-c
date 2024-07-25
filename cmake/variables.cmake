@@ -21,10 +21,10 @@ set(warning_guard "")
 if (NOT PROJECT_IS_TOP_LEVEL)
     option(
             ziti_INCLUDES_WITH_SYSTEM
-            "Use SYSTEM modifier for tlsuv's includes, disabling warnings"
+            "Use SYSTEM modifier for ziti's includes, disabling warnings"
             ON
     )
-    mark_as_advanced(tlsuv_INCLUDES_WITH_SYSTEM)
+    mark_as_advanced(ziti_INCLUDES_WITH_SYSTEM)
     if (ziti_INCLUDES_WITH_SYSTEM)
         set(warning_guard SYSTEM)
     endif ()
