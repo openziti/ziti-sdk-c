@@ -1,6 +1,18 @@
 
 add_executable(ziti-prox-c proxy.c)
 
+FetchContent_Declare(subcommand
+        GIT_REPOSITORY https://github.com/openziti/subcommands.c.git
+        GIT_TAG main
+)
+FetchContent_GetProperties(subcommand)
+if (NOT subcommand_POPULATED)
+    FetchContent_Populate(subcommand)
+endif ()
+add_library(subcommand INTERFACE)
+target_include_directories(subcommand INTERFACE ${subcommand_SOURCE_DIR})
+
+
 if(WIN32)
     target_include_directories(ziti-prox-c PRIVATE win32/include)
     target_sources(ziti-prox-c PRIVATE win32/src/getopt.c)
