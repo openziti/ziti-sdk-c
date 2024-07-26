@@ -100,6 +100,7 @@ int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_c
     ecfg->own_cert = opts->enroll_cert;
     ecfg->private_key = opts->enroll_key;
     ecfg->name = opts->enroll_name;
+    ecfg->use_keychain = opts->use_keychain;
 
     if (opts->jwt) {
         TRY(ziti, load_jwt(opts->jwt, ecfg, &ecfg->zejh, &ecfg->zej));
@@ -175,11 +176,27 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
         size_t len;
         if (enroll_req->ecfg->private_key == NULL) {
             ziti_err = ZITI_KEY_GENERATION_FAILED;
-            TRY(TLS, tls->generate_key(&enroll_req->ecfg->pk));
-            TRY(TLS,
-                enroll_req->ecfg->pk->to_pem(enroll_req->ecfg->pk, (char **) &enroll_req->ecfg->private_key, &len));
-        }
-        else {
+            if (enroll_req->ecfg->use_keychain && tls->generate_keychain_key) {
+                tlsuv_private_key_t pk = NULL;
+                struct tlsuv_url_s url;
+                tlsuv_parse_url(&url, enroll_req->ecfg->zej->controller);
+
+                string_buf_t *keyname_buf = new_string_buf();
+                string_buf_fmt(keyname_buf, "keychain:%s@%.*s",
+                               enroll_req->ecfg->zej->subject,
+                               (int)url.hostname_len, url.hostname);
+                char *keyname_ref = string_buf_to_string(keyname_buf, NULL);
+                delete_string_buf(keyname_buf);
+
+                char *keyname = strchr(keyname_ref, ':') + 1;
+                enroll_req->ecfg->private_key = keyname_ref;
+                TRY(TLS, tls->generate_keychain_key(&pk, keyname));
+                enroll_req->ecfg->pk = pk;
+            } else {
+                TRY(TLS, tls->generate_key(&enroll_req->ecfg->pk));
+                TRY(TLS, enroll_req->ecfg->pk->to_pem(
+                        enroll_req->ecfg->pk, (char **) &enroll_req->ecfg->private_key, &len));
+            }
         }
 
         ziti_err = ZITI_CSR_GENERATION_FAILED;
@@ -190,9 +207,8 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
                                                "DC", enroll_req->ecfg->zej->controller,
                                                "CN", enroll_req->ecfg->zej->subject,
                                                NULL));
-    }
-    else if (enroll_req->ecfg->zej->method == ziti_enrollment_methods.ottca ||
-             enroll_req->ecfg->zej->method == ziti_enrollment_methods.ca) {
+    } else if (enroll_req->ecfg->zej->method == ziti_enrollment_methods.ottca ||
+               enroll_req->ecfg->zej->method == ziti_enrollment_methods.ca) {
         ziti_err = ZITI_KEY_LOAD_FAILED;
         tlsuv_certificate_t cert;
         TRY(TLS, tls->load_cert(&cert, enroll_req->ecfg->own_cert, strlen(enroll_req->ecfg->own_cert)));

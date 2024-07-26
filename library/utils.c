@@ -572,6 +572,16 @@ int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *ke
         return 0;
     }
 
+    if (strncmp(keystr, "keychain:", strlen("keychain:")) == 0) {
+        const char *keyname = strchr(keystr, ':') + 1;
+        rc = tls->load_keychain_key(key, keyname);
+        if (rc != 0) {
+            ZITI_LOG(WARN, "failed to load keychain key[%s]", keyname);
+            return ZITI_INVALID_CONFIG;
+        }
+        return 0;
+    }
+
     if (tlsuv_parse_url(&uri, keystr) == 0) {
         if (uri.scheme_len == strlen("file") && strncmp(uri.scheme, "file", uri.scheme_len) == 0) {
             rc = tls->load_key(key, uri.path, uri.path_len);
