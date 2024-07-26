@@ -72,9 +72,5 @@ int ziti_load_config(ziti_config *cfg, const char* cfgstr) {
         cfg->controller_url = NULL;
     }
 
-    if (cfg->id.key == NULL) {
-        return ZITI_INVALID_CONFIG;
-    }
-
     return ZITI_OK;
 }

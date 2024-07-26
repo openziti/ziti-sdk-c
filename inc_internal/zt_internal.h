@@ -266,7 +266,8 @@ struct ziti_ctx {
     void *mfa_ctx;
 
     struct oidc_client_s *ext_auth;
-    void (*ext_launch_cb)(ziti_context, const char*);
+    void (*ext_launch_cb)(ziti_context, const char*, void*);
+    void *ext_launch_ctx;
 
     // HA access_token(JWT) or legacy ziti_api_session.token
     char *session_token;

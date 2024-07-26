@@ -957,7 +957,9 @@ extern void ziti_mfa_new_recovery_codes(ziti_context ztx, char *code, ziti_mfa_r
 ZITI_FUNC
 extern void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb auth_cb, void *ctx);
 
-extern int ziti_ext_auth(ziti_context ztx, void (*ziti_ext_launch)(ziti_context, const char* url));
+extern int ziti_ext_auth(ziti_context ztx,
+                         void (*ziti_ext_launch)(ziti_context, const char* url, void*),
+                         void *ctx);
 
 extern int ziti_ext_auth_token(ziti_context ztx, const char *token);
 

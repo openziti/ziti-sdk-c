@@ -49,8 +49,10 @@ static void internal_link_cb(oidc_client_t *oidc, const char *url, void *ctx) {
     ziti_context ztx = oidc->data;
     ZITI_LOG(INFO, "received link request: %s", url);
     if (ztx->ext_launch_cb) {
-        ztx->ext_launch_cb(ztx, url);
+        ztx->ext_launch_cb(ztx, url, ztx->ext_launch_ctx);
     }
+    ztx->ext_launch_cb = NULL;
+    ztx->ext_launch_ctx = NULL;
 }
 
 static void ext_token_cb(oidc_client_t *oidc, int status, const char *token) {
@@ -60,12 +62,24 @@ static void ext_token_cb(oidc_client_t *oidc, int status, const char *token) {
     ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
 }
 
-extern int ziti_ext_auth(ziti_context ztx, void (*ziti_ext_launch)(ziti_context, const char* url)) {
+extern int ziti_ext_auth(ziti_context ztx,
+                         void (*ziti_ext_launch)(ziti_context, const char*, void *), void *ctx) {
     if (ztx->ext_auth == NULL) {
         return ZITI_INVALID_STATE;
     }
 
+    switch (ztx->auth_state) {
+        case ZitiAuthStateAuthStarted:
+        case ZitiAuthStatePartiallyAuthenticated:
+        case ZitiAuthStateFullyAuthenticated:
+            return ZITI_INVALID_STATE;
+        case ZitiAuthStateUnauthenticated:
+        case ZitiAuthImpossibleToAuthenticate:
+            break;
+    }
+
     ztx->ext_launch_cb = ziti_ext_launch;
+    ztx->ext_launch_ctx = ctx;
     oidc_client_set_link_cb(ztx->ext_auth, internal_link_cb, NULL);
     oidc_client_start(ztx->ext_auth, ext_token_cb);
     return ZITI_OK;

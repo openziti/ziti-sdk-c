@@ -275,7 +275,7 @@ static void token_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
     } else {
         dump_resp(http_resp);
         http_resp->body_cb = dump_cb;
-        // failed_auth_req(req, http_resp->status);
+        failed_auth_req(req, http_resp->status);
     }
 }
 
