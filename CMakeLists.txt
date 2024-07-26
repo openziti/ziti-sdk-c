@@ -10,17 +10,14 @@ project(ziti-sdk
 )
 
 set(PROJECT_VERSION ${GIT_VERSION})
-include(cmake/project-is-top-level.cmake)
 include(cmake/variables.cmake)
 
 set(tlsuv_DIR "" CACHE FILEPATH "developer option: use local tlsuv checkout")
 
-option(HAVE_LIBSODIUM "use and link installed shared libsodium library" OFF)
-
 message("project version: ${PROJECT_VERSION}")
 message("git info:")
-message("   branch : ${GIT_BRANCH}")
-message("     hash : ${GIT_COMMIT_HASH}")
+message(" branch : ${GIT_BRANCH}")
+message("   hash : ${GIT_COMMIT_HASH}")
 
 message("")
 message("using ${CMAKE_GENERATOR}")
@@ -105,7 +102,7 @@ if (ziti_DEVELOPER_MODE AND NOT CMAKE_CROSSCOMPILING)
     add_subdirectory(tests)
 endif ()
 
-if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/local.cmake")
+if (ziti-sdk_IS_TOP_LEVEL AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/local.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/local.cmake")
 endif ()
 
