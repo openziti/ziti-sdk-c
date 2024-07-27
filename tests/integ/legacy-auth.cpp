@@ -133,9 +133,10 @@ TEST_CASE("invalid_controller", "[controller][GH-44]") {
 TEST_CASE("controller_test","[integ]") {
     const char *conf = TEST_CLIENT;
 
-    ziti_config config;
-    tls_context *tls;
-    ziti_controller ctrl;
+    ziti_config config{};
+    tls_credentials creds{};
+    tls_context *tls = nullptr;
+    ziti_controller ctrl{};
     uv_loop_t *loop = uv_default_loop();
 
     resp_capture<ziti_version> version;
@@ -145,7 +146,7 @@ TEST_CASE("controller_test","[integ]") {
 
     PREP(ziti);
     TRY(ziti, ziti_load_config(&config, conf));
-    TRY(ziti, load_tls(&config, &tls));
+    TRY(ziti, load_tls(&config, &tls, &creds));
     TRY(ziti, ziti_ctrl_init(loop, &ctrl, &config.controllers, tls));
 
     WHEN("get version and login") {

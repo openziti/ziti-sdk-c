@@ -35,8 +35,15 @@ TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
     tls->load_key(&key, cfg.id.key, strlen(cfg.id.key));
     tls->set_own_cert(tls, key, cert);
 
+    const ziti_jwt_signer ha_oidc = {
+            .name = "ziti-internal-oidc",
+            .enabled = true,
+            .provider_url = (char*) model_list_head(&cfg.controllers),
+            .client_id = "native",
+    };
+
     oidc_client_t oidcClient;
-    oidc_client_init(l, &oidcClient, (const char*)model_list_head(&cfg.controllers), tls);
+    oidc_client_init(l, &oidcClient, &ha_oidc, tls);
     struct oidc_cfg_result {
         bool called;
         int status;
