@@ -609,14 +609,14 @@ static void ext_auth_prompt(uv_work_t *wr) {
     prompt_stdin(resp, 1);
 }
 
-static void ext_url_launch(ziti_context ztx, const char *url) {
+static void ext_url_launch(ziti_context ztx, const char *url, void *ctx) {
     char cmd[1024];
     snprintf(cmd, sizeof(cmd), "/usr/bin/open '%s'", url);
     system(cmd);
 }
 static void ext_auth_done(uv_work_t *wr, int status) {
     ziti_context ztx = wr->data;
-    ziti_ext_auth(ztx, ext_url_launch);
+    ziti_ext_auth(ztx, ext_url_launch, NULL);
     free(wr);
 }
 
