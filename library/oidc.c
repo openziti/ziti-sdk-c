@@ -459,7 +459,7 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     }
 
     const char *path = get_endpoint_path(clt, "authorization_endpoint");
-    tlsuv_http_pair query[] = (tlsuv_http_pair[]) {
+    tlsuv_http_pair query[] = {
             {"client_id",             clt->signer_cfg->client_id},
             {"scope",                 scope},
             {"response_type",         "code"},
