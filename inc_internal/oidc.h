@@ -25,7 +25,8 @@ extern "C" {
 #endif
 
 #define OIDC_TOKEN_OK (0)
-#define OIDC_TOPT_NEEDED (1)
+#define OIDC_TOTP_NEEDED (1)
+#define OIDC_TOTP_FAILED (2)
 
 typedef struct oidc_client_s oidc_client_t;
 typedef void (*oidc_config_cb)(oidc_client_t *, int, const char *);

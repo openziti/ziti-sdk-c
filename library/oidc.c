@@ -107,7 +107,7 @@ static void dump_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
     } else {
         oidc_req *req = r->data;
         fprintf(stderr, "status = %zd\n", len);
-        complete_oidc_req(req, (int)len, NULL);
+      //  complete_oidc_req(req, (int)len, NULL);
     }
 }
 static void dump_resp(tlsuv_http_resp_t *resp) {
@@ -319,7 +319,7 @@ static void login_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
         if (totp && tolower(totp[0]) == 't') {
             req->totp = true;
             req->clt->request = req;
-            req->clt->token_cb(req->clt, OIDC_TOPT_NEEDED, NULL);
+            req->clt->token_cb(req->clt, OIDC_TOTP_NEEDED, NULL);
         }
     } else if (http_resp->code / 100 == 3) {
         const char *redirect = tlsuv_http_resp_header(http_resp, "Location");
@@ -492,18 +492,34 @@ static void http_close_cb(tlsuv_http_t *h) {
         cb(clt);
     }
 }
-static void on_topt(tlsuv_http_resp_t *resp, void *ctx) {
-    dump_resp(resp);
-    resp->body_cb =  dump_cb;
+
+static void on_totp(tlsuv_http_resp_t *resp, void *ctx) {
+    auth_req *req = ctx;
+    ZITI_LOG(VERBOSE, "%d:%s", resp->code, resp->status);
+
+    int code = resp->code / 100;
+    if (code == 3) {
+        req->totp = false;
+        const char *redirect = tlsuv_http_resp_header(resp, "Location");
+        struct tlsuv_url_s uri;
+        tlsuv_parse_url(&uri, redirect);
+        tlsuv_http_req(&req->clt->http, "GET", uri.path, code_cb, req);
+    } else if (code == 4) {
+        ZITI_LOG(WARN, "totp failed: %s", resp->status);
+        req->clt->token_cb(req->clt, OIDC_TOTP_FAILED, NULL);
+    } else {
+        ZITI_LOG(WARN, "totp request failed: %s", resp->status);
+        req->clt->token_cb(req->clt, OIDC_TOTP_FAILED, NULL);
+    }
 }
 
 int oidc_client_mfa(oidc_client_t *clt, const char *code) {
     struct auth_req *req = clt->request;
     assert(req);
 
-    tlsuv_http_req_t *r = tlsuv_http_req(&clt->http, "POST", "/oidc/login/totp", on_topt, req);
+    tlsuv_http_req_t *r = tlsuv_http_req(&clt->http, "POST", "/oidc/login/totp", on_totp, req);
     tlsuv_http_req_form(r, 2, (tlsuv_http_pair[]){
-        {"id", "req->id"},
+        {"id", req->id},
         {"code", code},
     });
     return 0;

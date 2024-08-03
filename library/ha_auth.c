@@ -38,6 +38,7 @@ struct ha_auth_s {
     model_list urls;
     oidc_client_t oidc;
     ziti_jwt_signer config;
+    auth_mfa_cb mfa_cb;
 };
 
 
@@ -100,9 +101,13 @@ static void token_cb(oidc_client_t *oidc, int status, const char *token) {
     if (auth->cb) {
         if (status == OIDC_TOKEN_OK) {
             auth->cb(auth->cb_ctx, ZitiAuthStateFullyAuthenticated, (void*)token);
-        } else if (status == OIDC_TOPT_NEEDED) {
+        } else if (status == OIDC_TOTP_NEEDED) {
             auth->cb(auth->cb_ctx, ZitiAuthStatePartiallyAuthenticated,
-                     (void*)&ziti_mfa);
+                     (void *) &ziti_mfa);
+        } else if (status == OIDC_TOTP_FAILED) {
+            if (auth->mfa_cb) {
+                auth->mfa_cb(auth->cb_ctx, ZITI_MFA_INVALID_TOKEN);
+            }
         } else if (status == UV_ECONNREFUSED) {
             // rotate to next url
             char *url = model_list_pop(&auth->urls);
@@ -141,9 +146,9 @@ static int ha_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx) 
 
 static int ha_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb) {
     struct ha_auth_s *auth = HA_AUTH(self);
+    auth->mfa_cb = cb;
     oidc_client_mfa(&auth->oidc, code);
-    ZITI_LOG(WARN, "not implemented");
-    return ZITI_WTF;
+    return ZITI_OK;
 }
 
 static int ha_auth_stop(ziti_auth_method_t *self) {
