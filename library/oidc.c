@@ -43,6 +43,8 @@ static const char *get_endpoint_path(oidc_client_t *clt, const char *key);
 
 static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json);
 
+static void failed_auth_req(struct auth_req *req, const char *error);
+
 static void refresh_time_cb(uv_timer_t *t);
 
 struct oidc_req {
@@ -101,21 +103,24 @@ static void json_parse_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
     }
 }
 
-static void dump_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
+static void unhandled_body_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
     if (len > 0) {
-        ZITI_LOG(WARN, "unexpected data %.*s", (int)len, data);
+        ZITI_LOG(WARN, "%.*s", (int)len, data);
     } else {
         oidc_req *req = r->data;
-        fprintf(stderr, "status = %zd\n", len);
-      //  complete_oidc_req(req, (int)len, NULL);
+        ZITI_LOG(WARN, "status = %zd\n", len);
+        complete_oidc_req(req, UV_EINVAL, NULL);
     }
 }
-static void dump_resp(tlsuv_http_resp_t *resp) {
-    printf("%s %d %s\n", resp->http_version, resp->code, resp->status);
+
+static void handle_unexpected_resp(tlsuv_http_resp_t *resp) {
+    ZITI_LOG(WARN, "unexpected OIDC response");
+    ZITI_LOG(WARN, "%s %d %s", resp->http_version, resp->code, resp->status);
     tlsuv_http_hdr *h;
     LIST_FOREACH(h, &resp->headers, _next) {
-        printf("%s: %s\n", h->name, h->value);
+        ZITI_LOG(WARN, "%s: %s", h->name, h->value);
     }
+    resp->body_cb = unhandled_body_cb;
 }
 static void parse_cb(tlsuv_http_resp_t *resp, void *ctx) {
     tlsuv_http_req_t *http_req = resp->req;
@@ -137,7 +142,7 @@ static void parse_cb(tlsuv_http_resp_t *resp, void *ctx) {
     }
 
     ZITI_LOG(ERROR, "unexpected content-type: %s", ct);
-    resp->body_cb = dump_cb;
+    handle_unexpected_resp(resp);
 }
 
 int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
@@ -273,8 +278,7 @@ static void token_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
         req->json_parser = json_tokener_new();
         http_resp->body_cb = parse_token_cb;
     } else {
-        dump_resp(http_resp);
-        http_resp->body_cb = dump_cb;
+        handle_unexpected_resp(http_resp);
         failed_auth_req(req, http_resp->status);
     }
 }
@@ -309,9 +313,6 @@ static void code_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
     }
 }
 
-static void login_parse_cb(tlsuv_http_req_t *hr, char *data, ssize_t len) {
-    printf("%zd: %.*s\n", len, (int)len, data);
-}
 static void login_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
     auth_req *req = ctx;
     if (http_resp->code / 100 == 2) {
