@@ -237,6 +237,11 @@ struct ztx_work_s {
 
 typedef STAILQ_HEAD(work_q, ztx_work_s) ztx_work_q;
 
+struct tls_credentials {
+    tlsuv_private_key_t key;
+    tlsuv_certificate_t cert;
+};
+
 struct ziti_ctx {
     ziti_config config;
     ziti_options opts;
@@ -245,10 +250,10 @@ struct ziti_ctx {
 
     model_map ctrl_details;
 
-    tlsuv_private_key_t sessionKey;
-    char *sessionCsr;
-    tlsuv_certificate_t sessionCert;
     tls_context *tlsCtx;
+    struct tls_credentials id_creds;
+    struct tls_credentials session_creds;
+    char *sessionCsr;
 
     bool closing;
     bool enabled;
@@ -259,6 +264,10 @@ struct ziti_ctx {
     ziti_auth_state auth_state;
     ziti_mfa_cb mfa_cb;
     void *mfa_ctx;
+
+    struct oidc_client_s *ext_auth;
+    void (*ext_launch_cb)(ziti_context, const char*, void*);
+    void *ext_launch_ctx;
 
     // HA access_token(JWT) or legacy ziti_api_session.token
     char *session_token;
@@ -359,7 +368,7 @@ int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jw
 
 int load_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **zejh, ziti_enrollment_jwt **zej);
 
-int load_tls(ziti_config *cfg, tls_context **tls);
+int load_tls(ziti_config *cfg, tls_context **tls, struct tls_credentials *creds);
 
 int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts *listen_opts,
               ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb);
@@ -400,6 +409,9 @@ int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen);
 
 void process_connect(struct ziti_conn *conn, ziti_session *session);
 
+void ztx_init_external_auth(ziti_context ztx);
+
+void ztx_auth_state_cb(void *, ziti_auth_state , const void *);
 
 #ifdef __cplusplus
 }

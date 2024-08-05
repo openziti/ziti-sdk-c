@@ -83,8 +83,16 @@ void ziti_ctrl_clear_api_session(ziti_controller *ctrl);
 
 void ziti_ctrl_get_version(ziti_controller *ctrl, ctrl_version_cb cb, void *ctx);
 
-void ziti_ctrl_login(ziti_controller *ctrl, model_list *cfg_types, void (*cb)(ziti_api_session *, const ziti_error *, void *),
+void ziti_ctrl_login(ziti_controller *ctrl, model_list *cfg_types,
+                     void (*cb)(ziti_api_session *, const ziti_error *, void *),
                      void *ctx);
+
+void ziti_ctrl_login_ext_jwt(ziti_controller *ctrl, const char *jwt,
+                             void (*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
+
+void ziti_ctrl_list_ext_jwt_signers(ziti_controller *ctrl,
+                                    void (*cb)(ziti_jwt_signer_array, const ziti_error*, void*),
+                                    void *ctx);
 
 void ziti_ctrl_list_controllers(ziti_controller *ctrl,
                                 void (*cb)(ziti_controller_detail_array, const ziti_error*, void *ctx), void *ctx);

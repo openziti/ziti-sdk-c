@@ -182,6 +182,29 @@ int string_buf_appendn(string_buf_t *wb, const char *str, size_t len) {
     return 0;
 }
 
+int string_buf_append_urlsafe(string_buf_t *wb, const char *str) {
+    static const char unsafe[] = " /:\"<>%{}|\\^`";
+
+    if (str == NULL) {
+        return 0;
+    }
+
+    const char *p = str;
+    int rc = 0;
+    while(*p && rc == 0) {
+        char c = *p++;
+        if (strchr(unsafe, c) == NULL) {
+            rc = string_buf_append_byte(wb, c);
+            continue;
+        }
+
+        char buf[4];
+        snprintf(buf, sizeof(buf), "%%%02X", (int)c);
+        rc = string_buf_appendn(wb, buf, 3);
+    }
+    return rc;
+}
+
 int string_buf_append(string_buf_t *wb, const char *str) {
     const char *s = str;
 

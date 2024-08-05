@@ -85,6 +85,7 @@ SET(ZITI_SRC_FILES
         legacy_auth.c
         ha_auth.c
         util/future.c
+        external_auth.c
         )
 
 SET(ZITI_INCLUDE_DIRS

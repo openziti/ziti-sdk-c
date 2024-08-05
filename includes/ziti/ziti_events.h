@@ -16,6 +16,8 @@
 #ifndef ZITI_SDK_ZITI_EVENTS_H
 #define ZITI_SDK_ZITI_EVENTS_H
 
+#include "ziti_model.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -31,7 +33,7 @@ typedef enum {
     ZitiContextEvent = 1,
     ZitiRouterEvent = 1 << 1,
     ZitiServiceEvent = 1 << 2,
-    ZitiMfaAuthEvent = 1 << 3,
+    ZitiAuthEvent = 1 << 3,
     ZitiAPIEvent = 1 << 4,
 } ziti_event_type;
 
@@ -103,16 +105,32 @@ struct ziti_service_event {
     ziti_service_array added;
 };
 
+enum ziti_auth_action {
+    ziti_auth_prompt_totp,
+    ziti_auth_prompt_pin,
+    ziti_auth_login_external
+};
 /**
- * \brief Ziti Authentication Query MFA Event
+ * \brief Event notifying the app that additional action is required to continue authentication or normal operation.
  *
- * Event notifying the app that an active API Session requires
- * its identity's current MFA one-time-code (TOTP) to be
- * submitted. All MFA codes can be provided via
- * `ziti_mfa_auth(...)`
+ * The app may request that information from the user and then submit it
+ * to ziti_context.
+ *
+ * the following authentication actions are supported:
+ *
+ * [ziti_auth_prompt_totp] - request for MFA code, application must call [ziti_mfa_auth()] when it acquires TOTP code
+ *
+ * [ziti_auth_login_external] - request for that app to launch external program (web browser)
+ *                 that can authenticate with provided url ([detail] field)
+ *
+ * TODO: future
+ * [ziti_auth_prompt_pin] - request for HSM/TPM key pin, application must call [TBD method] when it acquires PIN
  */
-struct ziti_mfa_auth_event {
-    const ziti_auth_query_mfa *auth_query_mfa;
+struct ziti_auth_event {
+    enum ziti_auth_action action;
+    const char *type;
+    const char *detail;
+    model_list providers;
 };
 
 /**
@@ -127,7 +145,7 @@ typedef struct ziti_event_s {
         struct ziti_context_event ctx;
         struct ziti_router_event router;
         struct ziti_service_event service;
-        struct ziti_mfa_auth_event mfa_auth_event;
+        struct ziti_auth_event auth;
         struct ziti_api_event api;
     };
 } ziti_event_t;

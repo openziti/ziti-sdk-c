@@ -73,6 +73,11 @@ ZITI_FUNC void delete_string_buf(string_buf_t *wb);
 ZITI_FUNC int string_buf_append(string_buf_t *wb, const char *str);
 
 /**
+ * @brief Appends [str] to [wb] converting to urlsafe encoding.
+ */
+ ZITI_FUNC int string_buf_append_urlsafe(string_buf_t *wb, const char *str);
+
+/**
  * Append `len` bytes from `str` to the string buffer.
  * @param wb string buffer
  * @param str string

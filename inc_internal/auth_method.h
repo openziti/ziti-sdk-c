@@ -22,6 +22,11 @@ enum AuthenticationMethod {
     HA
 };
 
+static const ziti_auth_query_mfa ziti_mfa = {
+        .type_id = (char*)"MFA",
+        .provider = (char*)"ziti",
+};
+
 typedef enum {
     ZitiAuthStateUnauthenticated,
     ZitiAuthStateAuthStarted,
@@ -39,6 +44,7 @@ typedef void (*auth_mfa_cb)(void *ctx, int status);
 
 struct ziti_auth_method_s {
     enum AuthenticationMethod kind;
+    int (*set_ext_jwt)(ziti_auth_method_t *self, const char *token);
     int (*start)(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
     int (*force_refresh)(ziti_auth_method_t *self);
     int (*submit_mfa)(ziti_auth_method_t *self, const char *code, auth_mfa_cb);
