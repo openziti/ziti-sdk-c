@@ -78,7 +78,8 @@ static int check_cert_required(enroll_cfg *ecfg) {
     return ZITI_OK;
 }
 
-int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx) {
+int ziti_enroll(const ziti_enroll_opts *opts, uv_loop_t *loop,
+                ziti_enroll_cb enroll_cb, void *enroll_ctx) {
     uv_timeval64_t start_time;
     uv_gettimeofday(&start_time);
 
@@ -149,12 +150,14 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     ziti_err = ZITI_PKCS7_ASN1_PARSING_FAILED;
     TRY(TLS, enroll_req->ecfg->tls->parse_pkcs7_certs(
             &chain, base64_encoded_pkcs7, strlen(base64_encoded_pkcs7)));
+    free(base64_encoded_pkcs7);
 
     char *ca = NULL;
     size_t total_pem_len = 0;
 
     ziti_err = ZITI_INVALID_CONFIG;
     TRY(TLS, chain->to_pem(chain, 1, &ca, &total_pem_len));
+    chain->free(chain);
 
     ZITI_LOG(DEBUG, "CA PEM len = %zd", total_pem_len);
     ZITI_LOG(TRACE, "CA PEM:\n%s", ca);
@@ -182,9 +185,9 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
                 tlsuv_parse_url(&url, enroll_req->ecfg->zej->controller);
 
                 string_buf_t *keyname_buf = new_string_buf();
-                string_buf_fmt(keyname_buf, "keychain:%s@%.*s",
+                string_buf_fmt(keyname_buf, "keychain:ziti://%s@%.*s:%d",
                                enroll_req->ecfg->zej->subject,
-                               (int)url.hostname_len, url.hostname);
+                               (int)url.hostname_len, url.hostname, url.port);
                 char *keyname_ref = string_buf_to_string(keyname_buf, NULL);
                 delete_string_buf(keyname_buf);
 
@@ -248,6 +251,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
             enroll_req->enroll_cb(NULL, ERR(ziti), err ? err->code : "enroll failed", enroll_req->ecfg->external_enroll_ctx);
         }
     }
+    free(enroll_req);
 }
 
 static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enroll_ctx) {
@@ -270,12 +274,17 @@ static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enr
         cfg.id.key = strdup(enroll_req->ecfg->private_key);
 
         tlsuv_certificate_t c = NULL;
-        if (er->cert != NULL && enroll_req->ecfg->tls->load_cert(&c, er->cert, strlen(er->cert)) == 0 &&
+        if (er->cert != NULL &&
             enroll_req->ecfg->pk->store_certificate != NULL &&
+            enroll_req->ecfg->tls->load_cert(&c, er->cert, strlen(er->cert)) == 0 &&
             enroll_req->ecfg->pk->store_certificate(enroll_req->ecfg->pk, c) == 0) {
             ZITI_LOG(INFO, "stored certificate to PKCS#11 token");
         } else {
             cfg.id.cert = er->cert ? strdup(er->cert) : strdup(enroll_req->ecfg->own_cert);
+        }
+
+        if (c != NULL) {
+            c->free(c);
         }
 
         if (enroll_req->enroll_cb) {
@@ -284,6 +293,6 @@ static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enr
 
         free_ziti_config(&cfg);
     }
-
+    free_ziti_enrollment_resp_ptr(er);
     FREE(enroll_req);
 }
