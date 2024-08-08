@@ -185,9 +185,9 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
                 tlsuv_parse_url(&url, enroll_req->ecfg->zej->controller);
 
                 string_buf_t *keyname_buf = new_string_buf();
-                string_buf_fmt(keyname_buf, "keychain:%s@%.*s",
+                string_buf_fmt(keyname_buf, "keychain:ziti://%s@%.*s:%d",
                                enroll_req->ecfg->zej->subject,
-                               (int)url.hostname_len, url.hostname);
+                               (int)url.hostname_len, url.hostname, url.port);
                 char *keyname_ref = string_buf_to_string(keyname_buf, NULL);
                 delete_string_buf(keyname_buf);
 
