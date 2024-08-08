@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
     }
 
     Ziti_lib_init();
-    char *cfg;
+    char *cfg = NULL;
     size_t len;
     int rc = Ziti_enroll_identity(jwt, key, cert, &cfg, &len);
     if (rc == ZITI_OK) {
@@ -140,5 +140,6 @@ int main(int argc, char **argv) {
     } else {
         printf("err = %d(%s)\n", rc, ziti_errorstr(rc));
     }
+    free(cfg);
     Ziti_lib_shutdown();
 }

@@ -409,7 +409,8 @@ typedef void (*ziti_close_cb)(ziti_connection conn);
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
 ZITI_FUNC
-extern int ziti_enroll(ziti_enroll_opts *opts, uv_loop_t *loop, ziti_enroll_cb enroll_cb, void *enroll_ctx);
+extern int ziti_enroll(const ziti_enroll_opts *opts, uv_loop_t *loop,
+                       ziti_enroll_cb enroll_cb, void *enroll_ctx);
 
 /**
  * Provide app information to Ziti SDK.
