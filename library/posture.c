@@ -706,12 +706,10 @@ void default_pq_os(ziti_context ztx, const char *id, ziti_pr_os_cb response_cb) 
     ver = winver;
     build = "ununsed";
 #else
-    uv_utsname_t uname;
-    uv_os_uname(&uname);
-
-    os = uname.sysname;
-    ver = uname.release;
-    build = uname.version;
+    const ziti_env_info *info = get_env_info();
+    os = info->os;
+    ver = info->os_release;
+    build = info->os_version;
 #endif
 
     response_cb(ztx, id, os, ver, build);
