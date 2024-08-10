@@ -31,6 +31,10 @@ typedef uint32_t in_addr_t;
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#if defined(ANDROID)
+#include <sys/system_properties.h>
+#endif
+
 #endif
 
 #include <string.h>
@@ -199,9 +203,19 @@ static void ziti_info_init() {
     static char s_domain[UV_MAXHOSTNAMESIZE];
 
     uv_os_uname(&os_info);
+#if ANDROID
+    static char android_release[PROP_VALUE_MAX + 1];
+    static char android_version[PROP_VALUE_MAX + 1];
+    __system_property_get("ro.build.version.release", android_release);
+    __system_property_get("ro.build.version.security_patch", android_version);
+    s_info.os = "Android";
+    s_info.os_release = android_release;
+    s_info.os_version = android_version;
+#else
     s_info.os = os_info.sysname;
     s_info.os_release = os_info.release;
     s_info.os_version = os_info.version;
+#endif
     s_info.arch = os_info.machine;
     size_t len = sizeof(s_hostname);
     uv_os_gethostname(s_hostname, &len);
