@@ -17,6 +17,9 @@
 #include <json.h>
 #include <sodium.h>
 #include <ctype.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #include "ziti/ziti_log.h"
 #include "utils.h"
 #include "ziti/errors.h"
