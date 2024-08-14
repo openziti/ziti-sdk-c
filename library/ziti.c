@@ -376,6 +376,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         // close all channels
         ziti_close_channels(ztx, ZITI_DISABLED);
 
+        FREE(ztx->last_update);
         const char *svc_name;
         ziti_service *svc;
         ziti_event_t ev = {0};
