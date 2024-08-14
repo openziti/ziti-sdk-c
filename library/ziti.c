@@ -53,6 +53,7 @@ struct ziti_init_req {
 
 int code_to_error(const char *code);
 
+static void version_pre_auth_cb(const ziti_version *version, const ziti_error *err, void *ctx);
 static void update_ctrl_status(ziti_context ztx, int code, const char *msg);
 
 static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, void *ctx);
@@ -208,7 +209,7 @@ void ziti_set_auth_started(ziti_context ztx) {
 
 void ziti_set_unauthenticated(ziti_context ztx) {
     ZTX_LOG(DEBUG, "setting auth_state[%d] to %d", ztx->auth_state, ZitiAuthStateUnauthenticated);
-
+    ztx->auth_state = ZitiAuthStateUnauthenticated;
     FREE(ztx->session_token);
 
     if (ztx->session_creds.cert || ztx->session_creds.key) {
@@ -387,13 +388,16 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
             it = model_map_it_remove(it);
         }
 
-        ztx->auth_method->stop(ztx->auth_method);
+        ztx->auth_method->free(ztx->auth_method);
+        ztx->auth_method = NULL;
+
         ziti_send_event(ztx, &ev);
         free_ziti_service_array(&ev.service.removed);
 
         ziti_ctrl_cancel(ztx_get_controller(ztx));
         // logout
         ziti_ctrl_logout(ztx_get_controller(ztx), logout_cb, ztx);
+        ziti_set_unauthenticated(ztx);
     }
 }
 
@@ -549,6 +553,9 @@ static void free_ztx(uv_handle_t *h) {
 
     ziti_ctrl_close(ztx_get_controller(ztx));
     ztx->tlsCtx->free_ctx(ztx->tlsCtx);
+    if (ztx->id_creds.cert) {
+        ztx->id_creds.cert->free(ztx->id_creds.cert);
+    }
     free_ziti_config(&ztx->config);
 
     ziti_event_t ev = {0};
@@ -891,16 +898,11 @@ int ziti_listen_with_options(ziti_connection serv_conn, const char *service, zit
 }
 
 /**
- * `ziti_re_auth` attempts to re-authenticate with the controller. However
- * this will be ignored if the current `ziti_context` believes it is in a
- * partially authenticated state. If desired, called `ziti_set_unauthenticated`
- * to bypass this state.
+ * `ziti_re_auth` attempts to re-authenticate with the controller.
+ * First, is makes sure we get the right authentication method.
+ *
  * @param ztx
- * @param force
  */
-
-static void version_pre_auth_cb(const ziti_version *version, const ziti_error *err, void *ctx);
-
 static void ziti_re_auth(ziti_context ztx) {
     // always get controller version to get the right auth method
     ziti_ctrl_get_version(ztx_get_controller(ztx), version_pre_auth_cb, ztx);
@@ -1693,7 +1695,6 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
 
 void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
     ziti_context ztx = ctx;
-    ztx->auth_state = state;
     switch (state) {
         case ZitiAuthStateUnauthenticated:
             ziti_set_unauthenticated(ztx);
@@ -1712,4 +1713,5 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
             ziti_set_impossible_to_authenticate(ztx);
             break;
     }
+    ztx->auth_state = state;
 }
