@@ -187,8 +187,9 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
                 if (next_ep != NULL) {
                     FREE(ctrl->url);
                     ctrl->url = strdup(next_ep);
+                    CTRL_LOG(INFO, "switching to endpoint[%s]", ctrl->url);
                     tlsuv_http_set_url(ctrl->client, next_ep);
-                    CTRL_LOG(INFO, "using endpoint[%s]", ctrl->url);
+                    internal_get_version(ctrl);
                 }
             }
         }
@@ -308,6 +309,11 @@ static void internal_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp
     }
 
     if (v) {
+        if (ctrl->version.version != NULL &&
+            strcmp(ctrl->version.version, v->version) != 0) {
+            CTRL_LOG(INFO, "controller updated to %s(%s)[%s]",
+                     v->version, v->revision, v->build_date);
+        }
         free_ziti_version(&ctrl->version);
         ctrl->version = *v;
 

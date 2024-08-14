@@ -53,6 +53,7 @@ struct ziti_init_req {
 
 int code_to_error(const char *code);
 
+static void version_pre_auth_cb(const ziti_version *version, const ziti_error *err, void *ctx);
 static void update_ctrl_status(ziti_context ztx, int code, const char *msg);
 
 static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, void *ctx);
@@ -897,16 +898,11 @@ int ziti_listen_with_options(ziti_connection serv_conn, const char *service, zit
 }
 
 /**
- * `ziti_re_auth` attempts to re-authenticate with the controller. However
- * this will be ignored if the current `ziti_context` believes it is in a
- * partially authenticated state. If desired, called `ziti_set_unauthenticated`
- * to bypass this state.
+ * `ziti_re_auth` attempts to re-authenticate with the controller.
+ * First, is makes sure we get the right authentication method.
+ *
  * @param ztx
- * @param force
  */
-
-static void version_pre_auth_cb(const ziti_version *version, const ziti_error *err, void *ctx);
-
 static void ziti_re_auth(ziti_context ztx) {
     // always get controller version to get the right auth method
     ziti_ctrl_get_version(ztx_get_controller(ztx), version_pre_auth_cb, ztx);
