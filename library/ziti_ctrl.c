@@ -40,9 +40,9 @@ const char *const ERROR_MSG_NO_API_SESSION_TOKEN = "no api session token set for
 #define MODEL_API static
 
 #define PAGINATION_MODEL(XX, ...) \
-XX(limit, int, none, limit, __VA_ARGS__) \
-XX(offset, int, none, offset, __VA_ARGS__) \
-XX(total, int, none, totalCount, __VA_ARGS__) \
+XX(limit, number, none, limit, __VA_ARGS__) \
+XX(offset, number, none, offset, __VA_ARGS__) \
+XX(total, number, none, totalCount, __VA_ARGS__) \
 
 DECLARE_MODEL(resp_pagination, PAGINATION_MODEL)
 
@@ -385,7 +385,7 @@ static void ctrl_service_cb(ziti_service **services, ziti_error *e, struct ctrl_
     free(services);
 }
 
-static void free_body_cb(tlsuv_http_req_t *req, char *body, ssize_t len) {
+static void free_body_cb(tlsuv_http_req_t * UNUSED(req), char *body, ssize_t UNUSED(len)) {
     free(body);
 }
 
@@ -447,7 +447,8 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
                         while (*chunk != NULL) {
                             resp->resp_array[resp->recd++] = *chunk++;
                         }
-                        CTRL_LOG(DEBUG, "received %d/%d for paging request GET[%s]", resp->recd, cr.meta.pagination.total, resp->base_path);
+                        CTRL_LOG(DEBUG, "received %d/%d for paging request GET[%s]",
+                                 resp->recd, (int)cr.meta.pagination.total, resp->base_path);
                         resp->resp_array[resp->recd] = NULL;
                         FREE(resp_obj);
                         resp->received = 0;

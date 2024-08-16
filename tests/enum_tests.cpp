@@ -34,7 +34,7 @@ TEST_CASE("test enum", "[model]") {
 }
 
 #define ModelWithEnum(XX, ...) \
-XX(name, string, none, name, __VA_ARGS__) \
+XX(name, model_string, none, name, __VA_ARGS__) \
 XX(state, State, none, state, __VA_ARGS__)
 
 DECLARE_MODEL(FooWithEnum, ModelWithEnum)
@@ -118,7 +118,7 @@ TEST_CASE("enum compare", "[model]") {
 }
 
 #define ModelWithEnumArray(XX, ...) \
-XX(name, string, none, name, __VA_ARGS__) \
+XX(name, model_string, none, name, __VA_ARGS__) \
 XX(states, State, array, states, __VA_ARGS__)
 
 DECLARE_MODEL(FooWithEnumArray, ModelWithEnumArray)
@@ -148,7 +148,7 @@ TEST_CASE("parse enum array", "[model]") {
 }
 
 #define ModelWithEnumList(XX, ...) \
-XX(name, string, none, name, __VA_ARGS__) \
+XX(name, model_string, none, name, __VA_ARGS__) \
 XX(states, State, list, states, __VA_ARGS__)
 
 DECLARE_MODEL(FooWithEnumList, ModelWithEnumList)

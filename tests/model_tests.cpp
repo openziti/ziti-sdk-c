@@ -23,14 +23,14 @@
 #include <json-c/json.h>
 
 #define BAR_MODEL(xx, ...)\
-xx(num, int, none, num, __VA_ARGS__)\
-xx(nump, int, ptr, nump, __VA_ARGS__) \
+xx(num, number, none, num, __VA_ARGS__)\
+xx(nump, number, ptr, nump, __VA_ARGS__) \
 xx(isOK, bool, none, ok, __VA_ARGS__)\
-xx(msg, string, none, msg, __VA_ARGS__)\
+xx(msg, model_string, none, msg, __VA_ARGS__)\
 xx(ts, timestamp, ptr, time, __VA_ARGS__)\
-xx(errors, string, array, errors, __VA_ARGS__)\
-xx(codes, int, array, codes, __VA_ARGS__)\
-xx(shoes, string, list, shoes, __VA_ARGS__)
+xx(errors, model_string, array, errors, __VA_ARGS__)\
+xx(codes, number, array, codes, __VA_ARGS__)\
+xx(shoes, model_string, list, shoes, __VA_ARGS__)
 
 DECLARE_MODEL(Bar, BAR_MODEL)
 
@@ -476,7 +476,7 @@ TEST_CASE("model with missing array is null") {
 }
 
 #define string_map_model(XX, ...) \
-XX(tags, string, map, tags, __VA_ARGS__)
+XX(tags, model_string, map, tags, __VA_ARGS__)
 
 DECLARE_MODEL(tagged, string_map_model)
 
@@ -553,11 +553,11 @@ TEST_CASE("map of objects", "[model]") {
 #define basket_model(XX, ...) \
 XX(json_fruits,json,map, json_fruits,__VA_ARGS__) \
 XX(fruits,Fruit,map,fruits,__VA_ARGS__)          \
-XX(strings,string,map,strings,__VA_ARGS__)
+XX(strings,model_string,map,strings,__VA_ARGS__)
 
 #define fruit_model(XX, ...) \
-XX(color,string,none,color,__VA_ARGS__) \
-XX(count,int,none,count,__VA_ARGS__)
+XX(color,model_string,none,color,__VA_ARGS__) \
+XX(count,number,none,count,__VA_ARGS__)
 
 DECLARE_MODEL(Fruit, fruit_model)
 
@@ -697,8 +697,8 @@ TEST_CASE("null to JSON", "[model]") {
 
 #define LISTS_MODEL(xx, ...) \
 xx(fruit, Fruit, list, fruit, __VA_ARGS__)\
-xx(errors, string, list, errors, __VA_ARGS__)\
-xx(codes, int, list, codes, __VA_ARGS__)
+xx(errors, model_string, list, errors, __VA_ARGS__)\
+xx(codes, number, list, codes, __VA_ARGS__)
 
 DECLARE_MODEL(ListsObj, LISTS_MODEL)
 

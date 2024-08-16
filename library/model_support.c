@@ -86,9 +86,9 @@ int model_cmp(const void *lh, const void *rh, const type_meta *meta) {
                     if (rf_ptr == NULL && lf_ptr == NULL) { break; }
 
                     if (ftm->comparer) {
-                        if (fm->meta() == get_string_meta() ||
+                        if (fm->meta() == get_model_string_meta() ||
                             fm->meta() == get_json_meta() ||
-                            fm->meta() == get_int_meta() ||
+                            fm->meta() == get_number_meta() ||
                             fm->meta() == get_bool_meta()) {
                             rc = ftm->comparer(&lf_ptr, &rf_ptr);
                         } else {
@@ -114,7 +114,7 @@ int model_cmp(const void *lh, const void *rh, const type_meta *meta) {
                     if (rf_ptr == NULL && lf_ptr == NULL) { break; }
 
                     if (ftm->comparer) {
-                        if (fm->meta() == get_string_meta()) {
+                        if (fm->meta() == get_model_string_meta()) {
                             rc = ftm->comparer(&lf_ptr, &rf_ptr);
                         }
                         else {
@@ -279,7 +279,7 @@ int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf
         void **f_addr = (void **) ((char *) obj + fm->offset);
         void *f_ptr = fm->mod == none_mod ? f_addr : (void *) (*f_addr);
 
-        if (ftm == get_string_meta() || ftm == get_json_meta()) {
+        if (ftm == get_model_string_meta() || ftm == get_json_meta()) {
             f_ptr = (void *) (*f_addr);
         }
 
@@ -344,7 +344,7 @@ int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf
                 }
 
                 if (ftm->jsonifier) {
-                    if (ftm == get_int_meta() || ftm == get_bool_meta()) {
+                    if (ftm == get_number_meta() || ftm == get_bool_meta()) {
                         CHECK_APPEND(ftm->jsonifier(&f_ptr, buf, indent + 1, flags));
                     } else {
                         CHECK_APPEND(ftm->jsonifier(f_ptr, buf, indent + 1, flags));
@@ -426,7 +426,7 @@ void model_free(void *obj, const type_meta *meta) {
             if (arr != NULL) {
                 for (int idx = 0; arr[idx] != NULL; idx++) {
                     f_ptr = arr + idx;
-                    if (field_meta == get_string_meta()) {
+                    if (field_meta == get_model_string_meta()) {
                         model_free(f_ptr, field_meta);
                     }
                     else {
@@ -440,7 +440,7 @@ void model_free(void *obj, const type_meta *meta) {
         } else if (fm->mod == list_mod) {
             model_list *list = (model_list *) f_addr;
             model_list_iter it = model_list_iterator(list);
-            bool str_type = (field_meta == get_string_meta() || field_meta == get_json_meta());
+            bool str_type = (field_meta == get_model_string_meta() || field_meta == get_json_meta());
             while (it != NULL) {
                 void *el = model_list_it_element(it);
                 it = model_list_it_remove(it);
@@ -462,7 +462,7 @@ void model_free(void *obj, const type_meta *meta) {
             model_map_iter it = model_map_iterator(map);
             while (it != NULL) {
                 void *v = model_map_it_value(it);
-                if (field_meta == get_string_meta() || field_meta == get_json_meta()) {
+                if (field_meta == get_model_string_meta() || field_meta == get_json_meta()) {
                     field_meta->destroyer(&v);
                 }
                 else if (field_meta->destroyer) {
@@ -476,7 +476,7 @@ void model_free(void *obj, const type_meta *meta) {
                 it = model_map_it_remove(it);
             }
 
-            if (field_meta == get_string_meta()) {
+            if (field_meta == get_model_string_meta()) {
                 ff = free;
             }
             else {
@@ -500,7 +500,7 @@ int model_array_from_json(void ***arr, json_object *json, const type_meta *el_me
     for (idx = 0; idx < children; idx++) {
         json_object *ch = json_object_array_get_idx(json, idx);
         void *el;
-        if (el_meta != get_string_meta()) {
+        if (el_meta != get_model_string_meta()) {
             el = calloc(1, el_meta->size);
             elems[idx] = el;
         } else {
@@ -537,9 +537,9 @@ int model_list_from_json (model_list *list, json_object *json, const type_meta *
     for (idx = 0; idx < children; idx++) {
         json_object *ch = json_object_array_get_idx(json, idx);
         void *value = NULL;
-        if (el_meta == get_string_meta() ||
+        if (el_meta == get_model_string_meta() ||
             el_meta == get_json_meta() ||
-            el_meta == get_int_meta() ||
+            el_meta == get_number_meta() ||
             el_meta == get_bool_meta()) {
             rc = el_meta->from_json(&value, ch, el_meta);
         } else {
@@ -575,8 +575,8 @@ static int parse_map_from_json(void *mapp, json_object *json, type_meta *el_meta
     json_object_object_foreach(json, key, child) {
         void *value = NULL;
         int rc;
-        if (el_meta == get_string_meta()) {
-            rc = get_string_meta()->from_json(&value, child, el_meta);
+        if (el_meta == get_model_string_meta()) {
+            rc = get_model_string_meta()->from_json(&value, child, el_meta);
         }
         else if (el_meta == get_json_meta()) {
             rc = get_json_meta()->from_json(&value, child, el_meta);
@@ -657,7 +657,7 @@ int model_from_json(void *obj, json_object *json, const type_meta *meta) {
     return rc;
 }
 
-static int int_from_json(int *val, const json_object *j, const type_meta * UNUSED(meta)) {
+static int int_from_json(number *val, const json_object *j, const type_meta * UNUSED(meta)) {
     if (json_object_get_type(j) == json_type_int) {
         *val = (int)json_object_get_int64(j);
         return 0;
@@ -687,16 +687,16 @@ static json_object* bool_to_json(const bool *val) {
     return json_object_new_boolean(*val);
 }
 
-static int json_from_json(string *val, json_object *j, type_meta * UNUSED(meta)) {
+static int json_from_json(model_string *val, json_object *j, type_meta * UNUSED(meta)) {
     *val = strdup(json_object_to_json_string(j));
     return 0;
 }
 
-static json_object* json_to_json(string val) {
+static json_object* json_to_json(model_string val) {
     return json_tokener_parse(val);
 }
 
-static int string_from_json (string *str, json_object *j, const type_meta * UNUSED(meta)) {
+static int string_from_json (model_string *str, json_object *j, const type_meta * UNUSED(meta)) {
     if (json_object_get_type(j) == json_type_string) {
         *str = strdup(json_object_get_string(j));
         return 0;
@@ -704,7 +704,7 @@ static int string_from_json (string *str, json_object *j, const type_meta * UNUS
     return -1;
 }
 
-static json_object * string_to_json(string str) {
+static json_object * string_to_json(model_string str) {
     return json_object_new_string(str);
 }
 
@@ -730,11 +730,11 @@ static int tag_from_json(tag *t, json_object *j, type_meta * UNUSED(m)) {
             t->type = tag_bool;
             break;
         case json_type_int:
-            rc = int_from_json(&t->num_value, j, get_int_meta());
+            rc = int_from_json(&t->num_value, j, get_number_meta());
             t->type = tag_number;
             break;
         case json_type_string:
-            rc = string_from_json(&t->string_value, j, get_string_meta());
+            rc = string_from_json(&t->string_value, j, get_model_string_meta());
             t->type = tag_string;
             break;
         default:
@@ -1051,7 +1051,7 @@ int model_map_compare(const model_map *lh, const model_map *rh, const type_meta 
                 rc = 1;
             }
             else {
-                if (m == get_string_meta() || m == get_json_meta()) {
+                if (m == get_model_string_meta() || m == get_json_meta()) {
                     rc = m->comparer(&lhv, &rhv);
                 }
                 else {
@@ -1142,9 +1142,9 @@ static type_meta tag_META = {
 
 const type_meta *get_bool_meta() { return &bool_META; }
 
-const type_meta *get_int_meta() { return &int_META; }
+const type_meta *get_number_meta() { return &int_META; }
 
-const type_meta *get_string_meta() { return &string_META; }
+const type_meta *get_model_string_meta() { return &string_META; }
 
 const type_meta *get_timestamp_meta() { return &timestamp_META; }
 
