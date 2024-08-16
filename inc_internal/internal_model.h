@@ -23,9 +23,9 @@
 #define ZITI_IDENTITY_DATA_MODEL(XX, ...) \
 ZITI_IDENTITY_MODEL(XX, __VA_ARGS__) \
 XX(default_hosting_precendence, model_string, none, defaultHostingPrecendence, __VA_ARGS__) \
-XX(default_hosting_cost, number, none, defaultHostingCost, __VA_ARGS__)                  \
+XX(default_hosting_cost, model_number, none, defaultHostingCost, __VA_ARGS__)                  \
 XX(service_hosting_precendences, model_string, map, serviceHostingPrecedences, __VA_ARGS__)\
-XX(service_hosting_costs, number, map, serviceHostingCosts, __VA_ARGS__)
+XX(service_hosting_costs, model_number, map, serviceHostingCosts, __VA_ARGS__)
 
 // add other protocols when we support them
 #define ZITI_ER_PROTOCOLS(XX, ...) \
@@ -44,7 +44,7 @@ XX(token, model_string, none, token, __VA_ARGS__)\
 XX(id, model_string, none, id, __VA_ARGS__) \
 XX(edge_routers, ziti_edge_router, list, edgeRouters, __VA_ARGS__) \
 XX(service_id, model_string, none, serviceId, __VA_ARGS__) \
-XX(refresh, bool, none, , __VA_ARGS__)
+XX(refresh, model_bool, none, , __VA_ARGS__)
 
 #define ZITI_PROCESS_MODEL(XX, ...) \
 XX(path, model_string, none, path, __VA_ARGS__)
@@ -53,7 +53,7 @@ XX(path, model_string, none, path, __VA_ARGS__)
 XX(id, model_string, none, id, __VA_ARGS__) \
 XX(token, model_string, none, token, __VA_ARGS__) \
 XX(expires, timestamp, none, expiresAt, __VA_ARGS__) \
-XX(expireSeconds, number, none, expirationSeconds, __VA_ARGS__) \
+XX(expireSeconds, model_number, none, expirationSeconds, __VA_ARGS__) \
 XX(updated, timestamp, none, updatedAt, __VA_ARGS__) \
 XX(cached_last_activity_at, timestamp, none, cachedLastActivityAt, __VA_ARGS__) \
 XX(identity, ziti_identity, none, identity, __VA_ARGS__) \
@@ -62,8 +62,8 @@ XX(auth_queries, ziti_auth_query_mfa, list, authQueries, __VA_ARGS__)         \
 XX(authenticator_id, model_string, none, authenticatorId, __VA_ARGS__)
 
 #define ZITI_ERROR_MODEL(XX, ...) \
-XX(err, number, none, , __VA_ARGS__) \
-XX(http_code, number, none, , __VA_ARGS__) \
+XX(err, model_number, none, , __VA_ARGS__) \
+XX(http_code, model_number, none, , __VA_ARGS__) \
 XX(code, model_string, none, code, __VA_ARGS__) \
 XX(message, model_string, none, message, __VA_ARGS__) \
 XX(cause, model_string, map, cause, __VA_ARGS__)
@@ -126,7 +126,7 @@ XX(version, model_string, none, version, __VA_ARGS__) \
 XX(build, model_string, none, build, __VA_ARGS__)
 
 #define ZITI_PR_PROCESS(XX, ...) \
-XX(is_running, bool, none, isRunning, __VA_ARGS__) \
+XX(is_running, model_bool, none, isRunning, __VA_ARGS__) \
 XX(hash, model_string, none, hash, __VA_ARGS__) \
 XX(signer, model_string, none, signerFingerprint, __VA_ARGS__)
 
@@ -134,22 +134,22 @@ XX(signer, model_string, none, signerFingerprint, __VA_ARGS__)
 XX(id, model_string, none, id, __VA_ARGS__)\
 XX(path, model_string, none, path, __VA_ARGS__) \
 XX(typeId, model_string, none, typeId, __VA_ARGS__) \
-XX(is_running, bool, none, isRunning, __VA_ARGS__) \
+XX(is_running, model_bool, none, isRunning, __VA_ARGS__) \
 XX(hash, model_string, none, hash, __VA_ARGS__) \
 XX(signers, model_string, array, signerFingerprints, __VA_ARGS__)
 
 #define ZITI_PR_ENDPOINT_STATE_REQ(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__)\
 XX(typeId, model_string, none, typeId, __VA_ARGS__) \
-XX(unlocked, bool, none, unlocked, __VA_ARGS__) \
-XX(woken, bool, none, woken, __VA_ARGS__)
+XX(unlocked, model_bool, none, unlocked, __VA_ARGS__) \
+XX(woken, model_bool, none, woken, __VA_ARGS__)
 
 #define ZITI_SERVICE_TIMER(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__) \
 XX(name, model_string, none, name, __VA_ARGS__) \
 XX(posture_query_type, model_string, none, postureQueryType, __VA_ARGS__) \
-XX(timeout, number, ptr, timeout, __VA_ARGS__) \
-XX(timeoutRemaining, number, ptr, timeoutRemaining, __VA_ARGS__)
+XX(timeout, model_number, ptr, timeout, __VA_ARGS__) \
+XX(timeoutRemaining, model_number, ptr, timeoutRemaining, __VA_ARGS__)
 
 #define ZITI_PR_RESPONSE(XX, ...) \
 XX(services, ziti_service_timer, array, services, __VA_ARGS__)
@@ -199,7 +199,7 @@ XX(oidc, api_address, list, edge-oidc, __VA_ARGS__)
 XX(id, model_string, none, id, __VA_ARGS__) \
 XX(name, model_string, none, name, __VA_ARGS__) \
 XX(apis, ctrl_apis, none, apiAddresses, __VA_ARGS__) \
-XX(is_online, bool, none, isOnline, __VA_ARGS__) \
+XX(is_online, model_bool, none, isOnline, __VA_ARGS__) \
 XX(cert_pem, model_string, none, certPem, __VA_ARGS__) \
 XX(fingerprint, model_string, none, fingerprint, __VA_ARGS__)
 

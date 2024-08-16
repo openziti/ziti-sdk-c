@@ -23,13 +23,13 @@
 #include <json-c/json.h>
 
 #define BAR_MODEL(xx, ...)\
-xx(num, number, none, num, __VA_ARGS__)\
-xx(nump, number, ptr, nump, __VA_ARGS__) \
-xx(isOK, bool, none, ok, __VA_ARGS__)\
+xx(num, model_number, none, num, __VA_ARGS__)\
+xx(nump, model_number, ptr, nump, __VA_ARGS__) \
+xx(isOK, model_bool, none, ok, __VA_ARGS__)\
 xx(msg, model_string, none, msg, __VA_ARGS__)\
 xx(ts, timestamp, ptr, time, __VA_ARGS__)\
 xx(errors, model_string, array, errors, __VA_ARGS__)\
-xx(codes, number, array, codes, __VA_ARGS__)\
+xx(codes, model_number, array, codes, __VA_ARGS__)\
 xx(shoes, model_string, list, shoes, __VA_ARGS__)
 
 DECLARE_MODEL(Bar, BAR_MODEL)
@@ -318,7 +318,7 @@ TEST_CASE("parse incomplete", "[model]") {
 
 #define baz_model(XX, ...) \
 XX(bar, json, none, bar, __VA_ARGS__) \
-XX(ok, bool, none, ok, __VA_ARGS__)
+XX(ok, model_bool, none, ok, __VA_ARGS__)
 
 #undef MODEL_API
 #define MODEL_API static
@@ -344,7 +344,7 @@ TEST_CASE("test raw json", "[model]") {
 
 #define map_model(XX, ...) \
 XX(map, model_map, none, map, __VA_ARGS__) \
-XX(ok, bool, none, ok, __VA_ARGS__)
+XX(ok, model_bool, none, ok, __VA_ARGS__)
 
 DECLARE_MODEL(ObjMap, map_model)
 IMPL_MODEL(ObjMap, map_model)
@@ -445,7 +445,7 @@ TEST_CASE("model compare with array", "[model]") {
     CHECK(cmp_Bar(&bar1, &bar2) == 0);
 
 
-    free(bar1.errors[0]);
+    free((char*)bar1.errors[0]);
     bar1.errors[0] = strdup("changed error");
     CHECK(cmp_Bar(&bar1, &bar2) != 0);
 
@@ -557,7 +557,7 @@ XX(strings,model_string,map,strings,__VA_ARGS__)
 
 #define fruit_model(XX, ...) \
 XX(color,model_string,none,color,__VA_ARGS__) \
-XX(count,number,none,count,__VA_ARGS__)
+XX(count,model_number,none,count,__VA_ARGS__)
 
 DECLARE_MODEL(Fruit, fruit_model)
 
@@ -698,7 +698,7 @@ TEST_CASE("null to JSON", "[model]") {
 #define LISTS_MODEL(xx, ...) \
 xx(fruit, Fruit, list, fruit, __VA_ARGS__)\
 xx(errors, model_string, list, errors, __VA_ARGS__)\
-xx(codes, number, list, codes, __VA_ARGS__)
+xx(codes, model_number, list, codes, __VA_ARGS__)
 
 DECLARE_MODEL(ListsObj, LISTS_MODEL)
 

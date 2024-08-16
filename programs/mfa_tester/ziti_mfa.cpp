@@ -282,7 +282,7 @@ static void delete_mfa() {
     });
 }
 
-std::ofstream logfile("/tmp/ziti_mfa", std::ios::ate);
+std::ofstream logfile("/tmp/ZITI_MFA", std::ios::ate);
 const char *lbl[] = {
         "E", "W", "I", "D", "V", "T",
 };
@@ -292,7 +292,7 @@ static void logger(int level, const char *loc, const char *msg, size_t msglen) {
 }
 
 int main(int argc, char *argv[]) {
-    CLI::App app("ziti MFA test program", "ziti_mfa");
+    CLI::App app("ziti MFA test program", "ZITI_MFA");
 
     ziti_log_init(loop, 3, logger);
     app.add_option("-i,--identity", identity, "ziti identity")->required()->check(CLI::ExistingFile);

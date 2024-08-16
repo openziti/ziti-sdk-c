@@ -78,7 +78,7 @@ int model_cmp(const void *lh, const void *rh, const type_meta *meta) {
 
             if (lit == NULL && rit != NULL) { rc = 1; }
             else {
-                for (int idx = 0; rc == 0; idx++) {
+                while (rc == 0) {
                     lf_ptr = model_list_it_element(lit);
                     lit = model_list_it_next(lit);
                     rf_ptr = model_list_it_element(rit);
@@ -88,8 +88,8 @@ int model_cmp(const void *lh, const void *rh, const type_meta *meta) {
                     if (ftm->comparer) {
                         if (fm->meta() == get_model_string_meta() ||
                             fm->meta() == get_json_meta() ||
-                            fm->meta() == get_number_meta() ||
-                            fm->meta() == get_bool_meta()) {
+                            fm->meta() == get_model_number_meta() ||
+                            fm->meta() == get_model_bool_meta()) {
                             rc = ftm->comparer(&lf_ptr, &rf_ptr);
                         } else {
                             rc = ftm->comparer(lf_ptr, rf_ptr);
@@ -348,7 +348,7 @@ int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf
                 }
 
                 if (ftm->jsonifier) {
-                    if (ftm == get_number_meta() || ftm == get_bool_meta()) {
+                    if (ftm == get_model_number_meta() || ftm == get_model_bool_meta()) {
                         CHECK_APPEND(ftm->jsonifier(&f_ptr, buf, indent + 1, flags));
                     } else {
                         CHECK_APPEND(ftm->jsonifier(f_ptr, buf, indent + 1, flags));
@@ -543,8 +543,8 @@ int model_list_from_json (model_list *list, json_object *json, const type_meta *
         void *value = NULL;
         if (el_meta == get_model_string_meta() ||
             el_meta == get_json_meta() ||
-            el_meta == get_number_meta() ||
-            el_meta == get_bool_meta()) {
+            el_meta == get_model_number_meta() ||
+            el_meta == get_model_bool_meta()) {
             rc = el_meta->from_json(&value, ch, el_meta);
         } else {
             value = calloc(1, el_meta->size);
@@ -661,7 +661,7 @@ int model_from_json(void *obj, json_object *json, const type_meta *meta) {
     return rc;
 }
 
-static int int_from_json(number *val, const json_object *j, const type_meta * UNUSED(meta)) {
+static int int_from_json(model_number *val, const json_object *j, const type_meta * UNUSED(meta)) {
     if (json_object_get_type(j) == json_type_int) {
         *val = (int)json_object_get_int64(j);
         return 0;
@@ -719,7 +719,7 @@ static json_object* tag_to_json(const tag *t) {
         case tag_bool:
             return json_object_new_boolean(t->bool_value);
         case tag_number:
-            return json_object_new_int(t->num_value);
+            return json_object_new_int64(t->num_value);
         case tag_string:
             return json_object_new_string(t->string_value);
     }
@@ -730,11 +730,11 @@ static int tag_from_json(tag *t, json_object *j, type_meta * UNUSED(m)) {
     int rc;
     switch (json_object_get_type(j)) {
         case json_type_boolean:
-            rc = bool_from_json(&t->bool_value, j, get_bool_meta());
+            rc = bool_from_json(&t->bool_value, j, get_model_bool_meta());
             t->type = tag_bool;
             break;
         case json_type_int:
-            rc = int_from_json(&t->num_value, j, get_number_meta());
+            rc = int_from_json(&t->num_value, j, get_model_number_meta());
             t->type = tag_number;
             break;
         case json_type_string:
@@ -765,31 +765,31 @@ static int timeval_from_json(timestamp *t, json_object *j, type_meta * UNUSED(me
     return -1;
 }
 
-static int _cmp_bool(const bool *lh, const bool *rh) {
+static int m_cmp_bool(const bool *lh, const bool *rh) {
     null_checks(lh, rh)
     if (*lh == *rh) { return 0; }
     if (!*lh) { return -1; }
     return 1;
 }
 
-static int _cmp_int(const int *lh, const int *rh) {
+static int m_cmp_int(const model_number *lh, const model_number *rh) {
     null_checks(lh, rh)
-    return (*lh - *rh);
+    return (int)(*lh - *rh);
 }
 
-static int _cmp_timeval(const timestamp *lh, const timestamp *rh) {
+static int m_cmp_timeval(const timestamp *lh, const timestamp *rh) {
     null_checks(lh, rh)
     return (int) (lh->tv_sec == rh->tv_sec ? (lh->tv_usec - rh->tv_usec) : (lh->tv_sec - rh->tv_sec));
 }
 
-static int _cmp_string(char * const * const lh, char * const * const rh) {
+static int m_cmp_string(const char * const * const lh, const char * const * const rh) {
     null_checks(lh, rh)
     null_checks(*lh, *rh)
 
     return strcmp(*lh, *rh);
 }
 
-static int _cmp_tag(const tag *lh, const tag *rh) {
+static int m_cmp_tag(const tag *lh, const tag *rh) {
     null_checks(lh, rh)
 
     if (lh->type != rh->type) {
@@ -798,17 +798,17 @@ static int _cmp_tag(const tag *lh, const tag *rh) {
 
     switch (lh->type) {
         case tag_bool:
-            return _cmp_bool(&lh->bool_value, &rh->bool_value);
+            return m_cmp_bool(&lh->bool_value, &rh->bool_value);
         case tag_number:
-            return _cmp_int(&lh->num_value, &rh->num_value);
+            return m_cmp_int(&lh->num_value, &rh->num_value);
         case tag_string:
-            return _cmp_string(&lh->string_value, &rh->string_value);
+            return m_cmp_string(&lh->string_value, &rh->string_value);
         case tag_null:
             return 0;
     }
 }
 
-static int _cmp_map(model_map *lh, model_map *rh) {
+static int m_cmp_map(model_map *lh, model_map *rh) {
     null_checks(lh, rh)
 
     int rc = (int)(model_map_size(lh) - model_map_size(rh));
@@ -837,21 +837,21 @@ static int null_to_json(string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)
     return string_buf_append(buf, "null");
 }
 
-static int _bool_to_json(const bool *v, string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
+static int m_bool_to_json(const bool *v, string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
     return string_buf_append(buf, *v ? "true" : "false");
 }
 
-static int _int_to_json(const int *v, string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
+static int m_int_to_json(const model_number *v, string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
 
     char b[16];
-    int rc = snprintf(b, sizeof(b), "%d", *v);
+    int rc = snprintf(b, sizeof(b), "%" PRId64, *v);
     if (rc > 0) {
         return string_buf_append(buf, b);
     }
     return rc;
 }
 
-static int _string_to_json(const char *str, string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
+static int m_string_to_json(const char *str, string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
     static char hex[] = "0123456789abcdef";
 
     BUF_APPEND_B(buf, '\"');
@@ -893,7 +893,7 @@ static int _string_to_json(const char *str, string_buf_t *buf, int UNUSED(indent
     return 0;
 }
 
-static int _tag_to_json(tag *t, string_buf_t *buf, int indent, int flags) {
+static int m_tag_to_json(tag *t, string_buf_t *buf, int indent, int flags) {
     int rc;
     switch (t->type) {
         case tag_null:
@@ -903,10 +903,10 @@ static int _tag_to_json(tag *t, string_buf_t *buf, int indent, int flags) {
             rc = string_buf_append(buf, t->bool_value ? "true" : "false");
             break;
         case tag_number:
-            rc = _int_to_json(&t->num_value, buf, indent, flags);
+            rc = m_int_to_json(&t->num_value, buf, indent, flags);
             break;
         case tag_string:
-            rc = _string_to_json(t->string_value, buf, indent, flags);
+            rc = m_string_to_json(t->string_value, buf, indent, flags);
             break;
         default:
             rc = -1;
@@ -914,7 +914,7 @@ static int _tag_to_json(tag *t, string_buf_t *buf, int indent, int flags) {
     return rc;
 }
 
-static int _json_to_json(const char *s, string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
+static int m_json_to_json(const char *s, string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
     return string_buf_append(buf, s);
 }
 static json_object * timeval_to_json(timestamp *t) {
@@ -933,7 +933,7 @@ static json_object * timeval_to_json(timestamp *t) {
     return json_object_new_string_len(json, rc);
 }
 
-static int _timeval_to_json(timestamp *t, string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
+static int m_timeval_to_json(timestamp *t, string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
     struct tm tm2;
 #if _WIN32
     _gmtime32_s(&tm2, &t->tv_sec);
@@ -965,7 +965,7 @@ static int map_from_json(model_map *map, json_object *j, type_meta *UNUSED(meta)
     }
     return -1;
 }
-static int _map_to_json(model_map *map, string_buf_t *buf, int indent, int flags) {
+static int m_map_to_json(model_map *map, string_buf_t *buf, int indent, int flags) {
     BUF_APPEND_B(buf, '{');
 
     const char *key;
@@ -977,10 +977,10 @@ static int _map_to_json(model_map *map, string_buf_t *buf, int indent, int flags
         }
         PRETTY_NL(buf);
         PRETTY_INDENT(buf, indent + 1);
-        _string_to_json(key, buf, indent, flags);
+        m_string_to_json(key, buf, indent, flags);
         BUF_APPEND_B(buf, ':');
 
-        _json_to_json(val, buf, indent, flags);
+        m_json_to_json(val, buf, indent, flags);
         comma = true;
     }
     PRETTY_INDENT(buf, indent);
@@ -988,16 +988,16 @@ static int _map_to_json(model_map *map, string_buf_t *buf, int indent, int flags
     return 0;
 }
 
-static void _free_noop(void *UNUSED(v)) {}
+static void m_free_noop(void *UNUSED(v)) {}
 
-static void _free_string(char **s) {
+static void m_free_string(char **s) {
     if (*s != NULL) {
         free(*s);
         *s = NULL;
     }
 }
 
-static void _free_tag(tag *t) {
+static void m_free_tag(tag *t) {
     if (t != NULL) {
         if (t->type == tag_string) {
             FREE(t->string_value);
@@ -1036,7 +1036,7 @@ int json_enum(const void *ptr, void *bufp, int indent, int flags, const void *en
         return null_to_json(buf, indent, flags);
     }
 
-    return _string_to_json(en->name(en_val), buf, indent, flags);
+    return m_string_to_json(en->name(en_val), buf, indent, flags);
 }
 
 
@@ -1077,9 +1077,9 @@ static void _free_map(model_map *m) {
 static type_meta bool_META = {
         .name = "bool",
         .size = sizeof(bool),
-        .comparer = (_cmp_f) _cmp_bool,
-        .jsonifier = (_to_json_f) (_bool_to_json),
-        .destroyer = _free_noop,
+        .comparer = (_cmp_f) m_cmp_bool,
+        .jsonifier = (_to_json_f) (m_bool_to_json),
+        .destroyer = m_free_noop,
         .from_json = (from_json_func) bool_from_json,
         .to_json = (to_json_func) bool_to_json,
 };
@@ -1087,9 +1087,9 @@ static type_meta bool_META = {
 static type_meta int_META = {
         .name = "int",
         .size = sizeof(int),
-        .comparer = (_cmp_f) _cmp_int,
-        .jsonifier = (_to_json_f) _int_to_json,
-        .destroyer = _free_noop,
+        .comparer = (_cmp_f) m_cmp_int,
+        .jsonifier = (_to_json_f) m_int_to_json,
+        .destroyer = m_free_noop,
         .from_json = (from_json_func) int_from_json,
         .to_json = (to_json_func) int_to_json,
 };
@@ -1097,9 +1097,9 @@ static type_meta int_META = {
 static type_meta string_META = {
         .name = "string",
         .size = sizeof(char *),
-        .comparer = (_cmp_f) _cmp_string,
-        .jsonifier = (_to_json_f) _string_to_json,
-        .destroyer = (_free_f) _free_string,
+        .comparer = (_cmp_f) m_cmp_string,
+        .jsonifier = (_to_json_f) m_string_to_json,
+        .destroyer = (_free_f) m_free_string,
         .from_json = (from_json_func) string_from_json,
         .to_json = (to_json_func) string_to_json,
 };
@@ -1107,9 +1107,9 @@ static type_meta string_META = {
 static type_meta timestamp_META = {
         .name = "timestamp",
         .size = sizeof(struct timeval),
-        .comparer = (_cmp_f) _cmp_timeval,
-        .jsonifier = (_to_json_f) _timeval_to_json,
-        .destroyer = (_free_f) _free_noop,
+        .comparer = (_cmp_f) m_cmp_timeval,
+        .jsonifier = (_to_json_f) m_timeval_to_json,
+        .destroyer = (_free_f) m_free_noop,
         .from_json = (from_json_func) timeval_from_json,
         .to_json = (to_json_func) timeval_to_json,
 };
@@ -1117,9 +1117,9 @@ static type_meta timestamp_META = {
 static type_meta json_META = {
         .name = "json",
         .size = sizeof(char *),
-        .comparer = (_cmp_f) _cmp_string,
-        .jsonifier = (_to_json_f) _json_to_json,
-        .destroyer = (_free_f) _free_string,
+        .comparer = (_cmp_f) m_cmp_string,
+        .jsonifier = (_to_json_f) m_json_to_json,
+        .destroyer = (_free_f) m_free_string,
         .from_json = (from_json_func) json_from_json,
         .to_json = (to_json_func) json_to_json,
 };
@@ -1127,8 +1127,8 @@ static type_meta json_META = {
 static type_meta map_META = {
         .name = "map",
         .size = sizeof(model_map),
-        .comparer = (_cmp_f) _cmp_map,
-        .jsonifier = (_to_json_f) _map_to_json,
+        .comparer = (_cmp_f) m_cmp_map,
+        .jsonifier = (_to_json_f) m_map_to_json,
         .destroyer = (_free_f) _free_map,
         .from_json = (from_json_func) map_from_json,
         .to_json = (to_json_func) map_to_json,
@@ -1137,16 +1137,16 @@ static type_meta map_META = {
 static type_meta tag_META = {
         .name = "tag",
         .size = sizeof(tag),
-        .comparer = (_cmp_f) _cmp_tag,
-        .jsonifier = (_to_json_f) _tag_to_json,
-        .destroyer = (_free_f) _free_tag,
+        .comparer = (_cmp_f) m_cmp_tag,
+        .jsonifier = (_to_json_f) m_tag_to_json,
+        .destroyer = (_free_f) m_free_tag,
         .from_json = (from_json_func)tag_from_json,
         .to_json = (to_json_func)tag_to_json,
 };
 
-const type_meta *get_bool_meta() { return &bool_META; }
+const type_meta *get_model_bool_meta() { return &bool_META; }
 
-const type_meta *get_number_meta() { return &int_META; }
+const type_meta *get_model_number_meta() { return &int_META; }
 
 const type_meta *get_model_string_meta() { return &string_META; }
 
@@ -1200,7 +1200,7 @@ static json_object* duration_to_json(const duration *d) {
     return json_object_new_string_len(json, rc);
 }
 
-static int _duration_to_json(const duration *d, string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
+static int m_duration_to_json(const duration *d, string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
     char json[32];
     int rc = snprintf(json, sizeof(json), "\"%lldms\"", (long long)DURATION_MILLISECONDS(*d));
     if (rc < 0) return -1;
@@ -1211,8 +1211,8 @@ const type_meta *get_duration_meta() {
     static type_meta _meta = {
             .name = "duration",
             .comparer = (_cmp_f) cmp_duration,
-            .jsonifier = (_to_json_f) _duration_to_json,
-            .destroyer = _free_noop,
+            .jsonifier = (_to_json_f) m_duration_to_json,
+            .destroyer = m_free_noop,
             .from_json = (from_json_func) duration_from_json,
             .to_json = (to_json_func) duration_to_json,
     };

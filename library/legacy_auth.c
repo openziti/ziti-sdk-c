@@ -126,7 +126,7 @@ static void mfa_cb(void * UNUSED(empty), const ziti_error *err, void *ctx) {
     struct legacy_auth_s *auth = container_of(ctx, struct legacy_auth_s, api);
 
     if (auth->mfa_cb) {
-        auth->mfa_cb(auth->ctx, err ? err->err : ZITI_OK);
+        auth->mfa_cb(auth->ctx, err ? (int)err->err : ZITI_OK);
         auth->mfa_cb = NULL;
     }
 
@@ -140,7 +140,7 @@ static void mfa_cb(void * UNUSED(empty), const ziti_error *err, void *ctx) {
             auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, (void*)err);
             uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
         } else {
-            ZITI_LOG(ERROR, "failed to submit MFA code: %d/%s", err->err, err->message);
+            ZITI_LOG(ERROR, "failed to submit MFA code: %d/%s", (int)err->err, err->message);
             uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
         }
     }
@@ -159,7 +159,7 @@ static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx
     struct legacy_auth_s *auth = ctx;
     assert(auth->session == NULL);
 
-    int errCode = err ? err->err : ZITI_OK;
+    int errCode = err ? (int)err->err : ZITI_OK;
     if (session) {
         auth->backoff = 0;
         ZITI_LOG(DEBUG, "logged in successfully => api_session[%s]", session->id);
@@ -219,7 +219,8 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
             break;
         default: {
             uint64_t delay = next_backoff(&auth->backoff, MAX_BACKOFF, BACKOFF_BASE_DELAY);
-            ZITI_LOG(WARN, "failed to refresh API session: %d/%s, retry in %" PRIu64 "ms", err->err, err->message, delay);
+            ZITI_LOG(WARN, "failed to refresh API session: %d/%s, retry in %" PRIu64 "ms",
+                     (int)err->err, err->message, delay);
             uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
         }
     }

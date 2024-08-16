@@ -141,11 +141,13 @@ void free_##T##_array(array(T) *ap) { model_free_array((void***)ap, get_##T##_me
 #ifdef __cplusplus
 extern "C" {
 #endif
-typedef char *model_string;
-typedef char **model_string_array;
-typedef int64_t number;
-typedef number **number_array;
-typedef bool **bool_array;
+typedef const char *model_string;
+
+typedef model_string *model_string_array;
+typedef int64_t model_number;
+typedef model_number **model_number_array;
+typedef bool model_bool;
+typedef model_bool **model_bool_array;
 typedef char *json;
 
 enum _field_mod {
@@ -208,9 +210,9 @@ ZITI_FUNC char *model_to_json(const void *obj, const type_meta *meta, int flags,
 
 ZITI_FUNC ssize_t model_to_json_r(const void *obj, const type_meta *meta, int flags, char *outbuf, size_t max);
 
-ZITI_FUNC extern const type_meta *get_bool_meta();
+ZITI_FUNC extern const type_meta *get_model_bool_meta();
 
-ZITI_FUNC extern const type_meta *get_number_meta();
+ZITI_FUNC extern const type_meta *get_model_number_meta();
 
 ZITI_FUNC extern const type_meta *get_model_string_meta();
 
@@ -236,8 +238,8 @@ typedef enum {
 typedef struct {
     tag_type type;
     union {
-        bool bool_value;
-        number num_value;
+        model_bool bool_value;
+        model_number num_value;
         model_string string_value;
     };
 } tag;
@@ -295,7 +297,7 @@ const struct Enum##_s Enum##s = {  \
 Values(enum_field_val,Enum)\
 };                              \
 static int cmp_##Enum(const ptr(Enum) lh, const ptr(Enum) rh) { \
-return get_number_meta()->comparer(lh, rh);               \
+return get_model_number_meta()->comparer((ptr(model_number))lh, (ptr(model_number))rh);               \
 };\
 static int Enum##_json(const ptr(Enum) e, void *buf, int indent, int flags) {     \
 return json_enum(e, buf, indent, flags, &Enum##s);                              \

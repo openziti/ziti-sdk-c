@@ -41,16 +41,6 @@
 #define ztx_controller(ztx) \
 ((ztx)->ctrl.url ? (ztx)->ctrl.url : (ztx)->config.controller_url)
 
-static const char *ALL_CONFIG_TYPES[] = {
-        "all",
-        NULL
-};
-
-struct ziti_init_req {
-    ziti_context ztx;
-    bool start;
-};
-
 int code_to_error(const char *code);
 
 static void version_pre_auth_cb(const ziti_version *version, const ziti_error *err, void *ctx);
@@ -819,7 +809,7 @@ static void service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
         rc = ZITI_OK;
     } else {
         if (err) {
-            rc = err->err;
+            rc = (int)err->err;
         }
     }
 
@@ -918,7 +908,7 @@ static void set_posture_query_defaults(ziti_service *service) {
             //if the controller doesn't support
             if (service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining == NULL) {
                 //free done by model_free
-                int *timeoutRemaining = calloc(1, sizeof(int));
+                model_number *timeoutRemaining = calloc(1, sizeof(*timeoutRemaining));
                 *timeoutRemaining = -1;
                 service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining = timeoutRemaining;
             }
@@ -1157,7 +1147,7 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
 
     if (err) {
         ZTX_LOG(WARN, "failed to poll service updates: code[%d] err[%d/%s]",
-                err->http_code, err->err, err->message);
+                (int)err->http_code, (int)err->err, err->message);
         // if controller is unavailable just reschedule for later time
         if (err->err != ZITI_DISABLED) {
             ziti_services_refresh(ztx, false);
@@ -1165,7 +1155,7 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
     } else if (ztx->last_update == NULL || strcmp(ztx->last_update, update->last_change) != 0) {
         ZTX_LOG(VERBOSE, "ztx last_update = %s", update->last_change);
         FREE(ztx->last_update);
-        ztx->last_update = update->last_change;
+        ztx->last_update = (char*)update->last_change;
         ziti_ctrl_get_services(ztx_get_controller(ztx), update_services, ztx);
 
     } else {
@@ -1180,7 +1170,6 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
 static void refresh_cb(uv_timer_t *t) {
     ziti_context ztx = t->data;
 
-//151637
     if (!ztx->enabled) {
         ZTX_LOG(DEBUG, "service refresh stopped, ztx is disabled");
         return;
@@ -1210,7 +1199,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
     if (err) {
         if (err->err != ZITI_DISABLED) {
             ZTX_LOG(ERROR, "failed to get current edge routers: code[%d] %s/%s",
-                    err->http_code, err->code, err->message);
+                    (int)err->http_code, err->code, err->message);
         }
         return;
     }
@@ -1297,7 +1286,7 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
 static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e, void *ctx) {
     ziti_context ztx = ctx;
     if (e) {
-        ZTX_LOG(ERROR, "failed to create session cert: %d/%s", e->err, e->message);
+        ZTX_LOG(ERROR, "failed to create session cert: %d/%s", (int)e->err, e->message);
     } else {
         ZTX_LOG(DEBUG, "received API session certificate");
         ZTX_LOG(VERBOSE, "cert => %s", resp->client_cert_pem);
@@ -1339,7 +1328,7 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
         }
 
         if (ztx->config.id.ca && strcmp(new_pem, ztx->config.id.ca) != 0) {
-            char *old_ca = ztx->config.id.ca;
+            char *old_ca = (char*)ztx->config.id.ca;
             ztx->config.id.ca = new_pem;
 
             tls_context *new_tls = NULL;
@@ -1530,7 +1519,7 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
 
     ziti_context ctx = calloc(1, sizeof(*ctx));
 
-    char *cfg_ca = config->id.ca;
+    const char *cfg_ca = config->id.ca;
     if (cfg_ca == NULL) {
         ZITI_LOG(WARN, "config is missing CA bundle");
         cfg_ca = "";
@@ -1610,7 +1599,6 @@ int ziti_context_run(ziti_context ztx, uv_loop_t *loop) {
     if (ztx->loop) {
         return ZITI_INVALID_STATE;
     }
-    PREPF(ziti, ziti_errorstr);
 
     ztx->loop = loop;
     ztx->ctrl_status = ZITI_WTF;
@@ -1621,10 +1609,6 @@ int ziti_context_run(ziti_context ztx, uv_loop_t *loop) {
     uv_mutex_init(&ztx->w_lock);
 
     ziti_queue_work(ztx, ziti_init_async, NULL);
-
-    CATCH(ziti) {
-        return ERR(ziti);
-    }
 
     return ZITI_OK;
 }
@@ -1640,7 +1624,7 @@ static void jwt_signers_cb(ziti_jwt_signer_array arr, const ziti_error *err, voi
     ziti_jwt_signer *js = NULL;
 
     if (err) {
-        ZTX_LOG(ERROR, "failed to get external signers: %d/%s", err->err, err->message);
+        ZTX_LOG(ERROR, "failed to get external signers: %d/%s", (int)err->err, err->message);
     }
     FOR(js, arr) {
         ZTX_LOG(INFO, "ext jwt: %s", js->provider_url);

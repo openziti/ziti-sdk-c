@@ -103,7 +103,7 @@ static void token_cb(oidc_client_t *oidc, int status, const char *token) {
             auth->cb(auth->cb_ctx, ZitiAuthStateFullyAuthenticated, (void*)token);
         } else if (status == OIDC_TOTP_NEEDED) {
             auth->cb(auth->cb_ctx, ZitiAuthStatePartiallyAuthenticated,
-                     (void *) &ziti_mfa);
+                     (void *) &ZITI_MFA);
         } else if (status == OIDC_TOTP_FAILED) {
             if (auth->mfa_cb) {
                 auth->mfa_cb(auth->cb_ctx, ZITI_MFA_INVALID_TOKEN);

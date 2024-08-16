@@ -223,7 +223,7 @@ static void on_client(ziti_connection server, ziti_connection conn, int status, 
         char port[6];
         snprintf(port, sizeof(port), "%hu", (short) binding->host_cfg->port);
         if (uv_getaddrinfo(app->loop, &resolve, NULL, binding->host_cfg->hostname, port, NULL) != 0) {
-            fprintf(stderr, "failed to resolve %s:%d\n", binding->host_cfg->hostname, binding->host_cfg->port);
+            fprintf(stderr, "failed to resolve %s:%d\n", binding->host_cfg->hostname, (int)binding->host_cfg->port);
             return;
         }
 

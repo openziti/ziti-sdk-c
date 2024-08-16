@@ -40,9 +40,9 @@ const char *const ERROR_MSG_NO_API_SESSION_TOKEN = "no api session token set for
 #define MODEL_API static
 
 #define PAGINATION_MODEL(XX, ...) \
-XX(limit, number, none, limit, __VA_ARGS__) \
-XX(offset, number, none, offset, __VA_ARGS__) \
-XX(total, number, none, totalCount, __VA_ARGS__) \
+XX(limit, model_number, none, limit, __VA_ARGS__) \
+XX(offset, model_number, none, offset, __VA_ARGS__) \
+XX(total, model_number, none, totalCount, __VA_ARGS__) \
 
 DECLARE_MODEL(resp_pagination, PAGINATION_MODEL)
 
