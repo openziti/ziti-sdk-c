@@ -274,6 +274,10 @@ int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf
     bool comma = false;
     for (int i = 0; i < meta->field_count; i++) {
         field_meta *fm = meta->fields + i;
+
+        if (fm->path == NULL || fm->path[0] == 0) {
+            continue;
+        }
         const type_meta *ftm = fm->meta();
 
         void **f_addr = (void **) ((char *) obj + fm->offset);
