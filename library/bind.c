@@ -204,7 +204,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
             break;
 
         default:
-            CONN_LOG(WARN, "failed to get session for service[%s]: %d/%s", conn->service, err->err, err->code);
+            CONN_LOG(WARN, "failed to get session for service[%s]: %d/%s", conn->service, (int)err->err, err->code);
             schedule_rebind(conn, true);
     }
 }

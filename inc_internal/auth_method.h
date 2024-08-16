@@ -22,9 +22,9 @@ enum AuthenticationMethod {
     HA
 };
 
-static const ziti_auth_query_mfa ziti_mfa = {
-        .type_id = (char*)"MFA",
-        .provider = (char*)"ziti",
+static const ziti_auth_query_mfa ZITI_MFA = {
+        .type_id = "MFA",
+        .provider = "ziti",
 };
 
 typedef enum {

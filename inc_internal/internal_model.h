@@ -22,55 +22,55 @@
 // extends ziti_identity
 #define ZITI_IDENTITY_DATA_MODEL(XX, ...) \
 ZITI_IDENTITY_MODEL(XX, __VA_ARGS__) \
-XX(default_hosting_precendence, string, none, defaultHostingPrecendence, __VA_ARGS__) \
-XX(default_hosting_cost, int, none, defaultHostingCost, __VA_ARGS__)                  \
-XX(service_hosting_precendences, string, map, serviceHostingPrecedences, __VA_ARGS__)\
-XX(service_hosting_costs, int, map, serviceHostingCosts, __VA_ARGS__)
+XX(default_hosting_precendence, model_string, none, defaultHostingPrecendence, __VA_ARGS__) \
+XX(default_hosting_cost, model_number, none, defaultHostingCost, __VA_ARGS__)                  \
+XX(service_hosting_precendences, model_string, map, serviceHostingPrecedences, __VA_ARGS__)\
+XX(service_hosting_costs, model_number, map, serviceHostingCosts, __VA_ARGS__)
 
 // add other protocols when we support them
 #define ZITI_ER_PROTOCOLS(XX, ...) \
-XX(tls, string, none, tls, __VA_ARGS__)
+XX(tls, model_string, none, tls, __VA_ARGS__)
 
 #define ZITI_EDGE_ROUTER_MODEL(XX, ...)\
-XX(name, string, none, name, __VA_ARGS__)\
-XX(hostname, string, none, hostname, __VA_ARGS__) \
+XX(name, model_string, none, name, __VA_ARGS__)\
+XX(hostname, model_string, none, hostname, __VA_ARGS__) \
 XX(protocols, ziti_er_protocols, none, supportedProtocols, __VA_ARGS__)
 
 #define ZITI_SERVICE_EDGE_ROUTERS_MODEL(XX, ...) \
 XX(routers, ziti_edge_router, array, edgeRouters, __VA_ARGS__)
 
 #define ZITI_SESSION_MODEL(XX, ...) \
-XX(token, string, none, token, __VA_ARGS__)\
-XX(id, string, none, id, __VA_ARGS__) \
+XX(token, model_string, none, token, __VA_ARGS__)\
+XX(id, model_string, none, id, __VA_ARGS__) \
 XX(edge_routers, ziti_edge_router, list, edgeRouters, __VA_ARGS__) \
-XX(service_id, string, none, serviceId, __VA_ARGS__) \
-XX(refresh, bool, none, , __VA_ARGS__)
+XX(service_id, model_string, none, serviceId, __VA_ARGS__) \
+XX(refresh, model_bool, none, , __VA_ARGS__)
 
 #define ZITI_PROCESS_MODEL(XX, ...) \
-XX(path, string, none, path, __VA_ARGS__)
+XX(path, model_string, none, path, __VA_ARGS__)
 
 #define ZITI_API_SESSION_MODEL(XX, ...)\
-XX(id, string, none, id, __VA_ARGS__) \
-XX(token, string, none, token, __VA_ARGS__) \
+XX(id, model_string, none, id, __VA_ARGS__) \
+XX(token, model_string, none, token, __VA_ARGS__) \
 XX(expires, timestamp, none, expiresAt, __VA_ARGS__) \
-XX(expireSeconds, int, none, expirationSeconds, __VA_ARGS__) \
+XX(expireSeconds, model_number, none, expirationSeconds, __VA_ARGS__) \
 XX(updated, timestamp, none, updatedAt, __VA_ARGS__) \
 XX(cached_last_activity_at, timestamp, none, cachedLastActivityAt, __VA_ARGS__) \
 XX(identity, ziti_identity, none, identity, __VA_ARGS__) \
 XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__) \
 XX(auth_queries, ziti_auth_query_mfa, list, authQueries, __VA_ARGS__)         \
-XX(authenticator_id, string, none, authenticatorId, __VA_ARGS__)
+XX(authenticator_id, model_string, none, authenticatorId, __VA_ARGS__)
 
 #define ZITI_ERROR_MODEL(XX, ...) \
-XX(err, int, none, , __VA_ARGS__) \
-XX(http_code, int, none, , __VA_ARGS__) \
-XX(code, string, none, code, __VA_ARGS__) \
-XX(message, string, none, message, __VA_ARGS__) \
-XX(cause, string, map, cause, __VA_ARGS__)
+XX(err, model_number, none, , __VA_ARGS__) \
+XX(http_code, model_number, none, , __VA_ARGS__) \
+XX(code, model_string, none, code, __VA_ARGS__) \
+XX(message, model_string, none, message, __VA_ARGS__) \
+XX(cause, model_string, map, cause, __VA_ARGS__)
 
 #define ZITI_ENROLLMENT_JWT_HEADER_MODEL(XX, ...) \
-XX(alg, string, none, alg, __VA_ARGS__) \
-XX(typ, string, none, typ, __VA_ARGS__)
+XX(alg, model_string, none, alg, __VA_ARGS__) \
+XX(typ, model_string, none, typ, __VA_ARGS__)
 
 #define ZITI_ENROLLMENT_METHOD(XX, ...) \
 XX(ott, __VA_ARGS__)                    \
@@ -80,128 +80,128 @@ XX(ca, __VA_ARGS__)
 
 #define ZITI_ENROLLMENT_JWT_MODEL(XX, ...) \
 XX(method, ziti_enrollment_method, none, em, __VA_ARGS__) \
-XX(controller, string, none, iss, __VA_ARGS__) \
-XX(subject, string, none, sub, __VA_ARGS__) \
-XX(token, string, none, jti, __VA_ARGS__)
+XX(controller, model_string, none, iss, __VA_ARGS__) \
+XX(subject, model_string, none, sub, __VA_ARGS__) \
+XX(token, model_string, none, jti, __VA_ARGS__)
 
 #define ZITI_SDK_INFO_MODEL(XX, ...) \
-XX(type, string, none, type, __VA_ARGS__) \
-XX(version, string, none, version, __VA_ARGS__) \
-XX(revision, string, none, revision, __VA_ARGS__) \
-XX(branch, string, none, branch, __VA_ARGS__)   \
-XX(app_id, string, none, appID, __VA_ARGS__)    \
-XX(app_version, string, none, appVersion, __VA_ARGS__)
+XX(type, model_string, none, type, __VA_ARGS__) \
+XX(version, model_string, none, version, __VA_ARGS__) \
+XX(revision, model_string, none, revision, __VA_ARGS__) \
+XX(branch, model_string, none, branch, __VA_ARGS__)   \
+XX(app_id, model_string, none, appID, __VA_ARGS__)    \
+XX(app_version, model_string, none, appVersion, __VA_ARGS__)
 
 #define ZITI_ENV_INFO_MODEL(XX, ...) \
-XX(os, string, none, os, __VA_ARGS__) \
-XX(os_release, string, none, osRelease, __VA_ARGS__) \
-XX(os_version, string, none, osVersion, __VA_ARGS__) \
-XX(arch, string, none, arch, __VA_ARGS__)            \
-XX(hostname, string, none, hostname, __VA_ARGS__)    \
-XX(domain, string, none, domain, __VA_ARGS__)
+XX(os, model_string, none, os, __VA_ARGS__) \
+XX(os_release, model_string, none, osRelease, __VA_ARGS__) \
+XX(os_version, model_string, none, osVersion, __VA_ARGS__) \
+XX(arch, model_string, none, arch, __VA_ARGS__)            \
+XX(hostname, model_string, none, hostname, __VA_ARGS__)    \
+XX(domain, model_string, none, domain, __VA_ARGS__)
 
 #define ZITI_AUTH_REQ(XX, ...) \
 XX(sdk_info, ziti_sdk_info, none, sdkInfo, __VA_ARGS__) \
 XX(env_info, ziti_env_info, ptr, envInfo, __VA_ARGS__) \
-XX(config_types, string, list, configTypes, __VA_ARGS__)
+XX(config_types, model_string, list, configTypes, __VA_ARGS__)
 
 #define ZITI_ENROLLMENT_RESP(XX, ...) \
-XX(cert, string, none, cert, __VA_ARGS__)
+XX(cert, model_string, none, cert, __VA_ARGS__)
 
 #define ZITI_PR_MAC_REQ(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__) \
-XX(typeId, string, none, typeId, __VA_ARGS__) \
-XX(mac_addresses, string, array, macAddresses, __VA_ARGS__)
+XX(id, model_string, none, id, __VA_ARGS__) \
+XX(typeId, model_string, none, typeId, __VA_ARGS__) \
+XX(mac_addresses, model_string, array, macAddresses, __VA_ARGS__)
 
 #define ZITI_PR_DOMAIN_REQ(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__) \
-XX(typeId, string, none, typeId, __VA_ARGS__) \
-XX(domain, string, none, domain, __VA_ARGS__)
+XX(id, model_string, none, id, __VA_ARGS__) \
+XX(typeId, model_string, none, typeId, __VA_ARGS__) \
+XX(domain, model_string, none, domain, __VA_ARGS__)
 
 #define ZITI_PR_OS_REQ(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__) \
-XX(typeId, string, none, typeId, __VA_ARGS__) \
-XX(type, string, none, type, __VA_ARGS__) \
-XX(version, string, none, version, __VA_ARGS__) \
-XX(build, string, none, build, __VA_ARGS__)
+XX(id, model_string, none, id, __VA_ARGS__) \
+XX(typeId, model_string, none, typeId, __VA_ARGS__) \
+XX(type, model_string, none, type, __VA_ARGS__) \
+XX(version, model_string, none, version, __VA_ARGS__) \
+XX(build, model_string, none, build, __VA_ARGS__)
 
 #define ZITI_PR_PROCESS(XX, ...) \
-XX(is_running, bool, none, isRunning, __VA_ARGS__) \
-XX(hash, string, none, hash, __VA_ARGS__) \
-XX(signer, string, none, signerFingerprint, __VA_ARGS__)
+XX(is_running, model_bool, none, isRunning, __VA_ARGS__) \
+XX(hash, model_string, none, hash, __VA_ARGS__) \
+XX(signer, model_string, none, signerFingerprint, __VA_ARGS__)
 
 #define ZITI_PR_PROCESS_REQ(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__)\
-XX(path, string, none, path, __VA_ARGS__) \
-XX(typeId, string, none, typeId, __VA_ARGS__) \
-XX(is_running, bool, none, isRunning, __VA_ARGS__) \
-XX(hash, string, none, hash, __VA_ARGS__) \
-XX(signers, string, array, signerFingerprints, __VA_ARGS__)
+XX(id, model_string, none, id, __VA_ARGS__)\
+XX(path, model_string, none, path, __VA_ARGS__) \
+XX(typeId, model_string, none, typeId, __VA_ARGS__) \
+XX(is_running, model_bool, none, isRunning, __VA_ARGS__) \
+XX(hash, model_string, none, hash, __VA_ARGS__) \
+XX(signers, model_string, array, signerFingerprints, __VA_ARGS__)
 
 #define ZITI_PR_ENDPOINT_STATE_REQ(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__)\
-XX(typeId, string, none, typeId, __VA_ARGS__) \
-XX(unlocked, bool, none, unlocked, __VA_ARGS__) \
-XX(woken, bool, none, woken, __VA_ARGS__)
+XX(id, model_string, none, id, __VA_ARGS__)\
+XX(typeId, model_string, none, typeId, __VA_ARGS__) \
+XX(unlocked, model_bool, none, unlocked, __VA_ARGS__) \
+XX(woken, model_bool, none, woken, __VA_ARGS__)
 
 #define ZITI_SERVICE_TIMER(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__) \
-XX(name, string, none, name, __VA_ARGS__) \
-XX(posture_query_type, string, none, postureQueryType, __VA_ARGS__) \
-XX(timeout, int, ptr, timeout, __VA_ARGS__) \
-XX(timeoutRemaining, int, ptr, timeoutRemaining, __VA_ARGS__)
+XX(id, model_string, none, id, __VA_ARGS__) \
+XX(name, model_string, none, name, __VA_ARGS__) \
+XX(posture_query_type, model_string, none, postureQueryType, __VA_ARGS__) \
+XX(timeout, model_number, ptr, timeout, __VA_ARGS__) \
+XX(timeoutRemaining, model_number, ptr, timeoutRemaining, __VA_ARGS__)
 
 #define ZITI_PR_RESPONSE(XX, ...) \
 XX(services, ziti_service_timer, array, services, __VA_ARGS__)
 
 #define ZITI_SERVICE_UPDATE(XX, ...) \
-XX(last_change, string, none, lastChangeAt, __VA_ARGS__)
+XX(last_change, model_string, none, lastChangeAt, __VA_ARGS__)
 
 #define ZITI_MFA_CODE_REQ(XX, ...) \
-XX(code, string, none, code, __VA_ARGS__)
+XX(code, model_string, none, code, __VA_ARGS__)
 
 #define ZITI_MFA_RECOVERY_CODES_MODEL(XX, ...) \
-XX(recovery_codes, string, array, recoveryCodes, __VA_ARGS__)
+XX(recovery_codes, model_string, array, recoveryCodes, __VA_ARGS__)
 
 #define ZITI_EXTEND_CERT_AUTHENTICATOR_REQ(XX, ...) \
-XX(client_cert_csr, string, none, clientCertCsr, __VA_ARGS__)
+XX(client_cert_csr, model_string, none, clientCertCsr, __VA_ARGS__)
 
 #define ZITI_CREATE_API_CERT_REQ(XX, ...) \
-XX(client_cert_csr, string, none, csr, __VA_ARGS__)
+XX(client_cert_csr, model_string, none, csr, __VA_ARGS__)
 
 #define ZITI_VERIFY_EXTEND_CERT_AUTHENTICATOR_REQ(XX, ...) \
-XX(client_cert, string, none, clientCert, __VA_ARGS__)
+XX(client_cert, model_string, none, clientCert, __VA_ARGS__)
 
 #define ZITI_EXTEND_CERT_AUTHENTICATOR_RESP(XX, ...) \
-XX(client_cert_pem, string, none, clientCert, __VA_ARGS__) \
-XX(cas_pem, string, none, ca, __VA_ARGS__)
+XX(client_cert_pem, model_string, none, clientCert, __VA_ARGS__) \
+XX(cas_pem, model_string, none, ca, __VA_ARGS__)
 
 #define ZITI_CREATE_API_CERT_RESP(XX, ...) \
-XX(client_cert_pem, string, none, certificate, __VA_ARGS__) \
-XX(cas_pem, string, none, cas, __VA_ARGS__)
+XX(client_cert_pem, model_string, none, certificate, __VA_ARGS__) \
+XX(cas_pem, model_string, none, cas, __VA_ARGS__)
 
 #define ZITI_AUTHENTICATOR_MODEL(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__) \
-XX(method, string, none, method, __VA_ARGS__) \
-XX(identity_id, string, none, identityId, __VA_ARGS__) \
-XX(cert_pem, string, none, certPem, __VA_ARGS__) \
-XX(fingerprint, string, none, fingerprint, __VA_ARGS__)
+XX(id, model_string, none, id, __VA_ARGS__) \
+XX(method, model_string, none, method, __VA_ARGS__) \
+XX(identity_id, model_string, none, identityId, __VA_ARGS__) \
+XX(cert_pem, model_string, none, certPem, __VA_ARGS__) \
+XX(fingerprint, model_string, none, fingerprint, __VA_ARGS__)
 
 #define API_ADDRESS_MODEL(XX, ...) \
-XX(url, string, none, url, __VA_ARGS__) \
-XX(version, string, none, version, __VA_ARGS__)
+XX(url, model_string, none, url, __VA_ARGS__) \
+XX(version, model_string, none, version, __VA_ARGS__)
 
 #define CTRL_APIS_MODEL(XX, ...) \
 XX(edge, api_address, list, edge-client, __VA_ARGS__) \
 XX(oidc, api_address, list, edge-oidc, __VA_ARGS__)
 
 #define ZITI_CONTROLLER_DETAIL(XX, ...) \
-XX(id, string, none, id, __VA_ARGS__) \
-XX(name, string, none, name, __VA_ARGS__) \
+XX(id, model_string, none, id, __VA_ARGS__) \
+XX(name, model_string, none, name, __VA_ARGS__) \
 XX(apis, ctrl_apis, none, apiAddresses, __VA_ARGS__) \
-XX(is_online, bool, none, isOnline, __VA_ARGS__) \
-XX(cert_pem, string, none, certPem, __VA_ARGS__) \
-XX(fingerprint, string, none, fingerprint, __VA_ARGS__)
+XX(is_online, model_bool, none, isOnline, __VA_ARGS__) \
+XX(cert_pem, model_string, none, certPem, __VA_ARGS__) \
+XX(fingerprint, model_string, none, fingerprint, __VA_ARGS__)
 
 #ifdef __cplusplus
 extern "C" {

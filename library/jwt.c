@@ -91,7 +91,7 @@ int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jw
     }
 
     char def[1024];
-    sprintf(def, "%s/.netfoundry/ziti/ziti.jwt", getenv("HOME"));
+    snprintf(def, sizeof(def), "%s/.netfoundry/ziti/ziti.jwt", getenv("HOME"));
     return load_jwt_file(def, ecfg, zejh, zej);
 }
 

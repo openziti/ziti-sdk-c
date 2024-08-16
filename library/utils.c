@@ -639,7 +639,6 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
         content_len = *size;
         f = fileno(stdin);
     } else {
-        struct stat stats;
         rc = uv_fs_stat(NULL, &fs_req, path, NULL);
         if (rc) {
             ZITI_LOG(ERROR, "%s - %s", path, uv_strerror(rc));

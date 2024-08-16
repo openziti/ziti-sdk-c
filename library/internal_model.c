@@ -356,7 +356,7 @@ static int ziti_address_write_json(const ziti_address *addr, string_buf_t *buf, 
         return -1;
     }
 
-    return get_string_meta()->jsonifier(addr_str, buf, indent, flags);
+    return get_model_string_meta()->jsonifier(addr_str, buf, indent, flags);
 }
 
 static void free_ziti_address0(ziti_address *addr) {

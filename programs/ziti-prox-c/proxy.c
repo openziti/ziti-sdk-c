@@ -857,7 +857,7 @@ int run_opts(int argc, char **argv) {
 
     if (debug_set) {
         char level[6];
-        sprintf(level, "%d", debug_level);
+        snprintf(level, sizeof(level), "%d", debug_level);
 #if _WIN32
         SetEnvironmentVariable("ZITI_LOG", level);
 #else
