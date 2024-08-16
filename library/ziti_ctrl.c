@@ -25,6 +25,8 @@
 #define DEFAULT_PAGE_SIZE 25
 #define ZITI_CTRL_KEEPALIVE 0
 #define ZITI_CTRL_TIMEOUT 15000
+// one minute in millis
+#define ONE_MINUTE (1 * 60 * 1000)
 
 const char *const PC_DOMAIN_TYPE = "DOMAIN";
 const char *const PC_OS_TYPE = "OS";
@@ -503,21 +505,24 @@ static const char* ctrl_next_ep(ziti_controller *ctrl, const char *current) {
         CTRL_LOG(WARN, "empty endpoints map");
         return NULL;
     }
-    
+    uint64_t now = uv_now(ctrl->loop);
     ziti_controller_detail *curr = current ?
             model_map_get(&ctrl->endpoints, current) : NULL;
 
     if (curr) {
         curr->is_online = false;
+        curr->offline_time = (model_number)now;
     }
 
-    model_list online = {0};
-
+    model_list online = {};
+    model_list check = {};
     const char *url;
     ziti_controller_detail *d;
     MODEL_MAP_FOREACH(url, d, &ctrl->endpoints) {
         if (d == NULL || d->is_online) {
             model_list_append(&online, (void*)url);
+        } else if ((uint64_t)d->offline_time < (now - ONE_MINUTE)) {
+            model_list_append(&check, (void*)url);
         }
     }
     const char *next = NULL;
@@ -528,17 +533,20 @@ static const char* ctrl_next_ep(ziti_controller *ctrl, const char *current) {
             it = model_list_it_next(it);
         }
         next = model_list_it_element(it);
+    } else if (model_list_size(&check) > 0) {
+        model_list_iter it = model_list_iterator(&check);
+
+        // no controller is online just try random one from the check list
+        int rand = (int) (uv_now(ctrl->loop) % model_map_size(&ctrl->endpoints));
+        for (int i = 0; i < rand; i++) {
+            it = model_list_it_next(it);
+        }
+        next = model_list_it_element(it);
     } else {
         CTRL_LOG(WARN, "no controllers are online");
-        // no controller is online just try random one
-        int rand = (int) (uv_now(ctrl->loop) % model_map_size(&ctrl->endpoints));
-        model_map_iter it = model_map_iterator(&ctrl->endpoints);
-        for (int i = 0; i < rand; i++) {
-            it = model_map_it_next(it);
-        }
-        next = model_map_it_key(it);
     }
     model_list_clear(&online, NULL);
+    model_list_clear(&check, NULL);
     return next;
 }
 
@@ -555,7 +563,9 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
 
     const char *ep;
     MODEL_LIST_FOREACH(ep, *urls) {
-        model_map_set(&ctrl->endpoints, ep, NULL);
+        ziti_controller_detail *detail = alloc_ziti_controller_detail();
+        detail->name = strdup(ep);
+        model_map_set(&ctrl->endpoints, ep, detail);
     }
 
     const char *initial_ep = ctrl_next_ep(ctrl, NULL);

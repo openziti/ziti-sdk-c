@@ -200,6 +200,7 @@ XX(id, model_string, none, id, __VA_ARGS__) \
 XX(name, model_string, none, name, __VA_ARGS__) \
 XX(apis, ctrl_apis, none, apiAddresses, __VA_ARGS__) \
 XX(is_online, model_bool, none, isOnline, __VA_ARGS__) \
+XX(offline_time, model_number, none, , __VA_ARGS__) \
 XX(cert_pem, model_string, none, certPem, __VA_ARGS__) \
 XX(fingerprint, model_string, none, fingerprint, __VA_ARGS__)
 
