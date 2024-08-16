@@ -20,11 +20,9 @@ limitations under the License.
 
 #include <math.h>
 #include <string.h>
-#include <uv.h>
 
 #if defined(__unix__) || defined(__APPLE__)
 # if __STDC_NO_ATOMICS__
-
 #   include <atomic.h>
 
 #   define InterlockedAdd64(p, v) (*p) += (v)
@@ -43,27 +41,24 @@ limitations under the License.
 
 static const double SECOND = NANOS(1); // one second in nanos
 
-static uv_timer_t ticker;
+static time_fn clock_fn;
+static void *clock_ctx;
+
 static double interval = 5; // 5 seconds is default
 static double intervalNanos = NANOS(5);
 
-static LIST_HEAD(meters, rate_s) all_rates = LIST_HEAD_INITIALIZER(all_rates);
-
-static void ticker_cb(uv_timer_t *t);
 static void tick_ewma(rate_t *ewma);
 static void tick_cma(rate_t *cma);
 static void tick_instant(rate_t *inst);
 
-extern void metrics_init(uv_loop_t *loop, long interval_secs) {
+extern void metrics_init(long interval_secs, time_fn f, void *time_ctx) {
 
-    if (!uv_is_active((uv_handle_t*)&ticker)) {
-
+    if (clock_fn == NULL) {
+        clock_fn = f;
+        clock_ctx = time_ctx;
+        
         interval = (double)interval_secs;
         intervalNanos = NANOS(interval);
-
-        uv_timer_init(loop, &ticker);
-        uv_timer_start(&ticker, ticker_cb, MILLIS(interval_secs), MILLIS(interval_secs));
-        uv_unref((uv_handle_t*)&ticker);
     }
 
 }
@@ -71,15 +66,16 @@ extern void metrics_init(uv_loop_t *loop, long interval_secs) {
 extern void metrics_rate_close(rate_t* r) {
     if (r->active) {
         r->active = false;
-        LIST_REMOVE(r, _next);
+        r->tick_fn = NULL;
+        InterlockedExchange(&r->delta, 0);
+        r->rate = 0;
     }
 }
 
-extern void metrics_rate_init(rate_t *r, rate_type type) {
+extern int metrics_rate_init(rate_t *r, rate_type type) {
     if (r->active) {
         metrics_rate_close(r);
     }
-
     memset(r, 0, sizeof(rate_t));
     switch (type) {
         case EWMA_5s:
@@ -114,34 +110,39 @@ extern void metrics_rate_init(rate_t *r, rate_type type) {
             r->tick_fn = tick_instant;
             r->param = 1;
             break;
+        default:
+            return -1;
+    }
+    if (clock_fn) {
+        r->last_tick = clock_fn(clock_ctx);
     }
 
     r->active = true;
-    LIST_INSERT_HEAD(&all_rates, r, _next);
+    return 0;
+}
+
+static void rate_catchup(rate_t *r) {
+    if (clock_fn) {
+        uint64_t now = clock_fn(clock_ctx);
+        while (now > r->last_tick + (uint64_t) MILLIS(interval)) {
+            r->tick_fn(r);
+            r->last_tick = r->last_tick + (uint64_t) MILLIS(interval);
+        }
+    }
 }
 
 extern void metrics_rate_update(rate_t *r, long delta) {
+    if (r == NULL || !r->active) return;
+
+    rate_catchup(r);
     InterlockedAdd64(&r->delta, delta);
 }
 
 extern double metrics_rate_get(rate_t *r) {
     if (r == NULL) return 0;
+    rate_catchup(r);
     double rate = (*(double*)&r->rate) * (SECOND);
     return rate;
-}
-
-void tick_all() {
-    rate_t *r;
-    LIST_FOREACH(r, &all_rates, _next) {
-        if (r->tick_fn) {
-            r->tick_fn(r);
-        }
-    }
-
-}
-
-static void ticker_cb(uv_timer_t *t) {
-    tick_all();
 }
 
 static double instant_rate(rate_t *r) {
