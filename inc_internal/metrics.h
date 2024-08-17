@@ -48,8 +48,7 @@ using namespace std;
 #elif defined(__APPLE__)
 # include <stdatomic.h>
 #elif _WIN32
-typedef long long atomic_llong;
-typedef long atomic_long;
+#include <stdatomic.h>
 #endif
 #endif
 
