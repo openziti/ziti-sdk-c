@@ -19,9 +19,6 @@ limitations under the License.
 #include <cstring>
 #include <ziti/enums.h>
 
-extern "C" {
-extern void tick_all();
-}
 
 TEST_CASE("test-metrics", "[metrics]") {
     rate_t exp;
@@ -36,7 +33,8 @@ TEST_CASE("test-metrics", "[metrics]") {
     metrics_rate_update(&cma, 1000);
 
     for (int i = 0; i < 100; i++) {
-        tick_all();
+        exp.tick_fn(&exp);
+        cma.tick_fn(&cma);
         printf("%d:\tewma=%.10lf\tmma=%lf\n", i, metrics_rate_get(&exp), metrics_rate_get(&cma));
     }
 };

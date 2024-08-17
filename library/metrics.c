@@ -20,11 +20,9 @@ limitations under the License.
 
 #include <math.h>
 #include <string.h>
-#include <uv.h>
 
 #if defined(__unix__) || defined(__APPLE__)
 # if __STDC_NO_ATOMICS__
-
 #   include <atomic.h>
 
 #   define InterlockedAdd64(p, v) (*p) += (v)
@@ -32,10 +30,11 @@ limitations under the License.
 #   define InterlockedExchange(p, v) (*p) = (v)
 # else
 #include <stdatomic.h>
-#define InterlockedAdd64(p, v) atomic_fetch_add(p,v)
-#define InterlockedExchange64(p, v) atomic_store(p,v)
-#define InterlockedExchange(p, v) atomic_store(p,v)
 # endif
+#endif
+
+#if defined(_MSC_VER)
+#include <stdatomic.h>
 #endif
 
 #define NANOS(s) ((s) * 1e9)
@@ -43,27 +42,24 @@ limitations under the License.
 
 static const double SECOND = NANOS(1); // one second in nanos
 
-static uv_timer_t ticker;
+static time_fn clock_fn;
+static void *clock_ctx;
+
 static double interval = 5; // 5 seconds is default
 static double intervalNanos = NANOS(5);
 
-static LIST_HEAD(meters, rate_s) all_rates = LIST_HEAD_INITIALIZER(all_rates);
-
-static void ticker_cb(uv_timer_t *t);
 static void tick_ewma(rate_t *ewma);
 static void tick_cma(rate_t *cma);
 static void tick_instant(rate_t *inst);
 
-extern void metrics_init(uv_loop_t *loop, long interval_secs) {
+extern void metrics_init(long interval_secs, time_fn f, void *time_ctx) {
 
-    if (!uv_is_active((uv_handle_t*)&ticker)) {
-
+    if (clock_fn == NULL) {
+        clock_fn = f;
+        clock_ctx = time_ctx;
+        
         interval = (double)interval_secs;
         intervalNanos = NANOS(interval);
-
-        uv_timer_init(loop, &ticker);
-        uv_timer_start(&ticker, ticker_cb, MILLIS(interval_secs), MILLIS(interval_secs));
-        uv_unref((uv_handle_t*)&ticker);
     }
 
 }
@@ -71,15 +67,16 @@ extern void metrics_init(uv_loop_t *loop, long interval_secs) {
 extern void metrics_rate_close(rate_t* r) {
     if (r->active) {
         r->active = false;
-        LIST_REMOVE(r, _next);
+        r->tick_fn = NULL;
+        atomic_exchange(&r->delta, 0);
+        r->rate = 0;
     }
 }
 
-extern void metrics_rate_init(rate_t *r, rate_type type) {
+extern int metrics_rate_init(rate_t *r, rate_type type) {
     if (r->active) {
         metrics_rate_close(r);
     }
-
     memset(r, 0, sizeof(rate_t));
     switch (type) {
         case EWMA_5s:
@@ -114,39 +111,44 @@ extern void metrics_rate_init(rate_t *r, rate_type type) {
             r->tick_fn = tick_instant;
             r->param = 1;
             break;
+        default:
+            return -1;
+    }
+    if (clock_fn) {
+        r->last_tick = clock_fn(clock_ctx);
     }
 
     r->active = true;
-    LIST_INSERT_HEAD(&all_rates, r, _next);
+    return 0;
+}
+
+static void rate_catchup(rate_t *r) {
+    if (clock_fn) {
+        uint64_t now = clock_fn(clock_ctx);
+        while (now > r->last_tick + (uint64_t) MILLIS(interval)) {
+            r->tick_fn(r);
+            r->last_tick = r->last_tick + (uint64_t) MILLIS(interval);
+        }
+    }
 }
 
 extern void metrics_rate_update(rate_t *r, long delta) {
-    InterlockedAdd64(&r->delta, delta);
+    if (r == NULL || !r->active) return;
+
+    rate_catchup(r);
+    atomic_fetch_add(&r->delta, delta);
 }
 
 extern double metrics_rate_get(rate_t *r) {
     if (r == NULL) return 0;
+    rate_catchup(r);
     double rate = (*(double*)&r->rate) * (SECOND);
     return rate;
 }
 
-void tick_all() {
-    rate_t *r;
-    LIST_FOREACH(r, &all_rates, _next) {
-        if (r->tick_fn) {
-            r->tick_fn(r);
-        }
-    }
-
-}
-
-static void ticker_cb(uv_timer_t *t) {
-    tick_all();
-}
-
 static double instant_rate(rate_t *r) {
     int64_t c = r->delta;
-    InterlockedAdd64(&r->delta, -c);
+    atomic_fetch_add(&r->delta, -c);
     return ((double) c) / (intervalNanos);
 }
 
@@ -155,8 +157,8 @@ static void tick_cma(rate_t *cma) {
     double current_rate = *(double*)&cma->rate;
     current_rate = (r + current_rate * cma->param) / ((double) cma->param + 1);
 
-    InterlockedExchange64(&cma->rate, *(int64_t *) (&current_rate));
-    InterlockedExchange64(&cma->param, cma->param + 1);
+    atomic_exchange(&cma->rate, *(int64_t *) (&current_rate));
+    atomic_exchange(&cma->param, cma->param + 1);
 }
 
 static void tick_ewma(rate_t *ewma) {
@@ -165,15 +167,15 @@ static void tick_ewma(rate_t *ewma) {
     if (ewma->init == 1) {
         double currRate = *(double*)&ewma->rate;
         currRate += *(double*)(&ewma->param) * (r - currRate);
-        InterlockedExchange64(&ewma->rate, *(int64_t *) (&currRate));
+        atomic_exchange(&ewma->rate, *(int64_t *) (&currRate));
     } else {
-        InterlockedExchange64(&ewma->rate, *(int64_t *) (&r));
-        InterlockedExchange(&ewma->init, 1);
+        atomic_exchange(&ewma->rate, *(int64_t *) (&r));
+        atomic_exchange(&ewma->init, 1);
     }
 }
 
 static void tick_instant(rate_t *inst) {
     double r = instant_rate(inst);
-    InterlockedExchange64(&inst->delta, 0); //reset the delta
-    InterlockedExchange64(&inst->rate, *(int64_t*)(&r));
+    atomic_exchange(&inst->delta, 0); //reset the delta
+    atomic_exchange(&inst->rate, *(int64_t*)(&r));
 }

@@ -17,8 +17,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <tlsuv/queue.h>
-#include <uv.h>
 #include <ziti/enums.h>
 
 #ifdef __cplusplus
@@ -50,8 +48,7 @@ using namespace std;
 #elif defined(__APPLE__)
 # include <stdatomic.h>
 #elif _WIN32
-typedef long long atomic_llong;
-typedef long atomic_long;
+#include <stdatomic.h>
 #endif
 #endif
 
@@ -60,11 +57,11 @@ struct rate_s {
     atomic_llong rate;
     atomic_llong param;
 
+    uint64_t last_tick;
     void (*tick_fn)(struct rate_s *);
 
     atomic_long init;
     bool active;
-    LIST_ENTRY(rate_s) _next;
 };
 
 typedef struct rate_s rate_t;
@@ -73,9 +70,11 @@ typedef struct rate_s rate_t;
 extern "C" {
 #endif
 
-extern void metrics_init(uv_loop_t *loop, long interval_secs);
+// return millisecond precision time
+typedef uint64_t (*time_fn)(void *ctx);
+extern void metrics_init(long interval_secs, time_fn, void *time_ctx);
 
-extern void metrics_rate_init(rate_t *r, rate_type type);
+extern int metrics_rate_init(rate_t *r, rate_type type);
 extern void metrics_rate_close(rate_t* r);
 
 extern void metrics_rate_update(rate_t *r, long delta);
