@@ -586,7 +586,7 @@ static void ziti_pr_send_individually(ziti_context ztx) {
 
 static void ziti_pr_handle_mac(ziti_context ztx, const char *id, char **mac_addresses, int num_mac) {
     size_t arr_size = sizeof(char (**));
-    char **addresses = calloc((num_mac + 1), arr_size);
+    const char **addresses = calloc((num_mac + 1), arr_size);
 
     memcpy(addresses, mac_addresses, (num_mac) * arr_size);
 
@@ -638,7 +638,7 @@ static void ziti_pr_handle_process(ziti_context ztx, const char *id, const char 
                                    int num_signers) {
 
     size_t arr_size = sizeof(char (**));
-    char **null_term_signers = calloc((num_signers + 1), arr_size);
+    const char **null_term_signers = calloc((num_signers + 1), arr_size);
     memcpy(null_term_signers, signers, num_signers * arr_size);
 
     ziti_pr_process_req process_req = {

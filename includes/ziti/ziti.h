@@ -865,7 +865,7 @@ typedef void (*ziti_mfa_cb)(ziti_context ztx, int status, void *ctx);
  * @param ctx additional context to be passed into to the original call
  *
  */
-typedef void (*ziti_mfa_recovery_codes_cb)(ziti_context ztx, int status, char **recovery_codes, void *ctx);
+typedef void (*ziti_mfa_recovery_codes_cb)(ziti_context ztx, int status, const char **recovery_codes, void *ctx);
 
 /**
  * @brief Attempts to initialize MFA enrollment
