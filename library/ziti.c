@@ -1613,6 +1613,15 @@ int ziti_context_run(ziti_context ztx, uv_loop_t *loop) {
     return ZITI_OK;
 }
 
+int ziti_refresh(ziti_context ztx) {
+    if (!ztx->enabled) return ZITI_DISABLED;
+
+    ZTX_LOG(DEBUG, "application requested service refresh");
+    ziti_services_refresh(ztx, true);
+    return ZITI_OK;
+}
+
+
 static void pre_auth_retry(uv_timer_t *t) {
     ziti_context ztx = t->data;
     ziti_re_auth(ztx);

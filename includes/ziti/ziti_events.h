@@ -130,7 +130,7 @@ struct ziti_auth_event {
     enum ziti_auth_action action;
     const char *type;
     const char *detail;
-    model_list providers;
+    ziti_jwt_signer_array providers;
 };
 
 /**
