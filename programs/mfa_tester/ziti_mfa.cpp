@@ -145,7 +145,7 @@ static void get_codes() {
                         if (status == ZITI_OK) {
                             std::cout << "MFA auth success!" << std::endl;
                             ztx_prompt(z, "enter MFA code", [](ziti_context z, const char *code) {
-                                ziti_mfa_get_recovery_codes(z, code, [](ziti_context z, int status, char **codes, void *) {
+                                ziti_mfa_get_recovery_codes(z, code, [](ziti_context z, int status, const char **codes, void *) {
                                     if (status == ZITI_OK) {
                                         for(int i = 0; codes && codes[i]; i++) {
                                             std::cout << codes[i] << std::endl;
