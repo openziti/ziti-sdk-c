@@ -416,7 +416,7 @@ int ziti_address_match(const ziti_address *addr, const ziti_address *range) {
     return -1;
 }
 
-int ziti_address_match_s(const char *addr, ziti_address *range) {
+int ziti_address_match_s(const char *addr, const ziti_address *range) {
     ziti_address a;
 
     int res = false;

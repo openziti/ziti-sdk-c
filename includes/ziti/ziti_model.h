@@ -214,7 +214,7 @@ ZITI_FUNC int ziti_address_print(char *buf, size_t max, const ziti_address *addr
 
 ZITI_FUNC int ziti_address_match(const ziti_address *addr, const ziti_address *range);
 
-ZITI_FUNC int ziti_address_match_s(const char *addr, ziti_address *range);
+ZITI_FUNC int ziti_address_match_s(const char *addr, const ziti_address *range);
 
 ZITI_FUNC int ziti_addrstr_match_list(const char *addr, const model_list *range);
 ZITI_FUNC int ziti_address_match_list(const ziti_address *addr, const model_list *range);

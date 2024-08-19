@@ -53,18 +53,9 @@ XX(pagination,resp_pagination,none,pagination, __VA_ARGS__)
 
 DECLARE_MODEL(resp_meta, RESP_META_MODEL)
 
-#define API_RESP_MODEL(XX, ...) \
-XX(meta, resp_meta, none, meta, __VA_ARGS__) \
-XX(data, json, none, data, __VA_ARGS__) \
-XX(error, ziti_error, ptr, error, __VA_ARGS__)
-
-DECLARE_MODEL(api_resp, API_RESP_MODEL)
-
 IMPL_MODEL(resp_pagination, PAGINATION_MODEL)
 
 IMPL_MODEL(resp_meta, RESP_META_MODEL)
-
-IMPL_MODEL(api_resp, API_RESP_MODEL)
 
 int code_to_error(const char *code) {
 
@@ -103,14 +94,20 @@ ctrl->client->host, ctrl->client->port, ##__VA_ARGS__)
 typedef struct ctrl_resp ctrl_resp_t;
 typedef void (*ctrl_cb_t)(void *, const ziti_error *, ctrl_resp_t *);
 typedef void (*ctrl_resp_cb_t)(void *, const ziti_error *, void *);
-typedef int (*body_parse_fn)(void *, const char *, size_t);
+typedef int (*body_parse_fn)(void *, json_object *);
+
+enum ctrl_content_type {
+    ctrl_content_text,
+    ctrl_content_json,
+};
 
 struct ctrl_resp {
     int status;
-    char *body;
-    size_t received;
-    bool resp_chunked;
-    bool resp_text_plain;
+    enum ctrl_content_type resp_content;
+    void *content_proc;
+    void *content;
+    json_object *resp_json;
+
     uv_timeval64_t start;
     uv_timeval64_t all_start;
 
@@ -119,7 +116,6 @@ struct ctrl_resp {
     unsigned int limit;
     unsigned int total;
     unsigned int recd;
-    void **resp_array;
 
     body_parse_fn body_parse_func;
     ctrl_resp_cb_t resp_cb;
@@ -208,11 +204,13 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
         r->body_cb = ctrl_body_cb;
 
         const char *hv;
-        if ((hv = find_header(r, "Content-Length")) != NULL) {
-            resp->body = calloc(1, atol(hv) + 1);
-        } else if ((hv = find_header(r, "transfer-encoding")) && strcmp(hv, "chunked") == 0) {
-            resp->resp_chunked = true;
-            resp->body = malloc(0);
+        if ((hv = find_header(r, "content-type")) != NULL &&
+            strncmp(hv, "application/json", strlen("application/json")) == 0) {
+            resp->resp_content = ctrl_content_json;
+            resp->content_proc = json_tokener_new();
+        } else {
+            resp->resp_content = ctrl_content_text;
+            resp->content_proc = new_string_buf();
         }
 
         const char *new_addr = find_header(r, "ziti-ctrl-address");
@@ -250,6 +248,17 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
     }
 
     FREE(resp->new_address);
+    if (resp->resp_json != NULL) {
+        json_object_put(resp->resp_json);
+    }
+    if (resp->content_proc != NULL) {
+        if (resp->resp_content == ctrl_content_json)
+            json_tokener_free(resp->content_proc);
+        else {
+            string_buf_free(resp->content_proc);
+            FREE(resp->content_proc);
+        }
+    }
     free(resp);
 }
 
@@ -396,95 +405,106 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
     ziti_controller *ctrl = resp->ctrl;
 
     if (len > 0) {
-        if (resp->resp_chunked) {
-            resp->body = realloc(resp->body, resp->received + len);
-        }
-        if (!resp->body) {
-            ZITI_LOG(WARN, "could not process controller response: %zd bytes not allocated for body", len);
-            return;
-        }
-        memcpy(resp->body + resp->received, b, len);
-        resp->received += len;
-    }
-    else if (len == UV_EOF) {
-        void *resp_obj = NULL;
-
-        api_resp cr = {0};
-        if (resp->resp_text_plain && resp->status < 300) {
-            resp_obj = calloc(1, resp->received + 1);
-            memcpy(resp_obj, resp->body, resp->received);
-        } else {
-            int rc = parse_api_resp(&cr, resp->body, resp->received);
-            if (rc < 0) {
-                CTRL_LOG(ERROR, "failed to parse controller response for req[%s]>>>\n%.*s", req->path, (int)(resp->received), resp->body);
-                cr.error = alloc_ziti_error();
-                cr.error->err = ZITI_WTF;
-                cr.error->code = strdup("INVALID_CONTROLLER_RESPONSE");
-                cr.error->message = strdup(req->resp.status);
-            } else if (resp->body_parse_func && cr.data != NULL) {
-                if (resp->body_parse_func(&resp_obj, cr.data, strlen(cr.data)) < 0) {
-                    CTRL_LOG(ERROR, "error parsing response data for req[%s]>>>\n%s", req->path, cr.data);
-                    cr.error = alloc_ziti_error();
-                    cr.error->err = ZITI_INVALID_STATE;
-                    cr.error->code = strdup("INVALID_CONTROLLER_RESPONSE");
-                    cr.error->message = strdup("unexpected response JSON");
-                } else {
-                    uv_timeval64_t now;
-                    uv_gettimeofday(&now);
-                    uint64_t elapsed = (now.tv_sec * 1000000 + now.tv_usec) - (resp->start.tv_sec * 1000000 + resp->start.tv_usec);
-                    CTRL_LOG(DEBUG, "completed %s[%s] in %" PRIu64 ".%03" PRIu64 " s",
-                             req->method, req->path, elapsed / 1000000, (elapsed / 1000) % 1000);
-                    if (resp->paging) {
-                        bool last_page = cr.meta.pagination.total <= cr.meta.pagination.offset + cr.meta.pagination.limit;
-                        if (cr.meta.pagination.total > resp->total) {
-                            resp->total = cr.meta.pagination.total;
-                            resp->resp_array = realloc(resp->resp_array, (resp->total + 1) * sizeof(void *));
-                        }
-                        // empty result
-                        if (resp->resp_array == NULL) {
-                            resp->resp_array = calloc(1, sizeof(void *));
-                        }
-
-                        void **chunk = resp_obj;
-                        while (*chunk != NULL) {
-                            resp->resp_array[resp->recd++] = *chunk++;
-                        }
-                        CTRL_LOG(DEBUG, "received %d/%d for paging request GET[%s]",
-                                 resp->recd, (int)cr.meta.pagination.total, resp->base_path);
-                        resp->resp_array[resp->recd] = NULL;
-                        FREE(resp_obj);
-                        resp->received = 0;
-                        FREE(resp->body);
-
-                        free_api_resp(&cr);
-                        if (!last_page) {
-                            ctrl_paging_req(resp);
-                            return;
-                        }
-                        elapsed = (now.tv_sec * 1000000 + now.tv_usec) - (resp->all_start.tv_sec * 1000000 + resp->all_start.tv_usec);
-                        CTRL_LOG(DEBUG, "completed paging request GET[%s] in %" PRIu64 ".%03" PRIu64 " s",
-                                 resp->base_path, elapsed / 1000000, (elapsed / 1000) % 1000);
-                        resp_obj = resp->resp_array;
-                    }
+        if (resp->resp_content == ctrl_content_json) {
+            if (resp->content == NULL) {
+                resp->content = json_tokener_parse_ex(resp->content_proc, b, (int) len);
+                if (resp->content == NULL && json_tokener_get_error(resp->content_proc) != json_tokener_continue) {
+                    CTRL_LOG(WARN, "parsing error: %s",
+                             json_tokener_error_desc(json_tokener_get_error(resp->content_proc)));
                 }
+            } else {
+                CTRL_LOG(WARN, "dropping unexpected extra data after JSON payload: %.*s",
+                         (int)len, b);
+            }
+        } else {
+            string_buf_appendn(resp->content_proc, b, len);
+        }
+    } else if (len == UV_EOF) {
+        void *resp_obj = NULL;
+        uv_timeval64_t now;
+        uv_gettimeofday(&now);
+
+        ziti_error *error = NULL;
+        if (resp->resp_content == ctrl_content_text) {
+            resp_obj = string_buf_to_string(resp->content_proc, NULL);
+            string_buf_free(resp->content_proc);
+            FREE(resp->content_proc);
+        } else {
+            ziti_error_ptr_from_json(&error, json_object_object_get(resp->content, "error"));
+            resp_meta meta = {0};
+            resp_meta_from_json(&meta, json_object_object_get(resp->content, "meta"));
+            json_object *data = json_object_object_get(resp->content, "data");
+            data = json_object_get(data);
+            json_object_put(resp->content);
+            resp->content = NULL;
+
+            if (resp->paging) {
+                bool last_page = meta.pagination.total <=
+                                 meta.pagination.offset + meta.pagination.limit;
+                if (json_object_get_type(data) == json_type_array) {
+                    resp->recd += json_object_array_length(data);
+                    if (resp->resp_json == NULL) {
+                        resp->resp_json = data;
+                    } else {
+                        for (int idx = 0; idx < json_object_array_length(data); idx++) {
+                            json_object *o = json_object_array_get_idx(data, idx);
+                            json_object_array_add(resp->resp_json, json_object_get(o));
+                        }
+                        json_object_put(data);
+                        data = NULL;
+                    }
+                    CTRL_LOG(DEBUG, "received %d/%d for paging request GET[%s]",
+                             resp->recd, (int)meta.pagination.total, resp->base_path);
+                }
+                if (!last_page) {
+                    json_tokener_free(resp->content_proc);
+                    resp->content_proc = NULL;
+                    ctrl_paging_req(resp);
+                    return;
+                }
+                uint64_t elapsed = (now.tv_sec * 1000000 + now.tv_usec) - (resp->all_start.tv_sec * 1000000 + resp->all_start.tv_usec);
+                CTRL_LOG(DEBUG, "completed paging request GET[%s] in %" PRIu64 ".%03" PRIu64 " s",
+                         resp->base_path, elapsed / 1000000, (elapsed / 1000) % 1000);
+
+            } else {
+                uint64_t elapsed = (now.tv_sec * 1000000 + now.tv_usec) - (resp->start.tv_sec * 1000000 + resp->start.tv_usec);
+                CTRL_LOG(DEBUG, "completed %s[%s] in %" PRIu64 ".%03" PRIu64 " s",
+                         req->method, req->path, elapsed / 1000000, (elapsed / 1000) % 1000);
+                resp->resp_json = data;
+            }
+            
+            if (resp->body_parse_func && resp->resp_json != NULL) {
+                if (resp->body_parse_func(&resp_obj, resp->resp_json) < 0) {
+                    CTRL_LOG(ERROR, "error parsing response data for req[%s]", req->path);
+                    error = alloc_ziti_error();
+                    error->err = ZITI_INVALID_STATE;
+                    error->code = strdup("INVALID_CONTROLLER_RESPONSE");
+                    error->message = strdup("unexpected response JSON");
+                }
+                json_object_put(resp->resp_json);
+                resp->resp_json = NULL;
+                json_tokener_free(resp->content_proc);
+                resp->content_proc = NULL;
             }
         }
 
-        if (cr.error) {
-            cr.error->err = code_to_error(cr.error->code);
-            cr.error->http_code = req->resp.code;
+        if (error) {
+            error->err = code_to_error(error->code);
+            error->http_code = req->resp.code;
         }
-
-        free_resp_meta(&cr.meta);
-        FREE(cr.data);
-        FREE(resp->body);
-
-        resp->ctrl_cb(resp_obj, cr.error, resp);
-        free_ziti_error(cr.error);
-        FREE(cr.error);
+        resp->ctrl_cb(resp_obj, error, resp);
+        free_ziti_error_ptr(error);
     } else {
         CTRL_LOG(WARN, "failed to read response body: %zd[%s]", len, uv_strerror(len));
-        FREE(resp->body);
+        if (resp->resp_content == ctrl_content_json) {
+            json_tokener_free(resp->content_proc);
+            json_object_put(resp->resp_json);
+            resp->resp_json = NULL;
+        } else {
+            string_buf_free(resp->content_proc);
+            FREE(resp->content_proc);
+        }
+        resp->content_proc = NULL;
         ziti_error err = {
                 .err = ZITI_CONTROLLER_UNAVAILABLE,
                 .code = "CONTROLLER_UNAVAILABLE",
@@ -646,7 +666,7 @@ int ziti_ctrl_close(ziti_controller *ctrl) {
 }
 
 static void internal_get_version(ziti_controller *ctrl) {
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, NULL, parse_ziti_version_ptr, NULL);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, NULL, ziti_version_ptr_from_json, NULL);
     resp->ctrl_cb = (ctrl_cb_t) internal_version_cb;
 
     ctrl->version_req = start_request(ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
@@ -694,7 +714,7 @@ void ziti_ctrl_login(
     char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
 
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_api_session_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_api_session_ptr_from_json, ctx);
     resp->ctrl_cb = (ctrl_cb_t)ctrl_login_cb;
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/authenticate?method=cert", ctrl_resp_cb, resp);
@@ -726,7 +746,7 @@ void ziti_ctrl_login_ext_jwt(ziti_controller *ctrl, const char *jwt,
     size_t body_len;
     char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_api_session_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_api_session_ptr_from_json, ctx);
     resp->ctrl_cb = (ctrl_cb_t)ctrl_login_cb;
 
     string_buf_t *auth = new_string_buf();
@@ -742,6 +762,7 @@ void ziti_ctrl_login_ext_jwt(ziti_controller *ctrl, const char *jwt,
 
     free(auth_hdr);
     string_buf_free(auth);
+    FREE(auth);
 }
 
 
@@ -763,14 +784,14 @@ static bool verify_api_session(ziti_controller *ctrl, ctrl_resp_cb_t cb, void *c
 void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_data *, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_identity_data_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_identity_data_ptr_from_json, ctx);
     start_request(ctrl->client, "GET", "/current-identity", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_api_session_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_api_session_ptr_from_json, ctx);
     resp->ctrl_cb = (ctrl_cb_t) ctrl_login_cb;
 
     start_request(ctrl->client, "GET", "/current-api-session", ctrl_resp_cb, resp);
@@ -780,7 +801,7 @@ void ziti_ctrl_list_controllers(ziti_controller *ctrl,
                                 void (*cb)(ziti_controller_detail_array, const ziti_error*, void *ctx), void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_controller_detail_array, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_controller_detail_array_from_json, ctx);
     resp->paging = true;
     resp->base_path = "/controllers";
     ctrl_paging_req(resp);
@@ -789,7 +810,7 @@ void ziti_ctrl_list_controllers(ziti_controller *ctrl,
 void ziti_ctrl_list_ext_jwt_signers(
         ziti_controller *ctrl,
         void (*cb)(ziti_jwt_signer_array, const ziti_error*, void *ctx), void *ctx) {
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_jwt_signer_array, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_jwt_signer_array_from_json, ctx);
     resp->paging = true;
     resp->base_path = "/external-jwt-signers";
     ctrl_paging_req(resp);
@@ -807,14 +828,14 @@ void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, const ziti_error 
 void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_service_update *, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_service_update_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_service_update_ptr_from_json, ctx);
     start_request(ctrl->client, "GET", "/current-api-session/service-updates", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_get_services(ziti_controller *ctrl, void (*cb)(ziti_service_array, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_service_array, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_service_array_from_json, ctx);
 
     resp->paging = true;
     resp->base_path = "/services?configTypes=all";
@@ -825,7 +846,7 @@ void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void (*cb)(ziti_edge_
                                     void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_edge_router_array, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_edge_router_array_from_json, ctx);
     resp->paging = true;
     resp->base_path = "/current-identity/edge-routers";
     ctrl_paging_req(resp);
@@ -844,7 +865,7 @@ ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb
     char name_clause[1024];
     snprintf(name_clause, sizeof(name_clause), "name=\"%s\"", service_name);
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_service_array, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_service_array_from_json, ctx);
     resp->ctrl_cb = (ctrl_cb_t) ctrl_service_cb;
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/services", ctrl_resp_cb, resp);
@@ -856,7 +877,7 @@ ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb
 void ziti_ctrl_list_service_routers(ziti_controller *ctrl, const ziti_service *srv, routers_cb cb, void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_service_routers_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_service_routers_ptr_from_json, ctx);
     resp->ctrl_cb = (ctrl_cb_t) ctrl_default_cb;
 
     char path[512];
@@ -877,7 +898,7 @@ void ziti_ctrl_get_session(
     char req_path[128];
     snprintf(req_path, sizeof(req_path), "/sessions/%s", session_id);
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_session_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_session_ptr_from_json, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", req_path, ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
 }
@@ -893,7 +914,7 @@ void ziti_ctrl_create_session(
                           "{\"serviceId\": \"%s\", \"type\": \"%s\"}",
                           service_id, ziti_session_types.name(type));
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_session_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_session_ptr_from_json, ctx);
     resp->ctrl = ctrl;
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/sessions", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
@@ -904,7 +925,7 @@ void ziti_ctrl_get_sessions(
         ziti_controller *ctrl, void (*cb)(ziti_session **, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, (ctrl_resp_cb_t)cb, ctx)) return;
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_session_array, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_session_array_from_json, ctx);
     resp->paging = true;
     resp->base_path = "/sessions";
     ctrl_paging_req(resp);
@@ -926,7 +947,7 @@ static void ctrl_enroll_http_cb(tlsuv_http_resp_t *http_resp, void *data) {
         const char *content_type = tlsuv_http_resp_header(http_resp, "content-type");
         if (content_type != NULL && strcasecmp("application/x-pem-file", content_type) == 0) {
             struct ctrl_resp *resp = data;
-            resp->resp_text_plain = true;
+            resp->resp_content = ctrl_content_text;
             resp->ctrl_cb = enroll_pem_cb;
         }
         ctrl_resp_cb(http_resp, data);
@@ -966,7 +987,7 @@ ziti_ctrl_enroll(ziti_controller *ctrl, ziti_enrollment_method method, const cha
 void
 ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, const ziti_error *, void *), void *ctx) {
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
-    resp->resp_text_plain = true;   // Make no attempt in ctrl_resp_cb to parse response as JSON
+    resp->resp_content = ctrl_content_text;   // Make no attempt in ctrl_resp_cb to parse response as JSON
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/.well-known/est/cacerts", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Accept", "application/pkcs7-mime");
 }
@@ -975,7 +996,7 @@ void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
                   void(*cb)(ziti_pr_response *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_pr_response_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_pr_response_ptr_from_json, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/posture-response", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
@@ -986,7 +1007,7 @@ void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len,
                        void(*cb)(ziti_pr_response *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_pr_response_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_pr_response_ptr_from_json, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/posture-response-bulk", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
@@ -1031,7 +1052,7 @@ void ziti_ctrl_post_mfa(ziti_controller *ctrl, void(*cb)(void *, const ziti_erro
 void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_mfa_enrollment_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_mfa_enrollment_ptr_from_json, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/current-identity/mfa", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
@@ -1058,7 +1079,7 @@ void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char *body, size_t body_le
 void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char *code, void(*cb)(ziti_mfa_recovery_codes *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) { return; }
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_mfa_recovery_codes_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_mfa_recovery_codes_ptr_from_json, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/current-identity/mfa/recovery-codes", ctrl_resp_cb,
                                           resp);
@@ -1080,7 +1101,7 @@ void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t
 void ziti_ctrl_extend_cert_authenticator(ziti_controller *ctrl, const char *authenticatorId, const char *csr, void(*cb)(ziti_extend_cert_authenticator_resp*, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) return;
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_extend_cert_authenticator_resp_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_extend_cert_authenticator_resp_ptr_from_json, ctx);
 
     char path[128];
     snprintf(path, sizeof(path), "/current-identity/authenticators/%s/extend", authenticatorId);
@@ -1120,7 +1141,7 @@ void ziti_ctrl_create_api_certificate(ziti_controller *ctrl, const char *csr_pem
 
     if(!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) return;
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_create_api_cert_resp_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_create_api_cert_resp_ptr_from_json, ctx);
 
     const char *path = "/current-api-session/certificates";
 
