@@ -38,6 +38,7 @@
 static char *config = NULL;
 static int report_metrics = -1;
 static uv_timer_t report_timer;
+static uv_timer_t shutdown_timer;
 
 static void signal_cb(uv_signal_t *s, int signum);
 
@@ -128,7 +129,6 @@ static void free_listener(struct listener *l) {
 
 static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     ZITI_LOG(INFO, "stopping");
-    PREPF(uv, uv_strerror);
 
     // shutdown listeners
     MODEL_MAP_FOR(it, app_ctx->listeners) {
@@ -145,8 +145,17 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
         }
     }
 
+    if (uv_is_active((const uv_handle_t *) &report_timer)) {
+        ZITI_LOG(INFO, "stopping report timer");
+        uv_close((uv_handle_t *) &report_timer, NULL);
+    }
+
+    ZITI_LOG(INFO, "stopping signal handlers");
+    for (int i = 0; i < sizeof(signals)/sizeof(signals[0]); i++) {
+        uv_close((uv_handle_t *) &signals[i].sig, NULL);
+    }
+
     // shutdown diagnostics
-    static uv_timer_t shutdown_timer;
     uv_timer_init(loop, &shutdown_timer);
     uv_timer_start(&shutdown_timer, shutdown_timer_cb, 5000, 0);
     uv_unref((uv_handle_t *) &shutdown_timer);
@@ -154,7 +163,6 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     // try to cleanup
     ziti_shutdown(app_ctx->ziti);
 
-    CATCH(uv) {}
     ZITI_LOG(INFO, "exiting");
 }
 
@@ -449,6 +457,9 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                              event->ctx.ctrl_details[i].url
                              );
                 }
+            } else if (event->ctx.ctrl_status == ZITI_DISABLED) {
+                ZITI_LOG(INFO, "ziti is shutdown");
+                uv_close((uv_handle_t *) &shutdown_timer, NULL);
             } else {
                 ZITI_LOG(ERROR, "controller is not available: %s/%s", ziti_errorstr(event->ctx.ctrl_status),
                          event->ctx.err);
@@ -684,6 +695,7 @@ void run(int argc, char **argv) {
 
     ziti_options opts = {
             .events = -1,
+            .api_page_size = 25,
             .event_cb = on_ziti_event,
             .refresh_interval = 60,
             .app_ctx = &app_ctx,
@@ -728,7 +740,10 @@ void run(int argc, char **argv) {
 
     model_map_clear(&app_ctx.listeners, (_free_f) free_listener);
 
-    ZITI_LOG(INFO, "proxy event loop is done");
+    int close_rc = uv_loop_close(loop);
+    if (close_rc != 0) {
+        uv_print_active_handles(loop, stderr);
+    }
     free(loop);
     exit(excode);
 }

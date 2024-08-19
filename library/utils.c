@@ -125,8 +125,6 @@ static const char *get_elapsed_time();
 
 static const char *get_utc_time();
 
-static void flush_log(uv_prepare_t *p);
-
 static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen);
 
 static uv_loop_t *ts_loop;
@@ -136,7 +134,6 @@ static char log_timestamp[32];
 
 static uv_key_t logbufs;
 
-static uv_prepare_t log_flusher;
 static log_writer logger = NULL;
 
 static void init_debug(uv_loop_t *loop);
@@ -305,10 +302,6 @@ static void init_debug(uv_loop_t *loop) {
     ziti_debug_out = stderr;
 
     starttime = uv_now(loop);
-
-    uv_prepare_init(loop, &log_flusher);
-    uv_unref((uv_handle_t *) &log_flusher);
-    uv_prepare_start(&log_flusher, flush_log);
 }
 
 #if _WIN32 && defined(_MSC_VER)
@@ -388,10 +381,6 @@ static void default_log_writer(int level, const char *loc, const char *msg, size
 
 void tlsuv_logger(int level, const char *file, unsigned int line, const char *msg) {
     ziti_logger(level, TLSUV_MODULE, file, line, NULL, "%s", msg);
-}
-
-static void flush_log(uv_prepare_t *p) {
-    fflush(ziti_debug_out);
 }
 
 static const char *get_elapsed_time() {
