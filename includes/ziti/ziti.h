@@ -441,6 +441,19 @@ ZITI_FUNC
 extern int ziti_context_run(ziti_context ztx, uv_loop_t *loop);
 
 /**
+ * \brief Trigger refresh ahead of normal refresh cycle.
+ *
+ * This method will force ziti context to update its internal model from ziti controller.
+ * Appropriate events will be triggers as needed
+ * (just like during normal refresh cycle [ziti_options.refresh_interval]):
+ * - Service Added/Removed, etc.
+ * @param ztx
+ * @return 0 on success, or error code
+ */
+ZITI_FUNC
+extern int ziti_refresh(ziti_context ztx);
+
+/**
  * return if context is enabled
  * @param ztx ziti context
  * @return
