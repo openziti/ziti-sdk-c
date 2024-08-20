@@ -143,9 +143,13 @@ function(config_ziti_library target)
     if (WIN32)
         # on windows GDI defines ERROR which conflicts with the SDK declaration of DEBUG_LEVELS in utils.h
         target_compile_definitions(${target} PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
-        target_compile_options(${target} PUBLIC /experimental:c11atomics)
         target_link_libraries(${target} PUBLIC crypt32 netapi32)
     endif ()
+
+    if (MSVC)
+        target_compile_options(${target} PUBLIC /experimental:c11atomics)
+    endif (MSVC)
+
     install(TARGETS ${target}
             COMPONENT ziti-sdk
             DESTINATION ${CMAKE_INSTALL_LIBDIR}
