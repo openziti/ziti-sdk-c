@@ -967,7 +967,7 @@ ziti_ctrl_enroll(ziti_controller *ctrl, ziti_enrollment_method method, const cha
         strcat(path, token);
     }
 
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, parse_ziti_enrollment_resp_ptr, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_enrollment_resp_ptr_from_json, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", path, ctrl_enroll_http_cb, resp);
     if (csr) {
