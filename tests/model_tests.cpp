@@ -343,7 +343,7 @@ TEST_CASE("test raw json", "[model]") {
 }
 
 #define map_model(XX, ...) \
-XX(map, model_map, none, map, __VA_ARGS__) \
+XX(map, json, map, map, __VA_ARGS__) \
 XX(ok, model_bool, none, ok, __VA_ARGS__)
 
 DECLARE_MODEL(ObjMap, map_model)

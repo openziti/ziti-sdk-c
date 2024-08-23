@@ -66,15 +66,15 @@ ZITI_FUNC model_map_iter model_map_it_next(model_map_iter it);
 
 ZITI_FUNC model_map_iter model_map_it_remove(model_map_iter it);
 
-#define var(x, y) x##y
+#define line_var(v) var(v,__LINE__)
+#define var(x, y) _var(x,y)
+#define _var(x,y) x ## y
 
-#define MODEL_MAP_FOREACH_l(k, v, map, line) \
-model_map_iter var(e, line);\
-for (var(e,line) = model_map_iterator(map), k = model_map_it_key(var(e,line)), v = model_map_it_value(var(e,line)); \
-     var(e,line) != NULL; \
-     var(e,line) = model_map_it_next(var(e,line)), k = model_map_it_key(var(e,line)), v = model_map_it_value(var(e,line)))
-
-#define MODEL_MAP_FOREACH(k, v, map) MODEL_MAP_FOREACH_l(k, v, map, __LINE__)
+#define MODEL_MAP_FOREACH(k, v, map) \
+model_map_iter line_var(e);\
+for (line_var(e) = model_map_iterator(map), (k) = model_map_it_key(line_var(e)), (v) = model_map_it_value(line_var(e)); \
+     line_var(e) != NULL; \
+     line_var(e) = model_map_it_next(line_var(e)), (k) = model_map_it_key(line_var(e)), (v) = model_map_it_value(line_var(e)))
 
 #define MODEL_MAP_FOR(it, m) for(model_map_iter it = model_map_iterator(&(m)); (it) != NULL; (it) = model_map_it_next(it))
 
@@ -110,14 +110,11 @@ ZITI_FUNC void *model_list_it_element(model_list_iter it);
 #define MODEL_LIST_FOR(it, m) for(model_list_iter it = model_list_iterator(&(m)); (it) != NULL; (it) = model_list_it_next(it))
 
 
-#define MODEL_LIST_FOREACH_l(el, list, line) \
-model_list_iter var(it,line);    \
-for(var(it,line) = model_list_iterator((model_list*)&(list)); \
-var(it,line) != NULL && ((el) = model_list_it_element(var(it,line)), true);                                 \
-var(it,line) = model_list_it_next(var(it,line)))
-
-#define MODEL_LIST_FOREACH(el, list) MODEL_LIST_FOREACH_l(el, list, __LINE__)
-
+#define MODEL_LIST_FOREACH(el, list) \
+model_list_iter line_var(it);    \
+for(line_var(it) = model_list_iterator((model_list*)&(list)); \
+line_var(it) != NULL && ((el) = model_list_it_element(line_var(it)), true);                                 \
+line_var(it) = model_list_it_next(line_var(it)))
 
 #ifdef __cplusplus
 }

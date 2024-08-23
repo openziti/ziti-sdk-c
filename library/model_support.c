@@ -808,31 +808,6 @@ static int m_cmp_tag(const tag *lh, const tag *rh) {
     }
 }
 
-static int m_cmp_map(model_map *lh, model_map *rh) {
-    null_checks(lh, rh)
-
-    int rc = (int)(model_map_size(lh) - model_map_size(rh));
-
-    //
-    if (rc == 0) {
-        model_map_iter it = model_map_iterator(lh);
-        while (it != NULL && rc == 0) {
-            char *lhv = model_map_it_value(it);
-            char *rhv = model_map_get(rh, model_map_it_key(it));
-            if (rhv == NULL) {
-                rc = 1;
-            }
-            else {
-                rc = strcmp(lhv, rhv);
-            }
-
-            it = model_map_it_next(it);
-        }
-    }
-
-    return rc;
-}
-
 static int null_to_json(string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
     return string_buf_append(buf, "null");
 }
@@ -947,47 +922,6 @@ static int m_timeval_to_json(timestamp *t, string_buf_t *buf, int UNUSED(indent)
     return rc > 0 ? 0 : -1;
 }
 
-static json_object* map_to_json(model_map *map) {
-    const char *key;
-    const char *val;
-    json_object *res = json_object_new_object();
-    MODEL_MAP_FOREACH(key, val, map) {
-        json_object_object_add(res, key, json_tokener_parse(val));
-    }
-    return 0;
-}
-static int map_from_json(model_map *map, json_object *j, type_meta *UNUSED(meta)) {
-    if (json_object_get_type(j) == json_type_object) {
-        json_object_object_foreach(j, key, val) {
-            model_map_set(map, key, strdup(json_object_to_json_string(val)));
-        }
-        return 0;
-    }
-    return -1;
-}
-static int m_map_to_json(model_map *map, string_buf_t *buf, int indent, int flags) {
-    BUF_APPEND_B(buf, '{');
-
-    const char *key;
-    const char *val;
-    bool comma = false;
-    MODEL_MAP_FOREACH(key, val, map) {
-        if (comma) {
-            BUF_APPEND_B(buf, ',');
-        }
-        PRETTY_NL(buf);
-        PRETTY_INDENT(buf, indent + 1);
-        m_string_to_json(key, buf, indent, flags);
-        BUF_APPEND_B(buf, ':');
-
-        m_json_to_json(val, buf, indent, flags);
-        comma = true;
-    }
-    PRETTY_INDENT(buf, indent);
-    BUF_APPEND_B(buf, '}');
-    return 0;
-}
-
 static void m_free_noop(void *UNUSED(v)) {}
 
 static void m_free_string(char **s) {
@@ -1070,10 +1004,6 @@ int model_map_compare(const model_map *lh, const model_map *rh, const type_meta 
     return rc;
 }
 
-static void _free_map(model_map *m) {
-    model_map_clear(m, free);
-}
-
 static type_meta bool_META = {
         .name = "bool",
         .size = sizeof(bool),
@@ -1124,16 +1054,6 @@ static type_meta json_META = {
         .to_json = (to_json_func) json_to_json,
 };
 
-static type_meta map_META = {
-        .name = "map",
-        .size = sizeof(model_map),
-        .comparer = (_cmp_f) m_cmp_map,
-        .jsonifier = (_to_json_f) m_map_to_json,
-        .destroyer = (_free_f) _free_map,
-        .from_json = (from_json_func) map_from_json,
-        .to_json = (to_json_func) map_to_json,
-};
-
 static type_meta tag_META = {
         .name = "tag",
         .size = sizeof(tag),
@@ -1153,8 +1073,6 @@ const type_meta *get_model_string_meta() { return &string_META; }
 const type_meta *get_timestamp_meta() { return &timestamp_META; }
 
 const type_meta *get_json_meta() { return &json_META; }
-
-const type_meta *get_model_map_meta() { return &map_META; }
 
 const type_meta *get_tag_meta() { return &tag_META; }
 
