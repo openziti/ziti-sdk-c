@@ -220,8 +220,6 @@ ZITI_FUNC extern const type_meta *get_timestamp_meta();
 
 ZITI_FUNC extern const type_meta *get_json_meta();
 
-ZITI_FUNC extern const type_meta *get_model_map_meta();
-
 ZITI_FUNC extern const type_meta *get_duration_meta();
 
 typedef struct timeval timestamp;
