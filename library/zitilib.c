@@ -36,6 +36,7 @@ typedef uint16_t in_port_t;
 #include <ziti/ziti_log.h>
 #include "zt_internal.h"
 #include "util/future.h"
+#include "channel.h"
 
 static bool is_blocking(ziti_socket_t s);
 
@@ -1198,7 +1199,7 @@ static bool is_internal(const char *host) {
         if (wrap->ztx) {
             MODEL_MAP_FOR(chit, wrap->ztx->channels) {
                 ziti_channel_t *ch = model_map_it_value(chit);
-                if (strcmp(ch->host, host) == 0) {
+                if (strcmp(zch_get_host(ch), host) == 0) {
                     return true;
                 }
             }

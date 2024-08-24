@@ -50,59 +50,8 @@ typedef struct ziti_channel ziti_channel_t;
 
 typedef void (*reply_cb)(void *ctx, message *m, int err);
 
-typedef void (*ch_notify_state)(ziti_channel_t *ch, ziti_router_status status, void *ctx);
-
-typedef int ch_state;
 typedef int conn_state;
 
-struct ziti_channel {
-    uv_loop_t *loop;
-    struct ziti_ctx *ztx;
-    char *name;
-    char *url;
-    char *version;
-    char *host;
-    int port;
-
-    uint32_t id;
-    char token[UUID_STR_LEN];
-    tlsuv_stream_t *connection;
-    bool reconnect;
-
-    // multi purpose timer:
-    // - reconnect timeout if not connected
-    // - connect timeout when connecting
-    // - latency interval/timeout if connected
-    uv_timer_t *timer;
-
-    uint64_t latency;
-    struct waiter_s *latency_waiter;
-    uint64_t last_read;
-    uint64_t last_write;
-    uint64_t last_write_delay;
-    size_t out_q;
-    size_t out_q_bytes;
-
-    ch_state state;
-    uint32_t reconnect_count;
-
-    uint32_t msg_seq;
-
-    buffer *incoming;
-
-    pool_t *in_msg_pool;
-    message *in_next;
-    size_t in_body_offset;
-
-    // map[id->msg_receiver]
-    model_map receivers;
-
-    // map[msg_seq->waiter_s]
-    model_map waiters;
-
-    ch_notify_state notify_cb;
-    void *notify_ctx;
-};
 
 struct ziti_write_req_s {
     struct ziti_conn *conn;
@@ -173,7 +122,7 @@ struct ziti_conn {
             model_map children;
             uv_timer_t *timer;
             unsigned int attempt;
-            char listener_id[32];
+            uint8_t listener_id[32];
         } server;
 
         struct {
@@ -325,8 +274,6 @@ ziti_controller *ztx_get_controller(ziti_context ztx);
 
 void ziti_invalidate_session(ziti_context ztx, const char *service_id, ziti_session_type type);
 
-void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
-
 void ziti_force_api_session_refresh(ziti_context ztx);
 
 const char* ziti_get_api_session_token(ziti_context ztx);
@@ -335,7 +282,7 @@ int ziti_close_channels(ziti_context ztx, int err);
 
 bool ziti_channel_is_connected(ziti_channel_t *ch);
 
-uint64_t ziti_channel_latency(ziti_channel_t *ch);
+uint64_t ziti_channel_fitness(ziti_channel_t *ch);
 
 int ziti_channel_force_connect(ziti_channel_t *ch);
 
@@ -357,10 +304,10 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
                       uint32_t body_len,
                       struct ziti_write_req_s *ziti_write);
 
-struct waiter_s *
-ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *headers, int nhdrs, const uint8_t *body,
-                            uint32_t body_len, reply_cb,
-                            void *reply_ctx);
+struct waiter_s *ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content,
+                                             const hdr_t *headers, int nhdrs,
+                                             const void *body, uint32_t body_len,
+                                             reply_cb, void *reply_ctx);
 
 void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter);
 
@@ -399,7 +346,7 @@ void ziti_services_refresh(ziti_context ztx, bool now);
 
 extern void ziti_send_event(ziti_context ztx, const ziti_event_t *e);
 
-void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, int32_t req_id, const char *reason);
+void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, uint32_t req_id, const char *reason);
 
 const ziti_env_info* get_env_info();
 

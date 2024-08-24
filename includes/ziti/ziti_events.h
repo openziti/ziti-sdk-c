@@ -83,6 +83,7 @@ struct ziti_router_event {
     const char *name;
     const char *address;
     const char *version;
+    const char *url;
 };
 
 /**

@@ -17,6 +17,7 @@
 #include <inttypes.h>
 
 #include "ziti/ziti.h"
+#include "channel.h"
 #include "endian_internal.h"
 #include "win32_compat.h"
 #include "utils.h"
@@ -111,7 +112,6 @@ static void process_bindings(struct ziti_conn *conn) {
 
     size_t target = MIN(conn->server.max_bindings, model_map_size(&ztx->channels));
 
-    const char *proto;
     const char *url;
     for(int idx = 0; conn->server.routers && conn->server.routers[idx]; idx++) {
         ziti_edge_router *er = conn->server.routers[idx];
@@ -174,11 +174,11 @@ static void schedule_rebind(struct ziti_conn *conn, bool now) {
 
 static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
-    int e = err ? err->err : ZITI_OK;
+    int e = err ? (int)err->err : ZITI_OK;
     switch (e) {
         case ZITI_OK: {
             FREE(conn->server.token);
-            conn->server.token = session->token;
+            conn->server.token = (char*)session->token;
             session->token = NULL;
             notify_status(conn, ZITI_OK);
             free_ziti_session_ptr(session);
@@ -186,7 +186,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
         }
         case ZITI_NOT_FOUND:
         case ZITI_NOT_AUTHORIZED:
-            CONN_LOG(WARN, "failed to get session for service[%s]: %d/%s", conn->service, err->err, err->code);
+            CONN_LOG(WARN, "failed to get session for service[%s]: %d/%s", conn->service, (int)err->err, err->code);
             const char *id;
             struct binding_s *b;
             MODEL_MAP_FOREACH(id, b, &conn->server.bindings) {
@@ -404,10 +404,10 @@ static void on_message(struct binding_s *b, message *msg, int code) {
             schedule_rebind(conn, true);
         }
     } else {
-        ZITI_LOG(DEBUG, "received msg ct[%x] code[%d] from %s", msg->header.content, code, b->ch->name);
+        ZITI_LOG(DEBUG, "received msg ct[%x] code[%d] from %s", msg->header.content, code, zch_get_name(b->ch));
         switch (msg->header.content) {
             case ContentTypeStateClosed:
-                CONN_LOG(DEBUG, "binding[%s] was closed: %.*s", b->ch->url, msg->header.body_len, msg->body);
+                CONN_LOG(DEBUG, "binding[%d] was closed: %.*s", zch_get_id(b->ch), msg->header.body_len, msg->body);
                 stop_binding(b);
                 schedule_rebind(b->conn, true);
                 break;
@@ -432,12 +432,12 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
     b->waiter = NULL;
     if (code == ZITI_OK && msg->header.content == ContentTypeStateConnected) {
         CONN_LOG(TRACE, "received msg ct[%X] code[%d]", msg->header.content, code);
-        CONN_LOG(DEBUG, "bound successfully over ch[%s]", b->ch->url);
+        CONN_LOG(DEBUG, "bound successfully over ch[%d]", zch_get_id(b->ch));
         ziti_channel_add_receiver(b->ch, conn->conn_id, b,
                                   (void (*)(void *, message *, int)) on_message);
         b->bound = true;
     } else {
-        CONN_LOG(DEBUG, "failed to bind over ch[%s]", b->ch->url);
+        CONN_LOG(DEBUG, "failed to bind over ch[%d]", zch_get_id(b->ch));
         b->bound = false;
         ziti_channel_rem_receiver(b->ch, conn->conn_id);
         b->ch = NULL;
@@ -447,7 +447,7 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
 void start_binding(struct binding_s *b, ziti_channel_t *ch) {
     struct ziti_conn *conn = b->conn;
     char *token = conn->server.token;
-    CONN_LOG(TRACE, "ch[%d] => Edge Bind request token[%s]", ch->id, token);
+    CONN_LOG(TRACE, "ch[%d] => Edge Bind request token[%s]", zch_get_id(ch), token);
 
     b->ch = ch;
 
@@ -541,8 +541,8 @@ void on_unbind(void *ctx, message *m, int code) {
     b->waiter = NULL;
 
     if (m) {
-        CONN_LOG(TRACE, "binding[%s] unbind resp: ct[%X] %.*s",
-                 b->ch->url, m->header.content, m->header.body_len, m->body);
+        CONN_LOG(TRACE, "binding[%d] unbind resp: ct[%X] %.*s",
+                 zch_get_id(b->ch), m->header.content, m->header.body_len, m->body);
         int32_t conn_id = htole32(b->conn->conn_id);
         hdr_t headers[] = {
                 {

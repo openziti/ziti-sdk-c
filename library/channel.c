@@ -45,6 +45,52 @@ enum ChannelState {
     Closed,
 };
 
+struct ziti_channel {
+    uv_loop_t *loop;
+    struct ziti_ctx *ztx;
+    char *name;
+    char *url;
+    char *version;
+    char *host;
+    int port;
+
+    uint32_t id;
+    char token[UUID_STR_LEN];
+    tlsuv_stream_t *connection;
+    bool reconnect;
+
+    // multi purpose timer:
+    // - reconnect timeout if not connected
+    // - connect timeout when connecting
+    // - latency interval/timeout if connected
+    uv_timer_t *timer;
+
+    uint64_t latency;
+    struct waiter_s *latency_waiter;
+    uint64_t last_read;
+    uint64_t last_write;
+    uint64_t last_write_delay;
+    size_t out_q;
+    size_t out_q_bytes;
+
+    enum ChannelState state;
+    uint32_t reconnect_count;
+
+    uint32_t msg_seq;
+
+    buffer *incoming;
+
+    pool_t *in_msg_pool;
+    message *in_next;
+    size_t in_body_offset;
+
+    // map[id->msg_receiver]
+    model_map receivers;
+
+    // map[msg_seq->waiter_s]
+    model_map waiters;
+};
+
 static inline const char *ch_state_str(ziti_channel_t *ch) {
     switch (ch->state) {
         case Initial:
@@ -60,6 +106,8 @@ static inline const char *ch_state_str(ziti_channel_t *ch) {
     }
     return "unexpected";
 }
+
+static void on_channel_event(ziti_channel_t *ch, ziti_router_status status);
 
 static const char *get_timeout_cb(ziti_channel_t *ch);
 
@@ -140,7 +188,6 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     ch->ztx = ctx;
     ch->loop = ctx->loop;
     ch->id = id;
-//    ch->msg_seq = 0;
 
     char hostname[MAXHOSTNAMELEN];
     size_t hostlen = sizeof(hostname);
@@ -163,8 +210,6 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
     ch->timer->data = ch;
     uv_unref((uv_handle_t *) ch->timer);
 
-    ch->notify_cb = (ch_notify_state) ziti_on_channel_event;
-    ch->notify_ctx = ctx;
     return 0;
 }
 
@@ -186,7 +231,7 @@ int ziti_close_channels(struct ziti_ctx *ztx, int err) {
     const char *url;
     model_list ch_ids = {0};
     MODEL_MAP_FOR(it, ztx->channels) {
-        model_list_append(&ch_ids, model_map_it_key(it));
+        model_list_append(&ch_ids, (void*)model_map_it_key(it));
     }
 
     MODEL_LIST_FOR(it, ch_ids) {
@@ -223,7 +268,7 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
 
         on_channel_close(ch, err, 0);
         ch->state = Closed;
-        ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ztx);
+        on_channel_event(ch, EdgeRouterRemoved);
 
         uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
         ch->timer = NULL;
@@ -259,14 +304,21 @@ bool ziti_channel_is_connected(ziti_channel_t *ch) {
     return ch->state == Connected;
 }
 
-uint64_t ziti_channel_latency(ziti_channel_t *ch) {
+uint64_t ziti_channel_fitness(ziti_channel_t *ch) {
     return ch->latency;
 }
 
 static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, const char *url) {
+    assert(ztx);
+    assert(url);
+
     ziti_channel_t *ch = calloc(1, sizeof(ziti_channel_t));
+    if (ch == NULL) {
+        ZITI_LOG(ERROR, "failed to allocate");
+        return NULL;
+    }
+
     ziti_channel_init(ztx, ch, channel_counter++, ztx->tlsCtx);
-    const ziti_identity *identity = ziti_get_identity(ztx);
     ch->name = strdup(ch_name);
     ch->url = strdup(url);
     CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, ziti_get_identity(ztx)->name);
@@ -283,25 +335,20 @@ static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, c
 
 static void check_connecting_state(ziti_channel_t *ch) {
     // verify channel state
-    bool reset = false;
     if (!uv_is_active((const uv_handle_t *) &ch->timer)) {
         CH_LOG(DEBUG, "state check: timer not active!");
-        reset = true;
     }
 
     if (ch->timer->timer_cb != ch_connect_timeout) {
         CH_LOG(DEBUG, "state check: unexpected callback(%s)!", get_timeout_cb(ch));
-        reset = true;
     }
 
     if (ch->timer->timeout < uv_now(ch->loop)) {
         CH_LOG(DEBUG, "state check: timer is in the past!");
-        reset = true;
     }
 
     if (ch->timer->timeout - uv_now(ch->loop) > CONNECT_TIMEOUT) {
         CH_LOG(DEBUG, "state check: timer is too far into the future!");
-        reset = true;
     }
 }
 
@@ -357,7 +404,7 @@ int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url)
     }
     else {
         ch = new_ziti_channel(ztx, ch_name, url);
-        ch->notify_cb(ch, EdgeRouterAdded, ch->notify_ctx);
+        on_channel_event(ch, EdgeRouterAdded);
     }
 
     if (ch->state == Connecting) {
@@ -452,7 +499,7 @@ void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter) {
 
 struct waiter_s *ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content,
                                              const hdr_t *hdrs, int nhdrs,
-                                             const uint8_t *body, uint32_t body_len,
+                                             const void *body, uint32_t body_len,
                                              reply_cb rep_cb, void *reply_ctx) {
     assert(rep_cb != NULL);
 
@@ -675,20 +722,15 @@ static void send_latency_probe(uv_timer_t *t) {
 }
 
 static void hello_reply_cb(void *ctx, message *msg, int err) {
-    int cb_code = ZITI_OK;
     ziti_channel_t *ch = ctx;
     bool success = false;
 
     if (msg && msg->header.content == ContentTypeResultType) {
         message_get_bool_header(msg, ResultSuccessHeader, &success);
-    }
-    else if (msg) {
+    } else if (msg) {
         CH_LOG(ERROR, "unexpected Hello response ct[%04X]", msg->header.content);
-        cb_code = ZITI_GATEWAY_UNAVAILABLE;
-    }
-    else {
+    } else {
         CH_LOG(ERROR, "failed to receive Hello response due to %d(%s)", err, ziti_errorstr(err));
-        cb_code = ZITI_GATEWAY_UNAVAILABLE;
     }
 
     if (success) {
@@ -700,7 +742,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         FREE(ch->version);
         ch->version = calloc(1, erVersionLen + 1);
         memcpy(ch->version, erVersion, erVersionLen);
-        ch->notify_cb(ch, EdgeRouterConnected, ch->notify_ctx);
+        on_channel_event(ch, EdgeRouterConnected);
         ch->latency = uv_now(ch->loop) - ch->latency;
         uv_timer_start(ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
     }
@@ -709,7 +751,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
             CH_LOG(ERROR, "connect rejected: %d %*s", success, msg->header.body_len, msg->body);
 
         ch->state = Disconnected;
-        ch->notify_cb(ch, EdgeRouterUnavailable, ch->notify_ctx);
+        on_channel_event(ch, EdgeRouterUnavailable);
         close_connection(ch);
         reconnect_channel(ch, false);
     }
@@ -818,7 +860,7 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
     }
 
     if (ch->state == Connected) {
-        ch->notify_cb(ch, EdgeRouterDisconnected, ch->notify_ctx);
+        on_channel_event(ch, EdgeRouterDisconnected);
     }
     ch->state = Disconnected;
 
@@ -856,13 +898,11 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
         return;
     }
 
-    if (ch->state != Closed) {
-        if (uv_err == UV_EOF) {
-            ZTX_LOG(VERBOSE, "edge router closed connection, trying to refresh api session");
-            ziti_force_api_session_refresh(ch->ztx);
-        }
-        reconnect_channel(ch, false);
+    if (uv_err == UV_EOF) {
+        ZTX_LOG(VERBOSE, "edge router closed connection, trying to refresh api session");
+        ziti_force_api_session_refresh(ch->ztx);
     }
+    reconnect_channel(ch, false);
 }
 
 static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
@@ -961,4 +1001,32 @@ static const char *get_timeout_cb(ziti_channel_t *ch) {
     TIMEOUT_CALLBACKS(to_lbl)
 
     return "unknown";
+}
+
+void on_channel_event(ziti_channel_t *ch, ziti_router_status status) {
+    ziti_event_t ev = {
+            .type = ZitiRouterEvent,
+            .router = {
+                    .name = ch->name,
+                    .address = ch->host,
+                    .version = ch->version,
+                    .url = ch->url,
+                    .status = status,
+            }
+    };
+
+    ziti_send_event(ch->ztx, &ev);
+}
+
+int zch_get_id(ziti_channel_t *ch) {
+    return ch ? (int)ch->id : -1;
+}
+const char* zch_get_name(ziti_channel_t *ch) {
+    return ch ? ch->name : "(none)";
+}
+const char* zch_get_host(ziti_channel_t *ch) {
+    return ch ? ch->host : "(none)";
+}
+bool zch_is_connected(ziti_channel_t *ch) {
+    return ch != NULL && ch->state == Connected;
 }
