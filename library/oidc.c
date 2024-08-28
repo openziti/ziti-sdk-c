@@ -144,7 +144,7 @@ static void parse_cb(tlsuv_http_resp_t *resp, void *ctx) {
         return;
     }
 
-    ZITI_LOG(ERROR, "unexpected content-type: %s", ct);
+    ZITI_LOG(ERROR, "unexpected content-type[%s]: %s", resp->req->path, ct);
     handle_unexpected_resp(resp);
 }
 
@@ -345,9 +345,17 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
         char *p = strstr(uri.query, "authRequestID=");
         p += strlen("authRequestID=");
         req->id = strdup(p);
-
-        ZITI_LOG(DEBUG, "logging in with cert auth");
-        tlsuv_http_req_t *login_req = tlsuv_http_req(&req->clt->http, "POST", redirect, login_cb, req);
+        const char *path = NULL;
+        if (req->clt->jwt_token_auth) {
+            path = "/oidc/login/ext-jwt";
+        } else {
+            path = "/oidc/login/cert";
+        }
+        ZITI_LOG(DEBUG, "login with path[%s] ", path);
+        tlsuv_http_req_t *login_req = tlsuv_http_req(&req->clt->http, "POST", path, login_cb, req);
+        if (req->clt->jwt_token_auth) {
+            tlsuv_http_req_header(login_req, "Authorization", req->clt->jwt_token_auth);
+        }
         tlsuv_http_req_form(login_req, 1, &(tlsuv_http_pair) {"id", p});
     } else {
         failed_auth_req(req, http_resp->status);
@@ -457,11 +465,15 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     ZITI_LOG(DEBUG, "requesting authentication code");
     auth_req *req = new_auth_req(clt);
 
-    char scope[256] = default_scope;
-    if (clt->signer_cfg->claim) {
-        snprintf(scope, sizeof(scope), "%s " default_scope, clt->signer_cfg->claim);
+    string_buf_t *scopes_buf = new_string_buf();
+    string_buf_append(scopes_buf, default_scope);
+    const char *s;
+    MODEL_LIST_FOREACH(s, clt->signer_cfg->scopes) {
+        string_buf_append(scopes_buf, " ");
+        string_buf_append(scopes_buf, s);
     }
 
+    char *scope = string_buf_to_string(scopes_buf, NULL);
     const char *path = get_endpoint_path(clt, "authorization_endpoint");
     tlsuv_http_pair query[] = {
             {"client_id",             clt->signer_cfg->client_id},
@@ -483,6 +495,9 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
 
     tlsuv_http_req_t *http_req = tlsuv_http_req(&clt->http, "POST", path, auth_cb, req);
     int rc = tlsuv_http_req_query(http_req, sizeof(query)/sizeof(query[0]), query);
+
+    free(scope);
+    delete_string_buf(scopes_buf);
     return rc;
 }
 
@@ -517,14 +532,23 @@ static void on_totp(tlsuv_http_resp_t *resp, void *ctx) {
     }
 }
 
+int oidc_client_token(oidc_client_t *clt, const char *token) {
+    string_buf_t *buf = new_string_buf();
+    string_buf_fmt(buf, "Bearer %s", token);
+
+    clt->jwt_token_auth = string_buf_to_string(buf, NULL);
+    delete_string_buf(buf);
+    return 0;
+}
+
 int oidc_client_mfa(oidc_client_t *clt, const char *code) {
     struct auth_req *req = clt->request;
     assert(req);
 
     tlsuv_http_req_t *r = tlsuv_http_req(&clt->http, "POST", "/oidc/login/totp", on_totp, req);
     tlsuv_http_req_form(r, 2, (tlsuv_http_pair[]){
-        {"id", req->id},
-        {"code", code},
+            {"id", req->id},
+            {"code", code},
     });
     return 0;
 }

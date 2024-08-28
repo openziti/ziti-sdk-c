@@ -56,6 +56,7 @@ struct oidc_client_s {
     void *config;
     void *tokens;
     uv_timer_t *timer;
+    char *jwt_token_auth;
 
     struct auth_req *request;
 };
@@ -75,6 +76,8 @@ int oidc_client_configure(oidc_client_t *clt, oidc_config_cb);
 int oidc_client_start(oidc_client_t *clt, oidc_token_cb);
 
 int oidc_client_mfa(oidc_client_t *clt, const char *code);
+
+int oidc_client_token(oidc_client_t *clt, const char *token);
 
 // force token refresh ahead of normal cycle, error if called prior to oidc_client_start
 int oidc_client_refresh(oidc_client_t *clt);

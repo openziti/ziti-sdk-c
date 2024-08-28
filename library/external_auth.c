@@ -34,6 +34,31 @@ static void ext_oath_cfg_cb(oidc_client_t *oidc, int status, const char *err) {
     }
 }
 
+static void ext_signers_cb(ziti_jwt_signer_array signers, const ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
+    if (err) {
+        ZTX_LOG(WARN, "failed to get external signers: %s", err->message);
+        return;
+    }
+    model_map_clear(&ztx->ext_signers, (void (*)(void *)) free_ziti_jwt_signer_ptr);
+
+    ziti_jwt_signer *el;
+    FOR(el, signers) {
+        model_map_set(&ztx->ext_signers, el->name, el);
+    }
+
+    ziti_event_t ev = {
+            .type = ZitiAuthEvent,
+            .auth = (struct ziti_auth_event){
+                    .action = ziti_auth_select_external,
+                    .type = "oidc",
+                    .providers = signers,
+            },
+    };
+    ziti_send_event(ztx, &ev);
+    free(signers);
+}
+
 void ztx_init_external_auth(ziti_context ztx) {
     ziti_jwt_signer *oidc_cfg = ztx->config.id.oidc;
     if (oidc_cfg != NULL) {
@@ -42,6 +67,8 @@ void ztx_init_external_auth(ziti_context ztx) {
         oidc->data = ztx;
         ztx->ext_auth = oidc;
         oidc_client_configure(oidc, ext_oath_cfg_cb);
+    } else {
+        ziti_ctrl_list_ext_jwt_signers(ztx_get_controller(ztx), ext_signers_cb, ztx);
     }
 }
 
@@ -57,9 +84,14 @@ static void internal_link_cb(oidc_client_t *oidc, const char *url, void *ctx) {
 
 static void ext_token_cb(oidc_client_t *oidc, int status, const char *token) {
     ziti_context ztx = oidc->data;
-    ZITI_LOG(INFO, "received access token: %d\n%s", status, token);
-    ztx->auth_method->set_ext_jwt(ztx->auth_method, token);
-    ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
+    if (status == ZITI_OK) {
+        ZITI_LOG(DEBUG, "received access token: %.*s...", 20, token);
+        ztx->auth_method->set_ext_jwt(ztx->auth_method, token);
+        ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
+    } else {
+        ZITI_LOG(WARN, "failed to get external authentication token: %d/%s",
+                 status, ziti_errorstr(status));
+    }
 }
 
 extern int ziti_ext_auth(ziti_context ztx,

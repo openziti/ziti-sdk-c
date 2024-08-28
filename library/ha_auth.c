@@ -132,7 +132,8 @@ static void config_cb(oidc_client_t *oidc, int status, const char *err) {
 }
 
 static int ha_ext_jwt(ziti_auth_method_t *self, const char *token) {
-    // TODO
+    struct ha_auth_s *auth = HA_AUTH(self);
+    oidc_client_token(&auth->oidc, token);
     return 0;
 }
 

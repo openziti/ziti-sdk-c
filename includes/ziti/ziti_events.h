@@ -108,6 +108,7 @@ struct ziti_service_event {
 enum ziti_auth_action {
     ziti_auth_prompt_totp,
     ziti_auth_prompt_pin,
+    ziti_auth_select_external,
     ziti_auth_login_external
 };
 /**
