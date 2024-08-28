@@ -503,7 +503,22 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     }
 }
 
-extern void *ziti_app_ctx(ziti_context ztx) {
+int ziti_use_ext_jwt_signer(ziti_context ztx, const char *name) {
+    if (ztx == NULL || name == NULL)
+        return ZITI_INVALID_STATE;
+
+    ziti_jwt_signer *signer = model_map_remove(&ztx->ext_signers, name);
+    if (signer == NULL) {
+        return ZITI_NOT_FOUND;
+    }
+
+    free_ziti_jwt_signer_ptr(ztx->config.id.oidc);
+    ztx->config.id.oidc = signer;
+    ztx_init_external_auth(ztx);
+    return ZITI_OK;
+}
+
+void *ziti_app_ctx(ziti_context ztx) {
     return ztx->opts.app_ctx;
 }
 
@@ -1560,8 +1575,9 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
         ctx->config.id.oidc = calloc(1, sizeof(*ctx->config.id.oidc));
         ctx->config.id.oidc->client_id = strdup(config->id.oidc->client_id);
         ctx->config.id.oidc->provider_url = strdup(config->id.oidc->provider_url);
-        if (config->id.oidc->claim) {
-            ctx->config.id.oidc->claim = strdup(config->id.oidc->claim);
+        const char *scope;
+        MODEL_LIST_FOREACH(scope, config->id.oidc->scopes) {
+            model_list_append(&ctx->config.id.oidc->scopes, strdup(scope));
         }
     }
 
@@ -1691,6 +1707,9 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
     ziti_context ztx = ctx;
     switch (state) {
         case ZitiAuthStateUnauthenticated:
+            if (data) {
+                ZITI_LOG(WARN, "auth error: %s", (const char*)data);
+            }
             ziti_set_unauthenticated(ztx);
             break;
         case ZitiAuthStateAuthStarted:

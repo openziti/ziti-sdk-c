@@ -509,6 +509,10 @@ extern const char *ziti_get_controller(ziti_context ztx);
 ZITI_FUNC
 extern const ziti_identity *ziti_get_identity(ziti_context ztx);
 
+
+ZITI_FUNC
+extern int ziti_use_ext_jwt_signer(ziti_context ztx, const char *name);
+
 /**
  * @brief Retrieve current transfer rates. Rates are in bytes/second.
  *
