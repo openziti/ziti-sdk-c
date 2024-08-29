@@ -197,6 +197,8 @@ static void internal_config_cb(oidc_req *req, int status, json_object *resp) {
         assert(json_object_get_type(resp) == json_type_object);
         json_object_put(clt->config);
         clt->config = resp;
+        // config has full URLs, so we can drop the prefix now
+        tlsuv_http_set_path_prefix(&clt->http, "");
     }
 
     if (clt->config_cb) {
@@ -287,18 +289,18 @@ static void token_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
 }
 
 static void request_token(auth_req *req, const char *auth_code) {
-    ZITI_LOG(INFO, "requesting token auth[%s]", auth_code);
     const char *path = get_endpoint_path(req->clt, "token_endpoint");
+    ZITI_LOG(INFO, "requesting token path[%s] auth[%s]", path, auth_code);
     tlsuv_http_req_t *token_req = tlsuv_http_req(&req->clt->http, "POST", path, token_cb, req);
     token_req->data = req;
-    tlsuv_http_req_form(token_req, 6, (tlsuv_http_pair[]) {
+    tlsuv_http_pair form[] = {
             {"code",          auth_code},
             {"grant_type",    "authorization_code"},
             {"code_verifier", req->code_verifier},
             {"client_id",     req->clt->signer_cfg->client_id},
-            {"redirect_uri",  default_cb_url},
-            {"state",         req->state},
-    });
+            {"redirect_uri", default_cb_url},
+    };
+    tlsuv_http_req_form(token_req, sizeof(form) / sizeof(form[0]), form);
 }
 
 static void code_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
