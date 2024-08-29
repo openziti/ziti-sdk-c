@@ -14,4 +14,4 @@ add_subdirectory(sample-bridge)
 
 add_subdirectory(zitilib-samples)
 
-add_subdirectory(mfa_tester)
+add_subdirectory(auth-samples)

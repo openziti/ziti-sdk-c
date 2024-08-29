@@ -510,6 +510,11 @@ ZITI_FUNC
 extern const ziti_identity *ziti_get_identity(ziti_context ztx);
 
 
+typedef void (*ziti_ext_signers_cb)(ziti_context, int err, ziti_jwt_signer_array, void*);
+
+ZITI_FUNC
+extern int ziti_get_ext_jwt_signers(ziti_context ztx, ziti_ext_signers_cb, void *ctx);
+
 ZITI_FUNC
 extern int ziti_use_ext_jwt_signer(ziti_context ztx, const char *name);
 

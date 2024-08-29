@@ -427,6 +427,30 @@ static void ext_done(uv_work_t *wr, int status) {
 }
 
 static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pair q[]) {
+    uv_loop_t *loop = req->clt->timer->loop;
+    struct sockaddr_in6 addr = {
+            .sin6_family = AF_INET6,
+            .sin6_addr = IN6ADDR_LOOPBACK_INIT,
+            .sin6_port = htons(auth_cb_port),
+    };
+    int sock = socket(AF_INET6, SOCK_STREAM, 0);
+    if (bind(sock, (const struct sockaddr *) &addr, sizeof(addr)) || listen(sock, 1)) {
+        failed_auth_req(req, strerror(errno));
+        close(sock);
+        return;
+    }
+
+    struct ext_link_req *elr = calloc(1, sizeof(*elr));
+    elr->sock = sock;
+    elr->req = req;
+    int rc = uv_queue_work(loop, &elr->wr, ext_accept, ext_done);
+    if (rc != 0) {
+        free(elr);
+        close(sock);
+        failed_auth_req(req, uv_strerror(rc));
+        return;
+    }
+
     string_buf_t *buf = new_string_buf();
     string_buf_append(buf, ep);
     for (int i = 0; i < qc; i++) {
@@ -435,28 +459,9 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
         string_buf_append_byte(buf, '=');
         string_buf_append_urlsafe(buf, q[i].value);
     }
-
     char *url = string_buf_to_string(buf, NULL);
-    struct ext_link_req *elr = calloc(1, sizeof(*elr));
-    uv_loop_t *loop = req->clt->timer->loop;
-    struct sockaddr_in addr = {
-            .sin_addr = INADDR_ANY,
-            .sin_port = htons(auth_cb_port),
-    };
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    printf("sock = %d\n", sock);
-    if (bind(sock, (const struct sockaddr *) &addr, sizeof(addr))) {
-        perror("bind");
-    }
-    if (listen(sock, 1)) {
-        perror("listen");
-    }
 
     req->clt->link_cb(req->clt, url, req->clt->link_ctx);
-
-    elr->sock = sock;
-    elr->req = req;
-    uv_queue_work(loop, &elr->wr, ext_accept, ext_done);
 
     free(url);
     delete_string_buf(buf);
