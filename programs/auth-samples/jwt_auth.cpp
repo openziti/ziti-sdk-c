@@ -23,7 +23,6 @@
 
 #include <csignal>
 #include <string>
-#include <format>
 #include <iostream>
 #include <sstream>
 #include <vector>

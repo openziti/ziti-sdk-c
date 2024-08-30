@@ -10,6 +10,6 @@ target_link_libraries(ziti_mfa
 
 add_executable(jwt-auth jwt_auth.cpp)
 set_target_properties(jwt-auth PROPERTIES
-        CXX_STANDARD 23
+        CXX_STANDARD 20
 )
 target_link_libraries(jwt-auth ziti CLI11::CLI11)
