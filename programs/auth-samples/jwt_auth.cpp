@@ -181,7 +181,7 @@ int main(int argc, char *argv[]) {
     };
     ziti_options opts {
         .app_ctx = loop,
-        .events = (uint)-1,
+        .events = (unsigned int)-1,
         .event_cb = event_handler,
     };
     ziti_log_init(loop, log_level, NULL);
