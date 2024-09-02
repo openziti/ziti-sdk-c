@@ -259,7 +259,7 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
 
     model_map_clear(&ztx->ctrl_details, (_free_f)free_ziti_controller_detail_ptr);
     for (int i = 0; ctrls[i] != NULL; i++) {
-        ziti_controller_detail *detail = ctrls[i];
+        const ziti_controller_detail *detail = ctrls[i];
         api_address *api = model_list_head(&detail->apis.edge);
         ZTX_LOG(INFO, "controller[%s/%s] url[%s]", detail->name, detail->id, FIELD_OR_ELSE(api, url, "<unset>"));
 
@@ -530,7 +530,7 @@ int ziti_get_ext_jwt_signers(ziti_context ztx, ziti_ext_signers_cb cb, void *ctx
         return ZITI_INVALID_STATE;
 
     if (model_map_size(&ztx->ext_signers) > 0) {
-        ziti_jwt_signer_array arr = calloc(model_map_size(&ztx->ext_signers), sizeof(ziti_jwt_signer*));
+        const ziti_jwt_signer **arr = calloc(model_map_size(&ztx->ext_signers) + 1, sizeof(ziti_jwt_signer*));
 
         int i = 0;
         MODEL_MAP_FOR(it, ztx->ext_signers) {
@@ -1686,7 +1686,7 @@ static void pre_auth_retry(uv_timer_t *t) {
 
 static void jwt_signers_cb(ziti_jwt_signer_array arr, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
-    ziti_jwt_signer *js = NULL;
+    const ziti_jwt_signer *js = NULL;
 
     if (err) {
         ZTX_LOG(ERROR, "failed to get external signers: %d/%s", (int)err->err, err->message);

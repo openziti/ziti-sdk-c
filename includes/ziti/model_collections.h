@@ -32,11 +32,11 @@ typedef struct model_map {
 
 ZITI_FUNC size_t model_map_size(const model_map *map);
 
-ZITI_FUNC void *model_map_set_key(model_map *m, const void *key, size_t key_len, void *val);
+ZITI_FUNC void *model_map_set_key(model_map *m, const void *key, size_t key_len, const void *val);
 
-ZITI_FUNC void *model_map_set(model_map *map, const char *key, void *val);
+ZITI_FUNC void *model_map_set(model_map *map, const char *key, const void *val);
 
-ZITI_FUNC void *model_map_setl(model_map *map, long key, void *val);
+ZITI_FUNC void *model_map_setl(model_map *map, long key, const void *val);
 
 ZITI_FUNC void *model_map_get_key(const model_map *map, const void *key, size_t key_len);
 

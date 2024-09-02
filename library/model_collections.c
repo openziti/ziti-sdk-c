@@ -27,7 +27,7 @@ struct model_map_entry {
     char key_pad[2];
     size_t key_len;
     uint32_t key_hash;
-    void *value;
+    const void *value;
     LIST_ENTRY(model_map_entry) _next;
     LIST_ENTRY(model_map_entry) _tnext;
     model_map *_map;
@@ -59,9 +59,11 @@ static uint32_t (*key_hash)(const uint8_t *key, size_t key_len) = key_hash0;
 static void map_resize_table(model_map *m) {
     if (m->impl == NULL) { return; }
 
-    int orig_buckets = m->impl->buckets;
+    int new_buckets = m->impl->buckets * 2;
+    void *new_table = realloc(m->impl->table, new_buckets * sizeof(entries_t));
+
     m->impl->buckets *= 2;
-    m->impl->table = realloc(m->impl->table, m->impl->buckets * sizeof(entries_t));
+    m->impl->table = new_table;
     memset(m->impl->table, 0, sizeof(entries_t) * m->impl->buckets);
 
     struct model_map_entry *el;
@@ -95,28 +97,30 @@ size_t model_map_size(const model_map *m) {
     return m->impl ? m->impl->size : 0;
 }
 
-void *model_map_setl(model_map *m, long key, void *val) {
+void *model_map_setl(model_map *m, long key, const void *val) {
     return model_map_set_key(m, &key, sizeof(key), val);
 }
 
-void *model_map_set(model_map *m, const char *key, void *val) {
+void *model_map_set(model_map *m, const char *key, const void *val) {
     return model_map_set_key(m, key, strlen(key), val);
 }
 
-void *model_map_set_key(model_map *m, const void *key, size_t key_len, void *val) {
-
+void *model_map_set_key(model_map *m, const void *key, size_t key_len, const void *val) {
+    uint32_t kh;
+    struct model_map_entry *el = NULL;
     if (m->impl == NULL) {
         m->impl = calloc(1, sizeof(struct model_impl_s));
         m->impl->buckets = DEFAULT_MAP_BUCKETS;
         m->impl->table = calloc(m->impl->buckets, sizeof(entries_t));
+        kh = key_hash0(key, key_len);
+    } else {
+        el = find_map_entry(m, key, key_len, &kh);
     }
 
-    uint32_t kh;
-    struct model_map_entry *el = find_map_entry(m, key, key_len, &kh);
     if (el != NULL) {
-        void *old_val = el->value;
+        const void *old_val = el->value;
         el->value = val;
-        return old_val;
+        return (void*)old_val;
     }
 
     el = calloc(1, sizeof(*el));
@@ -158,7 +162,7 @@ void *model_map_get_key(const model_map *m, const void *key, size_t key_len) {
     }
 
     struct model_map_entry *el = find_map_entry(m, key, key_len, NULL);
-    return el ? el->value : NULL;
+    return el ? (void*)el->value : NULL;
 }
 
 void *model_map_removel(model_map *m, long key) {
@@ -174,7 +178,7 @@ void *model_map_remove_key(model_map *m, const void *key, size_t key_len) {
         return NULL;
     }
 
-    void *val = NULL;
+    const void *val = NULL;
     struct model_map_entry *el = find_map_entry(m, key, key_len, NULL);
     if (el != NULL) {
         val = el->value;
@@ -191,7 +195,7 @@ void *model_map_remove_key(model_map *m, const void *key, size_t key_len) {
         FREE(m->impl->table);
         FREE(m->impl);
     }
-    return val;
+    return (void*)val;
 }
 
 void model_map_clear(model_map *map, void (*val_free_func)(void *)) {
@@ -204,7 +208,7 @@ void model_map_clear(model_map *map, void (*val_free_func)(void *)) {
             FREE(el->key);
         }
         if (val_free_func) {
-            val_free_func(el->value);
+            val_free_func((void*)el->value);
         }
         FREE(el);
     }
@@ -238,7 +242,7 @@ long model_map_it_lkey(model_map_iter it) {
 }
 
 void *model_map_it_value(model_map_iter it) {
-    return it != NULL ? ((struct model_map_entry *) it)->value : NULL;
+    return it != NULL ? (void*)((struct model_map_entry *) it)->value : NULL;
 }
 
 model_map_iter model_map_it_next(model_map_iter it) {

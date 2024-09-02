@@ -434,6 +434,10 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
             .sin6_port = htons(auth_cb_port),
     };
     int sock = socket(AF_INET6, SOCK_STREAM, 0);
+#if defined(IPV6_V6ONLY)
+    int off = 0;
+    setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
+#endif
     if (bind(sock, (const struct sockaddr *) &addr, sizeof(addr)) || listen(sock, 1)) {
         failed_auth_req(req, strerror(errno));
         close(sock);
