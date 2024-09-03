@@ -265,6 +265,7 @@ struct ziti_ctx {
     ziti_mfa_cb mfa_cb;
     void *mfa_ctx;
 
+    model_map ext_signers;
     struct oidc_client_s *ext_auth;
     void (*ext_launch_cb)(ziti_context, const char*, void*);
     void *ext_launch_ctx;

@@ -73,6 +73,12 @@ static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e,
 
 static uint32_t ztx_seq;
 
+struct ztx_req_s {
+    struct ziti_ctx *ztx;
+    void  (*cb)();
+    void *cb_ctx;
+};
+
 static const char *all_configs[] = { "all", NULL };
 
 static ziti_options default_options = {
@@ -253,7 +259,7 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
 
     model_map_clear(&ztx->ctrl_details, (_free_f)free_ziti_controller_detail_ptr);
     for (int i = 0; ctrls[i] != NULL; i++) {
-        ziti_controller_detail *detail = ctrls[i];
+        const ziti_controller_detail *detail = ctrls[i];
         api_address *api = model_list_head(&detail->apis.edge);
         ZTX_LOG(INFO, "controller[%s/%s] url[%s]", detail->name, detail->id, FIELD_OR_ELSE(api, url, "<unset>"));
 
@@ -503,7 +509,63 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     }
 }
 
-extern void *ziti_app_ctx(ziti_context ztx) {
+static void ext_jwt_singers_cb(ziti_jwt_signer_array signers, const ziti_error *err, void *ctx) {
+    struct ztx_req_s *req = ctx;
+
+    if (err) {
+        ((ziti_ext_signers_cb)req->cb)(req->ztx, (int)err->err, NULL, req->cb_ctx);
+    } else {
+        model_map_clear(&req->ztx->ext_signers, (void (*)(void *)) free_ziti_jwt_signer_ptr);
+        ziti_jwt_signer *s;
+        FOR(s, signers) {
+            model_map_set(&req->ztx->ext_signers, s->name, s);
+        }
+        ((ziti_ext_signers_cb)req->cb)(req->ztx, ZITI_OK, signers, req->cb_ctx);
+        free(signers);
+    }
+}
+
+int ziti_get_ext_jwt_signers(ziti_context ztx, ziti_ext_signers_cb cb, void *ctx) {
+    if (ztx == NULL || cb == NULL)
+        return ZITI_INVALID_STATE;
+
+    if (model_map_size(&ztx->ext_signers) > 0) {
+        const ziti_jwt_signer **arr = calloc(model_map_size(&ztx->ext_signers) + 1, sizeof(ziti_jwt_signer*));
+
+        int i = 0;
+        MODEL_MAP_FOR(it, ztx->ext_signers) {
+            arr[i++] = model_map_it_value(it);
+        }
+        cb(ztx, ZITI_OK, arr, ctx);
+        free(arr);
+        return ZITI_OK;
+    }
+
+    NEWP(req, struct ztx_req_s);
+    req->ztx = ztx;
+    req->cb = cb;
+    req->cb_ctx = ctx;
+
+    ziti_ctrl_list_ext_jwt_signers(ztx_get_controller(ztx), ext_jwt_singers_cb, req);
+    return ZITI_OK;
+}
+
+int ziti_use_ext_jwt_signer(ziti_context ztx, const char *name) {
+    if (ztx == NULL || name == NULL)
+        return ZITI_INVALID_STATE;
+
+    ziti_jwt_signer *signer = model_map_remove(&ztx->ext_signers, name);
+    if (signer == NULL) {
+        return ZITI_NOT_FOUND;
+    }
+
+    free_ziti_jwt_signer_ptr(ztx->config.id.oidc);
+    ztx->config.id.oidc = signer;
+    ztx_init_external_auth(ztx);
+    return ZITI_OK;
+}
+
+void *ziti_app_ctx(ziti_context ztx) {
     return ztx->opts.app_ctx;
 }
 
@@ -780,13 +842,6 @@ void ziti_send_event(ziti_context ztx, const ziti_event_t *e) {
     }
 }
 
-struct service_req_s {
-    struct ziti_ctx *ztx;
-    char *service;
-    ziti_service_cb cb;
-    void *cb_ctx;
-};
-
 static void set_service_flags(ziti_service *s) {
     for (int i = 0; s->permissions[i] != NULL; i++) {
         if (*s->permissions[i] == ziti_session_types.Dial) {
@@ -799,7 +854,7 @@ static void set_service_flags(ziti_service *s) {
 }
 
 static void service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
-    struct service_req_s *req = ctx;
+    struct ztx_req_s *req = ctx;
     int rc = ZITI_SERVICE_UNAVAILABLE;
 
     if (s != NULL) {
@@ -813,8 +868,7 @@ static void service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
         }
     }
 
-    req->cb(req->ztx, s, rc, req->cb_ctx);
-    FREE(req->service);
+    ((ziti_service_cb)req->cb)(req->ztx, s, rc, req->cb_ctx);
     free(req);
 }
 
@@ -827,9 +881,8 @@ int ziti_service_available(ziti_context ztx, const char *service, ziti_service_c
         return ZITI_OK;
     }
 
-    NEWP(req, struct service_req_s);
+    NEWP(req, struct ztx_req_s);
     req->ztx = ztx;
-    req->service = strdup(service);
     req->cb = cb;
     req->cb_ctx = ctx;
 
@@ -1280,7 +1333,9 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
         ztx->identity_data = data;
     }
 
-    update_ctrl_status(ztx, FIELD_OR_ELSE(err, err, ZITI_OK), FIELD_OR_ELSE(err, message, NULL));
+    update_ctrl_status(ztx,
+                       FIELD_OR_ELSE(err, err, ZITI_OK),
+                       FIELD_OR_ELSE(err, message, ziti_errorstr(ZITI_OK)));
 }
 
 static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e, void *ctx) {
@@ -1560,8 +1615,9 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
         ctx->config.id.oidc = calloc(1, sizeof(*ctx->config.id.oidc));
         ctx->config.id.oidc->client_id = strdup(config->id.oidc->client_id);
         ctx->config.id.oidc->provider_url = strdup(config->id.oidc->provider_url);
-        if (config->id.oidc->claim) {
-            ctx->config.id.oidc->claim = strdup(config->id.oidc->claim);
+        const char *scope;
+        MODEL_LIST_FOREACH(scope, config->id.oidc->scopes) {
+            model_list_append(&ctx->config.id.oidc->scopes, strdup(scope));
         }
     }
 
@@ -1630,7 +1686,7 @@ static void pre_auth_retry(uv_timer_t *t) {
 
 static void jwt_signers_cb(ziti_jwt_signer_array arr, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
-    ziti_jwt_signer *js = NULL;
+    const ziti_jwt_signer *js = NULL;
 
     if (err) {
         ZTX_LOG(ERROR, "failed to get external signers: %d/%s", (int)err->err, err->message);
@@ -1691,6 +1747,9 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
     ziti_context ztx = ctx;
     switch (state) {
         case ZitiAuthStateUnauthenticated:
+            if (data) {
+                ZITI_LOG(WARN, "auth error: %s", (const char*)data);
+            }
             ziti_set_unauthenticated(ztx);
             break;
         case ZitiAuthStateAuthStarted:

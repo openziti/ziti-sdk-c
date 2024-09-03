@@ -82,7 +82,7 @@ TEST_CASE("httpbin.ziti:ziti_src", "[integ]") {
 
     ziti_config zfg;
     ziti_context ztx;
-    ziti_options zopts = {nullptr};
+    ziti_options zopts = {};
     zopts.app_ctx = &test;
     zopts.events = ZitiContextEvent | ZitiServiceEvent;
     zopts.event_cb = handler;

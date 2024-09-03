@@ -144,7 +144,7 @@ static void parse_cb(tlsuv_http_resp_t *resp, void *ctx) {
         return;
     }
 
-    ZITI_LOG(ERROR, "unexpected content-type: %s", ct);
+    ZITI_LOG(ERROR, "unexpected content-type[%s]: %s", resp->req->path, ct);
     handle_unexpected_resp(resp);
 }
 
@@ -197,6 +197,8 @@ static void internal_config_cb(oidc_req *req, int status, json_object *resp) {
         assert(json_object_get_type(resp) == json_type_object);
         json_object_put(clt->config);
         clt->config = resp;
+        // config has full URLs, so we can drop the prefix now
+        tlsuv_http_set_path_prefix(&clt->http, "");
     }
 
     if (clt->config_cb) {
@@ -287,18 +289,18 @@ static void token_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
 }
 
 static void request_token(auth_req *req, const char *auth_code) {
-    ZITI_LOG(INFO, "requesting token auth[%s]", auth_code);
     const char *path = get_endpoint_path(req->clt, "token_endpoint");
+    ZITI_LOG(INFO, "requesting token path[%s] auth[%s]", path, auth_code);
     tlsuv_http_req_t *token_req = tlsuv_http_req(&req->clt->http, "POST", path, token_cb, req);
     token_req->data = req;
-    tlsuv_http_req_form(token_req, 6, (tlsuv_http_pair[]) {
+    tlsuv_http_pair form[] = {
             {"code",          auth_code},
             {"grant_type",    "authorization_code"},
             {"code_verifier", req->code_verifier},
             {"client_id",     req->clt->signer_cfg->client_id},
-            {"redirect_uri",  default_cb_url},
-            {"state",         req->state},
-    });
+            {"redirect_uri", default_cb_url},
+    };
+    tlsuv_http_req_form(token_req, sizeof(form) / sizeof(form[0]), form);
 }
 
 static void code_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
@@ -345,9 +347,17 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
         char *p = strstr(uri.query, "authRequestID=");
         p += strlen("authRequestID=");
         req->id = strdup(p);
-
-        ZITI_LOG(DEBUG, "logging in with cert auth");
-        tlsuv_http_req_t *login_req = tlsuv_http_req(&req->clt->http, "POST", redirect, login_cb, req);
+        const char *path = NULL;
+        if (req->clt->jwt_token_auth) {
+            path = "/oidc/login/ext-jwt";
+        } else {
+            path = "/oidc/login/cert";
+        }
+        ZITI_LOG(DEBUG, "login with path[%s] ", path);
+        tlsuv_http_req_t *login_req = tlsuv_http_req(&req->clt->http, "POST", path, login_cb, req);
+        if (req->clt->jwt_token_auth) {
+            tlsuv_http_req_header(login_req, "Authorization", req->clt->jwt_token_auth);
+        }
         tlsuv_http_req_form(login_req, 1, &(tlsuv_http_pair) {"id", p});
     } else {
         failed_auth_req(req, http_resp->status);
@@ -417,6 +427,34 @@ static void ext_done(uv_work_t *wr, int status) {
 }
 
 static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pair q[]) {
+    uv_loop_t *loop = req->clt->timer->loop;
+    struct sockaddr_in6 addr = {
+            .sin6_family = AF_INET6,
+            .sin6_addr = IN6ADDR_LOOPBACK_INIT,
+            .sin6_port = htons(auth_cb_port),
+    };
+    int sock = socket(AF_INET6, SOCK_STREAM, 0);
+#if defined(IPV6_V6ONLY)
+    int off = 0;
+    setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
+#endif
+    if (bind(sock, (const struct sockaddr *) &addr, sizeof(addr)) || listen(sock, 1)) {
+        failed_auth_req(req, strerror(errno));
+        close(sock);
+        return;
+    }
+
+    struct ext_link_req *elr = calloc(1, sizeof(*elr));
+    elr->sock = sock;
+    elr->req = req;
+    int rc = uv_queue_work(loop, &elr->wr, ext_accept, ext_done);
+    if (rc != 0) {
+        free(elr);
+        close(sock);
+        failed_auth_req(req, uv_strerror(rc));
+        return;
+    }
+
     string_buf_t *buf = new_string_buf();
     string_buf_append(buf, ep);
     for (int i = 0; i < qc; i++) {
@@ -425,28 +463,9 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
         string_buf_append_byte(buf, '=');
         string_buf_append_urlsafe(buf, q[i].value);
     }
-
     char *url = string_buf_to_string(buf, NULL);
-    struct ext_link_req *elr = calloc(1, sizeof(*elr));
-    uv_loop_t *loop = req->clt->timer->loop;
-    struct sockaddr_in addr = {
-            .sin_addr = INADDR_ANY,
-            .sin_port = htons(auth_cb_port),
-    };
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    printf("sock = %d\n", sock);
-    if (bind(sock, (const struct sockaddr *) &addr, sizeof(addr))) {
-        perror("bind");
-    }
-    if (listen(sock, 1)) {
-        perror("listen");
-    }
 
     req->clt->link_cb(req->clt, url, req->clt->link_ctx);
-
-    elr->sock = sock;
-    elr->req = req;
-    uv_queue_work(loop, &elr->wr, ext_accept, ext_done);
 
     free(url);
     delete_string_buf(buf);
@@ -457,11 +476,15 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     ZITI_LOG(DEBUG, "requesting authentication code");
     auth_req *req = new_auth_req(clt);
 
-    char scope[256] = default_scope;
-    if (clt->signer_cfg->claim) {
-        snprintf(scope, sizeof(scope), "%s " default_scope, clt->signer_cfg->claim);
+    string_buf_t *scopes_buf = new_string_buf();
+    string_buf_append(scopes_buf, default_scope);
+    const char *s;
+    MODEL_LIST_FOREACH(s, clt->signer_cfg->scopes) {
+        string_buf_append(scopes_buf, " ");
+        string_buf_append(scopes_buf, s);
     }
 
+    char *scope = string_buf_to_string(scopes_buf, NULL);
     const char *path = get_endpoint_path(clt, "authorization_endpoint");
     tlsuv_http_pair query[] = {
             {"client_id",             clt->signer_cfg->client_id},
@@ -483,6 +506,9 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
 
     tlsuv_http_req_t *http_req = tlsuv_http_req(&clt->http, "POST", path, auth_cb, req);
     int rc = tlsuv_http_req_query(http_req, sizeof(query)/sizeof(query[0]), query);
+
+    free(scope);
+    delete_string_buf(scopes_buf);
     return rc;
 }
 
@@ -517,14 +543,23 @@ static void on_totp(tlsuv_http_resp_t *resp, void *ctx) {
     }
 }
 
+int oidc_client_token(oidc_client_t *clt, const char *token) {
+    string_buf_t *buf = new_string_buf();
+    string_buf_fmt(buf, "Bearer %s", token);
+
+    clt->jwt_token_auth = string_buf_to_string(buf, NULL);
+    delete_string_buf(buf);
+    return 0;
+}
+
 int oidc_client_mfa(oidc_client_t *clt, const char *code) {
     struct auth_req *req = clt->request;
     assert(req);
 
     tlsuv_http_req_t *r = tlsuv_http_req(&clt->http, "POST", "/oidc/login/totp", on_totp, req);
     tlsuv_http_req_form(r, 2, (tlsuv_http_pair[]){
-        {"id", req->id},
-        {"code", code},
+            {"id", req->id},
+            {"code", code},
     });
     return 0;
 }

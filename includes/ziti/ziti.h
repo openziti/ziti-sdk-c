@@ -224,8 +224,6 @@ typedef void (*ziti_event_cb)(ziti_context ztx, const ziti_event_t *event);
  * @see ziti_context_set_options()
  */
 typedef struct ziti_options_s {
-    ZITI_DEPRECATED("ignored, will be removed") const char *config;
-
     bool disabled; // if true initial state will be disabled
     const char **config_types;
 
@@ -508,6 +506,33 @@ extern const char *ziti_get_controller(ziti_context ztx);
  */
 ZITI_FUNC
 extern const ziti_identity *ziti_get_identity(ziti_context ztx);
+
+
+typedef void (*ziti_ext_signers_cb)(ziti_context, int err, ziti_jwt_signer_array, void*);
+
+/**
+ * \brief Get a list of available external JWT signers.
+ *
+ * this list can be presented to the user to select provider
+ * with which to continue authentication flow (via [ziti_use_ext_jwt_signer]).
+ *
+ * @param ztx ziti context
+ * @param cb  callback for the result
+ * @param ctx callback context
+ * @return
+ */
+ZITI_FUNC
+extern int ziti_get_ext_jwt_signers(ziti_context ztx, ziti_ext_signers_cb cb, void *ctx);
+
+/**
+ * \brief select external JWT signer to initiate OIDC authentication flow
+ *
+ * @param ztx ziti context
+ * @param name name of JWT signer configured for the ziti network
+ * @return
+ */
+ZITI_FUNC
+extern int ziti_use_ext_jwt_signer(ziti_context ztx, const char *name);
 
 /**
  * @brief Retrieve current transfer rates. Rates are in bytes/second.

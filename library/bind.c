@@ -111,7 +111,6 @@ static void process_bindings(struct ziti_conn *conn) {
 
     size_t target = MIN(conn->server.max_bindings, model_map_size(&ztx->channels));
 
-    const char *proto;
     const char *url;
     for(int idx = 0; conn->server.routers && conn->server.routers[idx]; idx++) {
         ziti_edge_router *er = conn->server.routers[idx];
@@ -174,11 +173,11 @@ static void schedule_rebind(struct ziti_conn *conn, bool now) {
 
 static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
-    int e = err ? err->err : ZITI_OK;
+    int e = err ? (int)err->err : ZITI_OK;
     switch (e) {
         case ZITI_OK: {
             FREE(conn->server.token);
-            conn->server.token = session->token;
+            conn->server.token = (char*)session->token;
             session->token = NULL;
             notify_status(conn, ZITI_OK);
             free_ziti_session_ptr(session);
@@ -186,7 +185,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
         }
         case ZITI_NOT_FOUND:
         case ZITI_NOT_AUTHORIZED:
-            CONN_LOG(WARN, "failed to get session for service[%s]: %d/%s", conn->service, err->err, err->code);
+            CONN_LOG(WARN, "failed to get session for service[%s]: %d/%s", conn->service, (int)err->err, err->code);
             const char *id;
             struct binding_s *b;
             MODEL_MAP_FOREACH(id, b, &conn->server.bindings) {
@@ -326,7 +325,8 @@ static void process_inspect(struct binding_s *b, message *msg) {
     struct ziti_conn *conn = b->conn;
     char conn_info[256];
     char listener_id[sodium_base64_ENCODED_LEN(sizeof(conn->server.listener_id), sodium_base64_VARIANT_URLSAFE)];
-    sodium_bin2base64(listener_id, sizeof(listener_id), conn->server.listener_id, sizeof(conn->server.listener_id), sodium_base64_VARIANT_URLSAFE);
+    sodium_bin2base64(listener_id, sizeof(listener_id),
+                      conn->server.listener_id, sizeof(conn->server.listener_id), sodium_base64_VARIANT_URLSAFE);
     size_t ci_len = snprintf(conn_info, sizeof(conn_info),
                              "id[%d] serviceName[%s] listenerId[%s] "
                              "closed[%s] encrypted[%s]",
