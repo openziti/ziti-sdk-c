@@ -75,7 +75,7 @@ ziti_auth_method_t *new_ha_auth(uv_loop_t *l, model_list* urls, tls_context *tls
         model_list_append(&auth->urls, url);
     }
     auth->config = (ziti_jwt_signer){
-        .client_id = "native",
+        .client_id = "openziti",
         .name = "ziti-internal-oidc",
         .enabled = true,
         .provider_url = (char*) model_list_head(&auth->urls),

@@ -36,7 +36,6 @@
 #define cb_url(host,port,path) "http://" host ":" _str(port) path
 #define default_cb_url cb_url("localhost",auth_cb_port,auth_url_path)
 #define default_scope "openid offline_access"
-#define default_auth_header "Basic bmF0aXZlOg==" /* native: */
 
 typedef struct oidc_req oidc_req;
 
@@ -624,6 +623,16 @@ static void refresh_cb(oidc_req *req, int status, json_object *resp) {
     }
 }
 
+static const char* get_basic_auth_header(const char *client_id) {
+    static char header[256];
+    char auth[128];
+    char auth64[sodium_base64_ENCODED_LEN(sizeof(auth), sodium_base64_VARIANT_URLSAFE)];
+    size_t auth_len = snprintf(auth, sizeof(auth), "%s:", client_id);
+    sodium_bin2base64(auth64, sizeof(auth64), (uint8_t*)auth, auth_len, sodium_base64_VARIANT_URLSAFE);
+    snprintf(header, sizeof(header), "Basic %s", auth64);
+    return header;
+}
+
 static void refresh_time_cb(uv_timer_t *t) {
     uv_unref((uv_handle_t *) t);
     oidc_client_t *clt = t->data;
@@ -632,9 +641,11 @@ static void refresh_time_cb(uv_timer_t *t) {
     const char *path = get_endpoint_path(clt, "token_endpoint");
     struct json_object *tok = json_object_object_get(clt->tokens, "refresh_token");
     oidc_req *refresh_req = new_oidc_req(clt, refresh_cb, clt);
-    
+
+
     tlsuv_http_req_t *req = tlsuv_http_req(&clt->http, "POST", path, parse_cb, refresh_req);
-    tlsuv_http_req_header(req, "Authorization", default_auth_header);
+    tlsuv_http_req_header(req, "Authorization",
+                          get_basic_auth_header(clt->signer_cfg->client_id));
     const char *refresher = json_object_get_string(tok);
     tlsuv_http_req_form(req, 4, (tlsuv_http_pair[]) {
             {"grant_type",           "urn:ietf:params:oauth:grant-type:token-exchange"},
