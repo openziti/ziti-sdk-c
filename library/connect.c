@@ -847,11 +847,15 @@ static bool flush_to_client(ziti_connection conn) {
 }
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg) {
-    uint8_t *plain_text = NULL;
     if (conn->state >= Disconnected || conn->fin_recv) {
         CONN_LOG(WARN, "inbound data on closed connection");
         return;
     }
+
+    uint8_t *plain_text = NULL;
+    unsigned long long plain_len = 0;
+    int32_t flags = 0;
+    message_get_int32_header(msg, FlagsHeader, &flags);
 
     if (conn->encrypted) {
         PREP(crypto);
@@ -863,7 +867,6 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
             CONN_LOG(VERBOSE, "processed crypto header");
             FREE(conn->key_ex.rx);
         } else {
-            unsigned long long plain_len;
             unsigned char tag;
             if (msg->header.body_len > 0) {
                 plain_text = malloc(msg->header.body_len - crypto_secretstream_xchacha20poly1305_ABYTES);
@@ -892,9 +895,6 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
                     TRY(crypto, crypto_rc);
                 }
                 CONN_LOG(VERBOSE, "decrypted %lld bytes tag[%x]", plain_len, (int)tag);
-                buffer_append(conn->inbound, plain_text, plain_len);
-                metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) plain_len);
-                conn->received += plain_len;
             }
         }
 
@@ -906,14 +906,34 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
         }
     } else if (msg->header.body_len > 0) {
         plain_text = malloc(msg->header.body_len);
+        plain_len = msg->header.body_len;
         memcpy(plain_text, msg->body, msg->header.body_len);
-        buffer_append(conn->inbound, plain_text, msg->header.body_len);
-        metrics_rate_update(&conn->ziti_ctx->down_rate, msg->header.body_len);
-        conn->received += msg->header.body_len;
     }
 
-    int32_t flags;
-    if (message_get_int32_header(msg, FlagsHeader, &flags) && (flags & EDGE_FIN)) {
+    if (plain_text) {
+        if (flags & EDGE_MULTIPART) {
+            CONN_LOG(TRACE, "chunking multipart[%llu] message", plain_len);
+            uint8_t *end = plain_text + plain_len;
+            uint8_t *p = plain_text;
+
+            do {
+                uint16_t partlen;
+                memcpy(&partlen, p, sizeof(partlen));
+                p += sizeof(partlen);
+                partlen = ntohs(partlen);
+                buffer_append_copy(conn->inbound, p, partlen);
+                p += partlen;
+                CONN_LOG(TRACE, "chunk[%d]", partlen);
+            } while (p < end);
+            free(plain_text);
+        } else {
+            buffer_append(conn->inbound, plain_text, plain_len);
+            metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) plain_len);
+            conn->received += plain_len;
+        }
+    }
+
+    if (flags & EDGE_FIN) {
         conn->fin_recv = true;
     }
 }
