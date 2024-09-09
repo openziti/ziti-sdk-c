@@ -113,7 +113,14 @@ enum crypto_method {
 };
 
 enum edge_flag {
+    // half close connection no more data messages are expected after receipt of message with this flag
     EDGE_FIN = 1,
+    // indicates that peer will send data messages with specially constructed UUID headers
+    EDGE_TRACE_UUID = 1 << 1,
+    // indicates that peer can accept multipart data messages
+    EDGE_ACCEPT_MULTIPART = 1 << 2,
+    // set on data message with multiple payloads
+    EDGE_MULTIPART = 1 << 3,
 };
 
 #ifdef __cplusplus
