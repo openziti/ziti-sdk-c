@@ -587,6 +587,42 @@ static const char* find_service(ztx_wrap_t *wrap, int type, const char *host, ui
     return best;
 }
 
+const char *fmt_identity(const ziti_intercept_cfg_v1 *intercept, const char* proto, const char *host, int port) {
+    if (intercept == NULL) return NULL;
+
+    tag *id_tag = model_map_get(&intercept->dial_options, "identity");
+    if (id_tag == NULL || id_tag->type != tag_string) {
+        return NULL;
+    }
+
+    static char identity[1024];
+    const char *p = id_tag->string_value;
+    char *o = identity;
+    while(*p != 0) {
+        if (*p == '$') {
+            p++;
+            if (strncmp(p, "dst_protocol", strlen("dst_protocol")) == 0) {
+                o += snprintf(o, sizeof(identity) - (o - identity), "%s", proto);
+                p += strlen("dst_protocol");
+            }
+            if (strncmp(p, "dst_hostname", strlen("dst_hostname")) == 0) {
+                o += snprintf(o, sizeof(identity) - (o - identity), "%s", host);
+                p += strlen("dst_hostname");
+            }
+            if (strncmp(p, "dst_port", strlen("dst_port")) == 0) {
+                o += snprintf(o, sizeof(identity) - (o - identity), "%d", port);
+                p += strlen("dst_port");
+            }
+        } else {
+            *o++ = *p++;
+        }
+
+        if (o >= identity + sizeof(identity))
+            break;
+    }
+    return identity;
+}
+
 static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
     ZITI_LOG(DEBUG, "connecting fd[%d] to %s:%d", req->fd, req->host, req->port);
     ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &req->fd, sizeof(req->fd));
@@ -611,6 +647,7 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
         host = req->host;
     }
 
+    ziti_intercept_cfg_v1 *intercept = NULL;
     if (req->ztx == NULL) {
         MODEL_MAP_FOR(it, ziti_contexts) {
             ztx_wrap_t *wrap = model_map_it_value(it);
@@ -619,6 +656,7 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
             if (service_name != NULL) {
                 req->ztx = wrap->ztx;
                 req->service = service_name;
+                intercept = model_map_get(&wrap->intercepts, service_name);
                 break;
             }
         }
@@ -638,10 +676,13 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
         size_t len = snprintf(app_data, sizeof(app_data),
                               "{\"dst_protocol\": \"%s\", \"dst_hostname\": \"%s\", \"dst_port\": \"%u\"}",
                               proto_str, req->host, req->port);
+
         ziti_dial_opts opts = {
                 .app_data = app_data,
                 .app_data_sz = len,
-                .identity = req->terminator,
+                .identity = (char*)(req->terminator ?
+                                    req->terminator :
+                                    fmt_identity(intercept, proto_str, req->host, req->port)),
         };
         ZITI_LOG(DEBUG, "connecting fd[%d] to service[%s]", zs->fd, req->service);
         ziti_dial_with_options(zs->conn, req->service, &opts, on_ziti_connect, NULL);
@@ -690,7 +731,7 @@ int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service, co
             .fd = socket,
             .ztx = ztx,
             .service = service,
-            .terminator = terminator,
+            .terminator = terminator ? strdup(terminator) : NULL,
     };
 
     future_t *f = schedule_on_loop((loop_work_cb) do_ziti_connect, &req, true);
