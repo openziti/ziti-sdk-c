@@ -191,7 +191,7 @@ struct ziti_conn {
 
             uint32_t edge_msg_seq;
             uint32_t in_msg_seq;
-            bool can_send_multipart;
+            uint32_t flags;
 
             ziti_channel_t *channel;
             ziti_data_cb data_cb;
