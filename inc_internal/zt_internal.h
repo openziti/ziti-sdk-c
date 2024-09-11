@@ -124,6 +124,8 @@ struct ziti_write_req_s {
     void *ctx;
 
     TAILQ_ENTRY(ziti_write_req_s) _next;
+    model_list chain;
+    size_t chain_len;
 };
 
 struct key_pair {

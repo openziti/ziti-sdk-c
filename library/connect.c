@@ -221,16 +221,22 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
         CONN_LOG(DEBUG, "is now Disconnected due to write failure: %d", status);
     }
 
-    if (req->cb != NULL) {
-        if (status == 0) {
-            status = (int)req->len;
-        }
-
-        req->cb(conn, status, req->ctx);
-    }
-
     TAILQ_REMOVE(&conn->pending_wreqs, req, _next);
 
+    struct ziti_write_req_s *r = req;
+    model_list_iter it = model_list_iterator(&req->chain);
+    do {
+        if (r->cb != NULL) {
+            if (status == 0) {
+                status = (int) r->len;
+            }
+
+            r->cb(conn, status, r->ctx);
+        }
+        r = model_list_it_element(it);
+        it = model_list_it_next(it);
+    } while(r);
+    model_list_clear(&req->chain, free);
     free(req);
 }
 
@@ -607,17 +613,46 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
     } else {
         message *m = req->message;
         if (m == NULL) {
-            size_t total_len = req->len + (conn->encrypted ? crypto_secretstream_xchacha20poly1305_abytes() : 0);
-            m = create_message(conn, ContentTypeData, 0, total_len);
+            bool multipart = model_list_size(&req->chain) > 0;
+            uint32_t flags = multipart ? EDGE_MULTIPART : 0;
+            size_t total_len = conn->encrypted ? crypto_secretstream_xchacha20poly1305_abytes() : 0;
+            total_len += (multipart ? req->chain_len : req->len);
+            m = create_message(conn, ContentTypeData, flags, total_len);
+            if (multipart) {
+                uint8_t *p = m->body + conn->encrypted;
+                string_buf_t buf;
+                string_buf_init_fixed(&buf, (char*)p, total_len);
+                struct ziti_write_req_s *r = req;
+                model_list_iter it = model_list_iterator(&req->chain);
+                int count = 0;
+                do {
+                    uint16_t part_len = (uint16_t)r->len;
+                    part_len = htole16(part_len);
+                    string_buf_appendn(&buf, (char*)&part_len, sizeof(part_len));
+                    string_buf_appendn(&buf, (char*)r->buf, r->len);
+                    conn->sent += r->len;
 
-            if (conn->encrypted) {
-                crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL,
-                                                           req->buf, req->len, NULL, 0, 0);
+                    r = model_list_it_element(it);
+                    it = model_list_it_next(it);
+                    count++;
+                } while(r != NULL);
+                CONN_LOG(DEBUG, "consolidated %d payloads", count);
+
+                if (conn->encrypted) {
+                    crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL,
+                                                               p, req->chain_len, NULL, 0, 0);
+                }
+                string_buf_free(&buf);
             } else {
-                memcpy(m->body, req->buf, req->len);
+                if (conn->encrypted) {
+                    crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL,
+                                                               req->buf, req->len, NULL, 0, 0);
+                } else {
+                    memcpy(m->body, req->buf, req->len);
+                }
+                conn->sent += req->len;
             }
         }
-        conn->sent += req->len;
         send_message(conn, m, req);
     }
 }
@@ -747,6 +782,35 @@ static void flush_connection(ziti_connection conn) {
     conn->last_activity = uv_now(conn->ziti_ctx->loop);
 }
 
+void chain_data_requests(ziti_connection conn, struct ziti_write_req_s *req) {
+    if (req->message)
+        return;
+
+#define MAX_CHAIN_LEN (31 * 1024)
+    size_t chain_len = 0;
+    if (req->len + 2 >= MAX_CHAIN_LEN)
+        return;
+
+    chain_len += (req->len + 2);
+
+    while(!TAILQ_EMPTY(&conn->wreqs)) {
+        struct ziti_write_req_s *next = TAILQ_FIRST(&conn->wreqs);
+        if (next->message || next->close || next->eof)
+            break;
+
+        if (chain_len + next->len + 2 > MAX_CHAIN_LEN)
+            break;
+
+        TAILQ_REMOVE(&conn->wreqs, next, _next);
+        model_list_append(&req->chain, next);
+        chain_len += (next->len + 2);
+    }
+
+    if (model_list_size(&req->chain) > 0) {
+        req->chain_len = chain_len;
+    }
+}
+
 static bool flush_to_service(ziti_connection conn) {
 
     // still connecting
@@ -759,6 +823,10 @@ static bool flush_to_service(ziti_connection conn) {
         TAILQ_REMOVE(&conn->wreqs, req, _next);
 
         if (conn->state == Connected || req->close) {
+            if (conn->can_send_multipart && !req->close && !req->eof) {
+                chain_data_requests(conn, req);
+            }
+
             if (req->conn) {
                 TAILQ_INSERT_TAIL(&conn->pending_wreqs, req, _next);
             }
@@ -899,7 +967,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
                 uint16_t partlen;
                 memcpy(&partlen, p, sizeof(partlen));
                 p += sizeof(partlen);
-                partlen = ntohs(partlen);
+                partlen = le32toh(partlen);
                 buffer_append_copy(conn->inbound, p, partlen);
                 p += partlen;
                 CONN_LOG(TRACE, "chunk[%d]", partlen);
