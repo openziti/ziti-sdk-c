@@ -601,17 +601,17 @@ const char *fmt_identity(const ziti_intercept_cfg_v1 *intercept, const char* pro
     while(*p != 0) {
         if (*p == '$') {
             p++;
-            if (strncmp(p, "dst_protocol", strlen("dst_protocol")) == 0) {
+            if (strncmp(p, DST_PROTOCOL, strlen(DST_PROTOCOL)) == 0) {
                 o += snprintf(o, sizeof(identity) - (o - identity), "%s", proto);
-                p += strlen("dst_protocol");
-            }
-            if (strncmp(p, "dst_hostname", strlen("dst_hostname")) == 0) {
+                p += strlen(DST_PROTOCOL);
+            } else if (strncmp(p, DST_HOSTNAME, strlen(DST_HOSTNAME)) == 0) {
                 o += snprintf(o, sizeof(identity) - (o - identity), "%s", host);
-                p += strlen("dst_hostname");
-            }
-            if (strncmp(p, "dst_port", strlen("dst_port")) == 0) {
+                p += strlen(DST_HOSTNAME);
+            } else if (strncmp(p, DST_PORT, strlen(DST_PORT)) == 0) {
                 o += snprintf(o, sizeof(identity) - (o - identity), "%d", port);
-                p += strlen("dst_port");
+                p += strlen(DST_PORT);
+            } else {
+                *o++ = '$';
             }
         } else {
             *o++ = *p++;
@@ -674,7 +674,9 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
         ziti_conn_init(req->ztx, &zs->conn, zs);
         char app_data[1024];
         size_t len = snprintf(app_data, sizeof(app_data),
-                              "{\"dst_protocol\": \"%s\", \"dst_hostname\": \"%s\", \"dst_port\": \"%u\"}",
+                              "{\"" DST_PROTOCOL "\": \"%s\","
+                               "\"" DST_HOSTNAME "\": \"%s\","
+                               "\"" DST_PORT     "\": \"%u\"}",
                               proto_str, req->host, req->port);
 
         ziti_dial_opts opts = {
