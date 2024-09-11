@@ -35,7 +35,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
 
 static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *ctx);
 
-int verify_controller_jwt(tls_cert cert, void *ctx) {
+int verify_controller_jwt(const struct tlsuv_certificate_s *cert, void *ctx) {
     ZITI_LOG(DEBUG, "verifying JWT signature");
 
     enroll_cfg *ecfg = ctx;
@@ -57,9 +57,9 @@ int verify_controller_jwt(tls_cert cert, void *ctx) {
         return -1;
     }
 
-    int rc = ecfg->tls->verify_signature(cert, md, (char *) ecfg->jwt_signing_input,
-                                         strlen((char *) ecfg->jwt_signing_input),
-                                         ecfg->jwt_sig, ecfg->jwt_sig_len);
+    int rc = cert->verify(cert, md, (char *) ecfg->jwt_signing_input,
+                          strlen((char *) ecfg->jwt_signing_input),
+                          ecfg->jwt_sig, ecfg->jwt_sig_len);
     if (rc != 0) {
         ZITI_LOG(ERROR, "failed to verify JWT signature");
     }
@@ -141,7 +141,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
 
     ZITI_LOG(VERBOSE, "base64_encoded_pkcs7 is: %s", base64_encoded_pkcs7);
     PREPF(TLS, enroll_req->ecfg->tls->strerror);
-    tls_cert chain = NULL;
+    tlsuv_certificate_t chain = NULL;
     ziti_err = ZITI_PKCS7_ASN1_PARSING_FAILED;
     TRY(TLS, enroll_req->ecfg->tls->parse_pkcs7_certs(
             &chain, base64_encoded_pkcs7, strlen(base64_encoded_pkcs7)));
@@ -150,7 +150,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     size_t total_pem_len = 0;
 
     ziti_err = ZITI_INVALID_CONFIG;
-    TRY(TLS, enroll_req->ecfg->tls->write_cert_to_pem(chain, 1, &ca, &total_pem_len));
+    TRY(TLS, chain->to_pem(chain, 1, &ca, &total_pem_len));
 
     ZITI_LOG(DEBUG, "CA PEM len = %zd", total_pem_len);
     ZITI_LOG(TRACE, "CA PEM:\n%s", ca);
@@ -191,7 +191,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     else if (enroll_req->ecfg->zej->method == ziti_enrollment_methods.ottca ||
              enroll_req->ecfg->zej->method == ziti_enrollment_methods.ca) {
         ziti_err = ZITI_KEY_LOAD_FAILED;
-        tls_cert cert;
+        tlsuv_certificate_t cert;
         TRY(TLS, tls->load_cert(&cert, enroll_req->ecfg->own_cert, strlen(enroll_req->ecfg->own_cert)));
         TRY(TLS, tls->set_own_cert(tls, enroll_req->ecfg->pk, cert));
     }
@@ -245,7 +245,7 @@ static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enr
         cfg.id.ca = strdup(enroll_req->ecfg->CA);
         cfg.id.key = strdup(enroll_req->ecfg->private_key);
 
-        tls_cert c = NULL;
+        tlsuv_certificate_t c = NULL;
         if (er->cert != NULL && enroll_req->ecfg->tls->load_cert(&c, er->cert, strlen(er->cert)) == 0 &&
             enroll_req->ecfg->pk->store_certificate != NULL &&
             enroll_req->ecfg->pk->store_certificate(enroll_req->ecfg->pk, c) == 0) {

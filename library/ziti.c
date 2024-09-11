@@ -157,7 +157,7 @@ static int init_tls_from_config(tls_context *tls, ziti_config *cfg) {
 
     TRY(ziti, load_key_internal(tls, &pk, cfg->id.key));
 
-    tls_cert c = NULL;
+    tlsuv_certificate_t c = NULL;
     if (cfg->id.cert) {
         const char *cert;
         size_t cert_len = parse_ref(cfg->id.cert, &cert);
@@ -191,7 +191,7 @@ int load_tls(ziti_config *cfg, tls_context **ctx) {
 
 int ziti_set_client_cert(ziti_context ztx, const char *cert_buf, size_t cert_len, const char *key_buf, size_t key_len) {
     tlsuv_private_key_t pk;
-    tls_cert c;
+    tlsuv_certificate_t c;
     if (ztx->tlsCtx->load_key(&pk, key_buf, key_len)) {
         return ZITI_KEY_LOAD_FAILED;
     }
@@ -289,7 +289,7 @@ void ziti_set_unauthenticated(ziti_context ztx) {
     if (ztx->sessionKey) {
         init_tls_from_config(ztx->tlsCtx, &ztx->config);
         if (ztx->sessionCert) {
-            ztx->tlsCtx->free_cert(&ztx->sessionCert);
+            ztx->sessionCert->free(ztx->sessionCert);
             ztx->sessionCert = NULL;
         }
 
@@ -1420,7 +1420,8 @@ static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e,
         ZTX_LOG(VERBOSE, "cert => %s", resp->client_cert_pem);
 
         if (ztx->sessionCert) {
-            ztx->tlsCtx->free_cert(&ztx->sessionCert);
+            ztx->sessionCert->free(ztx->sessionCert);
+            ztx->sessionCert = NULL;
         }
 
         if (ztx->tlsCtx->load_cert(&ztx->sessionCert, resp->client_cert_pem, strlen(resp->client_cert_pem)) != 0) {
@@ -1439,7 +1440,7 @@ static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e,
 
 static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
-    tls_cert new_bundle = NULL;
+    tlsuv_certificate_t new_bundle = NULL;
     char *new_pem = NULL;
     if (err == NULL) {
         size_t pem_size;
@@ -1448,7 +1449,7 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
             ZITI_LOG(ERROR, "failed to parse updated CA bundle");
             goto error;
         }
-        if (ztx->tlsCtx->write_cert_to_pem(new_bundle, 1, &new_pem, &pem_size)) {
+        if (new_bundle->to_pem(new_bundle, 1, &new_pem, &pem_size)) {
             ZITI_LOG(ERROR, "failed to format new CA bundle");
             goto error;
         }
@@ -1482,7 +1483,7 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
     free(pkcs7);
     free(new_pem);
     if (new_bundle) {
-        ztx->tlsCtx->free_cert(&new_bundle);
+        new_bundle->free(new_bundle);
     }
 }
 
