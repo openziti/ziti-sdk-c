@@ -677,16 +677,18 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
                               "{\"" DST_PROTOCOL "\": \"%s\","
                                "\"" DST_HOSTNAME "\": \"%s\","
                                "\"" DST_PORT     "\": \"%u\"}",
-                              proto_str, req->host, req->port);
+                              proto_str, host, req->port);
 
         ziti_dial_opts opts = {
                 .app_data = app_data,
                 .app_data_sz = len,
                 .identity = (char*)(req->terminator ?
                                     req->terminator :
-                                    fmt_identity(intercept, proto_str, req->host, req->port)),
+                                    fmt_identity(intercept, proto_str, host, req->port)),
         };
         ZITI_LOG(DEBUG, "connecting fd[%d] to service[%s]", zs->fd, req->service);
+        ZITI_LOG(VERBOSE, "appdata[%.*s]", (int)opts.app_data_sz, (char*)opts.app_data);
+        ZITI_LOG(VERBOSE, "identity[%s]", opts.identity);
         ziti_dial_with_options(zs->conn, req->service, &opts, on_ziti_connect, NULL);
     } else {
         ZITI_LOG(WARN, "no service for target address[%s:%s:%d]", proto_str, req->host, req->port);
