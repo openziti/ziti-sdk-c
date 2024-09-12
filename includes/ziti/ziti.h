@@ -260,6 +260,10 @@ typedef struct ziti_enroll_opts_s {
 } ziti_enroll_opts;
 
 typedef struct ziti_dial_opts_s {
+    /** enable stream semantics
+     * this allows SDK to consolidate multiple write requests to lower overlay overhead
+     */
+    bool stream;
     int connect_timeout_seconds;
     char *identity;
     void *app_data;

@@ -23,6 +23,7 @@
 static const char *INVALID_SESSION = "Invalid Session";
 static const int MAX_CONNECT_RETRY = 3;
 
+#define CONN_CAP_MASK (EDGE_MULTIPART | EDGE_TRACE_UUID | EDGE_STREAM)
 #define BOOL_STR(v) ((v) ? "Y" : "N")
 
 #define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%u.%u/%.*s/%s] " fmt, \
@@ -112,6 +113,7 @@ static void conn_set_state(struct ziti_conn *conn, enum conn_state state) {
 static void clone_ziti_dial_opts(ziti_dial_opts *dest, const ziti_dial_opts *dial_opts) {
     *dest = DEFAULT_DIAL_OPTS;
 
+    dest->stream = dial_opts->stream;
     dest->connect_timeout_seconds = dial_opts->connect_timeout_seconds;
     if (dial_opts->identity != NULL && dial_opts->identity[0] != '\0') {
         dest->identity = strdup(dial_opts->identity);
@@ -127,17 +129,6 @@ static void clone_ziti_dial_opts(ziti_dial_opts *dest, const ziti_dial_opts *dia
 static void free_ziti_dial_opts(ziti_dial_opts *dial_opts) {
     FREE(dial_opts->identity);
     FREE(dial_opts->app_data);
-}
-
-static ziti_listen_opts *clone_ziti_listen_opts(const ziti_listen_opts *ln_opts) {
-    if (ln_opts == NULL) {
-        ZITI_LOG(TRACE, "refuse to clone NULL listen_opts");
-        return NULL;
-    }
-    ziti_listen_opts *c = calloc(1, sizeof(ziti_listen_opts));
-    memcpy(c, ln_opts, sizeof(ziti_listen_opts));
-    if (ln_opts->identity != NULL) c->identity = strdup(ln_opts->identity);
-    return c;
 }
 
 static void free_conn_req(struct ziti_conn_req *r) {
@@ -232,44 +223,56 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
         CONN_LOG(DEBUG, "is now Disconnected due to write failure: %d", status);
     }
 
-    if (req->cb != NULL) {
-        if (status == 0) {
-            status = req->len;
-        }
-
-        req->cb(conn, status, req->ctx);
-    }
-
     TAILQ_REMOVE(&conn->pending_wreqs, req, _next);
 
+    struct ziti_write_req_s *r = req;
+    model_list_iter it = model_list_iterator(&req->chain);
+    do {
+        if (r->cb != NULL) {
+            if (status == 0) {
+                status = (int) r->len;
+            }
+
+            r->cb(conn, status, r->ctx);
+        }
+        r = model_list_it_element(it);
+        it = model_list_it_next(it);
+    } while(r);
+    model_list_clear(&req->chain, free);
     free(req);
 }
 
-message *create_message(struct ziti_conn *conn, uint32_t content, size_t body_len) {
+#define mk_hdr(idx, hid, l, v) headers[(idx)++] = (hdr_t){ .header_id = (hid), .length = (l), .value = (uint8_t*)(v) }
+
+message *create_message(struct ziti_conn *conn, uint32_t content, uint32_t flags, size_t body_len) {
+
+    if (conn->edge_msg_seq == 0) {
+        flags |= EDGE_TRACE_UUID;
+        if (conn->flags & EDGE_STREAM)
+            flags |= EDGE_STREAM;
+        else
+            flags |= EDGE_MULTIPART;
+    }
+
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(conn->edge_msg_seq++);
     struct msg_uuid uuid = {
             .ts = uv_now(conn->ziti_ctx->loop),
             .seq = msg_seq,
     };
-    int hcount = (content == ContentTypeData) ? 3 : 2;
-    hdr_t headers[] = {
-            {
-                    .header_id = ConnIdHeader,
-                    .length = sizeof(conn_id),
-                    .value = (uint8_t *) &conn_id
-            },
-            {
-                    .header_id = SeqHeader,
-                    .length = sizeof(msg_seq),
-                    .value = (uint8_t *) &msg_seq
-            },
-            { // allocate space for UUID, it will be populated in send_message
-                    .header_id = UUIDHeader,
-                    .length = sizeof(uuid.raw),
-                    .value = uuid.raw
-            }
-    };
+    int hcount = 0;
+    hdr_t headers[5] = {};
+
+    mk_hdr(hcount, ConnIdHeader, sizeof(conn_id), &conn_id);
+    mk_hdr(hcount, SeqHeader, sizeof(msg_seq), &msg_seq);
+    if (content == ContentTypeData && body_len > 0) {
+        mk_hdr(hcount, UUIDHeader, sizeof(uuid.raw), uuid.raw);
+    }
+    if (flags != 0) {
+        uint32_t msg_flags = htole32(flags);
+        mk_hdr(hcount, FlagsHeader, sizeof(msg_flags), &msg_flags);
+    }
+
     return message_new(NULL, content, headers, hcount, body_len);
 }
 
@@ -347,10 +350,6 @@ static void connect_timeout(uv_timer_t *timer) {
     } else {
         CONN_LOG(ERROR, "timeout in unexpected state[%s]", ziti_conn_state(conn));
     }
-}
-
-static void conn_wait_for_er() {
-
 }
 
 static bool ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct ziti_conn *conn) {
@@ -448,7 +447,7 @@ static void connect_get_net_session_cb(ziti_session *s, const ziti_error *err, v
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
     if (err != NULL) {
-        int e = err->err == ZITI_NOT_FOUND ? ZITI_SERVICE_UNAVAILABLE : err->err;
+        int e = err->err == ZITI_NOT_FOUND ? ZITI_SERVICE_UNAVAILABLE : (int)err->err;
         CONN_LOG(WARN, "failed to get '%s' session for service[%s]: %s(%s)",
                  ziti_session_types.name(req->session_type), conn->service, err->code, err->message);
 
@@ -561,7 +560,7 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
         return ZITI_INVALID_STATE;
     }
 
-    char marker[MARKER_BIN_LEN];
+    uint8_t marker[MARKER_BIN_LEN];
     uv_random(NULL, NULL, marker, sizeof(marker), 0, NULL);
     sodium_bin2base64(conn->marker, sizeof(conn->marker), marker, sizeof(marker),
                       sodium_base64_VARIANT_URLSAFE_NO_PADDING);
@@ -578,7 +577,9 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
         // clone dial_opts to survive the async request
         clone_ziti_dial_opts(&req->dial_opts, dial_opts);
 
-        // override connection timeout if set in dial_opts
+        if (dial_opts->stream) {
+            conn->flags |= EDGE_STREAM;
+        }
     }
 
     conn->data_cb = data_cb;
@@ -615,22 +616,58 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
         send_fin_message(conn, req);
     } else if (req->close) {
         // conn->state will be set on_disconnect callback
-        message *m = create_message(conn, ContentTypeStateClosed, 0);
+        message *m = create_message(conn, ContentTypeStateClosed, 0, 0);
         send_message(conn, m, req);
     } else {
         message *m = req->message;
         if (m == NULL) {
-            size_t total_len = req->len + (conn->encrypted ? crypto_secretstream_xchacha20poly1305_abytes() : 0);
-            m = create_message(conn, ContentTypeData, total_len);
+            bool multipart = model_list_size(&req->chain) > 0;
+            bool stream = conn->flags & EDGE_STREAM;
 
-            if (conn->encrypted) {
-                crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL,
-                                                           req->buf, req->len, NULL, 0, 0);
+            uint32_t flags = multipart && !stream ? EDGE_MULTIPART_MSG : 0;
+            size_t total_len = conn->encrypted ? crypto_secretstream_xchacha20poly1305_abytes() : 0;
+            total_len += (multipart ? req->chain_len : req->len);
+            m = create_message(conn, ContentTypeData, flags, total_len);
+
+            if (multipart) {
+                uint8_t *p = m->body + conn->encrypted;
+                string_buf_t buf;
+                string_buf_init_fixed(&buf, (char*)p, total_len);
+                struct ziti_write_req_s *r = req;
+                model_list_iter it = model_list_iterator(&req->chain);
+                int count = 0;
+                size_t tot = 0;
+                do {
+                    if (!stream) {
+                        uint16_t part_len = (uint16_t) r->len;
+                        part_len = htole16(part_len);
+                        string_buf_appendn(&buf, (char *) &part_len, sizeof(part_len));
+                    }
+                    string_buf_appendn(&buf, (char*)r->buf, r->len);
+                    count++;
+                    tot += r->len;
+
+                    r = model_list_it_element(it);
+                    it = model_list_it_next(it);
+                } while(r != NULL);
+                CONN_LOG(DEBUG, "consolidated %d payloads total_len[%zd]", count, tot);
+                conn->sent += tot;
+
+                if (conn->encrypted) {
+                    crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL,
+                                                               p, req->chain_len, NULL, 0, 0);
+                }
+                string_buf_free(&buf);
             } else {
-                memcpy(m->body, req->buf, req->len);
+                if (conn->encrypted) {
+                    crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL,
+                                                               req->buf, req->len, NULL, 0, 0);
+                } else {
+                    memcpy(m->body, req->buf, req->len);
+                }
+                conn->sent += req->len;
             }
         }
-        conn->sent += req->len;
         send_message(conn, m, req);
     }
 }
@@ -693,14 +730,6 @@ static int ziti_disconnect(struct ziti_conn *conn) {
     return ZITI_OK;
 }
 
-static void crypto_wr_cb(ziti_connection conn, ssize_t status, void *ctx) {
-    if (status < 0) {
-        CONN_LOG(ERROR, "crypto header write failed with status[%zd]", status);
-        conn_set_state(conn, Disconnected);
-        conn->data_cb(conn, NULL, status);
-    }
-}
-
 int establish_crypto(ziti_connection conn, message *msg) {
     if (!conn->encrypted) {
         return ZITI_OK;
@@ -732,7 +761,7 @@ int establish_crypto(ziti_connection conn, message *msg) {
 static int send_crypto_header(ziti_connection conn) {
     if (conn->encrypted) {
         size_t crypto_header_len = crypto_secretstream_xchacha20poly1305_headerbytes();
-        message *m = create_message(conn, ContentTypeData, crypto_header_len);
+        message *m = create_message(conn, ContentTypeData, 0, crypto_header_len);
         crypto_secretstream_xchacha20poly1305_init_push(&conn->crypt_o, m->body, conn->key_ex.tx);
         NEWP(wr, struct ziti_write_req_s);
         wr->conn = conn;
@@ -768,6 +797,36 @@ static void flush_connection(ziti_connection conn) {
     conn->last_activity = uv_now(conn->ziti_ctx->loop);
 }
 
+void chain_data_requests(ziti_connection conn, struct ziti_write_req_s *req) {
+    if (req->message)
+        return;
+
+    int boundary_len = (conn->flags & EDGE_STREAM) ? 0 : 2;
+#define MAX_CHAIN_LEN (31 * 1024)
+    size_t chain_len = 0;
+    if (req->len + boundary_len >= MAX_CHAIN_LEN)
+        return;
+
+    chain_len += (req->len + boundary_len);
+
+    while(!TAILQ_EMPTY(&conn->wreqs)) {
+        struct ziti_write_req_s *next = TAILQ_FIRST(&conn->wreqs);
+        if (next->message || next->close || next->eof)
+            break;
+
+        if (chain_len + next->len + boundary_len > MAX_CHAIN_LEN)
+            break;
+
+        TAILQ_REMOVE(&conn->wreqs, next, _next);
+        model_list_append(&req->chain, next);
+        chain_len += (next->len + boundary_len);
+    }
+
+    if (model_list_size(&req->chain) > 0) {
+        req->chain_len = chain_len;
+    }
+}
+
 static bool flush_to_service(ziti_connection conn) {
 
     // still connecting
@@ -780,6 +839,11 @@ static bool flush_to_service(ziti_connection conn) {
         TAILQ_REMOVE(&conn->wreqs, req, _next);
 
         if (conn->state == Connected || req->close) {
+            if ((conn->flags & (EDGE_MULTIPART | EDGE_STREAM)) &&
+                !req->close && !req->eof) {
+                chain_data_requests(conn, req);
+            }
+
             if (req->conn) {
                 TAILQ_INSERT_TAIL(&conn->pending_wreqs, req, _next);
             }
@@ -847,11 +911,15 @@ static bool flush_to_client(ziti_connection conn) {
 }
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg) {
-    uint8_t *plain_text = NULL;
     if (conn->state >= Disconnected || conn->fin_recv) {
         CONN_LOG(WARN, "inbound data on closed connection");
         return;
     }
+
+    uint8_t *plain_text = NULL;
+    unsigned long long plain_len = 0;
+    int32_t flags = 0;
+    message_get_int32_header(msg, FlagsHeader, &flags);
 
     if (conn->encrypted) {
         PREP(crypto);
@@ -863,7 +931,6 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
             CONN_LOG(VERBOSE, "processed crypto header");
             FREE(conn->key_ex.rx);
         } else {
-            unsigned long long plain_len;
             unsigned char tag;
             if (msg->header.body_len > 0) {
                 plain_text = malloc(msg->header.body_len - crypto_secretstream_xchacha20poly1305_ABYTES);
@@ -872,7 +939,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
                 int crypto_rc = crypto_secretstream_xchacha20poly1305_pull(&conn->crypt_i,
                                                                            plain_text, &plain_len, &tag,
                                                                            msg->body, msg->header.body_len, NULL, 0);
-                if (crypto_rc != 0) {
+                if (crypto_rc != 0 && (conn->flags & EDGE_TRACE_UUID)) {
                     // try to figure out the cause of crypto error
                     struct msg_uuid *uuid;
                     size_t uuid_len;
@@ -888,13 +955,10 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
                         CONN_LOG(ERROR, "message/state corruption hash[" HASH_FMT "]",
                                  HASH_FMT_ARG(h));
                     }
-
-                    TRY(crypto, crypto_rc);
                 }
+
+                TRY(crypto, crypto_rc);
                 CONN_LOG(VERBOSE, "decrypted %lld bytes tag[%x]", plain_len, (int)tag);
-                buffer_append(conn->inbound, plain_text, plain_len);
-                metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) plain_len);
-                conn->received += plain_len;
             }
         }
 
@@ -906,14 +970,34 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
         }
     } else if (msg->header.body_len > 0) {
         plain_text = malloc(msg->header.body_len);
+        plain_len = msg->header.body_len;
         memcpy(plain_text, msg->body, msg->header.body_len);
-        buffer_append(conn->inbound, plain_text, msg->header.body_len);
-        metrics_rate_update(&conn->ziti_ctx->down_rate, msg->header.body_len);
-        conn->received += msg->header.body_len;
     }
 
-    int32_t flags;
-    if (message_get_int32_header(msg, FlagsHeader, &flags) && (flags & EDGE_FIN)) {
+    if (plain_text) {
+        if (flags & EDGE_MULTIPART_MSG) {
+            CONN_LOG(TRACE, "chunking multipart[%llu] message", plain_len);
+            uint8_t *end = plain_text + plain_len;
+            uint8_t *p = plain_text;
+
+            do {
+                uint16_t partlen;
+                memcpy(&partlen, p, sizeof(partlen));
+                p += sizeof(partlen);
+                partlen = le32toh(partlen);
+                buffer_append_copy(conn->inbound, p, partlen);
+                p += partlen;
+                CONN_LOG(TRACE, "chunk[%d]", partlen);
+            } while (p < end);
+            free(plain_text);
+        } else {
+            buffer_append(conn->inbound, plain_text, plain_len);
+            metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) plain_len);
+            conn->received += plain_len;
+        }
+    }
+
+    if (flags & EDGE_FIN) {
         conn->fin_recv = true;
     }
 }
@@ -1173,7 +1257,7 @@ int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb
     req->cb = write_cb;
     req->ctx = write_ctx;
     CONN_LOG(TRACE, "write %zd bytes", length);
-    metrics_rate_update(&conn->ziti_ctx->up_rate, length);
+    metrics_rate_update(&conn->ziti_ctx->up_rate, (long)length);
 
     TAILQ_INSERT_TAIL(&conn->wreqs, req, _next);
     flush_connection(conn);
@@ -1183,27 +1267,7 @@ int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb
 
 static int send_fin_message(ziti_connection conn, struct ziti_write_req_s *wr) {
     CONN_LOG(DEBUG, "sending FIN");
-    int32_t conn_id = htole32(conn->conn_id);
-    int32_t msg_seq = htole32(conn->edge_msg_seq++);
-    int32_t flags = htole32(EDGE_FIN);
-    hdr_t headers[] = {
-            {
-                    .header_id = ConnIdHeader,
-                    .length = sizeof(conn_id),
-                    .value = (uint8_t *) &conn_id
-            },
-            {
-                    .header_id = SeqHeader,
-                    .length = sizeof(msg_seq),
-                    .value = (uint8_t *) &msg_seq
-            },
-            {
-                    .header_id = FlagsHeader,
-                    .length = sizeof(flags),
-                    .value = (uint8_t *) &flags
-            },
-    };
-    message *m = message_new(NULL, ContentTypeData, headers, 3, 0);
+    message *m = create_message(conn, ContentTypeData, EDGE_FIN, 0);
     return send_message(conn, m, wr);
 }
 
@@ -1238,7 +1302,7 @@ int ziti_close_write(ziti_connection conn) {
     return ZITI_OK;
 }
 
-void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, int32_t req_id, const char *reason) {
+void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, uint32_t req_id, const char *reason) {
 
     ZITI_LOG(TRACE, "ch[%d] => rejecting Dial request: %s", ch->id, reason);
 
@@ -1311,22 +1375,33 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
     int rc;
     int32_t seq;
     int32_t conn_id;
+    uint32_t flags = 0;
     struct msg_uuid *uuid;
     size_t uuid_len;
     bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
     bool has_conn_id = message_get_int32_header(msg, ConnIdHeader, &conn_id);
     assert(has_conn_id && conn_id == conn->conn_id);
 
-    if (message_get_bytes_header(msg, UUIDHeader, (const uint8_t **) &uuid, &uuid_len)) {
+    message_get_int32_header(msg, FlagsHeader, (int32_t*)&flags);
+    uint32_t caps = flags & CONN_CAP_MASK;
+    if (caps != 0) {
+        CONN_LOG(DEBUG, "peer capability: stream[%s] multipart[%s] trace[%s]",
+                 BOOL_STR(caps & EDGE_STREAM), BOOL_STR(caps & EDGE_MULTIPART), BOOL_STR(caps & EDGE_TRACE_UUID)
+        );
+        conn->flags |= caps;
+    }
+
+    if ((conn->flags & EDGE_TRACE_UUID) &&
+        message_get_bytes_header(msg, UUIDHeader, (const uint8_t **) &uuid, &uuid_len)) {
         struct local_hash h;
         crypto_hash_sha256(h.hash, msg->body, msg->header.body_len);
         CONN_LOG(TRACE, "<= ct[%04X] uuid[" UUID_FMT "] edge_seq[%d] len[%d] ",
                  msg->header.content, UUID_FMT_ARG(uuid), seq, msg->header.body_len);
 
-        if (uuid->seq != conn->in_msg_seq + 1) {
+        if (uuid->seq != conn->in_msg_seq) {
             CONN_LOG(WARN, "unexpected msg_seq[%d] previous[%d]", uuid->seq, conn->in_msg_seq);
         }
-        conn->in_msg_seq = uuid->seq;
+        conn->in_msg_seq = uuid->seq + 1;
     } else {
         CONN_LOG(TRACE, "<= ct[%04X] edge_seq[%d] len[%d]", msg->header.content, seq, msg->header.body_len);
     }

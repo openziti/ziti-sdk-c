@@ -31,14 +31,14 @@
 /** incoming data chunk */
 typedef struct chunk_s {
     uint8_t *buf;
-    int len;
+    size_t len;
 
     STAILQ_ENTRY(chunk_s) next;
 } chunk_t;
 
 struct buffer_s {
     STAILQ_HEAD(incoming, chunk_s) chunks;
-    int head_offset;
+    size_t head_offset;
     size_t available;
 };
 
@@ -107,6 +107,12 @@ ssize_t buffer_get_next(buffer* b, size_t want, uint8_t** ptr) {
     b->available -= len;
 
     return len;
+}
+
+void buffer_append_copy(buffer *b, const uint8_t *buf, size_t len) {
+    uint8_t *copy = calloc(len, sizeof(uint8_t));
+    memcpy(copy, buf, len);
+    buffer_append(b, copy, len);
 }
 
 void buffer_append(buffer* b, uint8_t *buf, size_t len) {

@@ -282,7 +282,10 @@ static void on_client(uv_stream_t *server, int status) {
 
     PREPF(ziti, ziti_errorstr);
     TRY(ziti, ziti_conn_init(l->app_ctx->ziti, &clt->ziti_conn, c));
-    TRY(ziti, ziti_dial(clt->ziti_conn, l->service_name, on_ziti_connect, NULL));
+    ziti_dial_opts opts = {
+            .stream = true,
+    };
+    TRY(ziti, ziti_dial_with_options(clt->ziti_conn, l->service_name, &opts, on_ziti_connect, NULL));
     c->data = clt;
 
     CATCH(ziti) {

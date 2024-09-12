@@ -124,6 +124,8 @@ struct ziti_write_req_s {
     void *ctx;
 
     TAILQ_ENTRY(ziti_write_req_s) _next;
+    model_list chain;
+    size_t chain_len;
 };
 
 struct key_pair {
@@ -189,6 +191,7 @@ struct ziti_conn {
 
             uint32_t edge_msg_seq;
             uint32_t in_msg_seq;
+            uint32_t flags;
 
             ziti_channel_t *channel;
             ziti_data_cb data_cb;
@@ -405,7 +408,7 @@ void ziti_services_refresh(ziti_context ztx, bool now);
 
 extern void ziti_send_event(ziti_context ztx, const ziti_event_t *e);
 
-void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, int32_t req_id, const char *reason);
+void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, uint32_t req_id, const char *reason);
 
 const ziti_env_info* get_env_info();
 
