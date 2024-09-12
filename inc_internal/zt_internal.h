@@ -43,6 +43,11 @@
 
 #define ZTX_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ztx[%u] " fmt, ztx->id, ##__VA_ARGS__)
 
+#define DST_PROTOCOL "dst_protocol"
+#define DST_HOSTNAME "dst_hostname"
+#define DST_PORT "dst_port"
+
+
 extern const char *APP_ID;
 extern const char *APP_VERSION;
 

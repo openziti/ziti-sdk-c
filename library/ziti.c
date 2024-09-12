@@ -143,7 +143,7 @@ static int init_tls_from_config(tls_context *tls, ziti_config *cfg, struct tls_c
         if (creds->cert) {
             creds->cert->free(creds->cert);
         }
-        
+
         creds->key = pk;
         creds->cert = c;
     }
@@ -1719,7 +1719,7 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
             ztx->auth_method->free(ztx->auth_method);
             ztx->auth_method = NULL;
         }
-        
+
         bool start = false;
         if (!ztx->auth_method) {
             start = true;
@@ -1729,12 +1729,12 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
                 ztx->auth_method = new_legacy_auth(ztx_get_controller(ztx));
             }
         }
-        
+
         if (ztx->id_creds.key == NULL) {
             ztx_init_external_auth(ztx);
             return;
         }
-        
+
         if (start) {
             ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
         } else if (ztx->auth_state  == ZitiAuthStateUnauthenticated) {
