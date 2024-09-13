@@ -663,13 +663,13 @@ int model_from_json(void *obj, json_object *json, const type_meta *meta) {
 
 static int int_from_json(model_number *val, const json_object *j, const type_meta * UNUSED(meta)) {
     if (json_object_get_type(j) == json_type_int) {
-        *val = (int)json_object_get_int64(j);
+        *val = (model_number)json_object_get_int64(j);
         return 0;
     }
     return -1;
 }
 
-static json_object* int_to_json(const int *val) {
+static json_object* int_to_json(const model_number *val) {
     if (val == NULL) {
         return NULL;
     }
@@ -1015,8 +1015,8 @@ static type_meta bool_META = {
 };
 
 static type_meta int_META = {
-        .name = "int",
-        .size = sizeof(int),
+        .name = "number",
+        .size = sizeof(model_number),
         .comparer = (_cmp_f) m_cmp_int,
         .jsonifier = (_to_json_f) m_int_to_json,
         .destroyer = m_free_noop,
