@@ -256,6 +256,7 @@ message *create_message(struct ziti_conn *conn, uint32_t content, uint32_t flags
 
     int32_t conn_id = htole32(conn->conn_id);
     int32_t msg_seq = htole32(conn->edge_msg_seq++);
+    uint32_t msg_flags = htole32(flags);
     struct msg_uuid uuid = {
             .ts = uv_now(conn->ziti_ctx->loop),
             .seq = msg_seq,
@@ -269,7 +270,6 @@ message *create_message(struct ziti_conn *conn, uint32_t content, uint32_t flags
         mk_hdr(hcount, UUIDHeader, sizeof(uuid.raw), uuid.raw);
     }
     if (flags != 0) {
-        uint32_t msg_flags = htole32(flags);
         mk_hdr(hcount, FlagsHeader, sizeof(msg_flags), &msg_flags);
     }
 
