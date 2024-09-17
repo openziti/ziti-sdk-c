@@ -229,11 +229,7 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
     model_list_iter it = model_list_iterator(&req->chain);
     do {
         if (r->cb != NULL) {
-            if (status == 0) {
-                status = (int) r->len;
-            }
-
-            r->cb(conn, status, r->ctx);
+            r->cb(conn, status ? status : (ssize_t) r->len, r->ctx);
         }
         r = model_list_it_element(it);
         it = model_list_it_next(it);
