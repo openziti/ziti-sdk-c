@@ -43,8 +43,8 @@ runs:
 
     - uses: actions/cache@v4
       with:
-        key: vcpkg-${{ inputs.target }}-${{ hashFiles('./vcpkg.json') }}
-        path: './vcpkg'
+        key: deps-${{ inputs.target }}-${{ hashFiles('./vcpkg.json') }}
+        path: './vcpkg/packages'
 
     - uses: lukka/run-vcpkg@v11
 
