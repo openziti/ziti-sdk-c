@@ -43,6 +43,11 @@ runs:
 
     - uses: lukka/run-vcpkg@v11
 
+    - uses: actions/cache@v4
+      with:
+        key: deps-${{ inputs.target }}-${{ hashFiles('./vcpkg.json') }}
+        path: './vcpkg/packages'
+
     - uses: lukka/run-cmake@v10
       name: Configure CMake
       with:

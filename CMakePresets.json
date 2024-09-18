@@ -11,7 +11,7 @@
       "hidden": true,
       "cacheVariables": {
         "ziti_DEVELOPER_MODE": "ON",
-        "VCPKG_MANIFEST_FEATURES": "test;samples"
+        "VCPKG_MANIFEST_FEATURES": "dev-features"
       }
     },
     {
