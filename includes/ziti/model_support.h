@@ -298,7 +298,7 @@ const struct Enum##_s Enum##s = {  \
 Values(enum_field_val,Enum)\
 };                              \
 static int cmp_##Enum(const ptr(Enum) lh, const ptr(Enum) rh) { \
-return get_model_number_meta()->comparer((ptr(model_number))lh, (ptr(model_number))rh);               \
+return ((lh) ? (*lh) : Enum##_Unknown) - ((rh) ? (*rh) : Enum##_Unknown); \
 };\
 static int Enum##_json(const ptr(Enum) e, void *buf, int indent, int flags) {     \
 return json_enum(e, buf, indent, flags, &Enum##s);                              \
