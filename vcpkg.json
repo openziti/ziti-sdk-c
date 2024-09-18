@@ -31,6 +31,15 @@
           "name": "cli11"
         }
       ]
+    },
+    "dev-features": {
+      "description": "features for development",
+      "dependencies": [
+        {
+          "name": "ziti",
+          "features": [ "test", "samples" ]
+        }
+      ]
     }
   },
   "builtin-baseline": "1de2026f28ead93ff1773e6e680387643e914ea1"
