@@ -530,7 +530,7 @@ int ziti_get_ext_jwt_signers(ziti_context ztx, ziti_ext_signers_cb cb, void *ctx
         return ZITI_INVALID_STATE;
 
     if (model_map_size(&ztx->ext_signers) > 0) {
-        const ziti_jwt_signer **arr = calloc(model_map_size(&ztx->ext_signers) + 1, sizeof(ziti_jwt_signer*));
+        ziti_jwt_signer_array arr = calloc(model_map_size(&ztx->ext_signers) + 1, sizeof(ziti_jwt_signer*));
 
         int i = 0;
         MODEL_MAP_FOR(it, ztx->ext_signers) {
