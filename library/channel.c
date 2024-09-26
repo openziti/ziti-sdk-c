@@ -905,6 +905,7 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
 
     if (len == 0) {
         // sometimes SSL message has no payload
+        CH_LOG(TRACE, "read no data");
         free(buf->base);
         return;
     }
