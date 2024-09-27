@@ -127,7 +127,6 @@ static void free_listener(struct listener *l) {
 
 static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     ZITI_LOG(INFO, "stopping");
-    PREPF(uv, uv_strerror);
 
     // shutdown listeners
     MODEL_MAP_FOR(it, app_ctx->listeners) {
@@ -151,9 +150,9 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     uv_unref((uv_handle_t *) &shutdown_timer);
 
     // try to cleanup
-    ziti_shutdown(app_ctx->ziti);
+    if (app_ctx->ziti)
+        ziti_shutdown(app_ctx->ziti);
 
-    CATCH(uv) {}
     ZITI_LOG(INFO, "exiting");
 }
 
