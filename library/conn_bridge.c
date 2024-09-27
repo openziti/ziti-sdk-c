@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023. NetFoundry Inc.
+// Copyright (c) 2022-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ static int fmt_addr(struct sockaddr_storage *ss, char *host, size_t host_len, in
 
 
 extern int ziti_conn_bridge(ziti_connection conn, uv_handle_t *handle, uv_close_cb on_close) {
-    if (handle == NULL) return UV_EINVAL;
+    if (handle == NULL || conn == NULL) return UV_EINVAL;
 
     if ( !(handle->type == UV_TCP || handle->type == UV_NAMED_PIPE ||
            handle->type == UV_TTY || handle->type == UV_UDP )) {
@@ -74,6 +74,12 @@ extern int ziti_conn_bridge(ziti_connection conn, uv_handle_t *handle, uv_close_
         }
     }
 
+    int rc;
+    if ((rc = ziti_conn_set_data_cb(conn, on_ziti_data)) != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to bridge ziti connection: %s", ziti_errorstr(rc));
+        return UV_ECONNRESET;
+    }
+
     NEWP(br, struct ziti_bridge_s);
     br->conn = conn;
     br->input = handle;
@@ -86,14 +92,14 @@ extern int ziti_conn_bridge(ziti_connection conn, uv_handle_t *handle, uv_close_
     ziti_conn_set_data(conn, br);
     conn->bridged = true;
 
-    ziti_conn_set_data_cb(conn, on_ziti_data);
-    int rc = (br->input->type == UV_UDP) ?
-             uv_udp_recv_start((uv_udp_t *) br->input, bridge_alloc, on_udp_input) :
-             uv_read_start((uv_stream_t *) br->input, bridge_alloc, on_input);
+    rc = (br->input->type == UV_UDP) ?
+         uv_udp_recv_start((uv_udp_t *) br->input, bridge_alloc, on_udp_input) :
+         uv_read_start((uv_stream_t *) br->input, bridge_alloc, on_input);
 
     if (rc != 0) {
         BR_LOG(WARN, "failed to start reading handle: %d/%s", rc, uv_strerror(rc));
         close_bridge(br);
+        return UV_ECONNABORTED;
     } else {
         BR_LOG(DEBUG, "connected");
     }
