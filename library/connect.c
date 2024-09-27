@@ -114,7 +114,7 @@ int ziti_conn_set_data_cb(ziti_connection conn, ziti_data_cb cb) {
     }
 
     conn->data_cb = cb;
-    if (TAILQ_EMPTY(&conn->in_q) || buffer_available(conn->inbound) > 0) {
+    if (!TAILQ_EMPTY(&conn->in_q) || buffer_available(conn->inbound) > 0) {
         flush_connection(conn);
     }
     return ZITI_OK;
