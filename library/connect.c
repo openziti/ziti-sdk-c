@@ -101,6 +101,25 @@ const char *ziti_conn_state(ziti_connection conn) {
     return conn ? conn_state_str[conn->state] : "<NULL>";
 }
 
+int ziti_conn_set_data_cb(ziti_connection conn, ziti_data_cb cb) {
+    if (conn == NULL) return ZITI_INVALID_STATE;
+
+    if (conn->state == Disconnected || conn->state == Closed) {
+        return ZITI_CONN_CLOSED;
+    }
+
+    // app already received EOF
+    if (conn->fin_recv == 2) {
+        return ZITI_EOF;
+    }
+
+    conn->data_cb = cb;
+    if (!TAILQ_EMPTY(&conn->in_q) || buffer_available(conn->inbound) > 0) {
+        flush_connection(conn);
+    }
+    return ZITI_OK;
+}
+
 static void conn_set_state(struct ziti_conn *conn, enum conn_state state) {
     CONN_LOG(VERBOSE, "transitioning %s => %s", conn_state_str[conn->state], conn_state_str[state]);
     conn->state = state;
@@ -808,9 +827,14 @@ static bool flush_to_client(ziti_connection conn) {
         pool_return_obj(m);
     }
 
+    if (conn->data_cb == NULL) {
+        CONN_LOG(DEBUG, "no data_cb: can't flush, %zu bytes available", buffer_available(conn->inbound));
+        return false;
+    }
+
     CONN_LOG(VERBOSE, "%zu bytes available", buffer_available(conn->inbound));
     int flushes = 128;
-    while (buffer_available(conn->inbound) > 0 && (flushes--) > 0) {
+    while (conn->data_cb && buffer_available(conn->inbound) > 0 && (flushes--) > 0) {
         uint8_t *chunk;
         ssize_t chunk_len = buffer_get_next(conn->inbound, 16 * 1024, &chunk);
         ssize_t consumed = conn->data_cb(conn, chunk, chunk_len);
@@ -819,6 +843,7 @@ static bool flush_to_client(ziti_connection conn) {
         if (consumed < 0) {
             CONN_LOG(WARN, "client indicated error[%zd] accepting data (%zd bytes buffered)",
                      consumed, buffer_available(conn->inbound));
+            break;
         } else if (consumed < chunk_len) {
             buffer_push_back(conn->inbound, (chunk_len - consumed));
             CONN_LOG(VERBOSE, "client stalled: %zd bytes buffered", buffer_available(conn->inbound));
@@ -828,11 +853,11 @@ static bool flush_to_client(ziti_connection conn) {
 
     if (buffer_available(conn->inbound) > 0) {
         CONN_LOG(VERBOSE, "%zu bytes still available", buffer_available(conn->inbound));
-
-        return true;
+        // no need to schedule flush if client closed or paused receiving
+        return conn->data_cb != NULL;
     }
 
-    if (conn->fin_recv == 1) { // if fin was received and all data is flushed, signal EOF
+    if (conn->fin_recv == 1 && conn->data_cb) { // if fin was received and all data is flushed, signal EOF
         conn->fin_recv = 2;
         conn->data_cb(conn, NULL, ZITI_EOF);
     }
@@ -913,7 +938,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
 
     int32_t flags;
     if (message_get_int32_header(msg, FlagsHeader, &flags) && (flags & EDGE_FIN)) {
-        conn->fin_recv = true;
+        conn->fin_recv = 1;
     }
 }
 
@@ -1217,6 +1242,8 @@ int ziti_close(ziti_connection conn, ziti_close_cb close_cb) {
     if (conn->type == Server) {
         return ziti_close_server(conn);
     }
+
+    conn->data_cb = NULL;
     return ziti_disconnect(conn);
 }
 
