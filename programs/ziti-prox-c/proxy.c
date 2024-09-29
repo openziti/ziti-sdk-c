@@ -161,7 +161,8 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     uv_unref((uv_handle_t *) &shutdown_timer);
 
     // try to cleanup
-    ziti_shutdown(app_ctx->ziti);
+    if (app_ctx->ziti)
+        ziti_shutdown(app_ctx->ziti);
 
     ZITI_LOG(INFO, "exiting");
 }

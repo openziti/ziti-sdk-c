@@ -1,4 +1,4 @@
-// Copyright (c) 2022-2023. NetFoundry Inc.
+// Copyright (c) 2022-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -643,9 +643,10 @@ extern void ziti_conn_set_data(ziti_connection conn, void *data);
  *
  * @param conn
  * @param cb
+ * @return ZITI_OK or error code
  */
 ZITI_FUNC
-extern void ziti_conn_set_data_cb(ziti_connection conn, ziti_data_cb cb);
+extern int ziti_conn_set_data_cb(ziti_connection conn, ziti_data_cb cb);
 
 /**
  * @brief Get the identity of the client that initiated the #ziti_connection.
