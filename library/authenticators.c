@@ -33,7 +33,8 @@ static void extend_cb(ziti_extend_cert_authenticator_resp* resp, const ziti_erro
     ziti_context ztx = wrapped_ctx->ztx;
 
     if(err){
-        ZTX_LOG(ERROR, "error response returned when attempting to extend authenticator: %d %s: %s, calling cb", err->http_code, err->code, err->message);
+        ZTX_LOG(ERROR, "error response returned when attempting to extend authenticator: %d %s: %s, calling cb",
+                (int)err->http_code, err->code, err->message);
         if(err->http_code == 404) {
             wrapped_ctx->extend_cb(ztx, NULL, ZITI_NOT_FOUND, wrapped_ctx->ctx);
         } else if(strncmp(err->code, CAN_NOT_UPDATE_AUTHENTICATOR, strlen(CAN_NOT_UPDATE_AUTHENTICATOR)) == 0){
@@ -62,7 +63,8 @@ static void verify_cb(void* empty, const ziti_error* err, void* ctx){
     ziti_context ztx = wrapped_ctx->ztx;
 
     if(err) {
-        ZTX_LOG(ERROR, "error response returned when attempting to verify extended authenticator: %d %s: %s", err->http_code, err->code, err->message);
+        ZTX_LOG(ERROR, "error response returned when attempting to verify extended authenticator: %d %s: %s",
+                (int)err->http_code, err->code, err->message);
         if(err->http_code == 404) {
             wrapped_ctx->verify_cb(ztx, ZITI_NOT_FOUND, wrapped_ctx->ctx);
         } else if(strncmp(err->code, CAN_NOT_UPDATE_AUTHENTICATOR, strlen(CAN_NOT_UPDATE_AUTHENTICATOR)) == 0){
