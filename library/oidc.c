@@ -25,6 +25,7 @@
 #include "ziti/errors.h"
 #include "ziti/ziti_buffer.h"
 #include "ziti/ziti_model.h"
+#include "buffer.h"
 
 #define code_len 40
 #define code_verifier_len sodium_base64_ENCODED_LEN(code_len, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
@@ -368,13 +369,49 @@ struct ext_link_req {
     uv_os_sock_t sock;
     auth_req *req;
     char *code;
+    int err;
 };
+
+static int set_blocking(uv_os_sock_t sock) {
+#ifdef _WIN32
+    unsigned long mode = 0;
+    if (ioctlsocket(sock, FIONBIO, &mode) != 0) {
+        int err = WSAGetLastError();
+        ZITI_LOG(ERROR, "failed to set socket to blocking: %d", err);
+        return err;
+    }
+#else
+    int flags = fcntl(sock, F_GETFL, 0);
+    flags = flags & ~O_NONBLOCK;
+    if (fcntl(sock, F_SETFL, flags) != 0) {
+        int err = errno;
+        ZITI_LOG(ERROR, "failed to set socket to blocking: %d/%s", err, strerror(err));
+        return err;
+    }
+#endif
+    return 0;
+}
 
 static void ext_accept(uv_work_t *wr) {
     struct ext_link_req *elr = (struct ext_link_req *) wr;
     uv_os_sock_t clt = accept(elr->sock, NULL, NULL);
+    set_blocking(clt);
+
     char buf[1024];
     ssize_t c = read(clt, buf, sizeof(buf) - 1);
+    if (c < 0) {
+        int err;
+#if _WIN32
+        err = WSAGetLastError();
+#else
+        err = errno;
+#endif
+        ZITI_LOG(ERROR, "read failed: %d/%s", err, strerror(err));
+        elr->err = err;
+        close(clt);
+        return;
+    }
+
     buf[c] = 0;
 
     char *cs = strstr(buf, "code=");
@@ -402,12 +439,23 @@ static void ext_accept(uv_work_t *wr) {
     memcpy(code, cs, ce - cs);
     elr->code = code;
 
-    char resp[] = "HTTP/1.1 200 OK\r\n"
-                  "Content-Type: text/html\r\n"
-                  "\r\n"
-                  "<script type=\"text/javascript\">window.close()</script>"
-                  "<body onload=\"window.close()\">You may close this window</body>";
-    write(clt, resp, sizeof(resp));
+    string_buf_t resp_buf;
+    string_buf_init(&resp_buf);
+
+    char resp_body[] = "<script type=\"text/javascript\">window.close()</script>"
+                       "<body onload=\"window.close()\">You may close this window</body>";
+#define RESP_FMT "HTTP/1.1 200 OK\r\n"\
+                  "Content-Type: text/html\r\n"\
+                  "Content-Length: %zd\r\n"\
+                  "\r\n%s"
+    string_buf_fmt(&resp_buf, RESP_FMT, strlen(resp_body), resp_body);
+    size_t resp_len;
+    char *resp = string_buf_to_string(&resp_buf, &resp_len);
+    write(clt, resp, resp_len);
+
+    free(resp);
+    string_buf_free(&resp_buf);
+
     close(clt);
 }
 
@@ -418,7 +466,7 @@ static void ext_done(uv_work_t *wr, int status) {
     if (elr->code) {
         request_token(elr->req, elr->code);
     } else {
-        failed_auth_req(elr->req, "code not received");
+        failed_auth_req(elr->req, elr->err ? strerror(elr->err) : "code not received");
     }
 
     free(elr->code);
@@ -442,6 +490,7 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
         close(sock);
         return;
     }
+    set_blocking(sock);
 
     struct ext_link_req *elr = calloc(1, sizeof(*elr));
     elr->sock = sock;
