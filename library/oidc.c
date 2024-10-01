@@ -435,7 +435,7 @@ static void ext_accept(uv_work_t *wr) {
                       "<body>Unexpected auth request:<pre>";
 #if _WIN32
         send(clt, resp, sizeof(resp), 0);
-        sebd(clt, buf, c, 0);
+        send(clt, buf, c, 0);
 #else
         write(clt, resp, sizeof(resp));
         write(clt, buf, c);
