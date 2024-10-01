@@ -134,8 +134,8 @@ void ziti_mfa_enroll_post_internal_cb(void *empty, const ziti_error *err, void *
     if (err == NULL) {
         ziti_ctrl_get_mfa(ztx_get_controller(ztx), ziti_mfa_enroll_get_internal_cb, ctx);
     } else {
-        ZTX_LOG(ERROR, "error during create MFA call: %d - %s - %s", err->http_code, err->code, err->message);
-        mfa_enroll_cb_ctx->cb(mfa_enroll_cb_ctx->ztx, err->err, NULL, mfa_enroll_cb_ctx->cb_ctx);
+        ZTX_LOG(ERROR, "error during create MFA call: %d - %s - %s", (int)err->http_code, err->code, err->message);
+        mfa_enroll_cb_ctx->cb(mfa_enroll_cb_ctx->ztx, (int)err->err, NULL, mfa_enroll_cb_ctx->cb_ctx);
         FREE(ctx);
     }
 }
@@ -146,8 +146,8 @@ void ziti_mfa_enroll_get_internal_cb(ziti_mfa_enrollment *mfa_enrollment, const 
 
     if (err != NULL) {
         if (err->http_code != 404) {
-            ZTX_LOG(ERROR, "error during enroll MFA call: %d - %s - %s", err->http_code, err->code, err->message);
-            mfa_enroll_cb_ctx->cb(mfa_enroll_cb_ctx->ztx, err->err, NULL, mfa_enroll_cb_ctx->cb_ctx);
+            ZTX_LOG(ERROR, "error during enroll MFA call: %d - %s - %s", (int)err->http_code, err->code, err->message);
+            mfa_enroll_cb_ctx->cb(mfa_enroll_cb_ctx->ztx, (int)err->err, NULL, mfa_enroll_cb_ctx->cb_ctx);
             FREE(ctx);
             return;
         }
@@ -182,8 +182,8 @@ void ziti_mfa_remove_internal_cb(void *empty, const ziti_error *err, void *ctx) 
     ziti_context ztx = mfa_cb_ctx->ztx;
 
     if (err != NULL) {
-        ZTX_LOG(ERROR, "error during remove MFA call: %d - %s - %s", err->http_code, err->code, err->message);
-        mfa_cb_ctx->cb(mfa_cb_ctx->ztx, err->err, mfa_cb_ctx->cb_ctx);
+        ZTX_LOG(ERROR, "error during remove MFA call: %d - %s - %s", (int)err->http_code, err->code, err->message);
+        mfa_cb_ctx->cb(mfa_cb_ctx->ztx, (int)err->err, mfa_cb_ctx->cb_ctx);
     } else {
         mfa_cb_ctx->cb(mfa_cb_ctx->ztx, ZITI_OK, mfa_cb_ctx->cb_ctx);
     }
@@ -212,8 +212,8 @@ void ziti_mfa_verify_internal_cb(void *empty, const ziti_error *err, void *ctx) 
     ziti_context ztx = mfa_cb_ctx->ztx;
 
     if (err != NULL) {
-        ZTX_LOG(ERROR, "error during verify MFA call: %d - %s - %s", err->http_code, err->code, err->message);
-        mfa_cb_ctx->cb(mfa_cb_ctx->ztx, err->err, mfa_cb_ctx->cb_ctx);
+        ZTX_LOG(ERROR, "error during verify MFA call: %d - %s - %s", (int)err->http_code, err->code, err->message);
+        mfa_cb_ctx->cb(mfa_cb_ctx->ztx, (int)err->err, mfa_cb_ctx->cb_ctx);
     } else {
         ziti_force_api_session_refresh(ztx);
         mfa_cb_ctx->cb(mfa_cb_ctx->ztx, ZITI_OK, mfa_cb_ctx->cb_ctx);
@@ -242,10 +242,13 @@ void ziti_mfa_get_recovery_codes_internal_cb(ziti_mfa_recovery_codes *rc, const 
     ziti_mfa_recovery_codes_cb_ctx *mfa_recovery_codes_cb_ctx = ctx;
     ziti_context ztx = mfa_recovery_codes_cb_ctx->ztx;
     if (err != NULL) {
-        ZTX_LOG(ERROR, "error during get recovery codes MFA call: %d - %s - %s", err->http_code, err->code, err->message);
-        mfa_recovery_codes_cb_ctx->cb(mfa_recovery_codes_cb_ctx->ztx, err->err, NULL, mfa_recovery_codes_cb_ctx->cb_ctx);
+        ZTX_LOG(ERROR, "error during get recovery codes MFA call: %d - %s - %s",
+                (int)err->http_code, err->code, err->message);
+        mfa_recovery_codes_cb_ctx->cb(mfa_recovery_codes_cb_ctx->ztx, (int)err->err, NULL,
+                                      mfa_recovery_codes_cb_ctx->cb_ctx);
     } else {
-        mfa_recovery_codes_cb_ctx->cb(mfa_recovery_codes_cb_ctx->ztx, ZITI_OK, rc->recovery_codes, mfa_recovery_codes_cb_ctx->cb_ctx);
+        mfa_recovery_codes_cb_ctx->cb(mfa_recovery_codes_cb_ctx->ztx, ZITI_OK, rc->recovery_codes,
+                                      mfa_recovery_codes_cb_ctx->cb_ctx);
         free_ziti_mfa_recovery_codes(rc);
     }
 
@@ -273,8 +276,9 @@ void ziti_mfa_post_recovery_codes_internal_cb(void *empty, const ziti_error *err
     ziti_context ztx = mfa_recovery_codes_cb_ctx->ztx;
 
     if (err != NULL) {
-        ZTX_LOG(ERROR, "error during create recovery codes MFA call: %d - %s - %s", err->http_code, err->code, err->message);
-        mfa_recovery_codes_cb_ctx->cb(mfa_recovery_codes_cb_ctx->ztx, err->err, NULL, mfa_recovery_codes_cb_ctx->cb_ctx);
+        ZTX_LOG(ERROR, "error during create recovery codes MFA call: %d - %s - %s",
+                (int)err->http_code, err->code, err->message);
+        mfa_recovery_codes_cb_ctx->cb(mfa_recovery_codes_cb_ctx->ztx, (int)err->err, NULL, mfa_recovery_codes_cb_ctx->cb_ctx);
     } else {
         ziti_mfa_get_recovery_codes(mfa_recovery_codes_cb_ctx->ztx, mfa_recovery_codes_cb_ctx->code, mfa_recovery_codes_cb_ctx->cb,
                                     mfa_recovery_codes_cb_ctx->cb_ctx);

@@ -433,7 +433,8 @@ static void handle_pr_resp_timer_events(ziti_context ztx, ziti_pr_response *pr_r
         for(service_timer = pr_resp->services; *service_timer != NULL; service_timer++){
             NEWP(val, bool);
             *val = true;
-            ZTX_LOG(DEBUG, "handle_pr_resp_timer_events: forcing service name[%s] id[%s] with timeout[%d] timeoutRemaining[%d]", (*service_timer)->name, (*service_timer)->id, *(*service_timer)->timeout, *(*service_timer)->timeoutRemaining);
+            ZTX_LOG(DEBUG, "handle_pr_resp_timer_events: forcing service name[%s] id[%s] with timeout[%d] timeoutRemaining[%d]",
+                    (*service_timer)->name, (*service_timer)->id, (int)*(*service_timer)->timeout, (int)*(*service_timer)->timeoutRemaining);
             ziti_force_service_update(ztx, (*service_timer)->id);
         }
 
@@ -452,7 +453,7 @@ static void ziti_pr_post_bulk_cb(ziti_pr_response *pr_resp, const ziti_error *er
     // if ztx is disabled this request is cancelled and posture_checks is cleared
     if (ztx->posture_checks) {
         if (err != NULL) {
-            ZTX_LOG(ERROR, "error during bulk posture response submission (%d) %s", err->http_code, err->message);
+            ZTX_LOG(ERROR, "error during bulk posture response submission (%d) %s", (int)err->http_code, err->message);
             ztx->posture_checks->must_send = true; //error, must try again
         } else {
             ztx->posture_checks->must_send = false; //did not error, can skip submissions
@@ -489,7 +490,7 @@ static void ziti_pr_post_cb(ziti_pr_response *pr_resp, const ziti_error *err, vo
     ZTX_LOG(DEBUG, "ziti_pr_post_cb: starting");
 
     if (err != NULL) {
-        ZTX_LOG(ERROR, "error during individual posture response submission (%d) %s - object: %s", err->http_code,
+        ZTX_LOG(ERROR, "error during individual posture response submission (%d) %s - object: %s", (int)err->http_code,
                  err->message, pr_ctx->info->obj);
         ziti_pr_set_info_errored(pr_ctx->ztx, pr_ctx->info->id);
     } else {
@@ -850,7 +851,8 @@ static void process_check_work(uv_work_t *w) {
 void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err) {
-        ZTX_LOG(ERROR, "error during endpoint state posture response submission: %d - %s", err->http_code, err->message);
+        ZTX_LOG(ERROR, "error during endpoint state posture response submission: %d - %s",
+                (int)err->http_code, err->message);
     } else {
         ZTX_LOG(INFO, "endpoint state sent");
         handle_pr_resp_timer_events(ztx, pr_resp);
