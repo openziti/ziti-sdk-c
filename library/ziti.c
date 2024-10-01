@@ -1609,6 +1609,7 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
         ctx->config.id.oidc = calloc(1, sizeof(*ctx->config.id.oidc));
         ctx->config.id.oidc->client_id = strdup(config->id.oidc->client_id);
         ctx->config.id.oidc->provider_url = strdup(config->id.oidc->provider_url);
+        ctx->config.id.oidc->audience = strdup(config->id.oidc->audience);
         const char *scope;
         MODEL_LIST_FOREACH(scope, config->id.oidc->scopes) {
             model_list_append(&ctx->config.id.oidc->scopes, strdup(scope));
