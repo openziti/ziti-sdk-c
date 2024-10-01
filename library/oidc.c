@@ -1,4 +1,4 @@
-// Copyright (c) 2023. NetFoundry Inc.
+// Copyright (c) 2023-2024. NetFoundry Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -392,13 +392,24 @@ static int set_blocking(uv_os_sock_t sock) {
     return 0;
 }
 
+#if _WIN32
+#define close_socket(s) closesocket(s)
+#else
+#define close_socket(s) close(s)
+#endif
+
 static void ext_accept(uv_work_t *wr) {
     struct ext_link_req *elr = (struct ext_link_req *) wr;
     uv_os_sock_t clt = accept(elr->sock, NULL, NULL);
     set_blocking(clt);
 
     char buf[1024];
-    ssize_t c = read(clt, buf, sizeof(buf) - 1);
+    ssize_t c;
+#if _WIN32
+    c = recv(clt, buf, sizeof(buf) -1, 0);
+#else
+    c = read(clt, buf, sizeof(buf) - 1);
+#endif
     if (c < 0) {
         int err;
 #if _WIN32
@@ -408,7 +419,7 @@ static void ext_accept(uv_work_t *wr) {
 #endif
         ZITI_LOG(ERROR, "read failed: %d/%s", err, strerror(err));
         elr->err = err;
-        close(clt);
+        close_socket(clt);
         return;
     }
 
@@ -424,7 +435,7 @@ static void ext_accept(uv_work_t *wr) {
                       "<body>Unexpected auth request:<pre>";
         write(clt, resp, sizeof(resp));
         write(clt, buf, c);
-        close(clt);
+        close_socket(clt);
         return;
     }
     cs += strlen("code=");
@@ -456,12 +467,12 @@ static void ext_accept(uv_work_t *wr) {
     free(resp);
     string_buf_free(&resp_buf);
 
-    close(clt);
+    close_socket(clt);
 }
 
 static void ext_done(uv_work_t *wr, int status) {
     struct ext_link_req *elr = (struct ext_link_req *) wr;
-    close(elr->sock);
+    close_socket(elr->sock);
 
     if (elr->code) {
         request_token(elr->req, elr->code);
