@@ -226,8 +226,6 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
         uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
         ch->timer = NULL;
 
-        close_connection(ch);
-
         ziti_channel_free(ch);
         free(ch);
     }
@@ -650,7 +648,6 @@ static void latency_timeout(uv_timer_t *t) {
         ch->latency_waiter = NULL;
         ch->latency = UINT64_MAX;
 
-        close_connection(ch);
         on_channel_close(ch, ZITI_TIMEOUT, UV_ETIMEDOUT);
     }
 }
@@ -850,6 +847,8 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
         ch->in_next = NULL;
     }
 
+    close_connection(ch);
+
     if (ziti_err == ZITI_DISABLED || ziti_err == ZITI_GATEWAY_UNAVAILABLE) {
         return;
     }
@@ -895,7 +894,6 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
         CH_LOG(INFO, "channel disconnected [%zd/%s]", len, uv_strerror(len));
         // propagate close
         on_channel_close(ch, ZITI_CONNABORT, len);
-        close_connection(ch);
         return;
     }
 
