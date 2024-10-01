@@ -408,6 +408,7 @@ static void on_message(struct binding_s *b, message *msg, int code) {
         switch (msg->header.content) {
             case ContentTypeStateClosed:
                 CONN_LOG(DEBUG, "binding[%s] was closed: %.*s", b->ch->url, msg->header.body_len, msg->body);
+                FREE(conn->server.token);
                 stop_binding(b);
                 schedule_rebind(b->conn, true);
                 break;
