@@ -19,7 +19,10 @@
 #include "zt_internal.h"
 #include "utils.h"
 #include "endian_internal.h"
+
+#if _WIN32
 #include "win32_compat.h"
+#endif
 
 #ifndef MAXHOSTNAMELEN
 #define MAXHOSTNAMELEN 255
@@ -85,13 +88,12 @@ static void process_inbound(ziti_channel_t *ch);
 static void on_tls_close(uv_handle_t *s);
 
 static inline void close_connection(ziti_channel_t *ch) {
-    tlsuv_stream_t *conn = ch->connection;
+    tlsuv_stream_t *tls = ch->connection;
     ch->connection = NULL;
 
-    if (conn) {
-        conn->data = NULL;
-        CH_LOG(DEBUG, "closing TLS[%p]", conn);
-        tlsuv_stream_close(conn, on_tls_close);
+    if (tls) {
+        CH_LOG(DEBUG, "closing TLS[%p]", tls);
+        tlsuv_stream_close(tls, on_tls_close);
     }
 
     if (ch->reconnect) {
@@ -110,7 +112,7 @@ struct waiter_s {
 };
 
 struct msg_receiver {
-    int id;
+    uint32_t id;
     void *receiver;
 
     void (*receive)(void *receiver, message *m, int code);
@@ -144,7 +146,7 @@ int ziti_channel_prepare(ziti_channel_t *ch) {
     return 0;
 }
 
-static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t id, tls_context *tls) {
+static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t id) {
     ch->ztx = ctx;
     ch->loop = ctx->loop;
     ch->id = id;
@@ -261,11 +263,11 @@ uint64_t ziti_channel_latency(ziti_channel_t *ch) {
 
 static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, const char *url) {
     ziti_channel_t *ch = calloc(1, sizeof(ziti_channel_t));
-    ziti_channel_init(ztx, ch, channel_counter++, ztx->tlsCtx);
+    ziti_channel_init(ztx, ch, channel_counter++);
     const ziti_identity *identity = ziti_get_identity(ztx);
     ch->name = strdup(ch_name);
     ch->url = strdup(url);
-    CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, ziti_get_identity(ztx)->name);
+    CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, identity->name);
 
     struct tlsuv_url_s ingress;
     tlsuv_parse_url(&ingress, url);
@@ -863,8 +865,8 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
 }
 
 static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
-    tlsuv_stream_t *mbed = (tlsuv_stream_t *) handle;
-    ziti_channel_t *ch = mbed->data;
+    tlsuv_stream_t *tls = (tlsuv_stream_t *) handle;
+    ziti_channel_t *ch = tls->data;
     if (ch->in_next || pool_has_available(ch->in_msg_pool)) {
         buf->base = (char *) malloc(suggested_size);
         if (buf->base == NULL) {
@@ -882,11 +884,11 @@ static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_
 }
 
 static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
-    tlsuv_stream_t *ssl = (tlsuv_stream_t *) s;
-    ziti_channel_t *ch = ssl->data;
+    tlsuv_stream_t *tls = (tlsuv_stream_t *) s;
+    ziti_channel_t *ch = tls->data;
 
     if (len == UV_ENOBUFS) {
-        tlsuv_stream_read_stop(ssl);
+        tlsuv_stream_read_stop(tls);
         CH_LOG(VERBOSE, "blocked until messages are processed");
         return;
     }
