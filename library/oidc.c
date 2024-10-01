@@ -433,8 +433,13 @@ static void ext_accept(uv_work_t *wr) {
                       "Connection: close\r\n"
                       "\r\n"
                       "<body>Unexpected auth request:<pre>";
+#if _WIN32
+        send(clt, resp, sizeof(resp), 0);
+        sebd(clt, buf, c, 0);
+#else
         write(clt, resp, sizeof(resp));
         write(clt, buf, c);
+#endif
         close_socket(clt);
         return;
     }
@@ -462,7 +467,11 @@ static void ext_accept(uv_work_t *wr) {
     string_buf_fmt(&resp_buf, RESP_FMT, strlen(resp_body), resp_body);
     size_t resp_len;
     char *resp = string_buf_to_string(&resp_buf, &resp_len);
+#if _WIN32
+    send(clt, resp, resp_len, 0);
+#else
     write(clt, resp, resp_len);
+#endif
 
     free(resp);
     string_buf_free(&resp_buf);
