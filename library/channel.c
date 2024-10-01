@@ -70,7 +70,7 @@ static void reconnect_channel(ziti_channel_t *ch, bool now);
 
 static void reconnect_cb(uv_timer_t *t);
 
-static void on_channel_connect_internal(uv_connect_t *req, int status);
+static void on_tls_connect(uv_connect_t *req, int status);
 
 static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id);
 
@@ -94,11 +94,6 @@ static inline void close_connection(ziti_channel_t *ch) {
     if (tls) {
         CH_LOG(DEBUG, "closing TLS[%p]", tls);
         tlsuv_stream_close(tls, on_tls_close);
-    }
-
-    if (ch->reconnect) {
-        ch->reconnect = false;
-        reconnect_channel(ch, true);
     }
 }
 
@@ -702,15 +697,12 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         ch->notify_cb(ch, EdgeRouterConnected, ch->notify_ctx);
         ch->latency = uv_now(ch->loop) - ch->latency;
         uv_timer_start(ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
-    }
-    else {
-        if (msg)
+    } else {
+        if (msg) {
             CH_LOG(ERROR, "connect rejected: %d %*s", success, msg->header.body_len, msg->body);
+        }
 
-        ch->state = Disconnected;
-        ch->notify_cb(ch, EdgeRouterUnavailable, ch->notify_ctx);
-        close_connection(ch);
-        reconnect_channel(ch, false);
+        on_channel_close(ch, ZITI_CONNABORT, 0);
     }
 }
 
@@ -737,17 +729,12 @@ static void ch_connect_timeout(uv_timer_t *t) {
     ziti_channel_t *ch = t->data;
     CH_LOG(ERROR, "connect timeout");
 
-    if (ch->state == Closed) {
-        return;
-    }
-
-    ch->state = Disconnected;
-    if (ch->connection->conn_req == NULL) {
+    if (ch->connection && ch->connection->conn_req == NULL) {
         // diagnostics
         CH_LOG(WARN, "diagnostics: no conn_req in connect timeout");
     }
-    reconnect_channel(ch, false);
-    close_connection(ch);
+
+    on_channel_close(ch, ZITI_TIMEOUT, UV_ETIMEDOUT);
 }
 
 static void reconnect_cb(uv_timer_t *t) {
@@ -772,9 +759,9 @@ static void reconnect_cb(uv_timer_t *t) {
 
         CH_LOG(DEBUG, "connecting to %s", ch->url);
 
-        int rc = tlsuv_stream_connect(req, ch->connection, ch->host, ch->port, on_channel_connect_internal);
+        int rc = tlsuv_stream_connect(req, ch->connection, ch->host, ch->port, on_tls_connect);
         if (rc != 0) {
-            on_channel_connect_internal(req, rc);
+            on_tls_connect(req, rc);
         } else {
             uv_timer_start(ch->timer, ch_connect_timeout, CONNECT_TIMEOUT, 0);
         }
@@ -861,7 +848,9 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
         ZTX_LOG(VERBOSE, "edge router closed connection, trying to refresh api session");
         ziti_force_api_session_refresh(ch->ztx);
     }
-    reconnect_channel(ch, false);
+
+    reconnect_channel(ch, ch->reconnect);
+    ch->reconnect = false;
 }
 
 static void channel_alloc_cb(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
@@ -914,7 +903,7 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
     process_inbound(ch);
 }
 
-static void on_channel_connect_internal(uv_connect_t *req, int status) {
+static void on_tls_connect(uv_connect_t *req, int status) {
     tlsuv_stream_t *tls = (tlsuv_stream_t *)req->handle;
 
     // connect request was cancelled via tlsuv_stream_close
@@ -924,6 +913,7 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
     }
 
     ziti_channel_t *ch = tls->data;
+    assert(ch);
 
     if (tls != ch->connection) {
         // this should never happen but handle it anyway -- close connected tls stream
@@ -943,18 +933,11 @@ static void on_channel_connect_internal(uv_connect_t *req, int status) {
             send_hello(ch, token);
         } else {
             CH_LOG(WARN, "api session invalidated, while connecting");
-            close_connection(ch);
-            reconnect_channel(ch, false);
+            on_channel_close(ch, ZITI_CONNABORT, 0);
         }
     } else {
         CH_LOG(ERROR, "failed to connect to ER[%s] [%d/%s]", ch->name, status, uv_strerror(status));
-        ch->connection = NULL;
-        tlsuv_stream_close(tls, on_tls_close);
-
-        if (ch->state != Closed) {
-            ch->state = Disconnected;
-            reconnect_channel(ch, false);
-        }
+        on_channel_close(ch, ZITI_CONNABORT, status);
     }
     done:
     free(req);
