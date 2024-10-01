@@ -397,7 +397,9 @@ void on_channel_send(uv_write_t *w, int status) {
 
     if (status < 0) {
         CH_LOG(ERROR, "write failed [%d/%s]", status, uv_strerror(status));
-        on_channel_close(ch, ZITI_CONNABORT, status);
+        if (ch->out_q == 0) {
+            on_channel_close(ch, ZITI_CONNABORT, status);
+        }
     }
 
     free(w);
