@@ -38,6 +38,8 @@
 #define default_cb_url cb_url("localhost",auth_cb_port,auth_url_path)
 #define default_scope "openid offline_access"
 
+#define TOKEN_EXCHANGE_GRANT "urn:ietf:params:oauth:grant-type:token-exchange"
+
 typedef struct oidc_req oidc_req;
 
 typedef void (*oidc_cb)(oidc_req *, int status, json_object *resp);
@@ -197,8 +199,21 @@ static void internal_config_cb(oidc_req *req, int status, json_object *resp) {
         assert(json_object_get_type(resp) == json_type_object);
         json_object_put(clt->config);
         clt->config = resp;
+        clt->refresh_grant = "refresh_token";
         // config has full URLs, so we can drop the prefix now
         tlsuv_http_set_path_prefix(&clt->http, "");
+
+        struct json_object *grants = json_object_object_get(resp, "grant_types_supported");
+        if (grants != NULL && json_object_is_type(grants, json_type_array)) {
+            for (int i = 0; i < json_object_array_length(grants); i++) {
+                struct json_object *g = json_object_array_get_idx(grants, i);
+                const char *name = json_object_get_string(g);
+                if (strcmp(name, TOKEN_EXCHANGE_GRANT) == 0) {
+                    clt->refresh_grant = name;
+                    break;
+                }
+            }
+        }
     }
 
     if (clt->config_cb) {
@@ -716,12 +731,20 @@ static void refresh_time_cb(uv_timer_t *t) {
     tlsuv_http_req_header(req, "Authorization",
                           get_basic_auth_header(clt->signer_cfg->client_id));
     const char *refresher = json_object_get_string(tok);
-    tlsuv_http_req_form(req, 4, (tlsuv_http_pair[]) {
-            {"grant_type",           "urn:ietf:params:oauth:grant-type:token-exchange"},
-            {"requested_token_type", "urn:ietf:params:oauth:token-type:refresh_token"},
-            {"subject_token_type",   "urn:ietf:params:oauth:token-type:refresh_token"},
-            {"subject_token",        refresher},
-    });
+    if (clt->refresh_grant && strcmp(clt->refresh_grant, TOKEN_EXCHANGE_GRANT) == 0) {
+        tlsuv_http_req_form(req, 4, (tlsuv_http_pair[]) {
+                {"grant_type", TOKEN_EXCHANGE_GRANT},
+                {"requested_token_type", "urn:ietf:params:oauth:token-type:refresh_token"},
+                {"subject_token_type",   "urn:ietf:params:oauth:token-type:refresh_token"},
+                {"subject_token",        refresher},
+        });
+    } else {
+        tlsuv_http_req_form(req, 3, (tlsuv_http_pair[]) {
+                {"client_id",     clt->signer_cfg->client_id},
+                {"grant_type",    "refresh_token"},
+                {"refresh_token", refresher},
+        });
+    }
 }
 
 static const char *get_endpoint_path(oidc_client_t *clt, const char *key) {
