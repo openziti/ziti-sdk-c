@@ -388,6 +388,8 @@ struct ext_link_req {
 };
 
 static int set_blocking(uv_os_sock_t sock) {
+    int yes = 1;
+    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));
 #ifdef _WIN32
     unsigned long mode = 0;
     if (ioctlsocket(sock, FIONBIO, &mode) != 0) {
@@ -475,22 +477,45 @@ static void ext_accept(uv_work_t *wr) {
 
     char resp_body[] = "<script type=\"text/javascript\">window.close()</script>"
                        "<body onload=\"window.close()\">You may close this window</body>";
-#define RESP_FMT "HTTP/1.1 200 OK\r\n"\
-                  "Content-Type: text/html\r\n"\
-                  "Content-Length: %zd\r\n"\
-                  "\r\n%s"
+#define RESP_FMT "HTTP/1.0 200 OK\r\n"\
+"Connection: close\r\n"\
+"Content-Type: text/html\r\n"\
+"Content-Length: %zd\r\n"\
+"\r\n%s"
     string_buf_fmt(&resp_buf, RESP_FMT, strlen(resp_body), resp_body);
     size_t resp_len;
     char *resp = string_buf_to_string(&resp_buf, &resp_len);
+    const char *rp = resp;
+
+    while (resp_len > 0) {
+        ssize_t wc =
 #if _WIN32
-    send(clt, resp, resp_len, 0);
+                send(clt, rp, resp_len, 0);
 #else
-    write(clt, resp, resp_len);
+                write(clt, rp, resp_len);
 #endif
+        if (wc < 0) {
+            int err =
+#if _WIN32
+                    WSAGetLastError();
+#else
+                    errno;
+#endif
+            ZITI_LOG(WARN, "failed to write HTTP resp: %d/%s", err, strerror(err));
+            break;
+        }
+        resp_len -= wc;
+        rp += wc;
+    }
 
     free(resp);
     string_buf_free(&resp_buf);
 
+#if _WIN32
+    shutdown(clt, SD_SEND);
+#else
+    shutdown(clt, SHUT_WR);
+#endif
     close_socket(clt);
 }
 
