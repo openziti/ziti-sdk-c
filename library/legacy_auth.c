@@ -211,8 +211,8 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
 
     switch (err->err) {
         case ZITI_AUTHENTICATION_FAILED:
-        // session expired or was deleted, try to re-auth
-            auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, (void *)err);
+            // session expired or was deleted, try to re-auth
+            auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, err->message);
             free_ziti_api_session_ptr(auth->session);
             auth->session = NULL;
             uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
