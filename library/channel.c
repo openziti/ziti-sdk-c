@@ -48,6 +48,10 @@ enum ChannelState {
     Closed,
 };
 
+static const char *edge_alpn[] = {
+        "ziti-edge",
+};
+
 static inline const char *ch_state_str(ziti_channel_t *ch) {
     switch (ch->state) {
         case Initial:
@@ -120,6 +124,7 @@ static void ch_init_stream(ziti_channel_t *ch) {
     tlsuv_stream_init(ch->loop, ch->connection, ch->ztx->tlsCtx);
     tlsuv_stream_keepalive(ch->connection, true, 30);
     tlsuv_stream_nodelay(ch->connection, true);
+    tlsuv_stream_set_protocols(ch->connection, 1, edge_alpn);
     ch->connection->data = ch;
     ch->reconnect = false;
 }
@@ -926,9 +931,8 @@ static void on_tls_connect(uv_connect_t *req, int status) {
     if (status == 0) {
         const char *token = ziti_get_api_session_token(ch->ztx);
         if (token != NULL) {
-            CH_LOG(DEBUG, "connected");
-            tlsuv_stream_t *mbed = (tlsuv_stream_t *) req->handle;
-            tlsuv_stream_read_start(mbed, channel_alloc_cb, on_channel_data);
+            CH_LOG(DEBUG, "connected alpn[%s]", tlsuv_stream_get_protocol(tls));
+            tlsuv_stream_read_start(tls, channel_alloc_cb, on_channel_data);
             ch->reconnect_count = 0;
             send_hello(ch, token);
         } else {
