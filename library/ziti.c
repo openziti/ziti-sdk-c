@@ -409,6 +409,11 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
     if (!ztx->enabled) {
         ztx->enabled = true;
         ztx->logout = false;
+
+        ZTX_LOG(DEBUG, "using metrics interval: %d", (int) ztx->opts.metrics_type);
+        metrics_rate_init(&ztx->up_rate, ztx->opts.metrics_type);
+        metrics_rate_init(&ztx->down_rate, ztx->opts.metrics_type);
+
         uv_prepare_start(ztx->prepper, ztx_prepare);
         ztx->start = uv_now(ztx->loop);
         ziti_set_unauthenticated(ztx);
@@ -496,9 +501,6 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ztx->prepper->data = ztx;
     uv_unref((uv_handle_t *) ztx->prepper);
 
-    ZTX_LOG(DEBUG, "using metrics interval: %d", (int) ztx->opts.metrics_type);
-    metrics_rate_init(&ztx->up_rate, ztx->opts.metrics_type);
-    metrics_rate_init(&ztx->down_rate, ztx->opts.metrics_type);
     metrics_init(5, (time_fn)uv_now, loop);
 
     if (!ztx->opts.disabled) {
@@ -585,9 +587,10 @@ const ziti_identity *ziti_get_identity(ziti_context ztx) {
     return NULL;
 }
 
-void ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
-    *up = metrics_rate_get(&ztx->up_rate);
-    *down = metrics_rate_get(&ztx->down_rate);
+int ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
+    if (!ztx->enabled) return ZITI_DISABLED;
+
+    return metrics_rate_get(&ztx->up_rate, up) || metrics_rate_get(&ztx->down_rate, down);
 }
 
 static void free_ztx(uv_handle_t *h) {

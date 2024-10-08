@@ -32,10 +32,13 @@ TEST_CASE("test-metrics", "[metrics]") {
     metrics_rate_update(&exp, 1000);
     metrics_rate_update(&cma, 1000);
 
+    double e, c;
     for (int i = 0; i < 100; i++) {
         exp.tick_fn(&exp);
         cma.tick_fn(&cma);
-        printf("%d:\tewma=%.10lf\tmma=%lf\n", i, metrics_rate_get(&exp), metrics_rate_get(&cma));
+        metrics_rate_get(&exp, &e);
+        metrics_rate_get(&cma, &c);
+        printf("%d:\tewma=%.10lf\tmma=%lf\n", i, e, c);
     }
 };
 

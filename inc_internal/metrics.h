@@ -78,7 +78,7 @@ extern int metrics_rate_init(rate_t *r, rate_type type);
 extern void metrics_rate_close(rate_t* r);
 
 extern void metrics_rate_update(rate_t *r, long delta);
-extern double metrics_rate_get(rate_t *r);
+extern int metrics_rate_get(rate_t *r, double *rate);
 
 #ifdef __cplusplus
 }
