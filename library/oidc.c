@@ -479,7 +479,7 @@ static void ext_accept(uv_work_t *wr) {
             "<!DOCTYPE html>\n"
             "<html lang=\"en\">\n"
             "<head>\n"
-            "    <title>Successful Authentication to External Provider</title>\n"
+            "    <title>OpenZiti: Successful Authentication to External Provider.</title>\n"
             "    <script>\n"
             "        function closeWindow() {\n"
             "            setTimeout(function() {\n"
@@ -489,6 +489,7 @@ static void ext_accept(uv_work_t *wr) {
             "    </script>\n"
             "</head>\n"
             "<body onload=\"closeWindow()\">\n"
+            "    <img height=\"40px\" src=\"https://openziti.io/img/ziti-logo-dark.svg\"/>"
             "    <h2>Successfully authenticated to external provider.</h2><p>You may close this page. It will attempt to close itself in 3 seconds.</p>\n"
             "</body>\n"
             "</html>\n";
