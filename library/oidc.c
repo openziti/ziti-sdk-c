@@ -475,8 +475,24 @@ static void ext_accept(uv_work_t *wr) {
     string_buf_t resp_buf;
     string_buf_init(&resp_buf);
 
-    char resp_body[] = "<script type=\"text/javascript\">window.close()</script>"
-                       "<body onload=\"window.close()\">You may close this window</body>";
+    const char resp_body[] =
+            "<!DOCTYPE html>\n"
+            "<html lang=\"en\">\n"
+            "<head>\n"
+            "    <title>OpenZiti: Successful Authentication with External Provider.</title>\n"
+            "    <script>\n"
+            "        function closeWindow() {\n"
+            "            setTimeout(function() {\n"
+            "                window.close(); // Close the current window\n"
+            "            }, 3000);\n"
+            "        }\n"
+            "    </script>\n"
+            "</head>\n"
+            "<body onload=\"closeWindow()\">\n"
+            "    <img height=\"40px\" src=\"https://openziti.io/img/ziti-logo-dark.svg\"/>"
+            "    <h2>Successfully authenticated with external provider.</h2><p>You may close this page. It will attempt to close itself in 3 seconds.</p>\n"
+            "</body>\n"
+            "</html>\n";
 #define RESP_FMT "HTTP/1.0 200 OK\r\n"\
 "Connection: close\r\n"\
 "Content-Type: text/html\r\n"\
