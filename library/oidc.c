@@ -488,6 +488,7 @@ static void ext_accept(uv_work_t *wr) {
             "        }\n"
             "    </script>\n"
             "</head>\n"
+            "<script type=\"text/javascript\">closeWindow()</script>"
             "<body onload=\"closeWindow()\">\n"
             "    <img height=\"40px\" src=\"https://openziti.io/img/ziti-logo-dark.svg\"/>"
             "    <h2>Successfully authenticated with external provider.</h2><p>You may close this page. It will attempt to close itself in 3 seconds.</p>\n"
