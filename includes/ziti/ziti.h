@@ -545,9 +545,10 @@ extern int ziti_use_ext_jwt_signer(ziti_context ztx, const char *name);
  * @param ztx ziti context
  * @param up rate of bytes going up
  * @param down rate of bytes going down
+ * @return ZITI_OK or error code
  */
 ZITI_FUNC
-extern void ziti_get_transfer_rates(ziti_context ztx, double *up, double *down);
+extern int ziti_get_transfer_rates(ziti_context ztx, double *up, double *down);
 
 /**
  * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #ziti_context.

@@ -139,11 +139,11 @@ extern void metrics_rate_update(rate_t *r, long delta) {
     atomic_fetch_add(&r->delta, delta);
 }
 
-extern double metrics_rate_get(rate_t *r) {
-    if (r == NULL) return 0;
+extern int metrics_rate_get(rate_t *r, double *rate) {
+    if (r == NULL || !r->active) return -1;
     rate_catchup(r);
-    double rate = (*(double*)&r->rate) * (SECOND);
-    return rate;
+    *rate = (*(double*)&r->rate) * (SECOND);
+    return 0;
 }
 
 static double instant_rate(rate_t *r) {
