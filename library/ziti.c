@@ -71,6 +71,8 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
 
 static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e, void *ctx);
 
+static int ztx_init_controller(ziti_context ztx);
+
 static uint32_t ztx_seq;
 
 struct ztx_req_s {
@@ -326,6 +328,7 @@ static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
     ziti_set_unauthenticated(ztx);
 
     ziti_close_channels(ztx, ZITI_DISABLED);
+    ziti_ctrl_close(&ztx->ctrl);
 
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_session_ptr);
     model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
@@ -334,6 +337,8 @@ static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
         ztx->logout = true;
         shutdown_and_free(ztx);
     } else {
+        ztx->tlsCtx->free_ctx(ztx->tlsCtx);
+        ztx->tlsCtx = NULL;
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
     }
 }
@@ -357,7 +362,9 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         metrics_rate_close(&ztx->up_rate);
         metrics_rate_close(&ztx->down_rate);
 
-        ztx->auth_method->stop(ztx->auth_method);
+        if (ztx->auth_method) {
+            ztx->auth_method->stop(ztx->auth_method);
+        }
 
         // stop updates
         uv_timer_stop(ztx->service_refresh_timer);
@@ -388,13 +395,17 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         ztx->auth_method->free(ztx->auth_method);
         ztx->auth_method = NULL;
 
+        if (ztx->ext_auth) {
+            oidc_client_close(ztx->ext_auth, (oidc_close_cb) free);
+            ztx->ext_auth = NULL;
+        }
+
         ziti_send_event(ztx, &ev);
         free_ziti_service_array(&ev.service.removed);
 
         ziti_ctrl_cancel(ztx_get_controller(ztx));
         // logout
         ziti_ctrl_logout(ztx_get_controller(ztx), logout_cb, ztx);
-        ziti_set_unauthenticated(ztx);
     }
 }
 
@@ -409,6 +420,33 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
     if (!ztx->enabled) {
         ztx->enabled = true;
         ztx->logout = false;
+
+        int rc = load_tls(&ztx->config, &ztx->tlsCtx, &ztx->id_creds);
+        if (rc != 0) {
+            ZITI_LOG(ERROR, "invalid TLS config: %s", ziti_errorstr(rc));
+            ziti_event_t ev = {
+                    .type = ZitiContextEvent,
+                    .ctx = {
+                        .ctrl_status = rc,
+                    }
+            };
+            ziti_send_event(ztx, &ev);
+            return;
+        }
+
+        ZTX_LOG(INFO, "using tlsuv[%s/%s]", tlsuv_version(),
+                ztx->tlsCtx->version ? ztx->tlsCtx->version() : "unspecified");
+
+        rc = ztx_init_controller(ztx);
+        if (rc != ZITI_OK) {
+            ztx->enabled = false;
+            return;
+        }
+
+        ZTX_LOG(DEBUG, "using metrics interval: %d", (int) ztx->opts.metrics_type);
+        metrics_rate_init(&ztx->up_rate, ztx->opts.metrics_type);
+        metrics_rate_init(&ztx->down_rate, ztx->opts.metrics_type);
+
         uv_prepare_start(ztx->prepper, ztx_prepare);
         ztx->start = uv_now(ztx->loop);
         ziti_set_unauthenticated(ztx);
@@ -453,33 +491,17 @@ static void on_ctrl_redirect(const char *new_addr, void *ctx) {
     ziti_send_event(ztx, &ev);
 }
 
-static void ziti_init_async(ziti_context ztx, void *data) {
-    ztx->id = ztx_seq++;
-    uv_loop_t *loop = ztx->w_async.loop;
+static int ztx_init_controller(ziti_context ztx) {
     ziti_event_t ev = {
-	     .type = ZitiContextEvent,
+            .type = ZitiContextEvent,
     };
 
-    tls_context *tls = NULL;
-    int rc = load_tls(&ztx->config, &tls, &ztx->id_creds);
-    if (rc != 0) {
-        ZITI_LOG(ERROR, "invalid TLS config: %s", ziti_errorstr(rc));
-        ev.ctx.ctrl_status = rc;
-        ziti_send_event(ztx, &ev);
-        return;
-    }
-
-    ztx->tlsCtx = tls;
-    ZTX_LOG(INFO, "using tlsuv[%s/%s]", tlsuv_version(),
-            ztx->tlsCtx->version ? ztx->tlsCtx->version() : "unspecified");
-
-    const char *url;
-    rc = ziti_ctrl_init(loop, &ztx->ctrl, &ztx->config.controllers, ztx->tlsCtx);
+    int rc = ziti_ctrl_init(ztx->loop, &ztx->ctrl, &ztx->config.controllers, ztx->tlsCtx);
     if (rc != 0) {
         ZITI_LOG(ERROR, "no valid controllers found");
         ev.ctx.ctrl_status = rc;
         ziti_send_event(ztx, &ev);
-        return;
+        return ZITI_INVALID_CONFIG;
     }
 
     ZTX_LOG(INFO, "Loading ziti context with controller[%s]", ztx_controller(ztx));
@@ -488,7 +510,13 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     if (ztx->opts.api_page_size != 0) {
         ziti_ctrl_set_page_size(ztx_get_controller(ztx), ztx->opts.api_page_size);
     }
+    return 0;
+}
 
+static void ziti_init_async(ziti_context ztx, void *data) {
+    ztx->id = ztx_seq++;
+    uv_loop_t *loop = ztx->w_async.loop;
+    
     ztx->service_refresh_timer = new_ztx_timer(ztx);
 
     ztx->prepper = calloc(1, sizeof(uv_prepare_t));
@@ -496,15 +524,17 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ztx->prepper->data = ztx;
     uv_unref((uv_handle_t *) ztx->prepper);
 
-    ZTX_LOG(DEBUG, "using metrics interval: %d", (int) ztx->opts.metrics_type);
-    metrics_rate_init(&ztx->up_rate, ztx->opts.metrics_type);
-    metrics_rate_init(&ztx->down_rate, ztx->opts.metrics_type);
     metrics_init(5, (time_fn)uv_now, loop);
 
     if (!ztx->opts.disabled) {
         ziti_start_internal(ztx, NULL);
     } else {
-        ev.ctx.ctrl_status = ZITI_DISABLED;
+        ziti_event_t ev = {
+                .type = ZitiContextEvent,
+                .ctx = {
+                        .ctrl_status = ZITI_DISABLED,
+                }
+        };
         ziti_send_event(ztx, &ev);
     }
 }
@@ -585,9 +615,10 @@ const ziti_identity *ziti_get_identity(ziti_context ztx) {
     return NULL;
 }
 
-void ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
-    *up = metrics_rate_get(&ztx->up_rate);
-    *down = metrics_rate_get(&ztx->down_rate);
+int ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
+    if (!ztx->enabled) return ZITI_DISABLED;
+
+    return metrics_rate_get(&ztx->up_rate, up) || metrics_rate_get(&ztx->down_rate, down);
 }
 
 static void free_ztx(uv_handle_t *h) {
