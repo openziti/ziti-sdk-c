@@ -411,14 +411,43 @@ static int set_blocking(uv_os_sock_t sock) {
 
 #if _WIN32
 #define close_socket(s) closesocket(s)
+#define sock_error WSAGetLastError()
 #else
 #define close_socket(s) close(s)
+#define sock_error errno
 #endif
+#define OIDC_ACCEPT_TIMEOUT 30
+#define OIDC_REQ_TIMEOUT 5
 
 static void ext_accept(uv_work_t *wr) {
     struct ext_link_req *elr = (struct ext_link_req *) wr;
+    
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(elr->sock, &fds);
+    int rc = select(elr->sock + 1, &fds, NULL, NULL, &(struct timeval){
+            .tv_sec = OIDC_ACCEPT_TIMEOUT,
+    });
+    if (rc == 0) {
+        elr->err = ETIMEDOUT;
+        ZITI_LOG(WARN, "redirect_uri was not called in time");
+        return;
+    } else if (rc < 0) {
+        elr->err = sock_error;
+        return;
+    }
+    
     uv_os_sock_t clt = accept(elr->sock, NULL, NULL);
-    set_blocking(clt);
+    FD_ZERO(&fds);
+    FD_SET(clt, &fds);
+    rc = select(clt + 1, &fds, NULL, NULL, &(struct timeval){
+            .tv_sec = OIDC_REQ_TIMEOUT,
+    });
+    if (rc <= 0) {
+        elr->err = rc == 0 ? ETIMEDOUT : sock_error;
+        close_socket(clt);
+        return;
+    }
 
     char buf[1024];
     ssize_t c;
@@ -428,12 +457,7 @@ static void ext_accept(uv_work_t *wr) {
     c = read(clt, buf, sizeof(buf) - 1);
 #endif
     if (c < 0) {
-        int err;
-#if _WIN32
-        err = WSAGetLastError();
-#else
-        err = errno;
-#endif
+        int err = sock_error;
         ZITI_LOG(ERROR, "read failed: %d/%s", err, strerror(err));
         elr->err = err;
         close_socket(clt);
