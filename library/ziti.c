@@ -1588,6 +1588,29 @@ void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data) {
     uv_async_send(&ztx->w_async);
 }
 
+static void copy_oidc(ziti_context ztx, const ziti_jwt_signer *oidc) {
+    if (oidc == NULL) return;
+    if (oidc->provider_url == NULL) {
+        ZITI_LOG(ERROR, "invalid OIDC config `externalAuthUrl` is missing");
+        return;
+    }
+    if (oidc->client_id == NULL) {
+        ZITI_LOG(ERROR, "invalid OIDC config `clientId` is missing");
+        return;
+    }
+
+    ztx->config.id.oidc = calloc(1, sizeof(*oidc));
+    ztx->config.id.oidc->client_id = strdup(oidc->client_id);
+    ztx->config.id.oidc->provider_url = strdup(oidc->provider_url);
+    if (oidc->audience) {
+        ztx->config.id.oidc->audience = strdup(oidc->audience);
+    }
+    const char *scope;
+    MODEL_LIST_FOREACH(scope, oidc->scopes) {
+        model_list_append(&ztx->config.id.oidc->scopes, strdup(scope));
+    }
+}
+
 int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
     if (config == NULL ||
             (config->controller_url == NULL &&
@@ -1636,16 +1659,7 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
     }
     if (config->id.key) ctx->config.id.key = strdup(config->id.key);
     if (config->id.cert) ctx->config.id.cert = strdup(config->id.cert);
-    if (config->id.oidc) {
-        ctx->config.id.oidc = calloc(1, sizeof(*ctx->config.id.oidc));
-        ctx->config.id.oidc->client_id = strdup(config->id.oidc->client_id);
-        ctx->config.id.oidc->provider_url = strdup(config->id.oidc->provider_url);
-        ctx->config.id.oidc->audience = strdup(config->id.oidc->audience);
-        const char *scope;
-        MODEL_LIST_FOREACH(scope, config->id.oidc->scopes) {
-            model_list_append(&ctx->config.id.oidc->scopes, strdup(scope));
-        }
-    }
+    copy_oidc(ctx, config->id.oidc);
 
     ctx->opts = default_options;
 
