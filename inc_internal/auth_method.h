@@ -23,7 +23,7 @@ enum AuthenticationMethod {
 };
 
 static const ziti_auth_query_mfa ZITI_MFA = {
-        .type_id = "MFA",
+        .type_id = ziti_auth_query_type_MFA,
         .provider = "ziti",
 };
 
