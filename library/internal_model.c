@@ -153,6 +153,8 @@ IMPL_MODEL(ziti_extend_cert_authenticator_resp, ZITI_EXTEND_CERT_AUTHENTICATOR_R
 
 IMPL_ENUM(ziti_session_type, ZITI_SESSION_TYPE_ENUM)
 
+IMPL_ENUM(ziti_auth_query_type, ZITI_AUTH_QUERY_TYPE_ENUM)
+
 IMPL_ENUM(ziti_protocol, ZITI_PROTOCOL_ENUM)
 
 IMPL_MODEL(ziti_create_api_cert_req, ZITI_CREATE_API_CERT_REQ)

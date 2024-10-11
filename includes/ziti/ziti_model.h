@@ -34,8 +34,14 @@ XX(udp, __VA_ARGS__)
 XX(Bind, __VA_ARGS__)                   \
 XX(Dial, __VA_ARGS__)
 
+#define ZITI_AUTH_QUERY_TYPE_ENUM(XX, ...) \
+XX(MFA, __VA_ARGS__) \
+XX(TOTP, __VA_ARGS__) \
+XX(EXT-JWT, EXT_JWT, __VA_ARGS__)
+
 #define ZITI_AUTH_QUERY_MFA_MODEL(XX, ...) \
-XX(type_id, model_string, none, typeId, __VA_ARGS__) \
+XX(id, model_string, none, id, __VA_ARGS__) \
+XX(type_id, ziti_auth_query_type, none, typeId, __VA_ARGS__) \
 XX(provider, model_string, none, provider, __VA_ARGS__) \
 XX(http_method, model_string, none, httpMethod, __VA_ARGS__) \
 XX(http_url, model_string, none, httpUrl, __VA_ARGS__) \
@@ -229,6 +235,8 @@ ZITI_FUNC model_bool ziti_protocol_match(ziti_protocol proto, const model_list *
 ZITI_FUNC int ziti_port_match(int port, const model_list *port_range_list);
 
 DECLARE_ENUM(ziti_session_type, ZITI_SESSION_TYPE_ENUM)
+
+DECLARE_ENUM(ziti_auth_query_type, ZITI_AUTH_QUERY_TYPE_ENUM)
 
 DECLARE_ENUM(ziti_ctrl_cap, ZITI_CTRL_CAP_ENUM)
 
