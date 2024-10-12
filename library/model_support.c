@@ -420,6 +420,7 @@ void model_free(void *obj, const type_meta *meta) {
         }
         else if (fm->mod == ptr_mod) {
             f_ptr = (void *) (*f_addr);
+            *f_addr = NULL;
             if (f_ptr != NULL) {
                 model_free(f_ptr, field_meta);
                 free(f_ptr);
@@ -427,6 +428,7 @@ void model_free(void *obj, const type_meta *meta) {
         }
         else if (fm->mod == array_mod) {
             void **arr = (void **) (*f_addr);
+            *f_addr = NULL;
             if (arr != NULL) {
                 for (int idx = 0; arr[idx] != NULL; idx++) {
                     f_ptr = arr + idx;
