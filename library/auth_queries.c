@@ -116,7 +116,7 @@ void ziti_auth_query_mfa_process(ziti_mfa_auth_ctx *mfa_auth_ctx) {
                 .type = ZitiAuthEvent,
                 .auth = {
                         .action = ziti_auth_prompt_totp,
-                        .type = mfa_auth_ctx->auth_query_mfa->type_id,
+                        .type = ziti_auth_query_types.name(mfa_auth_ctx->auth_query_mfa->type_id),
                         .detail = mfa_auth_ctx->auth_query_mfa->provider,
                 }
         };

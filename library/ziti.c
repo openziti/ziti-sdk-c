@@ -244,7 +244,7 @@ void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mf
             .type = ZitiAuthEvent,
             .auth = {
                     .action = ziti_auth_prompt_totp,
-                    .type = mfa_q->type_id,
+                    .type = ziti_auth_query_types.name(mfa_q->type_id),
                     .detail = mfa_q->provider,
             }
     };

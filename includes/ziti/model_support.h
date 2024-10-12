@@ -251,8 +251,16 @@ ZITI_FUNC int enum_from_json(void *ptr, struct json_object *j, const void *enum_
 ZITI_FUNC int json_enum(const void *ptr, void *buf, int indent, int flags, const void *enum_type);
 ZITI_FUNC struct json_object* enum_to_json(const void* ptr, const void *enum_type);
 
-#define mk_enum(v,t) t##_##v,
-#define enum_field(v,t) const t v;
+
+#define mk_enum2(v,t) t##_##v
+#define mk_enum3(v,n,t) t##_##n
+#define enum_f2(v, t) const t v
+#define enum_f3(v, n, t) const t n
+
+#define get_ovrd(_1, _2, _3, NAME, ...) NAME
+
+#define mk_enum(...) get_ovrd(__VA_ARGS__, mk_enum3, mk_enum2)(__VA_ARGS__),
+#define enum_field(...) get_ovrd(__VA_ARGS__, enum_f3, enum_f2)(__VA_ARGS__);
 
 #define DECLARE_ENUM(Enum, Values) \
 enum Enum {                        \
@@ -270,12 +278,19 @@ Values(enum_field, Enum)                          \
 MODEL_API const type_meta* get_##Enum##_meta();\
 extern const struct Enum##_s Enum##s;
 
-#define call_f(f,args) f args
-#define enum_value_of1(v, t, s, n) if(strncmp(s,#v,n) == 0){return (t)t##s.v;}
-#define enum_value_of(v,...) call_f(enum_value_of1, (v, __VA_ARGS__))
+#define get_value_of_ovrd(_1, _2, _3, _4, _5, NAME, ...) NAME
+#define enum_value_of4(v, t, str, len) if(strncmp(str,#v,len) == 0){return (t)t##s.v;}
+#define enum_value_of5(v, n, t, str, len) if(strncmp(str,#v,len) == 0){return (t)t##s.n;}
+#define enum_value_of(...) get_value_of_ovrd(__VA_ARGS__, enum_value_of5, enum_value_of4)(__VA_ARGS__)
 
-#define enum_case(v,t)  case t##_##v: return #v;
-#define enum_field_val(v,t) .v = t##_##v,
+#define enum_c2(v,t)  case t##_##v: return #v
+#define enum_c3(v,n,t) case t##_##n: return #v
+#define enum_case(...)  get_ovrd(__VA_ARGS__, enum_c3, enum_c2)(__VA_ARGS__);
+
+#define enum_field_v2(v,t) .v = t##_##v
+#define enum_field_v3(v,n,t) .n = t##_##n
+
+#define enum_field_val(...) get_ovrd(__VA_ARGS__, enum_field_v3, enum_field_v2)(__VA_ARGS__),
 #define IMPL_ENUM(Enum, Values) \
 static const char* Enum##_name(int v) { \
 switch (v) { \
