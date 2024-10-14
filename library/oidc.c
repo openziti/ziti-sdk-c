@@ -14,7 +14,7 @@
 
 #include <oidc.h>
 #include <assert.h>
-#include <json.h>
+#include <json-c/json.h>
 #include <sodium.h>
 #include <ctype.h>
 #ifndef _WIN32
