@@ -542,17 +542,22 @@ static void ziti_init_async(ziti_context ztx, void *data) {
 static void ext_jwt_singers_cb(ziti_jwt_signer_array signers, const ziti_error *err, void *ctx) {
     struct ztx_req_s *req = ctx;
 
+    struct ziti_ctx *ztx = req->ztx;
+    ziti_ext_signers_cb cb = (ziti_ext_signers_cb) req->cb;
     if (err) {
-        ((ziti_ext_signers_cb)req->cb)(req->ztx, (int)err->err, NULL, req->cb_ctx);
+        ZTX_LOG(WARN, "failed to get external auth providers: %s", err->message);
+        CALL_CB(cb, ztx, (int)err->err, NULL, req->cb_ctx);
     } else {
-        model_map_clear(&req->ztx->ext_signers, (void (*)(void *)) free_ziti_jwt_signer_ptr);
+        model_map_clear(&ztx->ext_signers, (void (*)(void *)) free_ziti_jwt_signer_ptr);
         ziti_jwt_signer *s;
         FOR(s, signers) {
-            model_map_set(&req->ztx->ext_signers, s->name, s);
+            model_map_set(&ztx->ext_signers, s->name, s);
         }
-        ((ziti_ext_signers_cb)req->cb)(req->ztx, ZITI_OK, signers, req->cb_ctx);
+        ZTX_LOG(DEBUG, "%zd external auth providers available", model_map_size(&ztx->ext_signers));
+        CALL_CB(cb, ztx, ZITI_OK, signers, req->cb_ctx);
         free(signers);
     }
+    free(req);
 }
 
 int ziti_get_ext_jwt_signers(ziti_context ztx, ziti_ext_signers_cb cb, void *ctx) {
@@ -862,8 +867,8 @@ const char *ziti_conn_source_identity(ziti_connection conn) {
 
 
 void ziti_send_event(ziti_context ztx, const ziti_event_t *e) {
-    if ((ztx->opts.events & e->type) && ztx->opts.event_cb) {
-        ztx->opts.event_cb(ztx, e);
+    if (ztx->opts.events & e->type) {
+        CALL_CB(ztx->opts.event_cb, ztx, e);
     }
 }
 
@@ -893,7 +898,7 @@ static void service_cb(ziti_service *s, const ziti_error *err, void *ctx) {
         }
     }
 
-    ((ziti_service_cb)req->cb)(req->ztx, s, rc, req->cb_ctx);
+    CALL_CB((ziti_service_cb)req->cb, req->ztx, s, rc, req->cb_ctx);
     free(req);
 }
 
@@ -975,6 +980,11 @@ int ziti_listen_with_options(ziti_connection serv_conn, const char *service, zit
 static void ziti_re_auth(ziti_context ztx) {
     // always get controller version to get the right auth method
     ziti_ctrl_get_version(ztx_get_controller(ztx), version_pre_auth_cb, ztx);
+
+    // load external signers in case they are needed for auth
+    NEWP(req, struct ztx_req_s);
+    req->ztx = ztx;
+    ziti_ctrl_list_ext_jwt_signers(ztx_get_controller(ztx), ext_jwt_singers_cb, req);
 }
 
 static void set_posture_query_defaults(ziti_service *service) {

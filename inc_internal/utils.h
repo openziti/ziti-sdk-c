@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef ZITI_TLS_UTILS_H
-#define ZITI_TLS_UTILS_H
+#ifndef ZITI_UTILS_H
+#define ZITI_UTILS_H
 
 #include <stdio.h>
 #include <string.h>
@@ -129,6 +129,7 @@ if (!uv_is_closing((uv_handle_t*)(h))) uv_close((uv_handle_t*)(h), (uv_close_cb)
 (h) = NULL;                            \
 }}while(0)
 
+#define CALL_CB(cb, ...) if ((cb) != NULL) (cb)(__VA_ARGS__)
 
 /**
  * Split string based on delimiters.
@@ -153,4 +154,4 @@ uint64_t next_backoff(int *count, int max, uint64_t base);
 }
 #endif
 
-#endif //ZITI_TLS_UTILS_H
+#endif //ZITI_UTILS_H
