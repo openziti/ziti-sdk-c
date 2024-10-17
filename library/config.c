@@ -15,6 +15,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <utils.h>
+#include <ctype.h>
 #include "zt_internal.h"
 
 const char* APP_ID = NULL;
@@ -52,7 +53,7 @@ int ziti_load_config(ziti_config *cfg, const char* cfgstr) {
     }
     bool seems_like_json = false;
     const char* c = cfgstr;
-    while (*cfgstr && isspace((unsigned char)*cfgstr)) {
+    while (*c && isspace((unsigned char)*c)) {
         c++;
     }
     if (*c == '{') {
