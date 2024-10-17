@@ -47,12 +47,12 @@ static int load_config_file(const char *filename, ziti_config *cfg) {
     return ZITI_OK;
 }
 
-int ziti_load_config(ziti_config *cfg, const char* cfgstr) {
+int ziti_load_config(ziti_config *cfg, const char *cfgstr) {
     if (!cfgstr) {
         return ZITI_INVALID_CONFIG;
     }
     bool seems_like_json = false;
-    const char* c = cfgstr;
+    const char *c = cfgstr;
     while (*c && isspace((unsigned char)*c)) {
         c++;
     }
@@ -62,7 +62,7 @@ int ziti_load_config(ziti_config *cfg, const char* cfgstr) {
 
     memset(cfg, 0, sizeof(*cfg));
     int rc;
-    if(seems_like_json) {
+    if (seems_like_json) {
         rc = parse_ziti_config(cfg, cfgstr, strlen(cfgstr));
 
         if (rc < 0) {
