@@ -15,6 +15,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <utils.h>
+#include <ctype.h>
 #include "zt_internal.h"
 
 const char* APP_ID = NULL;
@@ -46,16 +47,29 @@ static int load_config_file(const char *filename, ziti_config *cfg) {
     return ZITI_OK;
 }
 
-int ziti_load_config(ziti_config *cfg, const char* cfgstr) {
+int ziti_load_config(ziti_config *cfg, const char *cfgstr) {
     if (!cfgstr) {
         return ZITI_INVALID_CONFIG;
     }
+    bool seems_like_json = false;
+    const char *c = cfgstr;
+    while (*c && isspace((unsigned char)*c)) {
+        c++;
+    }
+    if (*c == '{') {
+        seems_like_json = true;
+    }
 
     memset(cfg, 0, sizeof(*cfg));
-    int rc = parse_ziti_config(cfg, cfgstr, strlen(cfgstr));
+    int rc;
+    if (seems_like_json) {
+        rc = parse_ziti_config(cfg, cfgstr, strlen(cfgstr));
 
-    if (rc < 0) {
-        ZITI_LOG(DEBUG, "trying to load config from file[%s]", cfgstr);
+        if (rc < 0) {
+            ZITI_LOG(DEBUG, "trying to load config from file[%s]", cfgstr);
+            rc = load_config_file(cfgstr, cfg);
+        }
+    } else {
         rc = load_config_file(cfgstr, cfg);
     }
 
