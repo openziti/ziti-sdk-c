@@ -55,7 +55,7 @@ int ziti_load_config(ziti_config *cfg, const char* cfgstr) {
     while (*cfgstr && isspace((unsigned char)*cfgstr)) {
         c++;
     }
-    if (strncmp(c,"{",1) == 0) {
+    if (*c == '{') {
         seems_like_json = true;
     }
 
