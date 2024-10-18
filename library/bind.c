@@ -43,7 +43,7 @@ static uint16_t get_terminator_cost(const ziti_listen_opts *opts, const char *se
 
 static uint8_t get_terminator_precedence(const ziti_listen_opts *opts, const char *service, ziti_context ztx);
 
-static void get_service_cb(ziti_context, ziti_service *service, int status, void *ctx);
+static void get_service_cb(ziti_context, const ziti_service *service, int status, void *ctx);
 
 static int dispose(ziti_connection server);
 
@@ -179,22 +179,42 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
             FREE(conn->server.token);
             conn->server.token = (char*)session->token;
             session->token = NULL;
+
+            free_ziti_session_ptr(conn->server.session);
+            conn->server.session = session;
+
+            if (conn->server.srv_routers_api_missing) {
+                free_ziti_edge_router_array(&conn->server.routers);
+                conn->server.routers = calloc(model_list_size(&session->edge_routers) + 1,
+                                              sizeof(ziti_edge_router*));
+                ziti_edge_router *er;
+                int idx = 0;
+                MODEL_LIST_FOREACH(er, session->edge_routers) {
+                    conn->server.routers[idx++] = er;
+                }
+                model_list_clear(&session->edge_routers, NULL);
+                process_bindings(conn);
+            }
+
             notify_status(conn, ZITI_OK);
-            free_ziti_session_ptr(session);
             break;
         }
         case ZITI_NOT_FOUND:
         case ZITI_NOT_AUTHORIZED:
-            CONN_LOG(WARN, "failed to get session for service[%s]: %d/%s", conn->service, (int)err->err, err->code);
+            CONN_LOG(WARN, "failed to get session for service[%s]: %d/%s",
+                     conn->service, (int)err->err, err->code);
             const char *id;
             struct binding_s *b;
             MODEL_MAP_FOREACH(id, b, &conn->server.bindings) {
+                CONN_LOG(DEBUG, "stopping binding[%s]", id);
                 stop_binding(b);
             }
 
             // our session is stale
             if (conn->server.token) {
                 FREE(conn->server.token);
+                free_ziti_session_ptr(conn->server.session);
+                conn->server.session = NULL;
                 schedule_rebind(conn, true);
             } else {
                 // here if we could not create Bind session
@@ -210,6 +230,15 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
 
 static void list_routers_cb(ziti_service_routers *srv_routers, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
+    if (err) {
+        CONN_LOG(WARN, "failed to list routers: %s", err->message);
+        // older network
+        // /edge/client/v1/service/{id}/edge-routers API not implemented yet
+        if (err->http_code == 404) {
+            conn->server.srv_routers_api_missing = true;
+        }
+    }
+
     if (srv_routers) {
         free_ziti_edge_router_array(&conn->server.routers);
         conn->server.routers = srv_routers->routers;
@@ -224,7 +253,7 @@ static void list_routers_cb(ziti_service_routers *srv_routers, const ziti_error 
     process_bindings(conn);
 }
 
-static void get_service_cb(ziti_context ztx, ziti_service *service, int status, void *ctx) {
+static void get_service_cb(ziti_context ztx, const ziti_service *service, int status, void *ctx) {
     struct ziti_conn *conn = ctx;
 
     if (status == ZITI_SERVICE_UNAVAILABLE) {
@@ -245,12 +274,22 @@ static void get_service_cb(ziti_context ztx, ziti_service *service, int status, 
         return;
     }
 
+    // NB: handle network upgrade
+    // if our session became stale maybe controller was upgraded
+    if (conn->server.token == NULL) {
+        conn->server.srv_routers_api_missing = false;
+    }
+
+    if (!conn->server.srv_routers_api_missing) {
+        ziti_ctrl_list_service_routers(ztx_get_controller(ztx), service, list_routers_cb, conn);
+    }
+
     conn->encrypted = service->encryption;
     if (conn->server.token == NULL) {
         ziti_ctrl_create_session(ztx_get_controller(ztx), service->id, ziti_session_types.Bind, session_cb, conn);
+    } else if (conn->server.srv_routers_api_missing) {
+        ziti_ctrl_get_session(ztx_get_controller(ztx), conn->server.session->id, session_cb, conn);
     }
-
-    ziti_ctrl_list_service_routers(ztx_get_controller(ztx), service, list_routers_cb, conn);
 }
 
 static uint16_t get_terminator_cost(const ziti_listen_opts *opts, const char *service, ziti_context ztx) {
@@ -313,6 +352,7 @@ static int dispose(ziti_connection server) {
     }
 
     FREE(server->server.token);
+    free_ziti_session_ptr(server->server.session);
     free_ziti_edge_router_array(&server->server.routers);
     free(server->service);
     free(server);

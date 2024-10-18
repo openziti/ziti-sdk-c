@@ -174,8 +174,10 @@ struct ziti_conn {
             ziti_listen_cb listen_cb;
             ziti_client_cb client_cb;
 
+            bool srv_routers_api_missing;
             ziti_edge_router_array routers;
             char *token;
+            ziti_session *session;
             model_map bindings;
             model_map children;
             uv_timer_t *timer;
