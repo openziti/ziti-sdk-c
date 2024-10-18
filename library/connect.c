@@ -420,7 +420,7 @@ static bool ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct zit
     return result;
 }
 
-static void connect_get_service_cb(ziti_context ztx, ziti_service *s, int status, void *ctx) {
+static void connect_get_service_cb(ziti_context ztx, const ziti_service *s, int status, void *ctx) {
     struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
 

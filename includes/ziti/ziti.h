@@ -90,7 +90,7 @@ typedef struct ziti_conn *ziti_connection;
  *
  * @see ziti_service_available(), ZITI_ERRORS
  */
-typedef void (*ziti_service_cb)(ziti_context ztx, ziti_service *, int status, void *data);
+typedef void (*ziti_service_cb)(ziti_context ztx, const ziti_service *, int status, void *data);
 
 /**
  * @brief Posture response MAC address callback
