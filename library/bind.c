@@ -110,6 +110,7 @@ static void process_bindings(struct ziti_conn *conn) {
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
     size_t target = MIN(conn->server.max_bindings, model_map_size(&ztx->channels));
+    ZITI_LOG(DEBUG, "target is %ld", target);
     const char *url;
     for(int idx = 0; conn->server.routers && conn->server.routers[idx]; idx++) {
         ziti_edge_router *er = conn->server.routers[idx];
@@ -177,6 +178,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
     switch (e) {
         case ZITI_OK: {
             FREE(conn->server.token);
+            ZITI_LOG(DEBUG, "session token: %s", session->token);
             conn->server.token = (char*)session->token;
             session->token = NULL;
 
