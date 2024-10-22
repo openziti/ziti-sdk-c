@@ -489,6 +489,10 @@ void start_binding(struct binding_s *b, ziti_channel_t *ch) {
     struct ziti_conn *conn = b->conn;
     char *token = conn->server.token;
     CONN_LOG(TRACE, "ch[%d] => Edge Bind request token[%s]", ch->id, token);
+    if (!token) {
+        schedule_rebind(b->conn, true);
+        return;
+    }
 
     b->ch = ch;
 
