@@ -252,7 +252,6 @@ static void list_routers_cb(ziti_service_routers *srv_routers, const ziti_error 
         }
     }
     free(srv_routers);
-ZITI_LOG(DEBUG, "calling process_bindings");
     process_bindings(conn);
 }
 
@@ -283,15 +282,15 @@ static void get_service_cb(ziti_context ztx, const ziti_service *service, int st
         conn->server.srv_routers_api_missing = false;
     }
 
-    if (!conn->server.srv_routers_api_missing) {
-        ziti_ctrl_list_service_routers(ztx_get_controller(ztx), service, list_routers_cb, conn);
-    }
-
     conn->encrypted = service->encryption;
     if (conn->server.token == NULL) {
         ziti_ctrl_create_session(ztx_get_controller(ztx), service->id, ziti_session_types.Bind, session_cb, conn);
     } else if (conn->server.srv_routers_api_missing) {
         ziti_ctrl_get_session(ztx_get_controller(ztx), conn->server.session->id, session_cb, conn);
+    }
+
+    if (!conn->server.srv_routers_api_missing) {
+        ziti_ctrl_list_service_routers(ztx_get_controller(ztx), service, list_routers_cb, conn);
     }
 }
 
