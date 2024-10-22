@@ -195,6 +195,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
                     conn->server.routers[idx++] = er;
                 }
                 model_list_clear(&session->edge_routers, NULL);
+                ZITI_LOG(DEBUG, "calling process_bindings");
                 process_bindings(conn);
             }
 
@@ -251,7 +252,7 @@ static void list_routers_cb(ziti_service_routers *srv_routers, const ziti_error 
         }
     }
     free(srv_routers);
-
+ZITI_LOG(DEBUG, "calling process_bindings");
     process_bindings(conn);
 }
 
