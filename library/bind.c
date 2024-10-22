@@ -146,10 +146,12 @@ static void process_bindings(struct ziti_conn *conn) {
 }
 
 static void schedule_rebind(struct ziti_conn *conn, bool now) {
+    if (now) ZITI_LOG(DEBUG, "it is now");
     if (!ziti_is_enabled(conn->ziti_ctx)) {
         uv_timer_stop(conn->server.timer);
         return;
     }
+    if (now) ZITI_LOG(DEBUG, "it is still now");
 
     uint64_t delay = REFRESH_DELAY;
 
@@ -490,6 +492,7 @@ void start_binding(struct binding_s *b, ziti_channel_t *ch) {
     char *token = conn->server.token;
     CONN_LOG(TRACE, "ch[%d] => Edge Bind request token[%s]", ch->id, token);
     if (!token) {
+        ZITI_LOG(DEBUG, "scheduling rebind now");
         schedule_rebind(b->conn, true);
         return;
     }
