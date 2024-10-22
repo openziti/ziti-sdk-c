@@ -142,7 +142,7 @@ static void process_bindings(struct ziti_conn *conn) {
         if (target <= 0) break;
     }
 
-    schedule_rebind(conn, target > 0);
+    schedule_rebind(conn, true);
 }
 
 static void schedule_rebind(struct ziti_conn *conn, bool now) {
