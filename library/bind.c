@@ -142,16 +142,15 @@ static void process_bindings(struct ziti_conn *conn) {
         if (target <= 0) break;
     }
 
-    schedule_rebind(conn, true);
+    schedule_rebind(conn, target > 0);
 }
 
 static void schedule_rebind(struct ziti_conn *conn, bool now) {
-    if (now) ZITI_LOG(DEBUG, "it is now");
+    ZITI_LOG(DEBUG, "it is %snow", now ? "" : "not ");
     if (!ziti_is_enabled(conn->ziti_ctx)) {
         uv_timer_stop(conn->server.timer);
         return;
     }
-    if (now) ZITI_LOG(DEBUG, "it is still now");
 
     uint64_t delay = REFRESH_DELAY;
 
