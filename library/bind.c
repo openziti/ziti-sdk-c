@@ -193,8 +193,8 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
                     conn->server.routers[idx++] = er;
                 }
                 model_list_clear(&session->edge_routers, NULL);
-                process_bindings(conn);
             }
+            process_bindings(conn);
 
             notify_status(conn, ZITI_OK);
             break;
