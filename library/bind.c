@@ -110,7 +110,6 @@ static void process_bindings(struct ziti_conn *conn) {
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
     size_t target = MIN(conn->server.max_bindings, model_map_size(&ztx->channels));
-    ZITI_LOG(DEBUG, "target is %ld", target);
     const char *url;
     for(int idx = 0; conn->server.routers && conn->server.routers[idx]; idx++) {
         ziti_edge_router *er = conn->server.routers[idx];
@@ -146,7 +145,6 @@ static void process_bindings(struct ziti_conn *conn) {
 }
 
 static void schedule_rebind(struct ziti_conn *conn, bool now) {
-    ZITI_LOG(DEBUG, "it is %snow", now ? "" : "not ");
     if (!ziti_is_enabled(conn->ziti_ctx)) {
         uv_timer_stop(conn->server.timer);
         return;
@@ -178,7 +176,6 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
     switch (e) {
         case ZITI_OK: {
             FREE(conn->server.token);
-            ZITI_LOG(DEBUG, "session token: %s", session->token);
             conn->server.token = (char*)session->token;
             session->token = NULL;
 
@@ -195,7 +192,6 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
                     conn->server.routers[idx++] = er;
                 }
                 model_list_clear(&session->edge_routers, NULL);
-                ZITI_LOG(DEBUG, "calling process_bindings");
                 process_bindings(conn);
             }
 
@@ -491,11 +487,6 @@ void start_binding(struct binding_s *b, ziti_channel_t *ch) {
     struct ziti_conn *conn = b->conn;
     char *token = conn->server.token;
     CONN_LOG(TRACE, "ch[%d] => Edge Bind request token[%s]", ch->id, token);
-    if (!token) {
-        ZITI_LOG(DEBUG, "scheduling rebind now");
-        schedule_rebind(b->conn, true);
-        return;
-    }
 
     b->ch = ch;
 
