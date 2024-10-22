@@ -110,7 +110,6 @@ static void process_bindings(struct ziti_conn *conn) {
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
     size_t target = MIN(conn->server.max_bindings, model_map_size(&ztx->channels));
-    ZITI_LOG(DEBUG, "target is %ld", target);
     const char *url;
     for(int idx = 0; conn->server.routers && conn->server.routers[idx]; idx++) {
         ziti_edge_router *er = conn->server.routers[idx];
@@ -141,7 +140,7 @@ static void process_bindings(struct ziti_conn *conn) {
         }
         if (target <= 0) break;
     }
-
+    ZITI_LOG(DEBUG, "target is %ld", target);
     schedule_rebind(conn, target > 0);
 }
 
