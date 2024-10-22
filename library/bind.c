@@ -250,7 +250,9 @@ static void list_routers_cb(ziti_service_routers *srv_routers, const ziti_error 
     }
     free(srv_routers);
 
-    process_bindings(conn);
+    if (conn->server.token != NULL) {
+        process_bindings(conn);
+    }
 }
 
 static void get_service_cb(ziti_context ztx, const ziti_service *service, int status, void *ctx) {
