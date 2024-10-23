@@ -183,6 +183,11 @@ static pr_info *get_resp_info(ziti_context ztx, const char *id) {
 }
 
 void ziti_send_posture_data(ziti_context ztx) {
+    if (!ztx->posture_checks) {
+        ZTX_LOG(DEBUG, "endpoint is disabled");
+        return;
+    }
+
     if(ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
         ZTX_LOG(DEBUG, "api_session is partially authenticated, can't submit posture responses");
         return;
@@ -509,6 +514,11 @@ static void ziti_pr_send(ziti_context ztx) {
 }
 
 static void ziti_pr_send_bulk(ziti_context ztx) {
+    if (!ztx->posture_checks) {
+        ZTX_LOG(DEBUG, "endpoint is disabled");
+        return;
+    }
+
     size_t body_len = 0;
     char *body;
 
@@ -560,6 +570,10 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
 }
 
 static void ziti_pr_send_individually(ziti_context ztx) {
+    if (!ztx->posture_checks) {
+        ZTX_LOG(DEBUG, "endpoint is disabled");
+        return;
+    }
 
     __attribute__((unused)) const char *key;
     pr_info *info;
@@ -863,6 +877,11 @@ void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err,
 
 
 void ziti_endpoint_state_change(ziti_context ztx, bool woken, bool unlocked) {
+    if (!ztx->posture_checks) {
+        ZTX_LOG(WARN, "endpoint is disabled");
+        return;
+    }
+
     if (woken || unlocked) {
         ZTX_LOG(INFO, "endpoint state change reported: woken[%s] unlocked[%s]", woken ? "TRUE":"FALSE", unlocked ? "TRUE":"FALSE");
         ziti_pr_endpoint_state_req state_req = {
