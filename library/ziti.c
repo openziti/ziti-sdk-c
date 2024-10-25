@@ -392,8 +392,10 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
             it = model_map_it_remove(it);
         }
 
-        ztx->auth_method->free(ztx->auth_method);
-        ztx->auth_method = NULL;
+        if (ztx->auth_method) {
+            ztx->auth_method->free(ztx->auth_method);
+            ztx->auth_method = NULL;
+        }
 
         if (ztx->ext_auth) {
             oidc_client_close(ztx->ext_auth, (oidc_close_cb) free);
