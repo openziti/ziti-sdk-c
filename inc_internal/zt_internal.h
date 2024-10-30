@@ -296,7 +296,7 @@ struct ziti_ctx {
 
     char *last_update;
 
-    uv_timer_t *service_refresh_timer;
+    uv_timer_t *refresh_timer;
     uv_prepare_t *prepper;
 
     uv_loop_t *loop;
