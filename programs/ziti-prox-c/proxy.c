@@ -648,11 +648,40 @@ static void stopper_alloc(uv_handle_t *h, size_t i, uv_buf_t *pBuf) {
     *pBuf = uv_buf_init(buf, sizeof(buf));
 }
 
+#define PROXC_CMD(XX, ...) \
+XX(stop, __VA_ARGS__)      \
+XX(enable, __VA_ARGS__)    \
+XX(disable, __VA_ARGS__)   \
+
+
+DECLARE_ENUM(ProxyCmd, PROXC_CMD)
+
+IMPL_ENUM(ProxyCmd, PROXC_CMD)
+
+
 static void stopper_recv(uv_udp_t *u, ssize_t len,
                          const uv_buf_t *b,
                          const struct sockaddr *addr, unsigned int flags) {
-    process_stop(u->loop, &app_ctx);
-    uv_close((uv_handle_t *) u, NULL);
+
+    if (len == 0) return;
+
+    ProxyCmd cmd = ProxyCmds.value_ofn(b->base, len - 1);
+
+    switch (cmd) {
+        case ProxyCmd_Unknown:
+            ZITI_LOG(WARN, "unknown cmd: %.*s", (int)len, b->base);
+            break;
+        case ProxyCmd_stop:
+            process_stop(u->loop, &app_ctx);
+            uv_close((uv_handle_t *) u, NULL);
+            break;
+        case ProxyCmd_enable:
+            ziti_set_enabled(app_ctx.ziti, true);
+            break;
+        case ProxyCmd_disable:
+            ziti_set_enabled(app_ctx.ziti, false);
+            break;
+    }
 }
 
 void run(int argc, char **argv) {
@@ -692,10 +721,9 @@ void run(int argc, char **argv) {
     }
 
     ziti_config cfg;
-    ziti_context ztx;
 
     ziti_load_config(&cfg, config);
-    ziti_context_init(&ztx, &cfg);
+    ziti_context_init(&app_ctx.ziti, &cfg);
 
     ziti_options opts = {
             .events = -1,
@@ -706,9 +734,9 @@ void run(int argc, char **argv) {
             .config_types = my_configs,
             .metrics_type = INSTANT,
     };
-    ziti_context_set_options(ztx, &opts);
+    ziti_context_set_options(app_ctx.ziti, &opts);
 
-    ziti_context_run(ztx, loop);
+    ziti_context_run(app_ctx.ziti, loop);
 
 
 #if __unix__ || __unix

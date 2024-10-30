@@ -357,6 +357,7 @@ const char* ziti_get_api_session_token(ziti_context ztx) {
 
 static void ziti_stop_internal(ziti_context ztx, void *data) {
     if (ztx->enabled) {
+        ZTX_LOG(INFO, "disabling Ziti Context");
         ztx->enabled = false;
 
         metrics_rate_close(&ztx->up_rate);
@@ -392,8 +393,10 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
             it = model_map_it_remove(it);
         }
 
-        ztx->auth_method->free(ztx->auth_method);
-        ztx->auth_method = NULL;
+        if (ztx->auth_method) {
+            ztx->auth_method->free(ztx->auth_method);
+            ztx->auth_method = NULL;
+        }
 
         if (ztx->ext_auth) {
             oidc_client_close(ztx->ext_auth, (oidc_close_cb) free);
@@ -418,6 +421,7 @@ uv_timer_t* new_ztx_timer(ziti_context ztx) {
 
 static void ziti_start_internal(ziti_context ztx, void *init_req) {
     if (!ztx->enabled) {
+        ZTX_LOG(INFO, "enabling Ziti Context");
         ztx->enabled = true;
         ztx->logout = false;
 
@@ -1730,8 +1734,9 @@ int ziti_refresh(ziti_context ztx) {
 
 static void pre_auth_retry(uv_timer_t *t) {
     ziti_context ztx = t->data;
-    ziti_re_auth(ztx);
-    uv_close((uv_handle_t *) t, (uv_close_cb) free);
+    if (ztx->enabled) {
+        ziti_re_auth(ztx);
+    }
 }
 
 static void jwt_signers_cb(ziti_jwt_signer_array arr, const ziti_error *err, void *ctx) {
@@ -1750,10 +1755,7 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
     ziti_context ztx = ctx;
     if (err) {
         ZTX_LOG(WARN, "failed to get controller version: %s/%s", err->code, err->message);
-        uv_timer_t *t = calloc(1, sizeof(*t));
-        uv_timer_init(ztx->loop, t);
-        t->data = ztx;
-        uv_timer_start(t, pre_auth_retry, 5 * 1000, 0);
+        uv_timer_start(ztx->refresh_timer, pre_auth_retry, 5 * 1000, 0);
     } else {
         bool ha = ziti_has_capability(version, ziti_ctrl_caps.HA_CONTROLLER);
         ZTX_LOG(INFO, "connected to %s controller %s version %s(%s %s)",
