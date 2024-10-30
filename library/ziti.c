@@ -367,7 +367,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         }
 
         // stop updates
-        uv_timer_stop(ztx->service_refresh_timer);
+        uv_timer_stop(ztx->refresh_timer);
 
         if (ztx->posture_checks) {
             ziti_posture_checks_free(ztx->posture_checks);
@@ -517,7 +517,7 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ztx->id = ztx_seq++;
     uv_loop_t *loop = ztx->w_async.loop;
     
-    ztx->service_refresh_timer = new_ztx_timer(ztx);
+    ztx->refresh_timer = new_ztx_timer(ztx);
 
     ztx->prepper = calloc(1, sizeof(uv_prepare_t));
     uv_prepare_init(loop, ztx->prepper);
@@ -672,7 +672,7 @@ static void shutdown_and_free(ziti_context ztx) {
 
     grim_reaper(ztx);
     CLOSE_AND_NULL(ztx->prepper);
-    CLOSE_AND_NULL(ztx->service_refresh_timer);
+    CLOSE_AND_NULL(ztx->refresh_timer);
 
     uv_close((uv_handle_t *) &ztx->w_async, free_ztx);
 }
@@ -1276,7 +1276,7 @@ void ziti_services_refresh(ziti_context ztx, bool now) {
             ZTX_LOG(VERBOSE, "scheduling service refresh %ld seconds from now", ztx->opts.refresh_interval);
         }
         uint64_t timeout = now ? 0 : (ztx->opts.refresh_interval * 1000);
-        uv_timer_start(ztx->service_refresh_timer, refresh_cb, timeout, 0);
+        uv_timer_start(ztx->refresh_timer, refresh_cb, timeout, 0);
     }
 }
 
