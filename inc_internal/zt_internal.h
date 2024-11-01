@@ -375,9 +375,9 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
 
 void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter);
 
-int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **, ziti_enrollment_jwt **);
+int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header *, ziti_enrollment_jwt *);
 
-int load_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header **zejh, ziti_enrollment_jwt **zej);
+int load_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header *jwt_header, ziti_enrollment_jwt *zej);
 
 int load_tls(ziti_config *cfg, tls_context **tls, struct tls_credentials *creds);
 

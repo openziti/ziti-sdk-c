@@ -17,6 +17,7 @@
 
 #include <ziti/ziti.h>
 #include <uv.h>
+#include <assert.h>
 #include "utils.h"
 #include "zt_internal.h"
 #include "ziti_enroll.h"
@@ -40,21 +41,21 @@ int verify_controller_jwt(const struct tlsuv_certificate_s *cert, void *ctx) {
 
     enroll_cfg *ecfg = ctx;
     enum hash_algo md;
-    if (strcmp(ecfg->zejh->alg, "RS256") == 0) {
-        md = hash_SHA256;
-    }
-    else if (strcmp(ecfg->zejh->alg, "ES256") == 0) {
-        md = hash_SHA256;
-    }
-    else if (strcmp(ecfg->zejh->alg, "ES384") == 0) {
-        md = hash_SHA384;
-    }
-    else if (strcmp(ecfg->zejh->alg, "ES512") == 0) {
-        md = hash_SHA512;
-    }
-    else {
-        ZITI_LOG(ERROR, "unsupported signature algo `%s'", ecfg->zejh->alg);
-        return -1;
+    switch (ecfg->jwt_header.alg) {
+        case jwt_sig_method_RS256:
+        case jwt_sig_method_ES256:
+            md = hash_SHA256;
+            break;
+        case jwt_sig_method_ES384:
+            md = hash_SHA384;
+            break;
+        case jwt_sig_method_ES512:
+            md = hash_SHA512;
+            break;
+        case jwt_sig_method_Unknown:
+        default:
+            ZITI_LOG(ERROR, "unsupported signature algo");
+            return -1;
     }
 
     int rc = cert->verify(cert, md, (char *) ecfg->jwt_signing_input,
@@ -70,7 +71,7 @@ int verify_controller_jwt(const struct tlsuv_certificate_s *cert, void *ctx) {
 }
 
 static int check_cert_required(enroll_cfg *ecfg) {
-    if (ecfg->zej->method == ziti_enrollment_methods.ca || ecfg->zej->method == ziti_enrollment_methods.ottca) {
+    if (ecfg->zej.method == ziti_enrollment_methods.ca || ecfg->zej.method == ziti_enrollment_methods.ottca) {
         if (ecfg->own_cert == NULL || ecfg->private_key == 0) {
             return ZITI_ENROLLMENT_CERTIFICATE_REQUIRED;
         }
@@ -104,17 +105,17 @@ int ziti_enroll(const ziti_enroll_opts *opts, uv_loop_t *loop,
     ecfg->use_keychain = opts->use_keychain;
 
     if (opts->jwt) {
-        TRY(ziti, load_jwt(opts->jwt, ecfg, &ecfg->zejh, &ecfg->zej));
+        TRY(ziti, load_jwt(opts->jwt, ecfg, &ecfg->jwt_header, &ecfg->zej));
     } else {
         ecfg->raw_jwt = opts->jwt_content;
-        TRY(ziti, load_jwt_content(ecfg, &ecfg->zejh, &ecfg->zej));
+        TRY(ziti, load_jwt_content(ecfg, &ecfg->jwt_header, &ecfg->zej));
     }
     TRY(ziti, check_cert_required(ecfg));
 
     NEWP(ctrl, ziti_controller);
     ecfg->ctrl = ctrl;
     model_list endpoints = {0};
-    model_list_append(&endpoints, ecfg->zej->controller);
+    model_list_append(&endpoints, (void*)ecfg->zej.controller);
     TRY(ziti, ziti_ctrl_init(loop, ctrl, &endpoints, ecfg->tls));
     model_list_clear(&endpoints, NULL);
 
@@ -167,7 +168,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
         ziti_err = ZITI_KEY_LOAD_FAILED;
         if (load_key_internal(tls, &enroll_req->ecfg->pk, enroll_req->ecfg->private_key) != 0) {
             ZITI_LOG(WARN, "failed to load private key[%s]", enroll_req->ecfg->private_key);
-            if (enroll_req->ecfg->zej->method == ziti_enrollment_methods.ott &&
+            if (enroll_req->ecfg->zej.method == ziti_enrollment_methods.ott &&
                 strncmp(enroll_req->ecfg->private_key, "pkcs11://", strlen("pkcs11://")) == 0) {
                 ZITI_LOG(INFO, "attempting to generate pkcs11 key");
                 TRY(TLS, gen_p11_key_internal(tls, &enroll_req->ecfg->pk, enroll_req->ecfg->private_key));
@@ -175,18 +176,18 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
         }
     }
 
-    if (enroll_req->ecfg->zej->method == ziti_enrollment_methods.ott) {
+    if (enroll_req->ecfg->zej.method == ziti_enrollment_methods.ott) {
         size_t len;
         if (enroll_req->ecfg->private_key == NULL) {
             ziti_err = ZITI_KEY_GENERATION_FAILED;
             if (enroll_req->ecfg->use_keychain && tls->generate_keychain_key) {
                 tlsuv_private_key_t pk = NULL;
                 struct tlsuv_url_s url;
-                tlsuv_parse_url(&url, enroll_req->ecfg->zej->controller);
+                tlsuv_parse_url(&url, enroll_req->ecfg->zej.controller);
 
                 string_buf_t *keyname_buf = new_string_buf();
                 string_buf_fmt(keyname_buf, "keychain:ziti://%s@%.*s:%d",
-                               enroll_req->ecfg->zej->subject,
+                               enroll_req->ecfg->zej.subject,
                                (int)url.hostname_len, url.hostname, url.port);
                 char *keyname_ref = string_buf_to_string(keyname_buf, NULL);
                 delete_string_buf(keyname_buf);
@@ -207,11 +208,11 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
                                                "C", "US",
                                                "ST", "NY",
                                                "O", "OpenZiti",
-                                               "DC", enroll_req->ecfg->zej->controller,
-                                               "CN", enroll_req->ecfg->zej->subject,
+                                               "DC", enroll_req->ecfg->zej.controller,
+                                               "CN", enroll_req->ecfg->zej.subject,
                                                NULL));
-    } else if (enroll_req->ecfg->zej->method == ziti_enrollment_methods.ottca ||
-               enroll_req->ecfg->zej->method == ziti_enrollment_methods.ca) {
+    } else if (enroll_req->ecfg->zej.method == ziti_enrollment_methods.ottca ||
+               enroll_req->ecfg->zej.method == ziti_enrollment_methods.ca) {
         ziti_err = ZITI_KEY_LOAD_FAILED;
         tlsuv_certificate_t cert;
         TRY(TLS, tls->load_cert(&cert, enroll_req->ecfg->own_cert, strlen(enroll_req->ecfg->own_cert)));
@@ -227,14 +228,14 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     enroll_req2->controller = calloc(1, sizeof(ziti_controller));
 
     model_list endpoints = {0};
-    model_list_append(&endpoints, enroll_req->ecfg->zej->controller);
+    model_list_append(&endpoints, enroll_req->ecfg->zej.controller);
     TRY(ziti, ziti_ctrl_init(enroll_req2->loop, enroll_req2->controller, &endpoints, tls));
     model_list_clear(&endpoints, NULL);
 
     tlsuv_http_set_path_prefix(enroll_req2->controller->client, "/edge/client/v1");
     enroll_req2->ecfg = enroll_req->ecfg;
 
-    ziti_ctrl_enroll(enroll_req2->controller, enroll_req->ecfg->zej->method, enroll_req->ecfg->zej->token,
+    ziti_ctrl_enroll(enroll_req2->controller, enroll_req->ecfg->zej.method, enroll_req->ecfg->zej.token,
                      enroll_req->ecfg->csr_pem, enroll_req->ecfg->name, enroll_cb, enroll_req2);
 
     ziti_err = 0;
@@ -255,6 +256,7 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
 }
 
 static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enroll_ctx) {
+    assert(enroll_ctx);
     struct ziti_enroll_req *enroll_req = enroll_ctx;
     ziti_controller *ctrl = enroll_req->controller;
 
@@ -269,7 +271,7 @@ static void enroll_cb(ziti_enrollment_resp *er, const ziti_error *err, void *enr
         ZITI_LOG(DEBUG, "successfully enrolled with controller %s", ctrl->url);
 
         ziti_config cfg = {0};
-        cfg.controller_url = strdup(enroll_req->ecfg->zej->controller);
+        cfg.controller_url = strdup(enroll_req->ecfg->zej.controller);
         cfg.id.ca = strdup(enroll_req->ecfg->CA);
         cfg.id.key = strdup(enroll_req->ecfg->private_key);
 

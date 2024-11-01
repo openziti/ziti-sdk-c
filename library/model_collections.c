@@ -106,7 +106,7 @@ void *model_map_set(model_map *m, const char *key, const void *val) {
 }
 
 void *model_map_set_key(model_map *m, const void *key, size_t key_len, const void *val) {
-    uint32_t kh;
+    uint32_t kh = 0;
     struct model_map_entry *el = NULL;
     if (m->impl == NULL) {
         m->impl = calloc(1, sizeof(struct model_impl_s));
@@ -238,7 +238,7 @@ const void *model_map_it_key_s(model_map_iter it, size_t *key_len) {
 
 long model_map_it_lkey(model_map_iter it) {
     const long *keyp = model_map_it_key_s(it, NULL);
-    return *keyp;
+    return keyp ? *keyp : 0;
 }
 
 void *model_map_it_value(model_map_iter it) {
@@ -254,7 +254,6 @@ model_map_iter model_map_it_remove(model_map_iter it) {
     if (it != NULL) {
         struct model_map_entry *e = (struct model_map_entry *) it;
         model_map *m = e->_map;
-        m->impl->size--;
         LIST_REMOVE(e, _next);
         LIST_REMOVE(e, _tnext);
         if (e->key_len > sizeof(e->key)) {
@@ -262,6 +261,11 @@ model_map_iter model_map_it_remove(model_map_iter it) {
         }
         free(e);
 
+        if (m->impl == NULL) {
+            return NULL;
+        }
+
+        m->impl->size--;
         // last element removed
         if (m->impl->size == 0) {
             FREE(m->impl->table);

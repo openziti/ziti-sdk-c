@@ -72,19 +72,28 @@ XX(message, model_string, none, message, __VA_ARGS__) \
 XX(cause, model_string, map, cause, __VA_ARGS__)
 
 #define ZITI_ENROLLMENT_JWT_HEADER_MODEL(XX, ...) \
-XX(alg, model_string, none, alg, __VA_ARGS__) \
+XX(alg, jwt_sig_method, none, alg, __VA_ARGS__) \
 XX(typ, model_string, none, typ, __VA_ARGS__)
 
+#define JWT_SIG_METHOD(XX, ...) \
+XX(RS256, __VA_ARGS__) \
+XX(ES256, __VA_ARGS__) \
+XX(ES384, __VA_ARGS__) \
+XX(ES512, __VA_ARGS__)
+
+
 #define ZITI_ENROLLMENT_METHOD(XX, ...) \
+XX(network, __VA_ARGS__)                \
 XX(ott, __VA_ARGS__)                    \
-XX(ottca, __VA_ARGS__)                    \
+XX(ottca, __VA_ARGS__)                  \
 XX(ca, __VA_ARGS__)
 
 
 #define ZITI_ENROLLMENT_JWT_MODEL(XX, ...) \
 XX(method, ziti_enrollment_method, none, em, __VA_ARGS__) \
-XX(controller, model_string, none, iss, __VA_ARGS__) \
-XX(subject, model_string, none, sub, __VA_ARGS__) \
+XX(controller, model_string, none, iss, __VA_ARGS__)      \
+XX(subject, model_string, none, sub, __VA_ARGS__)         \
+XX(controllers, model_string, list, ctrls, __VA_ARGS__)   \
 XX(token, model_string, none, jti, __VA_ARGS__)
 
 #define ZITI_SDK_INFO_MODEL(XX, ...) \
@@ -212,6 +221,7 @@ extern "C" {
 #endif
 
 DECLARE_ENUM(ziti_enrollment_method, ZITI_ENROLLMENT_METHOD)
+DECLARE_ENUM(jwt_sig_method, JWT_SIG_METHOD)
 
 DECLARE_MODEL(ziti_identity_data, ZITI_IDENTITY_DATA_MODEL)
 

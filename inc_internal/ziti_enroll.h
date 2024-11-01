@@ -30,8 +30,8 @@ typedef struct enroll_cfg_s {
     ziti_enroll_cb external_enroll_cb;
     void *external_enroll_ctx;
 
-    ziti_enrollment_jwt_header *zejh;
-    ziti_enrollment_jwt *zej;
+    ziti_enrollment_jwt_header jwt_header;
+    ziti_enrollment_jwt zej;
     char *raw_jwt;
     unsigned char *jwt_signing_input;
     char *jwt_sig;
