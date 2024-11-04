@@ -201,8 +201,8 @@ void *model_map_remove_key(model_map *m, const void *key, size_t key_len) {
 void model_map_clear(model_map *map, void (*val_free_func)(void *)) {
     if (map->impl == NULL) { return; }
 
-    while (!LIST_EMPTY(&map->impl->entries)) {
-        struct model_map_entry *el = LIST_FIRST(&map->impl->entries);
+    struct model_map_entry *el;
+    while ((el = LIST_FIRST(&map->impl->entries)) != NULL) {
         LIST_REMOVE(el, _next);
         if (el->key_len > sizeof(el->key)) {
             FREE(el->key);
@@ -276,7 +276,7 @@ model_map_iter model_map_it_remove(model_map_iter it) {
 }
 
 struct model_list_el {
-    void *el;
+    const void *el;
     model_list *l;
     LIST_ENTRY(model_list_el) _next;
 };
@@ -293,13 +293,13 @@ size_t model_list_size(const model_list *l) {
 
 void *model_list_pop(model_list *l) {
     model_list_iter it = model_list_iterator(l);
-    void *el = model_list_it_element(it);
+    const void *el = model_list_it_element(it);
     model_list_it_remove(it);
 
-    return el;
+    return (void*)el;
 }
 
-void model_list_push(model_list *l, void *el) {
+void model_list_push(model_list *l, const void *el) {
     if (l->impl == NULL) {
         l->impl = calloc(1, sizeof(*l->impl));
         LIST_INSERT_HEAD(&l->impl->elements, &l->impl->end, _next);
@@ -311,7 +311,7 @@ void model_list_push(model_list *l, void *el) {
     LIST_INSERT_HEAD(&l->impl->elements, entry, _next);
 }
 
-void model_list_append(model_list *l, void *el) {
+void model_list_append(model_list *l, const void *el) {
     if (l->impl == NULL) {
         l->impl = calloc(1, sizeof(*l->impl));
         LIST_INSERT_HEAD(&l->impl->elements, &l->impl->end, _next);
@@ -324,7 +324,7 @@ void model_list_append(model_list *l, void *el) {
     LIST_INSERT_BEFORE(&l->impl->end, entry, _next);
 }
 
-void *model_list_head(const model_list *l) {
+const void *model_list_head(const model_list *l) {
     if (l->impl == NULL) { return NULL; }
 
     struct model_list_el *el = LIST_FIRST(&l->impl->elements);
@@ -379,7 +379,7 @@ model_list_iter model_list_it_remove(model_list_iter it) {
     return next;
 }
 
-void *model_list_it_element(model_list_iter it) {
+const void *model_list_it_element(model_list_iter it) {
     if (it == NULL) { return NULL; }
 
     return ((struct model_list_el *) it)->el;
