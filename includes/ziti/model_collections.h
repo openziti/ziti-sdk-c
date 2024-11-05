@@ -87,15 +87,15 @@ typedef void *model_list_iter;
 ZITI_FUNC size_t model_list_size(const model_list *l);
 
 // insert at the head
-ZITI_FUNC void model_list_push (model_list *l, void *el);
+ZITI_FUNC void model_list_push(model_list *l, const void *el);
 
 // append to the end
-ZITI_FUNC void model_list_append(model_list *l, void *el);
+ZITI_FUNC void model_list_append(model_list *l, const void *el);
 
 // remove from the head
 ZITI_FUNC void *model_list_pop(model_list *l);
 
-ZITI_FUNC void *model_list_head(const model_list *l);
+ZITI_FUNC const void *model_list_head(const model_list *l);
 
 ZITI_FUNC void model_list_clear(model_list *l, void (*clear_f)(void *));
 
@@ -105,7 +105,7 @@ ZITI_FUNC model_list_iter model_list_it_next(model_list_iter it);
 
 ZITI_FUNC model_list_iter model_list_it_remove(model_list_iter it);
 
-ZITI_FUNC void *model_list_it_element(model_list_iter it);
+ZITI_FUNC const void *model_list_it_element(model_list_iter it);
 
 #define MODEL_LIST_FOR(it, m) for(model_list_iter it = model_list_iterator(&(m)); (it) != NULL; (it) = model_list_it_next(it))
 

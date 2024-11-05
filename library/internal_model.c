@@ -49,6 +49,8 @@ typedef uint32_t in_addr_t;
 
 IMPL_ENUM(ziti_enrollment_method, ZITI_ENROLLMENT_METHOD)
 
+IMPL_ENUM(jwt_sig_method, JWT_SIG_METHOD)
+
 IMPL_ENUM(ziti_ctrl_cap, ZITI_CTRL_CAP_ENUM)
 
 IMPL_MODEL(ziti_posture_query, ZITI_POSTURE_QUERY_MODEL)
@@ -114,6 +116,8 @@ IMPL_MODEL(ziti_auth_req, ZITI_AUTH_REQ)
 IMPL_MODEL(ziti_enrollment_jwt_header, ZITI_ENROLLMENT_JWT_HEADER_MODEL)
 
 IMPL_MODEL(ziti_enrollment_jwt, ZITI_ENROLLMENT_JWT_MODEL)
+
+IMPL_MODEL(ziti_network_jwt, ZITI_NETWORK_JWT)
 
 IMPL_MODEL(ziti_enrollment_resp, ZITI_ENROLLMENT_RESP)
 

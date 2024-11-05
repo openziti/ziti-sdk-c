@@ -816,6 +816,13 @@ void ziti_ctrl_list_ext_jwt_signers(
     ctrl_paging_req(resp);
 }
 
+void ziti_ctrl_get_network_jwt(ziti_controller *ctrl, void(*cb)(ziti_network_jwt_array, const ziti_error*, void *ctx), void *ctx) {
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_network_jwt_array_from_json, ctx);
+    resp->paging = true;
+    resp->base_path = "/network-jwts";
+    ctrl_paging_req(resp);
+}
+
 void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, cb, ctx)) return;
 
