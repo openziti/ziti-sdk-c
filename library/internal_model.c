@@ -117,6 +117,8 @@ IMPL_MODEL(ziti_enrollment_jwt_header, ZITI_ENROLLMENT_JWT_HEADER_MODEL)
 
 IMPL_MODEL(ziti_enrollment_jwt, ZITI_ENROLLMENT_JWT_MODEL)
 
+IMPL_MODEL(ziti_network_jwt, ZITI_NETWORK_JWT)
+
 IMPL_MODEL(ziti_enrollment_resp, ZITI_ENROLLMENT_RESP)
 
 IMPL_MODEL(ziti_pr_mac_req, ZITI_PR_MAC_REQ)

@@ -26,6 +26,7 @@ add_executable(integ-tests
         main.cpp
         legacy-auth.cpp
         oidc-tests.cpp
+        ctrl_tests.cpp
 )
 target_include_directories(integ-tests
         PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include
@@ -41,7 +42,7 @@ else ()
     set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
 endif ()
 
-set(ZITI_CLI_VER "v1.1.5" CACHE STRING "ziti version for integration tests")
+set(ZITI_CLI_VER "main" CACHE STRING "ziti version for integration tests")
 add_custom_target(ziti-cli ALL
         COMMAND ${CMAKE_COMMAND} -E env GOBIN=${CMAKE_CURRENT_BINARY_DIR}
         ${GOLANG_EXE} install github.com/openziti/ziti/ziti@${ZITI_CLI_VER}
@@ -50,7 +51,7 @@ add_custom_target(ziti-cli ALL
 
 add_custom_target(cleanup-qs
         COMMAND cat -n /etc/hosts
-        COMMAND cat -n ${qs_home}/ctrl.yaml
+        COMMAND cat -n ${qs_home}/ctrl.yaml || true
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${qs_home}"
 )
 

@@ -89,6 +89,10 @@ XX(ottca, __VA_ARGS__)                  \
 XX(ca, __VA_ARGS__)
 
 
+#define ZITI_NETWORK_JWT(XX, ...) \
+XX(name, model_string, none, name, __VA_ARGS__) \
+XX(token, model_string, none, token, __VA_ARGS__)
+
 #define ZITI_ENROLLMENT_JWT_MODEL(XX, ...) \
 XX(method, ziti_enrollment_method, none, em, __VA_ARGS__) \
 XX(controller, model_string, none, iss, __VA_ARGS__)      \
@@ -240,6 +244,8 @@ DECLARE_MODEL(ziti_error, ZITI_ERROR_MODEL)
 DECLARE_MODEL(ziti_enrollment_jwt_header, ZITI_ENROLLMENT_JWT_HEADER_MODEL)
 
 DECLARE_MODEL(ziti_enrollment_jwt, ZITI_ENROLLMENT_JWT_MODEL)
+
+DECLARE_MODEL(ziti_network_jwt, ZITI_NETWORK_JWT)
 
 DECLARE_MODEL(ziti_enrollment_resp, ZITI_ENROLLMENT_RESP)
 

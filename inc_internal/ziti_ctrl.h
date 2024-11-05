@@ -94,6 +94,10 @@ void ziti_ctrl_list_ext_jwt_signers(ziti_controller *ctrl,
                                     void (*cb)(ziti_jwt_signer_array, const ziti_error*, void*),
                                     void *ctx);
 
+void ziti_ctrl_get_network_jwt(ziti_controller *ctrl,
+                               void(*cb)(ziti_network_jwt_array, const ziti_error*, void *ctx),
+                               void *ctx);
+
 void ziti_ctrl_list_controllers(ziti_controller *ctrl,
                                 void (*cb)(ziti_controller_detail_array, const ziti_error*, void *ctx), void *ctx);
 

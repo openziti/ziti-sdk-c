@@ -117,7 +117,7 @@ TEST_CASE("it remove last element", "[model]") {
 
 TEST_CASE("list tests", "[model]") {
     model_list l = {nullptr};
-    void *msg;
+    const void *msg;
 
 
     CHECK(model_list_size(&l) == 0);
