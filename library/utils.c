@@ -621,7 +621,7 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
 
     if (strcmp(path, "-") == 0) {
         if (*content == NULL) {
-            ZITI_LOG(ERROR, "buffer is required when reading stdin");
+            ZITI_LOG(VERBOSE, "buffer is required when reading stdin");
             return UV_EINVAL;
         }
         content_buf = *content;
@@ -630,13 +630,13 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
     } else {
         rc = uv_fs_stat(NULL, &fs_req, path, NULL);
         if (rc) {
-            ZITI_LOG(DEBUG, "path[%.*s..] - %d/%s", 16, path, rc, uv_strerror(rc));
+            ZITI_LOG(VERBOSE, "path[%.*s..] - %d/%s", 16, path, rc, uv_strerror(rc));
             return rc;
         }
         content_len = fs_req.statbuf.st_size;
         if (*content != NULL) {
             if (*size > 0 && *size < content_len) {
-                ZITI_LOG(ERROR, "%s - not enough space to read", path);
+                ZITI_LOG(VERBOSE, "%s - not enough space to read", path);
                 return UV_ENOMEM;
             }
             content_buf = *content;
@@ -647,7 +647,7 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
     }
 
     if (f < 0) {
-        ZITI_LOG(ERROR, "%s - %s", path, strerror(errno));
+        ZITI_LOG(VERBOSE, "%s - %s", path, strerror(errno));
         return rc;
     }
 
