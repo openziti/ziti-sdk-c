@@ -630,7 +630,7 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
     } else {
         rc = uv_fs_stat(NULL, &fs_req, path, NULL);
         if (rc) {
-            ZITI_LOG(ERROR, "%s - %s", path, uv_strerror(rc));
+            ZITI_LOG(DEBUG, "path[%.*s..] - %d/%s", 16, path, rc, uv_strerror(rc));
             return rc;
         }
         content_len = fs_req.statbuf.st_size;
@@ -671,7 +671,7 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size) {
     uv_fs_close(NULL, &fs_req, f, NULL);
     content_buf[read] = 0;
     *content = content_buf;
-    *size = read;
+    if (size) *size = read;
 
     return ZITI_OK;
 }

@@ -60,7 +60,6 @@ SET(ZITI_SRC_FILES
         config.c
         errors.c
         ziti_enroll.c
-        jwt.c
         ziti_ctrl.c
         model_support.c
         internal_model.c

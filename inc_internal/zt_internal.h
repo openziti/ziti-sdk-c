@@ -24,7 +24,6 @@
 #include "buffer.h"
 #include "pool.h"
 #include "message.h"
-#include "ziti_enroll.h"
 #include "ziti_ctrl.h"
 #include "metrics.h"
 #include "edge_protocol.h"
@@ -375,9 +374,7 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
 
 void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter);
 
-int load_jwt(const char *filename, struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header *, ziti_enrollment_jwt *);
-
-int load_jwt_content(struct enroll_cfg_s *ecfg, ziti_enrollment_jwt_header *jwt_header, ziti_enrollment_jwt *zej);
+int parse_enrollment_jwt(const char *token, ziti_enrollment_jwt_header *zejh, ziti_enrollment_jwt *zej, char **sig, size_t *sig_len);
 
 int load_tls(ziti_config *cfg, tls_context **tls, struct tls_credentials *creds);
 
@@ -399,8 +396,6 @@ void hexify(const uint8_t *bin, size_t bin_len, char sep, char **buf);
 void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
 
 void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data);
-
-void ziti_set_api_session(ziti_context ztx, ziti_api_session *session);
 
 void ziti_set_unauthenticated(ziti_context ztx);
 

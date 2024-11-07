@@ -974,12 +974,14 @@ ziti_ctrl_enroll(ziti_controller *ctrl, ziti_enrollment_method method, const cha
         strcat(path, token);
     }
 
+    char *csr_copy = strdup(csr);
+
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_enrollment_resp_ptr_from_json, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", path, ctrl_enroll_http_cb, resp);
     if (csr) {
         tlsuv_http_req_header(req, "Content-Type", "text/plain");
-        tlsuv_http_req_data(req, csr, strlen(csr), NULL);
+        tlsuv_http_req_data(req, csr_copy, strlen(csr_copy), free_body_cb);
     } else {
         tlsuv_http_req_header(req, "Content-Type", "application/json");
         if (name != NULL) {
