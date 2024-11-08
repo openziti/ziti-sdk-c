@@ -373,12 +373,9 @@ static void enroll_ca(struct ziti_enroll_req *er) {
 }
 
 static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *err, void *req) {
-    PREPF(ziti, ziti_errorstr);
-
-    int ziti_err;
     struct ziti_enroll_req *er = req;
     if (err != NULL) {
-        ZITI_LOG(ERROR, "failed to fetch CA bundle: %s", err->message);
+        ZITI_LOG_ERROR(ERROR, err, "failed to fetch CA bundle");
         complete_request(er, (int)err->err);
         return;
     }
@@ -433,8 +430,7 @@ static void enroll_cb(ziti_enrollment_resp *resp, const ziti_error *err, void *e
     struct ziti_enroll_req *er = enroll_ctx;
 
     if (err != NULL) {
-        ZITI_LOG(ERROR, "failed to enroll with controller: %s %s (%s)",
-                 er->controller.url, err->code, err->message);
+        ZITI_LOG_ERROR(ERROR, err, "failed to enroll with controller: %s", er->controller.url);
         complete_request(er, (int)err->err);
         return;
     }

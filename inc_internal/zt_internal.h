@@ -46,6 +46,11 @@
 #define DST_HOSTNAME "dst_hostname"
 #define DST_PORT "dst_port"
 
+#define ZITI_LOG_ERROR(level, e, fmt, ...) do{\
+const char *reason = model_map_get(&e->cause, "reason");\
+ZITI_LOG(level, fmt " %s[%s] reason[%s]", ##__VA_ARGS__, e->code, e->message, reason ? reason : ""); \
+} while(0)
+
 
 extern const char *APP_ID;
 extern const char *APP_VERSION;

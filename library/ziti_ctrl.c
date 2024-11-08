@@ -966,20 +966,19 @@ ziti_ctrl_enroll(ziti_controller *ctrl, ziti_enrollment_method method, const cha
                  const char *name,
                  void (*cb)(ziti_enrollment_resp *, const ziti_error *, void *),
                  void *ctx) {
-    char path[1024];
-    snprintf(path, sizeof(path), "/enroll?method=%s", ziti_enrollment_methods.name(method));
-
-    if (token) {
-        strcat(path, "&token=");
-        strcat(path, token);
-    }
-
-    char *csr_copy = strdup(csr);
+    char *csr_copy = csr ? strdup(csr) : NULL;
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_enrollment_resp_ptr_from_json, ctx);
 
-    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", path, ctrl_enroll_http_cb, resp);
-    if (csr) {
+    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/enroll", ctrl_enroll_http_cb, resp);
+    size_t q_count = method == ziti_enrollment_method_ca ? 1 : 2;
+    const tlsuv_http_pair q_params[] = {
+        { "method", ziti_enrollment_methods.name(method)},
+        { "token",  token },
+    };
+    tlsuv_http_req_query(req, q_count, q_params);
+
+    if (csr_copy) {
         tlsuv_http_req_header(req, "Content-Type", "text/plain");
         tlsuv_http_req_data(req, csr_copy, strlen(csr_copy), free_body_cb);
     } else {
