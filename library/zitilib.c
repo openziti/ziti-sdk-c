@@ -1171,9 +1171,9 @@ static void do_enroll(ziti_enroll_opts *opts, future_t *f, uv_loop_t *loop) {
 
 int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert, char **id_json, unsigned long *id_json_len) {
     ziti_enroll_opts opts = {
-            .jwt_content = jwt,
-            .enroll_key = key,
-            .enroll_cert = cert,
+            .token = jwt,
+            .key = key,
+            .cert = cert,
     };
     future_t *f = schedule_on_loop((loop_work_cb) do_enroll, &opts, true);
     void *result;

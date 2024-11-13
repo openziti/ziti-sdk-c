@@ -262,7 +262,7 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
     model_map_clear(&ztx->ctrl_details, (_free_f)free_ziti_controller_detail_ptr);
     for (int i = 0; ctrls[i] != NULL; i++) {
         const ziti_controller_detail *detail = ctrls[i];
-        api_address *api = model_list_head(&detail->apis.edge);
+        const api_address *api = model_list_head(&detail->apis.edge);
         ZTX_LOG(INFO, "controller[%s/%s] url[%s]", detail->name, detail->id, FIELD_OR_ELSE(api, url, "<unset>"));
 
         model_map_set(&ztx->ctrl_details, detail->id, detail);

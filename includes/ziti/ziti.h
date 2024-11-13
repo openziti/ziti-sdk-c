@@ -29,6 +29,7 @@
 #include "ziti_model.h"
 #include "enums.h"
 #include "ziti_events.h"
+#include "enroll.h"
 
 
 #ifdef __cplusplus
@@ -250,15 +251,6 @@ typedef struct ziti_options_s {
     ziti_event_cb event_cb;
 } ziti_options;
 
-typedef struct ziti_enroll_opts_s {
-    const char *jwt;
-    const char *enroll_key;
-    const char *enroll_cert;
-    const char *enroll_name;
-    const char *jwt_content;
-    bool use_keychain; // use keychain if generating new key
-} ziti_enroll_opts;
-
 typedef struct ziti_dial_opts_s {
     /** enable stream semantics
      * this allows SDK to consolidate multiple write requests to lower overlay overhead
@@ -368,24 +360,7 @@ typedef ziti_conn_cb ziti_listen_cb;
  */
 typedef void (*ziti_write_cb)(ziti_connection conn, ssize_t status, void *write_ctx);
 
-/**
- * @brief Callback called after ziti_enroll() is complete.
- *
- * This callback is invoked on the conclusion of the ziti_enroll() function. The result of the
- * ziti_enroll() function may be an error condition so it is important to verify the provided
- * status code in this callback.
- *
- * This callback also receives a Ziti identity json salvo if the enrollment was successful. 
- * This identity should be persisted into a file, and used in subsequent calls to ziti_load_config().
- *
- * @param cfg identity config object, NULL if enrollment fails for any reason
- * @param status enrollment success or error code
- * @param err_message description of error, or NULL if enrollment succeeded
- * @param enroll_ctx additional context to be passed into #ziti_enroll_cb callback
- *
- * @see ziti_enroll(), ZITI_ERRORS
- */
-typedef void (*ziti_enroll_cb)(const ziti_config *cfg, int status, const char *err_message, void *enroll_ctx);
+
 
 /**
  * @brief Callback called after connection was closed.
@@ -395,24 +370,6 @@ typedef void (*ziti_enroll_cb)(const ziti_config *cfg, int status, const char *e
  * @see ziti_close()
  */
 typedef void (*ziti_close_cb)(ziti_connection conn);
-
-/**
- * @brief Performs a Ziti enrollment.
- * 
- * This function is used to enroll a Ziti Edge identity. The Ziti C SDK is based around the [libuv](http://libuv.org/)
- * library and maintains similar semantics.  This function is used to setup the chain of callbacks
- * needed once the loop begins to execute.
- *
- * @param opt enrollment options
- * @param loop libuv event loop
- * @param enroll_cb callback to be called when enrollment is complete
- * @param enroll_ctx additional context to be passed into #ziti_enroll_cb callback
-
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
- */
-ZITI_FUNC
-extern int ziti_enroll(const ziti_enroll_opts *opts, uv_loop_t *loop,
-                       ziti_enroll_cb enroll_cb, void *enroll_ctx);
 
 /**
  * Provide app information to Ziti SDK.

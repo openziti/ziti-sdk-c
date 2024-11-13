@@ -38,17 +38,17 @@ TEST_CASE("cltr-network-jwt", "[integ]") {
 
     uv_run(l, UV_RUN_DEFAULT);
 
-    CHECK(result.err == "");
+    CHECK(result.err.empty());
     CHECK(result.arr != nullptr);
     CHECK(result.arr[0] != nullptr);
     CHECK_THAT(result.arr[0]->name, Catch::Matchers::Equals("default"));
 
     ziti_enrollment_jwt_header header{};
     ziti_enrollment_jwt jwt{};
-    enroll_cfg ecfg {
-        .raw_jwt = (char*)result.arr[0]->token
-    };
-    load_jwt_content(&ecfg, &header, &jwt);
+
+    char * sig;
+    size_t siglen;
+    parse_enrollment_jwt((char*)result.arr[0]->token, &header, &jwt, &sig, &siglen);
 
     CHECK(header.alg == jwt_sig_method_RS256);
     CHECK(jwt.method == ziti_enrollment_method_network);
@@ -60,8 +60,7 @@ TEST_CASE("cltr-network-jwt", "[integ]") {
     tls->free_ctx(tls);
     free_ziti_network_jwt_array(&result.arr);
     free_ziti_config(&cfg);
-    free(ecfg.jwt_signing_input);
-    free(ecfg.jwt_sig);
+    free(sig);
 }
 
 TEST_CASE("ctrl-token-auth", "[integ]") {
