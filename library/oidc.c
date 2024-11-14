@@ -184,6 +184,10 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
 int oidc_client_set_cfg(oidc_client_t *clt, const ziti_jwt_signer *cfg) {
     free_ziti_jwt_signer(&clt->signer_cfg);
 
+    if (cfg->provider_url == NULL) {
+        return ZITI_INVALID_CONFIG;
+    }
+
     clt->signer_cfg.client_id = cfg->client_id ? strdup(cfg->client_id) : NULL;
     clt->signer_cfg.provider_url = strdup(cfg->provider_url);
     clt->signer_cfg.audience = cfg->audience ? strdup(cfg->audience) : NULL;
