@@ -18,6 +18,7 @@
 #define ZITI_SDK_OIDC_H
 
 #include <uv.h>
+#include <ziti/ziti_model.h>
 #include "tlsuv/http.h"
 
 #ifdef __cplusplus
@@ -43,7 +44,7 @@ struct oidc_client_s {
     void *data;
     tlsuv_http_t http;
 
-    const struct ziti_jwt_signer_s *signer_cfg;
+    ziti_jwt_signer signer_cfg;
 
     oidc_auth_mode mode;
     oidc_config_cb config_cb;
