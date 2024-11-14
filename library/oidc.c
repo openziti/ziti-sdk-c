@@ -24,7 +24,6 @@
 #include "utils.h"
 #include "ziti/errors.h"
 #include "ziti/ziti_buffer.h"
-#include "ziti/ziti_model.h"
 #include "buffer.h"
 
 #define code_len 40
@@ -154,7 +153,10 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
                      const ziti_jwt_signer *cfg, tls_context *tls) {
     assert(clt != NULL);
     assert(cfg != NULL);
-    assert(cfg->provider_url != NULL);
+    if (cfg->provider_url == NULL) {
+        ZITI_LOG(ERROR, "ziti_jwt_signer.provider_url is missing");
+        return ZITI_INVALID_CONFIG;
+    }
 
     clt->config = NULL;
     clt->tokens = NULL;
@@ -164,9 +166,8 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
     clt->link_cb = NULL;
     clt->link_ctx = NULL;
 
-    clt->signer_cfg = cfg;
-
-    int rc = tlsuv_http_init(loop, &clt->http, clt->signer_cfg->provider_url);
+    tlsuv_http_init(loop, &clt->http, cfg->provider_url);
+    int rc = oidc_client_set_cfg(clt, cfg);
     if (rc != 0) {
         return rc;
     }
@@ -181,9 +182,20 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
 }
 
 int oidc_client_set_cfg(oidc_client_t *clt, const ziti_jwt_signer *cfg) {
-    clt->signer_cfg = cfg;
-    tlsuv_http_set_url(&clt->http, clt->signer_cfg->provider_url);
-    return 0;
+    free_ziti_jwt_signer(&clt->signer_cfg);
+
+    if (cfg->provider_url == NULL) {
+        return ZITI_INVALID_CONFIG;
+    }
+
+    clt->signer_cfg.client_id = cfg->client_id ? strdup(cfg->client_id) : NULL;
+    clt->signer_cfg.provider_url = strdup(cfg->provider_url);
+    clt->signer_cfg.audience = cfg->audience ? strdup(cfg->audience) : NULL;
+    const char *scope;
+    MODEL_LIST_FOREACH(scope, cfg->scopes) {
+        model_list_append(&clt->signer_cfg.scopes, strdup(scope));
+    }
+    return tlsuv_http_set_url(&clt->http, clt->signer_cfg.provider_url);
 }
 
 void oidc_client_set_link_cb(oidc_client_t *clt, oidc_ext_link_cb cb, void *ctx) {
@@ -213,6 +225,9 @@ static void internal_config_cb(oidc_req *req, int status, json_object *resp) {
                     break;
                 }
             }
+        }
+        if (clt->token_cb != NULL) {
+            oidc_client_start(clt, clt->token_cb);
         }
     }
 
@@ -264,6 +279,7 @@ static void failed_auth_req(auth_req *req, const char *error) {
 
 static void parse_token_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
     auth_req *req = r->data;
+    assert(req);
     int err;
     if (len > 0) {
         if (req->json_parser) {
@@ -312,7 +328,7 @@ static void request_token(auth_req *req, const char *auth_code) {
             {"code",          auth_code},
             {"grant_type",    "authorization_code"},
             {"code_verifier", req->code_verifier},
-            {"client_id",     req->clt->signer_cfg->client_id},
+            {"client_id",     req->clt->signer_cfg.client_id},
             {"redirect_uri", default_cb_url},
     };
     tlsuv_http_req_form(token_req, sizeof(form) / sizeof(form[0]), form);
@@ -622,13 +638,16 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
 
 int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     clt->token_cb = cb;
+    if (clt->config == NULL) {
+        return 0;
+    }
     ZITI_LOG(DEBUG, "requesting authentication code");
     auth_req *req = new_auth_req(clt);
 
     string_buf_t *scopes_buf = new_string_buf();
     string_buf_append(scopes_buf, default_scope);
     const char *s;
-    MODEL_LIST_FOREACH(s, clt->signer_cfg->scopes) {
+    MODEL_LIST_FOREACH(s, clt->signer_cfg.scopes) {
         string_buf_append(scopes_buf, " ");
         string_buf_append(scopes_buf, s);
     }
@@ -636,14 +655,14 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     char *scope = string_buf_to_string(scopes_buf, NULL);
     const char *path = get_endpoint_path(clt, "authorization_endpoint");
     tlsuv_http_pair query[] = {
-            {"client_id",             clt->signer_cfg->client_id},
+            {"client_id",             clt->signer_cfg.client_id},
             {"scope",                 scope},
             {"response_type",         "code"},
             {"redirect_uri",          default_cb_url},
             {"code_challenge",        req->code_challenge},
             {"code_challenge_method", "S256"},
-            {"audience",              clt->signer_cfg->audience ?
-                                      clt->signer_cfg->audience : "openziti"},
+            {"audience",              clt->signer_cfg.audience ?
+                                      clt->signer_cfg.audience : "openziti"},
     };
 
     if (clt->mode == oidc_external) {
@@ -731,6 +750,7 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
     tlsuv_http_close(&clt->http, http_close_cb);
     uv_close((uv_handle_t *) clt->timer, (uv_close_cb) free);
     clt->timer = NULL;
+    free_ziti_jwt_signer(&clt->signer_cfg);
     return 0;
 }
 
@@ -792,10 +812,9 @@ static void refresh_time_cb(uv_timer_t *t) {
     struct json_object *tok = json_object_object_get(clt->tokens, "refresh_token");
     oidc_req *refresh_req = new_oidc_req(clt, refresh_cb, clt);
 
-
     tlsuv_http_req_t *req = tlsuv_http_req(&clt->http, "POST", path, parse_cb, refresh_req);
     tlsuv_http_req_header(req, "Authorization",
-                          get_basic_auth_header(clt->signer_cfg->client_id));
+                          get_basic_auth_header(clt->signer_cfg.client_id));
     const char *refresher = json_object_get_string(tok);
     if (clt->refresh_grant && strcmp(clt->refresh_grant, TOKEN_EXCHANGE_GRANT) == 0) {
         tlsuv_http_req_form(req, 4, (tlsuv_http_pair[]) {
@@ -806,7 +825,7 @@ static void refresh_time_cb(uv_timer_t *t) {
         });
     } else {
         tlsuv_http_req_form(req, 3, (tlsuv_http_pair[]) {
-                {"client_id",     clt->signer_cfg->client_id},
+                {"client_id",     clt->signer_cfg.client_id},
                 {"grant_type",    "refresh_token"},
                 {"refresh_token", refresher},
         });
