@@ -214,6 +214,9 @@ static void internal_config_cb(oidc_req *req, int status, json_object *resp) {
                 }
             }
         }
+        if (clt->token_cb != NULL) {
+            oidc_client_start(clt, clt->token_cb);
+        }
     }
 
     if (clt->config_cb) {
@@ -622,6 +625,9 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
 
 int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     clt->token_cb = cb;
+    if (clt->config == NULL) {
+        return 0;
+    }
     ZITI_LOG(DEBUG, "requesting authentication code");
     auth_req *req = new_auth_req(clt);
 
