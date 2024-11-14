@@ -593,14 +593,17 @@ int ziti_use_ext_jwt_signer(ziti_context ztx, const char *name) {
     if (ztx == NULL || name == NULL)
         return ZITI_INVALID_STATE;
 
-    ziti_jwt_signer *signer = model_map_remove(&ztx->ext_signers, name);
+    if (ztx->ext_auth) {
+        ZTX_LOG(WARN, "OIDC is already configured");
+        return ZITI_INVALID_STATE;
+    }
+
+    const ziti_jwt_signer *signer = model_map_get(&ztx->ext_signers, name);
     if (signer == NULL) {
         return ZITI_NOT_FOUND;
     }
 
-    free_ziti_jwt_signer_ptr(ztx->config.id.oidc);
-    ztx->config.id.oidc = signer;
-    ztx_init_external_auth(ztx);
+    ztx_init_external_auth(ztx, signer);
     return ZITI_OK;
 }
 
@@ -1783,7 +1786,7 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         }
 
         if (ztx->id_creds.key == NULL) {
-            ztx_init_external_auth(ztx);
+            ztx_init_external_auth(ztx, ztx->config.id.oidc);
             return;
         }
 

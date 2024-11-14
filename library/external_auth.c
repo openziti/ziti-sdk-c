@@ -59,8 +59,7 @@ static void ext_signers_cb(ziti_jwt_signer_array signers, const ziti_error *err,
     free(signers);
 }
 
-void ztx_init_external_auth(ziti_context ztx) {
-    ziti_jwt_signer *oidc_cfg = ztx->config.id.oidc;
+void ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg) {
     if (oidc_cfg != NULL) {
         NEWP(oidc, oidc_client_t);
         oidc_client_init(ztx->loop, oidc, oidc_cfg, NULL);
