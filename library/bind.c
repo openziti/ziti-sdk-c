@@ -106,43 +106,52 @@ static struct binding_s* new_binding(struct ziti_conn *conn) {
     return b;
 }
 
-static void process_bindings(struct ziti_conn *conn) {
+void process_bindings(struct ziti_conn *conn) {
+
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
     size_t target = MIN(conn->server.max_bindings, model_map_size(&ztx->channels));
 
-    const char *url;
     for(int idx = 0; conn->server.routers && conn->server.routers[idx]; idx++) {
         ziti_edge_router *er = conn->server.routers[idx];
+        CONN_LOG(DEBUG, "checking router[%s]", er->name);
+        ziti_channel_t *ch = ztx_get_channel(ztx, er);
+        if (ch == NULL || !ziti_channel_is_connected(ch)) {
+            CONN_LOG(DEBUG, "router[%s] is not connected", er->name);
+            continue;
+        }
 
-        url = er->protocols.tls;
-        if(url != NULL) {
-            CONN_LOG(DEBUG, "checking %s[%s]", er->name, url);
-            ziti_channel_t *ch = model_map_get(&ztx->channels, url);
-            if (ch == NULL || !ziti_channel_is_connected(ch)) {
-                CONN_LOG(DEBUG, "%s[%s] is not connected", er->name, url);
-                continue;
-            }
-
-            struct binding_s *b = model_map_get(&conn->server.bindings, url);
-            if (b != NULL) {
-                if (b->bound) {
-                    target--;
-                } else {
-                    start_binding(b, ch);
-                    target--;
-                }
-            } else  {
-                b = new_binding(conn);
-                model_map_set(&conn->server.bindings, url, b);
+        struct binding_s *b = model_map_get(&conn->server.bindings, er->name);
+        if (b != NULL) {
+            if (b->bound) {
+                target--;
+            } else {
                 start_binding(b, ch);
                 target--;
             }
+        } else {
+            b = new_binding(conn);
+            model_map_set(&conn->server.bindings, er->name, b);
+            start_binding(b, ch);
+            target--;
         }
+
         if (target <= 0) break;
     }
+}
 
-    schedule_rebind(conn, target > 0);
+void update_bindings(ziti_connection conn) {
+    if (conn->type != Server) return;
+
+    int target = MIN(conn->server.max_bindings, model_map_size(&conn->ziti_ctx->channels));
+    if (target > model_map_size(&conn->server.bindings)) {
+        process_bindings(conn);
+    }
+
+    // if we're still below target we may need to refresh service.routers
+    if (target > model_map_size(&conn->server.bindings)) {
+        schedule_rebind(conn, true);
+    }
 }
 
 static void schedule_rebind(struct ziti_conn *conn, bool now) {
@@ -475,12 +484,12 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
     b->waiter = NULL;
     if (code == ZITI_OK && msg->header.content == ContentTypeStateConnected) {
         CONN_LOG(TRACE, "received msg ct[%X] code[%d]", msg->header.content, code);
-        CONN_LOG(DEBUG, "bound successfully over ch[%s]", b->ch->url);
+        CONN_LOG(DEBUG, "bound successfully on router[%s]", b->ch->name);
         ziti_channel_add_receiver(b->ch, conn->conn_id, b,
                                   (void (*)(void *, message *, int)) on_message);
         b->bound = true;
     } else {
-        CONN_LOG(DEBUG, "failed to bind over ch[%s]", b->ch->url);
+        CONN_LOG(DEBUG, "failed to bind on router[%s]", b->ch->name);
         b->bound = false;
         ziti_channel_rem_receiver(b->ch, conn->conn_id);
         b->ch = NULL;
@@ -585,7 +594,7 @@ void on_unbind(void *ctx, message *m, int code) {
 
     if (m) {
         CONN_LOG(TRACE, "binding[%s] unbind resp: ct[%X] %.*s",
-                 b->ch->url, m->header.content, m->header.body_len, m->body);
+                 b->ch->name, m->header.content, m->header.body_len, m->body);
         int32_t conn_id = htole32(b->conn->conn_id);
         hdr_t headers[] = {
                 {

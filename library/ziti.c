@@ -21,6 +21,7 @@
 #include "zt_internal.h"
 #include <auth_queries.h>
 #include <uv.h>
+#include <assert.h>
 
 #if _WIN32
 
@@ -1552,6 +1553,8 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_c
     }
 
     if (status == EdgeRouterConnected) {
+        uint32_t conn_id;
+        ziti_connection conn;
         // move all ids to a list
         model_list ids = {0};
         MODEL_MAP_FOR(it, ztx->waiting_connections) {
@@ -1562,12 +1565,18 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_c
 
         model_list_iter id_it = model_list_iterator(&ids);
         while(id_it != NULL) {
-            uint32_t conn_id = (uint32_t)(uintptr_t)model_list_it_element(id_it);
-            ziti_connection conn = model_map_getl(&ztx->connections, (long)conn_id);
+            conn_id = (uint32_t)(uintptr_t)model_list_it_element(id_it);
+            conn = model_map_getl(&ztx->connections, (long)conn_id);
             if (conn != NULL) {
                 process_connect(conn, NULL);
             }
             id_it = model_list_it_remove(id_it);
+        }
+
+        MODEL_MAP_FOREACH(conn_id, conn, &ztx->connections) {
+            if (conn->type == Server) {
+                update_bindings(conn);
+            }
         }
     }
 }
@@ -1822,4 +1831,18 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
             break;
     }
     ztx->auth_state = state;
+}
+
+ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er) {
+    assert(ztx);
+    assert(er);
+
+    model_string url = er->protocols.tls;
+    if (url == NULL) return NULL;
+    
+    ziti_channel_t *ch = (ziti_channel_t *) model_map_get(&ztx->channels, url);
+    if (ch == NULL) {
+        ziti_channel_connect(ztx, er->name, url);
+    }
+    return ch;
 }
