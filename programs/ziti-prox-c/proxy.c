@@ -167,6 +167,19 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     ZITI_LOG(INFO, "exiting");
 }
 
+static int dump(void *out, const char *fmt, ...) {
+    char line[1024];
+    uv_udp_t *u = out;
+    const struct sockaddr *addr = u->data;
+    va_list args;
+    va_start(args, fmt);
+    int len = vsnprintf(line, sizeof(line), fmt, args);
+    va_end(args);
+
+    uv_buf_t b = uv_buf_init(line, len);
+    return uv_udp_try_send(u, &b, 1, addr);
+}
+
 static void debug_dump(struct proxy_app_ctx *app_ctx) {
     printf("==== listeners ====\n");
     MODEL_MAP_FOR(it, app_ctx->listeners) {
@@ -649,6 +662,7 @@ static void stopper_alloc(uv_handle_t *h, size_t i, uv_buf_t *pBuf) {
 }
 
 #define PROXC_CMD(XX, ...) \
+XX(dump, __VA_ARGS__)      \
 XX(stop, __VA_ARGS__)      \
 XX(enable, __VA_ARGS__)    \
 XX(disable, __VA_ARGS__)   \
@@ -670,6 +684,10 @@ static void stopper_recv(uv_udp_t *u, ssize_t len,
     switch (cmd) {
         case ProxyCmd_Unknown:
             ZITI_LOG(WARN, "unknown cmd: %.*s", (int)len, b->base);
+            break;
+        case ProxyCmd_dump:
+            u->data = addr;
+            ziti_dump(app_ctx.ziti, dump, u);
             break;
         case ProxyCmd_stop:
             process_stop(u->loop, &app_ctx);

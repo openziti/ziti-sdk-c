@@ -823,6 +823,11 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         if (conn->type == Server) {
             printer(ctx, "conn[%d]: server service[%s] terminators[%ld]\n",
                     conn->conn_id, conn->service, model_map_size(&conn->server.bindings));
+            const char *n;
+            void *b;
+            MODEL_MAP_FOREACH(n, b, &conn->server.bindings) {
+                printer(ctx, "\t binding[%s]\n", n);
+            }
 
             model_map_iter it = model_map_iterator(&conn->server.children);
             while (it != NULL) {
