@@ -18,6 +18,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <varargs.h>
 
 #include <utils.h>
 #include <ziti/ziti.h>
