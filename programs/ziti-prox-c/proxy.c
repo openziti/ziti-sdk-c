@@ -16,9 +16,9 @@
 #include <uv.h>
 #include <tlsuv/http.h>
 
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
-#include <varargs.h>
 
 #include <utils.h>
 #include <ziti/ziti.h>
