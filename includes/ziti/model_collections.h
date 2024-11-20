@@ -70,15 +70,21 @@ ZITI_FUNC model_map_iter model_map_it_remove(model_map_iter it);
 #define var(x, y) _var(x,y)
 #define _var(x,y) x ## y
 
+#ifdef __cplusplus
+#define z_typeof(v) decltype(v)
+#else
+#define z_typeof(v) __typeof__(v)
+#endif
+
 #define MODEL_MAP_FOREACH(k, v, map) \
 model_map_iter line_var(e);\
 for (line_var(e) = model_map_iterator(map), \
-     (k) = (__typeof__(k))(uintptr_t)model_map_it_key(line_var(e)), \
-     (v) = (__typeof__(v))model_map_it_value(line_var(e)),          \
+     (k) = (z_typeof(k))(uintptr_t)model_map_it_key(line_var(e)), \
+     (v) = (z_typeof(v))model_map_it_value(line_var(e)),          \
      line_var(e) = model_map_it_next(line_var(e)); \
      (k) != NULL; \
-     (k) = (__typeof__(k))(uintptr_t)model_map_it_key(line_var(e)), \
-     (v) = (__typeof__(v))model_map_it_value(line_var(e)),          \
+     (k) = (z_typeof(k))(uintptr_t)model_map_it_key(line_var(e)), \
+     (v) = (z_typeof(v))model_map_it_value(line_var(e)),          \
      line_var(e) = model_map_it_next(line_var(e))\
      )
 
