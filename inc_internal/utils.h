@@ -50,10 +50,12 @@ extern "C" {
 
 #endif
 
+#ifndef z_typeof
 #if defined(_MSC_VER)
 #define z_typeof(x) __typeof__(x)
 #else
 #define z_typeof(x) typeof(x)
+#endif
 #endif
 extern const char *ziti_get_build_version(int verbose);
 
