@@ -245,6 +245,8 @@ void ziti_channel_add_receiver(ziti_channel_t *ch, uint32_t id, void *receiver, 
 }
 
 void ziti_channel_rem_receiver(ziti_channel_t *ch, uint32_t id) {
+    if (ch == NULL) return;
+
     struct msg_receiver *r = model_map_removel(&ch->receivers, id);
 
     if (r) {
@@ -443,7 +445,7 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
 }
 
 void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter) {
-    if (waiter) {
+    if (ch && waiter) {
         struct waiter_s *w = model_map_removel(&ch->waiters, (long)waiter->seq);
         assert(w == waiter);
         free(waiter);

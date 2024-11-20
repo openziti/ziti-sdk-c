@@ -55,6 +55,9 @@ typedef struct {
     uint8_t *value;
 } hdr_t;
 
+#define var_header(id, var) header(id, sizeof(var), &(var))
+#define header(id, l, v) (hdr_t){ .header_id = (uint32_t)(id), .length = (uint32_t)(l), .value = (uint8_t*)(v)}
+
 typedef struct message_s {
     TAILQ_ENTRY(message_s) _next;
 

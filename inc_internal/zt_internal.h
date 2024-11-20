@@ -390,7 +390,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg);
 
 void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, int status);
 
-
+void update_bindings(struct ziti_conn *conn);
 const char *ziti_conn_state(ziti_connection conn);
 
 int establish_crypto(ziti_connection conn, message *msg);
@@ -423,6 +423,7 @@ void process_connect(struct ziti_conn *conn, ziti_session *session);
 void ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer);
 
 void ztx_auth_state_cb(void *, ziti_auth_state , const void *);
+ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er);
 
 #ifdef __cplusplus
 }
