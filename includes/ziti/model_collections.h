@@ -70,13 +70,29 @@ ZITI_FUNC model_map_iter model_map_it_remove(model_map_iter it);
 #define var(x, y) _var(x,y)
 #define _var(x,y) x ## y
 
+#ifdef __cplusplus
+#define z_typeof(v) decltype(v)
+#else
+#define z_typeof(v) __typeof__(v)
+#endif
+
 #define MODEL_MAP_FOREACH(k, v, map) \
 model_map_iter line_var(e);\
-for (line_var(e) = model_map_iterator(map), (k) = model_map_it_key(line_var(e)), (v) = model_map_it_value(line_var(e)); \
-     line_var(e) != NULL; \
-     line_var(e) = model_map_it_next(line_var(e)), (k) = model_map_it_key(line_var(e)), (v) = model_map_it_value(line_var(e)))
+for (line_var(e) = model_map_iterator(map), \
+     (k) = (z_typeof(k))(uintptr_t)model_map_it_key(line_var(e)), \
+     (v) = (z_typeof(v))model_map_it_value(line_var(e)),          \
+     line_var(e) = model_map_it_next(line_var(e)); \
+     (k) != NULL; \
+     (k) = (z_typeof(k))(uintptr_t)model_map_it_key(line_var(e)), \
+     (v) = (z_typeof(v))model_map_it_value(line_var(e)),          \
+     line_var(e) = model_map_it_next(line_var(e))\
+     )
 
-#define MODEL_MAP_FOR(it, m) for(model_map_iter it = model_map_iterator(&(m)); (it) != NULL; (it) = model_map_it_next(it))
+#define MODEL_MAP_FOR(it, m)\
+model_map_iter line_var(itn) = model_map_it_next(model_map_iterator(&(m)));\
+for(model_map_iter it = model_map_iterator(&(m));                          \
+    (it) != NULL;           \
+    (it) = line_var(itn), line_var(itn) = model_map_it_next(line_var(itn)))
 
 typedef struct model_list_s {
     struct model_list_impl_s *impl;
@@ -107,7 +123,10 @@ ZITI_FUNC model_list_iter model_list_it_remove(model_list_iter it);
 
 ZITI_FUNC const void *model_list_it_element(model_list_iter it);
 
-#define MODEL_LIST_FOR(it, m) for(model_list_iter it = model_list_iterator(&(m)); (it) != NULL; (it) = model_list_it_next(it))
+#define MODEL_LIST_FOR(it, m)\
+model_list_iter line_var(itn) = model_list_it_next(model_list_iterator(&(m))); \
+for(model_list_iter it = model_list_iterator(&(m)); (it) != NULL;              \
+(it) = line_var(itn), line_var(itn) = model_list_it_next(line_var(itn)))
 
 
 #define MODEL_LIST_FOREACH(el, list) \

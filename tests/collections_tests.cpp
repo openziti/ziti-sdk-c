@@ -15,10 +15,8 @@
 #include "catch2_includes.hpp"
 
 #include <ziti/model_collections.h>
-#include <string.h>
+#include <cstring>
 
-
-static const int buckets = 64;
 
 TEST_CASE("model bench", "[model]") {
     char key[128];
@@ -183,4 +181,55 @@ TEST_CASE("map-non-terminated-string-keys", "[model]") {
     }
 
     model_map_clear(&m, nullptr);
+}
+
+TEST_CASE("map remove inside foreach", "[model]") {
+    model_map m = {nullptr};
+    char key[128];
+    for (int i = 0; i < 50; i++) {
+        snprintf(key, sizeof(key), "%d", i);
+        model_map_set(&m, key, strdup(key));
+    }
+
+    const char *k;
+    const char *val;
+    MODEL_MAP_FOREACH(k, val, &m) {
+        model_map_remove(&m, k);
+    }
+
+    REQUIRE(m.impl == nullptr);
+}
+
+TEST_CASE("map remove it inside foreach", "[model]") {
+    model_map m = {nullptr};
+    char key[128];
+    for (int i = 0; i < 50; i++) {
+        snprintf(key, sizeof(key), "%d", i);
+        model_map_set(&m, key, strdup(key));
+    }
+
+    MODEL_MAP_FOR(it, m) {
+        auto val = model_map_it_value(it);
+        model_map_it_remove(it);
+        free(val);
+    }
+
+    REQUIRE(m.impl == nullptr);
+}
+
+TEST_CASE("list remove inside foreach", "[model]") {
+    model_list l{};
+    char key[128];
+    for (int i = 0; i < 50; i++) {
+        snprintf(key, sizeof(key), "%d", i);
+        model_list_append(&l, strdup(key));
+    }
+
+    MODEL_LIST_FOR(it, l) {
+        auto val = model_list_it_element(it);
+        model_list_it_remove(it);
+        free((void*)val);
+    }
+
+    REQUIRE(l.impl == nullptr);
 }
