@@ -69,7 +69,7 @@ XX(err, model_number, none, , __VA_ARGS__) \
 XX(http_code, model_number, none, , __VA_ARGS__) \
 XX(code, model_string, none, code, __VA_ARGS__) \
 XX(message, model_string, none, message, __VA_ARGS__) \
-XX(cause, model_string, map, cause, __VA_ARGS__)
+XX(cause, json, map, cause, __VA_ARGS__)
 
 #define ZITI_ENROLLMENT_JWT_HEADER_MODEL(XX, ...) \
 XX(alg, jwt_sig_method, none, alg, __VA_ARGS__) \

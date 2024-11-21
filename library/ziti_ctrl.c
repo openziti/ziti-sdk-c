@@ -432,7 +432,16 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
             string_buf_free(resp->content_proc);
             FREE(resp->content_proc);
         } else {
-            ziti_error_ptr_from_json(&error, json_object_object_get(resp->content, "error"));
+            json_object *err_json = json_object_object_get(resp->content, "error");
+            if (err_json) {
+                error = alloc_ziti_error();
+                if (ziti_error_from_json(error, err_json) != 0) {
+                    ZITI_LOG(ERROR, "failed to parse ziti_error: %s", json_object_get_string(err_json));
+                    error->err = ZITI_WTF;
+                    error->code = strdup("UNEXPECTED_ERROR");
+                    error->message = strdup(json_object_get_string(err_json));
+                }
+            }
             resp_meta meta = {0};
             resp_meta_from_json(&meta, json_object_object_get(resp->content, "meta"));
             json_object *data = json_object_object_get(resp->content, "data");
