@@ -105,6 +105,11 @@ is offline or did not respond to the request*/
 #define ZITI_INVALID_AUTHENTICATOR_CERT                         (-33)
 /** returned when attempting to set the current certificate and key being used by a ztx when it could not be parsed/applied */
 #define ZITI_INVALID_CERT_KEY_PAIR                              (-34)
+/** returned when attempting to enroll the same key/cert with an external CA as has already been used */
+#define ZITI_CERT_IN_USE                                        (-35)
+/** returned when enrolling a key/cert with an external CA and no CA matches the cert */
+#define ZITI_CERT_FAILED_VALIDATION                             (-36)
+
 
 // Put new error codes here and add error string in error.c
 
