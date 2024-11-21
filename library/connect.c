@@ -26,8 +26,10 @@ static const int MAX_CONNECT_RETRY = 3;
 #define CONN_CAP_MASK (EDGE_MULTIPART | EDGE_TRACE_UUID | EDGE_STREAM)
 #define BOOL_STR(v) ((v) ? "Y" : "N")
 
-#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%u.%u/%.*s/%s] " fmt, \
-conn->ziti_ctx->id, conn->conn_id, (int)sizeof(conn->marker), conn->marker, conn_state_str[conn->state], ##__VA_ARGS__)
+#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%u.%u/%.*s/%s](%s) " fmt, \
+conn->ziti_ctx->id, conn->conn_id, (int)sizeof(conn->marker),                 \
+conn->marker, conn_state_str[conn->state], conn->service,                     \
+##__VA_ARGS__)
 
 
 #define DEFAULT_DIAL_OPTS (ziti_dial_opts){ \

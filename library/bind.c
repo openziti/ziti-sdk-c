@@ -28,7 +28,9 @@
 #define REBIND_DELAY 1000
 #define REFRESH_DELAY (60 * 5 * 1000)
 
-#define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "server[%u.%u] " fmt, conn->ziti_ctx->id, conn->conn_id, ##__VA_ARGS__)
+#define CONN_LOG(lvl, fmt, ...) \
+ZITI_LOG(lvl, "server[%u.%u](%s) " fmt, \
+conn->ziti_ctx->id, conn->conn_id, conn->service, ##__VA_ARGS__)
 
 struct binding_s {
     struct ziti_conn *conn;
@@ -113,6 +115,9 @@ static struct binding_s* new_binding(struct ziti_conn *conn) {
 }
 
 void process_bindings(struct ziti_conn *conn) {
+    if (conn->server.token == NULL) {
+        return;
+    }
 
     struct ziti_ctx *ztx = conn->ziti_ctx;
 

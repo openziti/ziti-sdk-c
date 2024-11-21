@@ -132,7 +132,7 @@ for(model_list_iter it = model_list_iterator(&(m)); (it) != NULL;              \
 #define MODEL_LIST_FOREACH(el, list) \
 model_list_iter line_var(it);    \
 for(line_var(it) = model_list_iterator((model_list*)&(list)); \
-line_var(it) != NULL && ((el) = model_list_it_element(line_var(it)), true);                                 \
+line_var(it) != NULL && ((el) = (z_typeof(el))model_list_it_element(line_var(it)), true);                                 \
 line_var(it) = model_list_it_next(line_var(it)))
 
 #ifdef __cplusplus
