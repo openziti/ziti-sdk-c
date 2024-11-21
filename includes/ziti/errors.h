@@ -35,9 +35,9 @@ extern "C" {
 #define ZITI_CONFIG_NOT_FOUND                                   (-1)
 /** The provided JWT was not found */
 #define ZITI_JWT_NOT_FOUND                                      (-2)
-/** The provided JWT is not accepted by controller */
+/** The provided JWT is not accepted by the controller */
 #define ZITI_JWT_INVALID                                        (-3)
-/** The provided JWT has invalid format */
+/** The provided JWT has an invalid format */
 #define ZITI_JWT_INVALID_FORMAT                                 (-4)
 /** PKCS7/ASN.1 parsing failed */
 #define ZITI_PKCS7_ASN1_PARSING_FAILED                          (-5)
@@ -49,7 +49,7 @@ extern "C" {
 #define ZITI_ENROLLMENT_METHOD_UNSUPPORTED                      (-8)
 /** enrollment method requires client certificate */
 #define ZITI_ENROLLMENT_CERTIFICATE_REQUIRED                    (-9)
-/** Attempt to generate an private key failed */
+/** Attempt to generate a private key failed */
 #define ZITI_KEY_GENERATION_FAILED                              (-10)
 /** Attempt to load TLS key failed */
 #define ZITI_KEY_LOAD_FAILED                                    (-11)
@@ -79,7 +79,7 @@ is offline or did not respond to the request*/
 #define ZITI_TIMEOUT                                            (-20)
 /** The connection has been closed abnormally. */
 #define ZITI_CONNABORT                                          (-21)
-/** SDK detected invalid state, most likely caaused by improper use. */
+/** SDK detected invalid state, most likely caused by improper use. */
 #define ZITI_INVALID_STATE                                      (-22)
 /** SDK detected invalid cryptographic state of Ziti connection */
 #define ZITI_CRYPTO_FAIL                                        (-23)
@@ -105,6 +105,11 @@ is offline or did not respond to the request*/
 #define ZITI_INVALID_AUTHENTICATOR_CERT                         (-33)
 /** returned when attempting to set the current certificate and key being used by a ztx when it could not be parsed/applied */
 #define ZITI_INVALID_CERT_KEY_PAIR                              (-34)
+/** returned when attempting to enroll the same key/cert with an external CA that has already been used */
+#define ZITI_CERT_IN_USE                                        (-35)
+/** returned when enrolling a key/cert with an external CA and no CA matches the cert */
+#define ZITI_CERT_FAILED_VALIDATION                             (-36)
+
 
 // Put new error codes here and add error string in error.c
 

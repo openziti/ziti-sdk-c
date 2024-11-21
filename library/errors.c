@@ -49,7 +49,9 @@
     XX(PARTIALLY_AUTHENTICATED, "api session is partially authenticated, waiting for auth query resolution")               \
     XX(INVALID_AUTHENTICATOR_TYPE, "the authenticator could not be extended as it is the incorrect type")                  \
     XX(INVALID_AUTHENTICATOR_CERT, "the authenticator could not be extended as the current client certificate does not match") \
-    XX(INVALID_CERT_KEY_PAIR, "the active certificate and key could not be set, invalid pair, or could not parse") \
+    XX(INVALID_CERT_KEY_PAIR, "the active certificate and key could not be set, invalid pair, or could not parse")         \
+    XX(CERT_IN_USE,"the provided certificate already in use")       \
+    XX(CERT_FAILED_VALIDATION, "the provided key/cert are invalid") \
     XX(WTF, "WTF: programming error")
 
 
