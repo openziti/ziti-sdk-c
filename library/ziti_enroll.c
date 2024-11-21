@@ -127,7 +127,6 @@ int ziti_enroll(const ziti_enroll_opts *opts, uv_loop_t *loop,
 
     if (opts->token == NULL && opts->url == NULL) {
         ZITI_LOG(ERROR, "enrollment JWT or verifiable controller URL is required");
-        enroll_cb(NULL, ZITI_INVALID_STATE, "enrollment JWT or verifiable controller URL is required", enroll_ctx);
         return ZITI_JWT_INVALID;
     }
 
