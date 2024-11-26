@@ -109,6 +109,8 @@ is offline or did not respond to the request*/
 #define ZITI_CERT_IN_USE                                        (-35)
 /** returned when enrolling a key/cert with an external CA and no CA matches the cert */
 #define ZITI_CERT_FAILED_VALIDATION                             (-36)
+/** returned when the certificate doesn't have an externalId") \*/
+#define ZITI_MISSING_CERT_CLAIM                                 (-37)
 
 
 // Put new error codes here and add error string in error.c
