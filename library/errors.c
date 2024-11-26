@@ -52,6 +52,7 @@
     XX(INVALID_CERT_KEY_PAIR, "the active certificate and key could not be set, invalid pair, or could not parse")         \
     XX(CERT_IN_USE,"the provided certificate already in use")       \
     XX(CERT_FAILED_VALIDATION, "the provided key/cert are invalid") \
+    XX(MISSING_CERT_CLAIM, "he certificate is expected to contain an externalId but none was not found") \
     XX(WTF, "WTF: programming error")
 
 
