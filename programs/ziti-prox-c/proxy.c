@@ -22,6 +22,7 @@
 
 #include <utils.h>
 #include <ziti/ziti.h>
+#include "proxy.h"
 
 #if(_WIN32)
 #define strsignal(s) "_windows_unimplemented_"
@@ -102,10 +103,6 @@ static int process_args(int argc, char *argv[]);
 
 void mfa_auth_event_handler(ziti_context ztx);
 void ext_auth_event_handler(ziti_context ztx);
-
-int main(int argc, char *argv[]) {
-    process_args(argc, argv);
-}
 
 static void close_server_cb(uv_handle_t *h) {
     struct listener *l = h->data;
@@ -554,7 +551,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     }
 }
 
-char *pxoxystrndup(const char *s, int n);
+char *pxoxystrndup(const char *s, size_t n);
 
 const char *my_configs[] = {
         "all", NULL
@@ -703,7 +700,61 @@ static void stopper_recv(uv_udp_t *u, ssize_t len,
     }
 }
 
-void run(int argc, char **argv) {
+static int add_binding(const char *spec, bool udp) {
+    int errors = 0;
+    model_list args = {0};
+    str_split(spec, ":", &args);
+    size_t args_len = model_list_size(&args);
+    if (args_len < 2) {
+        fprintf(stderr, "-b|--bind|-B|--bind-udp option should be <service:host:port>\n");
+        errors++;
+        goto done;
+    }
+
+    model_list_iter it = model_list_iterator(&args);
+    NEWP(b, struct binding);
+    b->service_name = (char*)model_list_it_element(it);
+    it = model_list_it_remove(it);
+
+    if (model_list_size(&args) > 1) {
+        char *host = (char*)model_list_it_element(it);
+        if (strlen(host) == 0) {
+            host = "localhost";
+        }
+        it = model_list_it_next(it);
+        char *port = (char*)model_list_it_element(it);
+        struct addrinfo hints = {
+            .ai_socktype = udp ? SOCK_DGRAM : SOCK_STREAM
+        };
+        int rc = getaddrinfo(host, port, &hints, &b->addr);
+        if (rc != 0) {
+            errors++;
+            fprintf(stderr, "failed to resolve %s:%s for service[%s] binding", host, port, b->service_name);
+        }
+        model_map_set(&app_ctx.bindings, b->service_name, b);
+    }
+done:
+    model_list_clear(&args, free);
+    return errors;
+}
+
+static void set_proxy(const char *proxy_url) {
+    struct tlsuv_url_s url;
+    tlsuv_parse_url(&url, proxy_url);
+    char host[128], port[6];
+    snprintf(host, sizeof(host), "%.*s", (int)url.hostname_len, url.hostname);
+    snprintf(port, sizeof(port), "%d", url.port);
+    tlsuv_connector_t *proxy = tlsuv_new_proxy_connector(tlsuv_PROXY_HTTP, host, port);
+    if (url.username) {
+        char user[128], passwd[128];
+        snprintf(user, sizeof(user), "%.*s", (int)url.username_len, url.username);
+        snprintf(passwd, sizeof(passwd), "%.*s", (int)url.password_len, url.password);
+        proxy->set_auth(proxy, tlsuv_PROXY_BASIC, user, passwd);
+    }
+    tlsuv_set_global_connector(proxy);
+}
+
+int run_proxy(struct run_opts *opts) {
 
     PREPF(uv, uv_strerror);
 
@@ -711,7 +762,7 @@ void run(int argc, char **argv) {
     uv_loop_init(loop);
     global_loop = loop;
 
-    ziti_log_init(global_loop, ZITI_LOG_DEFAULT_LEVEL, NULL);
+    ziti_log_init(global_loop, opts->debug, NULL);
 
     // test shutting down by sending a UDP packet
     uv_udp_t stopper;
@@ -722,10 +773,12 @@ void run(int argc, char **argv) {
     rc = uv_udp_recv_start(&stopper, stopper_alloc, stopper_recv);
     uv_unref((uv_handle_t *) &stopper);
 
-    for (int i = 0; i < argc; i++) {
+    if (opts->proxy) set_proxy(opts->proxy);
 
-        char *p = strchr(argv[i], ':');
-        char *service_name = pxoxystrndup(argv[i], p - argv[i]);
+    const char* intercept;
+    MODEL_LIST_FOREACH(intercept, opts->intercepts) {
+        char *p = strchr(intercept, ':');
+        char *service_name = pxoxystrndup(intercept, p - intercept);
 
         NEWP(l, struct listener);
         l->service_name = service_name;
@@ -739,12 +792,20 @@ void run(int argc, char **argv) {
         model_map_set(&app_ctx.listeners, service_name, l);
     }
 
+    const char *binding;
+    MODEL_LIST_FOREACH(binding, opts->bindings) {
+        add_binding(binding, false);
+    }
+    MODEL_LIST_FOREACH(binding, opts->udp_bindings) {
+        add_binding(binding, true);
+    }
+
     ziti_config cfg;
 
-    ziti_load_config(&cfg, config);
+    ziti_load_config(&cfg, opts->identity);
     ziti_context_init(&app_ctx.ziti, &cfg);
 
-    ziti_options opts = {
+    ziti_options zopts = {
             .events = -1,
             .api_page_size = 25,
             .event_cb = on_ziti_event,
@@ -753,7 +814,7 @@ void run(int argc, char **argv) {
             .config_types = my_configs,
             .metrics_type = INSTANT,
     };
-    ziti_context_set_options(app_ctx.ziti, &opts);
+    ziti_context_set_options(app_ctx.ziti, &zopts);
 
     ziti_context_run(app_ctx.ziti, loop);
 
@@ -799,206 +860,7 @@ void run(int argc, char **argv) {
     exit(excode);
 }
 
-#define COMMAND_LINE_IMPLEMENTATION
-
-#include <commandline.h>
-#include <getopt.h>
-#include <stdbool.h>
-
-CommandLine main_cmd;
-#define GLOBAL_FLAGS "[--debug=level|-d[ddd]] [--config|-c=<path>] "
-
-typedef struct tlsuv_url tlsuv_url;
-int run_opts(int argc, char **argv) {
-    static struct option long_options[] = {
-        {"debug",    optional_argument, NULL, 'd'},
-        {"config",   required_argument, NULL, 'c'},
-        {"metrics",  optional_argument, NULL, 'm'},
-        {"bind",     required_argument, NULL, 'b'},
-        {"bind-udp", required_argument, NULL, 'B'},
-        {"proxy",    required_argument, NULL, 'p'},
-        {NULL, 0,                       NULL, 0}
-    };
-
-    int c, option_index, errors = 0;
-    int debug_level = 1;
-    bool debug_set = false;
-
-    optind = 0;
-
-    while ((c = getopt_long(argc, argv, "b:B:c:d:m:p:",
-                            long_options, &option_index)) != -1) {
-        switch (c) {
-            case 'd':
-                debug_set = true;
-                if (optarg) {
-                    debug_level = (int) strtol(optarg, NULL, 10);
-                } else {
-                    debug_level++;
-                }
-                break;
-
-            case 'c':
-                config = strdup(optarg);
-                break;
-
-            case 'm':
-                report_metrics = 10;
-                if (optarg) {
-                    report_metrics = (int) strtol(optarg, NULL, 10);
-                }
-                break;
-
-            case 'b':
-            case 'B':
-                if (!optarg) {
-                    fprintf(stderr, "-b|--bind|-B|--bind-udp option requires <service:address> argument\n");
-                    errors++;
-                    break;
-                }
-
-                model_list args = {0};
-                str_split(optarg, ":", &args);
-                size_t args_len = model_list_size(&args);
-                if (args_len < 2) {
-                    fprintf(stderr, "-b|--bind|-B|--bind-udp option should be <service:host:port>\n");
-                    errors++;
-                    break;
-                }
-                model_list_iter it = model_list_iterator(&args);
-                NEWP(b, struct binding);
-                b->service_name = model_list_it_element(it);
-                it = model_list_it_remove(it);
-
-                if (model_list_size(&args) > 1) {
-                    char *host = model_list_it_element(it);
-                    if (strlen(host) == 0) {
-                        host = "localhost";
-                    }
-                    it = model_list_it_next(it);
-                    char *port = model_list_it_element(it);
-                    struct addrinfo hints = {
-                            .ai_socktype = c == 'B' ? SOCK_DGRAM : SOCK_STREAM
-                    };
-                    int rc = getaddrinfo(host, port, &hints, &b->addr);
-                    if (rc != 0) {
-                        errors++;
-                        fprintf(stderr, "failed to resolve %s:%s for service[%s] binding", host, port, b->service_name);
-                    }
-                    model_map_set(&app_ctx.bindings, b->service_name, b);
-                }
-
-                model_list_clear(&args, free);
-                break;
-
-        case 'p': {
-            struct tlsuv_url_s url;
-            tlsuv_parse_url(&url, optarg);
-            char host[128], port[6];
-            snprintf(host, sizeof(host), "%.*s", (int)url.hostname_len, url.hostname);
-            snprintf(port, sizeof(port), "%d", url.port);
-            tlsuv_connector_t *proxy = tlsuv_new_proxy_connector(tlsuv_PROXY_HTTP, host, port);
-            if (url.username) {
-                char user[128], passwd[128];
-                snprintf(user, sizeof(user), "%.*s", (int)url.username_len, url.username);
-                snprintf(passwd, sizeof(passwd), "%.*s", (int)url.password_len, url.password);
-                proxy->set_auth(proxy, tlsuv_PROXY_BASIC, user, passwd);
-            }
-            tlsuv_set_global_connector(proxy);
-            break;
-        }
-                
-        default: {
-            fprintf(stderr, "Unknown option \"%c\"\n", c);
-            errors++;
-            break;
-        }
-        }
-    }
-
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
-
-    if (debug_set) {
-        char level[6];
-        snprintf(level, sizeof(level), "%d", debug_level);
-#if _WIN32
-        SetEnvironmentVariable("ZITI_LOG", level);
-#else
-        setenv("ZITI_LOG", level, 1);
-#endif
-
-    }
-    return optind;
-}
-
-void usage(int argc, char **argv) {
-    commandline_print_usage(&main_cmd, stderr);
-}
-
-static int ver_verbose = 0;
-
-int version_opts(int argc, char **argv) {
-    static struct option long_options[] = {
-            {"verbose", no_argument, NULL, 'v'},
-            {NULL, 0, NULL, 0}
-    };
-
-    int c, option_index, errors = 0;
-    optind = 0;
-
-    while ((c = getopt_long(argc, argv, "v",
-                            long_options, &option_index)) != -1) {
-        switch (c) {
-            case 'v':
-                ver_verbose = 1;
-                break;
-
-            default: {
-                fprintf(stderr, "Unknown option '%c'\n", c);
-                errors++;
-                break;
-            }
-        }
-    }
-
-    if (errors > 0) {
-        commandline_help(stderr);
-        exit(1);
-    }
-
-    return optind;
-}
-
-void version(int argc, char **argv) {
-    printf("%s\n", ziti_get_build_version(ver_verbose));
-}
-
-CommandLine run_cmd = make_command("run", "run proxy", "run <service-name>:port", "run help", run_opts, run);
-CommandLine ver_cmd = make_command("version", "show version", "version", NULL, version_opts, version);
-CommandLine help_cmd = make_command("help", "help", NULL, NULL, NULL, usage);
-CommandLine *main_cmds[] = {
-        &run_cmd,
-        &ver_cmd,
-        &help_cmd,
-        NULL
-};
-
-CommandLine main_cmd = make_command_set("ziti-prox-c",
-                                        "Ziti Proxy",
-                                        GLOBAL_FLAGS
-                                                "<command> [<args>]", "Ziti Proxy",
-                                        NULL, main_cmds);
-
-static int process_args(int argc, char *argv[]) {
-    ziti_set_app_info(main_cmd.name, to_str(ZITI_VERSION));
-    commandline_run(&main_cmd, argc, argv);
-    return 0;
-}
-
-char *pxoxystrndup(const char *s, int n) {
+char *pxoxystrndup(const char *s, size_t n) {
     size_t len = strnlen(s, n);
     char *new = (char *) malloc(len + 1);
     if (new == NULL) {
