@@ -32,12 +32,7 @@
 #define SIGUSR1 10
 #endif
 
-#define MAX_WRITES 16
 
-/* avoid xgress chunking */
-#define MAX_PROXY_PAYLOAD (63*1024)
-
-static char *config = NULL;
 static int report_metrics = -1;
 static uv_timer_t report_timer;
 static uv_timer_t shutdown_timer;
@@ -64,6 +59,7 @@ struct proxy_app_ctx {
     model_map bindings;
     LIST_HEAD(clients, client) clients;
     ziti_context ziti;
+    uv_loop_t *loop;
 };
 
 struct binding {
@@ -78,7 +74,6 @@ struct listener {
     int port;
     uv_tcp_t server;
     struct proxy_app_ctx *app_ctx;
-    //LIST_ENTRY(listener) next;
 };
 
 
@@ -89,17 +84,10 @@ struct client {
     struct sockaddr_in addr;
     char addr_s[32];
     ziti_connection ziti_conn;
-    bool read_done;
-    bool write_done;
     int closed;
-    size_t inb_reqs;
 
     LIST_ENTRY(client) next;
 };
-
-uv_loop_t *global_loop;
-
-static int process_args(int argc, char *argv[]);
 
 void mfa_auth_event_handler(ziti_context ztx);
 void ext_auth_event_handler(ziti_context ztx);
@@ -158,7 +146,7 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     uv_timer_start(&shutdown_timer, shutdown_timer_cb, 5000, 0);
     uv_unref((uv_handle_t *) &shutdown_timer);
 
-    // try to cleanup
+    // try to clean up
     if (app_ctx->ziti)
         ziti_shutdown(app_ctx->ziti);
 
@@ -178,22 +166,22 @@ static int dump(void *out, const char *fmt, ...) {
     return uv_udp_try_send(u, &b, 1, addr);
 }
 
-static void debug_dump(struct proxy_app_ctx *app_ctx) {
-    printf("==== listeners ====\n");
+static void debug_dump(struct proxy_app_ctx *app_ctx,
+        int (*print_fn)(void *, const char *, ...), void *printer) {
+    print_fn(printer, "==== listeners ====\n");
     MODEL_MAP_FOR(it, app_ctx->listeners) {
         struct listener *l = model_map_it_value(it);
-        printf("listening for service[%s] on port[%d]\n", l->service_name, l->port);
+        print_fn(printer, "listening for service[%s] on port[%d]\n", l->service_name, l->port);
     }
 
-    printf("\n==== bindings ====\n");
+    print_fn(printer, "\n==== bindings ====\n");
     MODEL_MAP_FOR(it, app_ctx->bindings) {
         struct binding *b = model_map_it_value(it);
-        char addr[24];
         uv_getnameinfo_t name;
-        uv_getnameinfo(global_loop, &name, NULL, b->addr->ai_addr, NI_NUMERICHOST);
-        printf("bound to service[%s] -> %s:%s\n", b->service_name, name.host, name.service);
+        uv_getnameinfo(app_ctx->loop, &name, NULL, b->addr->ai_addr, NI_NUMERICHOST);
+        print_fn(printer, "bound to service[%s] -> %s:%s\n", b->service_name, name.host, name.service);
     }
-    ziti_dump(app_ctx->ziti, (int (*)(void *, const char *, ...)) fprintf, stdout);
+    ziti_dump(app_ctx->ziti, print_fn, printer);
 }
 
 static void reporter_cb(uv_timer_t *t) {
@@ -215,7 +203,7 @@ static void signal_cb(uv_signal_t *s, int signum) {
             break;
 
         case SIGUSR1:
-            debug_dump(s->data);
+            debug_dump(s->data, (int (*)(void *, const char *, ...)) fprintf, stdout);
             break;
 #ifndef _WIN32
         case SIGUSR2: {
@@ -370,13 +358,14 @@ static void on_ziti_accept(ziti_connection clt, int status) {
 
 static void on_tcp_connect(uv_connect_t *conn_req, int status) {
     ziti_connection clt = conn_req->data;
+
     if (status == 0) {
         ziti_conn_set_data(clt, conn_req->handle);
         ziti_accept(clt, on_ziti_accept, NULL);
     } else {
         struct binding *b = conn_req->handle->data;
         uv_getnameinfo_t name;
-        uv_getnameinfo(global_loop, &name, NULL, b->addr->ai_addr, NI_NUMERICHOST);
+        uv_getnameinfo(conn_req->handle->loop, &name, NULL, b->addr->ai_addr, NI_NUMERICHOST);
         ZITI_LOG(WARN, "failed to establish connection to tcp:%s:%s", name.host, name.service);
         uv_close((uv_handle_t *) conn_req->handle, (uv_close_cb) free);
         ziti_close(clt, NULL);
@@ -386,12 +375,14 @@ static void on_tcp_connect(uv_connect_t *conn_req, int status) {
 
 static void binding_client_cb(ziti_connection srv, ziti_connection clt, int status, const ziti_client_ctx *clt_ctx) {
     struct binding *b = ziti_conn_data(srv);
+    ziti_context ztx = ziti_conn_context(srv);
+    struct proxy_app_ctx *pxy = ziti_app_ctx(ztx);
 
     if (status == ZITI_OK) {
         switch (b->addr->ai_protocol) {
             case IPPROTO_TCP: {
                 NEWP(tcp, uv_tcp_t);
-                uv_tcp_init(global_loop, tcp);
+                uv_tcp_init(pxy->loop, tcp);
                 tcp->data = b;
 
                 NEWP(conn_req, uv_connect_t);
@@ -405,7 +396,7 @@ static void binding_client_cb(ziti_connection srv, ziti_connection clt, int stat
             }
             case IPPROTO_UDP: {
                 NEWP(udp, uv_udp_t);
-                uv_udp_init(global_loop, udp);
+                uv_udp_init(pxy->loop, udp);
                 int rc = uv_udp_connect(udp, b->addr->ai_addr);
                 if (rc != 0) {
                     ZITI_LOG(WARN, "failed to connect UDP handle: %d/%s", rc, uv_strerror(rc));
@@ -566,7 +557,7 @@ struct mfa_work {
 void mfa_response_cb(ziti_context ztx, int status, void *ctx);
 
 void prompt_stdin(char *buffer, size_t buflen) {
-    if (fgets(buffer, buflen, stdin) != 0) {
+    if (fgets(buffer, (int)buflen, stdin) != 0) {
         size_t len = strlen(buffer);
         if (len > 0 && buffer[len - 1] == '\n') {
             buffer[len - 1] = '\0';
@@ -594,7 +585,6 @@ void mfa_prompt(struct mfa_work *mfa_wr) {
 }
 
 void mfa_response_cb(ziti_context ztx, int status, void *ctx) {
-    struct mfa_work *mfa_wr = ctx;
     ZITI_LOG(INFO, "mfa response status: %d", status);
 
     if (status != ZITI_OK) {
@@ -623,8 +613,9 @@ void mfa_auth_event_handler(ziti_context ztx) {
     NEWP(mfa_wr, struct mfa_work);
     mfa_wr->ztx = ztx;
     mfa_wr->w.data = mfa_wr;
+    struct proxy_app_ctx *pxy = ziti_app_ctx(ztx);
 
-    uv_queue_work(global_loop, &mfa_wr->w, mfa_worker, mfa_worker_done);
+    uv_queue_work(pxy->loop, &mfa_wr->w, mfa_worker, mfa_worker_done);
 }
 
 static void ext_auth_prompt(uv_work_t *wr) {
@@ -647,9 +638,11 @@ static void ext_auth_done(uv_work_t *wr, int status) {
 }
 
 void ext_auth_event_handler(ziti_context ztx) {
+    struct proxy_app_ctx *pxy = ziti_app_ctx(ztx);
+
     NEWP(ext_wr, uv_work_t);
     ext_wr->data = ztx;
-    uv_queue_work(global_loop, ext_wr, ext_auth_prompt, ext_auth_done);
+    uv_queue_work(pxy->loop, ext_wr, ext_auth_prompt, ext_auth_done);
 }
 
 static struct proxy_app_ctx app_ctx = {0};
@@ -685,7 +678,7 @@ static void stopper_recv(uv_udp_t *u, ssize_t len,
             break;
         case ProxyCmd_dump:
             u->data = addr;
-            ziti_dump(app_ctx.ziti, dump, u);
+            debug_dump(&app_ctx, dump, u);
             break;
         case ProxyCmd_stop:
             process_stop(u->loop, &app_ctx);
@@ -760,13 +753,16 @@ int run_proxy(struct run_opts *opts) {
 
     NEWP(loop, uv_loop_t);
     uv_loop_init(loop);
-    global_loop = loop;
+    app_ctx.loop = loop;
 
-    ziti_log_init(global_loop, opts->debug, NULL);
+    ziti_log_init(loop, opts->debug, NULL);
 
     // test shutting down by sending a UDP packet
     uv_udp_t stopper;
-    struct sockaddr_in stopper_addr;
+    struct sockaddr_in stopper_addr = {
+            .sin_addr = INADDR_LOOPBACK,
+            .sin_port = htons(12345),
+            .sin_family = AF_INET};
     uv_udp_init(loop, &stopper);
     uv_ip4_addr("127.0.0.1", 12345, &stopper_addr);
     int rc = uv_udp_bind(&stopper, (const struct sockaddr *) &stopper_addr, 0);
