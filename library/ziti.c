@@ -637,6 +637,7 @@ int ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
 static void free_ztx(uv_handle_t *h) {
     ziti_context ztx = h->data;
 
+    model_map_clear(&ztx->ext_signers, (_free_f)free_ziti_jwt_signer_ptr);
     model_map_clear(&ztx->ctrl_details, (_free_f) free_ziti_controller_detail_ptr);
     ziti_auth_query_free(ztx->auth_queries);
     ziti_posture_checks_free(ztx->posture_checks);
@@ -649,10 +650,14 @@ static void free_ztx(uv_handle_t *h) {
     FREE(ztx->session_token);
 
     ziti_ctrl_close(ztx_get_controller(ztx));
-    ztx->tlsCtx->free_ctx(ztx->tlsCtx);
+    if (ztx->tlsCtx) ztx->tlsCtx->free_ctx(ztx->tlsCtx);
     if (ztx->id_creds.cert) {
         ztx->id_creds.cert->free(ztx->id_creds.cert);
     }
+    if (ztx->id_creds.key) {
+        ztx->id_creds.key->free(ztx->id_creds.key);
+    }
+
     free_ziti_config(&ztx->config);
 
     ziti_event_t ev = {0};
@@ -681,6 +686,9 @@ static void shutdown_and_free(ziti_context ztx) {
     grim_reaper(ztx);
     CLOSE_AND_NULL(ztx->prepper);
     CLOSE_AND_NULL(ztx->refresh_timer);
+
+    ztx->tlsCtx->free_ctx(ztx->tlsCtx);
+    ztx->tlsCtx = NULL;
 
     uv_close((uv_handle_t *) &ztx->w_async, free_ztx);
 }
