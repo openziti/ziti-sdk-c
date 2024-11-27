@@ -16,6 +16,15 @@
 #include <utils.h>
 #include <CLI/CLI.hpp>
 
+#if _WIN32
+#include <windows.h>
+#include <shlwapi.h>
+#define basename(p) PathFindFileName(p)
+#else
+#include <libgen.h>
+#endif
+
+
 #include "proxy.h"
 
 class Run: public CLI::App {
