@@ -440,10 +440,12 @@ static void service_check_cb(ziti_context ztx, ziti_service *service, int status
 static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     struct proxy_app_ctx *app_ctx = ziti_app_ctx(ztx);
     switch (event->type) {
-        case ZitiAPIEvent:
-            if (event->api.new_ctrl_address) ZITI_LOG(INFO, "update API URL to %s", event->api.new_ctrl_address);
-            if (event->api.new_ca_bundle) ZITI_LOG(INFO, "update CA bundle to %s", event->api.new_ca_bundle);
+        case ZitiConfigEvent: {
+            char *cfg = ziti_config_to_json(event->cfg.config, 0, NULL);
+            printf("new config:\n%s\n\n", cfg);
+            free(cfg);
             break;
+        }
 
         case ZitiContextEvent:
             if (event->ctx.ctrl_status == ZITI_OK) {

@@ -77,14 +77,5 @@ int ziti_load_config(ziti_config *cfg, const char *cfgstr) {
         return rc;
     }
 
-    if (model_list_size(&cfg->controllers) == 0 && cfg->controller_url == NULL) {
-        return ZITI_INVALID_CONFIG;
-    }
-
-    if (model_list_size(&cfg->controllers) == 0) {
-        model_list_append(&cfg->controllers, (void*)cfg->controller_url);
-        cfg->controller_url = NULL;
-    }
-
     return ZITI_OK;
 }

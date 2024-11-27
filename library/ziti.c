@@ -260,7 +260,9 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
         return;
     }
 
-    model_map_clear(&ztx->ctrl_details, (_free_f)free_ziti_controller_detail_ptr);
+    model_map old_details = ztx->ctrl_details;
+    ztx->ctrl_details = (model_map){};
+
     for (int i = 0; ctrls[i] != NULL; i++) {
         const ziti_controller_detail *detail = ctrls[i];
         const api_address *api = model_list_head(&detail->apis.edge);
@@ -489,9 +491,13 @@ static void on_ctrl_list_change(ziti_context ztx, const model_map *endpoints) {
 static void on_ctrl_redirect(const char *new_addr, void *ctx) {
     ziti_context ztx = ctx;
 
+    FREE(ztx->config.controller_url);
+    ztx->config.controller_url = strdup(new_addr);
     ziti_event_t ev = {
-            .type = ZitiAPIEvent,
-            .api.new_ctrl_address = new_addr,
+            .type = ZitiConfigEvent,
+            .cfg = {
+                    .config = &ztx->config,
+            },
     };
     ziti_send_event(ztx, &ev);
 }
@@ -1445,14 +1451,14 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
             tls_context *new_tls = NULL;
             if (load_tls(&ztx->config, &new_tls, &ztx->id_creds) == 0) {
                 ziti_send_event(ztx, &(ziti_event_t){
-                        .type = ZitiAPIEvent,
-                        .api = {
-                                .new_ca_bundle = new_pem,
+                        .type = ZitiConfigEvent,
+                        .cfg = {
+                                .config = &ztx->config,
                         }
                 });
                 free(old_ca);
                 ztx->tlsCtx = new_tls;
-                ztx_get_controller(ztx)->client->tls = ztx->tlsCtx;
+                tlsuv_http_set_ssl(ztx_get_controller(ztx)->client, ztx->tlsCtx);
                 new_pem = NULL; // owned by ztx->config
             } else {
                 ztx->config.id.ca = old_ca;
@@ -1689,13 +1695,19 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
         ctx->config.cfg_source = strdup(config->cfg_source);
     }
     const char *url;
-    if (model_list_size(&config->controllers) > 0) {
-        MODEL_LIST_FOREACH(url, (config->controllers)) {
-            model_list_append(&ctx->config.controllers, strdup(url));
-        }
-    } else {
-        model_list_append(&ctx->config.controllers, strdup(config->controller_url));
+    if (config->controller_url) {
+        ctx->config.controller_url = strdup(config->controller_url);
     }
+
+    bool found = ctx->config.controller_url == NULL;
+    MODEL_LIST_FOREACH(url, (config->controllers)) {
+        model_list_append(&ctx->config.controllers, strdup(url));
+        found = found || strcmp(ctx->config.controller_url, url) == 0;
+    }
+    if (!found) {
+        model_list_append(&ctx->config.controllers, strdup(ctx->config.controller_url));
+    }
+
     if (config->id.key) ctx->config.id.key = strdup(config->id.key);
     if (config->id.cert) ctx->config.id.cert = strdup(config->id.cert);
     copy_oidc(ctx, config->id.oidc);
