@@ -5,6 +5,9 @@ add_executable(ziti-prox-c proxy.c
 
 
 target_link_libraries(ziti-prox-c PUBLIC ziti CLI11::CLI11)
+if (MSVC)
+    target_link_libraries(ziti-prox-c PUBLIC shlwapi)
+endif (MSVC)
 target_include_directories(ziti-prox-c PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 
 set(ZITI_ARCHIVE_NAME "ziti-prox-c-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}.${archive_sfx}")
