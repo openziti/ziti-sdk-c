@@ -1,24 +1,13 @@
 
-add_executable(ziti-prox-c proxy.c)
-
-FetchContent_Declare(subcommand
-        GIT_REPOSITORY https://github.com/openziti/subcommands.c.git
-        GIT_TAG main
-)
-FetchContent_GetProperties(subcommand)
-if (NOT subcommand_POPULATED)
-    FetchContent_Populate(subcommand)
-endif ()
-add_library(subcommand INTERFACE)
-target_include_directories(subcommand INTERFACE ${subcommand_SOURCE_DIR})
+add_executable(ziti-prox-c proxy.c
+        main.cpp
+        proxy.h)
 
 
-if(WIN32)
-    target_include_directories(ziti-prox-c PRIVATE win32/include)
-    target_sources(ziti-prox-c PRIVATE win32/src/getopt.c)
-endif()
-
-target_link_libraries(ziti-prox-c PUBLIC ziti subcommand)
+target_link_libraries(ziti-prox-c PUBLIC ziti CLI11::CLI11)
+if (MSVC)
+    target_link_libraries(ziti-prox-c PUBLIC shlwapi)
+endif (MSVC)
 target_include_directories(ziti-prox-c PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 
 set(ZITI_ARCHIVE_NAME "ziti-prox-c-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}.${archive_sfx}")
