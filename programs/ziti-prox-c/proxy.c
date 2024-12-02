@@ -802,6 +802,7 @@ int run_proxy(struct run_opts *opts) {
 
     ziti_load_config(&cfg, opts->identity);
     ziti_context_init(&app_ctx.ziti, &cfg);
+    free_ziti_config(&cfg);
 
     ziti_options zopts = {
             .events = -1,

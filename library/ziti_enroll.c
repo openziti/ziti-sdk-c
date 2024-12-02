@@ -12,42 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <ziti/ziti.h>
 #include <uv.h>
-#include <assert.h>
+
+#include <ziti/ziti.h>
 #include "utils.h"
 #include "zt_internal.h"
-
-
-typedef struct enroll_cfg_s {
-
-    ziti_enroll_cb external_enroll_cb;
-    void *external_enroll_ctx;
-
-    ziti_enrollment_jwt_header jwt_header;
-    ziti_enrollment_jwt zej;
-    char *raw_jwt;
-    unsigned char *jwt_signing_input;
-    char *jwt_sig;
-    size_t jwt_sig_len;
-
-    tls_context *tls;
-    ziti_controller *ctrl;
-
-    char *CA;
-
-    bool use_keychain;
-    const char *private_key;
-    tlsuv_private_key_t pk;
-    tlsuv_certificate_t cert;
-    const char *own_cert;
-    const char *name;
-
-    char *csr_pem;
-} enroll_cfg;
 
 
 struct ziti_enroll_req {
