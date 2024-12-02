@@ -157,7 +157,8 @@ static int legacy_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_
 
 static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx) {
     struct legacy_auth_s *auth = ctx;
-    assert(auth->session == NULL);
+    free_ziti_api_session_ptr(auth->session);
+    auth->session = NULL;
 
     int errCode = err ? (int)err->err : ZITI_OK;
     if (session) {
