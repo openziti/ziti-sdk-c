@@ -73,6 +73,7 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
 static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e, void *ctx);
 
 static int ztx_init_controller(ziti_context ztx);
+static void ztx_config_update(ziti_context ztx);
 
 static uint32_t ztx_seq;
 
@@ -259,17 +260,44 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
         ZTX_LOG(WARN, "failed to list HA controllers %s/%s", err->code, err->message);
         return;
     }
+    
+    const char *url;
+    model_map diff = {};
+    MODEL_LIST_FOREACH(url, ztx->config.controllers) {
+        model_map_set(&diff, url, url);
+    }
+    model_list_clear(&ztx->config.controllers, NULL);
 
     model_map old_details = ztx->ctrl_details;
     ztx->ctrl_details = (model_map){};
 
+    bool changed = false;
     for (int i = 0; ctrls[i] != NULL; i++) {
         const ziti_controller_detail *detail = ctrls[i];
         const api_address *api = model_list_head(&detail->apis.edge);
         ZTX_LOG(INFO, "controller[%s/%s] url[%s]", detail->name, detail->id, FIELD_OR_ELSE(api, url, "<unset>"));
 
         model_map_set(&ztx->ctrl_details, detail->id, detail);
+
+        if (api->url) {
+            char *old_url = model_map_remove(&diff, api->url);
+            if (old_url == NULL) {
+                changed = true;
+            } else {
+                free(old_url);
+            }
+
+            model_list_append(&ztx->config.controllers, strdup(api->url));
+        }
     }
+    changed = changed || (model_map_size(&diff) > 0);
+
+    if (changed) {
+        ztx_config_update(ztx);
+    }
+
+    model_map_clear(&diff, free);
+    model_map_clear(&old_details, (void (*)(void *)) free_ziti_controller_detail_ptr);
     free(ctrls);
 }
 
@@ -493,13 +521,7 @@ static void on_ctrl_redirect(const char *new_addr, void *ctx) {
 
     FREE(ztx->config.controller_url);
     ztx->config.controller_url = strdup(new_addr);
-    ziti_event_t ev = {
-            .type = ZitiConfigEvent,
-            .cfg = {
-                    .config = &ztx->config,
-            },
-    };
-    ziti_send_event(ztx, &ev);
+    ztx_config_update(ztx);
 }
 
 static int ztx_init_controller(ziti_context ztx) {
@@ -897,6 +919,15 @@ void ziti_send_event(ziti_context ztx, const ziti_event_t *e) {
     if (ztx->opts.events & e->type) {
         CALL_CB(ztx->opts.event_cb, ztx, e);
     }
+}
+
+void ztx_config_update(ziti_context ztx) {
+    ziti_send_event(ztx, &(ziti_event_t){
+            .type = ZitiConfigEvent,
+            .cfg = {
+                    .config = &ztx->config,
+            }
+    });
 }
 
 static void set_service_flags(ziti_service *s) {
@@ -1450,12 +1481,7 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
 
             tls_context *new_tls = NULL;
             if (load_tls(&ztx->config, &new_tls, &ztx->id_creds) == 0) {
-                ziti_send_event(ztx, &(ziti_event_t){
-                        .type = ZitiConfigEvent,
-                        .cfg = {
-                                .config = &ztx->config,
-                        }
-                });
+                ztx_config_update(ztx);
                 free(old_ca);
                 ztx->tlsCtx = new_tls;
                 tlsuv_http_set_ssl(ztx_get_controller(ztx)->client, ztx->tlsCtx);
