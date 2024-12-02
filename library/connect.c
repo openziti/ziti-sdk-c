@@ -1053,7 +1053,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
 
     req->waiter = NULL;
     if (err != 0 && msg == NULL) {
-        CONN_LOG(ERROR, "failed to %s [%d/%s]", "connect", err, uv_strerror(err));
+        CONN_LOG(ERROR, "failed to %s [%d/%s]", "connect", err, ziti_errorstr(err));
         conn_set_state(conn, Disconnected);
         complete_conn_req(conn, ZITI_CONN_CLOSED);
         return;
