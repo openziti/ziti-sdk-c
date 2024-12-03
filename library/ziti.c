@@ -368,8 +368,6 @@ static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
         ztx->logout = true;
         shutdown_and_free(ztx);
     } else {
-        ztx->tlsCtx->free_ctx(ztx->tlsCtx);
-        ztx->tlsCtx = NULL;
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
     }
 }

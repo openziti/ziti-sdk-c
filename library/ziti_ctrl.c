@@ -241,7 +241,7 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
         CTRL_LOG(INFO, "controller supplied new address[%s]", resp->new_address);
 
         FREE(ctrl->url);
-        ctrl->url = strdup(resp->new_address);
+        ctrl->url = resp->new_address;
         resp->new_address = NULL;
         tlsuv_http_set_url(ctrl->client, ctrl->url);
 

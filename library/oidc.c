@@ -665,15 +665,15 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
                                       clt->signer_cfg.audience : "openziti"},
     };
 
+    int rc = 0;
     if (clt->mode == oidc_external) {
         struct json_object *cfg = (struct json_object *) clt->config;
         struct json_object *auth = json_object_object_get(cfg, "authorization_endpoint");
         start_ext_auth(req, json_object_get_string(auth), sizeof(query)/sizeof(query[0]), query);
-        return 0;
+    } else {
+        tlsuv_http_req_t *http_req = tlsuv_http_req(&clt->http, "POST", path, auth_cb, req);
+        rc = tlsuv_http_req_query(http_req, sizeof(query) / sizeof(query[0]), query);
     }
-
-    tlsuv_http_req_t *http_req = tlsuv_http_req(&clt->http, "POST", path, auth_cb, req);
-    int rc = tlsuv_http_req_query(http_req, sizeof(query)/sizeof(query[0]), query);
 
     free(scope);
     delete_string_buf(scopes_buf);
