@@ -420,7 +420,7 @@ int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen);
 
 void process_connect(struct ziti_conn *conn, ziti_session *session);
 
-void ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer);
+int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer);
 
 void ztx_auth_state_cb(void *, ziti_auth_state , const void *);
 ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er);

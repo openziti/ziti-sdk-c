@@ -368,8 +368,6 @@ static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
         ztx->logout = true;
         shutdown_and_free(ztx);
     } else {
-        ztx->tlsCtx->free_ctx(ztx->tlsCtx);
-        ztx->tlsCtx = NULL;
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
     }
 }
@@ -619,11 +617,7 @@ int ziti_get_ext_jwt_signers(ziti_context ztx, ziti_ext_signers_cb cb, void *ctx
 }
 
 int ziti_use_ext_jwt_signer(ziti_context ztx, const char *name) {
-    if (ztx == NULL || name == NULL)
-        return ZITI_INVALID_STATE;
-
-    if (ztx->ext_auth) {
-        ZTX_LOG(WARN, "OIDC is already configured");
+    if (ztx == NULL || name == NULL) {
         return ZITI_INVALID_STATE;
     }
 
@@ -632,8 +626,23 @@ int ziti_use_ext_jwt_signer(ziti_context ztx, const char *name) {
         return ZITI_NOT_FOUND;
     }
 
-    ztx_init_external_auth(ztx, signer);
-    return ZITI_OK;
+    if (signer->provider_url == NULL) {
+        ZTX_LOG(WARN, "OIDC provider[%s] configuration is missing auth URL", name);
+        return ZITI_INVALID_CONFIG;
+    }
+
+    if (signer->client_id == NULL) {
+        ZTX_LOG(WARN, "OIDC provider[%s] configuration is missing client ID", name);
+        return ZITI_INVALID_CONFIG;
+    }
+
+    if (ztx->ext_auth) {
+        ZTX_LOG(INFO, "clearing up previous OIDC provider");
+        oidc_client_close(ztx->ext_auth, (oidc_close_cb) free);
+        ztx->ext_auth = NULL;
+    }
+
+    return ztx_init_external_auth(ztx, signer);
 }
 
 void *ziti_app_ctx(ziti_context ztx) {

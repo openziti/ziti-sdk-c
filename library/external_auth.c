@@ -59,16 +59,17 @@ static void ext_signers_cb(ziti_jwt_signer_array signers, const ziti_error *err,
     free(signers);
 }
 
-void ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg) {
+int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg) {
     if (oidc_cfg != NULL) {
         NEWP(oidc, oidc_client_t);
         oidc_client_init(ztx->loop, oidc, oidc_cfg, NULL);
         oidc->data = ztx;
         ztx->ext_auth = oidc;
-        oidc_client_configure(oidc, ext_oath_cfg_cb);
-    } else {
-        ziti_ctrl_list_ext_jwt_signers(ztx_get_controller(ztx), ext_signers_cb, ztx);
+        return oidc_client_configure(oidc, ext_oath_cfg_cb);
     }
+
+    ziti_ctrl_list_ext_jwt_signers(ztx_get_controller(ztx), ext_signers_cb, ztx);
+    return ZITI_OK;
 }
 
 static void internal_link_cb(oidc_client_t *oidc, const char *url, void *ctx) {
