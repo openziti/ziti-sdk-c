@@ -341,12 +341,15 @@ int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf
 
             int idx = 0;
             BUF_APPEND_B(buf, '[');
+            PRETTY_NL(buf);
             MODEL_LIST_FOREACH(f_ptr, *list) {
                 if (f_ptr == NULL) { break; }
                 if (idx++ > 0) {
                     BUF_APPEND_B(buf, ',');
+                    PRETTY_NL(buf);
                 }
 
+                PRETTY_INDENT(buf, indent + 1);
                 if (ftm->jsonifier) {
                     if (ftm == get_model_number_meta() || ftm == get_model_bool_meta()) {
                         CHECK_APPEND(ftm->jsonifier(&f_ptr, buf, indent + 1, flags));
@@ -357,18 +360,23 @@ int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf
                     CHECK_APPEND(write_model_to_buf(f_ptr, ftm, buf, indent + 1, flags));
                 }
             }
+            PRETTY_NL(buf);
+            PRETTY_INDENT(buf, indent);
             BUF_APPEND_B(buf, ']');
         } else if (fm->mod == array_mod) {
             void **arr = (void **) (*f_addr);
 
             BUF_APPEND_B(buf, '[');
+            PRETTY_NL(buf);
             for (int idx = 0; true; idx++) {
                 f_ptr = arr[idx];
                 if (f_ptr == NULL) { break; }
                 if (idx > 0) {
                     BUF_APPEND_B(buf, ',');
+                    PRETTY_NL(buf);
                 }
 
+                PRETTY_INDENT(buf, indent + 1);
                 if (ftm->jsonifier) {
                     CHECK_APPEND(ftm->jsonifier(f_ptr, buf, indent + 1, flags));
                 }
@@ -376,16 +384,17 @@ int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf
                     CHECK_APPEND(write_model_to_buf(f_ptr, ftm, buf, indent + 1, flags));
                 }
             }
+            PRETTY_NL(buf);
+            PRETTY_INDENT(buf, indent);
             BUF_APPEND_B(buf, ']');
-        }
-        else {
+        } else {
             ZITI_LOG(ERROR, "unsupported mod[%d] for field[%s]", fm->mod, fm->name);
             return -1;
         }
         comma = true;
     }
     PRETTY_NL(buf);
-    PRETTY_INDENT(buf, indent);
+    PRETTY_INDENT(buf, indent - 1);
     BUF_APPEND_B(buf, '}');
     return 0;
 }

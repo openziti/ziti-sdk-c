@@ -139,7 +139,7 @@ TEST_CASE("parse enum array", "[model]") {
     CHECK(f1.states[2] == nullptr);
 
     size_t json_len;
-    auto js = FooWithEnumArray_to_json(&f1, 0, &json_len);
+    auto js = FooWithEnumArray_to_json(&f1, MODEL_JSON_COMPACT, &json_len);
 
     CHECK_THAT(js, Catch::Matchers::ContainsSubstring(R"("states":["Ugly","Bad"])"));
 
@@ -173,7 +173,7 @@ TEST_CASE("parse enum list", "[model]") {
 
 
     size_t json_len;
-    auto js = FooWithEnumList_to_json(&f1, 0, &json_len);
+    auto js = FooWithEnumList_to_json(&f1, MODEL_JSON_COMPACT, &json_len);
 
     CHECK_THAT(js, Catch::Matchers::ContainsSubstring(R"("states":["Ugly","Bad"])"));
 

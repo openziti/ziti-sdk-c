@@ -113,7 +113,7 @@ static void event_handler(ziti_context ztx, const ziti_event_t *ev){
             break;
         case ZitiRouterEvent:
         case ZitiServiceEvent:
-        case ZitiAPIEvent:
+        case ZitiConfigEvent:
             break;
     }
 }

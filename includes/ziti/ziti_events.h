@@ -34,7 +34,7 @@ typedef enum {
     ZitiRouterEvent = 1 << 1,
     ZitiServiceEvent = 1 << 2,
     ZitiAuthEvent = 1 << 3,
-    ZitiAPIEvent = 1 << 4,
+    ZitiConfigEvent = 1 << 4,
 } ziti_event_type;
 
 /**
@@ -69,9 +69,9 @@ struct ctrl_detail_s {
     bool active;
 };
 
-struct ziti_api_event {
-    const char *new_ctrl_address;
-    const char *new_ca_bundle;
+struct ziti_config_event {
+    const char *identity_name;
+    const ziti_config *config;
 };
 /**
  * \brief Edge Router Event.
@@ -147,7 +147,7 @@ typedef struct ziti_event_s {
         struct ziti_router_event router;
         struct ziti_service_event service;
         struct ziti_auth_event auth;
-        struct ziti_api_event api;
+        struct ziti_config_event cfg;
     };
 } ziti_event_t;
 
