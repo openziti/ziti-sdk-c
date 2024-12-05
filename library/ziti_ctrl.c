@@ -237,7 +237,7 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
         resp->resp_cb(s, e, resp->ctx);
     }
     ziti_controller *ctrl = resp->ctrl;
-    if (resp->new_address && strcmp(resp->new_address, ctrl->url) != 0) {
+    if (ctrl->url && resp->new_address && strcmp(resp->new_address, ctrl->url) != 0) {
         CTRL_LOG(INFO, "controller supplied new address[%s]", resp->new_address);
 
         FREE(ctrl->url);
