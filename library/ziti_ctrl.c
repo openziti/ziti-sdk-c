@@ -233,9 +233,6 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
 }
 
 static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp) {
-    if (resp->resp_cb) {
-        resp->resp_cb(s, e, resp->ctx);
-    }
     ziti_controller *ctrl = resp->ctrl;
     if (resp->new_address && strcmp(resp->new_address, ctrl->url) != 0) {
         CTRL_LOG(INFO, "controller supplied new address[%s]", resp->new_address);
@@ -248,6 +245,10 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
         if (resp->ctrl->redirect_cb) {
             ctrl->redirect_cb(ctrl->url, ctrl->cb_ctx);
         }
+    }
+
+    if (resp->resp_cb) {
+        resp->resp_cb(s, e, resp->ctx);
     }
 
     FREE(resp->new_address);
