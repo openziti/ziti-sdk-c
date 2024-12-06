@@ -649,7 +649,9 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
     int off = 0;
     int on = 1;
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+#if defined(SO_REUSEPORT)
     setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on));
+#endif
 #if defined(IPV6_V6ONLY)
     setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
 #endif
