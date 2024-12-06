@@ -39,6 +39,16 @@
 
 #define TOKEN_EXCHANGE_GRANT "urn:ietf:params:oauth:grant-type:token-exchange"
 
+#if _WIN32
+#define close_socket(s) closesocket(s)
+#define sock_error WSAGetLastError()
+#else
+#define close_socket(s) close(s)
+#define sock_error errno
+#endif
+#define OIDC_ACCEPT_TIMEOUT 30
+#define OIDC_REQ_TIMEOUT 5
+
 typedef struct oidc_req oidc_req;
 
 typedef void (*oidc_cb)(oidc_req *, int status, json_object *resp);
@@ -58,6 +68,14 @@ struct oidc_req {
     void *ctx;
 };
 
+struct ext_link_req {
+    uv_work_t wr;
+    uv_os_sock_t sock;
+    struct auth_req *req;
+    char *code;
+    int err;
+};
+
 typedef struct auth_req {
     oidc_client_t *clt;
     char code_verifier[code_verifier_len];
@@ -66,6 +84,7 @@ typedef struct auth_req {
     json_tokener *json_parser;
     char *id;
     bool totp;
+    struct ext_link_req *elr;
 } auth_req;
 
 static oidc_req *new_oidc_req(oidc_client_t *clt, oidc_cb cb, void *ctx) {
@@ -111,9 +130,7 @@ static void unhandled_body_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
     if (len > 0) {
         ZITI_LOG(WARN, "%.*s", (int)len, data);
     } else {
-        oidc_req *req = r->data;
         ZITI_LOG(WARN, "status = %zd\n", len);
-        complete_oidc_req(req, UV_EINVAL, NULL);
     }
 }
 
@@ -146,6 +163,8 @@ static void parse_cb(tlsuv_http_resp_t *resp, void *ctx) {
     }
 
     ZITI_LOG(ERROR, "unexpected content-type[%s]: %s", resp->req->path, ct);
+    complete_oidc_req(req, UV_EINVAL, NULL);
+    resp->req->data = NULL;
     handle_unexpected_resp(resp);
 }
 
@@ -270,23 +289,39 @@ static void free_auth_req(auth_req *req) {
 }
 
 static void failed_auth_req(auth_req *req, const char *error) {
-    if (req->clt->token_cb) {
+    oidc_client_t *clt = req->clt;
+    if (clt && clt->token_cb) {
         ZITI_LOG(WARN, "OIDC authorization failed: %s", error);
-        req->clt->token_cb(req->clt, ZITI_AUTHENTICATION_FAILED, NULL);
+        clt->token_cb(clt, ZITI_AUTHENTICATION_FAILED, NULL);
+        clt->request = NULL;
+        clt = NULL;
     }
+
+    if (req->elr) {
+        req->elr->err = UV_ECANCELED;
+        ZITI_LOG(ERROR, "closing socket %d", req->elr->sock);
+        close_socket(req->elr->sock);
+        if (uv_cancel((uv_req_t *) &req->elr->wr) == 0) {
+            free(req->elr);
+        }
+    }
+
     free_auth_req(req);
 }
 
 static void parse_token_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
     auth_req *req = r->data;
-    assert(req);
+    if (req == NULL) return;
+
+    oidc_client_t *clt = req->clt;
+    clt->request = NULL;
     int err;
     if (len > 0) {
         if (req->json_parser) {
             json_object *j = json_tokener_parse_ex(req->json_parser, body, (int) len);
 
             if (j != NULL) {
-                oidc_client_set_tokens(req->clt, j);
+                oidc_client_set_tokens(clt, j);
                 r->data = NULL;
                 r->resp.body_cb = NULL;
                 free_auth_req(req);
@@ -302,9 +337,9 @@ static void parse_token_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
     }
 
     // error before req is complete
-    if (req) {
-        failed_auth_req(req, uv_strerror((int) len));
-    }
+    r->data = NULL;
+    r->resp.body_cb = NULL;
+    failed_auth_req(req, uv_strerror((int)len));
 }
 
 static void token_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
@@ -314,8 +349,10 @@ static void token_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
         req->json_parser = json_tokener_new();
         http_resp->body_cb = parse_token_cb;
     } else {
-        handle_unexpected_resp(http_resp);
         failed_auth_req(req, http_resp->status);
+
+        http_resp->req->data = NULL;
+        handle_unexpected_resp(http_resp);
     }
 }
 
@@ -395,14 +432,6 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
     }
 }
 
-struct ext_link_req {
-    uv_work_t wr;
-    uv_os_sock_t sock;
-    auth_req *req;
-    char *code;
-    int err;
-};
-
 static int set_blocking(uv_os_sock_t sock) {
     int yes = 1;
     setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));
@@ -425,34 +454,42 @@ static int set_blocking(uv_os_sock_t sock) {
     return 0;
 }
 
-#if _WIN32
-#define close_socket(s) closesocket(s)
-#define sock_error WSAGetLastError()
-#else
-#define close_socket(s) close(s)
-#define sock_error errno
-#endif
-#define OIDC_ACCEPT_TIMEOUT 30
-#define OIDC_REQ_TIMEOUT 5
 
 static void ext_accept(uv_work_t *wr) {
     struct ext_link_req *elr = (struct ext_link_req *) wr;
-    
+
+    int rc;
     fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(elr->sock, &fds);
-    int rc = select(elr->sock + 1, &fds, NULL, NULL, &(struct timeval){
-            .tv_sec = OIDC_ACCEPT_TIMEOUT,
-    });
+    uint64_t timeout = OIDC_ACCEPT_TIMEOUT;
+
+    while(timeout > 0) {
+        FD_ZERO(&fds);
+        FD_SET(elr->sock, &fds);
+        rc = select(elr->sock + 1, &fds, NULL, NULL, &(struct timeval) {
+                .tv_sec = 1,
+        });
+        if (elr->err == UV_ECANCELED) {
+            return;
+        }
+        if (rc == 0) {
+            timeout--;
+            continue;
+        }
+
+        if (rc < 0) {
+            elr->err = sock_error;
+            return;
+        }
+
+        break;
+    }
+
     if (rc == 0) {
         elr->err = ETIMEDOUT;
         ZITI_LOG(WARN, "redirect_uri was not called in time");
         return;
-    } else if (rc < 0) {
-        elr->err = sock_error;
-        return;
     }
-    
+
     uv_os_sock_t clt = accept(elr->sock, NULL, NULL);
     FD_ZERO(&fds);
     FD_SET(clt, &fds);
@@ -579,11 +616,22 @@ static void ext_accept(uv_work_t *wr) {
 static void ext_done(uv_work_t *wr, int status) {
     struct ext_link_req *elr = (struct ext_link_req *) wr;
     close_socket(elr->sock);
+    elr->sock = (uv_os_sock_t)-1;
 
-    if (elr->code) {
-        request_token(elr->req, elr->code);
+    if (elr->err) {
+        ZITI_LOG(ERROR, "accept failed: %s", strerror(elr->err));
+    }
+
+    if (status != UV_ECANCELED && elr->err != UV_ECANCELED) {
+        struct auth_req *req = elr->req;
+        req->elr = NULL;
+        if (elr->code) {
+            request_token(req, elr->code);
+        } else {
+            failed_auth_req(req, elr->err ? strerror(elr->err) : "code not received");
+        }
     } else {
-        failed_auth_req(elr->req, elr->err ? strerror(elr->err) : "code not received");
+
     }
 
     free(elr->code);
@@ -604,7 +652,7 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
 #endif
     if (bind(sock, (const struct sockaddr *) &addr, sizeof(addr)) || listen(sock, 1)) {
         failed_auth_req(req, strerror(errno));
-        close(sock);
+        close_socket(sock);
         return;
     }
     set_blocking(sock);
@@ -615,7 +663,7 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
     int rc = uv_queue_work(loop, &elr->wr, ext_accept, ext_done);
     if (rc != 0) {
         free(elr);
-        close(sock);
+        close_socket(sock);
         failed_auth_req(req, uv_strerror(rc));
         return;
     }
@@ -630,6 +678,7 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
     }
     char *url = string_buf_to_string(buf, NULL);
 
+    req->elr = elr;
     req->clt->link_cb(req->clt, url, req->clt->link_ctx);
 
     free(url);
@@ -643,6 +692,7 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     }
     ZITI_LOG(DEBUG, "requesting authentication code");
     auth_req *req = new_auth_req(clt);
+    clt->request = req;
 
     string_buf_t *scopes_buf = new_string_buf();
     string_buf_append(scopes_buf, default_scope);
@@ -745,12 +795,19 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
     if (clt->close_cb) {
         return UV_EALREADY;
     }
+
     clt->token_cb = NULL;
     clt->close_cb = cb;
     tlsuv_http_close(&clt->http, http_close_cb);
     uv_close((uv_handle_t *) clt->timer, (uv_close_cb) free);
     clt->timer = NULL;
     free_ziti_jwt_signer(&clt->signer_cfg);
+
+    if (clt->request) {
+        clt->request->clt = NULL;
+        failed_auth_req(clt->request, uv_strerror(UV_ECANCELED));
+    }
+
     return 0;
 }
 
