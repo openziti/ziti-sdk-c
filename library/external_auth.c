@@ -91,6 +91,17 @@ static void ext_token_cb(oidc_client_t *oidc, int status, const char *token) {
     } else {
         ZITI_LOG(WARN, "failed to get external authentication token: %d/%s",
                  status, ziti_errorstr(status));
+
+        ziti_event_t ev = {
+                .type = ZitiContextEvent,
+                .ctx = (struct ziti_context_event){
+                        .ctrl_status = ZITI_AUTHENTICATION_FAILED,
+                        .err = "external login failed",
+                }
+        };
+
+        ziti_send_event(ztx, &ev);
+
     }
 }
 
