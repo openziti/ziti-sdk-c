@@ -298,9 +298,7 @@ static void failed_auth_req(auth_req *req, const char *error) {
     }
 
     if (req->elr) {
-        req->elr->err = UV_ECANCELED;
-        ZITI_LOG(ERROR, "closing socket %d", req->elr->sock);
-        close_socket(req->elr->sock);
+        req->elr->err = ECANCELED;
         if (uv_cancel((uv_req_t *) &req->elr->wr) == 0) {
             free(req->elr);
         }
@@ -468,7 +466,9 @@ static void ext_accept(uv_work_t *wr) {
         rc = select(elr->sock + 1, &fds, NULL, NULL, &(struct timeval) {
                 .tv_sec = 1,
         });
-        if (elr->err == UV_ECANCELED) {
+        if (elr->err == ECANCELED) {
+            close_socket(elr->sock);
+            elr->sock = (uv_os_sock_t)-1;
             return;
         }
         if (rc == 0) {
@@ -622,7 +622,7 @@ static void ext_done(uv_work_t *wr, int status) {
         ZITI_LOG(ERROR, "accept failed: %s", strerror(elr->err));
     }
 
-    if (status != UV_ECANCELED && elr->err != UV_ECANCELED) {
+    if (status != UV_ECANCELED && elr->err != ECANCELED) {
         struct auth_req *req = elr->req;
         req->elr = NULL;
         if (elr->code) {
@@ -646,8 +646,11 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
             .sin6_port = htons(auth_cb_port),
     };
     int sock = socket(AF_INET6, SOCK_STREAM, 0);
-#if defined(IPV6_V6ONLY)
     int off = 0;
+    int on = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+    setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on));
+#if defined(IPV6_V6ONLY)
     setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
 #endif
     if (bind(sock, (const struct sockaddr *) &addr, sizeof(addr)) || listen(sock, 1)) {
@@ -805,7 +808,7 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
 
     if (clt->request) {
         clt->request->clt = NULL;
-        failed_auth_req(clt->request, uv_strerror(UV_ECANCELED));
+        failed_auth_req(clt->request, strerror(ECANCELED));
     }
 
     return 0;
