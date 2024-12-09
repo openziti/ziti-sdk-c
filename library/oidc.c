@@ -292,7 +292,7 @@ static void failed_auth_req(auth_req *req, const char *error) {
     oidc_client_t *clt = req->clt;
     if (clt && clt->token_cb) {
         ZITI_LOG(WARN, "OIDC authorization failed: %s", error);
-        clt->token_cb(clt, ZITI_AUTHENTICATION_FAILED, NULL);
+        clt->token_cb(clt, ZITI_AUTHENTICATION_FAILED, error);
         clt->request = NULL;
         clt = NULL;
     }

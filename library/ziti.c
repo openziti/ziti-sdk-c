@@ -207,7 +207,11 @@ void ziti_set_auth_started(ziti_context ztx) {
     FREE(ztx->session_token);
 }
 
-void ziti_set_unauthenticated(ziti_context ztx) {
+void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
+    if (err) {
+        ZITI_LOG(WARN, "auth error: %s", err->message);
+    }
+
     ZTX_LOG(DEBUG, "setting auth_state[%d] to %d", ztx->auth_state, ZitiAuthStateUnauthenticated);
     ztx->auth_state = ZitiAuthStateUnauthenticated;
     FREE(ztx->session_token);
@@ -230,12 +234,29 @@ void ziti_set_unauthenticated(ziti_context ztx) {
     model_map_clear(&ztx->sessions, (void (*)(void *)) free_ziti_session_ptr);
 
     ziti_ctrl_clear_api_session(ztx_get_controller(ztx));
+
+    if (err && !ztx->closing) {
+        ziti_send_event(ztx, &(ziti_event_t) {
+                .type = ZitiContextEvent,
+                .ctx = (struct ziti_context_event) {
+                        .err = err->message,
+                        .ctrl_status = (int) err->err,
+                },
+        });
+    }
 }
 
-void ziti_set_impossible_to_authenticate(ziti_context ztx) {
+void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err) {
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthImpossibleToAuthenticate);
     FREE(ztx->session_token);
     ziti_ctrl_clear_api_session(ztx_get_controller(ztx));
+    ziti_send_event(ztx, &(ziti_event_t){
+        .type = ZitiContextEvent,
+        .ctx = (struct ziti_context_event){
+                .ctrl_status = ZITI_AUTHENTICATION_FAILED,
+                .err = err->message,
+        }
+    });
 }
 
 void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mfa *mfa_q) {
@@ -356,7 +377,7 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
 static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
 
-    ziti_set_unauthenticated(ztx);
+    ziti_set_unauthenticated(ztx, NULL);
 
     ziti_close_channels(ztx, ZITI_DISABLED);
     ziti_ctrl_close(&ztx->ctrl);
@@ -482,7 +503,7 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
 
         uv_prepare_start(ztx->prepper, ztx_prepare);
         ztx->start = uv_now(ztx->loop);
-        ziti_set_unauthenticated(ztx);
+        ziti_set_unauthenticated(ztx, NULL);
 
         ziti_re_auth(ztx);
     }
@@ -680,7 +701,7 @@ static void free_ztx(uv_handle_t *h) {
     ziti_posture_checks_free(ztx->posture_checks);
     model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_session_ptr);
-    ziti_set_unauthenticated(ztx);
+    ziti_set_unauthenticated(ztx, NULL);
     free_ziti_identity_data(ztx->identity_data);
     FREE(ztx->identity_data);
     FREE(ztx->last_update);
@@ -1871,10 +1892,7 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
     ziti_context ztx = ctx;
     switch (state) {
         case ZitiAuthStateUnauthenticated:
-            if (data) {
-                ZITI_LOG(WARN, "auth error: %s", (const char*)data);
-            }
-            ziti_set_unauthenticated(ztx);
+            ziti_set_unauthenticated(ztx, (const ziti_error *) data);
             break;
         case ZitiAuthStateAuthStarted:
             ziti_set_auth_started(ztx);
@@ -1887,7 +1905,7 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
             ziti_set_fully_authenticated(ztx, data);
             break;
         case ZitiAuthImpossibleToAuthenticate:
-            ziti_set_impossible_to_authenticate(ztx);
+            ziti_set_impossible_to_authenticate(ztx, (const ziti_error*)data);
             break;
     }
     ztx->auth_state = state;
