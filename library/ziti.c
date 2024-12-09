@@ -388,8 +388,6 @@ static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
     if (ztx->closing) {
         ztx->logout = true;
         shutdown_and_free(ztx);
-    } else {
-        update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
     }
 }
 
@@ -408,7 +406,6 @@ const char* ziti_get_api_session_token(ziti_context ztx) {
 static void ziti_stop_internal(ziti_context ztx, void *data) {
     if (ztx->enabled) {
         ZTX_LOG(INFO, "disabling Ziti Context");
-        ztx->enabled = false;
 
         metrics_rate_close(&ztx->up_rate);
         metrics_rate_close(&ztx->down_rate);
@@ -459,6 +456,8 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         ziti_ctrl_cancel(ztx_get_controller(ztx));
         // logout
         ziti_ctrl_logout(ztx_get_controller(ztx), logout_cb, ztx);
+        update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
+        ztx->enabled = false;
     }
 }
 
@@ -1542,9 +1541,9 @@ static void update_ctrl_status(ziti_context ztx, int errCode, const char *errMsg
                         .ctrl_status = errCode,
                         .err = errMsg,
                 }};
-        ztx->ctrl_status = errCode;
         ziti_send_event(ztx, &ev);
     }
+    ztx->ctrl_status = errCode;
 }
 
 void ziti_invalidate_session(ziti_context ztx, const char *service_id, ziti_session_type type) {
