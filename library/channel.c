@@ -508,8 +508,6 @@ static bool is_edge(uint32_t content) {
 static void dispatch_message(ziti_channel_t *ch, message *m) {
     struct waiter_s *w = NULL;
 
-    m->nhdrs = parse_hdrs(m->headers, m->header.headers_len, &m->hdrs);
-
     uint32_t reply_to;
     bool is_reply = message_get_int32_header(m, ReplyForHeader, (int32_t*)&reply_to);
 
@@ -566,6 +564,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
 static void process_inbound(ziti_channel_t *ch) {
     uint8_t *ptr;
     ssize_t len;
+    int rc = 0;
     do {
         if (ch->in_next == NULL && pool_has_available(ch->in_msg_pool)) {
             if (buffer_available(ch->incoming) < HEADER_SIZE) {
@@ -583,7 +582,9 @@ static void process_inbound(ziti_channel_t *ch) {
 
             assert(header_read == HEADER_SIZE);
 
-            ch->in_next = message_new_from_header(ch->in_msg_pool, header_buf);
+
+            rc = message_new_from_header(ch->in_msg_pool, header_buf, &ch->in_next);
+            if (rc != ZITI_OK) break;
             ch->in_body_offset = 0;
 
             CH_LOG(TRACE, "<= ct[%04X] seq[%d] len[%d] hdrs[%d]", ch->in_next->header.content,
@@ -608,17 +609,29 @@ static void process_inbound(ziti_channel_t *ch) {
             ch->in_body_offset += len;
 
             if (ch->in_body_offset == total) {
-                CH_LOG(TRACE, "message is complete seq[%d] ct[%04X]", ch->in_next->header.seq,
-                       ch->in_next->header.content);
-
-                dispatch_message(ch, ch->in_next);
-
+                message *msg = ch->in_next;
                 ch->in_next = NULL;
+
+                CH_LOG(TRACE, "message is complete seq[%d] ct[%04X]",
+                       msg->header.seq, msg->header.content);
+
+                rc = parse_hdrs(msg->headers, msg->header.headers_len, &msg->hdrs);
+                if (rc < 0) {
+                    pool_return_obj(msg);
+                    CH_LOG(ERROR, "failed to parse incoming message: %s", ziti_errorstr(rc));
+                    break;
+                }
+                msg->nhdrs = rc;
+                rc = 0;
+                dispatch_message(ch, msg);
             }
         }
     } while (1);
 
     buffer_cleanup(ch->incoming);
+    if (rc != 0) {
+        on_channel_close(ch, rc, 0);
+    }
 }
 
 static void latency_reply_cb(void *ctx, message *reply, int err) {
