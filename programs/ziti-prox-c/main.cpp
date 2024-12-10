@@ -32,7 +32,7 @@ public:
 
     Run(): App("run proxy", "run"),
            debug(2) {
-        add_option("--debug,-d", debug, "log level")->envname("ZITI_LOG");
+        add_option("--debug,-d", debug, "log level");
         add_option("--identity,-i", identity, "identity config")->required();
         add_option("listener", intercepts, "<name:port>");
         add_option("--bind,-b", bindings, "bind service <name:host:port>");
