@@ -15,6 +15,7 @@
 #include "message.h"
 #include <stdlib.h>
 #include <string.h>
+#include <ziti/errors.h>
 
 #include "utils.h"
 #include "endian_internal.h"
@@ -25,7 +26,7 @@ static const uint8_t *read_int32(const uint8_t *p, uint32_t *val) {
 }
 
 void header_to_buffer(header_t *h, uint8_t *buf) {
-    memcpy(buf, h->magic, sizeof(h->magic));
+    memcpy(buf, h->magic.magic, sizeof(h->magic));
     uint8_t *offset = buf + sizeof(h->magic);
 
 #define write_field(n,t) {\
@@ -38,7 +39,7 @@ void header_to_buffer(header_t *h, uint8_t *buf) {
 };
 
 void header_from_buffer(header_t *h, uint8_t *buf) {
-    memcpy(h->magic, buf, sizeof(h->magic));
+    memcpy(h->magic.magic, buf, sizeof(h->magic));
     uint8_t *offset = buf + sizeof(h->magic);
 
 #define read_field(n,t) {\
@@ -83,24 +84,37 @@ uint8_t *write_hdr(const hdr_t *h, uint8_t *buf) {
     return buf + h->length;
 }
 
-int parse_hdrs(uint8_t *buf, uint32_t len, hdr_t **hp) {
+int parse_hdrs(const uint8_t *buf, uint32_t len, hdr_t **hp) {
     const uint8_t *p = buf;
 
-    hdr_t *headers = NULL;
     int count = 0;
-    while (p < buf + len) {
-        if (headers == NULL) {
-            headers = malloc(sizeof(hdr_t));
-        }
-        else {
-            headers = realloc(headers, (count + 1) * sizeof(hdr_t));
-        }
-
-        p = read_int32(p, &headers[count].header_id);
-        p = read_int32(p, &headers[count].length);
-        headers[count].value = p;
-        p += headers[count].length;
+    while (p < buf + len - 2 * sizeof(uint32_t)) {
+        uint32_t length;
+        p += sizeof(uint32_t);
+        p = read_int32(p, &length);
+        p += length;
         count++;
+    }
+
+    if (p != buf + len) {
+        ZITI_LOG(ERROR, "misaligned message headers");
+        return ZITI_INVALID_STATE;
+    }
+
+    hdr_t *headers = calloc(count, sizeof(hdr_t));
+    if (headers == NULL) {
+        ZITI_LOG(ERROR, "failed to allocates message headers");
+        return ZITI_ALLOC_FAILED;
+    }
+
+    p = buf;
+    int idx = 0;
+    while (p < buf + len) {
+        p = read_int32(p, &headers[idx].header_id);
+        p = read_int32(p, &headers[idx].length);
+        headers[idx].value = p;
+        p += headers[idx].length;
+        idx++;
     }
 
     *hp = headers;
@@ -119,7 +133,7 @@ static hdr_t *find_header(message *m, int header_id) {
 bool message_get_bool_header(message *m, int header_id, bool *v) {
     hdr_t *h = find_header(m, header_id);
     if (h != NULL) {
-        int8_t val = *h->value;
+        char val = (char)h->value[0];
         *v = (val != 0);
         return true;
     }
@@ -165,19 +179,30 @@ bool message_get_bytes_header(message *m, int header_id, const uint8_t **v, size
     return false;
 }
 
-message *message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE]) {
+int message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE], message **msg_p) {
     header_t h;
     header_from_buffer(&h, buf);
+
+    if (h.magic.magint !=  EMPTY_HEADER.magic.magint) {
+        return ZITI_INVALID_STATE;
+    }
 
     size_t msgbuflen = HEADER_SIZE + h.headers_len + h.body_len;
     message *m = pool ? pool_alloc_obj(pool) : alloc_unpooled_obj(sizeof(message) + msgbuflen,
                                                                   (void (*)(void *)) message_free);
 
+    if (m == NULL) {
+        return ZITI_ALLOC_FAILED;
+    }
     m->msgbuflen = msgbuflen;
 
     size_t msgsize = sizeof(message) + msgbuflen;
     if (msgsize > pool_obj_size(m)) {
         m->msgbufp = malloc(msgbuflen);
+        if (m->msgbufp == NULL) {
+            pool_return_obj(m);
+            return ZITI_ALLOC_FAILED;
+        }
     }
     else {
         m->msgbufp = m->msgbuf;
@@ -186,7 +211,8 @@ message *message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE]) {
     memcpy(&m->header, &h, sizeof(h));
     m->headers = m->msgbufp + HEADER_SIZE;
     m->body = m->headers + h.headers_len;
-    return m;
+    *msg_p = m;
+    return ZITI_OK;
 }
 
 message *message_new(pool_t *pool, uint32_t content, const hdr_t *hdrs, int nhdrs, size_t body_len) {

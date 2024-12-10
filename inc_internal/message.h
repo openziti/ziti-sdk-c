@@ -27,7 +27,10 @@
 
 #define MAGIC_INIT {0x3, 0x6, 0x9, 0xC}
 
-typedef char magic_t[4];
+typedef union {
+    char magic[4];
+    int32_t magint;
+} magic_t;
 
 #define HEADER_FIELDS(XX) \
 XX(content, uint32_t)\
@@ -52,7 +55,7 @@ static header_t EMPTY_HEADER = {
 typedef struct {
     uint32_t header_id;
     uint32_t length;
-    uint8_t *value;
+    const uint8_t *value;
 } hdr_t;
 
 #define var_header(id, var) header(id, sizeof(var), &(var))
@@ -97,9 +100,9 @@ bool message_get_bytes_header(message *m, int header_id, const uint8_t **ptr, si
 
 uint8_t *write_hdr(const hdr_t *h, uint8_t *buf);
 
-int parse_hdrs(uint8_t *buf, uint32_t len, hdr_t **hp);
+int parse_hdrs(const uint8_t *buf, uint32_t len, hdr_t **hp);
 
-message *message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE]);
+int message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE], message **msg_p);
 
 message *message_new(pool_t *pool, uint32_t content, const hdr_t *headers, int nheaders, size_t body_len);
 

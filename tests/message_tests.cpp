@@ -17,6 +17,7 @@
 #include <cstring>
 #include "message.h"
 #include "edge_protocol.h"
+#include "ziti/errors.h"
 
 TEST_CASE("simple", "[model]") {
     auto p = pool_new(sizeof(message) + 200, 3, (void (*)(void *)) message_free);
@@ -39,7 +40,8 @@ TEST_CASE("simple", "[model]") {
     strncpy(reinterpret_cast<char *>(m1->body), content1, strlen(content1));
     message_set_seq(m1, &s1);
 
-    auto m2 = message_new_from_header(p, m1->msgbufp);
+    message *m2;
+    REQUIRE(message_new_from_header(p, m1->msgbufp, &m2) == ZITI_OK);
     CHECK(m2->header.seq == 3334);
     CHECK(m2->msgbuflen == m1->msgbuflen);
     memcpy(m2->msgbufp, m1->msgbufp, m1->msgbuflen);
@@ -83,7 +85,8 @@ TEST_CASE("large", "[model]") {
     message_set_seq(m1, &seq);
 
 
-    auto m2 = message_new_from_header(p, m1->msgbufp);
+    message *m2;
+    REQUIRE(message_new_from_header(p, m1->msgbufp, &m2) == ZITI_OK);
     CHECK(m2->header.seq == 3334);
     CHECK(seq == 3334);
     CHECK(m2->msgbuflen == m1->msgbuflen);
@@ -126,7 +129,8 @@ TEST_CASE("large unpooled", "[model]") {
     strncpy(reinterpret_cast<char *>(m1->body), content1, strlen(content1));
     message_set_seq(m1, &seq);
 
-    auto m2 = message_new_from_header(nullptr, m1->msgbufp);
+    message *m2;
+    REQUIRE(message_new_from_header(nullptr, m1->msgbufp, &m2) == ZITI_OK);
     CHECK(m2->header.seq == 3334);
     CHECK(seq == 3334);
     CHECK(m2->msgbuflen == m1->msgbuflen);
