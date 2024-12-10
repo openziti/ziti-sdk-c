@@ -111,6 +111,8 @@ is offline or did not respond to the request*/
 #define ZITI_CERT_FAILED_VALIDATION                             (-36)
 /** returned when the certificate doesn't have an externalId") \*/
 #define ZITI_MISSING_CERT_CLAIM                                 (-37)
+/** ziti could not allocate memory */
+#define ZITI_ALLOC_FAILED                                       (-38)
 
 
 // Put new error codes here and add error string in error.c

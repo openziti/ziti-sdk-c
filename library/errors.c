@@ -53,6 +53,7 @@
     XX(CERT_IN_USE,"the provided certificate already in use")       \
     XX(CERT_FAILED_VALIDATION, "the provided key/cert are invalid") \
     XX(MISSING_CERT_CLAIM, "the certificate is expected to contain an externalId but none was not found") \
+    XX(ALLOC_FAILED, "memory allocation failed") \
     XX(WTF, "WTF: programming error")
 
 
