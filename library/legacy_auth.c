@@ -137,7 +137,7 @@ static void mfa_cb(void * UNUSED(empty), const ziti_error *err, void *ctx) {
         if (err->http_code == HTTP_STATUS_UNAUTHORIZED) {
             free_ziti_api_session_ptr(auth->session);
             auth->session = NULL;
-            auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, (void*)err);
+            auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, err);
             uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
         } else {
             ZITI_LOG(ERROR, "failed to submit MFA code: %d/%s", (int)err->err, err->message);
@@ -179,7 +179,7 @@ static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx
         ZITI_LOG(WARN, "failed to login to ctrl[%s] %s[%d] %s", auth->ctrl->url, err->code, errCode, err->message);
 
         if (errCode == ZITI_AUTHENTICATION_FAILED) {
-            auth->cb(auth->ctx, ZitiAuthImpossibleToAuthenticate, err->message);
+            auth->cb(auth->ctx, ZitiAuthImpossibleToAuthenticate, err);
         } else {
             uint64_t delay = next_backoff(&auth->backoff, 5, 5000);
             ZITI_LOG(DEBUG, "failed to login [%d/%s] setting retry in %" PRIu64 "ms",
@@ -213,7 +213,7 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
     switch (err->err) {
         case ZITI_AUTHENTICATION_FAILED:
             // session expired or was deleted, try to re-auth
-            auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, err->message);
+            auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, err);
             free_ziti_api_session_ptr(auth->session);
             auth->session = NULL;
             uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);

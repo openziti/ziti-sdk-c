@@ -402,8 +402,6 @@ void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const 
 
 void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data);
 
-void ziti_set_unauthenticated(ziti_context ztx);
-
 void ziti_force_service_update(ziti_context ztx, const char *service_id);
 
 void ziti_services_refresh(ziti_context ztx, bool now);

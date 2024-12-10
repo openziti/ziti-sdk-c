@@ -82,15 +82,23 @@ static void internal_link_cb(oidc_client_t *oidc, const char *url, void *ctx) {
     ztx->ext_launch_ctx = NULL;
 }
 
-static void ext_token_cb(oidc_client_t *oidc, int status, const char *token) {
+static void ext_token_cb(oidc_client_t *oidc, int status, const char *data) {
     ziti_context ztx = oidc->data;
     if (status == ZITI_OK) {
+        const char *token = data;
         ZITI_LOG(DEBUG, "received access token: %.*s...", 20, token);
         ztx->auth_method->set_ext_jwt(ztx->auth_method, token);
         ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
     } else {
+        const char *message = data;
         ZITI_LOG(WARN, "failed to get external authentication token: %d/%s",
                  status, ziti_errorstr(status));
+        char err[256];
+        snprintf(err, sizeof(err), "failed to get external auth token: %s", message);
+        ztx_auth_state_cb(ztx, ZitiAuthImpossibleToAuthenticate, &(ziti_error){
+           .err = status,
+           .message = message,
+        });
     }
 }
 

@@ -167,7 +167,7 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
     ziti_controller *ctrl = resp->ctrl;
 
     assert(ctrl->active_reqs > 0);
-    ctrl->active_reqs--;
+        ctrl->active_reqs--;
 
     resp->status = r->code;
     if (r->code < 0) {

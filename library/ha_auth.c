@@ -117,7 +117,9 @@ static void token_cb(oidc_client_t *oidc, int status, const char *token) {
         } else {
             char err[128];
             snprintf(err, sizeof(err), "failed to auth: %d", status);
-            auth->cb(auth->cb_ctx, ZitiAuthStateUnauthenticated, err);
+            auth->cb(auth->cb_ctx, ZitiAuthStateUnauthenticated, &(ziti_error){
+                .err = status,
+                .message = err});
         }
     }
 }
