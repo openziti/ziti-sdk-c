@@ -39,7 +39,7 @@ jobs:
         with:
           target: ${{ matrix.spec.target }}
           test: false
-          config: Release
+          config: RelWithDebInfo
 
       - name: upload SDK release bundle
         uses: softprops/action-gh-release@v0.1.13
