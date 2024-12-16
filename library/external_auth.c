@@ -34,17 +34,11 @@ static void ext_oath_cfg_cb(oidc_client_t *oidc, int status, const char *err) {
     }
 }
 
-static void ext_signers_cb(ziti_jwt_signer_array signers, const ziti_error *err, void *ctx) {
-    ziti_context ztx = ctx;
-    if (err) {
-        ZTX_LOG(WARN, "failed to get external signers: %s", err->message);
-        return;
-    }
-    model_map_clear(&ztx->ext_signers, (void (*)(void *)) free_ziti_jwt_signer_ptr);
+static void ext_signers_cb(ziti_context ztx, int status, ziti_jwt_signer_array signers, void *ctx) {
 
-    ziti_jwt_signer *el;
-    FOR(el, signers) {
-        model_map_set(&ztx->ext_signers, el->name, el);
+    if (status != ZITI_OK) {
+        ZTX_LOG(WARN, "failed to get external signers: %s", ziti_errorstr(status));
+        return;
     }
 
     ziti_event_t ev = {
@@ -68,7 +62,7 @@ int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg) {
         return oidc_client_configure(oidc, ext_oath_cfg_cb);
     }
 
-    ziti_ctrl_list_ext_jwt_signers(ztx_get_controller(ztx), ext_signers_cb, ztx);
+    ziti_get_ext_jwt_signers(ztx, ext_signers_cb, ztx);
     return ZITI_OK;
 }
 

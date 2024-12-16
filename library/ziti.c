@@ -602,8 +602,20 @@ static void ext_jwt_singers_cb(ziti_jwt_signer_array signers, const ziti_error *
         model_map_clear(&ztx->ext_signers, (void (*)(void *)) free_ziti_jwt_signer_ptr);
         ziti_jwt_signer *s;
         FOR(s, signers) {
-            model_map_set(&ztx->ext_signers, s->name, s);
+            if (s->provider_url && s->client_id) {
+                model_map_set(&ztx->ext_signers, s->name, s);
+            } else {
+                ZTX_LOG(INFO, "ext signer[%s] cannot be used: provider_url and client_id are required", s->name);
+                free_ziti_jwt_signer_ptr(s);
+            }
         }
+        int idx = 0;
+        const char *n;
+        MODEL_MAP_FOREACH(n, s, &ztx->ext_signers) {
+            signers[idx++] = s;
+        }
+        signers[idx] = NULL;
+
         ZTX_LOG(DEBUG, "%zd external auth providers available", model_map_size(&ztx->ext_signers));
         CALL_CB(cb, ztx, ZITI_OK, signers, req->cb_ctx);
         free(signers);
@@ -1069,9 +1081,7 @@ static void ziti_re_auth(ziti_context ztx) {
     ziti_ctrl_get_version(ztx_get_controller(ztx), version_pre_auth_cb, ztx);
 
     // load external signers in case they are needed for auth
-    NEWP(req, struct ztx_req_s);
-    req->ztx = ztx;
-    ziti_ctrl_list_ext_jwt_signers(ztx_get_controller(ztx), ext_jwt_singers_cb, req);
+    ziti_get_ext_jwt_signers(ztx, NULL, NULL);
 }
 
 static void set_posture_query_defaults(ziti_service *service) {
