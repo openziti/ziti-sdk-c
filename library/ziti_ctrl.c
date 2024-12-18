@@ -244,7 +244,7 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
         const char *k;
         ziti_controller_detail *detail;
         MODEL_MAP_FOREACH(k, detail, &ctrl->endpoints) {
-            if (strcmp(k, ctrl->url) == 0) {
+            if (strcasecmp(k, ctrl->url) == 0) {
                 model_map_remove(&ctrl->endpoints, k);
                 break;
             }

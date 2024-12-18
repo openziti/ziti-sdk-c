@@ -540,7 +540,7 @@ static void on_ctrl_redirect(const char *new_addr, void *ctx) {
     model_list_iter it = model_list_iterator(&ztx->config.controllers);
     while(it) {
         char *addr = (char*)model_list_it_element(it);
-        if (strcmp(addr, ztx->config.controller_url) == 0) {
+        if (strcasecmp(addr, ztx->config.controller_url) == 0) {
             it = model_list_it_remove(it);
             free(addr);
         }
