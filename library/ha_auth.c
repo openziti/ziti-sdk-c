@@ -128,9 +128,10 @@ static void config_cb(oidc_client_t *oidc, int status, const char *err) {
     struct ha_auth_s *auth = HA_AUTH_FROM_OIDC(oidc);
     if (status == 0) {
         oidc_client_start(oidc, token_cb);
+    } else {
+        ZITI_LOG(ERROR, "failed to configure OIDC[%s] client: %d/%s",
+                 auth->config.provider_url, status, err);
     }
-
-    assert(status == 0);
 }
 
 static int ha_ext_jwt(ziti_auth_method_t *self, const char *token) {

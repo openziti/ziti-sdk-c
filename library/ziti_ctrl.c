@@ -73,6 +73,7 @@ XX(MFA_INVALID_TOKEN, ZITI_MFA_INVALID_TOKEN)           \
 XX(MFA_EXISTS, ZITI_MFA_EXISTS)                         \
 XX(MFA_NOT_ENROLLED, ZITI_MFA_NOT_ENROLLED)             \
 XX(INVALID_ENROLLMENT_TOKEN, ZITI_JWT_INVALID)          \
+XX(INVALID_CONTROLLER_RESPONSE, ZITI_INVALID_STATE)     \
 XX(CERT_IN_USE, ZITI_CERT_IN_USE)                       \
 XX(CERT_FAILED_VALIDATION, ZITI_CERT_FAILED_VALIDATION) \
 XX(MISSING_CERT_CLAIM, ZITI_MISSING_CERT_CLAIM)         \
@@ -214,6 +215,9 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
         } else {
             resp->resp_content = ctrl_content_text;
             resp->content_proc = new_string_buf();
+            if (resp->body_parse_func) {
+                CTRL_LOG(ERROR, "received unexpected content: %s", hv);
+            }
         }
 
         const char *new_addr = find_header(r, "ziti-ctrl-address");
@@ -237,9 +241,24 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
     if (resp->new_address && strcmp(resp->new_address, ctrl->url) != 0) {
         CTRL_LOG(INFO, "controller supplied new address[%s]", resp->new_address);
 
+        const char *k;
+        ziti_controller_detail *detail;
+        MODEL_MAP_FOREACH(k, detail, &ctrl->endpoints) {
+            if (strcasecmp(k, ctrl->url) == 0) {
+                model_map_remove(&ctrl->endpoints, k);
+                break;
+            }
+        }
         FREE(ctrl->url);
         ctrl->url = resp->new_address;
         resp->new_address = NULL;
+        if(detail == NULL) {
+            detail = alloc_ziti_controller_detail();
+        }
+        FREE(detail->name);
+        detail->name = strdup(ctrl->url);
+        model_map_set(&ctrl->endpoints, detail->name, detail);
+
         tlsuv_http_set_url(ctrl->client, ctrl->url);
 
         if (resp->ctrl->redirect_cb) {
@@ -428,20 +447,22 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
         uv_timeval64_t now;
         uv_gettimeofday(&now);
 
-        ziti_error *error = NULL;
+        ziti_error error = {};
         if (resp->resp_content == ctrl_content_text) {
-            resp_obj = string_buf_to_string(resp->content_proc, NULL);
+            if (resp->body_parse_func) {
+                error.code = strdup("INVALID_CONTROLLER_RESPONSE");
+                error.message = strdup("received non-JSON response");
+            } else {
+                resp_obj = string_buf_to_string(resp->content_proc, NULL);
+            }
             string_buf_free(resp->content_proc);
             FREE(resp->content_proc);
         } else {
             json_object *err_json = json_object_object_get(resp->content, "error");
             if (err_json) {
-                error = alloc_ziti_error();
-                if (ziti_error_from_json(error, err_json) != 0) {
-                    ZITI_LOG(ERROR, "failed to parse ziti_error: %s", json_object_get_string(err_json));
-                    error->err = ZITI_WTF;
-                    error->code = strdup("UNEXPECTED_ERROR");
-                    error->message = strdup(json_object_get_string(err_json));
+                if (ziti_error_from_json(&error, err_json) != 0) {
+                    error.code = strdup("INVALID_CONTROLLER_RESPONSE");
+                    error.message = strdup(json_object_get_string(err_json));
                 }
             }
             resp_meta meta = {0};
@@ -489,10 +510,8 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
             if (resp->body_parse_func && resp->resp_json != NULL) {
                 if (resp->body_parse_func(&resp_obj, resp->resp_json) < 0) {
                     CTRL_LOG(ERROR, "error parsing response data for req[%s]", req->path);
-                    error = alloc_ziti_error();
-                    error->err = ZITI_INVALID_STATE;
-                    error->code = strdup("INVALID_CONTROLLER_RESPONSE");
-                    error->message = strdup("unexpected response JSON");
+                    error.code = strdup("INVALID_CONTROLLER_RESPONSE");
+                    error.message = strdup("unexpected response JSON");
                 }
                 json_object_put(resp->resp_json);
                 resp->resp_json = NULL;
@@ -501,12 +520,19 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
             }
         }
 
-        if (error) {
-            error->err = code_to_error(error->code);
-            error->http_code = req->resp.code;
+        if (error.code) {
+            error.err = code_to_error(error.code);
+            error.http_code = req->resp.code;
+
+            CTRL_LOG(ERROR, "API request[%s] failed code[%s] message[%s]",
+                     req->path, error.code, error.message);
         }
-        resp->ctrl_cb(resp_obj, error, resp);
-        free_ziti_error_ptr(error);
+        if (error.err != ZITI_OK) {
+            resp->ctrl_cb(NULL, &error, resp);
+        } else {
+            resp->ctrl_cb(resp_obj, NULL, resp);
+        }
+        free_ziti_error(&error);
     } else {
         CTRL_LOG(WARN, "failed to read response body: %zd[%s]", len, uv_strerror(len));
         if (resp->resp_content == ctrl_content_json) {

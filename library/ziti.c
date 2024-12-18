@@ -537,8 +537,18 @@ static void on_ctrl_list_change(ziti_context ztx, const model_map *endpoints) {
 static void on_ctrl_redirect(const char *new_addr, void *ctx) {
     ziti_context ztx = ctx;
 
+    model_list_iter it = model_list_iterator(&ztx->config.controllers);
+    while(it) {
+        char *addr = (char*)model_list_it_element(it);
+        if (strcasecmp(addr, ztx->config.controller_url) == 0) {
+            it = model_list_it_remove(it);
+            free(addr);
+        }
+    }
     FREE(ztx->config.controller_url);
     ztx->config.controller_url = strdup(new_addr);
+    model_list_append(&ztx->config.controllers, strdup(new_addr));
+    
     ztx_config_update(ztx);
 }
 
@@ -1360,8 +1370,8 @@ static void refresh_cb(uv_timer_t *t) {
         return;
     }
 
+    ziti_ctrl_current_identity(ztx_get_controller(ztx), update_identity_data, ztx);
     ziti_ctrl_current_edge_routers(ztx_get_controller(ztx), edge_routers_cb, ztx);
-
     ziti_ctrl_get_services_update(ztx_get_controller(ztx), check_service_update, ztx);
 }
 
