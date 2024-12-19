@@ -50,7 +50,6 @@ static void ext_signers_cb(ziti_context ztx, int status, ziti_jwt_signer_array s
             },
     };
     ziti_send_event(ztx, &ev);
-    free(signers);
 }
 
 int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg) {
