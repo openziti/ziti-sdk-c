@@ -269,11 +269,40 @@ void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mf
     ziti_event_t ev = {
             .type = ZitiAuthEvent,
             .auth = {
-                    .action = ziti_auth_prompt_totp,
                     .type = ziti_auth_query_types.name(mfa_q->type_id),
-                    .detail = mfa_q->provider,
             }
     };
+    switch (mfa_q->type_id) {
+        case ziti_auth_query_type_MFA:
+        case ziti_auth_query_type_TOTP:
+            ev.auth.action = ziti_auth_prompt_totp;
+            ev.auth.detail = mfa_q->provider;
+            break;
+        case ziti_auth_query_type_EXT_JWT: {
+            const char *name;
+            ziti_jwt_signer *signer;
+            MODEL_MAP_FOREACH(name, signer, &ztx->ext_signers) {
+                if (strcmp(mfa_q->id, signer->id) == 0) {
+                    break;
+                }
+            }
+            if (signer == NULL) {
+                ZTX_LOG(ERROR, "cannot continue auth: signer with id[%s] not found", mfa_q->id);
+                ev.auth.action = ziti_auth_cannot_continue;
+                ev.auth.detail = "signer not found";
+            } else {
+                ztx_init_external_auth(ztx, signer);
+                ev.auth.action = ziti_auth_login_external;
+                ev.auth.detail = signer->name;
+            }
+            break;
+        }
+        case ziti_auth_query_type_Unknown:
+        default:
+            ev.auth.action = ziti_auth_cannot_continue;
+            ev.auth.detail = "unsupported secondary auth method";
+            break;
+    }
 
     ziti_send_event(ztx, &ev);
 }
@@ -637,20 +666,20 @@ static void ext_jwt_singers_cb(ziti_jwt_signer_array signers, const ziti_error *
 }
 
 int ziti_get_ext_jwt_signers(ziti_context ztx, ziti_ext_signers_cb cb, void *ctx) {
-    if (ztx == NULL || cb == NULL)
-        return ZITI_INVALID_STATE;
-
-    if (model_map_size(&ztx->ext_signers) > 0) {
-        ziti_jwt_signer_array arr = calloc(model_map_size(&ztx->ext_signers) + 1, sizeof(ziti_jwt_signer*));
-
-        int i = 0;
-        MODEL_MAP_FOR(it, ztx->ext_signers) {
-            arr[i++] = model_map_it_value(it);
-        }
-        cb(ztx, ZITI_OK, arr, ctx);
-        free(arr);
-        return ZITI_OK;
-    }
+//    if (ztx == NULL || cb == NULL)
+//        return ZITI_INVALID_STATE;
+//
+//    if (model_map_size(&ztx->ext_signers) > 0) {
+//        ziti_jwt_signer_array arr = calloc(model_map_size(&ztx->ext_signers) + 1, sizeof(ziti_jwt_signer*));
+//
+//        int i = 0;
+//        MODEL_MAP_FOR(it, ztx->ext_signers) {
+//            arr[i++] = model_map_it_value(it);
+//        }
+//        cb(ztx, ZITI_OK, arr, ctx);
+//        free(arr);
+//        return ZITI_OK;
+//    }
 
     NEWP(req, struct ztx_req_s);
     req->ztx = ztx;
