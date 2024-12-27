@@ -103,9 +103,9 @@ extern int ziti_ext_auth(ziti_context ztx,
 
     switch (ztx->auth_state) {
         case ZitiAuthStateAuthStarted:
-        case ZitiAuthStatePartiallyAuthenticated:
         case ZitiAuthStateFullyAuthenticated:
             return ZITI_INVALID_STATE;
+        case ZitiAuthStatePartiallyAuthenticated:
         case ZitiAuthStateUnauthenticated:
         case ZitiAuthImpossibleToAuthenticate:
             break;

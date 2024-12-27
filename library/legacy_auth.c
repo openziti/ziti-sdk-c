@@ -46,12 +46,13 @@ static int legacy_auth_stop(ziti_auth_method_t *self);
 static int legacy_auth_refresh(ziti_auth_method_t *self);
 static void legacy_auth_free(ziti_auth_method_t *self);
 static int legacy_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
-static ziti_auth_query_mfa* get_mfa(ziti_api_session *session);
+static const ziti_auth_query_mfa* get_mfa(ziti_api_session *session);
 static uint64_t refresh_delay(ziti_api_session *);
 
 char *ziti_mfa_code_body(const char *code);
 
-void auth_timer_cb(uv_timer_t *t);
+static void auth_timer_cb(uv_timer_t *t);
+static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx);
 
 #define LEGACY_AUTH_INIT()          \
     (ziti_auth_method_t) {          \
@@ -78,6 +79,9 @@ static int legacy_auth_jwt_token(ziti_auth_method_t *self, const char *token) {
     free(auth->jwt);
     auth->jwt = strdup(token);
     ziti_ctrl_set_token(auth->ctrl, token);
+    if (auth->session) {
+        ziti_ctrl_current_api_session(auth->ctrl, login_cb, auth);
+    }
     return 0;
 }
 
@@ -137,6 +141,7 @@ static void mfa_cb(void * UNUSED(empty), const ziti_error *err, void *ctx) {
         if (err->http_code == HTTP_STATUS_UNAUTHORIZED) {
             free_ziti_api_session_ptr(auth->session);
             auth->session = NULL;
+            FREE(auth->jwt);
             auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, err);
             uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
         } else {
@@ -166,7 +171,7 @@ static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx
         ZITI_LOG(DEBUG, "logged in successfully => api_session[%s]", session->id);
 
         auth->session = session;
-        ziti_auth_query_mfa *ziti_mfa = get_mfa(session);
+        const ziti_auth_query_mfa *ziti_mfa = get_mfa(session);
 
         if (ziti_mfa) {
             auth->cb(auth->ctx, ZitiAuthStatePartiallyAuthenticated, ziti_mfa);
@@ -197,7 +202,7 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
         free_ziti_api_session_ptr(auth->session);
         auth->session = session;
 
-        ziti_auth_query_mfa *ziti_mfa = get_mfa(auth->session);
+        const ziti_auth_query_mfa *ziti_mfa = get_mfa(auth->session);
         if (ziti_mfa) {
             auth->cb(auth->ctx, ZitiAuthStatePartiallyAuthenticated, ziti_mfa);
         } else {
@@ -241,15 +246,12 @@ void auth_timer_cb(uv_timer_t *t) {
     }
 }
 
-static ziti_auth_query_mfa* get_mfa(ziti_api_session *session) {
-    ziti_auth_query_mfa *aq;
-    MODEL_LIST_FOREACH(aq, session->auth_queries) {
-        if (aq->type_id == ziti_auth_query_type_MFA &&
-            strcmp(aq->provider, MFA_PROVIDER_ZITI) == 0) {
-            return aq;
-        }
+static const ziti_auth_query_mfa* get_mfa(ziti_api_session *session) {
+    if (model_list_size(&session->auth_queries) > 1) {
+        ZITI_LOG(WARN, "multiple auth queries are not supported");
     }
-    return NULL;
+    const ziti_auth_query_mfa *aq = model_list_head(&session->auth_queries);
+    return aq;
 }
 
 static uint64_t refresh_delay(ziti_api_session *session) {
