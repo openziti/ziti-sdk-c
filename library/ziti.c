@@ -666,21 +666,6 @@ static void ext_jwt_singers_cb(ziti_jwt_signer_array signers, const ziti_error *
 }
 
 int ziti_get_ext_jwt_signers(ziti_context ztx, ziti_ext_signers_cb cb, void *ctx) {
-//    if (ztx == NULL || cb == NULL)
-//        return ZITI_INVALID_STATE;
-//
-//    if (model_map_size(&ztx->ext_signers) > 0) {
-//        ziti_jwt_signer_array arr = calloc(model_map_size(&ztx->ext_signers) + 1, sizeof(ziti_jwt_signer*));
-//
-//        int i = 0;
-//        MODEL_MAP_FOR(it, ztx->ext_signers) {
-//            arr[i++] = model_map_it_value(it);
-//        }
-//        cb(ztx, ZITI_OK, arr, ctx);
-//        free(arr);
-//        return ZITI_OK;
-//    }
-
     NEWP(req, struct ztx_req_s);
     req->ztx = ztx;
     req->cb = cb;
