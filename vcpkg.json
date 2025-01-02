@@ -24,10 +24,6 @@
       "description": "Dependencies for samples",
       "dependencies": [
         {
-          "name": "getopt-win32",
-          "platform": "windows"
-        },
-        {
           "name": "cli11"
         }
       ]
@@ -42,5 +38,5 @@
       ]
     }
   },
-  "builtin-baseline": "3508985146f1b1d248c67ead13f8f54be5b4f5da"
+  "builtin-baseline": "b322364f06308bdd24823f9d8f03fe0cc86fd46f"
 }
