@@ -20,18 +20,25 @@
 
 static void ext_oath_cfg_cb(oidc_client_t *oidc, int status, const char *err) {
     ziti_context ztx = oidc->data;
+    ziti_event_t ev = {
+            .type = ZitiAuthEvent,
+    };
     if (status == 0) {
-        ziti_event_t ev = {
-                .type = ZitiAuthEvent,
-                .auth = {
-                        .action = ziti_auth_login_external,
-                        .type = "oidc",
-                        .detail = oidc->http.host,
-                }
+        ev.auth = (struct ziti_auth_event){
+                .action = ziti_auth_login_external,
+                .type = "oidc",
+                .detail = oidc->http.host,
         };
-
-        ziti_send_event(ztx, &ev);
+    } else {
+        ZTX_LOG(ERROR, "OIDC provider configuration failed: %s", err);
+        ev.auth = (struct ziti_auth_event){
+                .action = ziti_auth_cannot_continue,
+                .type = "oidc",
+                .detail = err,
+        };
     }
+
+    ziti_send_event(ztx, &ev);
 }
 
 static void ext_signers_cb(ziti_context ztx, int status, ziti_jwt_signer_array signers, void *ctx) {
