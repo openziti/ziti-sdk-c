@@ -24,10 +24,6 @@
       "description": "Dependencies for samples",
       "dependencies": [
         {
-          "name": "getopt-win32",
-          "platform": "windows"
-        },
-        {
           "name": "cli11"
         }
       ]
