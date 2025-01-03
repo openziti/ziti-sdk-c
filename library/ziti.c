@@ -820,6 +820,13 @@ int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
 
 void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
     uint64_t now = uv_now(ztx->loop);
+    printer(ctx, "\n======= Application Info ==========\n");
+    printer(ctx, "Application:\t%s@%s\n", APP_ID ? APP_ID : "<unset>", APP_VERSION ? APP_VERSION : "<unknown>");
+    const ziti_version *sdk_ver = ziti_get_version();
+    printer(ctx, "ziti-sdk: %s(%s) %s\n", sdk_ver->version, sdk_ver->revision, sdk_ver->build_date);
+    printer(ctx, "tlsuv:    %s (%s)\n", tlsuv_version(), ztx->tlsCtx->version());
+    printer(ctx, "sodium:   %s\n", sodium_version_string());
+    printer(ctx, "libuv:    %s\n", uv_version_string());
     printer(ctx, "\n=================\nZiti Context:\n");
     printer(ctx, "ID:\t%d\n", ztx->id);
     if (ziti_is_enabled(ztx)) {
@@ -828,7 +835,15 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         printer(ctx, "enabled[false]");
     }
     printer(ctx, "Config Source:\t%s\n", ztx->config.cfg_source ? ztx->config.cfg_source : "(none)");
-    printer(ctx, "Controller:\t%s\n", ztx_controller(ztx));
+
+    printer(ctx, "Controller%s:\t[%s] %s\n", ztx->ctrl.is_ha ? "[HA]" : "", ztx->ctrl.version.version, ztx_controller(ztx));
+    if (ztx->ctrl.is_ha) {
+        const char *url;
+        ziti_controller_detail *detail;
+        MODEL_MAP_FOREACH(url, detail, &ztx->ctrl.endpoints) {
+            printer(ctx, "\t%s: online[%c] %s\n", detail->id, detail->is_online ? 'Y' : 'N', url);
+        }
+    }
     printer(ctx, "Config types:\n");
     for (int i = 0; ztx->opts.config_types && ztx->opts.config_types[i]; i++) {
         printer(ctx, "\t%s\n", ztx->opts.config_types[i]);
@@ -892,12 +907,13 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     ziti_channel_t *ch;
     const char *url;
     MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
-        printer(ctx, "ch[%d](%s@%s) ", ch->id, ch->name, url);
+        printer(ctx, "ch[%d] %s\n", ch->id, ch->name);
+        printer(ctx, "\tconnected[%c] version[%s] address[%s]",
+                ziti_channel_is_connected(ch) ? 'Y' : 'N', ch->version, url);
         if (ziti_channel_is_connected(ch)) {
-            printer(ctx, "connected [latency=%" PRIu64 "]\n", ziti_channel_latency(ch));
-        }
-        else {
-            printer(ctx, "Disconnected\n");
+            printer(ctx, " latency[%" PRIu64 "]\n", ziti_channel_latency(ch));
+        } else {
+            printer(ctx, "\n");
         }
     }
 
