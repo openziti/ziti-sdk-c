@@ -827,6 +827,12 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     printer(ctx, "tlsuv:    %s (%s)\n", tlsuv_version(), ztx->tlsCtx->version());
     printer(ctx, "sodium:   %s\n", sodium_version_string());
     printer(ctx, "libuv:    %s\n", uv_version_string());
+
+    printer(ctx, "\n======= Env Info ==========\n");
+    const ziti_env_info *info = get_env_info();
+    printer(ctx, "OS/arch:  %s %s (%s/%s)\n", info->os, info->arch, info->os_release, info->os_version);
+    printer(ctx, "Hostname: %s/%s\n", info->hostname, info->domain);
+
     printer(ctx, "\n=================\nZiti Context:\n");
     printer(ctx, "ID:\t%d\n", ztx->id);
     if (ziti_is_enabled(ztx)) {
