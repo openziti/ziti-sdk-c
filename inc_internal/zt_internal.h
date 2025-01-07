@@ -179,7 +179,7 @@ struct ziti_conn {
             ziti_client_cb client_cb;
 
             bool srv_routers_api_missing;
-            ziti_edge_router_array routers;
+            model_list routers;
             char *token;
             ziti_session *session;
             model_map bindings;
