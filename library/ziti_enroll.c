@@ -240,10 +240,6 @@ static int start_enrollment(struct ziti_enroll_req *er) {
 
     er->cfg.controller_url = strdup(er->enrollment.controller);
     model_list_append(&er->cfg.controllers, strdup(er->enrollment.controller));
-    const char* ctrl;
-    MODEL_LIST_FOREACH(ctrl, er->enrollment.controllers) {
-        model_list_append(&er->cfg.controllers, strdup(ctrl));
-    }
     ziti_ctrl_init(er->loop, &er->controller, &er->cfg.controllers, er->tls);
 
     ziti_ctrl_get_well_known_certs(&er->controller, well_known_certs_cb, er);
