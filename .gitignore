@@ -24,4 +24,7 @@ Testing/
 
 #additional stuff for localtesting
 local.cmake
-/CMakeUserPresets.json
+/CMakeUserPresets.
+
+## CI dirs
+.ci.cache/

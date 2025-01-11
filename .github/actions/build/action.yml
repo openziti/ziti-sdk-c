@@ -18,12 +18,17 @@ inputs:
     description: Ziti Test Identity
 
 runs:
+  env:
+    CI_CACHE: '${{ github.workspace }}/.ci.cache'
+    VCPKG_BINARY_SOURCES: 'clear;files,${{ github.workspace }}/.ci.cache,readwrite'
+
   using: "composite"
   steps:
     - name: macOS tools
       if: runner.os == 'macOS'
-      shell: bash
-      run: brew install autoconf autoconf-archive automake pkg-config
+      uses: gerlero/brew-install@v1
+      with:
+        packages: autoconf autoconf-archive automake pkg-config
 
     - name: windows tools
       if: runner.os == 'Windows'
@@ -31,12 +36,14 @@ runs:
       run: choco install pkgconfiglite
 
     - name: simple build
-      run: echo "target = ${{ inputs.target }}"
+      run: |
+        echo "target = ${{ inputs.target }}"
+        mkdir -p ${CI_CACHE}
       shell: bash
 
     - uses: actions/setup-go@v5
       with:
-        go-version: '1.22.x'
+        go-version: '1.23.x'
         cache-dependency-path: "**/*.sum"
 
     - uses: lukka/get-cmake@v3.30.1
@@ -45,8 +52,8 @@ runs:
 
     - uses: actions/cache@v4
       with:
-        key: deps-${{ inputs.target }}-${{ hashFiles('./vcpkg.json') }}
-        path: './vcpkg/packages'
+        key: vbc-${{ inputs.target }}-${{ hashFiles('./vcpkg.json') }}
+        path: ${{ env.CI_CACHE }}
 
     - uses: lukka/run-cmake@v10
       name: Configure CMake
