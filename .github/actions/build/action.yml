@@ -24,7 +24,7 @@ runs:
       if: runner.os == 'macOS'
       uses: gerlero/brew-install@v1
       with:
-        packages: autoconf autoconf-archive automake pkg-config
+        packages: autoconf autoconf-archive automake pkg-config libtool
 
     - name: windows tools
       if: runner.os == 'Windows'
