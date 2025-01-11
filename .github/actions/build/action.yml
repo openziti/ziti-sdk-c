@@ -18,10 +18,6 @@ inputs:
     description: Ziti Test Identity
 
 runs:
-  env:
-    CI_CACHE: '${{ github.workspace }}/.ci.cache'
-    VCPKG_BINARY_SOURCES: 'clear;files,${{ github.workspace }}/.ci.cache,readwrite'
-
   using: "composite"
   steps:
     - name: macOS tools
