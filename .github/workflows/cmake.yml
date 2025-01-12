@@ -18,9 +18,6 @@ jobs:
       image: ${{ matrix.spec.builder }}
     env:
       BUILD_NUMBER: ${{ github.run_number }}
-      CI_CACHE: '${{ github.workspace }}/.ci.cache'
-      VCPKG_BINARY_SOURCES: 'clear;files,${{ github.workspace }}/.ci.cache,readwrite'
-
     strategy:
       fail-fast: false
       matrix:

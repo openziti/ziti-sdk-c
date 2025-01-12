@@ -31,11 +31,14 @@ runs:
       shell: bash
       run: choco install pkgconfiglite
 
-    - name: simple build
-      run: |
-        echo "target = ${{ inputs.target }}"
-        mkdir -p ${CI_CACHE}
+    - name: setup build
       shell: bash
+      run: |
+        CI_CACHE="${GITHUB_WORKSPACE}/.ci.cache"
+        VCPKG_BINARY_SOURCES="clear;files,${GITHUB_WORKSPACE}/.ci.cache,readwrite"
+        mkdir -p ${CI_CACHE}
+        echo "CI_CACHE=${CI_CACHE}" >> $GITHUB_ENV
+        echo "VCPKG_BINARY_SOURCES=${VCPKG_BINARY_SOURCES}" >> $GITHUB_ENV
 
     - uses: actions/setup-go@v5
       with:
@@ -58,7 +61,9 @@ runs:
         configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
 
     - name: build CMake
-      run: cmake --build ./build --config ${{ inputs.config }}
+      run: |
+        cmake --build ./build --config ${{ inputs.config }}
+        ls -lR ${CI_CACHE}
       shell: bash
 
     - name: bundle artifacts
