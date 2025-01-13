@@ -39,15 +39,14 @@ XX(MFA, __VA_ARGS__) \
 XX(TOTP, __VA_ARGS__) \
 XX(EXT-JWT, EXT_JWT, __VA_ARGS__)
 
-#define ZITI_AUTH_QUERY_MFA_MODEL(XX, ...) \
-XX(id, model_string, none, id, __VA_ARGS__) \
-XX(type_id, ziti_auth_query_type, none, typeId, __VA_ARGS__) \
-XX(provider, model_string, none, provider, __VA_ARGS__) \
-XX(http_method, model_string, none, httpMethod, __VA_ARGS__) \
-XX(http_url, model_string, none, httpUrl, __VA_ARGS__) \
-XX(min_length, model_number, none, minLength, __VA_ARGS__) \
-XX(max_length, model_number, none, maxLength, __VA_ARGS__) \
-XX(format, model_string, none, format, __VA_ARGS__)
+#define ZITI_POSTURE_QUERY_TYPE_ENUM(XX, ...) \
+XX(DOMAIN, __VA_ARGS__)                       \
+XX(OS, __VA_ARGS__)                           \
+XX(PROCESS, __VA_ARGS__)                      \
+XX(PROCESS_MULTI, __VA_ARGS__)                \
+XX(MAC, __VA_ARGS__)                          \
+XX(MFA, __VA_ARGS__)                          \
+XX(ENDPOINT_STATE, __VA_ARGS__)
 
 #define ZITI_JWT_SIGNER_MODEL(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__) \
@@ -98,7 +97,7 @@ XX(path, model_string, none, path, __VA_ARGS__)
 #define ZITI_POSTURE_QUERY_MODEL(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__) \
 XX(is_passing, model_bool, none, isPassing, __VA_ARGS__) \
-XX(query_type, model_string, none, queryType, __VA_ARGS__) \
+XX(query_type, ziti_posture_query_type, none, queryType, __VA_ARGS__) \
 XX(process, ziti_process, ptr, process, __VA_ARGS__) \
 XX(processes, ziti_process, array, processes, __VA_ARGS__) \
 XX(timeout, model_number, none, timeout, __VA_ARGS__) \
@@ -238,6 +237,8 @@ DECLARE_ENUM(ziti_session_type, ZITI_SESSION_TYPE_ENUM)
 
 DECLARE_ENUM(ziti_auth_query_type, ZITI_AUTH_QUERY_TYPE_ENUM)
 
+DECLARE_ENUM(ziti_posture_query_type, ZITI_POSTURE_QUERY_TYPE_ENUM)
+
 DECLARE_ENUM(ziti_ctrl_cap, ZITI_CTRL_CAP_ENUM)
 
 DECLARE_MODEL(api_path, ZITI_API_PATH_MODEL)
@@ -279,8 +280,6 @@ DECLARE_MODEL(ziti_proxy_server, ZITI_PROXY_SERVER_MODEL)
 DECLARE_MODEL(ziti_host_cfg_v1, ZITI_HOST_CFG_V1_MODEL)
 
 DECLARE_MODEL(ziti_host_cfg_v2, ZITI_HOST_CFG_V2_MODEL)
-
-DECLARE_MODEL(ziti_auth_query_mfa, ZITI_AUTH_QUERY_MFA_MODEL)
 
 DECLARE_MODEL(ziti_mfa_enrollment, ZITI_MFA_ENROLLMENT_MODEL)
 
