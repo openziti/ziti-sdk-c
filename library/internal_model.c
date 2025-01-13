@@ -18,24 +18,6 @@
 #include <ziti/errors.h>
 #include <json-c/json.h>
 
-#if _WIN32
-#include <stdint.h>
-#include <lmwksta.h>
-#include <LMAPIbuf.h>
-#pragma comment(lib, "netapi32.lib")
-
-typedef uint32_t in_addr_t;
-#define strcasecmp stricmp
-#else
-
-#include <arpa/inet.h>
-#include <unistd.h>
-
-#if defined(ANDROID)
-#include <sys/system_properties.h>
-#endif
-
-#endif
 
 #include <string.h>
 #include <assert.h>
@@ -52,6 +34,8 @@ IMPL_ENUM(ziti_enrollment_method, ZITI_ENROLLMENT_METHOD)
 IMPL_ENUM(jwt_sig_method, JWT_SIG_METHOD)
 
 IMPL_ENUM(ziti_ctrl_cap, ZITI_CTRL_CAP_ENUM)
+
+IMPL_ENUM(ziti_posture_query_type, ZITI_POSTURE_QUERY_TYPE_ENUM)
 
 IMPL_MODEL(ziti_posture_query, ZITI_POSTURE_QUERY_MODEL)
 
@@ -199,57 +183,6 @@ int ziti_service_get_config(ziti_service *service, const char *cfg_type, void *c
     };
 
     return ZITI_OK;
-}
-
-static uv_once_t info_once;
-static ziti_env_info s_info;
-static void ziti_info_init() {
-    static uv_utsname_t os_info;
-    static char s_hostname[UV_MAXHOSTNAMESIZE];
-    static char s_domain[UV_MAXHOSTNAMESIZE];
-
-    uv_os_uname(&os_info);
-#if ANDROID
-    static char android_release[PROP_VALUE_MAX + 1];
-    static char android_version[PROP_VALUE_MAX + 1];
-    __system_property_get("ro.build.version.release", android_release);
-    __system_property_get("ro.build.version.security_patch", android_version);
-    s_info.os = "Android";
-    s_info.os_release = android_release;
-    s_info.os_version = android_version;
-#else
-    s_info.os = os_info.sysname;
-    s_info.os_release = os_info.release;
-    s_info.os_version = os_info.version;
-#endif
-    s_info.arch = os_info.machine;
-    size_t len = sizeof(s_hostname);
-    uv_os_gethostname(s_hostname, &len);
-#if _WIN32
-    DWORD domain_len = sizeof(s_domain);
-    DWORD rc = 0;
-    rc = GetComputerNameExA(ComputerNameDnsDomain, s_domain, &domain_len);
-
-    if (domain_len == 0) {
-        WKSTA_INFO_100 *info;
-        rc = NetWkstaGetInfo(NULL, 100, (LPBYTE *) &info);
-        if (rc == 0) {
-            wsprintfA(s_domain, "%ls", info->wki100_langroup);
-        }
-        NetApiBufferFree(info);
-    }
-#else
-    len = sizeof(s_domain);
-    getdomainname(s_domain, len);
-#endif
-
-    s_info.hostname = s_hostname;
-    s_info.domain = s_domain;
-}
-
-const ziti_env_info* get_env_info() {
-    uv_once(&info_once, ziti_info_init);
-    return &s_info;
 }
 
 static int cmp_ziti_address0(ziti_address *lh, ziti_address *rh) {
