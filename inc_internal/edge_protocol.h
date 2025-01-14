@@ -17,7 +17,7 @@
 #define ZITI_SDK_EDGE_PROTOCOL_H
 
 #include <stdint.h>
-#include <edge_client.pb-c.h>
+#include "../library/proto/edge_client.pb-c.h"
 
 #ifdef __cplusplus
 extern "C" {
