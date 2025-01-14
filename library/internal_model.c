@@ -24,7 +24,7 @@
 #include "ziti/ziti_buffer.h"
 #include "ziti/ziti.h"
 
-#if WIN32
+#if _WIN32
 #include <stdint.h>
 typedef uint32_t in_addr_t;
 #define strcasecmp stricmp
