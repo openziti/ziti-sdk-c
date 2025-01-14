@@ -35,7 +35,7 @@
 #define auth_url_path "/auth/callback"
 #define cb_url(host,port,path) "http://" host ":" _str(port) path
 #define default_cb_url cb_url("localhost",auth_cb_port,auth_url_path)
-#define default_scope "openid offline_access"
+#define default_scope "openid"
 
 #define TOKEN_EXCHANGE_GRANT "urn:ietf:params:oauth:grant-type:token-exchange"
 
