@@ -253,9 +253,9 @@ ZITI_FUNC struct json_object* enum_to_json(const void* ptr, const void *enum_typ
 
 
 #define mk_enum2(v,t) t##_##v
-#define mk_enum3(v,n,t) t##_##n
+#define mk_enum3(v,n,t) t##_##v
 #define enum_f2(v, t) const t v
-#define enum_f3(v, n, t) const t n
+#define enum_f3(v, n, t) const t v
 
 #define get_ovrd(_1, _2, _3, NAME, ...) NAME
 
@@ -280,15 +280,15 @@ extern const struct Enum##_s Enum##s;
 
 #define get_value_of_ovrd(_1, _2, _3, _4, _5, NAME, ...) NAME
 #define enum_value_of4(v, t, str, len) if(strncmp(str,#v,len) == 0){return (t)t##s.v;}
-#define enum_value_of5(v, n, t, str, len) if(strncmp(str,#v,len) == 0){return (t)t##s.n;}
+#define enum_value_of5(n, v, t, str, len) if(strncmp(str,v,len) == 0){return (t)t##s.n;}
 #define enum_value_of(...) get_value_of_ovrd(__VA_ARGS__, enum_value_of5, enum_value_of4)(__VA_ARGS__)
 
 #define enum_c2(v,t)  case t##_##v: return #v
-#define enum_c3(v,n,t) case t##_##n: return #v
+#define enum_c3(n,v,t) case t##_##n: return v
 #define enum_case(...)  get_ovrd(__VA_ARGS__, enum_c3, enum_c2)(__VA_ARGS__);
 
 #define enum_field_v2(v,t) .v = t##_##v
-#define enum_field_v3(v,n,t) .n = t##_##n
+#define enum_field_v3(n,v,t) .n = t##_##n
 
 #define enum_field_val(...) get_ovrd(__VA_ARGS__, enum_field_v3, enum_field_v2)(__VA_ARGS__),
 #define IMPL_ENUM(Enum, Values) \

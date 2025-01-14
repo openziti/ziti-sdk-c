@@ -37,16 +37,16 @@ XX(Dial, __VA_ARGS__)
 #define ZITI_AUTH_QUERY_TYPE_ENUM(XX, ...) \
 XX(MFA, __VA_ARGS__) \
 XX(TOTP, __VA_ARGS__) \
-XX(EXT-JWT, EXT_JWT, __VA_ARGS__)
+XX(EXT_JWT, "EXT-JWT", __VA_ARGS__)
 
 #define ZITI_POSTURE_QUERY_TYPE_ENUM(XX, ...) \
-XX(DOMAIN, __VA_ARGS__)                       \
-XX(OS, __VA_ARGS__)                           \
-XX(PROCESS, __VA_ARGS__)                      \
-XX(PROCESS_MULTI, __VA_ARGS__)                \
-XX(MAC, __VA_ARGS__)                          \
-XX(MFA, __VA_ARGS__)                          \
-XX(ENDPOINT_STATE, __VA_ARGS__)
+XX(PC_Domain, "DOMAIN", __VA_ARGS__)          \
+XX(PC_OS, "OS", __VA_ARGS__)                  \
+XX(PC_Process, "PROCESS", __VA_ARGS__)        \
+XX(PC_Process_Multi, "PROCESS_MULTI", __VA_ARGS__) \
+XX(PC_MAC, "MAC", __VA_ARGS__)                \
+XX(PC_MFA, "MFA", __VA_ARGS__)                \
+XX(PC_Endpoint_State, "ENDPOINT_STATE", __VA_ARGS__)
 
 #define ZITI_JWT_SIGNER_MODEL(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__) \

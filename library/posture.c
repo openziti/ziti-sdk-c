@@ -246,22 +246,22 @@ void ziti_send_posture_data(ziti_context ztx) {
             while (set->posture_queries[queryIdx] != NULL) {
                 ziti_posture_query *query = set->posture_queries[queryIdx];
                 switch (query->query_type) {
-                    case ziti_posture_query_type_MAC:
+                    case ziti_posture_query_type_PC_MAC:
                         macInfo.query_set = set;
                         macInfo.query = query;
                         macInfo.service = service;
                         break;
-                    case ziti_posture_query_type_DOMAIN:
+                    case ziti_posture_query_type_PC_Domain:
                         domainInfo.query_set = set;
                         domainInfo.query = query;
                         domainInfo.service = service;
                         break;
-                    case ziti_posture_query_type_OS:
+                    case ziti_posture_query_type_PC_OS:
                         osInfo.query_set = set;
                         osInfo.query = query;
                         osInfo.service = service;
                         break;
-                    case ziti_posture_query_type_PROCESS: {
+                    case ziti_posture_query_type_PC_Process: {
                         void *curVal = model_map_get(&processes, query->process->path);
                         if (curVal == NULL) {
                             NEWP(newProcInfo, struct query_info);
@@ -272,7 +272,7 @@ void ziti_send_posture_data(ziti_context ztx) {
                         }
                         break;
                     }
-                    case ziti_posture_query_type_PROCESS_MULTI: {
+                    case ziti_posture_query_type_PC_Process_Multi: {
                         int processIdx = 0;
                         while (query->processes[processIdx] != NULL) {
                             ziti_process *process = query->processes[processIdx];
@@ -290,8 +290,8 @@ void ziti_send_posture_data(ziti_context ztx) {
                         }
                         break;
                     }
-                    case ziti_posture_query_type_MFA:
-                    case ziti_posture_query_type_ENDPOINT_STATE:
+                    case ziti_posture_query_type_PC_MFA:
+                    case ziti_posture_query_type_PC_Endpoint_State:
                         break;
                     case ziti_posture_query_type_Unknown:
                         ZTX_LOG(WARN, "unknown posture query type for id[%s]", query->id);
@@ -560,7 +560,7 @@ static void ziti_pr_handle_mac(ziti_context ztx, const char *id, char **mac_addr
 
     ziti_pr_mac_req mac_req = {
             .id = (char *) id,
-            .typeId = ziti_posture_query_type_MAC,
+            .typeId = ziti_posture_query_type_PC_MAC,
             .mac_addresses = addresses,
     };
 
@@ -576,7 +576,7 @@ static void ziti_pr_handle_domain(ziti_context ztx, const char *id, const char *
     ziti_pr_domain_req domain_req = {
             .id = (char *) id,
             .domain = (char *) domain,
-            .typeId = ziti_posture_query_type_DOMAIN,
+            .typeId = ziti_posture_query_type_PC_Domain,
     };
 
     size_t obj_len;
@@ -588,7 +588,7 @@ static void ziti_pr_handle_domain(ziti_context ztx, const char *id, const char *
 static void ziti_pr_handle_os(ziti_context ztx, const char *id, const char *os_type, const char *os_version, const char *os_build) {
     ziti_pr_os_req os_req = {
             .id = id,
-            .typeId = ziti_posture_query_type_OS,
+            .typeId = ziti_posture_query_type_PC_OS,
             .type = os_type,
             .version = os_version,
             .build = os_build
@@ -611,7 +611,7 @@ static void ziti_pr_handle_process(ziti_context ztx, const char *id, const char 
 
     ziti_pr_process_req process_req = {
             .id = (char *) id,
-            .typeId = ziti_posture_query_type_PROCESS,
+            .typeId = ziti_posture_query_type_PC_Process,
             .path = path,
             .is_running = is_running,
             .hash = sha_512_hash,
@@ -839,7 +839,7 @@ void ziti_endpoint_state_change(ziti_context ztx, bool woken, bool unlocked) {
         ZTX_LOG(INFO, "endpoint state change reported: woken[%s] unlocked[%s]", woken ? "TRUE":"FALSE", unlocked ? "TRUE":"FALSE");
         ziti_pr_endpoint_state_req state_req = {
                 .id = "0",
-                .typeId = ziti_posture_query_type_ENDPOINT_STATE,
+                .typeId = ziti_posture_query_type_PC_Endpoint_State,
                 .unlocked = unlocked,
                 .woken = woken
         };
