@@ -24,6 +24,12 @@
 #include "ziti/ziti_buffer.h"
 #include "ziti/ziti.h"
 
+#if WIN32
+#include <stdint.h>
+typedef uint32_t in_addr_t;
+#define strcasecmp stricmp
+#endif
+
 #define null_checks(lh, rh) \
     if ((lh) == (rh)) { return 0; } \
     if ((lh) == NULL) { return -1; } \
