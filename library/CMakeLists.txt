@@ -28,13 +28,20 @@ if (ziti_DEVELOPER_MODE)
     find_program(PROTO_GEN_C protoc-gen-c)
     if (PROTO_GEN AND PROTO_GEN_C)
         message(NOTICE "protobuf generator: ${PROTO_GEN}")
+        FetchContent_Declare(sdk_golang
+                GIT_REPOSITORY https://github.com/openziti/sdk-golang.git
+                GIT_TAG v0.23.44
+                GIT_SHALLOW 1
+        )
+        FetchContent_MakeAvailable(sdk_golang)
+
         set(PROTO_FILES
                 edge_client.proto
                 google/protobuf/timestamp.proto
         )
         add_custom_target(generate-protobuf
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/proto
-                COMMAND protoc --c_out=. -I ${PBUFC_INCLUDE_DIRS} -I. ${PROTO_FILES}
+                COMMAND protoc --c_out=. -I ${PBUFC_INCLUDE_DIRS} -I ${sdk_golang_SOURCE_DIR}/pb/edge_client_pb ${PROTO_FILES}
         )
         message(NOTICE "dev mode: use generate-protobuf target to update protobuf objects")
     endif ()
@@ -55,6 +62,7 @@ set(ZITI_HEADER_FILES
         )
 
 SET(ZITI_SRC_FILES
+        sdk_info.c
         utils.c
         ziti.c
         config.c

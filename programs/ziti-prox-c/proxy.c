@@ -497,7 +497,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                         for (int idx = 0; policy->posture_queries[idx] != NULL; idx++) {
                             ziti_posture_query *query = policy->posture_queries[idx];
 
-                            if (strcmp(query->query_type, "MFA") == 0 && query->timeoutRemaining != NULL &&
+                            if (query->query_type == ziti_posture_query_type_PC_MFA &&
+                                query->timeoutRemaining != NULL &&
                                 *query->timeoutRemaining == 0) {
                                 mfa_auth_event_handler(ztx);
                             }

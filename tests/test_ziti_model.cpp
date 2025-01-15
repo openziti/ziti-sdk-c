@@ -365,27 +365,26 @@ TEST_CASE("parse-services-array", "[model]") {
     for (idx = 0, pq_arr = services[2]->posture_query_set[0]->posture_queries; *pq_arr != nullptr; pq_arr++, idx++) {}
     REQUIRE(idx == 4);
 
-    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[0]->id, Equals("OjUDnohGg"));
-    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[0]->query_type, Equals("OS"));
-    REQUIRE(!services[2]->posture_query_set[0]->posture_queries[0]->is_passing);
-    REQUIRE(services[2]->posture_query_set[0]->posture_queries[0]->process == nullptr);
+    CHECK_THAT(services[2]->posture_query_set[0]->posture_queries[0]->id, Equals("OjUDnohGg"));
+    CHECK(services[2]->posture_query_set[0]->posture_queries[0]->query_type == ziti_posture_query_type_PC_OS);
+    CHECK(!services[2]->posture_query_set[0]->posture_queries[0]->is_passing);
+    CHECK(services[2]->posture_query_set[0]->posture_queries[0]->process == nullptr);
 
+    CHECK_THAT(services[2]->posture_query_set[0]->posture_queries[1]->id, Equals("j08v7T2MR"));
+    CHECK(services[2]->posture_query_set[0]->posture_queries[1]->query_type == ziti_posture_query_type_PC_Process);
+    CHECK(!services[2]->posture_query_set[0]->posture_queries[1]->is_passing);
+    CHECK(services[2]->posture_query_set[0]->posture_queries[1]->process != nullptr);
+    CHECK_THAT(services[2]->posture_query_set[0]->posture_queries[1]->process->path, Equals("C:\\Users\\andrew\\go\\bin\\test.exe"));
 
-    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[1]->id, Equals("j08v7T2MR"));
-    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[1]->query_type, Equals("PROCESS"));
-    REQUIRE(!services[2]->posture_query_set[0]->posture_queries[1]->is_passing);
-    REQUIRE(services[2]->posture_query_set[0]->posture_queries[1]->process != nullptr);
-    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[1]->process->path, Equals("C:\\Users\\andrew\\go\\bin\\test.exe"));
+    CHECK_THAT(services[2]->posture_query_set[0]->posture_queries[2]->id, Equals("vG8v7ThGg"));
+    CHECK(services[2]->posture_query_set[0]->posture_queries[2]->query_type == ziti_posture_query_type_PC_Domain);
+    CHECK(services[2]->posture_query_set[0]->posture_queries[2]->is_passing);
+    CHECK(services[2]->posture_query_set[0]->posture_queries[2]->process == nullptr);
 
-    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[2]->id, Equals("vG8v7ThGg"));
-    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[2]->query_type, Equals("DOMAIN"));
-    REQUIRE(services[2]->posture_query_set[0]->posture_queries[2]->is_passing);
-    REQUIRE(services[2]->posture_query_set[0]->posture_queries[2]->process == nullptr);
-
-    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[3]->id, Equals("wyyDnThMR"));
-    REQUIRE_THAT(services[2]->posture_query_set[0]->posture_queries[3]->query_type, Equals("MAC"));
-    REQUIRE(!services[2]->posture_query_set[0]->posture_queries[3]->is_passing);
-    REQUIRE(services[2]->posture_query_set[0]->posture_queries[3]->process == nullptr);
+    CHECK_THAT(services[2]->posture_query_set[0]->posture_queries[3]->id, Equals("wyyDnThMR"));
+    CHECK(services[2]->posture_query_set[0]->posture_queries[3]->query_type == ziti_posture_query_type_PC_MAC);
+    CHECK(!services[2]->posture_query_set[0]->posture_queries[3]->is_passing);
+    CHECK(services[2]->posture_query_set[0]->posture_queries[3]->process == nullptr);
 
     free_ziti_service_array(&services);
 }

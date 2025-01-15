@@ -17,6 +17,7 @@
 #define ZITI_SDK_EDGE_PROTOCOL_H
 
 #include <stdint.h>
+#include "../library/proto/edge_client.pb-c.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,32 +30,27 @@ enum content_type {
     ContentTypeResultType = 2,
     ContentTypeLatencyType = 3,
 
-    ContentTypeEdge = 0xED6E,
-    ContentTypeConnect = 60783,
-    ContentTypeStateConnected = 60784,
-    ContentTypeStateClosed = 60785,
-    ContentTypeData = 60786,
-    ContentTypeDial = 60787,
-    ContentTypeDialSuccess = 60788,
-    ContentTypeDialFailed = 60789,
-    ContentTypeBind = 60790,
-    ContentTypeUnbind = 60791,
-    ContentTypeStateSessionEnded = 60792,
-	ContentTypeProbe             = 60793,
-	ContentTypeUpdateBind        = 60794,
-    ContentTypeHealthEvent         = 60795,
-    ContentTypeTraceRoute          = 60796,
-    ContentTypeTraceRouteResponse  = 60797,
-    ContentTypeConnInspectRequest  = 60798,
+    ContentTypeConnect = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ConnectType,
+    ContentTypeStateConnected = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__StateConnectedType,
+    ContentTypeStateClosed = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__StateClosedType,
+    ContentTypeData = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__DataType,
+    ContentTypeDial = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__DialType,
+    ContentTypeDialSuccess = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__DialSuccessType,
+    ContentTypeDialFailed = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__DialFailedType,
+    ContentTypeBind = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__BindType,
+    ContentTypeUnbind = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UnbindType,
+
+    ContentTypeUpdateToken = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UpdateTokenType,
+    ContentTypeUpdateTokenSuccess = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UpdateTokenSuccessType,
+    ContentTypeUpdateTokenFailure = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UpdateTokenFailureType,
+
+    // TODO fix when available in protobuf definitions
+    ContentTypeConnInspectRequest = 60798,
     ContentTypeConnInspectResponse = 60799,
+    ContentTypeBindSuccess = 60800,
 
-    ContentTypeUpdateTokenType = 60800,
-    ContentTypeUpdateTokenSuccessType = 60801,
-    ContentTypeUpdateTokenFailureType = 60802,
-
-    ContentTypePostureResponseType = 10800,
-    ContentTypePostureResponseSuccessType = 10801,
-
+    ContentTypePostureResponse = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureResponseType,
+    ContentTypePostureResponseSuccess = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureResponseSuccessType,
 };
 
 enum header_id {

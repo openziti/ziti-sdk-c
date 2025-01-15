@@ -124,19 +124,20 @@ XX(config_types, model_string, list, configTypes, __VA_ARGS__)
 #define ZITI_ENROLLMENT_RESP(XX, ...) \
 XX(cert, model_string, none, cert, __VA_ARGS__)
 
-#define ZITI_PR_MAC_REQ(XX, ...) \
+#define ZITI_PR_BASE(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__) \
-XX(typeId, model_string, none, typeId, __VA_ARGS__) \
+XX(typeId, ziti_posture_query_type, none, typeId, __VA_ARGS__)
+
+#define ZITI_PR_MAC_REQ(XX, ...) \
+ZITI_PR_BASE(XX, __VA_ARGS__)  \
 XX(mac_addresses, model_string, array, macAddresses, __VA_ARGS__)
 
 #define ZITI_PR_DOMAIN_REQ(XX, ...) \
-XX(id, model_string, none, id, __VA_ARGS__) \
-XX(typeId, model_string, none, typeId, __VA_ARGS__) \
+ZITI_PR_BASE(XX, __VA_ARGS__)  \
 XX(domain, model_string, none, domain, __VA_ARGS__)
 
 #define ZITI_PR_OS_REQ(XX, ...) \
-XX(id, model_string, none, id, __VA_ARGS__) \
-XX(typeId, model_string, none, typeId, __VA_ARGS__) \
+ZITI_PR_BASE(XX, __VA_ARGS__)  \
 XX(type, model_string, none, type, __VA_ARGS__) \
 XX(version, model_string, none, version, __VA_ARGS__) \
 XX(build, model_string, none, build, __VA_ARGS__)
@@ -147,18 +148,26 @@ XX(hash, model_string, none, hash, __VA_ARGS__) \
 XX(signer, model_string, none, signerFingerprint, __VA_ARGS__)
 
 #define ZITI_PR_PROCESS_REQ(XX, ...) \
-XX(id, model_string, none, id, __VA_ARGS__)\
+ZITI_PR_BASE(XX, __VA_ARGS__)  \
 XX(path, model_string, none, path, __VA_ARGS__) \
-XX(typeId, model_string, none, typeId, __VA_ARGS__) \
 XX(is_running, model_bool, none, isRunning, __VA_ARGS__) \
 XX(hash, model_string, none, hash, __VA_ARGS__) \
 XX(signers, model_string, array, signerFingerprints, __VA_ARGS__)
 
 #define ZITI_PR_ENDPOINT_STATE_REQ(XX, ...) \
-XX(id, model_string, none, id, __VA_ARGS__)\
-XX(typeId, model_string, none, typeId, __VA_ARGS__) \
+ZITI_PR_BASE(XX, __VA_ARGS__)  \
 XX(unlocked, model_bool, none, unlocked, __VA_ARGS__) \
 XX(woken, model_bool, none, woken, __VA_ARGS__)
+
+#define ZITI_AUTH_QUERY_MFA_MODEL(XX, ...) \
+XX(id, model_string, none, id, __VA_ARGS__) \
+XX(type_id, ziti_auth_query_type, none, typeId, __VA_ARGS__) \
+XX(provider, model_string, none, provider, __VA_ARGS__) \
+XX(http_method, model_string, none, httpMethod, __VA_ARGS__) \
+XX(http_url, model_string, none, httpUrl, __VA_ARGS__) \
+XX(min_length, model_number, none, minLength, __VA_ARGS__) \
+XX(max_length, model_number, none, maxLength, __VA_ARGS__) \
+XX(format, model_string, none, format, __VA_ARGS__)
 
 #define ZITI_SERVICE_TIMER(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__) \
@@ -267,6 +276,8 @@ DECLARE_MODEL(ziti_pr_endpoint_state_req, ZITI_PR_ENDPOINT_STATE_REQ)
 
 DECLARE_MODEL(ziti_pr_domain_req, ZITI_PR_DOMAIN_REQ)
 
+DECLARE_MODEL(ziti_auth_query_mfa, ZITI_AUTH_QUERY_MFA_MODEL)
+
 DECLARE_MODEL(ziti_service_update, ZITI_SERVICE_UPDATE)
 
 DECLARE_MODEL(ziti_mfa_code_req, ZITI_MFA_CODE_REQ)
@@ -294,6 +305,8 @@ DECLARE_MODEL(api_address, API_ADDRESS_MODEL)
 DECLARE_MODEL(ctrl_apis, CTRL_APIS_MODEL)
 
 DECLARE_MODEL(ziti_controller_detail, ZITI_CONTROLLER_DETAIL)
+
+DECLARE_MODEL(ziti_pr_base, ZITI_PR_BASE)
 
 bool ziti_has_capability(const ziti_version *v, ziti_ctrl_cap c);
 
