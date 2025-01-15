@@ -28,6 +28,7 @@ extern "C" {
 #define OIDC_TOKEN_OK (0)
 #define OIDC_TOTP_NEEDED (1)
 #define OIDC_TOTP_FAILED (2)
+#define OIDC_TOKEN_FAILED (3)
 
 typedef struct oidc_client_s oidc_client_t;
 typedef void (*oidc_config_cb)(oidc_client_t *, int, const char *);

@@ -502,7 +502,7 @@ static void ext_accept(uv_work_t *wr) {
         return;
     }
 
-    char buf[1024];
+    char buf[4096];
     ssize_t c;
 #if _WIN32
     c = recv(clt, buf, sizeof(buf) -1, 0);
@@ -816,6 +816,25 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
     return 0;
 }
 
+static const char *jwt_payload(const char *jwt) {
+    static uint8_t payload[4096];
+    size_t payload_len;
+    jwt = strchr(jwt, '.');
+    if (jwt == NULL) {
+        ZITI_LOG(ERROR, "invalid JWT provided");
+        return "<invalid JWT>";
+    }
+
+    jwt++;
+    const char *end;
+    if (sodium_base642bin(payload, sizeof(payload), jwt, strlen(jwt), NULL,
+                          &payload_len, &end, sodium_base64_VARIANT_URLSAFE_NO_PADDING) == 0) {
+        payload[payload_len] = '\0';
+        return (const char*)payload;
+    }
+    return "<JWT too long?>";
+}
+
 static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
     if (clt->tokens) {
         json_object_put(clt->tokens);
@@ -825,7 +844,12 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
     if (clt->token_cb) {
         struct json_object *access_token = json_object_object_get(clt->tokens, "access_token");
         if (access_token) {
-            clt->token_cb(clt, OIDC_TOKEN_OK, json_object_get_string(access_token));
+            const char *token = json_object_get_string(access_token);
+            ZITI_LOG(DEBUG, "access_token=%s", jwt_payload(token));
+            clt->token_cb(clt, OIDC_TOKEN_OK, token);
+        } else {
+            ZITI_LOG(ERROR, "access_token was not provided by IdP");
+            clt->token_cb(clt, OIDC_TOKEN_FAILED, NULL);
         }
     }
     struct json_object *refresher = json_object_object_get(clt->tokens, "refresh_token");
