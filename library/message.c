@@ -86,18 +86,27 @@ uint8_t *write_hdr(const hdr_t *h, uint8_t *buf) {
 
 int parse_hdrs(const uint8_t *buf, uint32_t len, hdr_t **hp) {
     const uint8_t *p = buf;
+    const uint8_t *end = buf + len;
+
+    ZITI_LOG(TRACE, "parsing headers len[%d]", len);
 
     int count = 0;
-    while (p < buf + len - 2 * sizeof(uint32_t)) {
-        uint32_t length;
-        p += sizeof(uint32_t);
+    while (p < end) {
+        if (end - p < 2 * sizeof(uint32_t)) {
+            ZITI_LOG(ERROR, "short header metadata: %zd", end - p);
+            return ZITI_INVALID_STATE;
+        }
+
+        uint32_t id, length;
+        p = read_int32(p, &id);
         p = read_int32(p, &length);
         p += length;
+        ZITI_LOG(TRACE, "hdr[%d] id[%d] len[%d]", count, id, length);
         count++;
     }
 
-    if (p != buf + len) {
-        ZITI_LOG(ERROR, "misaligned message headers");
+    if (p != end) {
+        ZITI_LOG(ERROR, "misaligned message headers: len[%d] != parsed_len[%zd]", len, p - buf);
         return ZITI_INVALID_STATE;
     }
 
@@ -109,7 +118,7 @@ int parse_hdrs(const uint8_t *buf, uint32_t len, hdr_t **hp) {
 
     p = buf;
     int idx = 0;
-    while (p < buf + len) {
+    while (p < end) {
         p = read_int32(p, &headers[idx].header_id);
         p = read_int32(p, &headers[idx].length);
         headers[idx].value = p;

@@ -33,10 +33,15 @@ TEST_CASE("simple", "[model]") {
                     .length = 3,
                     .value = (uint8_t *) "bar"
             },
+            {
+                .header_id = 3,
+                .length = 0,
+                .value = nullptr,
+            }
     };
     auto content1 = "this is a message";
     uint32_t s1 = 3333;
-    auto m1 = message_new(p, ContentTypeData, headers, 2, strlen(content1));
+    auto m1 = message_new(p, ContentTypeData, headers, sizeof(headers)/sizeof(headers[0]), strlen(content1));
     strncpy(reinterpret_cast<char *>(m1->body), content1, strlen(content1));
     message_set_seq(m1, &s1);
 
@@ -45,8 +50,11 @@ TEST_CASE("simple", "[model]") {
     CHECK(m2->header.seq == 3334);
     CHECK(m2->msgbuflen == m1->msgbuflen);
     memcpy(m2->msgbufp, m1->msgbufp, m1->msgbuflen);
+    hdr_t *tmp;
+    CHECK(parse_hdrs(m2->headers, m2->header.headers_len - 1, &tmp) == ZITI_INVALID_STATE);
+    CHECK(parse_hdrs(m2->headers, m2->header.headers_len + 1, &tmp) == ZITI_INVALID_STATE);
     m2->nhdrs = parse_hdrs(m2->headers, m2->header.headers_len, &m2->hdrs);
-    CHECK(m2->nhdrs == 2);
+    CHECK(m2->nhdrs == 3);
 
     const uint8_t *hdrval;
     size_t hdrlen;
@@ -56,6 +64,9 @@ TEST_CASE("simple", "[model]") {
     CHECK(message_get_bytes_header(m2, 2, &hdrval, &hdrlen));
     CHECK(strncmp((const char *) headers[1].value, (const char *) hdrval, hdrlen) == 0);
     CHECK(strncmp(content1, (const char *) m2->body, m2->header.body_len) == 0);
+
+    CHECK(message_get_bytes_header(m2, 3, &hdrval, &hdrlen));
+    CHECK(hdrlen == 0);
 
     pool_return_obj(m1);
     pool_return_obj(m2);
