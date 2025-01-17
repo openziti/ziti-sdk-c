@@ -309,9 +309,9 @@ static void token_update_cb(void *ctx, message *m, int status) {
     ziti_channel_t *ch = ctx;
     if (status != ZITI_OK) {
         CH_LOG(ERROR, "failed to update token: %d[%s]", status, ziti_errorstr(status));
-    } else if (m->header.content == ContentTypeUpdateTokenSuccessType) {
+    } else if (m->header.content == ContentTypeUpdateTokenSuccess) {
         CH_LOG(DEBUG, "token update success");
-    } else if (m->header.content == ContentTypeUpdateTokenFailureType) {
+    } else if (m->header.content == ContentTypeUpdateTokenFailure) {
         CH_LOG(WARN, "failed to update token: %.*s", m->header.body_len, m->body);
     } else {
         CH_LOG(ERROR, "expected ContentType[%04x]", m->header.content);
@@ -328,7 +328,7 @@ int ziti_channel_update_token(ziti_channel_t *ch) {
     }
 
     const char* token = ziti_get_api_session_token(ch->ztx);
-    ziti_channel_send_for_reply(ch, ContentTypeUpdateTokenType,
+    ziti_channel_send_for_reply(ch, ContentTypeUpdateToken,
                                 NULL, 0, token, strlen(token), token_update_cb, ch);
     return ZITI_OK;
 }
