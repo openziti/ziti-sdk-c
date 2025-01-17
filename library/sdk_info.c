@@ -65,9 +65,11 @@ static void ziti_info_init() {
     static char vers[256];
     size_t sz = sizeof vers;
     sysctlbyname("kern.osproductversion", vers, &sz, NULL, 0);
-    if (strcasecmp(os_info.sysname, "darwin") == 0) {
-        s_info.os = "macOS";
-    }
+#if TARGET_OS_IPHONE
+    s_info.os = "iOS";
+#elif TARGET_OS_MAC
+    s_info.os = "macOS"
+#endif
     s_info.os_release = vers;
     s_info.os_version = os_info.release; // Darwin kernel version
 #endif // __APPLE__
