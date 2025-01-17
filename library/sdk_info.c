@@ -68,7 +68,7 @@ static void ziti_info_init() {
 #if TARGET_OS_IPHONE
     s_info.os = "iOS";
 #elif TARGET_OS_MAC
-    s_info.os = "macOS"
+    s_info.os = "macOS";
 #endif
     s_info.os_release = vers;
     s_info.os_version = os_info.release; // Darwin kernel version
