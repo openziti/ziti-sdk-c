@@ -26,7 +26,10 @@ typedef uint32_t in_addr_t;
 #define strcasecmp stricmp
 #else
 
+#if __APPLE__
 #include <sys/sysctl.h>
+#endif
+
 #include <arpa/inet.h>
 #include <unistd.h>
 
