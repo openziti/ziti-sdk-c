@@ -430,6 +430,7 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
     if (len > 0) {
         if (resp->resp_content == ctrl_content_json) {
             if (resp->content == NULL) {
+                CTRL_LOG(VERBOSE, "HTTP RESPONSE: %.*s", (int)len, b);
                 resp->content = json_tokener_parse_ex(resp->content_proc, b, (int) len);
                 if (resp->content == NULL && json_tokener_get_error(resp->content_proc) != json_tokener_continue) {
                     CTRL_LOG(WARN, "parsing error: %s",
