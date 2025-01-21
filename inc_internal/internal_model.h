@@ -130,7 +130,7 @@ XX(typeId, ziti_posture_query_type, none, typeId, __VA_ARGS__)
 
 #define ZITI_PR_MAC_REQ(XX, ...) \
 ZITI_PR_BASE(XX, __VA_ARGS__)  \
-XX(mac_addresses, model_string, array, macAddresses, __VA_ARGS__)
+XX(mac_addresses, model_string, list, macAddresses, __VA_ARGS__)
 
 #define ZITI_PR_DOMAIN_REQ(XX, ...) \
 ZITI_PR_BASE(XX, __VA_ARGS__)  \
@@ -152,7 +152,7 @@ ZITI_PR_BASE(XX, __VA_ARGS__)  \
 XX(path, model_string, none, path, __VA_ARGS__) \
 XX(is_running, model_bool, none, isRunning, __VA_ARGS__) \
 XX(hash, model_string, none, hash, __VA_ARGS__) \
-XX(signers, model_string, array, signerFingerprints, __VA_ARGS__)
+XX(signers, model_string, list, signerFingerprints, __VA_ARGS__)
 
 #define ZITI_PR_ENDPOINT_STATE_REQ(XX, ...) \
 ZITI_PR_BASE(XX, __VA_ARGS__)  \

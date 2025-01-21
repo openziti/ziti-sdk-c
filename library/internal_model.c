@@ -161,6 +161,8 @@ IMPL_MODEL(ctrl_apis, CTRL_APIS_MODEL)
 
 IMPL_MODEL(ziti_controller_detail, ZITI_CONTROLLER_DETAIL)
 
+IMPL_MODEL(ziti_pr_base, ZITI_PR_BASE);
+
 bool ziti_service_has_permission(const ziti_service *service, ziti_session_type sessionType) {
     if (sessionType == ziti_session_types.Dial) {
         return (service->perm_flags & ZITI_CAN_DIAL) != 0;

@@ -23,14 +23,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern const char* const PC_DOMAIN_TYPE;
-extern const char* const PC_OS_TYPE;
-extern const char* const PC_PROCESS_TYPE;
-extern const char* const PC_PROCESS_MULTI_TYPE;
-extern const char* const PC_MAC_TYPE;
-extern const char* const PC_ENDPOINT_STATE_TYPE;
-
+    
 typedef void (*ziti_ctrl_redirect_cb)(const char *new_address, void *ctx);
 
 typedef void (*ziti_ctrl_change_cb)(void *ctx, const model_map *endpoints);
