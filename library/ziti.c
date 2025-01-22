@@ -898,7 +898,9 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
 
             for (int idx = 0; pq_set->posture_queries[idx] != NULL; idx++) {
                 pq = pq_set->posture_queries[idx];
-                printer(ctx, "\t\t\tquery_id[%s] type[%s] is_passing[%s] timeout[%d] timeoutRemaining[%d]\n", pq->id, pq->query_type, pq->is_passing ? "true" : "false", pq->timeout, *pq->timeoutRemaining);
+                printer(ctx, "\t\t\tquery_id[%s] type[%s] is_passing[%s] timeout[%d] timeoutRemaining[%d]\n",
+                        pq->id, ziti_posture_query_types.name(pq->query_type),
+                        pq->is_passing ? "true" : "false", pq->timeout, *pq->timeoutRemaining);
             }
         }
     }
