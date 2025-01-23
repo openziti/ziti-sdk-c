@@ -26,6 +26,9 @@
 #include "ziti/ziti_buffer.h"
 #include "buffer.h"
 
+#define state_len 30
+#define state_code_len sodium_base64_ENCODED_LEN(code_len, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
+
 #define code_len 40
 #define code_verifier_len sodium_base64_ENCODED_LEN(code_len, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
 #define code_challenge_len sodium_base64_ENCODED_LEN(crypto_hash_sha256_BYTES, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
@@ -37,7 +40,18 @@
 #define default_cb_url cb_url("localhost",auth_cb_port,auth_url_path)
 #define default_scope "openid"
 
+#define AUTH_EP "authorization_endpoint"
+#define TOKEN_EP "token_endpoint"
+#define OIDC_CONFIG ".well-known/openid-configuration"
+
 #define TOKEN_EXCHANGE_GRANT "urn:ietf:params:oauth:grant-type:token-exchange"
+
+#define HTTP_RESP_FMT "HTTP/1.0 %d %s\r\n"\
+"Connection: close\r\n"\
+"Content-Type: text/html\r\n"\
+"Content-Length: %zd\r\n"\
+"\r\n%s"
+
 
 #if _WIN32
 #define close_socket(s) closesocket(s)
@@ -52,8 +66,6 @@
 typedef struct oidc_req oidc_req;
 
 typedef void (*oidc_cb)(oidc_req *, int status, json_object *resp);
-
-static const char *get_endpoint_path(oidc_client_t *clt, const char *key);
 
 static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json);
 
@@ -80,12 +92,33 @@ typedef struct auth_req {
     oidc_client_t *clt;
     char code_verifier[code_verifier_len];
     char code_challenge[code_challenge_len];
-    char state[16];
+    char state[state_code_len];
     json_tokener *json_parser;
     char *id;
     bool totp;
     struct ext_link_req *elr;
 } auth_req;
+
+static const char HTTP_SUCCESS_BODY[] =
+        "<!DOCTYPE html>\n"
+        "<html lang=\"en\">\n"
+        "<head>\n"
+        "    <title>OpenZiti: Successful Authentication with External Provider.</title>\n"
+        "    <script>\n"
+        "        function closeWindow() {\n"
+        "            setTimeout(function() {\n"
+        "                window.close(); // Close the current window\n"
+        "            }, 3000);\n"
+        "        }\n"
+        "    </script>\n"
+        "</head>\n"
+        "<script type=\"text/javascript\">closeWindow()</script>"
+        "<body onload=\"closeWindow()\">\n"
+        "    <img height=\"40px\" src=\"https://openziti.io/img/ziti-logo-dark.svg\"/>"
+        "    <h2>Successfully authenticated with external provider.</h2><p>You may close this page. It will attempt to close itself in 3 seconds.</p>\n"
+        "</body>\n"
+        "</html>\n";
+
 
 static oidc_req *new_oidc_req(oidc_client_t *clt, oidc_cb cb, void *ctx) {
     oidc_req *res = calloc(1, sizeof(*res));
@@ -225,9 +258,19 @@ void oidc_client_set_link_cb(oidc_client_t *clt, oidc_ext_link_cb cb, void *ctx)
 
 static void internal_config_cb(oidc_req *req, int status, json_object *resp) {
     oidc_client_t *clt = req->client;
-
     if (status == 0) {
-        assert(json_object_get_type(resp) == json_type_object);
+        // check expected configuration values are present and valid
+        // to avoid surprises later
+        if (json_object_get_type(resp) != json_type_object) {
+            status = UV_EINVAL;
+        } else if (json_object_object_get(resp, AUTH_EP) == NULL ||
+                   json_object_object_get(resp, TOKEN_EP) == NULL) {
+            ZITI_LOG(ERROR, "invalid OIDC config: %s and %s are required", AUTH_EP, TOKEN_EP);
+            status = UV_EINVAL;
+        }
+    }
+    
+    if (status == 0) {
         json_object_put(clt->config);
         clt->config = resp;
         clt->refresh_grant = "refresh_token";
@@ -259,7 +302,7 @@ static void internal_config_cb(oidc_req *req, int status, json_object *resp) {
 int oidc_client_configure(oidc_client_t *clt, oidc_config_cb cb) {
     clt->config_cb = cb;
     oidc_req *req = new_oidc_req(clt, internal_config_cb, NULL);
-    tlsuv_http_req(&clt->http, "GET", "/.well-known/openid-configuration", parse_cb, req);
+    tlsuv_http_req(&clt->http, "GET", OIDC_CONFIG, parse_cb, req);
     return 0;
 }
 
@@ -275,6 +318,12 @@ static auth_req *new_auth_req(oidc_client_t *clt) {
     crypto_hash_sha256(hash, (const uint8_t *) req->code_verifier, strlen(req->code_verifier));
     sodium_bin2base64(req->code_challenge, sizeof(req->code_challenge),
                       hash, sizeof(hash), sodium_base64_VARIANT_URLSAFE_NO_PADDING);
+
+    uint8_t state[state_len];
+    uv_random(NULL, NULL, state, sizeof(state), 0, NULL);
+    sodium_bin2base64(req->state, sizeof(req->state),
+                      state, sizeof(state), sodium_base64_VARIANT_URLSAFE_NO_PADDING);
+
     return req;
 }
 
@@ -355,16 +404,20 @@ static void token_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
 }
 
 static void request_token(auth_req *req, const char *auth_code) {
-    const char *path = get_endpoint_path(req->clt, "token_endpoint");
-    ZITI_LOG(INFO, "requesting token path[%s] auth[%s]", path, auth_code);
-    tlsuv_http_req_t *token_req = tlsuv_http_req(&req->clt->http, "POST", path, token_cb, req);
+    oidc_client_t *clt = req->clt;
+    json_object *token_ep = json_object_object_get(clt->config, TOKEN_EP);
+    const char *token_url = json_object_get_string(token_ep);
+    ZITI_LOG(INFO, "requesting token path[%s] auth[%s]", token_url, auth_code);
+    tlsuv_http_set_url(&clt->http, token_url);
+    tlsuv_http_req_t *token_req = tlsuv_http_req(&clt->http, "POST", NULL, token_cb, req);
     token_req->data = req;
     tlsuv_http_pair form[] = {
+            {"state",         req->state},
             {"code",          auth_code},
             {"grant_type",    "authorization_code"},
             {"code_verifier", req->code_verifier},
-            {"client_id",     req->clt->signer_cfg.client_id},
-            {"redirect_uri", default_cb_url},
+            {"client_id",     clt->signer_cfg.client_id},
+            {"redirect_uri",  default_cb_url},
     };
     tlsuv_http_req_form(token_req, sizeof(form) / sizeof(form[0]), form);
 }
@@ -552,31 +605,7 @@ static void ext_accept(uv_work_t *wr) {
     string_buf_t resp_buf;
     string_buf_init(&resp_buf);
 
-    const char resp_body[] =
-            "<!DOCTYPE html>\n"
-            "<html lang=\"en\">\n"
-            "<head>\n"
-            "    <title>OpenZiti: Successful Authentication with External Provider.</title>\n"
-            "    <script>\n"
-            "        function closeWindow() {\n"
-            "            setTimeout(function() {\n"
-            "                window.close(); // Close the current window\n"
-            "            }, 3000);\n"
-            "        }\n"
-            "    </script>\n"
-            "</head>\n"
-            "<script type=\"text/javascript\">closeWindow()</script>"
-            "<body onload=\"closeWindow()\">\n"
-            "    <img height=\"40px\" src=\"https://openziti.io/img/ziti-logo-dark.svg\"/>"
-            "    <h2>Successfully authenticated with external provider.</h2><p>You may close this page. It will attempt to close itself in 3 seconds.</p>\n"
-            "</body>\n"
-            "</html>\n";
-#define RESP_FMT "HTTP/1.0 200 OK\r\n"\
-"Connection: close\r\n"\
-"Content-Type: text/html\r\n"\
-"Content-Length: %zd\r\n"\
-"\r\n%s"
-    string_buf_fmt(&resp_buf, RESP_FMT, strlen(resp_body), resp_body);
+    string_buf_fmt(&resp_buf, HTTP_RESP_FMT, 200, "OK", strlen(HTTP_SUCCESS_BODY), HTTP_SUCCESS_BODY);
     size_t resp_len;
     char *resp = string_buf_to_string(&resp_buf, &resp_len);
     const char *rp = resp;
@@ -695,7 +724,15 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     if (clt->config == NULL) {
         return 0;
     }
-    ZITI_LOG(DEBUG, "requesting authentication code");
+    json_object *cfg = (json_object *) clt->config;
+    json_object *auth_ep = json_object_object_get(cfg, AUTH_EP);
+    if (auth_ep  == NULL) {
+        ZITI_LOG(ERROR, "OIDC configuration is missing `%s'", AUTH_EP);
+        return ZITI_INVALID_CONFIG;
+    }
+    const char *auth_url = json_object_get_string(auth_ep);
+
+    ZITI_LOG(DEBUG, "requesting authentication code from auth_url[%s]", auth_url);
     auth_req *req = new_auth_req(clt);
     clt->request = req;
 
@@ -708,7 +745,6 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     }
 
     char *scope = string_buf_to_string(scopes_buf, NULL);
-    const char *path = get_endpoint_path(clt, "authorization_endpoint");
     tlsuv_http_pair query[] = {
             {"client_id",             clt->signer_cfg.client_id},
             {"scope",                 scope},
@@ -716,18 +752,22 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
             {"redirect_uri",          default_cb_url},
             {"code_challenge",        req->code_challenge},
             {"code_challenge_method", "S256"},
+            {"state",                 req->state},
             {"audience",              clt->signer_cfg.audience ?
                                       clt->signer_cfg.audience : "openziti"},
     };
 
     int rc = 0;
     if (clt->mode == oidc_external) {
-        struct json_object *cfg = (struct json_object *) clt->config;
-        struct json_object *auth = json_object_object_get(cfg, "authorization_endpoint");
-        start_ext_auth(req, json_object_get_string(auth), sizeof(query)/sizeof(query[0]), query);
+        start_ext_auth(req, auth_url, sizeof(query)/sizeof(query[0]), query);
     } else {
-        tlsuv_http_req_t *http_req = tlsuv_http_req(&clt->http, "POST", path, auth_cb, req);
-        rc = tlsuv_http_req_query(http_req, sizeof(query) / sizeof(query[0]), query);
+        rc = tlsuv_http_set_url(&clt->http, auth_url);
+        if (rc == 0) {
+            tlsuv_http_req_t *http_req = tlsuv_http_req(&clt->http, "POST", NULL, auth_cb, req);
+            rc = tlsuv_http_req_query(http_req, sizeof(query) / sizeof(query[0]), query);
+        } else {
+            ZITI_LOG(ERROR, AUTH_EP "[%s] is an invalid URL", auth_url);
+        }
     }
 
     free(scope);
@@ -894,11 +934,13 @@ static void refresh_time_cb(uv_timer_t *t) {
     oidc_client_t *clt = t->data;
     ZITI_LOG(DEBUG, "refreshing OIDC token");
 
-    const char *path = get_endpoint_path(clt, "token_endpoint");
+    struct json_object *token_ep = json_object_object_get(clt->config, TOKEN_EP);
+    const char *token_url = json_object_get_string(token_ep);
     struct json_object *tok = json_object_object_get(clt->tokens, "refresh_token");
     oidc_req *refresh_req = new_oidc_req(clt, refresh_cb, clt);
 
-    tlsuv_http_req_t *req = tlsuv_http_req(&clt->http, "POST", path, parse_cb, refresh_req);
+    tlsuv_http_set_url(&clt->http, token_url);
+    tlsuv_http_req_t *req = tlsuv_http_req(&clt->http, "POST", NULL, parse_cb, refresh_req);
     tlsuv_http_req_header(req, "Authorization",
                           get_basic_auth_header(clt->signer_cfg.client_id));
     const char *refresher = json_object_get_string(tok);
@@ -916,14 +958,4 @@ static void refresh_time_cb(uv_timer_t *t) {
                 {"refresh_token", refresher},
         });
     }
-}
-
-static const char *get_endpoint_path(oidc_client_t *clt, const char *key) {
-    assert(clt->config);
-    struct json_object *json = json_object_object_get(clt->config, key);
-    assert(json);
-    const char *url = json_object_get_string(json);
-    struct tlsuv_url_s u;
-    tlsuv_parse_url(&u, url);
-    return u.path;
 }
