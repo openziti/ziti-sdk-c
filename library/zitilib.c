@@ -444,7 +444,7 @@ static int connect_socket(ziti_socket_t clt_sock, ziti_socket_t *ziti_sock) {
 }
 
 // make sure old ziti_sock_t instance does not interfere with
-// the new/re-used socket fd
+// the new/reused socket fd
 static void check_socket(void *arg, future_t *f, uv_loop_t *l) {
     ziti_socket_t fd = (ziti_socket_t) (uintptr_t) arg;
     ZITI_LOG(VERBOSE, "checking client fd[%d]", fd);
