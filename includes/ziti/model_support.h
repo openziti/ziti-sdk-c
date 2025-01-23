@@ -86,7 +86,7 @@ DECLARE_MODEL_FUNCS(type)
 #define DECLARE_MODEL_FUNCS(T) \
 typedef T ** T##_array; \
 MODEL_API const type_meta* get_##T##_meta();\
-static inline ptr(T) alloc_##T(){ return (ptr(T))calloc(1,sizeof(T)); }\
+static inline ptr(T) alloc_##T(){ return (ptr(T))model_alloc(get_##T##_meta()); }\
 static inline void free_##T(ptr(T) v) { model_free(v, get_##T##_meta()); }     \
 static inline void free_##T##_ptr(ptr(T) v) { model_free(v, get_##T##_meta()); free(v); }; \
 static inline int cmp_##T(const ptr(T) lh, const ptr(T) rh) { return model_cmp(lh, rh, get_##T##_meta()); } \
@@ -100,9 +100,9 @@ static inline char* T##_to_json(const ptr(T) v, int flags, size_t *len) { return
 static inline int T##_from_json(ptr(T) v, struct json_object *j) { return model_from_json(v, j, get_##T##_meta()); } \
 static inline int T##_ptr_from_json(ptr(T) *v, struct json_object *j) {      \
     if (j == NULL || json_object_get_type(j) == json_type_null) { *v = NULL; return 0; }  \
-    *v = (ptr(T))calloc(1, sizeof(T));                                  \
+    *v = alloc_##T();          \
     int rc = model_from_json(*v, j, get_##T##_meta());                              \
-    if (rc != 0) { free(*v); *v = NULL;}          \
+    if (rc != 0) { free_##T##_ptr(*v); *v = NULL;}          \
     return rc;\
 } \
 static inline int T##_list_from_json(list(T) *l, struct json_object *j) { return model_list_from_json(l, j, get_##T##_meta()); } \
@@ -193,6 +193,7 @@ typedef struct type_meta {
 #define MODEL_PARSE_INVALID (-2)
 #define MODEL_PARSE_PARTIAL (-3)
 
+ZITI_FUNC void* model_alloc(const type_meta *meta);
 ZITI_FUNC void model_free(void *obj, const type_meta *meta);
 
 ZITI_FUNC void model_free_array(void ***ap, const type_meta *meta);

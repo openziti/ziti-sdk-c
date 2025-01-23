@@ -52,7 +52,7 @@ int model_cmp(const void *lh, const void *rh, const type_meta *meta) {
 
         void **lf_addr = (void **) ((char *) lh + fm->offset);
         void **rf_addr = (void **) ((char *) rh + fm->offset);
-        void *lf_ptr, *rf_ptr;
+        const void *lf_ptr, *rf_ptr;
 
         if (fm->mod == none_mod) {
             lf_ptr = lf_addr;
@@ -148,7 +148,7 @@ int model_parse_list(model_list *list, const char *json, size_t len, const type_
     if (result < 0) {
         model_list_iter it = model_list_iterator(list);
         while (it != NULL) {
-            void *el = model_list_it_element(it);
+            void *el = (void *)model_list_it_element(it);
             it = model_list_it_remove(it);
             if (el != NULL) {
                 model_free(el, meta);
@@ -264,6 +264,35 @@ if ((flags & MODEL_JSON_COMPACT) == 0) BUF_APPEND_B(b, '\n'); \
 
 #define CHECK_APPEND(op) do { int res = (op); if (res != 0) return res; } while(0)
 
+int model_list_fmt_to_json(string_buf_t *buf, model_list *l, const type_meta *meta, int flags, int indent) {
+    int idx = 0;
+    const void *f_ptr;
+    BUF_APPEND_B(buf, '[');
+    PRETTY_NL(buf);
+    MODEL_LIST_FOREACH(f_ptr, *l) {
+        if (f_ptr == NULL) { break; }
+        if (idx++ > 0) {
+            BUF_APPEND_B(buf, ',');
+            PRETTY_NL(buf);
+        }
+
+        PRETTY_INDENT(buf, indent + 1);
+        if (meta->jsonifier) {
+            if (meta == get_model_number_meta() || meta == get_model_bool_meta()) {
+                CHECK_APPEND(meta->jsonifier(&f_ptr, buf, indent + 1, flags));
+            } else {
+                CHECK_APPEND(meta->jsonifier(f_ptr, buf, indent + 1, flags));
+            }
+        } else {
+            CHECK_APPEND(write_model_to_buf(f_ptr, meta, buf, indent + 1, flags));
+        }
+    }
+    PRETTY_NL(buf);
+    PRETTY_INDENT(buf, indent);
+    BUF_APPEND_B(buf, ']');
+    return 0;
+}
+
 int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf, int indent, int flags) {
 
     if (meta->jsonifier) {
@@ -338,31 +367,7 @@ int write_model_to_buf(const void *obj, const type_meta *meta, string_buf_t *buf
             indent--;
         } else if (fm->mod == list_mod) {
             model_list *list = (model_list *) (f_addr);
-
-            int idx = 0;
-            BUF_APPEND_B(buf, '[');
-            PRETTY_NL(buf);
-            MODEL_LIST_FOREACH(f_ptr, *list) {
-                if (f_ptr == NULL) { break; }
-                if (idx++ > 0) {
-                    BUF_APPEND_B(buf, ',');
-                    PRETTY_NL(buf);
-                }
-
-                PRETTY_INDENT(buf, indent + 1);
-                if (ftm->jsonifier) {
-                    if (ftm == get_model_number_meta() || ftm == get_model_bool_meta()) {
-                        CHECK_APPEND(ftm->jsonifier(&f_ptr, buf, indent + 1, flags));
-                    } else {
-                        CHECK_APPEND(ftm->jsonifier(f_ptr, buf, indent + 1, flags));
-                    }
-                } else {
-                    CHECK_APPEND(write_model_to_buf(f_ptr, ftm, buf, indent + 1, flags));
-                }
-            }
-            PRETTY_NL(buf);
-            PRETTY_INDENT(buf, indent);
-            BUF_APPEND_B(buf, ']');
+            CHECK_APPEND(model_list_fmt_to_json(buf, list, ftm, flags, indent));
         } else if (fm->mod == array_mod) {
             void **arr = (void **) (*f_addr);
 
@@ -409,6 +414,10 @@ void model_free_array(void ***ap, const type_meta *meta) {
         el++;
     }
     FREE(*ap);
+}
+
+void* model_alloc(const type_meta *meta) {
+    return calloc(1, meta->size);
 }
 
 void model_free(void *obj, const type_meta *meta) {

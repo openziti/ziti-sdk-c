@@ -467,7 +467,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 }
             } else if (event->ctx.ctrl_status == ZITI_DISABLED) {
                 ZITI_LOG(INFO, "ziti is shutdown");
-                uv_close((uv_handle_t *) &shutdown_timer, NULL);
+                if (shutdown_timer.type == UV_TIMER && !uv_is_closing((const uv_handle_t *) &shutdown_timer))
+                    uv_close((uv_handle_t *) &shutdown_timer, NULL);
             } else {
                 ZITI_LOG(ERROR, "controller is not available: %s/%s", ziti_errorstr(event->ctx.ctrl_status),
                          event->ctx.err);

@@ -28,13 +28,6 @@
 // one minute in millis
 #define ONE_MINUTE (1 * 60 * 1000)
 
-const char *const PC_DOMAIN_TYPE = "DOMAIN";
-const char *const PC_OS_TYPE = "OS";
-const char *const PC_PROCESS_TYPE = "PROCESS";
-const char *const PC_PROCESS_MULTI_TYPE = "PROCESS_MULTI";
-const char *const PC_MAC_TYPE = "MAC";
-const char *const PC_ENDPOINT_STATE_TYPE = "ENDPOINT_STATE";
-
 const char *const ERROR_CODE_UNAUTHORIZED = "UNAUTHORIZED";
 const char *const ERROR_MSG_NO_API_SESSION_TOKEN = "no api session token set for ziti_controller";
 

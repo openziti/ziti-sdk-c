@@ -93,7 +93,7 @@ static void ziti_info_init() {
     }
 #else
     len = sizeof(s_domain);
-    getdomainname(s_domain, len);
+    getdomainname(s_domain, (int)len);
 #endif
 
     s_info.hostname = s_hostname;

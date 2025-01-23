@@ -356,6 +356,8 @@ int ziti_channel_force_connect(ziti_channel_t *ch);
 
 int ziti_channel_update_token(ziti_channel_t *ch);
 
+int ziti_channel_update_posture(ziti_channel_t *ch, const uint8_t *data, size_t len);
+
 int ziti_channel_connect(ziti_context ztx, const char *name, const char *url);
 
 int ziti_channel_prepare(ziti_channel_t *ch);

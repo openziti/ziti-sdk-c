@@ -977,3 +977,21 @@ static const char *get_timeout_cb(ziti_channel_t *ch) {
 
     return "unknown";
 }
+
+static void on_posture_update_reply(void *ctx, message *m, int status) {
+    ziti_channel_t *ch = ctx;
+    if (status != ZITI_OK) {
+        CH_LOG(ERROR, "failed to update posture: %d[%s]", status, ziti_errorstr(status));
+    } else {
+        CH_LOG(INFO, "received ContentType[%04x]", m->header.content);
+    }
+}
+
+int ziti_channel_update_posture(ziti_channel_t *ch, const uint8_t *data, size_t len) {
+    if (ch->state == Connected) {
+        ziti_channel_send(ch, ContentTypePostureResponse, NULL, 0, data, len, NULL);
+        return ZITI_OK;
+    }
+
+    return ZITI_GATEWAY_UNAVAILABLE;
+}
