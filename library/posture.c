@@ -434,7 +434,7 @@ static const type_meta * get_pr_req_meta(ziti_posture_query_type type_id) {
         case ziti_posture_query_type_PC_MAC: meta = get_ziti_pr_mac_req_meta(); break;
         case ziti_posture_query_type_PC_Endpoint_State: meta = get_ziti_pr_endpoint_state_req_meta(); break;
         default:
-            ZITI_LOG(WARN, "cant get meta for posture resp type[%s]", ziti_posture_query_types.name(type_id));
+            ZITI_LOG(WARN, "can't get meta for posture resp type[%s]", ziti_posture_query_types.name(type_id));
     }
     return meta;
 }
