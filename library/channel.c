@@ -318,18 +318,23 @@ static void token_update_cb(void *ctx, message *m, int status) {
     }
 }
 
-int ziti_channel_update_token(ziti_channel_t *ch) {
+int ziti_channel_update_token(ziti_channel_t *ch, const char *token) {
     if (ch == NULL) {
         return ZITI_INVALID_STATE;
+    }
+
+    if (token == NULL) {
+        return ZITI_NOT_AUTHORIZED;
     }
 
     if (ch->state != Connected) {
         return ZITI_GATEWAY_UNAVAILABLE;
     }
 
-    const char* token = ziti_get_api_session_token(ch->ztx);
-    ziti_channel_send_for_reply(ch, ContentTypeUpdateToken,
-                                NULL, 0, token, strlen(token), token_update_cb, ch);
+    CH_LOG(DEBUG, "sending token update");
+    ziti_channel_send_for_reply(ch, ContentTypeUpdateToken, NULL, 0,
+                                (const uint8_t *)token, strlen(token),
+                                token_update_cb, ch);
     return ZITI_OK;
 }
 

@@ -355,8 +355,10 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
 }
 
 void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
+    assert(session_token);
     ZTX_LOG(DEBUG, "setting auth_state[%d] to %d",
             ztx->auth_state, ZitiAuthStateFullyAuthenticated);
+    ztx->auth_state = ZitiAuthStateFullyAuthenticated;
 
     if (ztx->session_token == NULL || strcmp(ztx->session_token, session_token) != 0) {
         free(ztx->session_token);
@@ -370,7 +372,7 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         const char* url;
         ziti_channel_t *ch;
         MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
-            ziti_channel_update_token(ch);
+            ziti_channel_update_token(ch, session_token);
         }
     }
     ziti_ctrl_get_well_known_certs(ctrl, ca_bundle_cb, ztx);
