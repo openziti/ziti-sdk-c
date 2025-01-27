@@ -895,13 +895,13 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
                 break;
         }
 
-        struct json_object *access_token = json_object_object_get(clt->tokens, token_type);
-        if (access_token) {
-            const char *token = json_object_get_string(access_token);
-            ZITI_LOG(DEBUG, "access_token=%s", jwt_payload(token));
+        struct json_object *jt = json_object_object_get(clt->tokens, token_type);
+        if (jt) {
+            const char *token = json_object_get_string(jt);
+            ZITI_LOG(DEBUG, "using %s=%s", token_type, jwt_payload(token));
             clt->token_cb(clt, OIDC_TOKEN_OK, token);
         } else {
-            ZITI_LOG(ERROR, "access_token was not provided by IdP");
+            ZITI_LOG(ERROR, "%s was not provided by IdP", token_type);
             clt->token_cb(clt, OIDC_TOKEN_FAILED, NULL);
         }
     }
