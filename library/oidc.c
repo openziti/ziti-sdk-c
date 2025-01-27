@@ -243,6 +243,7 @@ int oidc_client_set_cfg(oidc_client_t *clt, const ziti_jwt_signer *cfg) {
     clt->signer_cfg.client_id = cfg->client_id ? strdup(cfg->client_id) : NULL;
     clt->signer_cfg.provider_url = strdup(cfg->provider_url);
     clt->signer_cfg.audience = cfg->audience ? strdup(cfg->audience) : NULL;
+    clt->signer_cfg.target_token = cfg->target_token;
     const char *scope;
     MODEL_LIST_FOREACH(scope, cfg->scopes) {
         model_list_append(&clt->signer_cfg.scopes, strdup(scope));
@@ -882,7 +883,19 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
 
     clt->tokens = tok_json;
     if (clt->token_cb) {
-        struct json_object *access_token = json_object_object_get(clt->tokens, "access_token");
+        const char *token_type;
+        switch (clt->signer_cfg.target_token) {
+            case ziti_target_token_id_token:
+                token_type = "id_token";
+                break;
+
+            case ziti_target_token_access_token:
+            case ziti_target_token_Unknown:
+                token_type = "access_token";
+                break;
+        }
+
+        struct json_object *access_token = json_object_object_get(clt->tokens, token_type);
         if (access_token) {
             const char *token = json_object_get_string(access_token);
             ZITI_LOG(DEBUG, "access_token=%s", jwt_payload(token));

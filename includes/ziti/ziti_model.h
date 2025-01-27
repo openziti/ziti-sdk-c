@@ -48,6 +48,10 @@ XX(PC_MAC, "MAC", __VA_ARGS__)                \
 XX(PC_MFA, "MFA", __VA_ARGS__)                \
 XX(PC_Endpoint_State, "ENDPOINT_STATE", __VA_ARGS__)
 
+#define ZITI_SIGNER_TARGET_TOKEN(XX, ...) \
+XX(access_token, "ACCESS", __VA_ARGS__)   \
+XX(id_token, "ID", __VA_ARGS__)
+
 #define ZITI_JWT_SIGNER_MODEL(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__) \
 XX(name, model_string, none, name, __VA_ARGS__) \
@@ -55,7 +59,8 @@ XX(enabled, model_bool, none, enabled, __VA_ARGS__) \
 XX(provider_url, model_string, none, externalAuthUrl, __VA_ARGS__) \
 XX(client_id, model_string, none, clientId, __VA_ARGS__)           \
 XX(audience, model_string, none, audience, __VA_ARGS__)           \
-XX(scopes, model_string, list, scopes, __VA_ARGS__)
+XX(scopes, model_string, list, scopes, __VA_ARGS__) \
+XX(target_token, ziti_target_token, none, targetToken, __VA_ARGS__)
 
 #define ZITI_ID_CFG_MODEL(XX, ...) \
 XX(cert, model_string, none, cert, __VA_ARGS__) \
@@ -240,6 +245,8 @@ DECLARE_ENUM(ziti_auth_query_type, ZITI_AUTH_QUERY_TYPE_ENUM)
 DECLARE_ENUM(ziti_posture_query_type, ZITI_POSTURE_QUERY_TYPE_ENUM)
 
 DECLARE_ENUM(ziti_ctrl_cap, ZITI_CTRL_CAP_ENUM)
+
+DECLARE_ENUM(ziti_target_token, ZITI_SIGNER_TARGET_TOKEN)
 
 DECLARE_MODEL(api_path, ZITI_API_PATH_MODEL)
 
