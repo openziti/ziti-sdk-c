@@ -354,7 +354,7 @@ uint64_t ziti_channel_latency(ziti_channel_t *ch);
 
 int ziti_channel_force_connect(ziti_channel_t *ch);
 
-int ziti_channel_update_token(ziti_channel_t *ch);
+int ziti_channel_update_token(ziti_channel_t *ch, const char *token);
 
 int ziti_channel_update_posture(ziti_channel_t *ch, const uint8_t *data, size_t len);
 
