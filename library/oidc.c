@@ -451,7 +451,7 @@ static void login_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
         const char *redirect = tlsuv_http_resp_header(http_resp, "Location");
         struct tlsuv_url_s uri;
         tlsuv_parse_url(&uri, redirect);
-
+        tlsuv_http_set_path_prefix(&req->clt->http, NULL);
         tlsuv_http_req(&req->clt->http, "GET", uri.path, code_cb, req);
     } else {
         failed_auth_req(req, http_resp->status);
@@ -474,7 +474,8 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
             path = "/oidc/login/cert";
         }
         ZITI_LOG(DEBUG, "login with path[%s] ", path);
-        tlsuv_http_req_t *login_req = tlsuv_http_req(&req->clt->http, "POST", path, login_cb, req);
+        tlsuv_http_set_path_prefix(&req->clt->http, path);
+        tlsuv_http_req_t *login_req = tlsuv_http_req(&req->clt->http, "POST", NULL, login_cb, req);
         if (req->clt->jwt_token_auth) {
             tlsuv_http_req_header(login_req, "Authorization", req->clt->jwt_token_auth);
         }

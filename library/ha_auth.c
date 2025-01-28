@@ -79,8 +79,9 @@ ziti_auth_method_t *new_ha_auth(uv_loop_t *l, model_list* urls, tls_context *tls
         .name = "ziti-internal-oidc",
         .enabled = true,
         .provider_url = (char*) model_list_head(&auth->urls),
+        .target_token = ziti_target_token_access_token,
     };
-
+    model_list_append(&auth->config.scopes, "offline_access");
 
     oidc_client_init(l, &auth->oidc, &auth->config, tls);
     return &auth->api;
@@ -88,6 +89,8 @@ ziti_auth_method_t *new_ha_auth(uv_loop_t *l, model_list* urls, tls_context *tls
 
 static void close_cb(oidc_client_t *oidc) {
     struct ha_auth_s *auth = HA_AUTH_FROM_OIDC(oidc);
+    model_list_clear(&auth->urls, free);
+    model_list_clear(&auth->config.scopes, NULL);
     free(auth);
 }
 
