@@ -326,21 +326,25 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
 
     bool changed = false;
     for (int i = 0; ctrls[i] != NULL; i++) {
-        const ziti_controller_detail *detail = ctrls[i];
-        const api_address *api = model_list_head(&detail->apis.edge);
-        ZTX_LOG(INFO, "controller[%s/%s] url[%s]", detail->name, detail->id, FIELD_OR_ELSE(api, url, "<unset>"));
+        ziti_controller_detail *detail = ctrls[i];
+        const api_address *edge_api = model_list_head(&detail->apis.edge);
 
-        model_map_set(&ztx->ctrl_details, detail->id, detail);
+        if (edge_api && edge_api->url) {
+            ZTX_LOG(INFO, "controller[%s/%s] url[%s]", detail->name, detail->id, edge_api->url);
 
-        if (api->url) {
-            char *old_url = model_map_remove(&diff, api->url);
+            model_map_set(&ztx->ctrl_details, detail->id, detail);
+
+            char *old_url = model_map_remove(&diff, edge_api->url);
             if (old_url == NULL) {
                 changed = true;
             } else {
                 free(old_url);
             }
 
-            model_list_append(&ztx->config.controllers, strdup(api->url));
+            model_list_append(&ztx->config.controllers, strdup(edge_api->url));
+        } else {
+            ZTX_LOG(INFO, "controller[%s/%s]: no Edge API", detail->name, detail->id);
+            free_ziti_controller_detail_ptr(detail);
         }
     }
     changed = changed || (model_map_size(&diff) > 0);
