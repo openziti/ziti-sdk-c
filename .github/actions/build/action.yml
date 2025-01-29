@@ -54,11 +54,10 @@ runs:
         key: vbc-${{ inputs.target }}-${{ hashFiles('./vcpkg.json') }}
         path: ${{ env.CI_CACHE }}
 
-    - uses: lukka/run-cmake@v10
-      name: Configure CMake
-      with:
-        configurePreset: ci-${{ inputs.target }}
-        configurePresetAdditionalArgs: "[ `-B`, `./build` ]"
+    - name: Configure CMake
+      shell: bash
+      run: |
+        cmake --preset ci-${{ inputs.target }} -B ./build
 
     - name: build CMake
       run: |

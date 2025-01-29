@@ -45,6 +45,7 @@ typedef void (*auth_mfa_cb)(void *ctx, int status);
 struct ziti_auth_method_s {
     enum AuthenticationMethod kind;
     int (*set_ext_jwt)(ziti_auth_method_t *self, const char *token);
+    int (*set_endpoint)(ziti_auth_method_t *self, const char *url);
     int (*start)(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
     int (*force_refresh)(ziti_auth_method_t *self);
     int (*submit_mfa)(ziti_auth_method_t *self, const char *code, auth_mfa_cb);
@@ -53,6 +54,6 @@ struct ziti_auth_method_s {
 };
 
 ziti_auth_method_t *new_legacy_auth(ziti_controller *ctrl);
-ziti_auth_method_t *new_ha_auth(uv_loop_t *l, model_list *urls, tls_context *tls);
+ziti_auth_method_t *new_ha_auth(uv_loop_t *l, const char *url, tls_context *tls);
 
 #endif // ZITI_SDK_AUTH_METHOD_H

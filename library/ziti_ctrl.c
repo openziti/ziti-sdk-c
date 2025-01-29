@@ -624,7 +624,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
     const char *initial_ep = ctrl_next_ep(ctrl, NULL);
     ctrl->url = strdup(initial_ep);
     CTRL_LOG(INFO, "using %s", ctrl->url);
-    if (tlsuv_http_init(loop, ctrl->client, ep) != 0) {
+    if (tlsuv_http_init(loop, ctrl->client, ctrl->url) != 0) {
         return ZITI_INVALID_CONFIG;
     }
 
