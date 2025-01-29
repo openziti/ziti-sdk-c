@@ -57,7 +57,7 @@ runs:
     - name: Configure CMake
       shell: bash
       run: |
-        cmake --debug --preset ci-${{ inputs.target }} -B ./build
+        cmake --preset ci-${{ inputs.target }} -B ./build
 
     - name: build CMake
       run: |
