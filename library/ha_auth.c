@@ -28,58 +28,49 @@ static int ha_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb c
 static int ha_auth_stop(ziti_auth_method_t *self);
 static int ha_auth_refresh(ziti_auth_method_t *self);
 static int ha_ext_jwt(ziti_auth_method_t *self, const char *token);
+static int ha_set_endpoint(ziti_auth_method_t *self, const char *url);
+static void config_cb(oidc_client_t *oidc, int status, const char *err);
 
 struct ha_auth_s {
     ziti_auth_method_t api;
 
+    uv_loop_t *loop;
     auth_state_cb cb;
     void *cb_ctx;
 
-    model_list urls;
     oidc_client_t oidc;
     ziti_jwt_signer config;
     auth_mfa_cb mfa_cb;
 };
 
-
-ziti_auth_method_t *new_ha_auth(uv_loop_t *l, model_list* urls, tls_context *tls) {
+ziti_auth_method_t *new_ha_auth(uv_loop_t *l, const char* url, tls_context *tls) {
     struct ha_auth_s *auth = calloc(1, sizeof(*auth));
 
     auth->api = (ziti_auth_method_t){
         .kind = HA,
         .start = ha_auth_start,
+        .set_endpoint = ha_set_endpoint,
         .stop = ha_auth_stop,
         .force_refresh = ha_auth_refresh,
         .submit_mfa = ha_auth_mfa,
         .free = ha_auth_free,
         .set_ext_jwt = ha_ext_jwt,
     };
-
-    const char *s;
-    MODEL_LIST_FOREACH(s, *urls) {
-        struct tlsuv_url_s u;
-        tlsuv_parse_url(&u, s);
-        char *url;
-        const char *end = NULL;
-        if (u.path) {
-            end = u.path;
-        } else if (u.query) {
-            end = u.query - 1;
-        }
-        if (end == NULL) {
-            url = strdup(s);
-        } else {
-            url = calloc(1, end - s + 1);
-            memcpy(url, s, end - s);
-        }
-        model_list_append(&auth->urls, url);
+    
+    char *ep = strdup(url);
+    struct tlsuv_url_s u;
+    tlsuv_parse_url(&u, ep);
+    if (u.path) {
+        *(char*)u.path = 0;
     }
+    
+    auth->loop = l;
     auth->config = (ziti_jwt_signer){
-        .client_id = "openziti",
-        .name = "ziti-internal-oidc",
-        .enabled = true,
-        .provider_url = (char*) model_list_head(&auth->urls),
-        .target_token = ziti_target_token_access_token,
+            .client_id = "openziti",
+            .name = "ziti-internal-oidc",
+            .enabled = true,
+            .provider_url = ep,
+            .target_token = ziti_target_token_access_token,
     };
     model_list_append(&auth->config.scopes, "offline_access");
 
@@ -87,9 +78,31 @@ ziti_auth_method_t *new_ha_auth(uv_loop_t *l, model_list* urls, tls_context *tls
     return &auth->api;
 }
 
+static int ha_set_endpoint(ziti_auth_method_t *self, const char *url) {
+    struct ha_auth_s *auth = HA_AUTH(self);
+    char *ep = strdup(url);
+    struct tlsuv_url_s u;
+    tlsuv_parse_url(&u, ep);
+    if (u.path) {
+        *(char*)u.path = '\0';
+    }
+
+    if (strcmp(ep, auth->config.provider_url) == 0) {
+        free(ep);
+        return -1;
+    }
+
+    FREE(auth->config.provider_url);
+    auth->config.provider_url = ep;
+
+    oidc_client_set_cfg(&auth->oidc, &auth->config);
+    return oidc_client_configure(&auth->oidc, config_cb);
+}
+
+
 static void close_cb(oidc_client_t *oidc) {
     struct ha_auth_s *auth = HA_AUTH_FROM_OIDC(oidc);
-    model_list_clear(&auth->urls, free);
+    free((char*)auth->config.provider_url);
     model_list_clear(&auth->config.scopes, NULL);
     free(auth);
 }
@@ -101,6 +114,8 @@ static void ha_auth_free(ziti_auth_method_t *self) {
 
 static void token_cb(oidc_client_t *oidc, int status, const char *token) {
     struct ha_auth_s *auth = HA_AUTH_FROM_OIDC(oidc);
+    char err[128];
+
     if (auth->cb) {
         if (status == OIDC_TOKEN_OK) {
             auth->cb(auth->cb_ctx, ZitiAuthStateFullyAuthenticated, (void*)token);
@@ -112,13 +127,11 @@ static void token_cb(oidc_client_t *oidc, int status, const char *token) {
                 auth->mfa_cb(auth->cb_ctx, ZITI_MFA_INVALID_TOKEN);
             }
         } else if (status == UV_ECONNREFUSED) {
-            // rotate to next url
-            char *url = model_list_pop(&auth->urls);
-            model_list_append(&auth->urls, url);
-            auth->config.provider_url = model_list_head(&auth->urls);
-            oidc_client_set_cfg(&auth->oidc, &auth->config);
+            snprintf(err, sizeof(err), "OIDC request failed: %d", status);
+            auth->cb(auth->cb_ctx, ZitiAuthImpossibleToAuthenticate, &(ziti_error){
+                    .err = status,
+                    .message = err});
         } else {
-            char err[128];
             snprintf(err, sizeof(err), "failed to auth: %d", status);
             auth->cb(auth->cb_ctx, ZitiAuthStateUnauthenticated, &(ziti_error){
                 .err = status,

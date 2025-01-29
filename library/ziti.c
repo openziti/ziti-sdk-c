@@ -250,6 +250,14 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
 }
 
 void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err) {
+    if (err->err == UV_ECONNREFUSED) {
+        if (ztx->auth_method->set_endpoint &&
+            ztx->auth_method->set_endpoint(ztx->auth_method, ztx_controller(ztx)) == 0) {
+            ZTX_LOG(DEBUG, "updating internal OIDC endpoint[%s]", ztx_controller(ztx));
+            return;
+        }
+    }
+
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthImpossibleToAuthenticate);
     FREE(ztx->session_token);
     ziti_ctrl_clear_api_session(ztx_get_controller(ztx));
@@ -1935,10 +1943,12 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         if (!ztx->auth_method) {
             start = true;
             if (ha) {
-                ztx->auth_method = new_ha_auth(ztx->loop, &ztx->config.controllers, ztx->tlsCtx);
+                ztx->auth_method = new_ha_auth(ztx->loop, ztx->ctrl.url, ztx->tlsCtx);
             } else {
                 ztx->auth_method = new_legacy_auth(ztx_get_controller(ztx));
             }
+        } else if (ztx->auth_method->set_endpoint){
+            ztx->auth_method->set_endpoint(ztx->auth_method, ztx->ctrl.url);
         }
 
         if (ztx->id_creds.key == NULL) {
