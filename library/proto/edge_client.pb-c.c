@@ -628,7 +628,7 @@ static const ProtobufCFieldDescriptor ziti__edge_client__pb__posture_response__f
     offsetof(Ziti__EdgeClient__Pb__PostureResponse, macs),
     &ziti__edge_client__pb__posture_response__macs__descriptor,
     NULL,
-    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0 | PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
@@ -640,7 +640,7 @@ static const ProtobufCFieldDescriptor ziti__edge_client__pb__posture_response__f
     offsetof(Ziti__EdgeClient__Pb__PostureResponse, os),
     &ziti__edge_client__pb__posture_response__operating_system__descriptor,
     NULL,
-    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0 | PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
@@ -652,7 +652,7 @@ static const ProtobufCFieldDescriptor ziti__edge_client__pb__posture_response__f
     offsetof(Ziti__EdgeClient__Pb__PostureResponse, processlist),
     &ziti__edge_client__pb__posture_response__process_list__descriptor,
     NULL,
-    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0 | PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
@@ -664,7 +664,7 @@ static const ProtobufCFieldDescriptor ziti__edge_client__pb__posture_response__f
     offsetof(Ziti__EdgeClient__Pb__PostureResponse, domain),
     &ziti__edge_client__pb__posture_response__domain__descriptor,
     NULL,
-    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0 | PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
@@ -676,7 +676,7 @@ static const ProtobufCFieldDescriptor ziti__edge_client__pb__posture_response__f
     offsetof(Ziti__EdgeClient__Pb__PostureResponse, woken),
     &ziti__edge_client__pb__posture_response__woken__descriptor,
     NULL,
-    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0 | PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
@@ -688,7 +688,7 @@ static const ProtobufCFieldDescriptor ziti__edge_client__pb__posture_response__f
     offsetof(Ziti__EdgeClient__Pb__PostureResponse, unlocked),
     &ziti__edge_client__pb__posture_response__unlocked__descriptor,
     NULL,
-    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0 | PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
   {
@@ -700,7 +700,7 @@ static const ProtobufCFieldDescriptor ziti__edge_client__pb__posture_response__f
     offsetof(Ziti__EdgeClient__Pb__PostureResponse, sdkinfo),
     &ziti__edge_client__pb__posture_response__sdk_info__descriptor,
     NULL,
-    PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
+    0 | PROTOBUF_C_FIELD_FLAG_ONEOF,             /* flags */
     0,NULL,NULL    /* reserved1,reserved2, etc */
   },
 };
@@ -733,9 +733,12 @@ const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_response__descri
   (ProtobufCMessageInit) ziti__edge_client__pb__posture_response__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCEnumValue ziti__edge_client__pb__content_type__enum_values_by_number[21] =
+static const ProtobufCEnumValue ziti__edge_client__pb__content_type__enum_values_by_number[27] =
 {
-  { "Zero", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Zero", 0 },
+  { "Hello", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Hello", 0 },
+  { "Ping", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Ping", 1 },
+  { "Result", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Result", 2 },
+  { "Latency", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Latency", 3 },
   { "PostureResponseType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureResponseType", 10800 },
   { "PostureResponseSuccessType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureResponseSuccessType", 10801 },
   { "ConnectType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ConnectType", 60783 },
@@ -753,36 +756,45 @@ static const ProtobufCEnumValue ziti__edge_client__pb__content_type__enum_values
   { "HealthEventType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__HealthEventType", 60795 },
   { "TraceRouteType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__TraceRouteType", 60796 },
   { "TraceRouteResponseType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__TraceRouteResponseType", 60797 },
-  { "UpdateTokenType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UpdateTokenType", 60800 },
+  { "ConnInspectRequest", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ConnInspectRequest", 60798 },
+  { "ConnInspectResponse", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ConnInspectResponse", 60799 },
+  { "BindSuccess", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__BindSuccess", 60800 },
   { "UpdateTokenSuccessType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UpdateTokenSuccessType", 60801 },
   { "UpdateTokenFailureType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UpdateTokenFailureType", 60802 },
+  { "UpdateTokenType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UpdateTokenType", 60803 },
 };
 static const ProtobufCIntRange ziti__edge_client__pb__content_type__value_ranges[] = {
-{0, 0},{10800, 1},{60783, 3},{60800, 18},{0, 21}
+{0, 0},{10800, 4},{60783, 6},{0, 27}
 };
-static const ProtobufCEnumValueIndex ziti__edge_client__pb__content_type__enum_values_by_name[21] =
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__content_type__enum_values_by_name[27] =
 {
-  { "BindType", 10 },
-  { "ConnectType", 3 },
-  { "DataType", 6 },
-  { "DialFailedType", 9 },
-  { "DialSuccessType", 8 },
-  { "DialType", 7 },
-  { "HealthEventType", 15 },
-  { "PostureResponseSuccessType", 2 },
-  { "PostureResponseType", 1 },
-  { "ProbeType", 13 },
-  { "StateClosedType", 5 },
-  { "StateConnectedType", 4 },
-  { "StateSessionEndedType", 12 },
-  { "TraceRouteResponseType", 17 },
-  { "TraceRouteType", 16 },
-  { "UnbindType", 11 },
-  { "UpdateBindType", 14 },
-  { "UpdateTokenFailureType", 20 },
-  { "UpdateTokenSuccessType", 19 },
-  { "UpdateTokenType", 18 },
-  { "Zero", 0 },
+  { "BindSuccess", 23 },
+  { "BindType", 13 },
+  { "ConnInspectRequest", 21 },
+  { "ConnInspectResponse", 22 },
+  { "ConnectType", 6 },
+  { "DataType", 9 },
+  { "DialFailedType", 12 },
+  { "DialSuccessType", 11 },
+  { "DialType", 10 },
+  { "HealthEventType", 18 },
+  { "Hello", 0 },
+  { "Latency", 3 },
+  { "Ping", 1 },
+  { "PostureResponseSuccessType", 5 },
+  { "PostureResponseType", 4 },
+  { "ProbeType", 16 },
+  { "Result", 2 },
+  { "StateClosedType", 8 },
+  { "StateConnectedType", 7 },
+  { "StateSessionEndedType", 15 },
+  { "TraceRouteResponseType", 20 },
+  { "TraceRouteType", 19 },
+  { "UnbindType", 14 },
+  { "UpdateBindType", 17 },
+  { "UpdateTokenFailureType", 25 },
+  { "UpdateTokenSuccessType", 24 },
+  { "UpdateTokenType", 26 },
 };
 const ProtobufCEnumDescriptor ziti__edge_client__pb__content_type__descriptor =
 {
@@ -791,11 +803,209 @@ const ProtobufCEnumDescriptor ziti__edge_client__pb__content_type__descriptor =
   "ContentType",
   "Ziti__EdgeClient__Pb__ContentType",
   "ziti.edge_client.pb",
-  21,
+  27,
   ziti__edge_client__pb__content_type__enum_values_by_number,
-  21,
+  27,
   ziti__edge_client__pb__content_type__enum_values_by_name,
-  4,
+  3,
   ziti__edge_client__pb__content_type__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue ziti__edge_client__pb__header_id__enum_values_by_number[30] =
+{
+  { "ZER0", "ZITI__EDGE_CLIENT__PB__HEADER_ID__ZER0", 0 },
+  { "UUID", "ZITI__EDGE_CLIENT__PB__HEADER_ID__UUID", 128 },
+  { "ConnId", "ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnId", 1000 },
+  { "Seq", "ZITI__EDGE_CLIENT__PB__HEADER_ID__Seq", 1001 },
+  { "SessionToken", "ZITI__EDGE_CLIENT__PB__HEADER_ID__SessionToken", 1002 },
+  { "PublicKey", "ZITI__EDGE_CLIENT__PB__HEADER_ID__PublicKey", 1003 },
+  { "Cost", "ZITI__EDGE_CLIENT__PB__HEADER_ID__Cost", 1004 },
+  { "Precedence", "ZITI__EDGE_CLIENT__PB__HEADER_ID__Precedence", 1005 },
+  { "TerminatorIdentity", "ZITI__EDGE_CLIENT__PB__HEADER_ID__TerminatorIdentity", 1006 },
+  { "TerminatorIdentitySecret", "ZITI__EDGE_CLIENT__PB__HEADER_ID__TerminatorIdentitySecret", 1007 },
+  { "CallerId", "ZITI__EDGE_CLIENT__PB__HEADER_ID__CallerId", 1008 },
+  { "CryptoMethod", "ZITI__EDGE_CLIENT__PB__HEADER_ID__CryptoMethod", 1009 },
+  { "Flags", "ZITI__EDGE_CLIENT__PB__HEADER_ID__Flags", 1010 },
+  { "AppData", "ZITI__EDGE_CLIENT__PB__HEADER_ID__AppData", 1011 },
+  { "RouterProvidedConnId", "ZITI__EDGE_CLIENT__PB__HEADER_ID__RouterProvidedConnId", 1012 },
+  { "HealthStatus", "ZITI__EDGE_CLIENT__PB__HEADER_ID__HealthStatus", 1013 },
+  { "ErrorCode", "ZITI__EDGE_CLIENT__PB__HEADER_ID__ErrorCode", 1014 },
+  { "Timestamp", "ZITI__EDGE_CLIENT__PB__HEADER_ID__Timestamp", 1015 },
+  { "TraceHopCount", "ZITI__EDGE_CLIENT__PB__HEADER_ID__TraceHopCount", 1016 },
+  { "TraceHopType", "ZITI__EDGE_CLIENT__PB__HEADER_ID__TraceHopType", 1017 },
+  { "TraceHopId", "ZITI__EDGE_CLIENT__PB__HEADER_ID__TraceHopId", 1018 },
+  { "TraceSourceRequestId", "ZITI__EDGE_CLIENT__PB__HEADER_ID__TraceSourceRequestId", 1019 },
+  { "TraceError", "ZITI__EDGE_CLIENT__PB__HEADER_ID__TraceError", 1020 },
+  { "ListenerId", "ZITI__EDGE_CLIENT__PB__HEADER_ID__ListenerId", 1021 },
+  { "ConnType", "ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnType", 1022 },
+  { "SupportsInspect", "ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsInspect", 1023 },
+  { "SupportsBindSuccess", "ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsBindSuccess", 1024 },
+  { "ConnectionMarker", "ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnectionMarker", 1025 },
+  { "CircuitId", "ZITI__EDGE_CLIENT__PB__HEADER_ID__CircuitId", 1026 },
+  { "StickinessToken", "ZITI__EDGE_CLIENT__PB__HEADER_ID__StickinessToken", 1027 },
+};
+static const ProtobufCIntRange ziti__edge_client__pb__header_id__value_ranges[] = {
+{0, 0},{128, 1},{1000, 2},{0, 30}
+};
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__header_id__enum_values_by_name[30] =
+{
+  { "AppData", 13 },
+  { "CallerId", 10 },
+  { "CircuitId", 28 },
+  { "ConnId", 2 },
+  { "ConnType", 24 },
+  { "ConnectionMarker", 27 },
+  { "Cost", 6 },
+  { "CryptoMethod", 11 },
+  { "ErrorCode", 16 },
+  { "Flags", 12 },
+  { "HealthStatus", 15 },
+  { "ListenerId", 23 },
+  { "Precedence", 7 },
+  { "PublicKey", 5 },
+  { "RouterProvidedConnId", 14 },
+  { "Seq", 3 },
+  { "SessionToken", 4 },
+  { "StickinessToken", 29 },
+  { "SupportsBindSuccess", 26 },
+  { "SupportsInspect", 25 },
+  { "TerminatorIdentity", 8 },
+  { "TerminatorIdentitySecret", 9 },
+  { "Timestamp", 17 },
+  { "TraceError", 22 },
+  { "TraceHopCount", 18 },
+  { "TraceHopId", 20 },
+  { "TraceHopType", 19 },
+  { "TraceSourceRequestId", 21 },
+  { "UUID", 1 },
+  { "ZER0", 0 },
+};
+const ProtobufCEnumDescriptor ziti__edge_client__pb__header_id__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.HeaderId",
+  "HeaderId",
+  "Ziti__EdgeClient__Pb__HeaderId",
+  "ziti.edge_client.pb",
+  30,
+  ziti__edge_client__pb__header_id__enum_values_by_number,
+  30,
+  ziti__edge_client__pb__header_id__enum_values_by_name,
+  3,
+  ziti__edge_client__pb__header_id__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue ziti__edge_client__pb__error__enum_values_by_number[12] =
+{
+  { "OK", "ZITI__EDGE_CLIENT__PB__ERROR__OK", 0 },
+  { "Internal", "ZITI__EDGE_CLIENT__PB__ERROR__Internal", 1 },
+  { "InvalidApiSession", "ZITI__EDGE_CLIENT__PB__ERROR__InvalidApiSession", 2 },
+  { "InvalidSession", "ZITI__EDGE_CLIENT__PB__ERROR__InvalidSession", 3 },
+  { "WrongSessionType", "ZITI__EDGE_CLIENT__PB__ERROR__WrongSessionType", 4 },
+  { "InvalidEdgeRouterForSession", "ZITI__EDGE_CLIENT__PB__ERROR__InvalidEdgeRouterForSession", 5 },
+  { "InvalidService", "ZITI__EDGE_CLIENT__PB__ERROR__InvalidService", 6 },
+  { "TunnelingNotEnabled", "ZITI__EDGE_CLIENT__PB__ERROR__TunnelingNotEnabled", 7 },
+  { "InvalidTerminator", "ZITI__EDGE_CLIENT__PB__ERROR__InvalidTerminator", 8 },
+  { "InvalidPrecedence", "ZITI__EDGE_CLIENT__PB__ERROR__InvalidPrecedence", 9 },
+  { "InvalidCost", "ZITI__EDGE_CLIENT__PB__ERROR__InvalidCost", 10 },
+  { "EncryptionDataMissing", "ZITI__EDGE_CLIENT__PB__ERROR__EncryptionDataMissing", 11 },
+};
+static const ProtobufCIntRange ziti__edge_client__pb__error__value_ranges[] = {
+{0, 0},{0, 12}
+};
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__error__enum_values_by_name[12] =
+{
+  { "EncryptionDataMissing", 11 },
+  { "Internal", 1 },
+  { "InvalidApiSession", 2 },
+  { "InvalidCost", 10 },
+  { "InvalidEdgeRouterForSession", 5 },
+  { "InvalidPrecedence", 9 },
+  { "InvalidService", 6 },
+  { "InvalidSession", 3 },
+  { "InvalidTerminator", 8 },
+  { "OK", 0 },
+  { "TunnelingNotEnabled", 7 },
+  { "WrongSessionType", 4 },
+};
+const ProtobufCEnumDescriptor ziti__edge_client__pb__error__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.Error",
+  "Error",
+  "Ziti__EdgeClient__Pb__Error",
+  "ziti.edge_client.pb",
+  12,
+  ziti__edge_client__pb__error__enum_values_by_number,
+  12,
+  ziti__edge_client__pb__error__enum_values_by_name,
+  1,
+  ziti__edge_client__pb__error__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue ziti__edge_client__pb__precedence_value__enum_values_by_number[3] =
+{
+  { "Default", "ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Default", 0 },
+  { "Required", "ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Required", 1 },
+  { "Failed", "ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Failed", 2 },
+};
+static const ProtobufCIntRange ziti__edge_client__pb__precedence_value__value_ranges[] = {
+{0, 0},{0, 3}
+};
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__precedence_value__enum_values_by_name[3] =
+{
+  { "Default", 0 },
+  { "Failed", 2 },
+  { "Required", 1 },
+};
+const ProtobufCEnumDescriptor ziti__edge_client__pb__precedence_value__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.PrecedenceValue",
+  "PrecedenceValue",
+  "Ziti__EdgeClient__Pb__PrecedenceValue",
+  "ziti.edge_client.pb",
+  3,
+  ziti__edge_client__pb__precedence_value__enum_values_by_number,
+  3,
+  ziti__edge_client__pb__precedence_value__enum_values_by_name,
+  1,
+  ziti__edge_client__pb__precedence_value__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue ziti__edge_client__pb__flag__enum_values_by_number[6] =
+{
+  { "ZERO", "ZITI__EDGE_CLIENT__PB__FLAG__ZERO", 0 },
+  { "FIN", "ZITI__EDGE_CLIENT__PB__FLAG__FIN", 1 },
+  { "TRACE_UUID", "ZITI__EDGE_CLIENT__PB__FLAG__TRACE_UUID", 2 },
+  { "MULTIPART", "ZITI__EDGE_CLIENT__PB__FLAG__MULTIPART", 4 },
+  { "STREAM", "ZITI__EDGE_CLIENT__PB__FLAG__STREAM", 8 },
+  { "MULTIPART_MSG", "ZITI__EDGE_CLIENT__PB__FLAG__MULTIPART_MSG", 16 },
+};
+static const ProtobufCIntRange ziti__edge_client__pb__flag__value_ranges[] = {
+{0, 0},{4, 3},{8, 4},{16, 5},{0, 6}
+};
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__flag__enum_values_by_name[6] =
+{
+  { "FIN", 1 },
+  { "MULTIPART", 3 },
+  { "MULTIPART_MSG", 5 },
+  { "STREAM", 4 },
+  { "TRACE_UUID", 2 },
+  { "ZERO", 0 },
+};
+const ProtobufCEnumDescriptor ziti__edge_client__pb__flag__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.Flag",
+  "Flag",
+  "Ziti__EdgeClient__Pb__Flag",
+  "ziti.edge_client.pb",
+  6,
+  ziti__edge_client__pb__flag__enum_values_by_number,
+  6,
+  ziti__edge_client__pb__flag__enum_values_by_name,
+  4,
+  ziti__edge_client__pb__flag__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
