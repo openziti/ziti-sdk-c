@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "message.h"
 #include "zt_internal.h"
 #include "utils.h"
 #include "endian_internal.h"
@@ -417,7 +418,8 @@ void on_channel_send(uv_write_t *w, int status) {
 int ziti_channel_send_message(ziti_channel_t *ch, message *msg, struct ziti_write_req_s *ziti_write) {
     uv_buf_t buf = uv_buf_init((char *) msg->msgbufp, msg->msgbuflen);
     message_set_seq(msg, &ch->msg_seq);
-    CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", msg->header.content, msg->header.seq, msg->header.body_len);
+    CH_LOG(TRACE, "=> ct[%s] seq[%d] len[%d]", content_type_id(msg->header.content),
+           msg->header.seq, msg->header.body_len);
 
     NEWP(req, uv_write_t);
     if (ziti_write == NULL) {
@@ -443,7 +445,7 @@ int ziti_channel_send(ziti_channel_t *ch, uint32_t content, const hdr_t *hdrs, i
                       struct ziti_write_req_s *ziti_write) {
     message *m = message_new(NULL, content, hdrs, nhdrs, body_len);
     message_set_seq(m, &ch->msg_seq);
-    CH_LOG(TRACE, "=> ct[%04X] seq[%d] len[%d]", content, m->header.seq, body_len);
+    CH_LOG(TRACE, "=> ct[%s] seq[%d] len[%d]", content_type_id(content), m->header.seq, body_len);
     memcpy(m->body, body, body_len);
 
     return ziti_channel_send_message(ch, m, ziti_write);
@@ -527,7 +529,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
             return;
         }
 
-        CH_LOG(ERROR, "could not find waiter for reply_to = %d ct[%X]", reply_to, ct);
+        CH_LOG(ERROR, "could not find waiter for reply_to = %d ct[%s]", reply_to, content_type_id(ct));
     }
 
     if (ch->state == Connecting) {
@@ -538,7 +540,7 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
             return;
         }
 
-        CH_LOG(ERROR, "received unexpected message ct[%04X] in Connecting state", ct);
+        CH_LOG(ERROR, "received unexpected message ct[%s] in Connecting state", content_type_id(ct));
     }
 
     if (is_edge(ct)) {
@@ -555,13 +557,13 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
                 message *reply = new_inspect_result(m->header.seq, conn_id, ConnTypeInvalid, msg, len);
                 ziti_channel_send_message(ch, reply, NULL);
             } else if (ct != ContentTypeStateClosed) { // close confirmation is OK if connection is gone already
-                CH_LOG(WARN, "received message without conn_id or for unknown connection ct[%04X] conn_id[%d]",
-                       ct, conn_id);
+                CH_LOG(WARN, "received message without conn_id or for unknown connection ct[%s] conn_id[%d]",
+                       content_type_id(ct), conn_id);
             }
             pool_return_obj(m);
         }
     } else {
-        CH_LOG(WARN, "unsupported content type [%04X]", ct);
+        CH_LOG(WARN, "unsupported content type [%s]", content_type_id(ct));
         pool_return_obj(m);
     }
 }
@@ -592,7 +594,7 @@ static void process_inbound(ziti_channel_t *ch) {
             if (rc != ZITI_OK) break;
             ch->in_body_offset = 0;
 
-            CH_LOG(TRACE, "<= ct[%04X] seq[%d] len[%d] hdrs[%d]", ch->in_next->header.content,
+            CH_LOG(TRACE, "<= ct[%s] seq[%d] len[%d] hdrs[%d]", content_type_id(ch->in_next->header.content),
                    ch->in_next->header.seq,
                    ch->in_next->header.body_len, ch->in_next->header.headers_len);
         }
@@ -617,8 +619,8 @@ static void process_inbound(ziti_channel_t *ch) {
                 message *msg = ch->in_next;
                 ch->in_next = NULL;
 
-                CH_LOG(TRACE, "message is complete seq[%d] ct[%04X]",
-                       msg->header.seq, msg->header.content);
+                CH_LOG(TRACE, "message is complete seq[%d] ct[%s]",
+                       msg->header.seq, content_type_id(msg->header.content));
 
                 rc = parse_hdrs(msg->headers, msg->header.headers_len, &msg->hdrs);
                 if (rc < 0) {
@@ -654,7 +656,7 @@ static void latency_reply_cb(void *ctx, message *reply, int err) {
         ch->latency = uv_now(ch->loop) - ts;
         CH_LOG(VERBOSE, "latency is now %llu", (unsigned long long)ch->latency);
     } else {
-        CH_LOG(WARN, "invalid latency probe result ct[%04X]", reply->header.content);
+        CH_LOG(WARN, "invalid latency probe result ct[%s]", content_type_id(reply->header.content));
     }
     uv_timer_start(ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
 }
@@ -702,7 +704,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         message_get_bool_header(msg, ResultSuccessHeader, &success);
     }
     else if (msg) {
-        CH_LOG(ERROR, "unexpected Hello response ct[%04X]", msg->header.content);
+        CH_LOG(ERROR, "unexpected Hello response ct[%s]", content_type_id(msg->header.content));
         cb_code = ZITI_GATEWAY_UNAVAILABLE;
     }
     else {

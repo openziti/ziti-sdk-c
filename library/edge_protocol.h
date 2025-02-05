@@ -17,7 +17,7 @@
 #define ZITI_SDK_EDGE_PROTOCOL_H
 
 #include <stdint.h>
-#include "../library/proto/edge_client.pb-c.h"
+#include "proto/edge_client.pb-c.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,6 +51,8 @@ enum content_type {
     ContentTypePostureResponse = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureResponseType,
     ContentTypePostureResponseSuccess = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureResponseSuccessType,
 };
+
+extern const char* content_type_id(enum content_type ct);
 
 enum header_id {
     ReplyForHeader = 1,

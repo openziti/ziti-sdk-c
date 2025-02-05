@@ -16,6 +16,7 @@
 #include <posture.h>
 #include <assert.h>
 
+#include "message.h"
 #include "endian_internal.h"
 #include "win32_compat.h"
 #include "connect.h"
@@ -308,8 +309,9 @@ static int send_message(struct ziti_conn *conn, message *m, struct ziti_write_re
             message_get_int32_header(m, SeqHeader, &seq);
 
             uuid->slug = htole32(h.i32[0]);
-            CONN_LOG(TRACE, "=> ct[%0X] uuid[" UUID_FMT "] edge_seq[%d] len[%d] hash[" HASH_FMT "]",
-                     m->header.content, UUID_FMT_ARG(uuid), seq, m->header.body_len, HASH_FMT_ARG(h));
+            CONN_LOG(TRACE, "=> ct[%s] uuid[" UUID_FMT "] edge_seq[%d] len[%d] hash[" HASH_FMT "]",
+                     content_type_id(m->header.content), UUID_FMT_ARG(uuid), seq,
+                     m->header.body_len, HASH_FMT_ARG(h));
         }
     }
     return ziti_channel_send_message(ch, m, wr);
@@ -867,8 +869,8 @@ static bool flush_to_service(ziti_connection conn) {
             ziti_write_req(req);
             count++;
         } else {
-            CONN_LOG(DEBUG, "got write msg{ct[%0X]} in invalid state[%s]",
-                     req->message ? req->message->header.content : -1,
+            CONN_LOG(DEBUG, "got write msg[%s] in invalid state[%s]",
+                     req->message ? content_type_id(req->message->header.content) : "null",
                      conn_state_str[conn->state]);
 
             if (req->cb) {
@@ -1102,7 +1104,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
             break;
 
         default:
-            CONN_LOG(WARN, "unexpected content_type[%d]", msg->header.content);
+            CONN_LOG(WARN, "unexpected content_type[%s]", content_type_id(msg->header.content));
             ziti_disconnect(conn);
     }
 }
@@ -1420,21 +1422,21 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
         message_get_bytes_header(msg, UUIDHeader, (const uint8_t **) &uuid, &uuid_len)) {
         struct local_hash h;
         crypto_hash_sha256(h.hash, msg->body, msg->header.body_len);
-        CONN_LOG(TRACE, "<= ct[%04X] uuid[" UUID_FMT "] edge_seq[%d] len[%d] ",
-                 msg->header.content, UUID_FMT_ARG(uuid), seq, msg->header.body_len);
+        CONN_LOG(TRACE, "<= ct[%s] uuid[" UUID_FMT "] edge_seq[%d] len[%d] ",
+                 content_type_id(msg->header.content), UUID_FMT_ARG(uuid), seq, msg->header.body_len);
 
         if (uuid->seq != conn->in_msg_seq) {
             CONN_LOG(WARN, "unexpected msg_seq[%d] previous[%d]", uuid->seq, conn->in_msg_seq);
         }
         conn->in_msg_seq = uuid->seq + 1;
     } else {
-        CONN_LOG(TRACE, "<= ct[%04X] edge_seq[%d] len[%d]", msg->header.content, seq, msg->header.body_len);
+        CONN_LOG(TRACE, "<= ct[%s] edge_seq[%d] len[%d]", content_type_id(msg->header.content), seq, msg->header.body_len);
     }
 
 
     switch (msg->header.content) {
         case ContentTypeStateClosed:
-            CONN_LOG(DEBUG, "connection status[%X] seq[%d] err[%.*s]", msg->header.content, seq,
+            CONN_LOG(DEBUG, "connection status[%s] seq[%d] err[%.*s]", content_type_id(msg->header.content), seq,
                      msg->header.body_len, msg->body);
             bool retry_connect = false;
 
@@ -1452,9 +1454,8 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
                         conn_set_state(conn, Connecting);
                         restart_connect(conn);
                     } else {
-                        CONN_LOG(ERROR, "failed to %s, reason=%*.*s",
-                                 "connect",
-                                 msg->header.body_len, msg->header.body_len, msg->body);
+                        CONN_LOG(ERROR, "failed to connect, reason=%.*s",
+                                 msg->header.body_len, msg->body);
                         conn_set_state(conn, Disconnected);
                         complete_conn_req(conn, ZITI_CONN_CLOSED);
                     }
@@ -1514,7 +1515,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
             break;
 
         default:
-            CONN_LOG(ERROR, "received unexpected content_type[%d]", msg->header.content);
+            CONN_LOG(ERROR, "received unexpected content_type[%s]", content_type_id(msg->header.content));
     }
 }
 

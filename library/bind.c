@@ -16,6 +16,7 @@
 #include <assert.h>
 #include <inttypes.h>
 
+#include "message.h"
 #include "ziti/ziti.h"
 #include "endian_internal.h"
 #include "win32_compat.h"
@@ -470,7 +471,7 @@ static void on_message(struct binding_s *b, message *msg, int code) {
             schedule_rebind(conn);
         }
     } else {
-        ZITI_LOG(DEBUG, "received msg ct[%x] code[%d] from %s", msg->header.content, code, b->ch->name);
+        ZITI_LOG(DEBUG, "received msg ct[%s] code[%d] from %s", content_type_id(msg->header.content), code, b->ch->name);
         switch (msg->header.content) {
             case ContentTypeStateClosed:
                 CONN_LOG(DEBUG, "binding[%s] was closed: %.*s", b->ch->url, msg->header.body_len, msg->body);
@@ -485,7 +486,8 @@ static void on_message(struct binding_s *b, message *msg, int code) {
                 process_inspect(b, msg);
                 break;
             default:
-                ZITI_LOG(ERROR, "unexpected msg[%X] for bound conn[%d]", msg->header.content, conn->conn_id);
+                ZITI_LOG(ERROR, "unexpected msg[%s] for bound conn[%d]",
+                         content_type_id(msg->header.content), conn->conn_id);
         }
     }
 
@@ -498,7 +500,7 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
 
     b->waiter = NULL;
     if (code == ZITI_OK && msg->header.content == ContentTypeStateConnected) {
-        CONN_LOG(TRACE, "received msg ct[%X] code[%d]", msg->header.content, code);
+        CONN_LOG(TRACE, "received msg ct[%s] code[%d]", content_type_id(msg->header.content), code);
         CONN_LOG(DEBUG, "bound successfully on router[%s]", b->ch->name);
         ziti_channel_add_receiver(b->ch, conn->conn_id, b,
                                   (void (*)(void *, message *, int)) on_message);
@@ -578,8 +580,8 @@ void on_unbind(void *ctx, message *m, int code) {
     b->waiter = NULL;
 
     if (m) {
-        ZITI_LOG(DEBUG, "binding[%d.%s] unbind resp: ct[%X] %.*s", b->conn_id,
-                 b->ch->name, m->header.content, m->header.body_len, m->body);
+        ZITI_LOG(DEBUG, "binding[%d.%s] unbind resp: ct[%s] %.*s", b->conn_id,
+                 b->ch->name, content_type_id(m->header.content), m->header.body_len, m->body);
         int32_t conn_id = htole32(b->conn_id);
         hdr_t headers[] = {
                 var_header(ConnIdHeader, conn_id),
