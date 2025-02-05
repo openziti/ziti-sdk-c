@@ -25,7 +25,9 @@ endif ()
 target_compile_definitions(all_tests
         PRIVATE ZITI_TEST_DIR=${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(all_tests
-        PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
+        PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal
+        PRIVATE ${ziti-sdk_SOURCE_DIR}/library
+)
 
 target_link_libraries(all_tests
         PRIVATE ziti
