@@ -283,7 +283,7 @@ static void get_service_cb(ziti_context ztx, const ziti_service *service, int st
     struct ziti_conn *conn = ctx;
 
     if (status == ZITI_SERVICE_UNAVAILABLE) {
-        CONN_LOG(WARN, "service[%s] is not available", service->name);
+        CONN_LOG(WARN, "service[%s] is not available", conn->service);
         notify_status(conn, ZITI_SERVICE_UNAVAILABLE);
         return;
     }

@@ -1371,7 +1371,7 @@ static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {
                 break;
             case Connected:
             case CloseWrite:
-                conn->data_cb(conn, NULL, code);
+                if (conn->data_cb) conn->data_cb(conn, NULL, code);
                 break;
             default:
                 CONN_LOG(WARN, "disconnecting from state[%d]", st);
