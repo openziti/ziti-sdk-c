@@ -268,11 +268,6 @@ typedef struct ziti_client_ctx_s {
     size_t app_data_sz;
 } ziti_client_ctx;
 
-typedef enum ziti_terminator_precedence_e {
-    PRECEDENCE_DEFAULT = 0,
-    PRECEDENCE_REQUIRED,
-    PRECEDENCE_FAILED
-} ziti_terminator_precedence;
 
 typedef struct ziti_listen_opts_s {
     uint16_t terminator_cost;

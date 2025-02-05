@@ -52,7 +52,7 @@ static header_t EMPTY_HEADER = {
         MAGIC_INIT,
 };
 
-typedef struct {
+typedef struct hdr_s {
     uint32_t header_id;
     uint32_t length;
     const uint8_t *value;

@@ -23,10 +23,8 @@
 #include <ziti/ziti.h>
 #include "buffer.h"
 #include "pool.h"
-#include "message.h"
 #include "ziti_ctrl.h"
 #include "metrics.h"
-#include "edge_protocol.h"
 #include "posture.h"
 #include "authenticators.h"
 #include "auth_method.h"
@@ -54,6 +52,9 @@ ZITI_LOG(level, fmt " %s[%s] reason[%s]", ##__VA_ARGS__, e->code, e->message, re
 
 extern const char *APP_ID;
 extern const char *APP_VERSION;
+
+typedef struct message_s message;
+typedef struct hdr_s hdr_t;
 
 typedef struct ziti_channel ziti_channel_t;
 
