@@ -25,10 +25,10 @@ extern "C" {
 
 enum content_type {
 
-    ContentTypeHelloType = 0,
-    ContentTypePingType = 1,
-    ContentTypeResultType = 2,
-    ContentTypeLatencyType = 3,
+    ContentTypeHelloType = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Hello,
+    ContentTypePingType = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Ping,
+    ContentTypeResultType = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Result,
+    ContentTypeLatencyType = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Latency,
 
     ContentTypeConnect = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ConnectType,
     ContentTypeStateConnected = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__StateConnectedType,
@@ -44,55 +44,41 @@ enum content_type {
     ContentTypeUpdateTokenSuccess = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UpdateTokenSuccessType,
     ContentTypeUpdateTokenFailure = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UpdateTokenFailureType,
 
-    // TODO fix when available in protobuf definitions
-    ContentTypeConnInspectRequest = 60798,
-    ContentTypeConnInspectResponse = 60799,
-    ContentTypeBindSuccess = 60800,
+    ContentTypeConnInspectRequest = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ConnInspectRequest,
+    ContentTypeConnInspectResponse = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ConnInspectResponse,
+    ContentTypeBindSuccess = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__BindSuccess,
 
     ContentTypePostureResponse = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureResponseType,
     ContentTypePostureResponseSuccess = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureResponseSuccessType,
 };
 
 enum header_id {
-    ConnectionIdHeader = 0,
     ReplyForHeader = 1,
     ResultSuccessHeader = 2,
-    HelloListenerHeader = 3,
     HelloVersionHeader = 4,
 
-    // Headers in the range 128-255 inclusive will be reflected when creating replies
-    ReflectedHeaderBitMask = 1 << 7,
-    MaxReflectedHeader = (1 << 8) - 1,
-
     LatencyProbeTime = 128,
-    UUIDHeader = 128,
+    UUIDHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__UUID,
 
-    ConnIdHeader = 1000,
-    SeqHeader = 1001,
-    SessionTokenHeader = 1002,
-    PublicKeyHeader = 1003,
-    CostHeader = 1004,
-    PrecedenceHeader = 1005,
-    TerminatorIdentityHeader = 1006,
-    TerminatorIdentitySecretHeader = 1007,
-    CallerIdHeader = 1008,
-    CryptoMethodHeader = 1009,
-    FlagsHeader = 1010,
-    AppDataHeader = 1011,
-    RouterProvidedConnId = 1012,
-    HealthStatusHeader = 1013,
-    ErrorCodeHeader = 1014,
-    TimestampHeader = 1015,
-    TraceHopCountHeader = 1016,
-    TraceHopTypeHeader = 1017,
-    TraceHopIdHeader = 1018,
-    TraceSourceRequestIdHeader = 1019,
-    TraceError = 1020,
-    ListenerId = 1021,
-    ConnTypeHeader = 1022,
-    SupportsInspectHeader = 1023,
-    SupportsBindSuccessHeader = 1024,
-    ConnectionMarkerHeader = 1025,
+    ConnIdHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnId,
+    SeqHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__Seq,
+    SessionTokenHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__SessionToken,
+    PublicKeyHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__PublicKey,
+    CostHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__Cost,
+    PrecedenceHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__Precedence,
+    TerminatorIdentityHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__TerminatorIdentity,
+    TerminatorIdentitySecretHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__TerminatorIdentitySecret,
+    CallerIdHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__CallerId,
+    CryptoMethodHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__CryptoMethod,
+    FlagsHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__Flags,
+    AppDataHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__AppData,
+    RouterProvidedConnId = ZITI__EDGE_CLIENT__PB__HEADER_ID__RouterProvidedConnId,
+    ErrorCodeHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ErrorCode,
+    ListenerId = ZITI__EDGE_CLIENT__PB__HEADER_ID__ListenerId,
+    ConnTypeHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnType,
+    SupportsInspectHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsInspect,
+    SupportsBindSuccessHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsBindSuccess,
+    ConnectionMarkerHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnectionMarker,
 };
 
 typedef uint8_t connection_type_t;
@@ -111,17 +97,23 @@ enum crypto_method {
 enum edge_flag {
     // half close connection no more data messages are expected
     // after receipt of message with this flag
-    EDGE_FIN = 1,
+    EDGE_FIN = ZITI__EDGE_CLIENT__PB__FLAG__FIN,
     // indicates that peer will send data messages with specially constructed UUID headers
-    EDGE_TRACE_UUID = 1 << 1,
+    EDGE_TRACE_UUID = ZITI__EDGE_CLIENT__PB__FLAG__TRACE_UUID,
     // indicates that peer can accept multipart data messages
-    EDGE_MULTIPART = 1 << 2,
+    EDGE_MULTIPART = ZITI__EDGE_CLIENT__PB__FLAG__MULTIPART,
     // indicates connection with stream semantics
     // this allows consolidation of payloads to lower overhead
-    EDGE_STREAM = 1 << 3,
+    EDGE_STREAM = ZITI__EDGE_CLIENT__PB__FLAG__STREAM,
     // set on data message with multiple payloads
-    EDGE_MULTIPART_MSG = 1 << 4,
+    EDGE_MULTIPART_MSG = ZITI__EDGE_CLIENT__PB__FLAG__MULTIPART_MSG,
 };
+
+typedef enum ziti_terminator_precedence_e {
+    PRECEDENCE_DEFAULT = ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Default,
+    PRECEDENCE_REQUIRED = ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Required,
+    PRECEDENCE_FAILED = ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Failed,
+} ziti_terminator_precedence;
 
 #ifdef __cplusplus
 }
