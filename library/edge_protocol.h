@@ -111,12 +111,6 @@ enum edge_flag {
     EDGE_MULTIPART_MSG = ZITI__EDGE_CLIENT__PB__FLAG__MULTIPART_MSG,
 };
 
-typedef enum ziti_terminator_precedence_e {
-    PRECEDENCE_DEFAULT = ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Default,
-    PRECEDENCE_REQUIRED = ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Required,
-    PRECEDENCE_FAILED = ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Failed,
-} ziti_terminator_precedence;
-
 #ifdef __cplusplus
 }
 #endif

@@ -4,7 +4,11 @@
 extern "C" {
 #endif
 
-
+extern const struct ziti_terminator_precedence_s {
+    const uint8_t DEFAULT;
+    const uint8_t REQUIRED;
+    const uint8_t FAILED;
+} PRECEDENCE;
 /**
 * @brief Represents the type and rate of metric to capture
 * 
