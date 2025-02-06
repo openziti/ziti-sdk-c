@@ -340,12 +340,12 @@ static uint8_t get_terminator_precedence(const ziti_listen_opts *opts, const cha
         precedence = precedence ? precedence : ztx->identity_data->default_hosting_precendence;
 
         if (precedence) {
-            if (strcmp("failed", precedence) == 0) return PRECEDENCE_FAILED;
-            if (strcmp("required", precedence) == 0) return PRECEDENCE_REQUIRED;
+            if (strcasecmp("failed", precedence) == 0) return PRECEDENCE.FAILED;
+            if (strcasecmp("required", precedence) == 0) return PRECEDENCE.REQUIRED;
         }
     }
 
-    return PRECEDENCE_DEFAULT;
+    return PRECEDENCE.DEFAULT;
 }
 
 static int dispose(ziti_connection server) {
@@ -560,7 +560,7 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
         headers[nheaders++] = var_header(CostHeader, cost);
     }
 
-    if (conn->server.precedence != PRECEDENCE_DEFAULT) {
+    if (conn->server.precedence != PRECEDENCE.DEFAULT) {
         headers[nheaders++] = var_header(PrecedenceHeader, conn->server.precedence);
     }
 
