@@ -14,6 +14,13 @@
 
 #include "edge_protocol.h"
 #include <protobuf-c/protobuf-c.h>
+#include <ziti/enums.h>
+
+const struct ziti_terminator_precedence_s PRECEDENCE = {
+    .DEFAULT = ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Default,
+    .REQUIRED = ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Required,
+    .FAILED = ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Failed,
+};
 
 const char* content_type_id(enum content_type ct) {
     const ProtobufCEnumValue *val = protobuf_c_enum_descriptor_get_value(
