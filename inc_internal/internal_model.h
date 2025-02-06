@@ -56,11 +56,12 @@ XX(expires, timestamp, none, expiresAt, __VA_ARGS__) \
 XX(expireSeconds, model_number, none, expirationSeconds, __VA_ARGS__) \
 XX(updated, timestamp, none, updatedAt, __VA_ARGS__) \
 XX(cached_last_activity_at, timestamp, none, cachedLastActivityAt, __VA_ARGS__) \
+XX(identity_id, model_string, none, identityId, __VA_ARGS__) \
 XX(identity, ziti_identity, none, identity, __VA_ARGS__) \
 XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__) \
-XX(is_mfa_required, model_bool, none, IsMfaRequired, __VA_ARGS__) \
-XX(is_mfa_complete, model_bool, none, IsMfaComplete, __VA_ARGS__) \
-XX(is_cert_extendable, model_bool, none, IsCertExtendable, __VA_ARGS__) \
+XX(is_mfa_required, model_bool, none, isMfaRequired, __VA_ARGS__) \
+XX(is_mfa_complete, model_bool, none, isMfaComplete, __VA_ARGS__) \
+XX(is_cert_extendable, model_bool, none, isCertExtendable, __VA_ARGS__) \
 XX(auth_queries, ziti_auth_query_mfa, list, authQueries, __VA_ARGS__) \
 XX(authenticator_id, model_string, none, authenticatorId, __VA_ARGS__)
 
