@@ -22,6 +22,7 @@
 #include <auth_queries.h>
 #include <uv.h>
 #include <assert.h>
+#include <time.h>
 
 #if _WIN32
 
