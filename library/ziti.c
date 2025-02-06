@@ -39,6 +39,8 @@
 #endif
 #endif
 
+#define TEN_DAYS (60 * 60 * 24 * 10)
+
 #define ztx_controller(ztx) \
 ((ztx)->ctrl.url ? (ztx)->ctrl.url : (ztx)->config.controller_url)
 
@@ -74,6 +76,8 @@ static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e,
 
 static int ztx_init_controller(ziti_context ztx);
 static void ztx_config_update(ziti_context ztx);
+
+static void api_session_cb(ziti_api_session *, const ziti_error *, void *);
 
 static uint32_t ztx_seq;
 
@@ -414,6 +418,26 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
                                          NULL);
 
         ziti_ctrl_create_api_certificate(ztx_get_controller(ztx), ztx->sessionCsr, on_create_cert, ztx);
+    }
+
+    if (ztx->id_creds.cert && ztx->id_creds.cert->get_expiration) {
+        struct tm exp;
+
+        ztx->id_creds.cert->get_expiration(ztx->id_creds.cert, &exp);
+        time_t now = time(0);
+        time_t exptime = mktime(&exp);
+
+        bool renew = exptime - now < TEN_DAYS;
+        if (renew) {
+            if (ztx->opts.events & ZitiConfigEvent) {
+                ZTX_LOG(INFO, "renewing identity certificate exp[%04d-%02d-%02d %02d:%02d]",
+                        1900 + exp.tm_year, exp.tm_mon + 1, exp.tm_mday, exp.tm_hour, exp.tm_min);
+                ziti_ctrl_current_api_session(ztx_get_controller(ztx), api_session_cb, ztx);
+            } else {
+                ZTX_LOG(WARN, "identity certificate needs to be renewed but application is not handling ZitiConfigEvent");
+            }
+
+        }
     }
 
     ziti_services_refresh(ztx, true);
@@ -1999,4 +2023,109 @@ ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er) {
         ziti_channel_connect(ztx, er->name, url);
     }
     return ch;
+}
+
+struct cert_ext_req {
+    ziti_api_session *session;
+    ziti_context ztx;
+    ziti_extend_cert_authenticator_resp *cert_resp;
+    tlsuv_certificate_t new_cert;
+};
+
+static void cert_verify_cb(void *r, const ziti_error *err, void *ctx) {
+    struct cert_ext_req *req = ctx;
+    ziti_context ztx = req->ztx;
+    if (err) {
+        ZTX_LOG(ERROR, "failed to verify extended identity certificate: %s", err->message);
+        goto done;
+    }
+
+    if (ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->id_creds.key, req->new_cert) != 0) {
+        ZTX_LOG(ERROR, "extended certificate did not match key");
+        goto done;
+    }
+
+
+    struct tm exp;
+    req->new_cert->get_expiration(req->new_cert, &exp);
+
+    ZTX_LOG(INFO, "successfully verified extended cert. good until %04d-%02d-%02d %02d:%02d",
+            1900 + exp.tm_year, exp.tm_mon + 1, exp.tm_mday, exp.tm_hour, exp.tm_min);
+    ztx->id_creds.cert = req->new_cert;
+    req->new_cert = NULL;
+
+    FREE(ztx->config.id.ca);
+    FREE(ztx->config.id.cert);
+    ztx->config.id.ca = req->cert_resp->cas_pem;
+    ztx->config.id.cert = req->cert_resp->client_cert_pem;
+    req->cert_resp->cas_pem = NULL;
+    req->cert_resp->client_cert_pem = NULL;
+
+    ztx_config_update(ztx);
+
+    done:
+    if (req->new_cert) req->new_cert->free(req->new_cert);
+    free_ziti_api_session_ptr(req->session);
+    free_ziti_extend_cert_authenticator_resp_ptr(req->cert_resp);
+    free(req);
+}
+
+static void cert_extend_cb(ziti_extend_cert_authenticator_resp *resp, const ziti_error *err, void *ctx) {
+    struct cert_ext_req *req = ctx;
+    ziti_context ztx = req->ztx;
+    if (err) {
+        ZTX_LOG(ERROR, "failed to extend identity certificate: %s", err->message);
+        free_ziti_api_session_ptr(req->session);
+        free(req);
+        return;
+    }
+
+    assert(resp);
+    if (ztx->tlsCtx->load_cert(&req->new_cert, resp->client_cert_pem, strlen(resp->client_cert_pem)) != 0) {
+        ZTX_LOG(ERROR, "failed to parse new certificate");
+        free_ziti_extend_cert_authenticator_resp_ptr(resp);
+        free_ziti_api_session_ptr(req->session);
+        free(req);
+        return;
+    }
+
+    ZTX_LOG(INFO, "successfully generated extended cert");
+    req->cert_resp = resp;
+    ziti_ctrl_verify_extend_cert_authenticator(
+            ztx_get_controller(ztx), req->session->authenticator_id,
+            resp->client_cert_pem, cert_verify_cb, req);
+
+}
+
+static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
+    char *csr = NULL;
+    size_t len = 0;
+    if (api_sess) {
+        if (!api_sess->is_cert_extendable) {
+            ZTX_LOG(WARN, "identity certificate is not renewable");
+            goto done;
+        }
+
+        if (ztx->tlsCtx->generate_csr_to_pem(ztx->id_creds.key, &csr, &len, "O", "OpenZiti",
+                                         "DC", ztx->config.controller_url,
+                                         "CN", api_sess->identity_id,
+                                         NULL) != 0) {
+            ZTX_LOG(WARN, "failed to generate certificate request");
+            goto done;
+        }
+
+        NEWP(ext_req, struct cert_ext_req);
+        ext_req->session = api_sess;
+        ext_req->ztx = ztx;
+
+        api_sess = NULL;
+        ziti_ctrl_extend_cert_authenticator(ztx_get_controller(ztx),
+                                            ext_req->session->authenticator_id, csr,
+                                            cert_extend_cb, ext_req);
+    }
+
+    done:
+    free_ziti_api_session_ptr(api_sess);
+    free(csr);
 }
