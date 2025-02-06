@@ -838,7 +838,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     printer(ctx, "Application:\t%s@%s\n", APP_ID ? APP_ID : "<unset>", APP_VERSION ? APP_VERSION : "<unknown>");
     const ziti_version *sdk_ver = ziti_get_version();
     printer(ctx, "ziti-sdk: %s(%s) %s\n", sdk_ver->version, sdk_ver->revision, sdk_ver->build_date);
-    printer(ctx, "tlsuv:    %s (%s)\n", tlsuv_version(), ztx->tlsCtx->version());
+    printer(ctx, "tlsuv:    %s (%s)\n", tlsuv_version(), ztx->tlsCtx ? ztx->tlsCtx->version() : "<unknown>");
     printer(ctx, "sodium:   %s\n", sodium_version_string());
     printer(ctx, "libuv:    %s\n", uv_version_string());
 
