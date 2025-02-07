@@ -421,7 +421,7 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         ziti_ctrl_create_api_certificate(ztx_get_controller(ztx), ztx->sessionCsr, on_create_cert, ztx);
     }
 
-    if (ztx->id_creds.cert && ztx->id_creds.cert->get_expiration) {
+    if (ztx->opts.enable_cert_extension && ztx->id_creds.cert) {
         struct tm exp;
 
         ztx->id_creds.cert->get_expiration(ztx->id_creds.cert, &exp);
@@ -1891,6 +1891,7 @@ int ziti_context_set_options(ziti_context ztx, const ziti_options *options) {
         copy_opt(pq_mac_cb);
         copy_opt(pq_os_cb);
         copy_opt(pq_process_cb);
+        copy_opt(enable_cert_extension);
 
 #undef copy_opt
     }

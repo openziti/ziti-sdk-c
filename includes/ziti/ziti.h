@@ -249,6 +249,15 @@ typedef struct ziti_options_s {
      * \brief callback invoked is response to subscribed events.
      */
     ziti_event_cb event_cb;
+
+    /**
+     * \brief this setting allows SDK to auto-extend identity certificate.
+     *
+     * This only applies if certificate was issued by the OpenZiti network.
+     * The application must handle [ZitiConfigEvent] to capture and save
+     * the newly issued certificate.
+     */
+    bool enable_cert_extension;
 } ziti_options;
 
 typedef struct ziti_dial_opts_s {
