@@ -947,10 +947,15 @@ static void refresh_time_cb(uv_timer_t *t) {
     uv_unref((uv_handle_t *) t);
     oidc_client_t *clt = t->data;
     ZITI_LOG(DEBUG, "refreshing OIDC token");
+    struct json_object *tok = json_object_object_get(clt->tokens, "refresh_token");
+    if (tok == NULL) {
+        ZITI_LOG(DEBUG, "starting authentication flow: no refresh_token");
+        oidc_client_start(clt, clt->token_cb);
+        return;
+    }
 
     struct json_object *token_ep = json_object_object_get(clt->config, TOKEN_EP);
     const char *token_url = json_object_get_string(token_ep);
-    struct json_object *tok = json_object_object_get(clt->tokens, "refresh_token");
     oidc_req *refresh_req = new_oidc_req(clt, refresh_cb, clt);
 
     tlsuv_http_set_url(&clt->http, token_url);

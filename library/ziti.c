@@ -1167,6 +1167,10 @@ int ziti_listen_with_options(ziti_connection serv_conn, const char *service, zit
  * @param ztx
  */
 static void ziti_re_auth(ziti_context ztx) {
+    if (ztx->ext_auth) {
+        oidc_client_refresh(ztx->ext_auth);
+    }
+
     // always get controller version to get the right auth method
     ziti_ctrl_get_version(ztx_get_controller(ztx), version_pre_auth_cb, ztx);
 
