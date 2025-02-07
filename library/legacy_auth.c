@@ -78,9 +78,8 @@ static int legacy_auth_jwt_token(ziti_auth_method_t *self, const char *token) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
     free(auth->jwt);
     auth->jwt = strdup(token);
-    ziti_ctrl_set_token(auth->ctrl, token);
     if (auth->session) {
-        ziti_ctrl_current_api_session(auth->ctrl, login_cb, auth);
+        ziti_ctrl_mfa_jwt(auth->ctrl, auth->jwt, login_cb, auth);
     }
     return 0;
 }
