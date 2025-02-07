@@ -25,14 +25,17 @@
 extern "C" {
 #endif
 
-#define OIDC_TOKEN_OK (0)
-#define OIDC_TOTP_NEEDED (1)
-#define OIDC_TOTP_FAILED (2)
-#define OIDC_TOKEN_FAILED (3)
+enum oidc_status {
+    OIDC_TOKEN_OK  = 0,
+    OIDC_TOTP_NEEDED = 1,
+    OIDC_TOTP_FAILED = 2,
+    OIDC_TOKEN_FAILED = 3,
+    OIDC_RESTART     = 4,
+};
 
 typedef struct oidc_client_s oidc_client_t;
 typedef void (*oidc_config_cb)(oidc_client_t *, int, const char *);
-typedef void (*oidc_token_cb)(oidc_client_t *, int, const char *access_token);
+typedef void (*oidc_token_cb)(oidc_client_t *, enum oidc_status, const char *access_token);
 typedef void (*oidc_close_cb)(oidc_client_t *);
 typedef void (*oidc_ext_link_cb)(oidc_client_t *, const char *link, void *ctx);
 
