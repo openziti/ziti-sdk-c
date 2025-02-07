@@ -30,6 +30,7 @@ static int ha_auth_refresh(ziti_auth_method_t *self);
 static int ha_ext_jwt(ziti_auth_method_t *self, const char *token);
 static int ha_set_endpoint(ziti_auth_method_t *self, const char *url);
 static void config_cb(oidc_client_t *oidc, int status, const char *err);
+static char* internal_oidc_path(const char *url);
 
 struct ha_auth_s {
     ziti_auth_method_t api;
@@ -56,20 +57,13 @@ ziti_auth_method_t *new_ha_auth(uv_loop_t *l, const char* url, tls_context *tls)
         .free = ha_auth_free,
         .set_ext_jwt = ha_ext_jwt,
     };
-    
-    char *ep = strdup(url);
-    struct tlsuv_url_s u;
-    tlsuv_parse_url(&u, ep);
-    if (u.path) {
-        *(char*)u.path = 0;
-    }
-    
+
     auth->loop = l;
     auth->config = (ziti_jwt_signer){
             .client_id = "openziti",
             .name = "ziti-internal-oidc",
             .enabled = true,
-            .provider_url = ep,
+            .provider_url = internal_oidc_path(url),
             .target_token = ziti_target_token_access_token,
     };
     model_list_append(&auth->config.scopes, "offline_access");
@@ -78,16 +72,21 @@ ziti_auth_method_t *new_ha_auth(uv_loop_t *l, const char* url, tls_context *tls)
     return &auth->api;
 }
 
+static char *internal_oidc_path(const char *url) {
+    struct tlsuv_url_s u;
+    tlsuv_parse_url(&u, url);
+
+    size_t baselen = u.path ? u.path - url : strlen(url);
+    size_t maxlen = baselen + 6;
+    char *ep = malloc(maxlen);
+    snprintf(ep, maxlen, "%.*s/oidc", (int)baselen, url);
+    return ep;
+}
+
 static int ha_set_endpoint(ziti_auth_method_t *self, const char *url) {
     struct ha_auth_s *auth = HA_AUTH(self);
-    char *ep = strdup(url);
-    struct tlsuv_url_s u;
-    tlsuv_parse_url(&u, ep);
-    if (u.path) {
-        *(char*)u.path = '\0';
-    }
-
-    if (strcmp(ep, auth->config.provider_url) == 0) {
+    char *ep = internal_oidc_path(url);
+    if (auth->config.provider_url && strcmp(ep, auth->config.provider_url) == 0) {
         free(ep);
         return -1;
     }
