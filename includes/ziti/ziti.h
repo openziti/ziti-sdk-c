@@ -256,8 +256,11 @@ typedef struct ziti_options_s {
      * This only applies if certificate was issued by the OpenZiti network.
      * The application must handle [ZitiConfigEvent] to capture and save
      * the newly issued certificate.
+     * SDK will extend certificate when expiration date falls
+     * in the next [cert_extension_window] days.
+     * To enable certificate extension the value must be greater than 0
      */
-    bool enable_cert_extension;
+    unsigned int cert_extension_window;
 } ziti_options;
 
 typedef struct ziti_dial_opts_s {

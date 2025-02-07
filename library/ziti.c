@@ -40,7 +40,7 @@
 #endif
 #endif
 
-#define TEN_DAYS (60 * 60 * 24 * 10)
+#define ONE_DAY (60 * 60 * 24)
 
 #define ztx_controller(ztx) \
 ((ztx)->ctrl.url ? (ztx)->ctrl.url : (ztx)->config.controller_url)
@@ -421,14 +421,14 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         ziti_ctrl_create_api_certificate(ztx_get_controller(ztx), ztx->sessionCsr, on_create_cert, ztx);
     }
 
-    if (ztx->opts.enable_cert_extension && ztx->id_creds.cert) {
+    if (ztx->opts.cert_extension_window && ztx->id_creds.cert) {
         struct tm exp;
 
         ztx->id_creds.cert->get_expiration(ztx->id_creds.cert, &exp);
         time_t now = time(0);
         time_t exptime = mktime(&exp);
 
-        bool renew = exptime - now < TEN_DAYS;
+        bool renew = exptime - now < ztx->opts.cert_extension_window * ONE_DAY;
         if (renew) {
             if (ztx->opts.events & ZitiConfigEvent) {
                 ZTX_LOG(INFO, "renewing identity certificate exp[%04d-%02d-%02d %02d:%02d]",
@@ -1891,7 +1891,7 @@ int ziti_context_set_options(ziti_context ztx, const ziti_options *options) {
         copy_opt(pq_mac_cb);
         copy_opt(pq_os_cb);
         copy_opt(pq_process_cb);
-        copy_opt(enable_cert_extension);
+        copy_opt(cert_extension_window);
 
 #undef copy_opt
     }
