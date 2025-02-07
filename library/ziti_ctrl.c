@@ -830,6 +830,22 @@ void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_ses
     start_request(ctrl->client, "GET", "/current-api-session", ctrl_resp_cb, resp);
 }
 
+void ziti_ctrl_mfa_jwt(ziti_controller *ctrl, const char *token, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx) {
+    if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
+
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_api_session_ptr_from_json, ctx);
+    resp->ctrl_cb = (ctrl_cb_t) ctrl_login_cb;
+
+    string_buf_t *b = new_string_buf();
+    string_buf_fmt(b, "Bearer %s", token);
+    char *header = string_buf_to_string(b, NULL);
+
+
+    tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/current-api-session", ctrl_resp_cb, resp);
+    tlsuv_http_req_header(req, "Authorization", header);
+}
+
+
 void ziti_ctrl_list_controllers(ziti_controller *ctrl,
                                 void (*cb)(ziti_controller_detail_array, const ziti_error*, void *ctx), void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;

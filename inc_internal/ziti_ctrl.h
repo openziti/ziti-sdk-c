@@ -96,6 +96,8 @@ void ziti_ctrl_list_controllers(ziti_controller *ctrl,
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
 
+void ziti_ctrl_mfa_jwt(ziti_controller *ctrl, const char *token, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
+
 void ziti_ctrl_create_api_certificate(ziti_controller *ctrl, const char *csr_pem, void(*cb)(ziti_create_api_cert_resp *, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_current_identity(ziti_controller *ctrl, void(*cb)(ziti_identity_data *, const ziti_error *, void *), void *ctx);
