@@ -214,13 +214,14 @@ static int start_enrollment(struct ziti_enroll_req *er) {
     if (er->opts.key != NULL) {
         if (load_key_internal(er->tls, &er->pk, er->opts.key) != 0) {
             if (strncmp(er->opts.key, "pkcs11://", strlen("pkcs11://")) != 0) {
+                ZITI_LOG(ERROR, "failed to load provided key");
                 return ZITI_KEY_LOAD_FAILED;
             }
 
             ZITI_LOG(INFO, "pkcs11 key not found. trying to generate");
             int rc = gen_p11_key_internal(er->tls, &er->pk, er->opts.key);
             if (rc != 0) {
-                ZITI_LOG(ERROR, "failed to generate pkcs11 key: %s", ziti_errorstr(rc));
+                ZITI_LOG(ERROR, "failed to load or generate pkcs11 key: %s", ziti_errorstr(rc));
                 return ZITI_KEY_LOAD_FAILED;
             }
         }
