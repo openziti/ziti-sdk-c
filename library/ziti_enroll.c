@@ -211,8 +211,20 @@ static int start_enrollment(struct ziti_enroll_req *er) {
     er->tls->set_cert_verify(er->tls, verify_controller_jwt, er);
 
     // check key/cert if provided
-    if (er->opts.key != NULL && er->tls->load_key(&er->pk, er->opts.key, strlen(er->opts.key)) != 0) {
-        return ZITI_KEY_LOAD_FAILED;
+    if (er->opts.key != NULL) {
+        if (load_key_internal(er->tls, &er->pk, er->opts.key) != 0) {
+            if (strncmp(er->opts.key, "pkcs11://", strlen("pkcs11://")) != 0) {
+                ZITI_LOG(ERROR, "failed to load provided key");
+                return ZITI_KEY_LOAD_FAILED;
+            }
+
+            ZITI_LOG(INFO, "pkcs11 key not found. trying to generate");
+            int rc = gen_p11_key_internal(er->tls, &er->pk, er->opts.key);
+            if (rc != 0) {
+                ZITI_LOG(ERROR, "failed to load or generate pkcs11 key: %s", ziti_errorstr(rc));
+                return ZITI_KEY_LOAD_FAILED;
+            }
+        }
     }
     er->cfg.id.key = s_copy(er->opts.key);
 
@@ -405,19 +417,7 @@ static void enroll_cb(ziti_enrollment_resp *resp, const ziti_error *err, void *e
     }
 
     ZITI_LOG(DEBUG, "successfully enrolled with controller %s", er->controller.url);
-    tlsuv_certificate_t c = NULL;
-    if (resp->cert != NULL &&
-        er->pk->store_certificate != NULL &&
-        er->tls->load_cert(&c, resp->cert, strlen(resp->cert)) == 0 &&
-        er->pk->store_certificate(er->pk, c) == 0) {
-        ZITI_LOG(INFO, "stored certificate to PKCS#11 token");
-    } else {
-        er->cfg.id.cert = resp->cert ? strdup(resp->cert) : strdup(er->opts.cert);
-    }
-
-    if (c != NULL) {
-        c->free(c);
-    }
+    er->cfg.id.cert = resp->cert ? strdup(resp->cert) : strdup(er->opts.cert);
 
     complete_request(er, ZITI_OK);
     free_ziti_enrollment_resp_ptr(resp);
