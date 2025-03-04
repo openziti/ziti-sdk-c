@@ -724,7 +724,7 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
 int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     clt->token_cb = cb;
     if (clt->config == NULL) {
-        return 0;
+        return ZITI_INVALID_CONFIG;
     }
     json_object *cfg = (json_object *) clt->config;
     json_object *auth_ep = json_object_object_get(cfg, AUTH_EP);

@@ -136,8 +136,7 @@ extern int ziti_ext_auth(ziti_context ztx,
     ztx->ext_launch_cb = ziti_ext_launch;
     ztx->ext_launch_ctx = ctx;
     oidc_client_set_link_cb(ztx->ext_auth, internal_link_cb, NULL);
-    oidc_client_start(ztx->ext_auth, ext_token_cb);
-    return ZITI_OK;
+    return oidc_client_start(ztx->ext_auth, ext_token_cb);
 }
 
 extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
