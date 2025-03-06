@@ -93,3 +93,21 @@ TEST_CASE("check hostname/domainname") {
     printf("hostname = %s\n", info->hostname);
     printf("domain = %s\n", info->domain);
 }
+
+static uint32_t mesgs_logged = 0;
+static void test_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
+    mesgs_logged++;
+}
+
+TEST_CASE("check repeated logs are silenced") {
+    ziti_log_init(uv_default_loop(), INFO, test_log_writer);
+    ziti_log_set_max_repeat(5);
+    mesgs_logged = 0;
+    for (long i = 0; i < 10; i++) {
+        ZITI_LOG(INFO, "test message text");
+    }
+    REQUIRE(mesgs_logged == 5);
+    mesgs_logged = 0;
+    ZITI_LOG(INFO, "something else now");
+    REQUIRE(mesgs_logged == 2); // "message repeated" message, and "something else now"
+}

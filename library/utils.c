@@ -115,6 +115,7 @@ static const char *TLSUV_MODULE = "tlsuv";
 
 static model_map log_levels;
 static int ziti_log_lvl = ZITI_LOG_DEFAULT_LEVEL;
+static int ziti_log_max_repeat = -1;
 static FILE *ziti_debug_out;
 static bool log_initialized = false;
 static uv_pid_t log_pid = 0;
@@ -242,6 +243,10 @@ void ziti_log_set_logger(log_writer log) {
     logger = log;
 }
 
+void ziti_log_set_max_repeat(int32_t max) {
+    ziti_log_max_repeat = max;
+}
+
 static void init_uv_mbed_log() {
     char *lvl;
     if ((lvl = getenv("TLSUV_DEBUG")) != NULL) {
@@ -320,6 +325,12 @@ static const char *basename(const char *path) {
     return path;
 }
 
+struct counted_mesg {
+    uint16_t repeat;
+    char *mesg;
+    char *prev_mesg;
+};
+
 void ziti_logger(int level, const char *module, const char *file, unsigned int line, const char *func, FORMAT_STRING(const char *fmt), ...) {
 #ifdef ZITI_DEBUG
     static size_t loglinelen = 32768;
@@ -330,9 +341,11 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
     log_writer logfunc = logger;
     if (logfunc == NULL) { return; }
 
-    char *logbuf = (char *) uv_key_get(&logbufs);
+    struct counted_mesg *logbuf = uv_key_get(&logbufs);
     if (!logbuf) {
-        logbuf = malloc(loglinelen);
+        logbuf = calloc(1, sizeof(struct counted_mesg));
+        logbuf->mesg = malloc(loglinelen);
+        logbuf->prev_mesg = calloc(loglinelen, sizeof(char));
         uv_key_set(&logbufs, logbuf);
     }
 
@@ -370,14 +383,30 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
 
     va_list argp;
     va_start(argp, fmt);
-    int len = vsnprintf(logbuf, loglinelen, fmt, argp);
+    int len = vsnprintf(logbuf->mesg, loglinelen, fmt, argp);
     va_end(argp);
 
     if (len > loglinelen) {
         len = (int) loglinelen;
     }
 
-    logfunc(level, location, logbuf, len);
+    if (ziti_log_max_repeat > 0) {
+        if (strcmp(logbuf->mesg, logbuf->prev_mesg) == 0) {
+            logbuf->repeat++;
+            if (logbuf->repeat >= ziti_log_max_repeat) return;
+        } else {
+            if (logbuf->repeat > ziti_log_max_repeat) {
+                // previous message had been silenced
+                int l = snprintf(logbuf->prev_mesg, loglinelen, "previous message repeated %u times",
+                                 logbuf->repeat - ziti_log_max_repeat + 1);
+                logfunc(level, "\b", logbuf->prev_mesg, l);
+            }
+            logbuf->repeat = 0;
+        }
+        strcpy(logbuf->prev_mesg, logbuf->mesg);
+    }
+
+    logfunc(level, location, logbuf->mesg, len);
 }
 
 static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
