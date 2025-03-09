@@ -270,7 +270,7 @@ static void internal_config_cb(oidc_req *req, int status, json_object *resp) {
             status = UV_EINVAL;
         }
     }
-    
+
     if (status == 0) {
         json_object_put(clt->config);
         clt->config = resp;
@@ -507,6 +507,22 @@ static int set_blocking(uv_os_sock_t sock) {
     return 0;
 }
 
+void url_decode(const char *src, const char *end, char *dest, size_t dest_size) {
+    char *p = dest;
+    while (src < end && (p - dest < (dest_size - 1))) {
+        if (*src == '%' && isxdigit((unsigned char) src[1]) && isxdigit((unsigned char) src[2])) {
+            char hex[3] = { src[1], src[2], '\0' };
+            *p++ = (char) strtol(hex, NULL, 16);
+            src += 3;
+        } else if (*src == '+') {
+            *p++ = ' ';
+            src++;
+        } else {
+            *p++ = *src++;
+        }
+    }
+    *p = '\0';
+}
 
 static void ext_accept(uv_work_t *wr) {
     struct ext_link_req *elr = (struct ext_link_req *) wr;
@@ -600,9 +616,10 @@ static void ext_accept(uv_work_t *wr) {
         ce = amp;
     }
 
-    char *code = calloc(1, ce - cs + 1);
-    memcpy(code, cs, ce - cs);
-    elr->code = code;
+    size_t param_len = ce - cs;
+    char* decoded_code = calloc(param_len + 1, sizeof(char));
+    url_decode(cs, ce, decoded_code, param_len);
+    elr->code = decoded_code;
 
     string_buf_t resp_buf;
     string_buf_init(&resp_buf);
@@ -861,6 +878,7 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
 static const char *jwt_payload(const char *jwt) {
     static uint8_t payload[4096];
     size_t payload_len;
+
     jwt = strchr(jwt, '.');
     if (jwt == NULL) {
         ZITI_LOG(ERROR, "invalid JWT provided");
