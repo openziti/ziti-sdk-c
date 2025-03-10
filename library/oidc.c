@@ -507,7 +507,7 @@ static int set_blocking(uv_os_sock_t sock) {
     return 0;
 }
 
-void url_decode(const char *src, const char *end, char *dest, size_t dest_size) {
+static void url_decode(const char *src, const char *end, char *dest, size_t dest_size) {
     char *p = dest;
     while (src < end && (p - dest < (dest_size - 1))) {
         if (*src == '%' && isxdigit((unsigned char) src[1]) && isxdigit((unsigned char) src[2])) {
