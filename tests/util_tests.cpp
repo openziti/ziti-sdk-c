@@ -102,7 +102,7 @@ static void test_log_writer(int level, const char *loc, const char *msg, size_t 
 
 TEST_CASE("check repeated logs are silenced") {
     ziti_log_init(uv_default_loop(), INFO, test_log_writer);
-    ziti_log_set_repeat_limit(5);
+    ziti_log_set_suppress_threshold(5);
     int i;
 
     mesgs_logged = 0;

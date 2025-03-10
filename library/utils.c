@@ -115,8 +115,8 @@ static const char *TLSUV_MODULE = "tlsuv";
 
 static model_map log_levels;
 static int ziti_log_lvl = ZITI_LOG_DEFAULT_LEVEL;
-static int ziti_log_repeat_limit = -1;
-static uint32_t ziti_log_repeat_notify_count = 500;
+static int ziti_log_suppress_threshold = -1;
+static uint32_t ziti_log_suppress_notify_count = 500;
 static FILE *ziti_debug_out;
 static bool log_initialized = false;
 static uv_pid_t log_pid = 0;
@@ -244,12 +244,12 @@ void ziti_log_set_logger(log_writer log) {
     logger = log;
 }
 
-void ziti_log_set_repeat_limit(int32_t n) {
-    ziti_log_repeat_limit = n;
+void ziti_log_set_suppress_threshold(int32_t n) {
+    ziti_log_suppress_threshold = n;
 }
 
-void ziti_log_set_repeat_notify_count(uint32_t n) {
-    ziti_log_repeat_notify_count = n;
+void ziti_log_set_suppress_notify_count(uint32_t n) {
+    ziti_log_suppress_notify_count = n;
 }
 
 static void init_uv_mbed_log() {
@@ -395,10 +395,10 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
         len = (int) loglinelen;
     }
 
-    if (ziti_log_repeat_limit > 0) {
+    if (ziti_log_suppress_threshold > 0) {
         if (strcmp(logbuf->mesg, logbuf->prev_mesg) == 0) {
             logbuf->repeat++;
-            if (logbuf->repeat >= ziti_log_repeat_limit) {
+            if (logbuf->repeat >= ziti_log_suppress_threshold) {
                 if (logbuf->repeat % 500 == 0) {
                     int l = strlen("previous message repeated 500 times");
                     logfunc(level, "\b", "previous message repeated 500 times", l);
@@ -406,10 +406,10 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
                 return; // suppress
             }
         } else {
-            if (logbuf->repeat > ziti_log_repeat_limit) {
+            if (logbuf->repeat > ziti_log_suppress_threshold) {
                 // previous message had been silenced
                 int l = snprintf(logbuf->prev_mesg, loglinelen, "previous message repeated %u times",
-                                 (logbuf->repeat - ziti_log_repeat_limit + 1) % 500);
+                                 (logbuf->repeat - ziti_log_suppress_threshold + 1) % 500);
                 logfunc(level, "\b", logbuf->prev_mesg, l);
             }
             logbuf->repeat = 0;
