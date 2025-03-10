@@ -96,18 +96,43 @@ TEST_CASE("check hostname/domainname") {
 
 static uint32_t mesgs_logged = 0;
 static void test_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
+    printf("--> %.*s\n", (int) msglen, msg);
     mesgs_logged++;
 }
 
 TEST_CASE("check repeated logs are silenced") {
     ziti_log_init(uv_default_loop(), INFO, test_log_writer);
-    ziti_log_set_max_repeat(5);
+    ziti_log_set_repeat_limit(5);
+    int i;
+
     mesgs_logged = 0;
-    for (long i = 0; i < 10; i++) {
+    printf("expect 5 'test' messages...\n");
+    for (i = 0; i < 10; i++) {
         ZITI_LOG(INFO, "test message text");
     }
     REQUIRE(mesgs_logged == 5);
+
     mesgs_logged = 0;
+    printf("expect 1 'message repeated' message, and 1 'something else' message...\n");
     ZITI_LOG(INFO, "something else now");
-    REQUIRE(mesgs_logged == 2); // "message repeated" message, and "something else now"
+    REQUIRE(mesgs_logged == 2);
+
+    mesgs_logged = 0;
+    printf("expect 4 'something else' messages...\n");
+    for (i = 1; i < 500; i++) {
+        ZITI_LOG(INFO, "something else now");
+    }
+    REQUIRE(mesgs_logged == 4);
+
+    mesgs_logged = 0;
+    printf("expect 2 'message repeated' messages...\n");
+    for (i = 0; i < 602; i++) {
+        ZITI_LOG(INFO, "something else now");
+    }
+    REQUIRE(mesgs_logged == 2);
+
+    mesgs_logged = 0;
+    printf("expect 1 more 'message repeated' message, and 1 'farewell' message\n");
+    ZITI_LOG(INFO, "farewell for now");
+    REQUIRE(mesgs_logged == 2);
 }
