@@ -101,6 +101,13 @@ ZITI_FUNC extern void ziti_log_set_logger(log_writer logger);
 // use ZITI_LOG_DEFAULT_LEVEL to reset to default(INFO) or ZITI_LOG env var
 ZITI_FUNC extern void ziti_log_set_level(int level, const char *marker);
 
+// set limit for repeated log messages. set to negative value to log all messages.
+// default is -1.
+ZITI_FUNC extern void ziti_log_set_repeat_limit(int32_t n);
+
+// log a notification message after a message is suppressed n times
+ZITI_FUNC extern void ziti_log_set_repeat_notify_count(uint32_t n);
+
 // don't use directly
 ZITI_FUNC extern int ziti_log_level(const char *module, const char *file);
 
