@@ -507,9 +507,10 @@ static int set_blocking(uv_os_sock_t sock) {
     return 0;
 }
 
-static void url_decode(const char *src, const char *end, char *dest, size_t dest_size) {
+static void url_decode(const char *src, size_t src_len, char *dest) {
     char *p = dest;
-    while (src < end && (p - dest < (dest_size - 1))) {
+    const char *end = src + src_len;
+    while (src <= end) {
         if (*src == '%' && isxdigit((unsigned char) src[1]) && isxdigit((unsigned char) src[2])) {
             char hex[3] = { src[1], src[2], '\0' };
             *p++ = (char) strtol(hex, NULL, 16);
@@ -518,7 +519,10 @@ static void url_decode(const char *src, const char *end, char *dest, size_t dest
             *p++ = ' ';
             src++;
         } else {
-            *p++ = *src++;
+            if (*src != '&') {
+                *p++ = *src;
+            }
+            src++;
         }
     }
     *p = '\0';
@@ -618,7 +622,7 @@ static void ext_accept(uv_work_t *wr) {
 
     size_t param_len = ce - cs;
     char* decoded_code = calloc(param_len + 1, sizeof(char));
-    url_decode(cs, ce, decoded_code, param_len);
+    url_decode(cs, param_len, decoded_code);
     elr->code = decoded_code;
 
     string_buf_t resp_buf;
