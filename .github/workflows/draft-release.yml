@@ -6,6 +6,9 @@ on:
       - main
       - release-1.x
 
+permissions:
+  contents: read
+
 jobs:
   update_release_draft:
     runs-on: ubuntu-latest

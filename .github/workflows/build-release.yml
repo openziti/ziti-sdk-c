@@ -4,7 +4,8 @@ on:
   workflow_dispatch:
   release:
     types: [ published ]
-
+permissions:
+  contents: read
 jobs:
   build:
     name: ${{ matrix.spec.name }}

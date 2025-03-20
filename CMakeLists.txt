@@ -22,6 +22,25 @@ message("   hash : ${GIT_COMMIT_HASH}")
 message("")
 message("using ${CMAKE_GENERATOR}")
 
+if (ziti_DEVELOPER_MODE)
+    set(complist GNU Clang AppleClang)
+    if (CMAKE_C_COMPILER_ID IN_LIST complist)
+        option(ziti_ASAN "build with sanitizers")
+        option(ziti_TEST_COVERAGE "enable test coverage")
+    endif ()
+    unset(complist)
+endif ()
+
+if (ziti_ASAN)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif (ziti_ASAN)
+
+if (ziti_TEST_COVERAGE)
+    add_compile_options(--coverage)
+    add_link_options(--coverage)
+endif (ziti_TEST_COVERAGE)
+
 if (WIN32)
     if(MINGW)
         #on server 2016 msvcrt.dll does not process %z formatting

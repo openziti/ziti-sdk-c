@@ -12,6 +12,9 @@ on:
   release:
     types: [released]
 
+permissions:
+  contents: read
+
 jobs:
   ziti-webhook:
     runs-on: ubuntu-latest
