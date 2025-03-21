@@ -7,7 +7,7 @@ on:
       - release-1.x
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   update_release_draft:
