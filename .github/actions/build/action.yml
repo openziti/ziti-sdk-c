@@ -48,6 +48,9 @@ runs:
     - uses: lukka/get-cmake@v3.30.1
 
     - uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgJsonGlob: './vcpkg.json'
+
 
     - uses: actions/cache@v4
       with:
