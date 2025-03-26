@@ -17,13 +17,15 @@
 
 #include <uv.h>
 #include "zt_internal.h"
+#include "deadline.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 struct posture_checks {
-    uv_timer_t *timer;
+    deadline_t deadline;
+    uint64_t send_period;
 
     // map<type/process_path,response>
     model_map responses;
