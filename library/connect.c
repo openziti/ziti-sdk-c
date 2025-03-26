@@ -73,9 +73,10 @@ struct ziti_conn_req {
     ziti_dial_opts dial_opts;
 
     int retry_count;
-    uv_timer_t *conn_timeout;
     struct waiter_s *waiter;
     bool failed;
+
+    deadline_t deadline;
 };
 
 static void flush_connection(ziti_connection conn);
@@ -154,9 +155,7 @@ static void free_ziti_dial_opts(ziti_dial_opts *dial_opts) {
 }
 
 static void free_conn_req(struct ziti_conn_req *r) {
-    if (r->conn_timeout != NULL) {
-        uv_close((uv_handle_t *) r->conn_timeout, free_handle);
-    }
+    clear_deadline(&r->deadline);
 
     free_ziti_dial_opts(&r->dial_opts);
     FREE(r->service_id);
@@ -318,17 +317,25 @@ static int send_message(struct ziti_conn *conn, message *m, struct ziti_write_re
 }
 
 static void complete_conn_req(struct ziti_conn *conn, int code) {
-    if (conn->conn_req && conn->conn_req->cb) {
+    struct ziti_conn_req *cr = conn->conn_req;
+    if (cr && cr->cb) {
         if (code != ZITI_OK) {
+            CONN_LOG(DEBUG, "%s failed: %s", ziti_conn_state(conn), ziti_errorstr(code));
             conn_set_state(conn, code == ZITI_TIMEOUT ? Timedout : Disconnected);
-            conn->conn_req->failed = true;
+            cr->failed = true;
             conn->data_cb = NULL;
+            if (code != ZITI_GATEWAY_UNAVAILABLE && conn->channel) {
+                ch_send_conn_closed(conn->channel, conn->conn_id);
+            }
         }
-        if (conn->conn_req->conn_timeout != NULL) {
-            uv_timer_stop(conn->conn_req->conn_timeout);
+        clear_deadline(&cr->deadline);
+        if (cr->waiter) {
+            ziti_channel_remove_waiter(conn->channel, cr->waiter);
+            cr->waiter = NULL;
         }
-        conn->conn_req->cb(conn, code);
-        conn->conn_req->cb = NULL;
+
+        cr->cb(conn, code);
+        cr->cb = NULL;
 
         if (code != ZITI_OK) {
             while (!TAILQ_EMPTY(&conn->wreqs)) {
@@ -349,18 +356,14 @@ static void complete_conn_req(struct ziti_conn *conn, int code) {
     }
 }
 
-static void connect_timeout(uv_timer_t *timer) {
-    struct ziti_conn *conn = timer->data;
-
+static void connect_timeout(void *data) {
+    struct ziti_conn *conn = data;
     ziti_channel_t *ch = conn->channel;
-    uv_close((uv_handle_t *) timer, free_handle);
-    conn->conn_req->conn_timeout = NULL;
 
-    if (conn->state == Connecting) {
+    if (conn->state == Connecting || conn->state == Accepting) {
         if (ch == NULL) {
             CONN_LOG(WARN, "connect timeout: no suitable edge router for service[%s]", conn->service);
         } else {
-
             CONN_LOG(WARN, "failed to establish connection to service[%s] in %ds on ch[%d]",
                      conn->service, conn->conn_req->dial_opts.connect_timeout_seconds, ch->id);
         }
@@ -544,10 +547,8 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
     }
 
     if (req->dial_opts.connect_timeout_seconds > 0) {
-        req->conn_timeout = calloc(1, sizeof(uv_timer_t));
-        uv_timer_init(loop, req->conn_timeout);
-        req->conn_timeout->data = conn;
-        uv_timer_start(req->conn_timeout, connect_timeout, req->dial_opts.connect_timeout_seconds * 1000, 0);
+        ztx_set_deadline(ztx, req->dial_opts.connect_timeout_seconds * 1000,
+                         &req->deadline, connect_timeout, conn);
     }
 
     CONN_LOG(DEBUG, "starting Dial connection for service[%s] with session[%s]", conn->service, session->id);
@@ -1049,9 +1050,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
     struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
 
-    if (req->conn_timeout) {
-        uv_timer_stop(req->conn_timeout);
-    }
+    clear_deadline(&req->deadline);
 
     req->waiter = NULL;
     if (err != 0 && msg == NULL) {
@@ -1255,6 +1254,9 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     NEWP(req, struct ziti_conn_req);
     req->cb = cb;
     conn->conn_req = req;
+
+    // add accept deadline in case ER fails to send us Accept result
+    ztx_set_deadline(conn->ziti_ctx, ZITI_TIMEOUT, &req->deadline, connect_timeout, conn);
 
     req->waiter = ziti_channel_send_for_reply(
             ch, content_type, headers, 3,
