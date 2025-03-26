@@ -556,9 +556,12 @@ static void dispatch_message(ziti_channel_t *ch, message *m) {
                 size_t len = snprintf(msg, sizeof(msg), "invalid conn id [%d]", conn_id);
                 message *reply = new_inspect_result(m->header.seq, conn_id, ConnTypeInvalid, msg, len);
                 ziti_channel_send_message(ch, reply, NULL);
-            } else if (ct != ContentTypeStateClosed) { // close confirmation is OK if connection is gone already
+            } else if (ct != ContentTypeStateClosed) {
+                // close confirmation is OK if connection is gone already
                 CH_LOG(WARN, "received message without conn_id or for unknown connection ct[%s] conn_id[%d]",
                        content_type_id(ct), conn_id);
+                // notify ER that this connection is not available
+                ch_send_conn_closed(ch, conn_id);
             }
             pool_return_obj(m);
         }
@@ -1001,4 +1004,14 @@ int ziti_channel_update_posture(ziti_channel_t *ch, const uint8_t *data, size_t 
     }
 
     return ZITI_GATEWAY_UNAVAILABLE;
+}
+
+int ch_send_conn_closed(ziti_channel_t *ch, uint32_t conn_id) {
+    hdr_t hdr = (hdr_t) {
+            .header_id = ConnIdHeader,
+            .length = sizeof(conn_id),
+            .value = (const uint8_t *) &conn_id,
+    };
+
+    return ziti_channel_send(ch, ContentTypeStateClosed, &hdr, 1, NULL, 0, NULL);
 }

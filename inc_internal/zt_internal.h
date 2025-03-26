@@ -431,6 +431,8 @@ ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er);
 
 void ztx_set_deadline(ziti_context ztx, uint64_t timeout, deadline_t *d, void (*cb)(void *), void *ctx);
 
+int ch_send_conn_closed(ziti_channel_t *ch, uint32_t conn_id);
+
 #ifdef __cplusplus
 }
 #endif
