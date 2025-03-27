@@ -43,7 +43,7 @@ struct ziti_bridge_s {
     pool_t *input_pool;
     bool input_throttle;
     unsigned long idle_timeout;
-    uv_timer_t *idle_timer;
+    deadline_t idler;
 };
 
 static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len);
@@ -199,28 +199,25 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
     return ZITI_OK;
 }
 
-static void on_bridge_idle(uv_timer_t *t) {
-    struct ziti_bridge_s *br = t->data;
+static void on_bridge_idle(void *v) {
+    struct ziti_bridge_s *br = v;
     BR_LOG(DEBUG, "closing bridge due to idle timeout");
     close_bridge(br);
+}
+
+static void br_set_idle_timeout(struct ziti_bridge_s *br) {
+    if (br->idle_timeout > 0) { // reset idle timer
+        ztx_set_deadline(br->conn->ziti_ctx, br->idle_timeout, &br->idler, on_bridge_idle, br);
+    }
 }
 
 int ziti_conn_bridge_idle_timeout(ziti_connection conn, unsigned long millis) {
     struct ziti_bridge_s *br = ziti_conn_data(conn);
     if (millis == 0) {
         br->idle_timeout = 0;
-        if (br->idle_timer) {
-            uv_close((uv_handle_t *) br->idle_timer, (uv_close_cb) free);
-            br->idle_timer = NULL;
-        }
     } else {
         br->idle_timeout = millis;
-        if (br->idle_timer == NULL) {
-            br->idle_timer = calloc(1, sizeof(*br->idle_timer));
-            br->idle_timer->data = br;
-            uv_timer_init(br->input->loop, br->idle_timer);
-        }
-        uv_timer_start(br->idle_timer, on_bridge_idle, br->idle_timeout, 0);
+        br_set_idle_timeout(br);
     }
     return 0;
 }
@@ -241,11 +238,6 @@ static void close_bridge(struct ziti_bridge_s *br) {
         uv_handle_set_data((uv_handle_t *) br->input, br->data);
         br->close_cb((uv_handle_t *) br->input);
         br->input = NULL;
-    }
-
-    if (br->idle_timer) {
-        uv_close((uv_handle_t *) br->idle_timer, (uv_close_cb) free);
-        br->idle_timer = NULL;
     }
 
     ziti_close(br->conn, on_ziti_close);
@@ -270,9 +262,7 @@ ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
         return -1;
     }
 
-    if (br->idle_timer) { // reset idle timer
-        uv_timer_start(br->idle_timer, on_bridge_idle, br->idle_timeout, 0);
-    }
+    br_set_idle_timeout(br);
 
     if (len > 0) {
         BR_LOG(TRACE, "received %zd bytes from ziti", len);
@@ -364,9 +354,7 @@ static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
 void on_udp_input(uv_udp_t *udp, ssize_t len, const uv_buf_t *b, const struct sockaddr *addr, unsigned int flags) {
     struct ziti_bridge_s *br = udp->data;
 
-    if (br->idle_timer) { // reset idle timer
-        uv_timer_start(br->idle_timer, on_bridge_idle, br->idle_timeout, 0);
-    }
+    br_set_idle_timeout(br);
 
     if (len > 0) {
         int rc = ziti_write(br->conn, b->base, len, on_ziti_write, b->base);
@@ -392,9 +380,7 @@ void on_udp_input(uv_udp_t *udp, ssize_t len, const uv_buf_t *b, const struct so
 void on_input(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     struct ziti_bridge_s *br = s->data;
 
-    if (br->idle_timer) { // reset idle timer
-        uv_timer_start(br->idle_timer, on_bridge_idle, br->idle_timeout, 0);
-    }
+    br_set_idle_timeout(br);
 
     if (len > 0) {
         int rc = ziti_write(br->conn, b->base, len, on_ziti_write, b->base);

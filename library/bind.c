@@ -87,9 +87,6 @@ int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts 
     conn->server.precedence = get_terminator_precedence(listen_opts, service, conn->ziti_ctx);
     conn->server.max_bindings = listen_opts && listen_opts->max_connections > 0 ?
                                 listen_opts->max_connections : DEFAULT_MAX_BINDINGS;
-    conn->server.timer = calloc(1, sizeof(uv_timer_t));
-    conn->server.timer->data = conn;
-    uv_timer_init(conn->ziti_ctx->loop, conn->server.timer);
 
     if (listen_opts) {
         if (listen_opts->bind_using_edge_identity) {
@@ -106,8 +103,8 @@ int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts 
     return 0;
 }
 
-static void rebind_delay_cb(uv_timer_t *t) {
-    ziti_connection conn = t->data;
+static void rebind_delay_cb(void *data) {
+    ziti_connection conn = data;
     CONN_LOG(DEBUG, "staring re-bind");
 
     ziti_service_available(conn->ziti_ctx, conn->service, get_service_cb, conn);
@@ -178,13 +175,12 @@ void update_bindings(ziti_connection conn) {
     } else {
         // target bindings achieved, reset backoff
         conn->server.attempt = 0;
-        uv_timer_stop(conn->server.timer);
+        clear_deadline(&conn->server.rebinder);
     }
 }
 
 static void schedule_rebind(struct ziti_conn *conn) {
     if (!ziti_is_enabled(conn->ziti_ctx)) {
-        uv_timer_stop(conn->server.timer);
         return;
     }
 
@@ -196,7 +192,7 @@ static void schedule_rebind(struct ziti_conn *conn) {
     CONN_LOG(DEBUG, "scheduling re-bind(attempt=%d) in %" PRIu64 ".%" PRIu64 "s",
              conn->server.attempt, delay / 1000, delay % 1000);
 
-    uv_timer_start(conn->server.timer, rebind_delay_cb, delay, 0);
+    ztx_set_deadline(conn->ziti_ctx, delay, &conn->server.rebinder, rebind_delay_cb, conn);
 }
 
 static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) {
@@ -372,11 +368,7 @@ static int dispose(ziti_connection server) {
         return 0;
     }
 
-    if (server->server.timer != NULL) {
-        server->server.timer->data = NULL;
-        uv_close((uv_handle_t *) server->server.timer, (uv_close_cb) free);
-        server->server.timer = NULL;
-    }
+    clear_deadline(&server->server.rebinder);
 
     FREE(server->server.token);
     free_ziti_session_ptr(server->server.session);
@@ -465,7 +457,7 @@ static void on_message(struct binding_s *b, message *msg, int code) {
         b->ch = NULL;
         stop_binding(b);
         if (code == ZITI_DISABLED) {
-            uv_timer_stop(conn->server.timer);
+            clear_deadline(&conn->server.rebinder);
             notify_status(conn, code);
         } else {
             schedule_rebind(conn);
@@ -628,7 +620,7 @@ static void stop_binding(struct binding_s *b) {
 int ziti_close_server(struct ziti_conn *conn) {
     const char *id;
     struct binding_s *b;
-    uv_timer_stop(conn->server.timer);
+    clear_deadline(&conn->server.rebinder);
     MODEL_MAP_FOREACH(id, b, &conn->server.bindings) {
         CONN_LOG(VERBOSE, "stopping binding[%s]", id);
         stop_binding(b);

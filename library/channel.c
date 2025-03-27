@@ -73,7 +73,7 @@ static const char *get_timeout_cb(ziti_channel_t *ch);
 
 static void reconnect_channel(ziti_channel_t *ch, bool now);
 
-static void reconnect_cb(uv_timer_t *t);
+static void reconnect_cb(void *data);
 
 static void on_tls_connect(uv_connect_t *req, int status);
 
@@ -81,9 +81,9 @@ static struct msg_receiver *find_receiver(ziti_channel_t *ch, uint32_t conn_id);
 
 static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err);
 
-static void send_latency_probe(uv_timer_t *t);
+static void send_latency_probe(void *data);
 
-static void ch_connect_timeout(uv_timer_t *t);
+static void ch_connect_timeout(void *data);
 
 static void hello_reply_cb(void *ctx, message *msg, int err);
 
@@ -169,11 +169,6 @@ static int ziti_channel_init(struct ziti_ctx *ctx, ziti_channel_t *ch, uint32_t 
 
     ch->waiters = (model_map){0};
 
-    ch->timer = calloc(1, sizeof(uv_timer_t));
-    uv_timer_init(ch->loop, ch->timer);
-    ch->timer->data = ch;
-    uv_unref((uv_handle_t *) ch->timer);
-
     ch->notify_cb = (ch_notify_state) ziti_on_channel_event;
     ch->notify_ctx = ctx;
     return 0;
@@ -225,9 +220,6 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
         on_channel_close(ch, err, 0);
         ch->state = Closed;
         ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ztx);
-
-        uv_close((uv_handle_t *) ch->timer, (uv_close_cb) free);
-        ch->timer = NULL;
 
         ziti_channel_free(ch);
         free(ch);
@@ -285,22 +277,22 @@ static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, c
 static void check_connecting_state(ziti_channel_t *ch) {
     // verify channel state
     bool reset = false;
-    if (!uv_is_active((const uv_handle_t *) &ch->timer)) {
+    if (ch->deadline.expire_cb == NULL) {
         CH_LOG(DEBUG, "state check: timer not active!");
         reset = true;
     }
 
-    if (ch->timer->timer_cb != ch_connect_timeout) {
+    if (ch->deadline.expire_cb != ch_connect_timeout) {
         CH_LOG(DEBUG, "state check: unexpected callback(%s)!", get_timeout_cb(ch));
         reset = true;
     }
 
-    if (ch->timer->timeout < uv_now(ch->loop)) {
+    if (ch->deadline.expiration < uv_now(ch->loop)) {
         CH_LOG(DEBUG, "state check: timer is in the past!");
         reset = true;
     }
 
-    if (ch->timer->timeout - uv_now(ch->loop) > CONNECT_TIMEOUT) {
+    if (ch->deadline.expiration - uv_now(ch->loop) > CONNECT_TIMEOUT) {
         CH_LOG(DEBUG, "state check: timer is too far into the future!");
         reset = true;
     }
@@ -661,16 +653,15 @@ static void latency_reply_cb(void *ctx, message *reply, int err) {
     } else {
         CH_LOG(WARN, "invalid latency probe result ct[%s]", content_type_id(reply->header.content));
     }
-    uv_timer_start(ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
+    ztx_set_deadline(ch->ztx, LATENCY_INTERVAL, &ch->deadline, send_latency_probe, ch);
 }
 
-static void latency_timeout(uv_timer_t *t) {
-    ziti_channel_t *ch = t->data;
-    if (uv_now(t->loop) - MAX(ch->last_read, ch->last_write) < LATENCY_TIMEOUT) {
+static void latency_timeout(void *data) {
+    ziti_channel_t *ch = data;
+    if (uv_now(ch->loop) - MAX(ch->last_read, ch->last_write) < LATENCY_TIMEOUT) {
         CH_LOG(DEBUG, "latency timeout on active channel, extending timeout");
-        uv_timer_start(t, latency_timeout, LATENCY_TIMEOUT, 0);
-    }
-    else {
+        ztx_set_deadline(ch->ztx, LATENCY_TIMEOUT, &ch->deadline, latency_timeout, ch);
+    } else {
         CH_LOG(ERROR, "no read/write traffic on channel since before latency probe was sent, closing channel");
 
         ziti_channel_remove_waiter(ch, ch->latency_waiter);
@@ -681,9 +672,9 @@ static void latency_timeout(uv_timer_t *t) {
     }
 }
 
-static void send_latency_probe(uv_timer_t *t) {
-    ziti_channel_t *ch = t->data;
-    uint64_t now = htole64(uv_now(t->loop));
+static void send_latency_probe(void *data) {
+    ziti_channel_t *ch = data;
+    uint64_t now = htole64(uv_now(ch->loop));
     hdr_t headers[] = {
             {
                     .header_id = LatencyProbeTime,
@@ -692,7 +683,7 @@ static void send_latency_probe(uv_timer_t *t) {
             }
     };
 
-    uv_timer_start(t, latency_timeout, LATENCY_TIMEOUT, 0);
+    ztx_set_deadline(ch->ztx, LATENCY_TIMEOUT, &ch->deadline, latency_timeout, ch);
     ch->latency_waiter = ziti_channel_send_for_reply(ch, ContentTypeLatencyType,
                                                      headers, 1, NULL, 0, latency_reply_cb, ch);
 
@@ -726,7 +717,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         memcpy(ch->version, erVersion, erVersionLen);
         ch->notify_cb(ch, EdgeRouterConnected, ch->notify_ctx);
         ch->latency = uv_now(ch->loop) - ch->latency;
-        uv_timer_start(ch->timer, send_latency_probe, LATENCY_INTERVAL, 0);
+        ztx_set_deadline(ch->ztx, LATENCY_INTERVAL, &ch->deadline, send_latency_probe, ch);
     } else {
         if (msg) {
             CH_LOG(ERROR, "connect rejected: %d %*s", success, msg->header.body_len, msg->body);
@@ -755,8 +746,8 @@ static void send_hello(ziti_channel_t *ch, const char *token) {
 }
 
 
-static void ch_connect_timeout(uv_timer_t *t) {
-    ziti_channel_t *ch = t->data;
+static void ch_connect_timeout(void *data) {
+    ziti_channel_t *ch = data;
     CH_LOG(ERROR, "connect timeout");
 
     if (ch->connection && ch->connection->conn_req == NULL) {
@@ -767,8 +758,8 @@ static void ch_connect_timeout(uv_timer_t *t) {
     on_channel_close(ch, ZITI_TIMEOUT, UV_ETIMEDOUT);
 }
 
-static void reconnect_cb(uv_timer_t *t) {
-    ziti_channel_t *ch = t->data;
+static void reconnect_cb(void *data) {
+    ziti_channel_t *ch = data;
     ziti_context ztx = ch->ztx;
 
     if (ziti_get_api_session_token(ztx) == NULL) {
@@ -793,7 +784,7 @@ static void reconnect_cb(uv_timer_t *t) {
         if (rc != 0) {
             on_tls_connect(req, rc);
         } else {
-            uv_timer_start(ch->timer, ch_connect_timeout, CONNECT_TIMEOUT, 0);
+            ztx_set_deadline(ch->ztx, CONNECT_TIMEOUT, &ch->deadline, ch_connect_timeout, ch);
         }
     }
 }
@@ -806,8 +797,8 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
 
     uint64_t timeout = 0;
     if (!now) {
-        if (uv_is_active((const uv_handle_t *) ch->timer) &&
-            ch->timer->timer_cb == reconnect_cb) {
+
+        if (ch->deadline.expire_cb == reconnect_cb) {
             // reconnect is already scheduled
             return;
         }
@@ -823,7 +814,7 @@ static void reconnect_channel(ziti_channel_t *ch, bool now) {
     } else {
         CH_LOG(INFO, "reconnecting NOW");
     }
-    uv_timer_start(ch->timer, reconnect_cb, timeout, 0);
+    ztx_set_deadline(ch->ztx, timeout, &ch->deadline, reconnect_cb, ch);
 }
 
 static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
@@ -839,9 +830,7 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
     ch->state = Disconnected;
 
     ch->latency = UINT64_MAX;
-    if (uv_is_active((const uv_handle_t *) &ch->timer)) {
-        uv_timer_stop(ch->timer);
-    }
+    clear_deadline(&ch->deadline);
 
     model_map_iter it = model_map_iterator(&ch->waiters);
     while (it != NULL) {
@@ -981,7 +970,7 @@ XX(reconnect_cb)    \
 XX(send_latency_probe)
 
 static const char *get_timeout_cb(ziti_channel_t *ch) {
-#define to_lbl(n) if (ch->timer->timer_cb == (n)) return #n;
+#define to_lbl(n) if (ch->deadline.expire_cb == (n)) return #n;
 
     TIMEOUT_CALLBACKS(to_lbl)
 
