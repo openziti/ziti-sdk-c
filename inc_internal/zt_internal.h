@@ -186,7 +186,7 @@ struct ziti_conn {
             ziti_session *session;
             model_map bindings;
             model_map children;
-            uv_timer_t *timer;
+            deadline_t rebinder;
             unsigned int attempt;
             char listener_id[32];
         } server;
@@ -324,12 +324,13 @@ struct ziti_ctx {
     /* auth query (MFA) support */
     struct auth_queries *auth_queries;
 
-    uv_loop_t *loop;
+    deadline_t refresh_deadline;
     deadline_list_t deadlines;
+
+    uv_loop_t *loop;
     uv_timer_t deadline_timer;
 
     uv_prepare_t prepper;
-    uv_timer_t *refresh_timer;
 
     ztx_work_q w_queue;
     uv_mutex_t w_lock;
@@ -417,8 +418,6 @@ extern void ziti_send_event(ziti_context ztx, const ziti_event_t *e);
 void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, uint32_t req_id, const char *reason);
 
 const ziti_env_info* get_env_info();
-
-extern uv_timer_t *new_ztx_timer(ziti_context ztx);
 
 int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen);
 
