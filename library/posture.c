@@ -50,7 +50,7 @@ const bool IS_NOT_ERRORED = false;
 #define PC_OS_TYPE ziti_posture_query_types.name(ziti_posture_query_types.PC_OS)
 #define PC_MAC_TYPE ziti_posture_query_types.name(ziti_posture_query_types.PC_MAC)
 
-#define s_strdup(s) (s ? strdup(s) : NULL)
+#define s_strdup(s) ((s) ? strdup(s) : NULL)
 
 struct query_info {
     ziti_service *service;
@@ -91,7 +91,7 @@ typedef struct pr_cb_ctx_s pr_cb_ctx;
 
 static void free_ziti_pr(ziti_pr_base *pr);
 
-static void ziti_pr_ticker_cb(uv_timer_t *t);
+static void ziti_pr_ticker_cb(void *data);
 
 static void ziti_pr_handle_mac(ziti_context ztx, const char *id, char **mac_addresses, int num_mac);
 
@@ -136,28 +136,21 @@ void ziti_posture_init(ziti_context ztx, long interval_secs) {
     if (ztx->posture_checks == NULL) {
         NEWP(pc, struct posture_checks);
 
-        pc->timer = new_ztx_timer(ztx);
         pc->previous_api_session_id = NULL;
         pc->controller_instance_id = NULL;
         pc->must_send_every_time = true;
         pc->must_send = false;
+        pc->send_period = interval_secs * 1000;
 
         ztx->posture_checks = pc;
     }
 
-    if (!uv_is_active((uv_handle_t *) ztx->posture_checks->timer)) {
-        uv_timer_start(ztx->posture_checks->timer, ziti_pr_ticker_cb, MILLIS(1)/*fire on startup*/, MILLIS(interval_secs));
-    }
-}
-
-static void ziti_posture_checks_timer_free(uv_handle_t *handle) {
-    FREE(handle);
+    ztx_set_deadline(ztx, 1, &ztx->posture_checks->deadline, ziti_pr_ticker_cb, ztx);
 }
 
 void ziti_posture_checks_free(struct posture_checks *pcs) {
     if (pcs != NULL) {
-        uv_close((uv_handle_t *) pcs->timer, ziti_posture_checks_timer_free);
-        pcs->timer = NULL;
+        clear_deadline(&pcs->deadline);
         model_map_clear(&pcs->responses, (_free_f) ziti_pr_free_pr_info);
         model_map_clear(&pcs->error_states, NULL);
         model_map_iter it = model_map_iterator(&pcs->active_work);
@@ -172,9 +165,10 @@ void ziti_posture_checks_free(struct posture_checks *pcs) {
     }
 }
 
-static void ziti_pr_ticker_cb(uv_timer_t *t) {
-    struct ziti_ctx *ztx = t->data;
+static void ziti_pr_ticker_cb(void *data) {
+    ziti_context ztx = (ziti_context) data;
     ziti_send_posture_data(ztx);
+    ztx_set_deadline(ztx, ztx->posture_checks->send_period, &ztx->posture_checks->deadline, ziti_pr_ticker_cb, ztx);
 }
 
 static pr_info *get_resp_info(ziti_context ztx, const char *id) {

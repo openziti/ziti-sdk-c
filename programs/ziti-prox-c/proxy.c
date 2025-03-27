@@ -352,7 +352,7 @@ static void on_ziti_accept(ziti_connection clt, int status) {
         }
     } else {
         ziti_close(clt, NULL);
-        uv_close(s, on_bridge_close);
+        uv_close(s, (uv_close_cb) free);
     }
 }
 

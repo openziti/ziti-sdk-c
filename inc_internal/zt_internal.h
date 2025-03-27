@@ -28,6 +28,7 @@
 #include "posture.h"
 #include "authenticators.h"
 #include "auth_method.h"
+#include "deadline.h"
 
 #include <sodium.h>
 
@@ -301,11 +302,6 @@ struct ziti_ctx {
 
     char *last_update;
 
-    uv_timer_t *refresh_timer;
-    uv_prepare_t *prepper;
-
-    uv_loop_t *loop;
-
     // map<erUrl,ziti_channel>
     model_map channels;
     // map<id,ziti_conn>
@@ -327,6 +323,13 @@ struct ziti_ctx {
 
     /* auth query (MFA) support */
     struct auth_queries *auth_queries;
+
+    uv_loop_t *loop;
+    deadline_list_t deadlines;
+    uv_timer_t deadline_timer;
+
+    uv_prepare_t prepper;
+    uv_timer_t *refresh_timer;
 
     ztx_work_q w_queue;
     uv_mutex_t w_lock;
@@ -425,6 +428,10 @@ int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer);
 
 void ztx_auth_state_cb(void *, ziti_auth_state , const void *);
 ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er);
+
+void ztx_set_deadline(ziti_context ztx, uint64_t timeout, deadline_t *d, void (*cb)(void *), void *ctx);
+
+int ch_send_conn_closed(ziti_channel_t *ch, uint32_t conn_id);
 
 #ifdef __cplusplus
 }

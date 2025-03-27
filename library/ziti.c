@@ -12,17 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <assert.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
+#include <uv.h>
+
+#include "deadline.h"
 #include "oidc.h"
 #include "utils.h"
 #include "zt_internal.h"
-#include <auth_queries.h>
-#include <uv.h>
-#include <assert.h>
-#include <time.h>
+#include "auth_queries.h"
+
 
 #if _WIN32
 
@@ -571,7 +574,7 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
         metrics_rate_init(&ztx->up_rate, ztx->opts.metrics_type);
         metrics_rate_init(&ztx->down_rate, ztx->opts.metrics_type);
 
-        uv_prepare_start(ztx->prepper, ztx_prepare);
+        uv_prepare_start(&ztx->prepper, ztx_prepare);
         ztx->start = uv_now(ztx->loop);
         ziti_set_unauthenticated(ztx, NULL);
 
@@ -651,10 +654,9 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     
     ztx->refresh_timer = new_ztx_timer(ztx);
 
-    ztx->prepper = calloc(1, sizeof(uv_prepare_t));
-    uv_prepare_init(loop, ztx->prepper);
-    ztx->prepper->data = ztx;
-    uv_unref((uv_handle_t *) ztx->prepper);
+    uv_prepare_init(loop, &ztx->prepper);
+    ztx->prepper.data = ztx;
+    uv_unref((uv_handle_t *) &ztx->prepper);
 
     metrics_init(5, (time_fn)uv_now, loop);
 
@@ -819,13 +821,16 @@ static void shutdown_and_free(ziti_context ztx) {
     }
 
     grim_reaper(ztx);
-    CLOSE_AND_NULL(ztx->prepper);
     CLOSE_AND_NULL(ztx->refresh_timer);
 
     ztx->tlsCtx->free_ctx(ztx->tlsCtx);
     ztx->tlsCtx = NULL;
 
+    // N.B.: libuv processes close callbacks in reverse order
+    // so we put the free on the first uv_close()
     uv_close((uv_handle_t *) &ztx->w_async, free_ztx);
+    uv_close((uv_handle_t *)&ztx->deadline_timer, NULL);
+    uv_close((uv_handle_t *)&ztx->prepper, NULL);
 }
 
 int ziti_shutdown(ziti_context ztx) {
@@ -1689,10 +1694,69 @@ static void grim_reaper(ziti_context ztx) {
     }
 }
 
+void ztx_set_deadline(ziti_context ztx, uint64_t timeout, deadline_t *d, void (*cb)(void *), void *ctx) {
+    assert(cb != NULL);
+    clear_deadline(d);
+
+    uint64_t now = uv_now(ztx->loop);
+    d->expiration = now + timeout;
+    d->ctx = ctx;
+    d->expire_cb = cb;
+
+    if (LIST_EMPTY(&ztx->deadlines)) {
+        LIST_INSERT_HEAD(&ztx->deadlines, d, _next);
+        return;
+    }
+
+    deadline_t *dp = LIST_FIRST(&ztx->deadlines);
+    deadline_t *dn = LIST_NEXT(dp, _next);
+    while(1) {
+        if (d->expiration < dp->expiration) {
+            LIST_INSERT_BEFORE(dp, d, _next);
+            break;
+        }
+
+        if (dn == NULL) {
+            LIST_INSERT_AFTER(dp, d, _next);
+            break;
+        }
+
+        dp = dn;
+        dn = LIST_NEXT(dp, _next);
+    }
+}
+
+static void ztx_process_deadlines(uv_timer_t *t) {
+    ziti_context ztx = t->data;
+    uint64_t now = uv_now(ztx->loop);
+    deadline_t *d ;
+    while ((d = LIST_FIRST(&ztx->deadlines)) && now > d->expiration) {
+        LIST_REMOVE(d, _next);
+
+        void *ctx = d->ctx;
+        void (*cb)(void *) = d->expire_cb;
+        d->expire_cb = NULL;
+        cb(d->ctx);
+    }
+}
+
+static void ztx_prep_deadlines(ziti_context ztx) {
+    if (LIST_EMPTY(&ztx->deadlines)) {
+        uv_timer_stop(&ztx->deadline_timer);
+        return;
+    }
+
+    deadline_t *next = LIST_FIRST(&ztx->deadlines);
+    uint64_t now = uv_now(ztx->loop);
+    uint64_t wait_time = next->expiration > now ? next->expiration - now : 0;
+    uv_timer_start(&ztx->deadline_timer, ztx_process_deadlines, wait_time, 0);
+}
+
 void ztx_prepare(uv_prepare_t *prep) {
     ziti_context ztx = prep->data;
 
     grim_reaper(ztx);
+    ztx_prep_deadlines(ztx);
 
     // prepare channels for IO
     // NOTE: stalled ziti connections are flushed with idle handlers,
@@ -1706,7 +1770,8 @@ void ztx_prepare(uv_prepare_t *prep) {
     }
 
     if (!ztx->enabled) {
-        uv_prepare_stop(ztx->prepper);
+        uv_timer_stop(&ztx->deadline_timer);
+        uv_prepare_stop(&ztx->prepper);
     }
 }
 
@@ -1909,6 +1974,9 @@ int ziti_context_run(ziti_context ztx, uv_loop_t *loop) {
 
     ztx->loop = loop;
     ztx->ctrl_status = ZITI_WTF;
+
+    uv_timer_init(loop, &ztx->deadline_timer);
+    ztx->deadline_timer.data = ztx;
 
     STAILQ_INIT(&ztx->w_queue);
     uv_async_init(loop, &ztx->w_async, ztx_work_async);
