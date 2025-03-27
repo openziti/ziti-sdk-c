@@ -80,11 +80,11 @@ struct ziti_channel {
     tlsuv_stream_t *connection;
     bool reconnect;
 
-    // multi purpose timer:
+    // multipurpose timer:
     // - reconnect timeout if not connected
     // - connect timeout when connecting
     // - latency interval/timeout if connected
-    uv_timer_t *timer;
+    deadline_t deadline;
 
     uint64_t latency;
     struct waiter_s *latency_waiter;
