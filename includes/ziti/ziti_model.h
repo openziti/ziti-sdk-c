@@ -142,7 +142,8 @@ XX(protocols, ziti_protocol, list, protocols, __VA_ARGS__) \
 XX(addresses, ziti_address, list, addresses, __VA_ARGS__) \
 XX(port_ranges, ziti_port_range, list, portRanges, __VA_ARGS__) \
 XX(dial_options, tag, map, dialOptions, __VA_ARGS__) \
-XX(source_ip, model_string, none, sourceIp, __VA_ARGS__)
+XX(source_ip, model_string, none, sourceIp, __VA_ARGS__) \
+XX(allowed_source_addresses, ziti_address, list, allowedSourceAddresses, __VA_ARGS__)
 
 #define ZITI_SERVER_CFG_V1_MODEL(XX, ...) \
 XX(protocol, model_string, none, protocol, __VA_ARGS__) \
