@@ -179,6 +179,7 @@ void ziti_channel_free(ziti_channel_t *ch) {
         ch->connection->data = NULL;
         ch->connection = NULL;
     }
+    clear_deadline(&ch->deadline);
     free_buffer(ch->incoming);
     pool_destroy(ch->in_msg_pool);
     ch->in_msg_pool = NULL;
