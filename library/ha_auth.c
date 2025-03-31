@@ -125,11 +125,9 @@ static void token_cb(oidc_client_t *oidc, enum oidc_status status, const char *t
             if (auth->mfa_cb) {
                 auth->mfa_cb(auth->cb_ctx, ZITI_MFA_INVALID_TOKEN);
             }
-        } else if (status == UV_ECONNREFUSED) {
-            snprintf(err, sizeof(err), "OIDC request failed: %d", status);
-            auth->cb(auth->cb_ctx, ZitiAuthImpossibleToAuthenticate, &(ziti_error){
-                    .err = status,
-                    .message = err});
+        } else if (status == OIDC_RESTART) {
+            ZITI_LOG(DEBUG, "restarting internal OIDC flow");
+            oidc_client_start(&auth->oidc, token_cb);
         } else {
             snprintf(err, sizeof(err), "failed to auth: %d", status);
             auth->cb(auth->cb_ctx, ZitiAuthStateUnauthenticated, &(ziti_error){

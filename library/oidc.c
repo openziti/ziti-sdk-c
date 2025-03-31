@@ -943,8 +943,7 @@ static void refresh_cb(oidc_req *req, int status, json_object *resp) {
         ZITI_LOG(DEBUG,  "token refresh success");
         oidc_client_set_tokens(clt, resp);
     } else if (status < 0) {  // connection failure, try another refresh
-        clt->token_cb(clt, status, NULL);
-        ZITI_LOG(WARN, "OIDC token refresh failed: %d/%s", status, uv_strerror(status));
+        ZITI_LOG(WARN, "OIDC token refresh failed (trying again): %d/%s", status, uv_strerror(status));
         uv_timer_start(clt->timer, refresh_time_cb, 5 * 1000, 0);
     } else {
         ZITI_LOG(WARN, "OIDC token refresh failed: %d[%s]", status, json_object_to_json_string(resp));
