@@ -489,7 +489,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         }
 
         // stop updates
-        uv_timer_stop(ztx->refresh_timer);
+        clear_deadline(&ztx->refresh_deadline);
 
         if (ztx->posture_checks) {
             ziti_posture_checks_free(ztx->posture_checks);
@@ -533,13 +533,6 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
         ztx->enabled = false;
     }
-}
-
-uv_timer_t* new_ztx_timer(ziti_context ztx) {
-    uv_timer_t *timer = calloc(1, sizeof(uv_timer_t));
-    uv_timer_init(ztx->loop, timer);
-    timer->data = ztx;
-    return timer;
 }
 
 static void ziti_start_internal(ziti_context ztx, void *init_req) {
@@ -652,8 +645,6 @@ static void ziti_init_async(ziti_context ztx, void *data) {
     ztx->id = ztx_seq++;
     uv_loop_t *loop = ztx->w_async.loop;
     
-    ztx->refresh_timer = new_ztx_timer(ztx);
-
     uv_prepare_init(loop, &ztx->prepper);
     ztx->prepper.data = ztx;
     uv_unref((uv_handle_t *) &ztx->prepper);
@@ -821,7 +812,6 @@ static void shutdown_and_free(ziti_context ztx) {
     }
 
     grim_reaper(ztx);
-    CLOSE_AND_NULL(ztx->refresh_timer);
 
     ztx->tlsCtx->free_ctx(ztx->tlsCtx);
     ztx->tlsCtx = NULL;
@@ -1451,8 +1441,8 @@ static void check_service_update(ziti_service_update *update, const ziti_error *
     FREE(update);
 }
 
-static void refresh_cb(uv_timer_t *t) {
-    ziti_context ztx = t->data;
+static void refresh_cb(void *data) {
+    ziti_context ztx = data;
 
     if (!ztx->enabled) {
         ZTX_LOG(DEBUG, "service refresh stopped, ztx is disabled");
@@ -1472,7 +1462,7 @@ void ziti_services_refresh(ziti_context ztx, bool now) {
             ZTX_LOG(VERBOSE, "scheduling service refresh %ld seconds from now", ztx->opts.refresh_interval);
         }
         uint64_t timeout = now ? 0 : (ztx->opts.refresh_interval * 1000);
-        uv_timer_start(ztx->refresh_timer, refresh_cb, timeout, 0);
+        ztx_set_deadline(ztx, timeout, &ztx->refresh_deadline, refresh_cb, ztx);
     }
 }
 
@@ -1997,8 +1987,8 @@ int ziti_refresh(ziti_context ztx) {
 }
 
 
-static void pre_auth_retry(uv_timer_t *t) {
-    ziti_context ztx = t->data;
+static void pre_auth_retry(void *data) {
+    ziti_context ztx = data;
     if (ztx->enabled) {
         ziti_re_auth(ztx);
     }
@@ -2020,7 +2010,7 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
     ziti_context ztx = ctx;
     if (err) {
         ZTX_LOG(WARN, "failed to get controller version: %s/%s", err->code, err->message);
-        uv_timer_start(ztx->refresh_timer, pre_auth_retry, 5 * 1000, 0);
+        ztx_set_deadline(ztx, 5000, &ztx->refresh_deadline, pre_auth_retry, ztx);
     } else {
         bool ha = ziti_has_capability(version, ziti_ctrl_caps.HA_CONTROLLER);
         ZTX_LOG(INFO, "connected to %s controller %s version %s(%s %s)",
