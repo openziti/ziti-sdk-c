@@ -1256,7 +1256,7 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     conn->conn_req = req;
 
     // add accept deadline in case ER fails to send us Accept result
-    ztx_set_deadline(conn->ziti_ctx, ZITI_TIMEOUT, &req->deadline, connect_timeout, conn);
+    ztx_set_deadline(conn->ziti_ctx, ZITI_DEFAULT_TIMEOUT, &req->deadline, connect_timeout, conn);
 
     req->waiter = ziti_channel_send_for_reply(
             ch, content_type, headers, 3,
