@@ -62,14 +62,18 @@ static void ext_signers_cb(ziti_context ztx, int status, ziti_jwt_signer_array s
 int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg) {
     if (oidc_cfg != NULL) {
         NEWP(oidc, oidc_client_t);
-        oidc_client_init(ztx->loop, oidc, oidc_cfg, NULL);
+        int rc = oidc_client_init(ztx->loop, oidc, oidc_cfg, NULL);
+        if (rc != ZITI_OK) {
+            free(oidc);
+            ZTX_LOG(ERROR, "failed to initialize OIDC client: %s", ziti_errorstr(rc));
+            return rc;
+        }
         oidc->data = ztx;
         ztx->ext_auth = oidc;
         return oidc_client_configure(oidc, ext_oath_cfg_cb);
     }
 
-    ziti_get_ext_jwt_signers(ztx, ext_signers_cb, ztx);
-    return ZITI_OK;
+    return ziti_get_ext_jwt_signers(ztx, ext_signers_cb, ztx);
 }
 
 static void internal_link_cb(oidc_client_t *oidc, const char *url, void *ctx) {

@@ -218,7 +218,10 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
     clt->link_cb = NULL;
     clt->link_ctx = NULL;
 
-    tlsuv_http_init(loop, &clt->http, cfg->provider_url);
+    if (tlsuv_http_init(loop, &clt->http, cfg->provider_url) != 0) {
+        ZITI_LOG(ERROR, "ziti_jwt_signer.provider_url[%s] is invalid", cfg->provider_url);
+        return ZITI_INVALID_CONFIG;
+    }
     int rc = oidc_client_set_cfg(clt, cfg);
     if (rc != 0) {
         return rc;
