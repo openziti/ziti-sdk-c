@@ -268,8 +268,9 @@ static void list_routers_cb(ziti_service_routers *srv_routers, const ziti_error 
             CONN_LOG(DEBUG, "%s/%s", er->name, er->protocols.tls);
             model_list_append(&conn->server.routers, er);
         }
+        FREE(srv_routers->routers); // router objects moved to the list
     }
-    free(srv_routers);
+    free_ziti_service_routers_ptr(srv_routers);
 
     if (conn->server.token != NULL) {
         process_bindings(conn);
