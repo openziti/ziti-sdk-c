@@ -612,7 +612,6 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
     ctrl->page_size = DEFAULT_PAGE_SIZE;
     ctrl->loop = loop;
     memset(&ctrl->version, 0, sizeof(ctrl->version));
-    ctrl->client = calloc(1, sizeof(tlsuv_http_t));
 
     const char *ep;
     MODEL_LIST_FOREACH(ep, *urls) {
@@ -624,7 +623,13 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
     const char *initial_ep = ctrl_next_ep(ctrl, NULL);
     ctrl->url = strdup(initial_ep);
     CTRL_LOG(INFO, "using %s", ctrl->url);
+
+    ctrl->client = calloc(1, sizeof(tlsuv_http_t));
     if (tlsuv_http_init(loop, ctrl->client, ctrl->url) != 0) {
+        if (tlsuv_http_close(ctrl->client, (tlsuv_http_close_cb) free) != 0) {
+            free(ctrl->client);
+        }
+        ctrl->client = NULL;
         return ZITI_INVALID_CONFIG;
     }
 

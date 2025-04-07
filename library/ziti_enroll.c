@@ -155,7 +155,7 @@ int ziti_enroll(const ziti_enroll_opts *opts, uv_loop_t *loop,
 static void network_jwt_cb(ziti_network_jwt_array arr, const ziti_error *err, void *ctx) {
     struct ziti_enroll_req *er = ctx;
     if (err) {
-        er->enroll_cb(NULL, ZITI_ENROLLMENT_METHOD_UNSUPPORTED, ziti_errorstr(ZITI_ENROLLMENT_METHOD_UNSUPPORTED), er->ctx);
+        er->enroll_cb(NULL, err->err, err->message, er->ctx);
         free_enroll_req(er);
         return;
     }
@@ -181,18 +181,21 @@ int fetch_network_token(struct ziti_enroll_req *er) {
 
     er->tls = default_tls_context(NULL, 0);
 
+    model_list ctrls = {};
+
     if (url.query != NULL) {
         // TODO magic URL
     } else {
         // controller URL must be verifiable with default/OS cert bundle
-        model_list ctrls = {};
         model_list_append(&ctrls, er->opts.url);
-        ziti_ctrl_init(er->loop, &er->controller, &ctrls, er->tls);
-        ziti_ctrl_get_network_jwt(&er->controller, network_jwt_cb, er);
-        model_list_clear(&ctrls, NULL);
-
+        rc = ziti_ctrl_init(er->loop, &er->controller, &ctrls, er->tls);
+        if (rc == ZITI_OK) {
+            ziti_ctrl_get_network_jwt(&er->controller, network_jwt_cb, er);
+        }
     }
-    return ZITI_OK;
+
+    model_list_clear(&ctrls, NULL);
+    return rc;
 }
 
 static int start_enrollment(struct ziti_enroll_req *er) {
@@ -260,7 +263,9 @@ static int start_enrollment(struct ziti_enroll_req *er) {
 
 static void free_enroll_req(struct ziti_enroll_req * er) {
     if (er) {
-        ziti_ctrl_close(&er->controller);
+        if (er->controller.loop) {
+            ziti_ctrl_close(&er->controller);
+        }
         if (er->tls) er->tls->free_ctx(er->tls);
         if (er->pk != NULL) { er->pk->free(er->pk); }
         if (er->cert != NULL) { er->cert->free(er->cert); }

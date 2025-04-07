@@ -9,7 +9,7 @@ if (NOT TARGET tlsuv)
     else ()
         FetchContent_Declare(tlsuv
                 GIT_REPOSITORY https://github.com/openziti/tlsuv.git
-                GIT_TAG v0.33.8
+                GIT_TAG v0.33.9
         )
         FetchContent_MakeAvailable(tlsuv)
     endif (tlsuv_DIR)
