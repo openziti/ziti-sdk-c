@@ -27,6 +27,7 @@ add_executable(integ-tests
         legacy-auth.cpp
         oidc-tests.cpp
         ctrl_tests.cpp
+        enroll_tests.cpp
 )
 target_include_directories(integ-tests
         PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include
