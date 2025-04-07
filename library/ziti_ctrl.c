@@ -83,8 +83,8 @@ XX(COULD_NOT_VALIDATE, ZITI_NOT_AUTHORIZED)
     return ZITI_WTF;
 }
 
-#define CTRL_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ctrl[%s:%s] " fmt, \
-ctrl->client->host, ctrl->client->port, ##__VA_ARGS__)
+#define CTRL_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ctrl[%s] " fmt, \
+ctrl->url ? ctrl->url : "<unset>", ##__VA_ARGS__)
 
 #define MAKE_RESP(ctrl, cb, parser, ctx) prepare_resp(ctrl, (ctrl_resp_cb_t)(cb), (body_parse_fn)(parser), ctx)
 
@@ -622,7 +622,6 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
 
     const char *initial_ep = ctrl_next_ep(ctrl, NULL);
     ctrl->url = strdup(initial_ep);
-    CTRL_LOG(INFO, "using %s", ctrl->url);
 
     ctrl->client = calloc(1, sizeof(tlsuv_http_t));
     if (tlsuv_http_init(loop, ctrl->client, ctrl->url) != 0) {
@@ -632,6 +631,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
         ctrl->client = NULL;
         return ZITI_INVALID_CONFIG;
     }
+    CTRL_LOG(INFO, "controller initialized");
 
     tlsuv_http_set_path_prefix(ctrl->client, "");
     ctrl->client->data = ctrl;

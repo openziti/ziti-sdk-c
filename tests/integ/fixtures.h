@@ -27,9 +27,10 @@ protected:
     {}
 
     ~LoopTestCase() {
-        //uv_loop_close(loop());
-        uv_loop_delete(m_loop);
-//        free(m_loop);
+        int rc = uv_loop_close(loop());
+        INFO("uv_loop_close() => " << uv_strerror(rc));
+        CHECK(rc == 0);
+        free(m_loop);
     }
 
     uv_loop_t *loop() { return m_loop; }
