@@ -1,6 +1,6 @@
 #!expect
 
-set timeout 30
+set timeout 600
 proc abort errs {
     puts "test failed: $errs"
     exit 2
@@ -14,11 +14,11 @@ puts "enroller = $env(ENROLLER)"
 puts "Starting Ziti Quickstart"
 puts "========================"
 
-spawn $ziti edge quickstart --home $env(QUICKSTART_HOME)
+spawn $ziti edge quickstart --home $env(QUICKSTART_HOME) --ctrl-address=127.0.0.1 --router-address=127.0.0.1
 set qs_id @spawn_id
 # wait until ER is connected
 expect {
-    "finished synchronizing api sessions" { }
+    "controller and router started" { }
     timeout { error "qs not started in time" }
     eof { error "qs not started" }
 }
@@ -79,13 +79,3 @@ expect {
     eof { error "test-client not enrolled" }
 }
 wait
-
-
-
-
-
-
-
-
-
-

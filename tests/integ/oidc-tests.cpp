@@ -42,7 +42,7 @@ TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
             .client_id = "native",
     };
 
-    oidc_client_t oidcClient;
+    oidc_client_t oidcClient{};
     oidc_client_init(l, &oidcClient, &ha_oidc, tls);
     struct oidc_cfg_result {
         bool called;
@@ -62,6 +62,9 @@ TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
 
     CHECK(cfg_result.called);
     if (cfg_result.status == 404) {
+        oidc_client_close(&oidcClient, [](oidc_client_t* clt){
+        });
+        uv_run(l, UV_RUN_DEFAULT);
         SKIP("OIDC endpoint not found");
     }
     CHECK(oidcClient.config != NULL);
@@ -101,5 +104,4 @@ TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
     tls->free_ctx(tls);
 
     free_ziti_config(&cfg);
-
 }
