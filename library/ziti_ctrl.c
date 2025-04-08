@@ -293,7 +293,7 @@ static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_e
         api_address *addr = NULL;
         MODEL_LIST_FOREACH(addr, d->apis.edge) {
             CTRL_LOG(VERBOSE, "%s/%s", addr->version, addr->url);
-            if (strcmp(addr->version, "v1") == 0) {
+            if (addr->version && strcmp(addr->version, "v1") == 0) {
                 break;
             }
             addr = NULL;
@@ -309,6 +309,7 @@ static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_e
                 change = change || (old_detail->is_online != d->is_online);
             }
         } else {
+            CTRL_LOG(DEBUG, "ctrl[%s] has no edge/v1 endpoint", d->name);
             free_ziti_controller_detail_ptr(d);
         }
     }
