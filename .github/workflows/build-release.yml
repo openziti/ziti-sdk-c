@@ -18,9 +18,9 @@ jobs:
       fail-fast: false
       matrix:
         spec:
-          - { name: 'Linux x86_64', runner: 'ubuntu-20.04', target: 'linux-x64', builder: 'openziti/ziti-builder:v2' }
-          - { name: 'Linux ARM', runner: 'ubuntu-20.04', target: 'linux-arm', builder: 'openziti/ziti-builder:v2' }
-          - { name: 'Linux ARM64', runner: 'ubuntu-20.04', target: 'linux-arm64', builder: 'openziti/ziti-builder:v2' }
+          - { name: 'Linux x86_64', runner: 'ubuntu-latest', target: 'linux-x64', builder: 'openziti/ziti-builder:v2' }
+          - { name: 'Linux ARM', runner: 'ubuntu-latest', target: 'linux-arm', builder: 'openziti/ziti-builder:v2' }
+          - { name: 'Linux ARM64', runner: 'ubuntu-latest', target: 'linux-arm64', builder: 'openziti/ziti-builder:v2' }
           - { name: 'MacOS x86_64', runner: 'macOS-13', target: 'macOS-x64' }
           - { name: 'MacOS arm64', runner: 'macOS-14', target: 'macOS-arm64' }
           - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64' }
