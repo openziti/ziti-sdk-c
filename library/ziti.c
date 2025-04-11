@@ -529,7 +529,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
 
         ziti_ctrl_cancel(ztx_get_controller(ztx));
         // logout
-        ziti_ctrl_logout(ztx_get_controller(ztx), logout_cb, ztx);
+        ziti_ctrl_clear_api_session(ztx_get_controller(ztx));
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
         ztx->enabled = false;
     }
