@@ -689,6 +689,9 @@ static void on_http_close(tlsuv_http_t *clt) {
 }
 
 int ziti_ctrl_cancel(ziti_controller *ctrl) {
+    if (ctrl->client == NULL) {
+        return ZITI_OK;
+    }
     return tlsuv_http_cancel_all(ctrl->client);
 }
 
