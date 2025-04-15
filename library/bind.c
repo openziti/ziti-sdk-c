@@ -403,8 +403,10 @@ static void process_dial(struct binding_s *b, message *msg) {
     size_t peer_key_len, marker_len;
     const uint8_t *peer_key;
     const uint8_t *marker;
+    uint32_t rt_conn_id;
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
     bool marker_sent = message_get_bytes_header(msg, ConnectionMarkerHeader, &marker, &marker_len);
+    bool rt_conn_id_sent = message_get_int32_header(msg, RouterProvidedConnId, (int32_t*)&rt_conn_id);
 
     if (!peer_key_sent && conn->encrypted) {
         ZITI_LOG(ERROR, "failed to establish crypto for encrypted service: did not receive peer key");
@@ -414,6 +416,10 @@ static void process_dial(struct binding_s *b, message *msg) {
 
     ziti_connection client;
     ziti_conn_init(conn->ziti_ctx, &client, NULL);
+    if (rt_conn_id_sent) {
+        ZITI_LOG(INFO, "conn[%u] using router provided conn_id[%u]", client->conn_id, rt_conn_id);
+        client->rt_conn_id = rt_conn_id;
+    }
     init_transport_conn(client);
     if (marker_sent) {
         snprintf(client->marker, sizeof(client->marker), "%.*s", (int) marker_len, marker);
@@ -495,12 +501,12 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
     if (code == ZITI_OK && msg->header.content == ContentTypeStateConnected) {
         CONN_LOG(TRACE, "received msg ct[%s] code[%d]", content_type_id(msg->header.content), code);
         CONN_LOG(DEBUG, "bound successfully on router[%s]", b->ch->name);
-        ziti_channel_add_receiver(b->ch, conn->conn_id, b,
+        ziti_channel_add_receiver(b->ch, b->conn_id, b,
                                   (void (*)(void *, message *, int)) on_message);
         b->state = st_bound;
     } else {
         CONN_LOG(DEBUG, "failed to bind on router[%s]", b->ch->name);
-        ziti_channel_rem_receiver(b->ch, conn->conn_id);
+        ziti_channel_rem_receiver(b->ch, b->conn_id);
         b->ch = NULL;
         b->state = st_unbound;
     }
@@ -532,14 +538,15 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
     int32_t msg_seq = htole32(0);
     uint16_t cost = htole16(conn->server.cost);
 
-    hdr_t headers[8] = {
+    hdr_t headers[9] = {
             var_header(ConnIdHeader, conn_id),
             var_header(SeqHeader, msg_seq),
             header(ListenerId, sizeof(b->conn->server.listener_id), b->conn->server.listener_id),
             var_header(SupportsInspectHeader, true_val),
+            var_header(RouterProvidedConnId, true_val),
             // blank hdr_t's to be filled in if needed by options
     };
-    int nheaders = 4;
+    int nheaders = 5;
     if (conn->encrypted) {
         headers[nheaders++] = header(PublicKeyHeader, sizeof(b->key_pair.pk), b->key_pair.pk);
     }
