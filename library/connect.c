@@ -187,7 +187,7 @@ static int close_conn_internal(struct ziti_conn *conn) {
         }
 
         if (conn->channel) {
-            ziti_channel_rem_receiver(conn->channel, conn->conn_id);
+            ziti_channel_rem_receiver(conn->channel, conn->rt_conn_id);
         }
 
         if (conn->conn_req) {
@@ -271,7 +271,7 @@ message *create_message(struct ziti_conn *conn, uint32_t content, uint32_t flags
             flags |= EDGE_MULTIPART;
     }
 
-    int32_t conn_id = htole32(conn->conn_id);
+    int32_t conn_id = htole32(conn->rt_conn_id);
     int32_t msg_seq = htole32(conn->edge_msg_seq++);
     uint32_t msg_flags = htole32(flags);
     struct msg_uuid uuid = {
@@ -696,7 +696,7 @@ static void on_disconnect(ziti_connection conn, ssize_t status, void *ctx) {
     conn_set_state(conn, conn->close ? Closed : Disconnected);
     ziti_channel_t *ch = conn->channel;
     if (ch) {
-        ziti_channel_rem_receiver(ch, (int)conn->conn_id);
+        ziti_channel_rem_receiver(ch, conn->rt_conn_id);
         conn->channel = NULL;
     }
 }
@@ -1065,7 +1065,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
             if (strncmp(INVALID_SESSION, (const char *) msg->body, msg->header.body_len) == 0) {
                 CONN_LOG(WARN, "session for service[%s] became invalid", conn->service);
                 ziti_invalidate_session(conn->ziti_ctx, conn->conn_req->service_id, ziti_session_types.Dial);
-                ziti_channel_rem_receiver(conn->channel, conn->conn_id);
+                ziti_channel_rem_receiver(conn->channel, conn->rt_conn_id);
                 conn->channel = NULL;
                 restart_connect(conn);
             } else {
@@ -1126,10 +1126,10 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
 
     CONN_LOG(TRACE, "ch[%d] => Edge Connect request token[%s]", ch->id, session->token);
     conn->channel = ch;
-    ziti_channel_add_receiver(ch, conn->conn_id, conn,
+    ziti_channel_add_receiver(ch, conn->rt_conn_id, conn,
                               (void (*)(void *, message *, int)) queue_edge_message);
 
-    int32_t conn_id = htole32(conn->conn_id);
+    int32_t conn_id = htole32(conn->rt_conn_id);
     int32_t msg_seq = htole32(0);
 
     const ziti_identity *identity = ziti_get_identity(conn->ziti_ctx);
@@ -1203,7 +1203,26 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
     return ZITI_OK;
 }
 
+static void accept_cb(ziti_connection conn, ssize_t i, void *data) {
+    ziti_conn_cb cb = data;
+    if (i < 0) {
+        CONN_LOG(ERROR, "accept failed: %zd[%s]", i, ziti_errorstr(i));
+        conn_set_state(conn, Disconnected);
+        if (cb) {
+            cb(conn, (int)i);
+        }
+        return;
+    }
+    conn_set_state(conn, Connected);
+    if (conn->encrypted) {
+        send_crypto_header(conn);
+    }
 
+    if (cb) {
+        CONN_LOG(TRACE, "accept succeeded");
+        cb(conn, ZITI_OK);
+    }
+}
 
 int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
 
@@ -1215,6 +1234,7 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
         return ZITI_INVALID_STATE;
     }
 
+    CONN_LOG(INFO, "accepting");
     ziti_channel_t *ch = conn->channel;
     conn->data_cb = data_cb;
 
@@ -1224,7 +1244,7 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     conn->flusher->data = conn;
     uv_unref((uv_handle_t *) &conn->flusher);
 
-    ziti_channel_add_receiver(ch, conn->conn_id, conn, (void (*)(void *, message *, int)) queue_edge_message);
+    ziti_channel_add_receiver(ch, conn->rt_conn_id, conn, (void (*)(void *, message *, int)) queue_edge_message);
 
     CONN_LOG(TRACE, "ch[%d] => Edge Accept parent_conn_id[%d]", ch->id, conn->parent->conn_id);
 
@@ -1233,7 +1253,7 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     int32_t conn_id = htole32(conn->parent->conn_id);
     int32_t msg_seq = htole32(0);
     int32_t reply_id = htole32(conn->dial_req_seq);
-    int32_t clt_conn_id = htole32(conn->conn_id);
+    int32_t clt_conn_id = htole32(conn->rt_conn_id);
     hdr_t headers[] = {
             {
                     .header_id = ConnIdHeader,
@@ -1251,19 +1271,22 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
                     .value = (uint8_t *) &reply_id
             },
     };
-    NEWP(req, struct ziti_conn_req);
-    req->cb = cb;
-    conn->conn_req = req;
 
-    // add accept deadline in case ER fails to send us Accept result
-    ztx_set_deadline(conn->ziti_ctx, ZITI_DEFAULT_TIMEOUT, &req->deadline, connect_timeout, conn);
+    struct ziti_write_req_s *ar = calloc(1, sizeof(*ar));
+    ar->conn = conn;
+    ar->cb = accept_cb;
+    ar->ctx = cb;
 
-    req->waiter = ziti_channel_send_for_reply(
-            ch, content_type, headers, 3,
-            (const uint8_t *) &clt_conn_id, sizeof(clt_conn_id),
-            connect_reply_cb, conn);
+    int rc = ziti_channel_send(ch, content_type, headers, 3,
+                               (const uint8_t *) &clt_conn_id, sizeof(clt_conn_id),
+                               ar);
+    if (rc == ZITI_OK) {
+        TAILQ_INSERT_TAIL(&conn->pending_wreqs, ar, _next);
+    } else {
+        free(ar);
+    }
 
-    return ZITI_OK;
+    return rc;
 }
 
 int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx) {
@@ -1409,7 +1432,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
     size_t uuid_len;
     bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
     bool has_conn_id = message_get_int32_header(msg, ConnIdHeader, &conn_id);
-    assert(has_conn_id && conn_id == conn->conn_id);
+    assert(has_conn_id && conn_id == conn->rt_conn_id);
 
     message_get_int32_header(msg, FlagsHeader, (int32_t*)&flags);
     uint32_t caps = flags & CONN_CAP_MASK;
@@ -1451,7 +1474,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
                         retry_connect = true;
                     }
                     if (retry_connect) {
-                        ziti_channel_rem_receiver(conn->channel, conn->conn_id);
+                        ziti_channel_rem_receiver(conn->channel, conn->rt_conn_id);
                         conn->channel = NULL;
                         conn_set_state(conn, Connecting);
                         restart_connect(conn);
