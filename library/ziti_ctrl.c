@@ -393,7 +393,9 @@ static void ctrl_login_cb(ziti_api_session *s, ziti_error *e, struct ctrl_resp *
     if (s) {
         CTRL_LOG(DEBUG, "authenticated successfully session[%s]", s->id);
         ctrl->has_token = true;
-        tlsuv_http_header(ctrl->client, "zt-session", s->token);
+        if (!ctrl->is_ha) {
+            tlsuv_http_header(ctrl->client, "zt-session", s->token);
+        }
     }
     ctrl_default_cb(s, e, resp);
 }
