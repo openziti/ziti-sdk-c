@@ -235,7 +235,7 @@ void ziti_channel_add_receiver(ziti_channel_t *ch, uint32_t id, void *receiver, 
     r->receive = receive_f;
 
     model_map_setl(&ch->receivers, r->id, r);
-    CH_LOG(DEBUG, "added receiver[%d]", id);
+    CH_LOG(DEBUG, "added receiver[%u]", id);
 }
 
 void ziti_channel_rem_receiver(ziti_channel_t *ch, uint32_t id) {
@@ -244,7 +244,7 @@ void ziti_channel_rem_receiver(ziti_channel_t *ch, uint32_t id) {
     struct msg_receiver *r = model_map_removel(&ch->receivers, id);
 
     if (r) {
-        CH_LOG(DEBUG, "removed receiver[%d]", id);
+        CH_LOG(DEBUG, "removed receiver[%u]", id);
         free(r);
     }
 }

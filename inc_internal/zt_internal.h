@@ -162,6 +162,7 @@ struct ziti_conn {
     char *service;
     char *source_identity;
     uint32_t conn_id;
+    uint32_t rt_conn_id;
     void *data;
 
     int (*disposer)(struct ziti_conn *self);

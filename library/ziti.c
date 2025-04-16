@@ -1020,6 +1020,7 @@ int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {
     c->ziti_ctx = ztx;
     c->data = data;
     c->conn_id = ztx->conn_seq++;
+    c->rt_conn_id = c->conn_id;
 
     *conn = c;
     model_map_setl(&ctx->connections, (long) c->conn_id, c);
