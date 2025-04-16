@@ -1234,7 +1234,7 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
         return ZITI_INVALID_STATE;
     }
 
-    CONN_LOG(INFO, "accepting");
+    CONN_LOG(DEBUG, "accepting");
     ziti_channel_t *ch = conn->channel;
     conn->data_cb = data_cb;
 

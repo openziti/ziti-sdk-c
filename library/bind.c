@@ -417,7 +417,7 @@ static void process_dial(struct binding_s *b, message *msg) {
     ziti_connection client;
     ziti_conn_init(conn->ziti_ctx, &client, NULL);
     if (rt_conn_id_sent) {
-        ZITI_LOG(INFO, "conn[%u] using router provided conn_id[%u]", client->conn_id, rt_conn_id);
+        ZITI_LOG(DEBUG, "conn[%u] using router provided conn_id[%u]", client->conn_id, rt_conn_id);
         client->rt_conn_id = rt_conn_id;
     }
     init_transport_conn(client);
