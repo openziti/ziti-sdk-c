@@ -238,6 +238,7 @@ static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
     if (rc != ZITI_OK) goto error;
 
     wrap = calloc(1, sizeof(struct ztx_wrap));
+    wrap->ztx = ztx;
     rc = ziti_context_set_options(ztx, &(ziti_options){
             .app_ctx = wrap,
             .event_cb = on_ctx_event,
