@@ -274,7 +274,6 @@ struct ziti_ctx {
 
     bool closing;
     bool enabled;
-    bool logout;
     int ctrl_status;
 
     ziti_auth_method_t *auth_method;
