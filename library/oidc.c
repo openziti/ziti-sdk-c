@@ -337,6 +337,7 @@ static void free_auth_req(auth_req *req) {
         json_tokener_free(req->json_parser);
         req->json_parser = NULL;
     }
+    FREE(req->id);
     free(req);
 }
 

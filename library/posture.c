@@ -627,6 +627,7 @@ static void send_posture_legacy(ziti_context ztx, model_list *send_prs) {
     ZTX_LOG(TRACE, "bulk posture response: %s", body);
 
     ziti_pr_post_bulk(ztx_get_controller(ztx), body, body_len, ziti_pr_post_bulk_cb, ztx);
+    free(body);
     string_buf_free(&buf);
 }
 
@@ -1066,8 +1067,8 @@ void ziti_endpoint_state_change(ziti_context ztx, bool woken, bool unlocked) {
         size_t obj_len;
 
         char *obj = ziti_pr_endpoint_state_req_to_json(&state_req, 0, &obj_len);
-
         ziti_pr_post(ztx_get_controller(ztx), obj, obj_len, ziti_endpoint_state_pr_cb, ztx);
+        FREE(obj);
     } else {
         ZTX_LOG(INFO, "endpoint state change reported, but no reason to send data: woken[%s] unlocked[%s]", woken ? "TRUE":"FALSE", unlocked ? "TRUE":"FALSE");
     }
