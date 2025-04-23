@@ -184,8 +184,7 @@ static void parse_cb(tlsuv_http_resp_t *resp, void *ctx) {
 
     // connection failure
     if (resp->code < 0) {
-        req->cb(req, resp->code, NULL);
-        free(req);
+        complete_oidc_req(req, resp->code, NULL);
         return;
     }
 

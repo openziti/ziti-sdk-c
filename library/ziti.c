@@ -448,23 +448,6 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     ziti_posture_init(ztx, 20);
 }
 
-static void logout_cb(void *resp, const ziti_error *err, void *ctx) {
-    ziti_context ztx = ctx;
-
-    ziti_set_unauthenticated(ztx, NULL);
-
-    ziti_close_channels(ztx, ZITI_DISABLED);
-    ziti_ctrl_close(&ztx->ctrl);
-
-    model_map_clear(&ztx->sessions, (_free_f) free_ziti_session_ptr);
-    model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
-
-    if (ztx->closing) {
-        ztx->logout = true;
-        shutdown_and_free(ztx);
-    }
-}
-
 void ziti_force_api_session_refresh(ziti_context ztx) {
     ZTX_LOG(DEBUG, "forcing session refresh");
     ztx->auth_method->force_refresh(ztx->auth_method);
@@ -539,7 +522,6 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
     if (!ztx->enabled) {
         ZTX_LOG(INFO, "enabling Ziti Context");
         ztx->enabled = true;
-        ztx->logout = false;
 
         int rc = load_tls(&ztx->config, &ztx->tlsCtx, &ztx->id_creds);
         if (rc != 0) {
@@ -806,15 +788,12 @@ static void shutdown_and_free(ziti_context ztx) {
         return;
     }
 
-    if (!ztx->logout) {
-        ZTX_LOG(INFO, "waiting for logout");
-        return;
-    }
-
     grim_reaper(ztx);
 
-    ztx->tlsCtx->free_ctx(ztx->tlsCtx);
-    ztx->tlsCtx = NULL;
+    if (ztx->tlsCtx) {
+        ztx->tlsCtx->free_ctx(ztx->tlsCtx);
+        ztx->tlsCtx = NULL;
+    }
 
     // N.B.: libuv processes close callbacks in reverse order
     // so we put the free on the first uv_close()
@@ -1609,12 +1588,14 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
             ztx->config.id.ca = new_pem;
 
             tls_context *new_tls = NULL;
+            tls_context *old_tls = ztx->tlsCtx;
             if (load_tls(&ztx->config, &new_tls, &ztx->id_creds) == 0) {
                 ztx_config_update(ztx);
                 free(old_ca);
                 ztx->tlsCtx = new_tls;
                 tlsuv_http_set_ssl(ztx_get_controller(ztx)->client, ztx->tlsCtx);
                 new_pem = NULL; // owned by ztx->config
+                old_tls->free_ctx(old_tls);
             } else {
                 ztx->config.id.ca = old_ca;
                 ZITI_LOG(ERROR, "failed to create TLS context with updated CA bundle");
@@ -1760,7 +1741,7 @@ void ztx_prepare(uv_prepare_t *prep) {
         ziti_channel_prepare(ch);
     }
 
-    if (!ztx->enabled) {
+    if (!ztx->enabled || ztx->closing) {
         uv_timer_stop(&ztx->deadline_timer);
         uv_prepare_stop(&ztx->prepper);
     }
