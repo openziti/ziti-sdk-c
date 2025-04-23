@@ -1583,13 +1583,15 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
             goto error;
         }
 
-        if (ztx->config.id.ca && strcmp(new_pem, ztx->config.id.ca) != 0) {
-            char *old_ca = (char*)ztx->config.id.ca;
-            ztx->config.id.ca = new_pem;
-
+        if (ztx->config.id.ca == NULL || strcmp(new_pem, ztx->config.id.ca) != 0) {
             ztx->tlsCtx->set_ca_bundle(ztx->tlsCtx, new_pem, strlen(new_pem));
-            ztx_config_update(ztx);
+            char *old_ca = (char*)ztx->config.id.ca;
             free(old_ca);
+
+            ztx->config.id.ca = new_pem;
+            new_pem = NULL;
+
+            ztx_config_update(ztx);
         }
     } else {
         ZITI_LOG(ERROR, "failed to get CA bundle from controller: %s", err->message);
