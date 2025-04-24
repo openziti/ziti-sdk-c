@@ -1068,7 +1068,8 @@ void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/posture-response", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
-    tlsuv_http_req_data(req, body, body_len, free_body_cb);
+    char *copy = strdup(body);
+    tlsuv_http_req_data(req, copy, body_len, free_body_cb);
 }
 
 void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len,
@@ -1079,7 +1080,8 @@ void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len,
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/posture-response-bulk", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
-    tlsuv_http_req_data(req, body, body_len, free_body_cb);
+    char *copy = strdup(body);
+    tlsuv_http_req_data(req, copy, body_len, free_body_cb);
 }
 
 static void ctrl_paging_req(struct ctrl_resp *resp) {

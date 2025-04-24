@@ -1583,23 +1583,15 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
             goto error;
         }
 
-        if (ztx->config.id.ca && strcmp(new_pem, ztx->config.id.ca) != 0) {
+        if (ztx->config.id.ca == NULL || strcmp(new_pem, ztx->config.id.ca) != 0) {
+            ztx->tlsCtx->set_ca_bundle(ztx->tlsCtx, new_pem, strlen(new_pem));
             char *old_ca = (char*)ztx->config.id.ca;
-            ztx->config.id.ca = new_pem;
+            free(old_ca);
 
-            tls_context *new_tls = NULL;
-            tls_context *old_tls = ztx->tlsCtx;
-            if (load_tls(&ztx->config, &new_tls, &ztx->id_creds) == 0) {
-                ztx_config_update(ztx);
-                free(old_ca);
-                ztx->tlsCtx = new_tls;
-                tlsuv_http_set_ssl(ztx_get_controller(ztx)->client, ztx->tlsCtx);
-                new_pem = NULL; // owned by ztx->config
-                old_tls->free_ctx(old_tls);
-            } else {
-                ztx->config.id.ca = old_ca;
-                ZITI_LOG(ERROR, "failed to create TLS context with updated CA bundle");
-            }
+            ztx->config.id.ca = new_pem;
+            new_pem = NULL;
+
+            ztx_config_update(ztx);
         }
     } else {
         ZITI_LOG(ERROR, "failed to get CA bundle from controller: %s", err->message);
