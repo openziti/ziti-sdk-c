@@ -1277,15 +1277,10 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     ar->cb = accept_cb;
     ar->ctx = cb;
 
+    TAILQ_INSERT_TAIL(&conn->pending_wreqs, ar, _next);
     int rc = ziti_channel_send(ch, content_type, headers, 3,
                                (const uint8_t *) &clt_conn_id, sizeof(clt_conn_id),
                                ar);
-    if (rc == ZITI_OK) {
-        TAILQ_INSERT_TAIL(&conn->pending_wreqs, ar, _next);
-    } else {
-        free(ar);
-    }
-
     return rc;
 }
 
