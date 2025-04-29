@@ -41,7 +41,8 @@ XX(routers, ziti_edge_router, array, edgeRouters, __VA_ARGS__)
 
 #define ZITI_SESSION_MODEL(XX, ...) \
 XX(token, model_string, none, token, __VA_ARGS__)\
-XX(id, model_string, none, id, __VA_ARGS__) \
+XX(id, model_string, none, id, __VA_ARGS__)      \
+XX(api_session_id, model_string, none, apiSessionId, __VA_ARGS__) \
 XX(edge_routers, ziti_edge_router, list, edgeRouters, __VA_ARGS__) \
 XX(service_id, model_string, none, serviceId, __VA_ARGS__) \
 XX(refresh, model_bool, none, , __VA_ARGS__)

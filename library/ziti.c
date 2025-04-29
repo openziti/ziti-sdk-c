@@ -396,6 +396,7 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         }
     }
     ziti_ctrl_get_well_known_certs(ctrl, ca_bundle_cb, ztx);
+    ziti_ctrl_current_api_session(ctrl, api_session_cb, ztx);
     ziti_ctrl_current_identity(ctrl, update_identity_data, ztx);
 
     tlsuv_private_key_t pk;
@@ -422,26 +423,6 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
                                          NULL);
 
         ziti_ctrl_create_api_certificate(ztx_get_controller(ztx), ztx->sessionCsr, on_create_cert, ztx);
-    }
-
-    if (ztx->opts.cert_extension_window && ztx->id_creds.cert) {
-        struct tm exp;
-
-        ztx->id_creds.cert->get_expiration(ztx->id_creds.cert, &exp);
-        time_t now = time(0);
-        time_t exptime = mktime(&exp);
-
-        bool renew = exptime - now < ztx->opts.cert_extension_window * ONE_DAY;
-        if (renew) {
-            if (ztx->opts.events & ZitiConfigEvent) {
-                ZTX_LOG(INFO, "renewing identity certificate exp[%04d-%02d-%02d %02d:%02d]",
-                        1900 + exp.tm_year, exp.tm_mon + 1, exp.tm_mday, exp.tm_hour, exp.tm_min);
-                ziti_ctrl_current_api_session(ztx_get_controller(ztx), api_session_cb, ztx);
-            } else {
-                ZTX_LOG(WARN, "identity certificate needs to be renewed but application is not handling ZitiConfigEvent");
-            }
-
-        }
     }
 
     ziti_services_refresh(ztx, true);
@@ -2140,11 +2121,45 @@ static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, vo
     char *csr = NULL;
     size_t len = 0;
     if (api_sess) {
+        model_map_iter it = model_map_iterator(&ztx->sessions);
+        while(it) {
+            ziti_session *s = model_map_it_value(it);
+            if (strcmp(s->api_session_id, api_sess->id) != 0) {
+                ZTX_LOG(DEBUG, "evicted stale session for service_id[%s]", s->service_id);
+                it = model_map_it_remove(it);
+                free_ziti_session_ptr(s);
+            } else {
+                it = model_map_it_next(it);
+            }
+        }
+
+        // check if identity cert can and need to be extended
+        if (ztx->opts.cert_extension_window == 0 || ztx->id_creds.cert == NULL) {
+            goto done;
+        }
+
+        struct tm exp;
+        ztx->id_creds.cert->get_expiration(ztx->id_creds.cert, &exp);
+        time_t now = time(0);
+        time_t exptime = mktime(&exp);
+
+        bool renew = exptime - now < ztx->opts.cert_extension_window * ONE_DAY;
+        if (!renew) {
+            goto done;
+        }
+
         if (!api_sess->is_cert_extendable) {
             ZTX_LOG(WARN, "identity certificate is not renewable");
             goto done;
         }
 
+        if ((ztx->opts.events & ZitiConfigEvent) == 0) {
+            ZTX_LOG(WARN, "identity certificate needs to be renewed but application is not handling ZitiConfigEvent");
+            goto done;
+        }
+
+        ZTX_LOG(INFO, "renewing identity certificate exp[%04d-%02d-%02d %02d:%02d]",
+                1900 + exp.tm_year, exp.tm_mon + 1, exp.tm_mday, exp.tm_hour, exp.tm_min);
         if (ztx->tlsCtx->generate_csr_to_pem(ztx->id_creds.key, &csr, &len, "O", "OpenZiti",
                                          "DC", ztx->config.controller_url,
                                          "CN", api_sess->identity_id,
