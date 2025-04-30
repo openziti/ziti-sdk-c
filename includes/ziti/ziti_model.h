@@ -157,12 +157,18 @@ XX(http, __VA_ARGS__)
 XX(address, model_string, none, address, __VA_ARGS__) \
 XX(type, ziti_proxy_server_type, none, type, __VA_ARGS__)
 
+#define ZITI_ADDRESS_TRANSLATION_MODEL(XX, ...) \
+XX(from, ziti_address, none, from, __VA_ARGS__) \
+XX(to, ziti_address, none, to, __VA_ARGS__)     \
+XX(prefix_length, model_number, none, prefixLength, __VA_ARGS__ )
+
 #define ZITI_HOST_CFG_V1_MODEL(XX, ...) \
 XX(protocol, model_string, none, protocol, __VA_ARGS__) \
 XX(forward_protocol, model_bool, none, forwardProtocol, __VA_ARGS__) \
 XX(allowed_protocols, model_string, array, allowedProtocols, __VA_ARGS__) \
 XX(address, model_string, none, address, __VA_ARGS__) \
 XX(forward_address, model_bool, none, forwardAddress, __VA_ARGS__) \
+XX(forward_address_translations, ziti_address_translation, array, forwardAddressTranslations, __VA_ARGS__) \
 XX(allowed_addresses, ziti_address, array, allowedAddresses, __VA_ARGS__) \
 XX(port, model_number, none, port, __VA_ARGS__) \
 XX(forward_port, model_bool, none, forwardPort, __VA_ARGS__) \
@@ -284,6 +290,8 @@ DECLARE_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
 DECLARE_ENUM(ziti_proxy_server_type, ZITI_PROXY_SERVER_TYPE_ENUM)
 
 DECLARE_MODEL(ziti_proxy_server, ZITI_PROXY_SERVER_MODEL)
+
+DECLARE_MODEL(ziti_address_translation, ZITI_ADDRESS_TRANSLATION_MODEL)
 
 DECLARE_MODEL(ziti_host_cfg_v1, ZITI_HOST_CFG_V1_MODEL)
 
