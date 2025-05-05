@@ -33,7 +33,6 @@ XX(tls, model_string, none, tls, __VA_ARGS__)
 
 #define ZITI_EDGE_ROUTER_MODEL(XX, ...)\
 XX(name, model_string, none, name, __VA_ARGS__)\
-XX(hostname, model_string, none, hostname, __VA_ARGS__) \
 XX(protocols, ziti_er_protocols, none, supportedProtocols, __VA_ARGS__)
 
 #define ZITI_SERVICE_EDGE_ROUTERS_MODEL(XX, ...) \
