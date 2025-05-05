@@ -357,13 +357,15 @@ bool ziti_channel_is_connected(ziti_channel_t *ch);
 
 uint64_t ziti_channel_latency(ziti_channel_t *ch);
 
+void ziti_channel_set_url(ziti_channel_t *ch, const char *url);
+
 int ziti_channel_force_connect(ziti_channel_t *ch);
 
 int ziti_channel_update_token(ziti_channel_t *ch, const char *token);
 
 int ziti_channel_update_posture(ziti_channel_t *ch, const uint8_t *data, size_t len);
 
-int ziti_channel_connect(ziti_context ztx, const char *name, const char *url);
+int ziti_channel_connect(ziti_context ztx, const ziti_edge_router *er);
 
 int ziti_channel_prepare(ziti_channel_t *ch);
 

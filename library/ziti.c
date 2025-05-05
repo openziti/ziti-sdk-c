@@ -389,9 +389,9 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         ziti_ctrl_set_token(ztx_get_controller(ztx), session_token);
         ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
 
-        const char* url;
+        const char* er_name;
         ziti_channel_t *ch;
-        MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
+        MODEL_MAP_FOREACH(er_name, ch, &ztx->channels) {
             ziti_channel_update_token(ch, session_token);
         }
     }
@@ -907,11 +907,11 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
 
     printer(ctx, "\n==================\nChannels:\n");
     ziti_channel_t *ch;
-    const char *url;
-    MODEL_MAP_FOREACH(url, ch, &ztx->channels) {
+    const char *er_id;
+    MODEL_MAP_FOREACH(er_id, ch, &ztx->channels) {
         printer(ctx, "ch[%d] %s\n", ch->id, ch->name);
         printer(ctx, "\tconnected[%c] version[%s] address[%s]",
-                ziti_channel_is_connected(ch) ? 'Y' : 'N', ch->version, url);
+                ziti_channel_is_connected(ch) ? 'Y' : 'N', ch->version, ch->url);
         if (ziti_channel_is_connected(ch)) {
             printer(ctx, " latency[%" PRIu64 "]\n", ziti_channel_latency(ch));
         } else {
@@ -1450,26 +1450,28 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
     }
 
     model_map curr_routers = {0};
-    const char *er_url;
+    const char *er_name;
     ziti_channel_t *ch;
-    MODEL_MAP_FOREACH(er_url, ch, &ztx->channels) {
-        model_map_set(&curr_routers, er_url, (void *) er_url);
+    MODEL_MAP_FOREACH(er_name, ch, &ztx->channels) {
+        model_map_set(&curr_routers, er_name, (void *) er_name);
     }
 
     ziti_edge_router **erp = ers;
     while (*erp) {
         ziti_edge_router *er = *erp;
-        const char *tls = er->protocols.tls;
 
-        if (tls) {
-            // check if it is already in the list
-            if (model_map_remove(&curr_routers, tls) == NULL) {
-                ZTX_LOG(TRACE, "connecting to %s(%s)", er->name, tls);
-                ziti_channel_connect(ztx, er->name, tls);
+        // check if it is already in the list
+        if (model_map_remove(&curr_routers, er->name) == NULL) {
+            if (ziti_channel_connect(ztx, er) == ZITI_OK) {
                 ers_changed = true;
+                ZTX_LOG(TRACE, "connecting to %s(%s)", er->name, er->protocols.tls);
             }
-        } else {
-            ZTX_LOG(DEBUG, "edge router %s does not have TLS edge listener", er->name);
+        } else if(er->protocols.tls != NULL) {
+            // N.B.: if protocols.tls is NULL,
+            //     controller may not have refreshed the ER model leave the channel as is
+            // otherwise update the url
+            ch = model_map_get(&ztx->channels, er->name);
+            ziti_channel_set_url(ch, er->protocols.tls);
         }
 
         free_ziti_edge_router(er);
@@ -1480,9 +1482,9 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
 
     model_map_iter it = model_map_iterator(&curr_routers);
     while (it != NULL) {
-        er_url = model_map_it_key(it);
-        ch = model_map_remove(&ztx->channels, er_url);
-        ZTX_LOG(INFO, "removing channel[%s@%s]: no longer available", ch->name, er_url);
+        er_name = model_map_it_key(it);
+        ch = model_map_remove(&ztx->channels, er_name);
+        ZTX_LOG(INFO, "removing channel[%s@%s]: no longer available", ch->name, ch->url);
         ziti_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE);
         it = model_map_it_remove(it);
         ers_changed = true;
@@ -1734,7 +1736,7 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_c
     ziti_send_event(ztx, &ev);
 
     if (status == EdgeRouterRemoved) {
-        model_map_remove(&ztx->channels, ch->url);
+        model_map_remove(&ztx->channels, ch->name);
         if (ztx->closing) {
             shutdown_and_free(ztx);
         }
@@ -2034,12 +2036,9 @@ ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er) {
     assert(ztx);
     assert(er);
 
-    model_string url = er->protocols.tls;
-    if (url == NULL) return NULL;
-    
-    ziti_channel_t *ch = (ziti_channel_t *) model_map_get(&ztx->channels, url);
+    ziti_channel_t *ch = (ziti_channel_t *) model_map_get(&ztx->channels, er->name);
     if (ch == NULL) {
-        ziti_channel_connect(ztx, er->name, url);
+        ziti_channel_connect(ztx, er);
     }
     return ch;
 }
