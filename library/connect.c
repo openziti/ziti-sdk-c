@@ -388,23 +388,19 @@ static bool ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct zit
 
 
     MODEL_LIST_FOREACH(er, session->edge_routers) {
-        const char *tls = er->protocols.tls;
+        ch = model_map_get(&ztx->channels, er->name);
+        if (ch == NULL) continue;
 
-        if (tls) {
-            ch = model_map_get(&ztx->channels, tls);
-            if (ch == NULL) continue;
-
-            if (ch->state == Connected) {
-                uint64_t latency = ziti_channel_latency(ch);
-                if (latency < best_latency) {
-                    best_ch = ch;
-                    best_latency = latency;
-                }
+        if (ch->state == Connected) {
+            uint64_t latency = ziti_channel_latency(ch);
+            if (latency < best_latency) {
+                best_ch = ch;
+                best_latency = latency;
             }
+        }
 
-            if (ch->state == Disconnected) {
+        if (ch->state == Disconnected) {
                 model_list_append(&disconnected, ch);
-            }
         }
     }
 

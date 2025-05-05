@@ -190,17 +190,17 @@ void ziti_channel_free(ziti_channel_t *ch) {
 }
 
 int ziti_close_channels(struct ziti_ctx *ztx, int err) {
-    const char *url;
+    const char *er_id;
     model_list ch_ids = {0};
     MODEL_MAP_FOR(it, ztx->channels) {
         model_list_append(&ch_ids, model_map_it_key(it));
     }
 
     MODEL_LIST_FOR(it, ch_ids) {
-        url = model_list_it_element(it);
-        ziti_channel_t *ch = model_map_get(&ztx->channels, url);
+        er_id = model_list_it_element(it);
+        ziti_channel_t *ch = model_map_get(&ztx->channels, er_id);
         if (ch != NULL) {
-            ZTX_LOG(DEBUG, "closing channel[%s]: %s", url, ziti_errorstr(err));
+            ZTX_LOG(DEBUG, "closing channel[%s]: %s", er_id, ziti_errorstr(err));
             ziti_channel_close(ch, err);
         }
     }
@@ -257,21 +257,15 @@ uint64_t ziti_channel_latency(ziti_channel_t *ch) {
     return ch->latency;
 }
 
-static ziti_channel_t *new_ziti_channel(ziti_context ztx, const char *ch_name, const char *url) {
+static ziti_channel_t *new_ziti_channel(ziti_context ztx, const ziti_edge_router *er) {
     ziti_channel_t *ch = calloc(1, sizeof(ziti_channel_t));
     ziti_channel_init(ztx, ch, channel_counter++);
     const ziti_identity *identity = ziti_get_identity(ztx);
-    ch->name = strdup(ch_name);
-    ch->url = strdup(url);
+    ch->name = strdup(er->name);
     CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, identity->name);
 
-    struct tlsuv_url_s ingress;
-    tlsuv_parse_url(&ingress, url);
-
-    ch->host = calloc(1, ingress.hostname_len + 1);
-    snprintf(ch->host, ingress.hostname_len + 1, "%.*s", (int) ingress.hostname_len, ingress.hostname);
-    ch->port = ingress.port;
-    model_map_set(&ztx->channels, url, ch);
+    ziti_channel_set_url(ch, er->protocols.tls);
+    model_map_set(&ztx->channels, er->name, ch);
     return ch;
 }
 
@@ -312,6 +306,26 @@ static void token_update_cb(void *ctx, message *m, int status) {
     }
 }
 
+void ziti_channel_set_url(ziti_channel_t *ch, const char *url) {
+    assert(ch != NULL);
+    assert(url != NULL);
+
+    if (ch->url && strcmp(ch->url, url) == 0) {
+        return;
+    }
+    CH_LOG(DEBUG, "setting channel[%s] url[%s]", ch->name, url);
+
+    FREE(ch->url);
+    FREE(ch->host);
+    ch->url = strdup(url);
+
+    struct tlsuv_url_s ingress;
+    tlsuv_parse_url(&ingress, ch->url);
+    ch->host = calloc(1, ingress.hostname_len + 1);
+    snprintf(ch->host, ingress.hostname_len + 1, "%.*s", (int) ingress.hostname_len, ingress.hostname);
+    ch->port = ingress.port;
+}
+
 int ziti_channel_update_token(ziti_channel_t *ch, const char *token) {
     if (ch == NULL) {
         return ZITI_INVALID_STATE;
@@ -348,14 +362,20 @@ int ziti_channel_force_connect(ziti_channel_t *ch) {
     return ZITI_OK;
 }
 
-int ziti_channel_connect(ziti_context ztx, const char *ch_name, const char *url) {
-    ziti_channel_t *ch = model_map_get(&ztx->channels, url);
+int ziti_channel_connect(ziti_context ztx, const ziti_edge_router* er) {
+    const char *url = er->protocols.tls;
+    if (url == NULL) {
+        ZTX_LOG(ERROR, "er[%s] does not have TLS edge listener", er->name);
+        return ZITI_INVALID_CONFIG;
+    }
+
+    ziti_channel_t *ch = model_map_get(&ztx->channels, er->name);
 
     if (ch != NULL) {
         ZTX_LOG(DEBUG, "existing ch[%d](%s) found for ingress[%s]", ch->id, ch_state_str(ch), url);
     }
     else {
-        ch = new_ziti_channel(ztx, ch_name, url);
+        ch = new_ziti_channel(ztx, er);
         ch->notify_cb(ch, EdgeRouterAdded, ch->notify_ctx);
     }
 
