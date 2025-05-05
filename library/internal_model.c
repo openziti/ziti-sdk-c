@@ -67,6 +67,8 @@ IMPL_ENUM(ziti_proxy_server_type, ZITI_PROXY_SERVER_TYPE_ENUM)
 
 IMPL_MODEL(ziti_proxy_server, ZITI_PROXY_SERVER_MODEL)
 
+IMPL_MODEL(ziti_address_translation, ZITI_ADDRESS_TRANSLATION_MODEL)
+
 IMPL_MODEL(ziti_host_cfg_v1, ZITI_HOST_CFG_V1_MODEL)
 
 IMPL_MODEL(ziti_host_cfg_v2, ZITI_HOST_CFG_V2_MODEL)
