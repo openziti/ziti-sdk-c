@@ -47,7 +47,38 @@ if (ziti_DEVELOPER_MODE)
     endif ()
 endif ()
 
-find_package(json-c CONFIG REQUIRED)
+if (TARGET json-c::json-c)
+    set(jsonc_libs json-c::json-c)
+else()
+    pkg_check_modules(JSONC json-c)
+    if (JSONC_FOUND AND JSONC_INCLUDE_DIRS)
+        # Ensure we have the full path to the library, not just 'json-c'
+        find_library(JSONC_LIB NAMES json-c PATHS ${JSONC_LIBRARY_DIRS} /usr/lib/x86_64-linux-gnu /usr/lib /lib)
+        if (JSONC_LIB)
+            set(JSONC_LIBRARIES "${JSONC_LIB}")
+        endif()
+        if (NOT TARGET json-c::json-c)
+            add_library(json-c::json-c INTERFACE IMPORTED)
+            set_target_properties(json-c::json-c PROPERTIES
+                INTERFACE_INCLUDE_DIRECTORIES "${JSONC_INCLUDE_DIRS}"
+                INTERFACE_LINK_LIBRARIES "${JSONC_LIBRARIES}"
+            )
+        endif()
+        set(jsonc_libs json-c::json-c)
+        message("json-c [${JSONC_VERSION}] is ${JSONC_LIBRARIES}")
+    else()
+        find_package(json-c REQUIRED)
+        if (TARGET json-c::json-c)
+            set(jsonc_libs json-c::json-c)
+        else()
+            message(FATAL_ERROR "Could not find required library [json-c]")
+        endif()
+    endif()
+endif()
+if (NOT jsonc_libs)
+    message(FATAL_ERROR "Could not find required library [json-c]")
+endif()
+
 
 set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/errors.h
