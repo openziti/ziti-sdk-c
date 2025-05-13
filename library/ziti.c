@@ -1513,6 +1513,11 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
 
     if (err) {
         ZTX_LOG(ERROR, "failed to get identity_data: %s[%s]", err->message, err->code);
+        if (err->err == ZITI_AUTHENTICATION_FAILED) {
+            ZTX_LOG(WARN, "api session is no longer valid. Trying to re-auth");
+            ziti_set_unauthenticated(ztx, err);
+            ziti_force_api_session_refresh(ztx);
+        }
     } else {
         free_ziti_identity_data(ztx->identity_data);
         FREE(ztx->identity_data);
@@ -1724,7 +1729,7 @@ void ztx_prepare(uv_prepare_t *prep) {
     }
 }
 
-void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx) {
+void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, int err, ziti_context ztx) {
     ziti_event_t ev = {
             .type = ZitiRouterEvent,
             .router = {
@@ -1742,6 +1747,11 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_c
         if (ztx->closing) {
             shutdown_and_free(ztx);
         }
+    }
+
+    if (status == EdgeRouterDisconnected && err == ZITI_CONNABORT) {
+        ZTX_LOG(VERBOSE, "edge router closed connection, trying to refresh api session");
+        ziti_force_api_session_refresh(ch->ztx);
     }
 
     if (status == EdgeRouterConnected) {
@@ -1998,7 +2008,7 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
             ztx->auth_method->set_endpoint(ztx->auth_method, ztx->ctrl.url);
         }
 
-        if (ztx->id_creds.key == NULL) {
+        if (ztx->ext_auth == NULL && ztx->id_creds.key == NULL) {
             ztx_init_external_auth(ztx, ztx->config.id.oidc);
             return;
         }
@@ -2006,7 +2016,7 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         if (start) {
             ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
         } else if (ztx->auth_state  == ZitiAuthStateUnauthenticated) {
-            ztx->auth_method->force_refresh(ztx->auth_method);
+            ziti_force_api_session_refresh(ztx);
         }
     }
 }

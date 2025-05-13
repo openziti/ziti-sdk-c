@@ -220,7 +220,7 @@ int ziti_channel_close(ziti_channel_t *ch, int err) {
 
         on_channel_close(ch, err, 0);
         ch->state = Closed;
-        ziti_on_channel_event(ch, EdgeRouterRemoved, ch->ztx);
+        ziti_on_channel_event(ch, EdgeRouterRemoved, 0, ch->ztx);
 
         ziti_channel_free(ch);
         free(ch);
@@ -376,7 +376,7 @@ int ziti_channel_connect(ziti_context ztx, const ziti_edge_router* er) {
     }
     else {
         ch = new_ziti_channel(ztx, er);
-        ch->notify_cb(ch, EdgeRouterAdded, ch->notify_ctx);
+        ch->notify_cb(ch, EdgeRouterAdded, 0, ch->notify_ctx);
     }
 
     if (ch->state == Connecting) {
@@ -736,7 +736,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         FREE(ch->version);
         ch->version = calloc(1, erVersionLen + 1);
         memcpy(ch->version, erVersion, erVersionLen);
-        ch->notify_cb(ch, EdgeRouterConnected, ch->notify_ctx);
+        ch->notify_cb(ch, EdgeRouterConnected, 0, ch->notify_ctx);
         ch->latency = uv_now(ch->loop) - ch->latency;
         ztx_set_deadline(ch->ztx, LATENCY_INTERVAL, &ch->deadline, send_latency_probe, ch);
     } else {
@@ -784,8 +784,8 @@ static void reconnect_cb(void *data) {
     ziti_context ztx = ch->ztx;
 
     if (ziti_get_api_session_token(ztx) == NULL) {
-        CH_LOG(INFO, "ziti context is not fully authenticated (auth_state[%d]), delaying re-connect",
-               ztx->auth_state);
+        CH_LOG(INFO, "ztx[%d] is not fully authenticated (auth_state[%d]), delaying re-connect",
+               ztx->id, ztx->auth_state);
         reconnect_channel(ch, false);
     } else if (ch->connection != NULL) {
         CH_LOG(DEBUG, "connection still closing, deferring reconnect");
@@ -846,7 +846,9 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
     }
 
     if (ch->state == Connected) {
-        ch->notify_cb(ch, EdgeRouterDisconnected, ch->notify_ctx);
+        CH_LOG(WARN, "disconnected from edge router[%s] %zd(%s)",
+               ch->name, uv_err, uv_strerror((int)uv_err));
+        ch->notify_cb(ch, EdgeRouterDisconnected, ziti_err, ch->notify_ctx);
     }
     ch->state = Disconnected;
 
@@ -882,11 +884,6 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
 
     if (ziti_err == ZITI_DISABLED || ziti_err == ZITI_GATEWAY_UNAVAILABLE) {
         return;
-    }
-
-    if (uv_err == UV_EOF) {
-        ZTX_LOG(VERBOSE, "edge router closed connection, trying to refresh api session");
-        ziti_force_api_session_refresh(ch->ztx);
     }
 
     reconnect_channel(ch, ch->reconnect);
