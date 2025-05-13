@@ -228,7 +228,9 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
     FREE(ztx->session_token);
 
     if (ztx->session_creds.cert || ztx->session_creds.key) {
-        ztx->tlsCtx->set_own_cert(ztx->tlsCtx, NULL, NULL);
+        if (ztx->tlsCtx) {
+            ztx->tlsCtx->set_own_cert(ztx->tlsCtx, NULL, NULL);
+        }
 
         if (ztx->session_creds.cert) {
             ztx->session_creds.cert->free(ztx->session_creds.cert);
