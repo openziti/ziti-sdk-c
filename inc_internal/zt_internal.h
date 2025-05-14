@@ -61,7 +61,8 @@ typedef struct ziti_channel ziti_channel_t;
 
 typedef void (*reply_cb)(void *ctx, message *m, int err);
 
-typedef void (*ch_notify_state)(ziti_channel_t *ch, ziti_router_status status, void *ctx);
+typedef void (*ch_notify_state)(
+        ziti_channel_t *ch, ziti_router_status status, int err, void *ctx);
 
 typedef int ch_state;
 typedef int conn_state;
@@ -345,7 +346,7 @@ ziti_controller *ztx_get_controller(ziti_context ztx);
 
 void ziti_invalidate_session(ziti_context ztx, const char *service_id, ziti_session_type type);
 
-void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, ziti_context ztx);
+void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, int err, ziti_context ztx);
 
 void ziti_force_api_session_refresh(ziti_context ztx);
 
