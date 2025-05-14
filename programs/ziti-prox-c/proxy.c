@@ -90,7 +90,7 @@ struct client {
 };
 
 void mfa_auth_event_handler(ziti_context ztx);
-void ext_auth_event_handler(ziti_context ztx);
+void ext_auth_event_handler(ziti_context ztx, const char *name);
 
 static void close_server_cb(uv_handle_t *h) {
     struct listener *l = h->data;
@@ -105,6 +105,7 @@ static void close_binding_cb(ziti_connection conn) {
 static void shutdown_timer_cb(uv_timer_t *t) {
     uv_loop_t *l = t->loop;
 
+    ZITI_LOG(WARN, "shutdown timer expired");
     uv_print_active_handles(l, stderr);
 }
 
@@ -467,8 +468,8 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 }
             } else if (event->ctx.ctrl_status == ZITI_DISABLED) {
                 ZITI_LOG(INFO, "ziti is shutdown");
-                if (shutdown_timer.type == UV_TIMER && !uv_is_closing((const uv_handle_t *) &shutdown_timer))
-                    uv_close((uv_handle_t *) &shutdown_timer, NULL);
+//                if (shutdown_timer.type == UV_TIMER && !uv_is_closing((const uv_handle_t *) &shutdown_timer))
+//                    uv_close((uv_handle_t *) &shutdown_timer, NULL);
             } else {
                 ZITI_LOG(ERROR, "controller is not available: %s/%s", ziti_errorstr(event->ctx.ctrl_status),
                          event->ctx.err);
@@ -535,7 +536,10 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                 ZITI_LOG(INFO, "ziti requires MFA %s/%s", event->auth.type, event->auth.detail);
                 mfa_auth_event_handler(ztx);
             } else if (event->auth.action == ziti_auth_login_external) {
-                ext_auth_event_handler(ztx);
+                ext_auth_event_handler(ztx, NULL);
+            } else if (event->auth.action == ziti_auth_select_external) {
+                const char *name = event->auth.providers[0]->name;
+                ext_auth_event_handler(ztx, name);
             } else {
                 ZITI_LOG(ERROR, "unhandled auth event %d/%s", event->auth.action, event->auth.type);
             }
@@ -636,16 +640,22 @@ static void ext_url_launch(ziti_context ztx, const char *url, void *ctx) {
     system(cmd);
 }
 static void ext_auth_done(uv_work_t *wr, int status) {
-    ziti_context ztx = wr->data;
-    ziti_ext_auth(ztx, ext_url_launch, NULL);
+    struct proxy_app_ctx *pxy = wr->data;
+
+    ziti_ext_auth(pxy->ziti, ext_url_launch, NULL);
     free(wr);
 }
 
-void ext_auth_event_handler(ziti_context ztx) {
+void ext_auth_event_handler(ziti_context ztx, const char *name) {
     struct proxy_app_ctx *pxy = ziti_app_ctx(ztx);
+    if (name) {
+        // this will trigger another auth event with action login
+        ziti_use_ext_jwt_signer(ztx, name);
+        return;
+    }
 
     NEWP(ext_wr, uv_work_t);
-    ext_wr->data = ztx;
+    ext_wr->data = pxy;
     uv_queue_work(pxy->loop, ext_wr, ext_auth_prompt, ext_auth_done);
 }
 
@@ -660,6 +670,7 @@ static void stopper_alloc(uv_handle_t *h, size_t i, uv_buf_t *pBuf) {
 XX(dump, __VA_ARGS__)      \
 XX(stop, __VA_ARGS__)      \
 XX(enable, __VA_ARGS__)    \
+XX(refresh, __VA_ARGS__)   \
 XX(disable, __VA_ARGS__)   \
 
 
@@ -690,6 +701,9 @@ static void stopper_recv(uv_udp_t *u, ssize_t len,
             break;
         case ProxyCmd_enable:
             ziti_set_enabled(app_ctx.ziti, true);
+            break;
+        case ProxyCmd_refresh:
+            ziti_refresh(app_ctx.ziti);
             break;
         case ProxyCmd_disable:
             ziti_set_enabled(app_ctx.ziti, false);
@@ -844,6 +858,9 @@ int run_proxy(struct run_opts *opts) {
         uv_unref((uv_handle_t *) &report_timer);
     }
     ZITI_LOG(INFO, "starting event loop");
+    uv_run(loop, UV_RUN_DEFAULT);
+
+    uv_close((uv_handle_t *) &shutdown_timer, NULL);
     uv_run(loop, UV_RUN_DEFAULT);
 
     int excode = 0;
