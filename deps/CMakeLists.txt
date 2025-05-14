@@ -9,7 +9,7 @@ if (NOT TARGET tlsuv)
     else ()
         FetchContent_Declare(tlsuv
                 GIT_REPOSITORY https://github.com/openziti/tlsuv.git
-                GIT_TAG v0.34.3
+                GIT_TAG openssl-config-override
         )
         FetchContent_MakeAvailable(tlsuv)
     endif (tlsuv_DIR)
