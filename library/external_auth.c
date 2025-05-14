@@ -90,10 +90,7 @@ static void ext_token_cb(oidc_client_t *oidc, enum oidc_status status, const cha
     ziti_context ztx = oidc->data;
     switch (status) {
         case OIDC_TOKEN_OK: {
-            const char *token = data;
-            ZITI_LOG(DEBUG, "received access token: %.*s...", 20, token);
-            ztx->auth_method->set_ext_jwt(ztx->auth_method, token);
-            ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
+            ziti_ext_auth_token(ztx, data);
             break;
         }
         case OIDC_RESTART: {
@@ -145,10 +142,12 @@ extern int ziti_ext_auth(ziti_context ztx,
 }
 
 extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
+    ZTX_LOG(DEBUG, "received access token: %.*s...", 20, token);
     if (ztx->auth_method) {
         ztx->auth_method->set_ext_jwt(ztx->auth_method, token);
+        ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
         return 0;
     }
-
+    ZTX_LOG(ERROR, "no auth method configured");
     return ZITI_INVALID_STATE;
 }

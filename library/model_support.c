@@ -466,7 +466,7 @@ void model_free(void *obj, const type_meta *meta) {
             model_list_iter it = model_list_iterator(list);
             bool str_type = (field_meta == get_model_string_meta() || field_meta == get_json_meta());
             while (it != NULL) {
-                void *el = model_list_it_element(it);
+                void *el = (void*)model_list_it_element(it);
                 it = model_list_it_remove(it);
                 if (str_type) {
                     field_meta->destroyer(&el);
@@ -581,7 +581,7 @@ int model_list_from_json (model_list *list, json_object *json, const type_meta *
     if (rc != 0) {
         model_list_iter it = model_list_iterator(list);
         while (it) {
-            void* val = model_list_it_element(it);
+            void* val = (void*)model_list_it_element(it);
             model_free(val, el_meta);
             free(val);
             it = model_list_it_remove(it);

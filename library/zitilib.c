@@ -151,7 +151,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             wrap->ztx = ztx;
             model_list_iter it = model_list_iterator(&wrap->futures);
             while (it) {
-                f = model_list_it_element(it);
+                f = (future_t *)model_list_it_element(it);
                 it = model_list_it_remove(it);
                 complete_future(f, ztx);
             }
@@ -160,7 +160,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         } else {
             model_list_iter it = model_list_iterator(&wrap->futures);
             while (it) {
-                f = model_list_it_element(it);
+                f = (future_t *)model_list_it_element(it);
                 it = model_list_it_remove(it);
                 fail_future(f, err);
             }
