@@ -818,7 +818,7 @@ static bool verify_api_session(ziti_controller *ctrl, ctrl_resp_cb_t cb, void *c
                 .code = ERROR_CODE_UNAUTHORIZED,
                 .message = ERROR_MSG_NO_API_SESSION_TOKEN,
         };
-        cb(NULL, &err, ctx);
+        if (cb) cb(NULL, &err, ctx);
         return false;
     }
 
@@ -856,6 +856,18 @@ void ziti_ctrl_mfa_jwt(ziti_controller *ctrl, const char *token, void(*cb)(ziti_
     tlsuv_http_req_header(req, "Authorization", header);
 }
 
+void ziti_ctrl_list_terminators(ziti_controller *ctrl, const char *service_id,
+                               void (*cb)(ziti_terminator_array, const ziti_error*, void *ctx), void *ctx) {
+    if(!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) return;
+
+    char path[512];
+    snprintf(path, sizeof(path), "/services/%s/terminators", service_id);
+
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_terminator_array_from_json, ctx);
+    resp->paging = true;
+    resp->base_path = path;
+    ctrl_paging_req(resp);
+}
 
 void ziti_ctrl_list_controllers(ziti_controller *ctrl,
                                 void (*cb)(ziti_controller_detail_array, const ziti_error*, void *ctx), void *ctx) {

@@ -1067,6 +1067,35 @@ int ziti_service_available(ziti_context ztx, const char *service, ziti_service_c
     return ZITI_OK;
 }
 
+static void term_cb(ziti_terminator_array terminators, const ziti_error *err, void *ctx) {
+    struct ztx_req_s *r = ctx;
+    CALL_CB((ziti_terminator_cb)r->cb, r->ztx, (const ziti_terminator * const *) terminators,
+            err ? err->err : ZITI_OK, r->cb_ctx);
+    free_ziti_terminator_array(&terminators);
+    free(r);
+}
+
+static void term_srv_cb(ziti_context ztx, const ziti_service *s, int err, void *ctx) {
+    struct ztx_req_s *req = ctx;
+    if (err || s == NULL) {
+        CALL_CB((ziti_terminator_cb)req->cb, req->ztx, NULL,
+                err ? err : ZITI_SERVICE_UNAVAILABLE , req->cb_ctx);
+        free(req);
+        return;
+    }
+
+    ziti_ctrl_list_terminators(ztx_get_controller(req->ztx), s->id, term_cb, req);
+}
+
+int ziti_list_terminators(ziti_context ztx, const char *service, ziti_terminator_cb cb, void *ctx) {
+    NEWP(req, struct ztx_req_s);
+    req->ztx = ztx;
+    req->cb = cb;
+    req->cb_ctx = ctx;
+
+    return ziti_service_available(ztx, service, term_srv_cb, req);
+}
+
 const ziti_service *ziti_service_for_addr_str(ziti_context ztx, ziti_protocol proto, const char *addr, int port) {
     ziti_address a;
     if (parse_ziti_address_str(&a, addr) != -1) {

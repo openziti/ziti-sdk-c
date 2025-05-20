@@ -94,6 +94,20 @@ typedef struct ziti_conn *ziti_connection;
 typedef void (*ziti_service_cb)(ziti_context ztx, const ziti_service *, int status, void *data);
 
 /**
+ * @brief callback providing the list of terminators
+ *
+ * Data is an NULL-terminated array of ziti_terminator pointers.
+ * The application must copy desired data as the terminator array is freed after the callback
+ *
+ * @see ziti_list_terminators
+ * @param ztx the handle to the Ziti Edge identity context
+ * @param terminators the NULL-terminated array of [ziti_terminator] pointers
+ * @param status the status of the operation
+ * @param ctx application context
+ */
+typedef void (*ziti_terminator_cb)(ziti_context ztx, const ziti_terminator* const * terminators , int status, void *ctx);
+
+/**
  * @brief Posture response MAC address callback
  *
  * This callback should be invoked after gathering the relevant MAC Addresses
@@ -439,7 +453,7 @@ extern void ziti_set_enabled(ziti_context ztx, bool enabled);
  * @brief returns ziti_options.app_ctx for the given Ziti context.
  *
  * @param ztx
- * @return application context that was passed as ziti_oprions.app_ctx
+ * @return application context that was passed as ziti_options.app_ctx
  */
 ZITI_FUNC
 extern void *ziti_app_ctx(ziti_context ztx);
@@ -637,6 +651,19 @@ extern const char *ziti_conn_source_identity(ziti_connection conn);
  */
 ZITI_FUNC
 extern int ziti_service_available(ziti_context ztx, const char *service, ziti_service_cb cb, void *ctx);
+
+/**
+ * @brief List all terminators for the given service.
+ * Application must copy desired data passed into the callback.
+ *
+ * @param ztx ziti identity context
+ * @param service name of the service
+ * @param cb callback called with the list of terminators
+ * @param ctx application context
+ * @return ZITI_OK or error code
+ */
+ZITI_FUNC
+extern int ziti_list_terminators(ziti_context ztx, const char *service, ziti_terminator_cb cb, void *ctx);
 
 ZITI_FUNC
 extern const ziti_service *ziti_service_for_addr_str(ziti_context ztx, ziti_protocol proto, const char *addr, int port);

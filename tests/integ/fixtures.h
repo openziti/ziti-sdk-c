@@ -17,6 +17,7 @@
 
 #include <uv.h>
 #include <cstdlib>
+#include "ziti_ctrl.h"
 
 class LoopTestCase {
     uv_loop_t *m_loop;
@@ -35,4 +36,75 @@ protected:
 
     uv_loop_t *loop() { return m_loop; }
 };
+
+template <class T>
+class resp_capture {
+public:
+    T *resp;
+    ziti_error error;
+    resp_capture(): error{} {
+        resp = nullptr;
+    }
+
+    void set_error(const ziti_error * e) {
+        error.message = strdup(e->message);
+        error.code = strdup(e->code);
+        error.err = e->err;
+        error.http_code = e->http_code;
+    }
+
+    ~resp_capture() {
+        free_ziti_error(&error);
+    }
+};
+
+template<class T>
+void resp_cb(T *r, const ziti_error *err, void *ctx) {
+    auto *rc = static_cast<resp_capture<T> *>(ctx);
+    if (err) { rc->set_error(err); }
+    rc->resp = r;
+}
+
+template<class T>
+T *ctrl_get(ziti_controller &ctrl,
+            void (*method)(ziti_controller *, void (*cb)(T *, const ziti_error *err, void *), void *)) {
+    resp_capture<T> resp;
+    method(&ctrl, resp_cb, &resp);
+    uv_run(ctrl.loop, UV_RUN_DEFAULT);
+    CHECK(resp.error.err == 0);
+    return resp.resp;
+}
+
+
+template<class T, class A>
+T *ctrl_get1(
+        ziti_controller &ctrl,
+        void (*method)(ziti_controller *, A, void (*cb)(T *, const ziti_error *err, void *), void *), A arg) {
+    resp_capture<T> resp;
+    method(&ctrl, arg, resp_cb, &resp);
+    uv_run(ctrl.loop, UV_RUN_DEFAULT);
+    if (resp.error.err != 0) { throw resp.error; }
+    return resp.resp;
+}
+
+template<class T, class A1, class A2>
+T *ctrl_get2(
+        ziti_controller &ctrl,
+        void (*method)(ziti_controller *, A1, A2, void (*cb)(T *, const ziti_error *err, void *), void *), A1 arg1,
+        A2 arg2) {
+    resp_capture<T> resp;
+    method(&ctrl, arg1, arg2, resp_cb, &resp);
+    uv_run(ctrl.loop, UV_RUN_DEFAULT);
+    if (resp.error.err != 0) { throw resp.error; }
+    return resp.resp;
+}
+
+static inline ziti_api_session *ctrl_login(ziti_controller &ctrl) {
+    resp_capture<ziti_api_session> session;
+    model_list l = {nullptr};
+    auto s = ctrl_get1(ctrl, ziti_ctrl_login, &l);
+    return s;
+}
+
+
 #endif // ZITI_SDK_FIXTURES_H
