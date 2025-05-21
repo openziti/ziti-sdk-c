@@ -132,8 +132,6 @@ static uint64_t starttime;
 static uint64_t last_update;
 static char log_timestamp[32];
 
-static uv_key_t logbufs;
-
 static log_writer logger = NULL;
 
 static void init_debug(uv_loop_t *loop);
@@ -262,7 +260,6 @@ static void init_debug(uv_loop_t *loop) {
 #if defined(PTHREAD_ONCE_INIT)
     pthread_atfork(NULL, NULL, child_init);
 #endif
-    uv_key_create(&logbufs);
     log_pid = uv_os_getpid();
     get_elapsed = get_elapsed_time;
     char *ts_format = getenv("ZITI_TIME_FORMAT");
@@ -320,21 +317,17 @@ static const char *basename(const char *path) {
     return path;
 }
 
-void ziti_logger(int level, const char *module, const char *file, unsigned int line, const char *func, FORMAT_STRING(const char *fmt), ...) {
 #ifdef ZITI_DEBUG
-    static size_t loglinelen = 32768;
+#define LOG_LINE_LENGTH 32768
 #else
-    static size_t loglinelen = 1024;
+#define LOG_LINE_LENGTH 1024
 #endif
 
+static THREAD_LOCAL char log_buf[LOG_LINE_LENGTH];
+
+void ziti_logger(int level, const char *module, const char *file, unsigned int line, const char *func, FORMAT_STRING(const char *fmt), ...) {
     log_writer logfunc = logger;
     if (logfunc == NULL) { return; }
-
-    char *logbuf = (char *) uv_key_get(&logbufs);
-    if (!logbuf) {
-        logbuf = malloc(loglinelen);
-        uv_key_set(&logbufs, logbuf);
-    }
 
     char location[128];
     char *last_slash = strrchr(file, DIR_SEP);
@@ -370,14 +363,14 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
 
     va_list argp;
     va_start(argp, fmt);
-    int len = vsnprintf(logbuf, loglinelen, fmt, argp);
+    int len = vsnprintf(log_buf, sizeof(log_buf), fmt, argp);
     va_end(argp);
 
-    if (len > loglinelen) {
-        len = (int) loglinelen;
+    if (len > sizeof(log_buf)) {
+        len = (int) sizeof(log_buf);
     }
 
-    logfunc(level, location, logbuf, len);
+    logfunc(level, location, log_buf, len);
 }
 
 static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen) {

@@ -224,10 +224,10 @@ typedef struct ziti_address_s {
 
 
 // make sure ziti model functions are properly exported
-#ifdef MODEL_API
-#undef MODEL_API
+#ifdef MODEL_VISIBILITY
+#undef MODEL_VISIBILITY
 #endif
-#define MODEL_API ZITI_FUNC
+#define MODEL_VISIBILITY ZITI_FUNC
 
 ZITI_FUNC int parse_ziti_address_str(ziti_address *addr, const char *addr_str);
 

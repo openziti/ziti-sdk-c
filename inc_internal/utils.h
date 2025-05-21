@@ -75,9 +75,12 @@ typedef int *(*cond_error_t)(int);
 
 #if __GNUC__
 #define UNUSED(x) UNUSED_ ## x __attribute__((__unused__))
+#define THREAD_LOCAL __thread
 #elif _MSC_VER
+#define THREAD_LOCAL __declspec(thread)
 #define UNUSED(x) UNUSED_ ## x
 #else
+#define THREAD_LOCAL
 #define UNUSED(x) UNUSED_ ## x
 #endif
 

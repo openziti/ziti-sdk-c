@@ -124,6 +124,8 @@ function(config_ziti_library target)
     set_target_properties(${target} PROPERTIES
             C_STANDARD 11
             POSITION_INDEPENDENT_CODE ON
+            C_VISIBILITY_PRESET hidden
+            CXX_VISIBILITY_PRESET hidden
     )
 
     target_sources(${target} PRIVATE ${ZITI_PRIVATE_SRC_FILES})

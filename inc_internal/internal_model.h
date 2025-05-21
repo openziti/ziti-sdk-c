@@ -19,6 +19,12 @@
 #include "ziti/model_support.h"
 #include "ziti/ziti_model.h"
 
+// internal model is not exported
+#ifdef MODEL_VISIBILITY
+#undef MODEL_VISIBILITY
+#endif
+#define MODEL_VISIBILITY
+
 // extends ziti_identity
 #define ZITI_IDENTITY_DATA_MODEL(XX, ...) \
 ZITI_IDENTITY_MODEL(XX, __VA_ARGS__) \
