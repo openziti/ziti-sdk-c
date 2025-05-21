@@ -19,6 +19,11 @@
 #include "ziti/model_support.h"
 #include "ziti/ziti_model.h"
 
+#ifdef MODEL_API
+#undef MODEL_API
+#endif
+#define MODEL_API
+
 // extends ziti_identity
 #define ZITI_IDENTITY_DATA_MODEL(XX, ...) \
 ZITI_IDENTITY_MODEL(XX, __VA_ARGS__) \
