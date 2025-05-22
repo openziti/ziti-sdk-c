@@ -67,6 +67,7 @@ XX(identity, ziti_identity, none, identity, __VA_ARGS__) \
 XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__) \
 XX(is_mfa_required, model_bool, none, isMfaRequired, __VA_ARGS__) \
 XX(is_mfa_complete, model_bool, none, isMfaComplete, __VA_ARGS__) \
+XX(is_cert_improper, model_bool, none, improperClientCertChain, __VA_ARGS__) \
 XX(is_cert_extendable, model_bool, none, isCertExtendable, __VA_ARGS__) \
 XX(cert_extend_requested, model_bool, none, isCertExtendRequested, __VA_ARGS__) \
 XX(key_roll_requested, model_bool, none, isCertKeyRollRequested, __VA_ARGS__) \
