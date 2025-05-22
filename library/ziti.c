@@ -2177,6 +2177,12 @@ static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, vo
             goto done;
         }
 
+        // it is a 3rd party cert, no need for the rest of checks
+        if (!api_sess->is_cert_extendable) {
+            ZTX_LOG(DEBUG, "identity certificate is not renewable");
+            goto done;
+        }
+
         if (api_sess->cert_extend_requested || api_sess->key_roll_requested) {
             ZTX_LOG(INFO, "controller requested certificate renewal (%s key roll)",
                     api_sess->key_roll_requested ? "with" : "without");
@@ -2190,11 +2196,6 @@ static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, vo
 
         // check if identity cert is expiring or expired
         if (ztx->opts.cert_extension_window > 0) {
-            if (!api_sess->is_cert_extendable) {
-                ZTX_LOG(DEBUG, "identity certificate is not renewable");
-                goto done;
-            }
-
             struct tm exp;
             ztx->id_creds.cert->get_expiration(ztx->id_creds.cert, &exp);
             time_t now = time(0);
