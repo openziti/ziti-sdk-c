@@ -184,6 +184,11 @@ static void schedule_rebind(struct ziti_conn *conn) {
         return;
     }
 
+    if (conn->server.rebinder.expire_cb != NULL) {
+        CONN_LOG(DEBUG, "re-bind already scheduled");
+        return;
+    }
+
     int backoff = 1 << MIN(conn->server.attempt, 5);
     uint32_t random;
     uv_random(conn->ziti_ctx->loop, NULL, &random, sizeof(random), 0, NULL);
@@ -505,10 +510,12 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
                                   (void (*)(void *, message *, int)) on_message);
         b->state = st_bound;
     } else {
-        CONN_LOG(DEBUG, "failed to bind on router[%s]", b->ch->name);
+        CONN_LOG(DEBUG, "failed to bind on router[%s]: %s", b->ch->name,
+                 ziti_errorstr(code));
         ziti_channel_rem_receiver(b->ch, b->conn_id);
         b->ch = NULL;
         b->state = st_unbound;
+        schedule_rebind(b->conn);
     }
 }
 
