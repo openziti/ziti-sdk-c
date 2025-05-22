@@ -561,6 +561,10 @@ int load_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char *ke
     }
 
     if (strncmp(keystr, "keychain:", strlen("keychain:")) == 0) {
+        if (tls->load_keychain_key == NULL) {
+            ZITI_LOG(ERROR, "keychain is not supported and config appears to be copied from a system that supports it");
+            return ZITI_INVALID_CONFIG;
+        }
         const char *keyname = strchr(keystr, ':') + 1;
         rc = tls->load_keychain_key(key, keyname);
         if (rc != 0) {
