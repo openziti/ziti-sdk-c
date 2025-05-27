@@ -2207,6 +2207,9 @@ static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, vo
             }
             ZTX_LOG(INFO, "renewing identity certificate exp[%04d-%02d-%02d %02d:%02d]",
                     1900 + exp.tm_year, exp.tm_mon + 1, exp.tm_mday, exp.tm_hour, exp.tm_min);
+        } else {
+            ZTX_LOG(DEBUG, "app is not requiring expiration check");
+            goto done;
         }
 
         extend:
