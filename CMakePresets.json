@@ -29,6 +29,13 @@
       }
     },
     {
+      "name": "vcpkg-win32-static",
+      "hidden": true,
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x86-windows-static-md"
+      }
+    },
+    {
       "name": "ninja",
       "hidden": true,
       "generator": "Ninja"
@@ -84,6 +91,19 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
+    },
+    {
+      "name": "ci-win32",
+      "inherits": [
+        "flags-windows",
+        "ci-std",
+        "vs-2022"
+      ],
+      "architecture": {
+        "value": "x86",
+        "strategy": "external"
+      },
+      "hidden": true
     },
     {
       "name": "ci-win64",
@@ -181,6 +201,16 @@
         "CMAKE_CXX_COMPILER": "clang++",
         "VCPKG_TARGET_TRIPLET": "x64-freebsd"
       }
+    },
+    {
+      "name": "ci-windows-x86",
+      "inherits": [
+        "ci-build",
+        "ci-win32",
+        "dev-mode",
+        "vcpkg",
+        "vcpkg-win32-static"
+      ]
     },
     {
       "name": "ci-windows-x64",
