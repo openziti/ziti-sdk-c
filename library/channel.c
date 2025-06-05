@@ -365,7 +365,7 @@ int ziti_channel_force_connect(ziti_channel_t *ch) {
 int ziti_channel_connect(ziti_context ztx, const ziti_edge_router* er) {
     const char *url = er->protocols.tls;
     if (url == NULL) {
-        ZTX_LOG(ERROR, "er[%s] does not have TLS edge listener", er->name);
+        ZTX_LOG(DEBUG, "er[%s] does not have TLS edge listener", er->name);
         return ZITI_INVALID_CONFIG;
     }
 

@@ -7,6 +7,7 @@
 #include "ziti_ctrl.h"
 #include <tlsuv/tlsuv.h>
 
+#include "fixtures.h"
 #include <test-data.h>
 #include <iostream>
 #include <zt_internal.h>
@@ -61,6 +62,30 @@ TEST_CASE("cltr-network-jwt", "[integ]") {
     free_ziti_network_jwt_array(&result.arr);
     free_ziti_config(&cfg);
     free(sig);
+}
+
+TEST_CASE("ctrl-list-terminators", "[integ]") {
+    auto conf = TEST_CLIENT;
+    ziti_config config{};
+    tls_credentials creds{};
+    tls_context *tls = nullptr;
+    ziti_controller ctrl{};
+    uv_loop_t *loop = uv_default_loop();
+
+    REQUIRE(ziti_load_config(&config, conf) == ZITI_OK);
+    REQUIRE(load_tls(&config, &tls, &creds) == ZITI_OK);
+    REQUIRE(ziti_ctrl_init(loop, &ctrl, &config.controllers, tls) == ZITI_OK);
+
+    auto session = ctrl_login(ctrl);
+    CHECK(session != nullptr);
+
+    auto service = ctrl_get1(ctrl, ziti_ctrl_get_service, TEST_SERVICE);
+    auto list = ctrl_get1(ctrl, ziti_ctrl_list_terminators, service->id);
+    CHECK(list != nullptr);
+    free_ziti_terminator_array(&list);
+    free_ziti_service_ptr(service);
+    free_ziti_api_session_ptr(session);
+    ziti_ctrl_close(&ctrl);
 }
 
 TEST_CASE("ctrl-token-auth", "[integ]") {

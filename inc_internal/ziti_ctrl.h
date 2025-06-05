@@ -116,6 +116,9 @@ void ziti_ctrl_get_services(ziti_controller *ctrl, void (*srv_cb)(ziti_service_a
 void ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name,
                            void (*srv_cb)(ziti_service *, const ziti_error *, void *), void *ctx);
 
+void ziti_ctrl_list_terminators(ziti_controller *ctrl, const char *service_id,
+                                void (*cb)(const ziti_terminator_array, const ziti_error*, void *ctx), void *ctx);
+
 void ziti_ctrl_list_service_routers(ziti_controller *ctrl, const ziti_service *srv, routers_cb, void *ctx);
 
 void ziti_ctrl_create_session(

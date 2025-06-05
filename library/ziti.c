@@ -1067,6 +1067,35 @@ int ziti_service_available(ziti_context ztx, const char *service, ziti_service_c
     return ZITI_OK;
 }
 
+static void term_cb(ziti_terminator_array terminators, const ziti_error *err, void *ctx) {
+    struct ztx_req_s *r = ctx;
+    CALL_CB((ziti_terminator_cb)r->cb, r->ztx, (const ziti_terminator * const *) terminators,
+            err ? err->err : ZITI_OK, r->cb_ctx);
+    free_ziti_terminator_array(&terminators);
+    free(r);
+}
+
+static void term_srv_cb(ziti_context ztx, const ziti_service *s, int err, void *ctx) {
+    struct ztx_req_s *req = ctx;
+    if (err || s == NULL) {
+        CALL_CB((ziti_terminator_cb)req->cb, req->ztx, NULL,
+                err ? err : ZITI_SERVICE_UNAVAILABLE , req->cb_ctx);
+        free(req);
+        return;
+    }
+
+    ziti_ctrl_list_terminators(ztx_get_controller(req->ztx), s->id, term_cb, req);
+}
+
+int ziti_list_terminators(ziti_context ztx, const char *service, ziti_terminator_cb cb, void *ctx) {
+    NEWP(req, struct ztx_req_s);
+    req->ztx = ztx;
+    req->cb = cb;
+    req->cb_ctx = ctx;
+
+    return ziti_service_available(ztx, service, term_srv_cb, req);
+}
+
 const ziti_service *ziti_service_for_addr_str(ziti_context ztx, ziti_protocol proto, const char *addr, int port) {
     ziti_address a;
     if (parse_ziti_address_str(&a, addr) != -1) {
@@ -2144,21 +2173,30 @@ static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, vo
             }
         }
 
-        // check if identity cert can and need to be extended
-        if (ztx->opts.cert_extension_window == 0 || ztx->id_creds.cert == NULL) {
+        if (ztx->id_creds.cert == NULL) {
             goto done;
         }
 
+        // it is a 3rd party cert, no need for the rest of checks
         if (!api_sess->is_cert_extendable) {
             ZTX_LOG(DEBUG, "identity certificate is not renewable");
             goto done;
         }
 
-        struct tm exp;
         if (api_sess->cert_extend_requested || api_sess->key_roll_requested) {
             ZTX_LOG(INFO, "controller requested certificate renewal (%s key roll)",
                     api_sess->key_roll_requested ? "with" : "without");
-        } else {
+            goto extend;
+        }
+
+        if (api_sess->is_cert_improper) {
+            ZTX_LOG(INFO, "controller reported certificate chain as incomplete");
+            goto extend;
+        }
+
+        // check if identity cert is expiring or expired
+        if (ztx->opts.cert_extension_window > 0) {
+            struct tm exp;
             ztx->id_creds.cert->get_expiration(ztx->id_creds.cert, &exp);
             time_t now = time(0);
             time_t exptime = mktime(&exp);
@@ -2169,7 +2207,12 @@ static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, vo
             }
             ZTX_LOG(INFO, "renewing identity certificate exp[%04d-%02d-%02d %02d:%02d]",
                     1900 + exp.tm_year, exp.tm_mon + 1, exp.tm_mday, exp.tm_hour, exp.tm_min);
+        } else {
+            ZTX_LOG(DEBUG, "app is not requiring expiration check");
+            goto done;
         }
+
+        extend:
 
         if ((ztx->opts.events & ZitiConfigEvent) == 0) {
             ZTX_LOG(WARN, "identity certificate needs to be renewed "

@@ -126,6 +126,10 @@ XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__
 XX(posture_query_map, ziti_posture_query_set, map, posturePolicies, __VA_ARGS__) \
 XX(updated_at,model_string, none, updatedAt, __VA_ARGS__)
 
+#define ZITI_TERMINATOR_MODEL(XX, ...) \
+XX(identity, model_string, none, identity, __VA_ARGS__) \
+XX(service_id, model_string, none, serviceId, __VA_ARGS__)
+
 #define ZITI_CLIENT_CFG_V1_MODEL(XX, ...) \
 XX(hostname, ziti_address, none, hostname, __VA_ARGS__) \
 XX(port, model_number, none, port, __VA_ARGS__)
@@ -220,10 +224,10 @@ typedef struct ziti_address_s {
 
 
 // make sure ziti model functions are properly exported
-#ifdef MODEL_API
-#undef MODEL_API
+#ifdef MODEL_VISIBILITY
+#undef MODEL_VISIBILITY
 #endif
-#define MODEL_API ZITI_FUNC
+#define MODEL_VISIBILITY ZITI_FUNC
 
 ZITI_FUNC int parse_ziti_address_str(ziti_address *addr, const char *addr_str);
 
@@ -276,6 +280,8 @@ DECLARE_MODEL(ziti_posture_query, ZITI_POSTURE_QUERY_MODEL)
 DECLARE_MODEL(ziti_posture_query_set, ZITI_POSTURE_QUERY_SET_MODEL)
 
 DECLARE_MODEL(ziti_service, ZITI_SERVICE_MODEL)
+
+DECLARE_MODEL(ziti_terminator, ZITI_TERMINATOR_MODEL)
 
 DECLARE_MODEL(ziti_client_cfg_v1, ZITI_CLIENT_CFG_V1_MODEL)
 

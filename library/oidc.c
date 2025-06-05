@@ -477,8 +477,8 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
             path = "/oidc/login/cert";
         }
         ZITI_LOG(DEBUG, "login with path[%s] ", path);
-        tlsuv_http_set_path_prefix(&req->clt->http, path);
-        tlsuv_http_req_t *login_req = tlsuv_http_req(&req->clt->http, "POST", NULL, login_cb, req);
+        tlsuv_http_set_path_prefix(&req->clt->http, NULL);
+        tlsuv_http_req_t *login_req = tlsuv_http_req(&req->clt->http, "POST", path, login_cb, req);
         if (req->clt->jwt_token_auth) {
             tlsuv_http_req_header(login_req, "Authorization", req->clt->jwt_token_auth);
         }
@@ -844,7 +844,7 @@ int oidc_client_token(oidc_client_t *clt, const char *token) {
 int oidc_client_mfa(oidc_client_t *clt, const char *code) {
     struct auth_req *req = clt->request;
     assert(req);
-
+    tlsuv_http_set_path_prefix(&clt->http, NULL);
     tlsuv_http_req_t *r = tlsuv_http_req(&clt->http, "POST", "/oidc/login/totp", on_totp, req);
     tlsuv_http_req_form(r, 2, (tlsuv_http_pair[]){
             {"id", req->id},

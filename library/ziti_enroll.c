@@ -316,8 +316,13 @@ static void enroll_ott(struct ziti_enroll_req *er) {
 
             rc = er->tls->generate_keychain_key(&er->pk, keyname);
             if (rc != 0) {
-                complete_request(er, ZITI_KEY_GENERATION_FAILED);
-                return;
+                // key generation will fail if the app is trying to re-enroll the same identity (key exists)
+                ZITI_LOG(DEBUG, "failed to generate keychain key[%s], trying to load", ziti_errorstr(rc));
+                rc = er->tls->load_keychain_key(&er->pk, keyname);
+                if (rc != 0) {
+                    complete_request(er, ZITI_KEY_GENERATION_FAILED);
+                    return;
+                }
             }
             er->cfg.id.key = keyname_ref;
         } else {
