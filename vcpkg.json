@@ -3,7 +3,11 @@
   "version-semver": "1.0.0",
   "dependencies": [
     "libuv",
-    "openssl",
+    {
+      "name": "openssl",
+      "platform": "!windows & !mingw",
+      "$comment": "use windows crypto on windows platforms"
+    },
     "zlib",
     "llhttp",
     "libsodium",

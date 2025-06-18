@@ -41,6 +41,8 @@ if (ziti_TEST_COVERAGE)
     add_link_options(--coverage)
 endif (ziti_TEST_COVERAGE)
 
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 if (WIN32)
     if(MINGW)
         #on server 2016 msvcrt.dll does not process %z formatting
