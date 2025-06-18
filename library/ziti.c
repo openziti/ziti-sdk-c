@@ -412,11 +412,12 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     }
 
     if (ztx->id_creds.cert == NULL && ztx->session_creds.cert == NULL) {
-        char common_name[128];
-        snprintf(common_name, sizeof(common_name), "%s-%u-%" PRIu64,
-                 APP_ID ? APP_ID : "ziti-sdk-c",
+        char common_name[65]; // X509.CN has a limit of 64 chars
+        // maybe hash session token?
+        snprintf(common_name, sizeof(common_name), "ziti-%u-%" PRIu64,
                  ztx->id, uv_now(ztx->loop));
 
+        ZTX_LOG(DEBUG, "creating session CSR with CN=%s", common_name);
         size_t csr_len;
         int rc = ztx->tlsCtx->generate_csr_to_pem(pk, &ztx->sessionCsr, &csr_len,
                                                   "O", "OpenZiti",
@@ -427,7 +428,7 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
             ZTX_LOG(ERROR, "failed to generate CSR for session cert");
         } else {
             ZTX_LOG(DEBUG, "sending CSR to sign");
-            ZTX_LOG(DEBUG, "%.s", (int)csr_len, ztx->sessionCsr);
+            ZTX_LOG(DEBUG, "%.*s", (int)csr_len, ztx->sessionCsr);
             ziti_ctrl_create_api_certificate(ztx_get_controller(ztx), ztx->sessionCsr, on_create_cert, ztx);
         }
     }

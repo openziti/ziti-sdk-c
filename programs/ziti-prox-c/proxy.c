@@ -735,7 +735,8 @@ static int add_binding(const char *spec, bool udp) {
         it = model_list_it_next(it);
         char *port = (char*)model_list_it_element(it);
         struct addrinfo hints = {
-            .ai_socktype = udp ? SOCK_DGRAM : SOCK_STREAM
+            .ai_socktype = udp ? SOCK_DGRAM : SOCK_STREAM,
+            .ai_protocol = udp ? IPPROTO_UDP : IPPROTO_TCP,
         };
         int rc = getaddrinfo(host, port, &hints, &b->addr);
         if (rc != 0) {
