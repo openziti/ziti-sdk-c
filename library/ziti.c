@@ -418,13 +418,18 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
                  ztx->id, uv_now(ztx->loop));
 
         size_t csr_len;
-        ztx->tlsCtx->generate_csr_to_pem(pk, &ztx->sessionCsr, &csr_len,
-                                         "O", "OpenZiti",
-                                         "OU", "ziti-sdk",
-                                         "CN", common_name,
-                                         NULL);
-
-        ziti_ctrl_create_api_certificate(ztx_get_controller(ztx), ztx->sessionCsr, on_create_cert, ztx);
+        int rc = ztx->tlsCtx->generate_csr_to_pem(pk, &ztx->sessionCsr, &csr_len,
+                                                  "O", "OpenZiti",
+                                                  "OU", "ziti-sdk",
+                                                  "CN", common_name,
+                                                  NULL);
+        if (rc != 0) {
+            ZTX_LOG(ERROR, "failed to generate CSR for session cert");
+        } else {
+            ZTX_LOG(DEBUG, "sending CSR to sign");
+            ZTX_LOG(DEBUG, "%.s", (int)csr_len, ztx->sessionCsr);
+            ziti_ctrl_create_api_certificate(ztx_get_controller(ztx), ztx->sessionCsr, on_create_cert, ztx);
+        }
     }
 
     ziti_services_refresh(ztx, true);
