@@ -47,7 +47,20 @@ if (ziti_DEVELOPER_MODE)
     endif ()
 endif ()
 
-find_package(json-c CONFIG REQUIRED)
+pkg_check_modules(JSONC json-c)
+if (TARGET PkgConfig::JSONC)
+    set(jsonc_libs PkgConfig::JSONC)
+    message(STATUS "Using PkgConfig::JSONC target")
+else()
+    find_package(json-c REQUIRED)
+    if (TARGET json-c::json-c)
+        set(jsonc_libs json-c::json-c)
+        message(STATUS "Using json-c::json-c target")
+    else()
+        message(FATAL_ERROR "Could not find required library [json-c]")
+    endif()
+endif()
+
 
 set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/errors.h
@@ -133,7 +146,7 @@ function(config_ziti_library target)
     target_link_libraries(${target} PUBLIC
             tlsuv
             ${sodium_libs}
-            json-c::json-c
+            ${jsonc_libs}
             PkgConfig::PBUFC
     )
 
