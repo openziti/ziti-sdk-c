@@ -100,14 +100,7 @@
         "ci-std",
         "vs-2022"
       ],
-      "architecture": {
-        "value": "x86",
-        "strategy": "external"
-      },
-      "cacheVariables": {
-        "CMAKE_SYSTEM_PROCESSOR": "x86",
-        "CMAKE_GENERATOR_PLATFORM": "x86"
-      },
+      "architecture": "Win32",
       "hidden": true
     },
     {
