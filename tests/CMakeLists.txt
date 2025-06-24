@@ -1,5 +1,9 @@
-
-find_package(Catch2 CONFIG REQUIRED)
+cmake_policy(SET CMP0134 NEW) # allow find_package to use the CMAKE_IMPORT_FILE_VERSION variable
+find_package(Catch2 CONFIG)
+if (NOT Catch2_FOUND)
+    message(NOTICE "Catch2 not found or is not compatible.")
+    return()
+endif ()
 message("catch2 is ${Catch2_CONFIG}")
 
 add_executable(all_tests
