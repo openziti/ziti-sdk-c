@@ -51,10 +51,11 @@ runs:
       with:
         vcpkgJsonGlob: './vcpkg.json'
 
-
-    - uses: actions/cache@v4
+    - uses: actions/cache/restore@v4
+      id: restore
       with:
         key: vbc-${{ inputs.target }}-${{ hashFiles('./vcpkg.json') }}
+        restore-keys: vbc-${{ inputs.target }}-
         path: ${{ env.CI_CACHE }}
 
     - name: Configure CMake
@@ -62,6 +63,7 @@ runs:
       shell: bash
       run: |
         cmake --preset ci-${{ inputs.target }} -B ./build
+        ls -lR ${CI_CACHE}
 
     - name: upload config failures
       if: failure() && steps.configure.outcome == 'failure'
@@ -72,10 +74,14 @@ runs:
           ./vcpkg/buildtrees/**/*.log
           ./build/**/*.log
 
+    - uses: actions/cache/save@v4
+      with:
+        key: ${{ steps.restore.outputs.cache-primary-key }}
+        path: ${{ env.CI_CACHE }}
+
     - name: build CMake
       run: |
         cmake --build ./build --config ${{ inputs.config }}
-        ls -lR ${CI_CACHE}
       shell: bash
 
     - name: bundle artifacts
