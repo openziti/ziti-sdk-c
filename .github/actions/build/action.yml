@@ -67,7 +67,7 @@ runs:
       if: failure() && steps.configure.outcome == 'failure'
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ input.target }}-config-logs
+        name: ${{ inputs.target }}-config-logs
         path: |
           ./vcpkg/buildtrees/**/*.log
           ./build/**/*.log
