@@ -1,6 +1,10 @@
 {
   "name": "ziti",
   "version-semver": "1.0.0",
+  "description": [
+    "using vcpkg baseline: 2025.06.13"
+  ],
+  "builtin-baseline": "ef7dbf94b9198bc58f45951adcf1f041fcbc5ea0",
   "dependencies": [
     "libuv",
     {
@@ -41,6 +45,5 @@
         }
       ]
     }
-  },
-  "builtin-baseline": "b02e341c927f16d991edbd915d8ea43eac52096c"
+  }
 }
