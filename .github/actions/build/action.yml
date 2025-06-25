@@ -58,9 +58,19 @@ runs:
         path: ${{ env.CI_CACHE }}
 
     - name: Configure CMake
+      id: configure
       shell: bash
       run: |
         cmake --preset ci-${{ inputs.target }} -B ./build
+
+    - name: upload config failures
+      if: failure() && steps.configure.outcome == 'failure'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ input.target }}-config-logs
+        path: |
+          ./vcpkg/buildtrees/**/*.log
+          ./build/**/*.log
 
     - name: build CMake
       run: |
