@@ -121,7 +121,8 @@ void legacy_auth_free(ziti_auth_method_t *self) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
     model_list_clear(&auth->config_types, NULL);
     free_ziti_api_session_ptr(auth->session);
-    free(auth->jwt);
+    auth->session = NULL;
+    FREE(auth->jwt);
     uv_close((uv_handle_t *)&auth->timer, (uv_close_cb)close_cb);
 }
 
