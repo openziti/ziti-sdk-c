@@ -431,7 +431,8 @@ int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer);
 void ztx_auth_state_cb(void *, ziti_auth_state , const void *);
 ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er);
 
-void ztx_set_deadline(ziti_context ztx, uint64_t timeout, deadline_t *d, void (*cb)(void *), void *ctx);
+#define ztx_set_deadline(ztx, timeout, d, cb, ctx) do_ztx_set_deadline((ztx), (timeout), (d), (cb), (#cb), (ctx))
+void do_ztx_set_deadline(ziti_context ztx, uint64_t timeout, deadline_t *d, void (*cb)(void *), const char *cb_name, void *ctx);
 
 int ch_send_conn_closed(ziti_channel_t *ch, uint32_t conn_id);
 

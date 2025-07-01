@@ -1683,14 +1683,16 @@ static void grim_reaper(ziti_context ztx) {
     }
 }
 
-void ztx_set_deadline(ziti_context ztx, uint64_t timeout, deadline_t *d, void (*cb)(void *), void *ctx) {
+void do_ztx_set_deadline(ziti_context ztx, uint64_t timeout, deadline_t *d, void (*cb)(void *), const char *cb_name, void *ctx) {
     assert(cb != NULL);
+    ZITI_LOG(DEBUG, "expire_cb[%s] timeout[%llu]", cb_name, timeout);
     clear_deadline(d);
 
     uint64_t now = uv_now(ztx->loop);
     d->expiration = now + timeout;
     d->ctx = ctx;
     d->expire_cb = cb;
+    d->expire_cb_name = cb_name;
 
     if (LIST_EMPTY(&ztx->deadlines)) {
         LIST_INSERT_HEAD(&ztx->deadlines, d, _next);
@@ -1717,15 +1719,21 @@ void ztx_set_deadline(ziti_context ztx, uint64_t timeout, deadline_t *d, void (*
 
 static void ztx_process_deadlines(uv_timer_t *t) {
     ziti_context ztx = t->data;
+    uint8_t n = 0;
     uint64_t now = uv_now(ztx->loop);
-    deadline_t *d ;
+    deadline_t *d;
     while ((d = LIST_FIRST(&ztx->deadlines)) && now > d->expiration) {
         LIST_REMOVE(d, _next);
 
         void *ctx = d->ctx;
         void (*cb)(void *) = d->expire_cb;
         d->expire_cb = NULL;
+        ZITI_LOG(DEBUG, "calling %s(%p)", d->expire_cb_name, d->ctx);
+        n++;
         cb(d->ctx);
+    }
+    if (n == 0) {
+        ZITI_LOG(DEBUG, "no deadlines expired");
     }
 }
 
