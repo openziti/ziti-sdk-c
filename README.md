@@ -151,4 +151,4 @@ for tracking bugs and feature requests and have limited bandwidth to address the
 - Read [the docs](https://docs.openziti.io/)
 - Ask a question on [Discourse](https://openziti.discourse.group/)
 
-Copyright&copy; 2018-2023. NetFoundry, Inc.
+Copyright&copy; NetFoundry Inc.
