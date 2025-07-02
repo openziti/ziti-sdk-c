@@ -27,7 +27,15 @@
 
 #include <string.h>
 
+#ifdef _MSC_VER
+#define hide_MSC_VER _MSC_VER
+#undef _MSC_VER
+#endif
 #include <json-c/json.h>
+#ifdef hide_MSC_VER
+#define _MSC_VER hide_MSC_VER
+#undef hide_MSC_VER
+#endif
 
 #include "externs.h"
 #include "model_collections.h"

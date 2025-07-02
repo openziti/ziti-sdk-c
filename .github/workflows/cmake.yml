@@ -35,6 +35,7 @@ jobs:
           - { name: 'MacOS x86_64', runner: 'macOS-13', target: 'macOS-x64', test: 'true' }
           - { name: 'MacOS arm64', runner: 'macOS-14', target: 'macOS-arm64', test: 'true' }
           - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64', test: 'true' }
+          - { name: 'Windows x86', runner: 'windows-2022', target: 'windows-x86', test: 'true' }
           - { name: 'Windows ARM64', runner: 'windows-2022', target: 'windows-arm64' }
     steps:
       - name: Add msbuild to PATH
