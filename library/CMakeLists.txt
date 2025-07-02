@@ -124,6 +124,18 @@ set(ziti_compile_defs
         PRIVATE ZITI_LOG_MODULE="${PROJECT_NAME}"
 )
 
+function(define_file_basename_for_sources targetname)
+    get_target_property(source_files "${targetname}" SOURCES)
+    foreach(sourcefile ${source_files})
+        # Add the FILE_BASENAME=filename compile definition to the list.
+        get_filename_component(basename "${sourcefile}" NAME)
+        # Set the updated compile definitions on the source file.
+        set_property(
+                SOURCE "${sourcefile}" APPEND
+                PROPERTY COMPILE_DEFINITIONS "FILE_BASENAME=\"${basename}\"")
+    endforeach()
+endfunction()
+
 function(config_ziti_library target)
     target_sources(${target} PRIVATE
             ${ZITI_SRC_FILES}
@@ -177,6 +189,7 @@ function(config_ziti_library target)
             COMPONENT ziti-sdk
             DESTINATION ${CMAKE_INSTALL_LIBDIR}
     )
+    define_file_basename_for_sources(${target})
 endfunction(config_ziti_library)
 
 add_library(ziti STATIC)
