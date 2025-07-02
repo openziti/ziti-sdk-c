@@ -209,6 +209,7 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
         }
 
         uint64_t delay = refresh_delay(session);
+        ZITI_LOG(DEBUG, "scheduling api session refresh in %llu ms", delay);
         uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
 
         return;
@@ -220,6 +221,7 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
             auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, err);
             free_ziti_api_session_ptr(auth->session);
             auth->session = NULL;
+            ZITI_LOG(DEBUG, "api session expired, attempting refresh now");
             uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
             break;
         default: {
