@@ -19,6 +19,7 @@
 
 #include <tlsuv/queue.h>
 #include <stdint.h>
+#include "ziti/ziti_log.h"
 
 typedef struct deadline_s deadline_t;
 typedef LIST_HEAD(deadline_list, deadline_s) deadline_list_t;
@@ -27,13 +28,16 @@ struct deadline_s {
     LIST_ENTRY(deadline_s) _next;
     uint64_t expiration;
     void (*expire_cb)(void *ctx);
+    const char *expire_cb_name;
     void *ctx;
 };
 
 static inline void clear_deadline(deadline_t *dl) {
     if (dl->expire_cb == NULL) return;
 
+    ZITI_LOG(DEBUG, "expire_cb[%s]", dl->expire_cb_name);
     dl->expire_cb = NULL;
+    dl->expire_cb_name = NULL;
     LIST_REMOVE(dl, _next);
 }
 

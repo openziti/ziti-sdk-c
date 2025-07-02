@@ -209,6 +209,7 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
         }
 
         uint64_t delay = refresh_delay(session);
+        ZITI_LOG(DEBUG, "scheduling api session refresh in %llu ms", delay);
         uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
 
         return;
@@ -220,6 +221,7 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
             auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, err);
             free_ziti_api_session_ptr(auth->session);
             auth->session = NULL;
+            ZITI_LOG(DEBUG, "api session expired, attempting refresh now");
             uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
             break;
         default: {
@@ -233,6 +235,7 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
 
 void auth_timer_cb(uv_timer_t *t) {
     struct legacy_auth_s *auth = container_of(t, struct legacy_auth_s, timer);
+    ZITI_LOG(DEBUG, "refreshing session[%p]", auth->session);
 
     if (auth->session == NULL) {
         if (auth->jwt) {
@@ -254,30 +257,44 @@ static const ziti_auth_query_mfa* get_mfa(ziti_api_session *session) {
 }
 
 static uint64_t refresh_delay(ziti_api_session *session) {
-    int time_diff;
-    uv_timeval64_t session_received_at;
-    uv_gettimeofday(&session_received_at);
-
-    if (session->cached_last_activity_at.tv_sec > 0) {
-        ZITI_LOG(TRACE, "API supports cached_last_activity_at");
-        time_diff = (int) (session_received_at.tv_sec - session->cached_last_activity_at.tv_sec);
-    } else {
-        ZITI_LOG(TRACE, "API doesn't support cached_last_activity_at - using updated");
-        time_diff = (int) (session_received_at.tv_sec - session->updated.tv_sec);
-    }
-    if (abs(time_diff) > 10) {
-        ZITI_LOG(ERROR, "local clock is %d seconds %s UTC (as reported by controller)", abs(time_diff),
-                time_diff > 0 ? "ahead" : "behind");
-    }
-
     uint64_t delay_seconds;
+    const char *source;
 
     if (session->expireSeconds > 0) {
         delay_seconds = session->expireSeconds;
+        source = "session->expireSeconds";
     } else {
+        int64_t time_diff;
+        uint64_t time_diff_abs;
+        uv_timeval64_t session_received_at;
+        int err = uv_gettimeofday(&session_received_at);
+        if (err != 0) {
+            ZITI_LOG(WARN, "gettimeofday failed: %d(%s)", err, uv_strerror(err));
+            delay_seconds = API_SESSION_EXPIRATION_TOO_SMALL_SECONDS; // ensure another attempt
+        }
+
+        if (session->cached_last_activity_at.tv_sec > 0) {
+            ZITI_LOG(TRACE, "API supports cached_last_activity_at");
+            time_diff = session_received_at.tv_sec - session->cached_last_activity_at.tv_sec;
+            time_diff_abs =
+                    MAX(session_received_at.tv_sec,session->cached_last_activity_at.tv_sec) -
+                    MIN(session_received_at.tv_sec, session->cached_last_activity_at.tv_sec);
+        } else {
+            ZITI_LOG(TRACE, "API doesn't support cached_last_activity_at - using updated");
+            time_diff = session_received_at.tv_sec - session->updated.tv_sec;
+            time_diff_abs =
+                    MAX(session_received_at.tv_sec, session->updated.tv_sec) -
+                    MIN(session_received_at.tv_sec, session->updated.tv_sec);
+        }
+        if (time_diff_abs > 10) {
+            ZITI_LOG(ERROR, "local clock is %llu seconds %s UTC (as reported by controller)", time_diff_abs,
+                     time_diff > 0 ? "ahead" : "behind");
+        }
+
         // adjust expiration to local time if needed
         session->expires.tv_sec += time_diff;
         delay_seconds = (session->expires.tv_sec - session_received_at.tv_sec);
+        source = "calculation";
     }
 
     delay_seconds = delay_seconds - API_SESSION_DELAY_WINDOW_SECONDS; //renew a little early
@@ -289,6 +306,6 @@ static uint64_t refresh_delay(ziti_api_session *session) {
                 API_SESSION_EXPIRATION_TOO_SMALL_SECONDS, API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS);
     }
 
-    ZITI_LOG(DEBUG, "api session set, next refresh in %" PRIu64 "s", delay_seconds);
+    ZITI_LOG(DEBUG, "api session set based on %s, next refresh in %" PRIu64 "s", source, delay_seconds);
     return delay_seconds * 1000;
 }
