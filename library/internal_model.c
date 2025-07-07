@@ -28,6 +28,7 @@
 #include <stdint.h>
 typedef uint32_t in_addr_t;
 #define strcasecmp stricmp
+#pragma comment(lib, "netapi32.lib")
 #endif
 
 #define null_checks(lh, rh) \

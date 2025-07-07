@@ -424,7 +424,8 @@ void model_free(void *obj, const type_meta *meta) {
     if (obj == NULL) { return; }
 
     if (meta->destroyer != NULL) {
-        return meta->destroyer(obj);
+        meta->destroyer(obj);
+        return;
     }
 
     for (int i = 0; i < meta->field_count; i++) {

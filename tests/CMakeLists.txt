@@ -39,7 +39,7 @@ target_link_libraries(all_tests
 
 add_executable(zitilib-tests zitilib-tests.cpp)
 target_link_libraries(zitilib-tests
-        PRIVATE ziti
+        PUBLIC ziti
         PRIVATE Catch2::Catch2WithMain)
 
 include(CTest)
