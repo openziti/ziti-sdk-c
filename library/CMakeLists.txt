@@ -187,7 +187,7 @@ function(config_ziti_library target)
     if (MSVC)
         target_compile_options(${target}
                 PUBLIC /experimental:c11atomics
-                PRIVATE /w4100
+                PRIVATE /wd4100 /wd4101 /wd4018
         )
     endif (MSVC)
 

@@ -101,6 +101,9 @@
         "vs-2022"
       ],
       "architecture": "Win32",
+      "cacheVariables": {
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Windows-x86-msvc.cmake"
+      },
       "hidden": true
     },
     {
