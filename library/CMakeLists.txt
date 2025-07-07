@@ -141,11 +141,6 @@ function(config_ziti_library target)
             ${ZITI_SRC_FILES}
             ${ZITI_HEADER_FILES})
 
-    if (WIN32)
-        set_target_properties(${target} PROPERTIES PREFIX "")
-        #without this libsodium was complaining:
-    endif ()
-
     set_target_properties(${target} PROPERTIES
             C_STANDARD 11
             POSITION_INDEPENDENT_CODE ON
@@ -153,7 +148,10 @@ function(config_ziti_library target)
             CXX_VISIBILITY_PRESET hidden
     )
 
-    target_sources(${target} PRIVATE ${ZITI_PRIVATE_SRC_FILES})
+    target_include_directories(${target} ${ZITI_INCLUDE_DIRS})
+    target_compile_definitions(${target} PUBLIC
+            ${ziti_compile_defs}
+    )
 
     target_link_libraries(${target} PUBLIC
             tlsuv
@@ -170,19 +168,27 @@ function(config_ziti_library target)
         target_link_libraries(${target} PUBLIC m)
     endif ()
 
-    target_include_directories(${target} ${ZITI_INCLUDE_DIRS})
-    target_compile_definitions(${target} PUBLIC
-            ${ziti_compile_defs}
-    )
 
     if (WIN32)
+        #without this libsodium was complaining:
+        set_target_properties(${target} PROPERTIES PREFIX "")
         # on windows GDI defines ERROR which conflicts with the SDK declaration of DEBUG_LEVELS in utils.h
-        target_compile_definitions(${target} PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE)
-        target_link_libraries(${target} PUBLIC crypt32 netapi32)
+        target_compile_definitions(${target}
+                PUBLIC NOGDI _CRT_NONSTDC_NO_DEPRECATE _CRT_SECURE_NO_WARNINGS
+        )
+
+        target_link_libraries(${target}
+                PUBLIC crypt32
+                PUBLIC netapi32
+                PUBLIC ws2_32
+        )
     endif ()
 
     if (MSVC)
-        target_compile_options(${target} PUBLIC /experimental:c11atomics)
+        target_compile_options(${target}
+                PUBLIC /experimental:c11atomics
+                PRIVATE /w4100
+        )
     endif (MSVC)
 
     install(TARGETS ${target}

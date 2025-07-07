@@ -27,7 +27,16 @@
 
 #include <string.h>
 
+// workaround conflicting ssize_t definitions between json-c and libuv (on Windows x86)
+// json-c internal ssize_t (json_inttypes.h) leaks into application scope
+// even though it is not use in json-c API
+#ifdef _MSC_VER
+#define ssize_t json_c_ssize_t
+#endif
 #include <json-c/json.h>
+#ifdef _MSC_VER
+#undef ssize_t
+#endif
 
 #include "externs.h"
 #include "model_collections.h"
