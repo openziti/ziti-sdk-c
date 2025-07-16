@@ -276,7 +276,7 @@ static void init_debug(uv_loop_t *loop) {
     // always log TLSUV errors
     ziti_log_set_level(ERROR, TLSUV_MODULE);
     model_list levels = {0};
-    str_split(getenv("ZITI_LOG"), ";", &levels);
+    str_split(getenv("ZITI_LOG"), ";:", &levels);
 
     const char *lvl;
     int l;

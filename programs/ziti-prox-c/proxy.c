@@ -155,7 +155,7 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
 }
 
 static int dump(void *out, const char *fmt, ...) {
-    char line[1024];
+    char line[4096] = {};
     uv_udp_t *u = out;
     const struct sockaddr *addr = u->data;
     va_list args;

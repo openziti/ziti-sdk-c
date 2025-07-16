@@ -972,7 +972,9 @@ static void on_tls_connect(uv_connect_t *req, int status) {
             on_channel_close(ch, ZITI_CONNABORT, 0);
         }
     } else {
-        CH_LOG(ERROR, "failed to connect to ER[%s] [%d/%s]", ch->name, status, uv_strerror(status));
+        const char *tls_error = tlsuv_stream_get_error(ch->connection);
+        CH_LOG(ERROR, "failed to connect to ER[%s] [%d/%s]", ch->name, status,
+               tls_error ? tls_error : uv_strerror(status));
         on_channel_close(ch, ZITI_CONNABORT, status);
     }
     done:
