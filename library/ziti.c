@@ -832,6 +832,9 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
 
     printer(ctx, "\n======= Env Info ==========\n");
     const ziti_env_info *info = get_env_info();
+    if (info->device_id) {
+        printer(ctx, "Device ID: %s\n", info->device_id);
+    }
     printer(ctx, "OS/arch:  %s %s (%s/%s)\n", info->os, info->arch, info->os_release, info->os_version);
     printer(ctx, "Hostname: %s/%s\n", info->hostname, info->domain);
 
@@ -843,6 +846,12 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         printer(ctx, "enabled[false]");
     }
     printer(ctx, "Config Source:\t%s\n", ztx->config.cfg_source ? ztx->config.cfg_source : "(none)");
+    if (ztx->id_creds.cert) {
+        const char *cert_text = ztx->id_creds.cert->get_text(ztx->id_creds.cert);
+        printer(ctx, "Identity Cert: ====\n");
+        printer(ctx, "%s", cert_text);
+        printer(ctx, "====\n");
+    }
 
     printer(ctx, "Controller%s:\t[%s] %s\n", ztx->ctrl.is_ha ? "[HA]" : "", ztx->ctrl.version.version, ztx_controller(ztx));
     if (ztx->ctrl.is_ha) {
