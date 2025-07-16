@@ -119,6 +119,7 @@ XX(app_id, model_string, none, appID, __VA_ARGS__)    \
 XX(app_version, model_string, none, appVersion, __VA_ARGS__)
 
 #define ZITI_ENV_INFO_MODEL(XX, ...) \
+XX(device_id, model_string, none, deviceId, __VA_ARGS__) \
 XX(os, model_string, none, os, __VA_ARGS__) \
 XX(os_release, model_string, none, osRelease, __VA_ARGS__) \
 XX(os_version, model_string, none, osVersion, __VA_ARGS__) \

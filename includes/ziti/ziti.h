@@ -401,6 +401,14 @@ ZITI_FUNC
 extern void ziti_set_app_info(const char *app_id, const char *app_version);
 
 /**
+ * Provide device id to Ziti SDK.
+ *
+ * App information is reported to Ziti Controller. Supplying this information is optional.
+ */
+ZITI_FUNC
+extern void ziti_set_device_id(const char *device_id);
+
+/**
  * Load ziti identity config from memory or file.
  * First it tries to parse [conf_str] as identity Json.
  * if that fails it tries to load it from file using [conf_str] as the path.

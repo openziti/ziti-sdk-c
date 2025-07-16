@@ -102,6 +102,15 @@ static void ziti_info_init() {
 
 const ziti_env_info* get_env_info() {
     uv_once(&info_once, ziti_info_init);
+
     return &s_info;
 }
 
+void ziti_set_device_id(const char *device_id) {
+    free((void*)s_info.device_id);
+    s_info.device_id = NULL;
+
+    if (device_id) {
+        s_info.device_id = strdup(device_id);
+    }
+}
