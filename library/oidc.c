@@ -818,6 +818,7 @@ static void on_totp(tlsuv_http_resp_t *resp, void *ctx) {
 
     int code = resp->code / 100;
     if (code == 3) {
+        req->clt->token_cb(req->clt, OIDC_TOTP_SUCCESS, NULL);
         req->totp = false;
         const char *redirect = tlsuv_http_resp_header(resp, "Location");
         struct tlsuv_url_s uri;
@@ -843,7 +844,11 @@ int oidc_client_token(oidc_client_t *clt, const char *token) {
 
 int oidc_client_mfa(oidc_client_t *clt, const char *code) {
     struct auth_req *req = clt->request;
-    assert(req);
+    if (req == NULL || !req->totp) {
+        ZITI_LOG(ERROR, "TOTP is not required or completed");
+        return -1;
+    }
+
     tlsuv_http_set_path_prefix(&clt->http, NULL);
     tlsuv_http_req_t *r = tlsuv_http_req(&clt->http, "POST", "/oidc/login/totp", on_totp, req);
     tlsuv_http_req_form(r, 2, (tlsuv_http_pair[]){

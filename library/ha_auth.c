@@ -116,23 +116,33 @@ static void token_cb(oidc_client_t *oidc, enum oidc_status status, const char *t
     char err[128];
 
     if (auth->cb) {
-        if (status == OIDC_TOKEN_OK) {
-            auth->cb(auth->cb_ctx, ZitiAuthStateFullyAuthenticated, (void*)token);
-        } else if (status == OIDC_TOTP_NEEDED) {
-            auth->cb(auth->cb_ctx, ZitiAuthStatePartiallyAuthenticated,
-                     (void *) &ZITI_MFA);
-        } else if (status == OIDC_TOTP_FAILED) {
-            if (auth->mfa_cb) {
+        switch (status) {
+            case OIDC_TOKEN_OK:
+                auth->cb(auth->cb_ctx, ZitiAuthStateFullyAuthenticated, (void*)token);
+                break;
+            case OIDC_TOTP_NEEDED:
+                auth->cb(auth->cb_ctx, ZitiAuthStatePartiallyAuthenticated, (void *) &ZITI_MFA);
+                break;
+            case OIDC_TOTP_FAILED:
+                assert(auth->mfa_cb != NULL);
                 auth->mfa_cb(auth->cb_ctx, ZITI_MFA_INVALID_TOKEN);
-            }
-        } else if (status == OIDC_RESTART) {
-            ZITI_LOG(DEBUG, "restarting internal OIDC flow");
-            oidc_client_start(&auth->oidc, token_cb);
-        } else {
-            snprintf(err, sizeof(err), "failed to auth: %d", status);
-            auth->cb(auth->cb_ctx, ZitiAuthStateUnauthenticated, &(ziti_error){
-                .err = status,
-                .message = err});
+                auth->mfa_cb = NULL;
+                break;
+            case OIDC_TOTP_SUCCESS:
+                assert(auth->mfa_cb != NULL);
+                auth->mfa_cb(auth->cb_ctx, ZITI_OK);
+                auth->mfa_cb = NULL;
+                break;
+            case OIDC_TOKEN_FAILED:
+                snprintf(err, sizeof(err), "failed to auth: %d", status);
+                auth->cb(auth->cb_ctx, ZitiAuthStateUnauthenticated, &(ziti_error){
+                        .err = status,
+                        .message = err});
+                break;
+            case OIDC_RESTART:
+                ZITI_LOG(DEBUG, "restarting internal OIDC flow");
+                oidc_client_start(&auth->oidc, token_cb);
+                break;
         }
     }
 }
@@ -164,7 +174,11 @@ static int ha_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx) 
 static int ha_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb) {
     struct ha_auth_s *auth = HA_AUTH(self);
     auth->mfa_cb = cb;
-    oidc_client_mfa(&auth->oidc, code);
+    if (oidc_client_mfa(&auth->oidc, code) != 0) {
+        ZITI_LOG(WARN, "failed to submit MFA code");
+        auth->mfa_cb = NULL;
+        return ZITI_MFA_EXISTS;
+    }
     return ZITI_OK;
 }
 
