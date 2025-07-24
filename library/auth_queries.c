@@ -105,7 +105,13 @@ void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb status_cb, vo
     ztx->mfa_cb = status_cb;
     ztx->mfa_ctx = status_ctx;
 
-    ztx->auth_method->submit_mfa(ztx->auth_method, code, (auth_mfa_cb) mfa_cb);
+    int err = ztx->auth_method->submit_mfa(ztx->auth_method, code, (auth_mfa_cb) mfa_cb);
+    if (err != ZITI_OK) {
+        ZTX_LOG(WARN, "failed to submit MFA code: %d/%s", err, ziti_errorstr(err));
+        ztx->mfa_cb(ztx, err, ztx->mfa_ctx);
+        ztx->mfa_cb = NULL;
+        ztx->mfa_ctx = NULL;
+    }
 }
 
 void ziti_auth_query_mfa_process(ziti_mfa_auth_ctx *mfa_auth_ctx) {

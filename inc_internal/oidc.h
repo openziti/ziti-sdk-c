@@ -29,8 +29,9 @@ enum oidc_status {
     OIDC_TOKEN_OK  = 0,
     OIDC_TOTP_NEEDED = 1,
     OIDC_TOTP_FAILED = 2,
-    OIDC_TOKEN_FAILED = 3,
-    OIDC_RESTART     = 4,
+    OIDC_TOTP_SUCCESS = 3,
+    OIDC_TOKEN_FAILED = 4,
+    OIDC_RESTART     = 5,
 };
 
 typedef struct oidc_client_s oidc_client_t;
