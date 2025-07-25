@@ -24,7 +24,7 @@ runs:
       if: runner.os == 'linux'
       uses: awalsh128/cache-apt-pkgs-action@v1
       with:
-        packages: libssl-dev libprotobuf-c-dev
+        packages: libssl-dev libssl-dev:arm libssl-dev:arm64
 
     - name: macOS tools
       if: runner.os == 'macOS'
