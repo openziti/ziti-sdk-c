@@ -20,6 +20,12 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: linux deps
+      if: runner.os == 'linux'
+      uses: awalsh128/cache-apt-pkgs-action@v1
+      with:
+        packages: libssl-dev libprotobuf-c-dev
+
     - name: macOS tools
       if: runner.os == 'macOS'
       uses: gerlero/brew-install@v1
