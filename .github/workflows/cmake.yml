@@ -11,7 +11,7 @@ on:
       - release-*
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -25,6 +25,8 @@ jobs:
       image: ${{ matrix.spec.builder }}
     env:
       BUILD_NUMBER: ${{ github.run_number }}
+      VCPKG_FEATURE_FLAGS: dependencygraph
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -41,12 +43,6 @@ jobs:
       - name: Add msbuild to PATH
         if: startsWith(matrix.spec.runner, 'windows')
         uses: microsoft/setup-msbuild@v2
-
-      - name: publish vcpkg dependency tree
-        # if: github.ref == 'refs/heads/main'
-        run: |
-            echo "VCPKG_FEATURE_FLAGS=dependencygraph" >> ${GITHUB_ENV}
-            echo "GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> ${GITHUB_ENV}
 
       - uses: actions/checkout@v4
         with:
