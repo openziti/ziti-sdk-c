@@ -20,6 +20,8 @@
 #include <string.h>
 #include <errno.h>
 
+#include "common.h"
+
 #if !defined(_WIN32)
 
 #include <unistd.h>
@@ -59,15 +61,9 @@ int main(int argc, char *argv[]) {
     int port = (url.port != 0) ? url.port : 80;
 
     Ziti_lib_init();
+    ziti_handle_t ztx = init_context(path);
+
     ziti_socket_t soc = socket(AF_INET, SOCK_STREAM, 0); //Ziti_socket(SOCK_STREAM);
-
-    ziti_handle_t ztx;
-    int err = Ziti_load_context(&ztx, path);
-    if (err != ZITI_OK) {
-        fprintf(stderr, "failed to load Ziti: %d(%s)\n", err, ziti_errorstr(err));
-        goto DONE;
-    }
-
 
     long rc = Ziti_connect_addr(soc, hostname, port);
 
@@ -95,7 +91,7 @@ int main(int argc, char *argv[]) {
     do {
         rc = read(soc, buf, sizeof(buf));
         if (rc > 0) {
-            printf("%.*s", (int) rc, buf);
+            fprintf(stdout, "%.*s", (int) rc, buf);
             fflush(stdout);
         }
     } while (rc > 0);
