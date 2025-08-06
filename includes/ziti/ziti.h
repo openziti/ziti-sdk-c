@@ -466,6 +466,9 @@ extern void ziti_set_enabled(ziti_context ztx, bool enabled);
 ZITI_FUNC
 extern void *ziti_app_ctx(ziti_context ztx);
 
+ZITI_FUNC
+extern void ziti_set_app_ctx(ziti_context ztx, void *app_ctx);
+
 /**
  * @brief return SDK version
  * @return SDK version

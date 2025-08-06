@@ -83,7 +83,7 @@ static void ztx_config_update(ziti_context ztx);
 
 static void api_session_cb(ziti_api_session *, const ziti_error *, void *);
 
-static uint32_t ztx_seq;
+static volatile uint32_t ztx_seq;
 
 struct ztx_req_s {
     struct ziti_ctx *ztx;
@@ -613,7 +613,6 @@ static int ztx_init_controller(ziti_context ztx) {
 }
 
 static void ziti_init_async(ziti_context ztx, void *data) {
-    ztx->id = ztx_seq++;
     uv_loop_t *loop = ztx->w_async.loop;
     
     uv_prepare_init(loop, &ztx->prepper);
@@ -709,6 +708,10 @@ int ziti_use_ext_jwt_signer(ziti_context ztx, const char *name) {
 
 void *ziti_app_ctx(ziti_context ztx) {
     return ztx->opts.app_ctx;
+}
+
+void ziti_set_app_ctx(ziti_context ztx, void *app_ctx) {
+    ztx->opts.app_ctx = app_ctx;
 }
 
 const char *ziti_get_controller(ziti_context ztx) {
@@ -1755,7 +1758,8 @@ static void ztx_prep_deadlines(ziti_context ztx) {
     deadline_t *next = LIST_FIRST(&ztx->deadlines);
     uint64_t now = uv_now(ztx->loop);
     uint64_t wait_time = next->expiration > now ? next->expiration - now : 0;
-    ZTX_LOG(TRACE, "processing deadlines in %llu ms", wait_time);
+    ZTX_LOG(TRACE, "processing deadlines in %llu ms[now=%llu next=%llu]",
+            (unsigned long long)wait_time, (unsigned long long)now, (unsigned long long)next->expiration);
     uv_timer_start(&ztx->deadline_timer, ztx_process_deadlines, wait_time, 0);
 }
 
@@ -1902,6 +1906,7 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
     }
 
     ziti_context ctx = calloc(1, sizeof(*ctx));
+    ctx->id = ++ztx_seq;
 
     const char *cfg_ca = config->id.ca;
     if (cfg_ca == NULL) {

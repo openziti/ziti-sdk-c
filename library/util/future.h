@@ -25,7 +25,7 @@ void destroy_future(future_t *f);
 
 int await_future(future_t *f, void **result);
 
-int complete_future(future_t *f, void *result);
+int complete_future(future_t *f, void *result, int code);
 
 int fail_future(future_t *f, int err);
 

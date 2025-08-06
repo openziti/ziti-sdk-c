@@ -34,6 +34,7 @@ typedef uint16_t in_port_t;
 #include <ziti/zitilib.h>
 #include <ziti/ziti.h>
 #include <ziti/ziti_log.h>
+#include <assert.h>
 #include "zt_internal.h"
 #include "util/future.h"
 
@@ -90,8 +91,7 @@ struct sockaddr_un {
 typedef struct ztx_wrap {
     ziti_options opts;
     ziti_context ztx;
-    // list[future_t]
-    model_list futures;
+    future_t *auth_future;
 
     future_t *services_loaded;
     model_map intercepts;
@@ -142,32 +142,44 @@ static void set_error(int err) {
     uv_key_set(&err_key, (void *) (intptr_t) err);
 }
 
+static ztx_wrap_t *find_handle(ziti_handle_t handle) {
+    if (handle == ZITI_INVALID_HANDLE) return NULL;
+
+    ztx_wrap_t *w;
+    const char *id;
+    MODEL_MAP_FOREACH(id, w, &ziti_contexts) {
+        if (w->ztx->id == handle) {
+            return w;
+        }
+    }
+    return NULL;
+}
+
 static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
     ztx_wrap_t *wrap = ziti_app_ctx(ztx);
-    future_t *f;
+    if (wrap == NULL) {
+        return;
+    }
+
+    assert(wrap->ztx == ztx);
+
     if (ev->type == ZitiContextEvent) {
         int err = ev->ctx.ctrl_status;
         if (err == ZITI_OK) {
-            wrap->ztx = ztx;
-            model_list_iter it = model_list_iterator(&wrap->futures);
-            while (it) {
-                f = (future_t *)model_list_it_element(it);
-                it = model_list_it_remove(it);
-                complete_future(f, ztx);
+            complete_future(wrap->auth_future, (void *) (uintptr_t) ztx->id, ZITI_OK);
+            wrap->auth_future = NULL;
+
+            if (!wrap->services_loaded) {
+                wrap->services_loaded = new_future();
             }
         } else if (err == ZITI_PARTIALLY_AUTHENTICATED) {
+            complete_future(wrap->auth_future, (void *) (uintptr_t) ztx->id, ZITI_PARTIALLY_AUTHENTICATED);
+            wrap->auth_future = NULL;
             return;
-        } else {
-            model_list_iter it = model_list_iterator(&wrap->futures);
-            while (it) {
-                f = (future_t *)model_list_it_element(it);
-                it = model_list_it_remove(it);
-                fail_future(f, err);
-            }
-            if (err == ZITI_DISABLED) {
-                destroy_future(wrap->services_loaded);
-                free(wrap);
-            }
+        } else if (err == ZITI_DISABLED) {
+            destroy_future(wrap->services_loaded);
+            ziti_set_app_ctx(ztx, NULL);
+            free(wrap);
         }
     } else if (ev->type == ZitiServiceEvent) {
 
@@ -206,7 +218,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             FREE(intercept);
         }
 
-        complete_future(wrap->services_loaded, NULL);
+        complete_future(wrap->services_loaded, NULL, 0);
     }
 }
 
@@ -214,16 +226,9 @@ static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
     int rc = 0;
     struct ztx_wrap *wrap = model_map_get(&ziti_contexts, arg);
 
-
     if (wrap) {
-        if (wrap->ztx) {
-            complete_future(f, wrap->ztx);
-            return;
-        }
-
-        if (f) {
-            model_list_append(&wrap->futures, f);
-        }
+        ZITI_LOG(WARN, "already loading ztx[%d]", wrap->ztx->id);
+        complete_future(f, (void *) (uintptr_t) wrap->ztx->id, ZITI_INVALID_STATE);
         return;
     }
 
@@ -242,16 +247,13 @@ static void load_ziti_ctx(void *arg, future_t *f, uv_loop_t *l) {
     rc = ziti_context_set_options(ztx, &(ziti_options){
             .app_ctx = wrap,
             .event_cb = on_ctx_event,
-            .events = ZitiContextEvent | ZitiServiceEvent,
+            .events = ZitiContextEvent | ZitiServiceEvent | ZitiAuthEvent,
             .refresh_interval = 60,
             .config_types = configs,
     });
     if (rc != ZITI_OK) goto error;
 
-    wrap->services_loaded = new_future();
-    if (f) {
-        model_list_append(&wrap->futures, f);
-    }
+    wrap->auth_future = f;
     rc = ziti_context_run(ztx, l);
     if (rc != ZITI_OK) goto error;
 
@@ -270,17 +272,28 @@ error:
 
 }
 
-ziti_context Ziti_load_context(const char *identity) {
-    future_t *f = schedule_on_loop(load_ziti_ctx, (void *) identity, true);
-    ziti_context ztx;
-    int err = await_future(f, (void **) &ztx);
-    set_error(err);
-    if (err == 0) {
-        ztx_wrap_t *wrap = ziti_app_ctx(ztx);
-        await_future(wrap->services_loaded, NULL);
+int Ziti_load_context(ziti_handle_t *h, const char *identity) {
+    if (h == NULL || identity == NULL) {
+        return ZITI_INVALID_STATE;
     }
+    future_t *f = schedule_on_loop(load_ziti_ctx, (void *) identity, true);
+    void *res;
+    int err = await_future(f, &res);
+    set_error(err);
+
     destroy_future(f);
-    return ztx;
+    switch (err) {
+        case ZITI_OK:
+        case ZITI_MFA_NOT_ENROLLED:
+        case ZITI_EXTERNAL_LOGIN_REQUIRED:
+        case ZITI_PARTIALLY_AUTHENTICATED:
+            *h = (ziti_handle_t)(uintptr_t)res;
+            break;
+        default:
+            *h = ZITI_INVALID_HANDLE;
+            break;
+    }
+    return err;
 }
 
 #if _WIN32
@@ -454,7 +467,7 @@ static void check_socket(void *arg, future_t *f, uv_loop_t *l) {
         ZITI_LOG(VERBOSE, "stale ziti_sock_t[fd=%d]", fd);
         s->fd = SOCKET_ERROR;
     }
-    complete_future(f, NULL);
+    complete_future(f, NULL, 0);
 }
 
 ziti_socket_t Ziti_socket(int type) {
@@ -477,7 +490,7 @@ static void close_work(void *arg, future_t *f, uv_loop_t *l) {
 #else
     close(fd);
 #endif
-    complete_future(f, NULL);
+    complete_future(f, NULL, 0);
 }
 
 int Ziti_close(ziti_socket_t fd) {
@@ -495,7 +508,7 @@ int Ziti_close(ziti_socket_t fd) {
 struct conn_req_s {
     ziti_socket_t fd;
 
-    ziti_context ztx;
+    ziti_handle_t ziti_handle;
     const char *service;
     const char *terminator;
 
@@ -529,7 +542,7 @@ static void on_ziti_connect(ziti_connection conn, int status) {
         ZITI_LOG(DEBUG, "bridge connected to ziti fd[%d]->ziti_fd[%d]->conn[%d]->service[%s]",
                  zs->fd, zs->ziti_fd, zs->conn->conn_id, zs->service);
         ziti_conn_bridge_fds(conn, (uv_os_fd_t) zs->ziti_fd, (uv_os_fd_t) zs->ziti_fd, on_bridge_close, zs);
-        complete_future(zs->f, conn);
+        complete_future(zs->f, conn, 0);
     } else {
         ZITI_LOG(WARN, "failed to establish ziti connection: %d(%s)", status, ziti_errorstr(status));
         fail_future(zs->f, status);
@@ -632,6 +645,7 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
         fail_future(f, EALREADY);
         return;
     }
+    ztx_wrap_t *wrap = find_handle(req->ziti_handle);
 
     int proto = 0;
     socklen_t optlen = sizeof(proto);
@@ -649,13 +663,12 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
     }
 
     ziti_intercept_cfg_v1 *intercept = NULL;
-    if (req->ztx == NULL) {
+    if (wrap == NULL) {
         MODEL_MAP_FOR(it, ziti_contexts) {
-            ztx_wrap_t *wrap = model_map_it_value(it);
+            wrap = model_map_it_value(it);
             const char *service_name = find_service(wrap, proto, host, req->port);
 
             if (service_name != NULL) {
-                req->ztx = wrap->ztx;
                 req->service = service_name;
                 intercept = model_map_get(&wrap->intercepts, service_name);
                 break;
@@ -664,7 +677,7 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
     }
 
     const char *proto_str = proto == SOCK_DGRAM ? "udp" : "tcp";
-    if (req->ztx != NULL) {
+    if (wrap != NULL) {
         zs = calloc(1, sizeof(*zs));
         zs->fd = req->fd;
         zs->f = f;
@@ -672,7 +685,7 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
 
         model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
 
-        ziti_conn_init(req->ztx, &zs->conn, zs);
+        ziti_conn_init(wrap->ztx, &zs->conn, zs);
         char app_data[1024];
         size_t len = snprintf(app_data, sizeof(app_data),
                               "{\"" DST_PROTOCOL "\": \"%s\","
@@ -710,6 +723,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     }
 
     struct conn_req_s req = {
+            .ziti_handle = ZITI_INVALID_HANDLE,
             .fd = socket,
             .host = host,
             .port = port,
@@ -727,14 +741,14 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     return err ? -1 : 0;
 }
 
-int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service, const char *terminator) {
+int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, const char *terminator) {
 
-    if (ztx == NULL) return EINVAL;
+    if (zh == ZITI_INVALID_HANDLE) return EINVAL;
     if (service == NULL) return EINVAL;
 
     struct conn_req_s req = {
             .fd = socket,
-            .ztx = ztx,
+            .ziti_handle = zh,
             .service = service,
             .terminator = terminator ? strdup(terminator) : NULL,
     };
@@ -817,7 +831,7 @@ static void on_ziti_accept(ziti_connection client, int status) {
     si->peer = pending->caller_id;
 
     ZITI_LOG(DEBUG, "completing accept future[%p] with fd[%d]", pending->accept_f, fd);
-    complete_future(pending->accept_f, si);
+    complete_future(pending->accept_f, si, 0);
     free(pending);
 }
 
@@ -881,43 +895,45 @@ static void on_ziti_bind(ziti_connection server, int status) {
         model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
 
         ZITI_LOG(DEBUG, "successfully bound fd[%d] to service[%s]", zs->fd, zs->service);
-        complete_future(zs->f, server);
+        complete_future(zs->f, server, 0);
     }
 }
 
 static void do_ziti_bind(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
+    ztx_wrap_t *wrap = find_handle(req->ziti_handle);
+    if (wrap == NULL) {
+        ZITI_LOG(WARN, "ziti handle[%d] not found", req->ziti_handle);
+        fail_future(f, EINVAL);
+        return;
+    }
+
     ziti_sock_t *zs = model_map_get_key(&ziti_sockets, &req->fd, sizeof(req->fd));
     if (zs) {
         fail_future(f, EALREADY);
         return;
     }
 
-    if (req->ztx != NULL) {
-        zs = calloc(1, sizeof(*zs));
-        zs->fd = req->fd;
-        zs->service = strdup(req->service);
-        zs->f = f;
+    zs = calloc(1, sizeof(*zs));
+    zs->fd = req->fd;
+    zs->service = strdup(req->service);
+    zs->f = f;
 
-        ZITI_LOG(DEBUG, "requesting bind fd[%d] to service[%s@%s]", zs->fd, req->terminator ? req->terminator : "", req->service);
-        ziti_listen_opts opts = {
-                .identity = req->terminator,
-        };
-        ziti_conn_init(req->ztx, &zs->conn, zs);
-        ziti_listen_with_options(zs->conn, req->service, &opts, on_ziti_bind, on_ziti_client);
-    } else {
-        ZITI_LOG(WARN, "service[%s] not found", req->service);
-        fail_future(f, EINVAL);
-    }
+    ZITI_LOG(DEBUG, "requesting bind fd[%d] to service[%s@%s]", zs->fd, req->terminator ? req->terminator : "", req->service);
+    ziti_listen_opts opts = {
+            .identity = req->terminator,
+    };
+    ziti_conn_init(wrap->ztx, &zs->conn, zs);
+    ziti_listen_with_options(zs->conn, req->service, &opts, on_ziti_bind, on_ziti_client);
 }
 
-int Ziti_bind(ziti_socket_t socket, ziti_context ztx, const char *service, const char *terminator) {
+int Ziti_bind(ziti_socket_t socket, ziti_handle_t zh, const char *service, const char *terminator) {
 
-    if (ztx == NULL) { return EINVAL; }
+    if (zh == ZITI_INVALID_HANDLE) { return EINVAL; }
     if (service == NULL) { return EINVAL; }
 
     struct conn_req_s req = {
             .fd = socket,
-            .ztx = ztx,
+            .ziti_handle = zh,
             .service = service,
             .terminator = terminator,
     };
@@ -944,7 +960,7 @@ static void do_ziti_listen(void *arg, future_t *f, uv_loop_t *l) {
             zs->server = true;
         }
         zs->max_pending = req->backlog;
-        complete_future(f, NULL);
+        complete_future(f, NULL, 0);
     }
 }
 
@@ -1103,7 +1119,7 @@ static void child_load_contexts(void *load_list, future_t *f, uv_loop_t *l) {
         load_ziti_ctx(id, NULL, l);
     }
 
-    complete_future(f, NULL);
+    complete_future(f, NULL, 0);
 }
 
 static void child_init() {
@@ -1148,12 +1164,10 @@ void do_shutdown(void *args, future_t *f, uv_loop_t *l) {
         }
         model_map_clear(&w->intercepts, (void (*)(void *)) free_ziti_intercept_cfg_v1_ptr);
     }
-    complete_future(f, NULL);
+    complete_future(f, NULL, 0);
     uv_close((uv_handle_t *) &q_async, NULL);
 
-#if _WIN32
     uv_stop(q_async.loop);
-#endif
 }
 
 static void on_enroll(const ziti_config *cfg, int status, const char *error, void *ctx) {
@@ -1162,7 +1176,7 @@ static void on_enroll(const ziti_config *cfg, int status, const char *error, voi
         fail_future(f, status);
     } else {
         char *cfg_json = ziti_config_to_json(cfg, 0, NULL);
-        complete_future(f, cfg_json);
+        complete_future(f, cfg_json, 0);
     }
 }
 
@@ -1218,7 +1232,7 @@ static void resolve_cb(void *r, future_t *f) {
         model_map_set_key(&ip_to_host, &ip, sizeof(ip), strdup(req->host));
     }
 
-    complete_future(f, (void *) (uintptr_t) ip);
+    complete_future(f, (void *) (uintptr_t) ip, 0);
 }
 
 ZITI_FUNC
@@ -1311,6 +1325,7 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
     }
 
     struct conn_req_s req = {
+            .ziti_handle = ZITI_INVALID_HANDLE,
             .host = host,
             .port = portnum,
     };

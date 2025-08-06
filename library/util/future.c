@@ -43,6 +43,8 @@ future_t *new_future() {
 }
 
 void destroy_future(future_t *f) {
+    if (f == NULL) return;
+
     uv_mutex_destroy(&f->lock);
     uv_cond_destroy(&f->cond);
     free(f);
@@ -50,6 +52,7 @@ void destroy_future(future_t *f) {
 
 int await_future(future_t *f, void **result) {
     if (f == NULL) {
+        if (result) *result = NULL;
         return 0;
     }
 
@@ -58,14 +61,14 @@ int await_future(future_t *f, void **result) {
         uv_cond_wait(&f->cond, &f->lock);
     }
     int err = f->err;
+    void *res = f->result;
     uv_mutex_unlock(&f->lock);
-    if (!err && result != NULL) {
-        *result = f->result;
-    }
+
+    if (result) *result = res;
     return err;
 }
 
-int complete_future(future_t *f, void *result) {
+int complete_future(future_t *f, void *result, int code) {
     if (f == NULL) return 0;
 
     int rc = UV_EINVAL;
@@ -73,6 +76,7 @@ int complete_future(future_t *f, void *result) {
     if (!f->completed) {
         f->completed = true;
         f->result = result;
+        f->err = code;
         uv_cond_broadcast(&f->cond);
         rc = 0;
     }

@@ -24,7 +24,10 @@ extern "C" {
 #include "externs.h"
 #include "errors.h"
 
-typedef struct ziti_ctx *ziti_context;
+#include <stdint.h>
+
+typedef uint32_t ziti_handle_t;
+#define ZITI_INVALID_HANDLE ((ziti_handle_t)-1)
 
 #if _WIN32
 #include <WinSock2.h>
@@ -69,12 +72,22 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert,
  * First it tries to parse [identity] as identity Json.
  * if that fails it tries to load it from file using [identity] as the path.
  *
+ * Ziti identity handle is returned to [h] on success or if additional authentication is required
+ * if passed [identity] parameter is deemed invalid the handle is set to [ZITI_INVALID_HANDLE] and error code is returned.
+ *
  * returns NULL in case of failure. [Ziti_last_error()] will give specific error code.
+ * @param h pointer to ziti_handle_t to be initialized
  * @param identity identity config JSON or path to a file.
- * @return Ziti Context handle or NULL if it fails
+ * @return
+ *   [ZITI_OK] success, returned handle can be used to access/bind ziti services
+ *   [ZITI_EXTERNAL_LOGIN_REQUIRED] if the identity requires external login
+ *   [ZITI_PARTIALLY_AUTHENTICATED] if the identity is partially authenticated and requires additional authentication (TOTP)
+ *   [ZITI_MFA_NOT_ENROLLED] if the identity is not enrolled in MFA but is required for authentication
+ *   [ZITI_INVALID_STATE] if [h] is NULL or [identity] is NULL, empty, or invalid
+ *   [ZITI_INVALID_CONFIG] if [identity] is not a valid Ziti identity JSON
  */
 ZITI_FUNC
-ziti_context Ziti_load_context(const char *identity);
+int Ziti_load_context(ziti_handle_t *h, const char *identity);
 
 /**
  * @brief creates a socket handle(Windows) or file descriptor(*nix) suitable for connecting to a Ziti service
@@ -104,13 +117,13 @@ int Ziti_check_socket(ziti_socket_t socket);
 /**
  * @brief Connect socket to a Ziti service
  * @param socket socket handle created with [Ziti_socket()]
- * @param ztx Ziti context
+ * @param ztx Ziti context handle
  * @param service service name provided by [ztx]
  * @param terminator (optional) specific terminator to connect to
  * @return 0 on success, negative error code on failure
  */
 ZITI_FUNC
-int Ziti_connect(ziti_socket_t socket, ziti_context ztx, const char *service, const char *terminator);
+int Ziti_connect(ziti_socket_t socket, ziti_handle_t ztx, const char *service, const char *terminator);
 
 /**
  * @brief Connect socket to a Ziti service with the given intercept address
@@ -131,7 +144,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
  * @return 0 on success, negative error code on failure
  */
 ZITI_FUNC
-int Ziti_bind(ziti_socket_t socket, ziti_context ztx, const char *service, const char *terminator);
+int Ziti_bind(ziti_socket_t socket, ziti_handle_t ztx, const char *service, const char *terminator);
 
 /**
  * @brief marks the [socket] as a socket able to accept incoming connections

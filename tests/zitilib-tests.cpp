@@ -28,7 +28,7 @@
 
 class testRunListener : public Catch::EventListenerBase {
 protected:
-    static ziti_context _ztx;
+    static ziti_handle_t _ztx;
 public:
     using Catch::EventListenerBase::EventListenerBase;
 
@@ -36,7 +36,11 @@ public:
         Ziti_lib_init();
         const char *id = getenv("ZITI_TEST_IDENTITY");
         if (id) {
-            _ztx = Ziti_load_context(id);
+            int err = Ziti_load_context(&_ztx, id);
+            if (err != ZITI_OK) {
+                fprintf(stderr, "failed to load ziti context from %s: %d/%s\n", id, err, ziti_errorstr(err));
+                exit(1);
+            }
         }
     }
 
@@ -44,12 +48,12 @@ public:
         Ziti_lib_shutdown();
     }
 
-    static ziti_context ztx() {
+    static ziti_handle_t ztx() {
         return _ztx;
     }
 };
 
-ziti_context testRunListener::_ztx;
+ziti_handle_t testRunListener::_ztx;
 
 CATCH_REGISTER_LISTENER(testRunListener)
 using namespace Catch::Matchers;
