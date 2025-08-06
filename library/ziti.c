@@ -1731,7 +1731,7 @@ static void ztx_process_deadlines(uv_timer_t *t) {
     uint8_t n = 0;
     uint64_t now = uv_now(ztx->loop);
     deadline_t *d;
-    while ((d = LIST_FIRST(&ztx->deadlines)) && now > d->expiration) {
+    while ((d = LIST_FIRST(&ztx->deadlines)) && now >= d->expiration) {
         LIST_REMOVE(d, _next);
 
         void *ctx = d->ctx;
