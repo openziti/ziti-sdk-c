@@ -155,6 +155,65 @@ static ztx_wrap_t *find_handle(ziti_handle_t handle) {
     return NULL;
 }
 
+static void process_service_event(ztx_wrap_t *wrap, const struct ziti_service_event *ev) {
+    for (int i = 0; ev->removed && ev->removed[i] != NULL; i++) {
+        ziti_intercept_cfg_v1 *intercept = model_map_remove(&wrap->intercepts, ev->removed[i]->name);
+        free_ziti_intercept_cfg_v1(intercept);
+        FREE(intercept);
+    }
+
+    for (int i = 0; ev->changed && ev->changed[i] != NULL; i++) {
+        ziti_service *s = ev->changed[i];
+        ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
+
+        if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
+            intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+        }
+
+        free_ziti_intercept_cfg_v1(intercept);
+        FREE(intercept);
+    }
+
+    for (int i = 0; ev->added && ev->added[i] != NULL; i++) {
+        ziti_service *s = ev->added[i];
+        ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
+        ziti_client_cfg_v1 clt_cfg = {0};
+
+        if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
+            intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+        } else if (ziti_service_get_config(s, ZITI_CLIENT_CFG_V1, &clt_cfg, (parse_service_cfg_f) parse_ziti_client_cfg_v1) == ZITI_OK) {
+            ziti_intercept_from_client_cfg(intercept, &clt_cfg);
+            intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+            free_ziti_client_cfg_v1(&clt_cfg);
+        }
+
+        free_ziti_intercept_cfg_v1(intercept);
+        FREE(intercept);
+    }
+
+    complete_future(wrap->services_loaded, NULL, 0);
+}
+
+static void process_auth_event(ztx_wrap_t *wrap, const struct ziti_auth_event *ev) {
+    if (wrap->auth_future == NULL) {
+        return;
+    }
+    future_t *f = wrap->auth_future;
+    switch (ev->action) {
+        case ziti_auth_cannot_continue:
+            fail_future(f, ZITI_AUTHENTICATION_FAILED);
+            break;
+        case ziti_auth_prompt_totp:
+        case ziti_auth_prompt_pin:
+            complete_future(f, (void *) (uintptr_t)wrap->ztx->id, ZITI_PARTIALLY_AUTHENTICATED);
+            break;
+        case ziti_auth_select_external:
+        case ziti_auth_login_external:
+            complete_future(f, (void *) (uintptr_t)wrap->ztx->id, ZITI_EXTERNAL_LOGIN_REQUIRED);
+            break;
+    }
+}
+
 static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
     ztx_wrap_t *wrap = ziti_app_ctx(ztx);
     if (wrap == NULL) {
@@ -181,44 +240,10 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             ziti_set_app_ctx(ztx, NULL);
             free(wrap);
         }
+    } else if (ev->type == ZitiAuthEvent) {
+        process_auth_event(wrap, &ev->auth);
     } else if (ev->type == ZitiServiceEvent) {
-
-        for (int i = 0; ev->service.removed && ev->service.removed[i] != NULL; i++) {
-            ziti_intercept_cfg_v1 *intercept = model_map_remove(&wrap->intercepts, ev->service.removed[i]->name);
-            free_ziti_intercept_cfg_v1(intercept);
-            FREE(intercept);
-        }
-
-        for (int i = 0; ev->service.changed && ev->service.changed[i] != NULL; i++) {
-            ziti_service *s = ev->service.changed[i];
-            ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
-
-            if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
-                intercept = model_map_set(&wrap->intercepts, s->name, intercept);
-            }
-
-            free_ziti_intercept_cfg_v1(intercept);
-            FREE(intercept);
-        }
-
-        for (int i = 0; ev->service.added && ev->service.added[i] != NULL; i++) {
-            ziti_service *s = ev->service.added[i];
-            ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
-            ziti_client_cfg_v1 clt_cfg = {0};
-
-            if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
-                intercept = model_map_set(&wrap->intercepts, s->name, intercept);
-            } else if (ziti_service_get_config(s, ZITI_CLIENT_CFG_V1, &clt_cfg, (parse_service_cfg_f) parse_ziti_client_cfg_v1) == ZITI_OK) {
-                ziti_intercept_from_client_cfg(intercept, &clt_cfg);
-                intercept = model_map_set(&wrap->intercepts, s->name, intercept);
-                free_ziti_client_cfg_v1(&clt_cfg);
-            }
-
-            free_ziti_intercept_cfg_v1(intercept);
-            FREE(intercept);
-        }
-
-        complete_future(wrap->services_loaded, NULL, 0);
+        process_service_event(wrap, &ev->service);
     }
 }
 
@@ -1373,4 +1398,41 @@ void Ziti_free(void *o) {
     if (o) {
         free(o);
     }
+}
+
+static void signers_cb(ziti_context ztx, int rc, ziti_jwt_signer_array arr, void *arg) {
+    future_t *f = arg;
+    if (rc != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to get signers: %d/%s", rc, ziti_errorstr(rc));
+        fail_future(f, rc);
+        return;
+    }
+    int i = 0;
+    for (i = 0; arr && arr[i]; i++);
+
+    ziti_jwt_signer_array a = calloc(i + 1, sizeof(ziti_jwt_signer*));
+    for (i = 0; arr && arr[i]; i++) {
+        a[i] = arr[i];
+    }
+
+    complete_future(f, a, 0);
+}
+
+static void get_signers(void *arg, future_t *f, uv_loop_t *loop) {
+    ziti_handle_t h = (ziti_handle_t)(uintptr_t)arg;
+    ztx_wrap_t *wrap = find_handle(h);
+    if (wrap == NULL) {
+        fail_future(f, EINVAL);
+        return;
+    }
+
+    ziti_get_ext_jwt_signers(wrap->ztx, signers_cb, f);
+}
+
+ziti_jwt_signer_array Ziti_get_ext_signers(ziti_handle_t handle) {
+    future_t *f = schedule_on_loop(get_signers, (void *) (uintptr_t) handle, true);
+    ziti_jwt_signer_array signers = NULL;
+    int err = await_future(f, (void **) &signers);
+    set_error(err);
+    return signers;
 }

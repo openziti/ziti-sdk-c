@@ -26,6 +26,8 @@ extern "C" {
 
 #include <stdint.h>
 
+#include "ziti_model.h"
+
 typedef uint32_t ziti_handle_t;
 #define ZITI_INVALID_HANDLE ((ziti_handle_t)-1)
 
@@ -75,7 +77,6 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert,
  * Ziti identity handle is returned to [h] on success or if additional authentication is required
  * if passed [identity] parameter is deemed invalid the handle is set to [ZITI_INVALID_HANDLE] and error code is returned.
  *
- * returns NULL in case of failure. [Ziti_last_error()] will give specific error code.
  * @param h pointer to ziti_handle_t to be initialized
  * @param identity identity config JSON or path to a file.
  * @return
@@ -88,6 +89,15 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert,
  */
 ZITI_FUNC
 int Ziti_load_context(ziti_handle_t *h, const char *identity);
+
+/**
+ * @brief Get external signers available for authentication.
+ *
+ * The result must be freed with [free_ziti_jwt_signer_array].
+ * @return a dynamically allocated array of ziti_jwt_signer pointers, terminated with NULL.
+ */
+ZITI_FUNC
+ziti_jwt_signer_array Ziti_get_ext_signers(ziti_handle_t ztx);
 
 /**
  * @brief creates a socket handle(Windows) or file descriptor(*nix) suitable for connecting to a Ziti service

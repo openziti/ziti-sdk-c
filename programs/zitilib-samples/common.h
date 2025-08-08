@@ -34,10 +34,36 @@ static inline ziti_handle_t init_context(const char *identity) {
 
     ziti_handle_t ztx;
     int rc = Ziti_load_context(&ztx, identity);
-    if (rc != ZITI_OK) {
-        fprintf(stderr, "failed to load ziti context from %s: %s\n", identity, ziti_errorstr(rc));
-        return ZITI_INVALID_HANDLE;
+    if (ztx == ZITI_INVALID_HANDLE) {
+        fprintf(stderr, "FATAL: failed to load ziti context from %s: %s\n", identity, ziti_errorstr(rc));
+        exit(1);
     }
+
+    // nothing else needed
+    if (rc == ZITI_OK) return ztx;
+    
+    if (rc == ZITI_EXTERNAL_LOGIN_REQUIRED) {
+        ziti_jwt_signer_array signers = Ziti_get_ext_signers(ztx);
+        if (signers == NULL) {
+            fprintf(stderr, "FATAL: no external signers available for authentication\n");
+            exit(1);
+        }
+
+        int i = 0;
+        for (i = 0; signers[i] != NULL; i++) {
+            const char *name = signers[i]->name;
+            printf("%d: %s(%s)\n", i, name, signers[i]->provider_url);
+        }
+
+        int idx = -1;
+        while (idx < 0 || idx >= i) {
+            printf("\nSelect external signer by number[0-%d]: ", i - 1);
+            fscanf(stdin, "%d", &idx);
+        }
+
+        printf("using external signer: %s\n", signers[idx]->name);
+    }
+    
     return ztx;
 }
 
