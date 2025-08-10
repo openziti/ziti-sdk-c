@@ -199,6 +199,7 @@ static void process_auth_event(ztx_wrap_t *wrap, const struct ziti_auth_event *e
         return;
     }
     future_t *f = wrap->auth_future;
+    wrap->auth_future = NULL;
     switch (ev->action) {
         case ziti_auth_cannot_continue:
             fail_future(f, ZITI_AUTHENTICATION_FAILED);
@@ -1435,4 +1436,113 @@ ziti_jwt_signer_array Ziti_get_ext_signers(ziti_handle_t handle) {
     int err = await_future(f, (void **) &signers);
     set_error(err);
     return signers;
+}
+
+
+struct ext_login_req_s {
+    ziti_handle_t ziti_handle;
+    const char *signer_name;
+};
+
+static void on_ext_login(ziti_context ztx, const char *url, void *ctx) {
+    future_t *f = ctx;
+    if (url == NULL) {
+        fail_future(f, EINVAL);
+    } else {
+        char *login_url = strdup(url);
+        complete_future(f, login_url, 0);
+    }
+}
+
+static void start_ext_login(void *arg, future_t *f, uv_loop_t *loop) {
+    struct ext_login_req_s *req = arg;
+    ztx_wrap_t *wrap = find_handle(req->ziti_handle);
+    if (wrap == NULL) {
+        fail_future(f, EINVAL);
+        return;
+    }
+
+    int err = ziti_ext_auth(wrap->ztx, on_ext_login, f);
+    if (err != ZITI_OK) {
+        fail_future(f, err);
+    }
+}
+
+static void set_ext_signer(void *arg, future_t *f, uv_loop_t *loop) {
+    struct ext_login_req_s *req = arg;
+    ztx_wrap_t *wrap = find_handle(req->ziti_handle);
+    if (wrap == NULL) {
+        fail_future(f, EINVAL);
+        return;
+    }
+
+    assert(wrap->auth_future == NULL);
+    int err = ziti_use_ext_jwt_signer(wrap->ztx, req->signer_name);
+    if (err == ZITI_OK) {
+        wrap->auth_future = f;
+    } else {
+        fail_future(f, err);
+    }
+}
+
+char* Ziti_login_external(ziti_handle_t ztx, const char *signer_name) {
+
+    if (ztx == ZITI_INVALID_HANDLE) {
+        set_error(EINVAL);
+        return NULL;
+    }
+
+    struct ext_login_req_s req = {
+            .ziti_handle = ztx,
+            .signer_name = signer_name,
+    };
+
+    future_t *f = schedule_on_loop(set_ext_signer, &req, true);
+
+    int err = await_future(f, NULL);
+    destroy_future(f);
+
+    if (err != ZITI_EXTERNAL_LOGIN_REQUIRED) {
+        set_error(err);
+        return NULL;
+    }
+
+    f = schedule_on_loop(start_ext_login, &req, true);
+    char *login_url = NULL;
+    err = await_future(f, (void **) &login_url);
+    set_error(err);
+    destroy_future(f);
+    return login_url;
+}
+
+static void wait_for_auth_cb(void *arg, future_t *f, uv_loop_t *l) {
+    ziti_handle_t h = (ziti_handle_t)(uintptr_t)arg;
+    ztx_wrap_t *wrap = find_handle(h);
+    if (wrap == NULL) {
+        fail_future(f, EINVAL);
+        return;
+    }
+
+    if (wrap->ztx->auth_state == ZitiAuthStateFullyAuthenticated) {
+        complete_future(f, NULL, 0);
+        return;
+    }
+
+    if (wrap->ztx->auth_state == ZitiAuthImpossibleToAuthenticate) {
+        fail_future(f, ZITI_AUTHENTICATION_FAILED);
+        return;
+    }
+
+    assert(wrap->auth_future == NULL);
+    wrap->auth_future = f;
+}
+
+int Ziti_wait_for_auth(ziti_handle_t ztx, int timeout_ms) {
+    future_t *f = schedule_on_loop(wait_for_auth_cb, (void *)(uintptr_t)ztx, true);
+    int err = await_future_timed(f, NULL, timeout_ms);
+    destroy_future(f);
+    if(err == UV_ETIMEDOUT) {
+        err = ZITI_TIMEOUT;
+    }
+    return err;
 }

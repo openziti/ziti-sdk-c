@@ -81,10 +81,12 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert,
  * @param identity identity config JSON or path to a file.
  * @return
  *   [ZITI_OK] success, returned handle can be used to access/bind ziti services
- *   [ZITI_EXTERNAL_LOGIN_REQUIRED] if the identity requires external login
+ *   [ZITI_EXTERNAL_LOGIN_REQUIRED] if the identity requires external login,
+ *               application must call [Ziti_get_ext_signers] to get available external signers
+ *               and then call [Ziti_login_external] with the selected signer name.
  *   [ZITI_PARTIALLY_AUTHENTICATED] if the identity is partially authenticated and requires additional authentication (TOTP)
  *   [ZITI_MFA_NOT_ENROLLED] if the identity is not enrolled in MFA but is required for authentication
- *   [ZITI_INVALID_STATE] if [h] is NULL or [identity] is NULL, empty, or invalid
+ *   [ZITI_INVALID_STATE] if [h] is NULL
  *   [ZITI_INVALID_CONFIG] if [identity] is not a valid Ziti identity JSON
  */
 ZITI_FUNC
@@ -98,6 +100,34 @@ int Ziti_load_context(ziti_handle_t *h, const char *identity);
  */
 ZITI_FUNC
 ziti_jwt_signer_array Ziti_get_ext_signers(ziti_handle_t ztx);
+
+/**
+ * @brief Start external login process.
+ *
+ * This method is used to start the external login process for the given Ziti context.
+ * It will return a URL that the user should open in their browser to complete the authentication.
+ *
+ * the returned URL must be freed with free().
+ *
+ * @param ztx Ziti context handle
+ * @param signer_name name of the external JWT signer to use
+ * @return URL to be opened in a browser, or NULL on error.
+ */
+ZITI_FUNC
+char* Ziti_login_external(ziti_handle_t ztx, const char *signer_name);
+
+/**
+ * @brief Wait for authentication to complete.
+ *
+ * This method blocks until the authentication is completed or the timeout is reached.
+ * If the authentication is successful, it returns 0, otherwise it returns a negative error code.
+ *
+ * @param ztx Ziti context handle
+ * @param timeout_ms timeout in milliseconds, 0 means no timeout
+ * @return 0 on success, negative error code on failure
+ */
+ZITI_FUNC
+int Ziti_wait_for_auth(ziti_handle_t ztx, int timeout_ms);
 
 /**
  * @brief creates a socket handle(Windows) or file descriptor(*nix) suitable for connecting to a Ziti service

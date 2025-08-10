@@ -41,7 +41,8 @@ static inline ziti_handle_t init_context(const char *identity) {
 
     // nothing else needed
     if (rc == ZITI_OK) return ztx;
-    
+
+    // identity requires external login
     if (rc == ZITI_EXTERNAL_LOGIN_REQUIRED) {
         ziti_jwt_signer_array signers = Ziti_get_ext_signers(ztx);
         if (signers == NULL) {
@@ -62,6 +63,12 @@ static inline ziti_handle_t init_context(const char *identity) {
         }
 
         printf("using external signer: %s\n", signers[idx]->name);
+
+        char *url = Ziti_login_external(ztx, signers[idx]->name);
+
+        printf("Use your browser to open this URL: %s\n", url);
+        free(url);
+        rc = Ziti_wait_for_auth(ztx, 60000); // wait for a minute
     }
     
     return ztx;

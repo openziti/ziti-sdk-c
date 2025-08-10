@@ -84,14 +84,15 @@ int main(int argc, char *argv[]) {
                        prog, ziti_get_version()->version);
 
     rc = write(soc, req, len);
-    fprintf(stderr, "rc = %ld, errno = %d\n", rc, errno);
+    fprintf(stderr, "wrote rc = %ld, errno = %d\n", rc, errno);
 
     //shutdown(socket, SHUT_WR);
-    char buf[1024] = {};
     do {
-        rc = read(soc, buf, sizeof(buf));
+        char buf[1024] = {};
+        rc = read(soc, buf, sizeof(buf) - 1);
         if (rc > 0) {
-            fprintf(stdout, "%.*s", (int) rc, buf);
+            printf("read %ld bytes %s\n", rc, buf);
+            printf("%s\n", buf);
             fflush(stdout);
         }
     } while (rc > 0);
