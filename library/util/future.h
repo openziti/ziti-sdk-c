@@ -23,6 +23,7 @@ future_t *new_future(void);
 
 void destroy_future(future_t *f);
 
+int await_future_timed(future_t *f, void **result, uint64_t timeout);
 int await_future(future_t *f, void **result);
 
 int complete_future(future_t *f, void *result, int code);
