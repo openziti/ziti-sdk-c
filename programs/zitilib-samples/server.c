@@ -43,8 +43,7 @@
 #define NON_BLOCKING_SERVER 1
 
 #define CHECK(desc, op) do{ \
-int rc = (op);                      \
-if (rc != 0) {              \
+if ((op) != 0) {              \
 int err = Ziti_last_error(); \
 const char *msg = rc > 0 ? strerror(err) : ziti_errorstr(err); \
 fprintf(stderr, desc"{" #op "} err=%d(%s)\n", err, msg); \
@@ -106,7 +105,13 @@ int main(int argc, char *argv[]) {
     const char *service = argv[2];
     const char *terminator = argc > 3 ? argv[3] : NULL;
 
-    ziti_context ztx = Ziti_load_context(argv[1]);
+    ziti_handle_t ztx;
+    int rc = Ziti_load_context(&ztx, argv[1]);
+    if (rc != 0) {
+        fprintf(stderr, "failed to load ziti context from %s: %s\n", argv[1], ziti_errorstr(rc));
+        exit(1);
+    }
+
     ziti_socket_t srv = socket(AF_INET, SOCK_STREAM, 0);
 
     CHECK("socket", srv == SOCKET_ERROR);

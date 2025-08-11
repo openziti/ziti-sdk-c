@@ -23,9 +23,10 @@
 typedef struct future_s {
     uv_mutex_t lock;
     uv_cond_t cond;
-    bool completed;
     void *result;
     int err;
+    bool completed;
+    bool deleted;
 } future_t;
 
 
@@ -43,40 +44,75 @@ future_t *new_future() {
 }
 
 void destroy_future(future_t *f) {
+    if (f == NULL) return;
+
+    uv_mutex_lock(&f->lock);
+
+    // some code may try to complete it
+    if (!f->completed) {
+        f->deleted = true;
+        uv_mutex_unlock(&f->lock);
+        return;
+    }
+
+    uv_mutex_unlock(&f->lock);
     uv_mutex_destroy(&f->lock);
     uv_cond_destroy(&f->cond);
     free(f);
 }
 
-int await_future(future_t *f, void **result) {
+int await_future_timed(future_t *f, void **result, uint64_t timeout) {
     if (f == NULL) {
+        if (result) *result = NULL;
         return 0;
     }
 
+    // uv_cond_timedwait timeout is in nanoseconds, so we convert milliseconds to nanoseconds
+    timeout *= 1000000;
+
     uv_mutex_lock(&f->lock);
     while (!f->completed) {
-        uv_cond_wait(&f->cond, &f->lock);
+        if (timeout == 0) {
+            uv_cond_wait(&f->cond, &f->lock);
+            continue;
+        }
+
+        if (uv_cond_timedwait(&f->cond, &f->lock, timeout) == UV_ETIMEDOUT) {
+            uv_mutex_unlock(&f->lock);
+            return UV_ETIMEDOUT;
+        }
     }
     int err = f->err;
+    void *res = f->result;
     uv_mutex_unlock(&f->lock);
-    if (!err && result != NULL) {
-        *result = f->result;
-    }
+
+    if (result) *result = res;
     return err;
 }
 
-int complete_future(future_t *f, void *result) {
+int await_future(future_t *f, void **result) {
+    return await_future_timed(f, result, 0);
+}
+
+int complete_future(future_t *f, void *result, int code) {
     if (f == NULL) return 0;
 
     int rc = UV_EINVAL;
     uv_mutex_lock(&f->lock);
+    bool deleted = f->deleted;
     if (!f->completed) {
         f->completed = true;
         f->result = result;
+        f->err = code;
         uv_cond_broadcast(&f->cond);
         rc = 0;
     }
     uv_mutex_unlock(&f->lock);
+
+    // caller discarded the future
+    if (deleted) {
+        destroy_future(f);
+    }
     return rc;
 }
 
@@ -85,6 +121,7 @@ int fail_future(future_t *f, int err) {
 
     int rc = UV_EINVAL;
     uv_mutex_lock(&f->lock);
+    bool deleted = f->deleted;
     if (!f->completed) {
         f->completed = true;
         f->err = err;
@@ -92,5 +129,10 @@ int fail_future(future_t *f, int err) {
         rc = 0;
     }
     uv_mutex_unlock(&f->lock);
+
+    // caller discarded the future
+    if (deleted) {
+        destroy_future(f);
+    }
     return rc;
 }

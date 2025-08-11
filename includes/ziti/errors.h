@@ -113,6 +113,8 @@ is offline or did not respond to the request*/
 #define ZITI_MISSING_CERT_CLAIM                                 (-37)
 /** ziti could not allocate memory */
 #define ZITI_ALLOC_FAILED                                       (-38)
+/** returned when an external login is required to complete authentication */
+#define ZITI_EXTERNAL_LOGIN_REQUIRED                            (-39)
 
 
 // Put new error codes here and add error string in error.c

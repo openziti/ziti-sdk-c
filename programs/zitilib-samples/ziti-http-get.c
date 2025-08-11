@@ -20,6 +20,8 @@
 #include <string.h>
 #include <errno.h>
 
+#include "common.h"
+
 #if !defined(_WIN32)
 
 #include <unistd.h>
@@ -59,15 +61,9 @@ int main(int argc, char *argv[]) {
     int port = (url.port != 0) ? url.port : 80;
 
     Ziti_lib_init();
+    ziti_handle_t ztx = init_context(path);
+
     ziti_socket_t soc = socket(AF_INET, SOCK_STREAM, 0); //Ziti_socket(SOCK_STREAM);
-
-    ziti_context ztx = Ziti_load_context(path);
-    if (ztx == NULL) {
-        int err = Ziti_last_error();
-        fprintf(stderr, "failed to load Ziti: %d(%s)\n", err, ziti_errorstr(err));
-        goto DONE;
-    }
-
 
     long rc = Ziti_connect_addr(soc, hostname, port);
 
@@ -83,19 +79,21 @@ int main(int argc, char *argv[]) {
                        "User-Agent: %s/%s\r\n"
                        "Connection: close\r\n"
                        "Accept: */*\r\n\r\n",
-                       (int) url.path_len, url.path,
+                       (int) (url.path_len ? url.path_len : 1), url.path ? url.path : "/",
                        (int) url.hostname_len, url.hostname,
                        prog, ziti_get_version()->version);
 
     rc = write(soc, req, len);
-    fprintf(stderr, "rc = %ld, errno = %d\n", rc, errno);
+    fprintf(stderr, "wrote rc = %ld, errno = %d\n", rc, errno);
 
     //shutdown(socket, SHUT_WR);
-    char buf[1024];
     do {
-        rc = read(soc, buf, sizeof(buf));
+        char buf[1024] = {};
+        rc = read(soc, buf, sizeof(buf) - 1);
         if (rc > 0) {
-            printf("%.*s", (int) rc, buf);
+            printf("read %ld bytes %s\n", rc, buf);
+            printf("%s\n", buf);
+            fflush(stdout);
         }
     } while (rc > 0);
     if (rc < 0) {
