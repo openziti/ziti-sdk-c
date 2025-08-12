@@ -67,7 +67,8 @@ These sockets can be used both blocking and non-blocking modes.
 
 #### SDK Initialization and Teardown
 
-There are just three functions that cover SDK initialization and teardown.
+There are just three functions that cover SDK initialization and teardown. 
+Additional steps may be required to complete authentication. See example below.
 
 | function              | purpose                                                                                                                    |
 |-----------------------|----------------------------------------------------------------------------------------------------------------------------|
@@ -83,9 +84,42 @@ int main(int argc, char *argv[]) {
     const char *identity_file = process_args(argc, argv);
 
     Ziti_lib_init();
-    ziti_context ztx = Ziti_load_context(identity_file);
+    
+    ziti_handle_t ztx = NULL;
+    int err = Ziti_load_context(&ztx, identity_file);
+    
+    // simplest case, identity is loaded successfully with key/certificate
+    if (rc == ZITI_OK) goto important_work;
+    
+    // identity does not have key/certificate or requires secondary auth with external provider
+    if (rc == ZITI_EXTERNAL_LOGIN_REQUIRED) {
+        // optional step: query supported external login providers
+        ziti_jwt_signer_array signers = Ziti_get_ext_signers(ztx);
 
+        // select
+        const char *singer = ...; // prompt user or use a known provider
+        
+        char *url = Ziti_login_external(ztx, signer);
+        // prompt user to open URL in browser
+
+        // wait for external login to complete
+        rc = Ziti_wait_for_auth(ztx, 60000); // wait for a minute
+    }
+    
+    // identity requires TOTP code for secondary authentication
+    if (rc == ZITI_PARTIALLY_AUTHENTICATED) {
+        char *code = ...; // prompt user for TOTP code
+        rc = Ziti_login_totp(ztx, code);
+    }
+    
+    if (rc != ZITI_OK) {
+        fprintf(stderr, "Failed to load identity: %s\n", Ziti_strerror(rc));
+        return rc;
+    }
+    
+important_work:
     ...
+    
 
 
     Ziti_lib_shutdown();
