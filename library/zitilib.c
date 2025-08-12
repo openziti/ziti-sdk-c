@@ -1439,9 +1439,10 @@ ziti_jwt_signer_array Ziti_get_ext_signers(ziti_handle_t handle) {
 }
 
 
-struct ext_login_req_s {
+struct login_req_s {
     ziti_handle_t ziti_handle;
     const char *signer_name;
+    const char *code;
 };
 
 static void on_ext_login(ziti_context ztx, const char *url, void *ctx) {
@@ -1455,7 +1456,7 @@ static void on_ext_login(ziti_context ztx, const char *url, void *ctx) {
 }
 
 static void start_ext_login(void *arg, future_t *f, uv_loop_t *loop) {
-    struct ext_login_req_s *req = arg;
+    struct login_req_s *req = arg;
     ztx_wrap_t *wrap = find_handle(req->ziti_handle);
     if (wrap == NULL) {
         fail_future(f, EINVAL);
@@ -1469,7 +1470,7 @@ static void start_ext_login(void *arg, future_t *f, uv_loop_t *loop) {
 }
 
 static void set_ext_signer(void *arg, future_t *f, uv_loop_t *loop) {
-    struct ext_login_req_s *req = arg;
+    struct login_req_s *req = arg;
     ztx_wrap_t *wrap = find_handle(req->ziti_handle);
     if (wrap == NULL) {
         fail_future(f, EINVAL);
@@ -1492,7 +1493,7 @@ char* Ziti_login_external(ziti_handle_t ztx, const char *signer_name) {
         return NULL;
     }
 
-    struct ext_login_req_s req = {
+    struct login_req_s req = {
             .ziti_handle = ztx,
             .signer_name = signer_name,
     };
@@ -1513,6 +1514,55 @@ char* Ziti_login_external(ziti_handle_t ztx, const char *signer_name) {
     set_error(err);
     destroy_future(f);
     return login_url;
+}
+
+static void on_totp_login(ziti_context ztx, int status, void *ctx) {
+    ztx_wrap_t *wrap = ctx;
+    
+    if (wrap->auth_future == NULL) return;
+    
+    if (status != ZITI_OK) {
+        fail_future(wrap->auth_future, status);
+    } else {
+        complete_future(wrap->auth_future, ztx, 0);
+    }
+    wrap->auth_future = NULL;
+}
+
+static void do_totp_login(void *arg, future_t *f, uv_loop_t *l) {
+    struct login_req_s *req = arg;
+    
+    ziti_handle_t ztx = (ziti_handle_t)(uintptr_t)req->ziti_handle;
+    ztx_wrap_t *wrap = find_handle(ztx);
+    if (wrap == NULL) {
+        fail_future(f, EINVAL);
+        return;
+    }
+    
+    if (wrap->auth_future != NULL) {
+        ZITI_LOG(WARN, "another auth operation is in progress for ztx[%d]", ztx);
+        fail_future(f, ZITI_INVALID_STATE);
+        return;
+    }
+
+    if (wrap->ztx->auth_state != ZitiAuthStatePartiallyAuthenticated) {
+        fail_future(f, ZITI_INVALID_STATE);
+        return;
+    }
+    
+    wrap->auth_future = f;
+    ziti_mfa_auth(wrap->ztx, req->code, on_totp_login, wrap);
+}
+
+int Ziti_login_totp(ziti_handle_t ztx, const char *code) {
+    struct login_req_s req = {
+            .ziti_handle = ztx,
+            .code = code,
+    };
+
+    future_t *f = schedule_on_loop(do_totp_login, &req, true);
+    int err = await_future(f, NULL);
+    return err;
 }
 
 static void wait_for_auth_cb(void *arg, future_t *f, uv_loop_t *l) {
