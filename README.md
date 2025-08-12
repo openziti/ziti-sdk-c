@@ -89,10 +89,10 @@ int main(int argc, char *argv[]) {
     int err = Ziti_load_context(&ztx, identity_file);
     
     // simplest case, identity is loaded successfully with key/certificate
-    if (rc == ZITI_OK) goto important_work;
+    if (err == ZITI_OK) goto important_work;
     
     // identity does not have key/certificate or requires secondary auth with external provider
-    if (rc == ZITI_EXTERNAL_LOGIN_REQUIRED) {
+    if (err == ZITI_EXTERNAL_LOGIN_REQUIRED) {
         // optional step: query supported external login providers
         ziti_jwt_signer_array signers = Ziti_get_ext_signers(ztx);
 
@@ -103,18 +103,18 @@ int main(int argc, char *argv[]) {
         // prompt user to open URL in browser
 
         // wait for external login to complete
-        rc = Ziti_wait_for_auth(ztx, 60000); // wait for a minute
+        err = Ziti_wait_for_auth(ztx, 60000); // wait for a minute
     }
     
     // identity requires TOTP code for secondary authentication
-    if (rc == ZITI_PARTIALLY_AUTHENTICATED) {
+    if (err == ZITI_PARTIALLY_AUTHENTICATED) {
         char *code = ...; // prompt user for TOTP code
-        rc = Ziti_login_totp(ztx, code);
+        err = Ziti_login_totp(ztx, code);
     }
     
-    if (rc != ZITI_OK) {
+    if (err != ZITI_OK) {
         fprintf(stderr, "Failed to load identity: %s\n", Ziti_strerror(rc));
-        return rc;
+        // handle error, e.g. exit
     }
     
 important_work:
