@@ -105,7 +105,7 @@ ziti_jwt_signer_array Ziti_get_ext_signers(ziti_handle_t ztx);
  * @brief Start external login process.
  *
  * This method is used to start the external login process for the given Ziti context.
- * It will return a URL that the user should open in their browser to complete the authentication.
+ * It will return a URL that the application should prompt user to open in their browser to complete the authentication.
  *
  * the returned URL must be freed with free().
  *
@@ -115,6 +115,19 @@ ziti_jwt_signer_array Ziti_get_ext_signers(ziti_handle_t ztx);
  */
 ZITI_FUNC
 char* Ziti_login_external(ziti_handle_t ztx, const char *signer_name);
+
+/**
+ * @brief Login with TOTP code.
+ *
+ * This method is used to complete the authentication process by providing a TOTP code.
+ * It should be called after the user has entered their TOTP code.
+ *
+ * @param ztx Ziti context handle
+ * @param code TOTP code provided by the user
+ * @return 0 on success, error code on failure
+ */
+ZITI_FUNC
+int Ziti_login_totp(ziti_handle_t ztx, const char *code);
 
 /**
  * @brief Wait for authentication to complete.

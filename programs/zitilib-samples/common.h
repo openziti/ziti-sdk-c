@@ -34,7 +34,7 @@ static inline ziti_handle_t init_context(const char *identity) {
 
     ziti_handle_t ztx;
     int rc = Ziti_load_context(&ztx, identity);
-    if (ztx == ZITI_INVALID_HANDLE) {
+    if (ztx == ZITI_INVALID_CONFIG) {
         fprintf(stderr, "FATAL: failed to load ziti context from %s: %s\n", identity, ziti_errorstr(rc));
         exit(1);
     }
@@ -70,7 +70,24 @@ static inline ziti_handle_t init_context(const char *identity) {
         free(url);
         rc = Ziti_wait_for_auth(ztx, 60000); // wait for a minute
     }
-    
+
+    // identity requires MFA
+    if (rc == ZITI_PARTIALLY_AUTHENTICATED) {
+        char code[64] = {};
+        printf("MFA required, enter TOTP code: ");
+        size_t len = fread(code, sizeof(char), sizeof(code) - 1, stdin);
+        if (len > 0 && code[len - 1] == '\n') {
+            code[len - 1] = '\0'; // remove newline
+        }
+
+        rc = Ziti_login_totp(ztx, code);
+    }
+
+    if (rc == ZITI_OK) {
+        fprintf(stderr, "FATAL: failed to complete authentication: %s\n", ziti_errorstr(rc));
+        exit(1);
+    }
+
     return ztx;
 }
 
