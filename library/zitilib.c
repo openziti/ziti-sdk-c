@@ -946,7 +946,7 @@ static void do_ziti_bind(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
 
     ZITI_LOG(DEBUG, "requesting bind fd[%d] to service[%s@%s]", zs->fd, req->terminator ? req->terminator : "", req->service);
     ziti_listen_opts opts = {
-            .identity = req->terminator,
+            .identity = (char*)req->terminator,
     };
     ziti_conn_init(wrap->ztx, &zs->conn, zs);
     ziti_listen_with_options(zs->conn, req->service, &opts, on_ziti_bind, on_ziti_client);
@@ -1268,7 +1268,7 @@ void Ziti_freeaddrinfo(struct addrinfo *addrlist) {
 
 static bool is_internal(const char *host) {
     // refuse resolving controller/router addresses here
-    // this way Ziti context can operate even if resolve was high-jacked (e.g. zitify)
+    // this way Ziti context can operate even if resolve was high-jacked (e.g. notify)
     MODEL_MAP_FOR(it, ziti_contexts) {
         ztx_wrap_t *wrap = model_map_it_value(it);
         if (wrap->ztx == NULL) continue;
