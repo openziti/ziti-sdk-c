@@ -637,7 +637,10 @@ static void ext_auth_prompt(uv_work_t *wr) {
 static void ext_url_launch(ziti_context ztx, const char *url, void *ctx) {
     char cmd[1024];
     snprintf(cmd, sizeof(cmd), "/usr/bin/open '%s'", url);
-    system(cmd);
+    int status = WEXITSTATUS(system(cmd));
+    if (status) {
+        fprintf(stderr, "failed to open[status=%d] url[%s] in browser\n", status, url);
+    }
 }
 static void ext_auth_done(uv_work_t *wr, int status) {
     struct proxy_app_ctx *pxy = wr->data;

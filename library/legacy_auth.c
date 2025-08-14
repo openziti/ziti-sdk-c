@@ -287,7 +287,7 @@ static uint64_t refresh_delay(ziti_api_session *session) {
                     MIN(session_received_at.tv_sec, session->updated.tv_sec);
         }
         if (time_diff_abs > 10) {
-            ZITI_LOG(ERROR, "local clock is %llu seconds %s UTC (as reported by controller)", time_diff_abs,
+            ZITI_LOG(ERROR, "local clock is %" PRIu64 " seconds %s UTC (as reported by controller)", time_diff_abs,
                      time_diff > 0 ? "ahead" : "behind");
         }
 

@@ -175,7 +175,7 @@ static void on_tcp_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
         if (len == UV_EOF) {
             ziti_close_write(hc->ziti_conn);
         } else {
-            printf("tcp peer closed: %s\n", uv_strerror(len));
+            printf("tcp peer closed: %s\n", uv_strerror((int)len));
             ziti_close(hc->ziti_conn, ziti_proxy_close_cb);
         }
 
@@ -235,7 +235,8 @@ static void on_client(ziti_connection server, ziti_connection conn, int status, 
         uv_connect_t *cr = calloc(1, sizeof(uv_connect_t));
         if (uv_tcp_connect(cr, &hc->tcp, resolve.addrinfo->ai_addr, on_tcp_connect) != 0) {
             uv_freeaddrinfo(resolve.addrinfo);
-            fprintf(stderr, "failed to connect to tcp:%s:%d\n", binding->host_cfg->hostname, binding->host_cfg->port);
+            fprintf(stderr, "failed to connect to tcp:%s:%" PRIu64 "\n",
+                    binding->host_cfg->hostname, binding->host_cfg->port);
             ziti_close(hc->ziti_conn, NULL);
             free(hc);
             free(cr);
