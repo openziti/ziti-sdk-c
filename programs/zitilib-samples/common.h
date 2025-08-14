@@ -59,7 +59,10 @@ static inline ziti_handle_t init_context(const char *identity) {
         int idx = -1;
         while (idx < 0 || idx >= i) {
             printf("\nSelect external signer by number[0-%d]: ", i - 1);
-            fscanf(stdin, "%d", &idx);
+            if (fscanf(stdin, "%d", &idx) != 1) {
+                printf("try again\n");
+            }
+
         }
 
         printf("using external signer: %s\n", signers[idx]->name);
