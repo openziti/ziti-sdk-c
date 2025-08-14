@@ -209,7 +209,7 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
         }
 
         uint64_t delay = refresh_delay(session);
-        ZITI_LOG(DEBUG, "scheduling api session refresh in %llu ms", delay);
+        ZITI_LOG(DEBUG, "scheduling api session refresh in %" PRIu64 " ms", delay);
         uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
 
         return;
