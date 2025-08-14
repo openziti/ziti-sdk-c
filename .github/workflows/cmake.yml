@@ -66,3 +66,24 @@ jobs:
         with:
           name: ziti-sdk-${{ matrix.spec.target }}
           path: ./build/package/ziti-sdk-*
+
+  publish:
+    name: Publish Nightly Artifacts
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          path: ./artifacts
+          pattern: ziti-sdk-*
+          merge-multiple: 'false'
+
+      - run: ls -lR ./artifacts
+      - uses: pyTooling/Actions/releaser@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: nightly
+          rm: true
+          files: |
+            ./artifacts/*/*.zip
