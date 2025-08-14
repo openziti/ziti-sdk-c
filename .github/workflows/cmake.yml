@@ -80,3 +80,10 @@ jobs:
           merge-multiple: 'false'
 
       - run: ls -lR ./artifacts
+      - uses: pyTooling/Actions/releaser@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: nightly
+          rm: true
+          files: |
+            ./artifacts/*/*.zip
