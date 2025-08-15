@@ -17,13 +17,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <assert.h>
 
 #if !defined(_WIN32)
 
 #include <unistd.h>
 #include <sys/socket.h>
 #include <stdlib.h>
-#include <assert.h>
 
 #else
 
