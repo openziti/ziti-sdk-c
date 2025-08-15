@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #else
 
@@ -68,7 +69,7 @@ int main(int argc, char *argv[]) {
     }
 
     const char msg[] = "this is a test";
-    write(socket, msg, strlen(msg));
+    assert(write(socket, msg, sizeof(msg) - 1) == sizeof(msg) - 1);
     shutdown(socket, SHUT_WR);
     char buf[1024];
     do {

@@ -133,7 +133,7 @@ int main(int argc, char *argv[]) {
 #endif
 
         printf("client[%s] connected\n", caller);
-        long count = 0;
+        ssize_t count = 0;
         size_t total = 0;
         char msg[128];
         int len;
