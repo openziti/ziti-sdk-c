@@ -130,7 +130,7 @@ static void default_log_writer(int level, const char *loc, const char *msg, size
 static uv_loop_t *ts_loop;
 static uint64_t starttime;
 static uint64_t last_update;
-static char log_timestamp[32];
+static char log_timestamp[64];
 
 static log_writer logger = NULL;
 

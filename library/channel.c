@@ -401,7 +401,7 @@ void on_channel_send(uv_write_t *w, int status) {
         CH_LOG(WARN, "write delay = %" PRIu64 ".%03" PRIu64 " q=%zd qs=%zd",
                write_delay / 1000L, write_delay % 1000L, ch->out_q, ch->out_q_bytes);
     } else {
-        CH_LOG(TRACE, "write delay = %" PRIu64 ".%03" PRIu64 "d q=%ld qs=%ld",
+        CH_LOG(TRACE, "write delay = %" PRIu64 ".%03" PRIu64 "d q=%zd qs=%zd",
                write_delay / 1000L, write_delay % 1000L, ch->out_q, ch->out_q_bytes);
     }
     ch->last_write = now;

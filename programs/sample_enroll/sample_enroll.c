@@ -112,7 +112,11 @@ int main(int argc, char **argv) {
         return 1;
     }
     char jwt[8 * 1024];
-    fgets(jwt, sizeof(jwt), jwt_file);
+    if (fgets(jwt, sizeof(jwt), jwt_file) == NULL) {
+        perror("failed to read JWT file");
+        fclose(jwt_file);
+        return 1;
+    }
     fclose(jwt_file);
 
     const char *key = NULL;
@@ -126,7 +130,7 @@ int main(int argc, char **argv) {
 
     Ziti_lib_init();
     char *cfg = NULL;
-    size_t len;
+    unsigned long len;
     int rc = Ziti_enroll_identity(jwt, key, cert, &cfg, &len);
     if (rc == ZITI_OK) {
         FILE *id_file = fopen(argv[2], "w");

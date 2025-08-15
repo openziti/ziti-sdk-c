@@ -93,7 +93,9 @@ static void ziti_info_init() {
     }
 #else
     len = sizeof(s_domain);
-    getdomainname(s_domain, (int)len);
+    if (getdomainname(s_domain, (int)len) != 0) {
+        s_domain[0] = '\0'; // no domain name available
+    }
 #endif
 
     s_info.hostname = s_hostname;

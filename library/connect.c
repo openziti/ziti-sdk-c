@@ -246,7 +246,7 @@ void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, in
 
     TAILQ_REMOVE(&conn->pending_wreqs, req, _next);
 
-    struct ziti_write_req_s *r = req;
+    const struct ziti_write_req_s *r = req;
     model_list_iter it = model_list_iterator(&req->chain);
     do {
         if (r->cb != NULL) {
@@ -649,7 +649,7 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
                 uint8_t *p = m->body + conn->encrypted;
                 string_buf_t buf;
                 string_buf_init_fixed(&buf, (char*)p, total_len);
-                struct ziti_write_req_s *r = req;
+                const struct ziti_write_req_s *r = req;
                 model_list_iter it = model_list_iterator(&req->chain);
                 int count = 0;
                 size_t tot = 0;
@@ -1193,7 +1193,7 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
     }
 
     req->waiter = ziti_channel_send_for_reply(ch, content_type, headers, nheaders,
-                                              session->token, strlen(session->token),
+                                              (const uint8_t*)session->token, strlen(session->token),
                                               connect_reply_cb, conn);
 
     return ZITI_OK;

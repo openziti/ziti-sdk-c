@@ -1697,7 +1697,7 @@ static void grim_reaper(ziti_context ztx) {
 
 void do_ztx_set_deadline(ziti_context ztx, uint64_t timeout, deadline_t *d, void (*cb)(void *), const char *cb_name, void *ctx) {
     assert(cb != NULL);
-    ZTX_LOG(DEBUG, "expire_cb[%s] timeout[%llu]", cb_name, timeout);
+    ZTX_LOG(DEBUG, "expire_cb[%s] timeout[%" PRIu64 "]", cb_name, timeout);
     clear_deadline(d);
 
     uint64_t now = uv_now(ztx->loop);
@@ -1758,7 +1758,7 @@ static void ztx_prep_deadlines(ziti_context ztx) {
     deadline_t *next = LIST_FIRST(&ztx->deadlines);
     uint64_t now = uv_now(ztx->loop);
     uint64_t wait_time = next->expiration > now ? next->expiration - now : 0;
-    ZTX_LOG(TRACE, "processing deadlines in %llu", (unsigned long long)wait_time);
+    ZTX_LOG(TRACE, "processing deadlines in %" PRIu64, wait_time);
     uv_timer_start(&ztx->deadline_timer, ztx_process_deadlines, wait_time, 0);
 }
 

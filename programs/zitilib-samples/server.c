@@ -133,7 +133,7 @@ int main(int argc, char *argv[]) {
 #endif
 
         printf("client[%s] connected\n", caller);
-        long count = 0;
+        ssize_t count = 0;
         size_t total = 0;
         char msg[128];
         int len;
@@ -147,12 +147,17 @@ int main(int argc, char *argv[]) {
                 }
                 total += count;
                 len = snprintf(msg, sizeof(msg), "you[%s] sent %zd bytes", caller, total);
-                write(clt, msg, len);
+                if (write(clt, msg, len) != len) {;
+                    fprintf(stderr, "incomplete write\n");
+                    exit(1);
+                }
             }
         } while (count > 0);
 
         len = snprintf(msg, sizeof(msg), "you[%s] sent %zd total bytes", caller, total);
-        write(clt, msg, len);
+        if (write(clt, msg, len) != len) {
+            fprintf(stderr, "incomplete write\n");
+        }
         close(clt);
         printf("client is done after sending %zd bytes\n", total);
     } while (keep_going);

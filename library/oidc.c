@@ -609,8 +609,10 @@ static void ext_accept(uv_work_t *wr) {
         send(clt, resp, sizeof(resp), 0);
         send(clt, buf, c, 0);
 #else
-        write(clt, resp, sizeof(resp));
-        write(clt, buf, c);
+        if (write(clt, resp, sizeof(resp) - 1) <= 0 ||
+            write(clt, buf, c) <= 0) {
+            ZITI_LOG(DEBUG, "failed to write error response: %s", strerror(sock_error));
+        }
 #endif
         close_socket(clt);
         return;

@@ -190,7 +190,7 @@ static int zl_write(uv_link_t *link, uv_link_t *source,
     req->cb = cb;
     req->arg = arg;
 
-    ZITI_LOG(TRACE, "%s, nbuf=%u, buf[0].len=%lu", zl->service, nbufs, bufs[0].len);
+    ZITI_LOG(TRACE, "%s, nbuf=%u, buf[0].len=%zu", zl->service, nbufs, bufs[0].len);
     return ziti_write(zl->conn, (uint8_t *) bufs[0].base, bufs[0].len, zlnf_write_cb, req);
 }
 
