@@ -22,6 +22,7 @@
 #define close(s) closesocket(s)
 #define write(s,b,l) send(s,b,l,0)
 #define read(s,b,l) recv(s,b,l,0)
+typedef intptr_t ssize_t;
 #else
 #include <errno.h>
 #include <fcntl.h>
