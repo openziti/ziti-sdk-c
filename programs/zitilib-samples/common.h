@@ -44,7 +44,7 @@ static inline ziti_handle_t init_context(const char *identity) {
 
     // identity requires external login
     if (rc == ZITI_EXTERNAL_LOGIN_REQUIRED) {
-        ziti_jwt_signer_array signers = Ziti_get_ext_signers(ztx);
+        const char * const * signers = Ziti_get_ext_signers(ztx);
         if (signers == NULL) {
             fprintf(stderr, "FATAL: no external signers available for authentication\n");
             exit(1);
@@ -52,8 +52,8 @@ static inline ziti_handle_t init_context(const char *identity) {
 
         int i = 0;
         for (i = 0; signers[i] != NULL; i++) {
-            const char *name = signers[i]->name;
-            printf("%d: %s(%s)\n", i, name, signers[i]->provider_url);
+            const char *name = signers[i];
+            printf("%d: %s\n", i, name);
         }
 
         int idx = -1;
@@ -65,9 +65,9 @@ static inline ziti_handle_t init_context(const char *identity) {
 
         }
 
-        printf("using external signer: %s\n", signers[idx]->name);
+        printf("using external signer: %s\n", signers[idx]);
 
-        char *url = Ziti_login_external(ztx, signers[idx]->name);
+        char *url = Ziti_login_external(ztx, signers[idx]);
 
         printf("Use your browser to open this URL: %s\n", url);
         free(url);
@@ -86,7 +86,7 @@ static inline ziti_handle_t init_context(const char *identity) {
         rc = Ziti_login_totp(ztx, code);
     }
 
-    if (rc == ZITI_OK) {
+    if (rc != ZITI_OK) {
         fprintf(stderr, "FATAL: failed to complete authentication: %s\n", ziti_errorstr(rc));
         exit(1);
     }
