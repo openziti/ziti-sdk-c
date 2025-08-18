@@ -847,7 +847,7 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
 
     if (ch->state == Connected) {
         CH_LOG(WARN, "disconnected from edge router[%s] %zd(%s)",
-               ch->name, uv_err, uv_strerror((int)uv_err));
+               ch->name, uv_err, uv_err ? uv_strerror((int)uv_err) : "OK");
         ch->notify_cb(ch, EdgeRouterDisconnected, ziti_err, ch->notify_ctx);
     }
     ch->state = Disconnected;

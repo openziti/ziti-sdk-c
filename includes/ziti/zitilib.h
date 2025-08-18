@@ -26,8 +26,6 @@ extern "C" {
 
 #include <stdint.h>
 
-#include "ziti_model.h"
-
 typedef uint32_t ziti_handle_t;
 #define ZITI_INVALID_HANDLE ((ziti_handle_t)-1)
 
@@ -93,13 +91,12 @@ ZITI_FUNC
 int Ziti_load_context(ziti_handle_t *h, const char *identity);
 
 /**
- * @brief Get external signers available for authentication.
+ * @brief Get the names of external signers available for authentication.
  *
- * The result must be freed with [free_ziti_jwt_signer_array].
  * @return a dynamically allocated array of ziti_jwt_signer pointers, terminated with NULL.
  */
 ZITI_FUNC
-ziti_jwt_signer_array Ziti_get_ext_signers(ziti_handle_t ztx);
+const char * const *  Ziti_get_ext_signers(ziti_handle_t ztx);
 
 /**
  * @brief Start external login process.

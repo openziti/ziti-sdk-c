@@ -95,6 +95,7 @@ typedef struct ztx_wrap {
 
     future_t *services_loaded;
     model_map intercepts;
+    char **signers;
 } ztx_wrap_t;
 
 struct backlog_entry_s {
@@ -140,6 +141,16 @@ int Ziti_last_error() {
 
 static void set_error(int err) {
     uv_key_set(&err_key, (void *) (intptr_t) err);
+}
+
+static void free_wrap(ztx_wrap_t *w) {
+    if (w == NULL) return;
+
+    for (int i = 0; w->signers && w->signers[i]; i++) {
+        free((void*)w->signers[i]);
+    }
+    free(w->signers);
+    FREE(w);
 }
 
 static ztx_wrap_t *find_handle(ziti_handle_t handle) {
@@ -239,7 +250,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         } else if (err == ZITI_DISABLED) {
             destroy_future(wrap->services_loaded);
             ziti_set_app_ctx(ztx, NULL);
-            free(wrap);
+            free_wrap(wrap);
         }
     } else if (ev->type == ZitiAuthEvent) {
         process_auth_event(wrap, &ev->auth);
@@ -1401,39 +1412,59 @@ void Ziti_free(void *o) {
     }
 }
 
+struct signers_req_s {
+    ziti_handle_t ziti_handle;
+    ztx_wrap_t *wrap;
+    future_t *f;
+};
+
 static void signers_cb(ziti_context ztx, int rc, ziti_jwt_signer_array arr, void *arg) {
-    future_t *f = arg;
+    struct signers_req_s *req = arg;
     if (rc != ZITI_OK) {
         ZITI_LOG(ERROR, "failed to get signers: %d/%s", rc, ziti_errorstr(rc));
-        fail_future(f, rc);
+        fail_future(req->f, rc);
         return;
     }
-    int i = 0;
+    ztx_wrap_t *w = req->wrap;
+    int i;
+    for (i = 0; w->signers && w->signers[i]; i++) {
+        free((void*)w->signers[i]);
+    }
+    free(w->signers);
+
     for (i = 0; arr && arr[i]; i++);
 
-    ziti_jwt_signer_array a = calloc(i + 1, sizeof(ziti_jwt_signer*));
+    char **signers = calloc(i + 1, sizeof(char*));
     for (i = 0; arr && arr[i]; i++) {
-        a[i] = arr[i];
+        signers[i] = strdup(arr[i]->name);
     }
 
-    complete_future(f, a, 0);
+    req->wrap->signers = signers;
+    complete_future(req->f, signers, 0);
 }
 
 static void get_signers(void *arg, future_t *f, uv_loop_t *loop) {
-    ziti_handle_t h = (ziti_handle_t)(uintptr_t)arg;
-    ztx_wrap_t *wrap = find_handle(h);
+    struct signers_req_s *req = arg;
+    ztx_wrap_t *wrap = find_handle(req->ziti_handle);
     if (wrap == NULL) {
         fail_future(f, EINVAL);
         return;
     }
 
-    ziti_get_ext_jwt_signers(wrap->ztx, signers_cb, f);
+    req->wrap = wrap;
+    req->f = f;
+    ziti_get_ext_jwt_signers(wrap->ztx, signers_cb, req);
 }
 
-ziti_jwt_signer_array Ziti_get_ext_signers(ziti_handle_t handle) {
-    future_t *f = schedule_on_loop(get_signers, (void *) (uintptr_t) handle, true);
-    ziti_jwt_signer_array signers = NULL;
+const char * const *  Ziti_get_ext_signers(ziti_handle_t handle) {
+    struct signers_req_s req = {
+            .ziti_handle = handle,
+    };
+
+    future_t *f = schedule_on_loop(get_signers, &req, true);
+    const char * const * signers = NULL;
     int err = await_future(f, (void **) &signers);
+    destroy_future(f);
     set_error(err);
     return signers;
 }
