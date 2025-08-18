@@ -710,11 +710,12 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
                 intercept = model_map_get(&wrap->intercepts, service_name);
                 break;
             }
+            wrap = NULL;
         }
     }
 
     const char *proto_str = proto == SOCK_DGRAM ? "udp" : "tcp";
-    if (wrap != NULL) {
+    if (wrap != NULL && req->service != NULL) {
         zs = calloc(1, sizeof(*zs));
         zs->fd = req->fd;
         zs->f = f;
