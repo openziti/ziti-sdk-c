@@ -1375,6 +1375,10 @@ static void update_services(ziti_service_array services, const ziti_error *error
         ziti_service *old = model_map_set(&ztx->services, s->name, s);
         free_ziti_service(old);
         FREE(old);
+
+        if ((s->perm_flags & ZITI_CAN_DIAL) == 0) {
+            ziti_invalidate_session(ztx, s->id, ziti_session_types.Dial);
+        }
     }
 
     // process additions
@@ -1395,8 +1399,8 @@ static void update_services(ziti_service_array services, const ziti_error *error
     // cleanup
     for (idx = 0; ev.service.removed[idx] != NULL; idx++) {
         s = ev.service.removed[idx];
-        free_ziti_service(s);
-        free(s);
+        ziti_invalidate_session(ztx, s->id, ziti_session_types.Dial);
+        free_ziti_service_ptr(s);
     }
 
     free(ev.service.removed);
