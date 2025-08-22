@@ -357,7 +357,7 @@ void on_udp_input(uv_udp_t *udp, ssize_t len, const uv_buf_t *b, const struct so
     br_set_idle_timeout(br);
 
     if (len > 0) {
-        int rc = ziti_write(br->conn, b->base, len, on_ziti_write, b->base);
+        int rc = ziti_write(br->conn, (uint8_t *) b->base, len, on_ziti_write, b->base);
         if (rc != ZITI_OK) {
             BR_LOG(WARN, "ziti_write failed: %d/%s", rc, ziti_errorstr(rc));
             close_bridge(br);
@@ -383,7 +383,7 @@ void on_input(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     br_set_idle_timeout(br);
 
     if (len > 0) {
-        int rc = ziti_write(br->conn, b->base, len, on_ziti_write, b->base);
+        int rc = ziti_write(br->conn, (uint8_t *) b->base, len, on_ziti_write, b->base);
         if (rc != ZITI_OK) {
             BR_LOG(WARN, "ziti_write failed: %d/%s", rc, ziti_errorstr(rc));
             close_bridge(br);

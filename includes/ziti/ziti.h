@@ -819,7 +819,7 @@ extern int ziti_close_write(ziti_connection conn);
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
 ZITI_FUNC
-extern int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx);
+extern int ziti_write(ziti_connection conn, const uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx);
 
 /**
  * @brief Bridge [ziti_connection] to a given IO stream

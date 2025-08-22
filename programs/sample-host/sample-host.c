@@ -39,7 +39,7 @@ static ssize_t on_client_data(ziti_connection clt, const uint8_t *data, ssize_t 
         printf("client sent:%.*s\n", (int) len, data);
         char *reply = malloc(128);
         size_t l = sprintf(reply, "%zd", len);
-        ziti_write(clt, reply, l, on_client_write, reply);
+        ziti_write(clt, (uint8_t *) reply, l, on_client_write, reply);
     }
     else if (len == ZITI_EOF) {
         printf("client disconnected\n");
@@ -54,8 +54,8 @@ static ssize_t on_client_data(ziti_connection clt, const uint8_t *data, ssize_t 
 
 static void on_client_connect(ziti_connection clt, int status) {
     if (status == ZITI_OK) {
-        uint8_t *msg = "Hello from byte counter!";
-        ziti_write(clt, msg, strlen(msg), on_client_write, NULL);
+        const char *msg = "Hello from byte counter!";
+        ziti_write(clt, (uint8_t *) msg, strlen(msg), on_client_write, NULL);
     }
 }
 
@@ -111,7 +111,7 @@ static void input_read(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
     ziti_connection conn = s->data;
 
     if (len > 0) {
-        DIE(ziti_write(conn, b->base, len, on_write, b->base));
+        DIE(ziti_write(conn, (uint8_t *) b->base, len, on_write, b->base));
     }
     else {
         exit(0);

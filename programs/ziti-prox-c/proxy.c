@@ -693,7 +693,7 @@ static void stopper_recv(uv_udp_t *u, ssize_t len,
             ZITI_LOG(WARN, "unknown cmd: %.*s", (int)len, b->base);
             break;
         case ProxyCmd_dump:
-            u->data = addr;
+            u->data = (void *) addr;
             debug_dump(&app_ctx, dump, u);
             break;
         case ProxyCmd_stop:

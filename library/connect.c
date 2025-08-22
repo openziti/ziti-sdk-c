@@ -1280,7 +1280,7 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     return rc;
 }
 
-int ziti_write(ziti_connection conn, uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx) {
+int ziti_write(ziti_connection conn, const uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx) {
     if (conn->fin_sent) {
         CONN_LOG(ERROR, "attempted write after ziti_close_write()");
         return ZITI_INVALID_STATE;
