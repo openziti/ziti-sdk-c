@@ -1416,8 +1416,8 @@ static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {
 
 static void process_edge_message(struct ziti_conn *conn, message *msg) {
     int rc;
-    int32_t seq;
-    int32_t conn_id;
+    int32_t seq = -1;
+    int32_t conn_id = -1;
     uint32_t flags = 0;
     struct msg_uuid *uuid;
     size_t uuid_len;
