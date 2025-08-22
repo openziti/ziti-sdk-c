@@ -1113,19 +1113,22 @@ static void looper(void *arg) {
 }
 
 future_t *schedule_on_loop(loop_work_cb cb, void *arg, bool wait) {
+    future_t *f = NULL;
+    if (wait) {
+        f = new_future();
+    }
+
     queue_elem_t *el = calloc(1, sizeof(queue_elem_t));
     el->cb = cb;
     el->arg = arg;
-    if (wait) {
-        el->f = new_future();
-    }
+    el->f = f;
 
     uv_mutex_lock(&q_mut);
     LIST_INSERT_HEAD(&loop_q, el, _next);
     uv_mutex_unlock(&q_mut);
     uv_async_send(&q_async);
 
-    return el->f;
+    return f;
 }
 
 void process_on_loop(uv_async_t *async) {
