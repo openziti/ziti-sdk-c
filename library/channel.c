@@ -763,7 +763,7 @@ static void send_hello(ziti_channel_t *ch, const char *token) {
             },
     };
     ch->latency = uv_now(ch->loop);
-    ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 2, ch->token, strlen(ch->token), hello_reply_cb, ch);
+    ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 2, (uint8_t *) ch->token, strlen(ch->token), hello_reply_cb, ch);
 }
 
 
@@ -936,7 +936,7 @@ static void on_channel_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
 
     CH_LOG(TRACE, "on_data [len=%zd]", len);
     ch->last_read = uv_now(ch->loop);
-    buffer_append(ch->incoming, buf->base, (uint32_t) len);
+    buffer_append(ch->incoming, (uint8_t *) buf->base, (uint32_t) len);
     process_inbound(ch);
 }
 

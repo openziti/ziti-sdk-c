@@ -98,6 +98,9 @@ static void on_auth_event(ziti_context ztx, const ziti_auth_event &ev) {
             }, ztx);
             break;
         }
+        default:
+            std::cout << "unhandled auth action " << ev.action;
+            break;
     }
 }
 

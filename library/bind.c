@@ -391,7 +391,7 @@ static void process_inspect(struct binding_s *b, message *msg) {
     char conn_info[256];
     char listener_id[sodium_base64_ENCODED_LEN(sizeof(conn->server.listener_id), sodium_base64_VARIANT_URLSAFE)];
     sodium_bin2base64(listener_id, sizeof(listener_id),
-                      conn->server.listener_id, sizeof(conn->server.listener_id), sodium_base64_VARIANT_URLSAFE);
+                      (uint8_t *) conn->server.listener_id, sizeof(conn->server.listener_id), sodium_base64_VARIANT_URLSAFE);
     size_t ci_len = snprintf(conn_info, sizeof(conn_info),
                              "id[%d] serviceName[%s] listenerId[%s] "
                              "closed[%s] encrypted[%s]",
@@ -577,7 +577,7 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
 
     b->waiter = ziti_channel_send_for_reply(b->ch, ContentTypeBind,
                                             headers, nheaders,
-                                            token, strlen(token), bind_reply_cb,
+                                            (uint8_t *) token, strlen(token), bind_reply_cb,
                                             b);
     return 1;
 }
@@ -628,7 +628,7 @@ static void stop_binding(struct binding_s *b) {
     };
     b->waiter = ziti_channel_send_for_reply(b->ch, ContentTypeUnbind,
                                             headers, 2,
-                                            token, strlen(token),
+                                            (uint8_t *) token, strlen(token),
                                             on_unbind, b);
 }
 

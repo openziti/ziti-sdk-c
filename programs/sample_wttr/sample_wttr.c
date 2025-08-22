@@ -63,14 +63,14 @@ void on_connect(ziti_connection conn, int status) {
 
     printf("sending HTTP request\n");
 
-    uint8_t *req = "GET /Rochester HTTP/1.0\r\n"
+    const char *req = "GET /Rochester HTTP/1.0\r\n"
                    "Accept: */*\r\n"
                    "Connection: close\r\n"
                    "Host: wttr.in\r\n"
                    "User-Agent: curl/7.59.0\r\n"
                    "\r\n";
 
-    DIE(ziti_write(conn, req, strlen(req), on_write, NULL));
+    DIE(ziti_write(conn, (uint8_t *) req, strlen(req), on_write, NULL));
 }
 
 void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {

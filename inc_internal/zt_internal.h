@@ -119,7 +119,7 @@ struct ziti_channel {
 struct ziti_write_req_s {
     struct ziti_conn *conn;
     struct ziti_channel *ch;
-    uint8_t *buf;
+    const uint8_t *buf;
     size_t len;
     bool eof;
     bool close;
