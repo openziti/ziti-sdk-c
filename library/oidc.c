@@ -25,6 +25,8 @@
 #include "ziti/errors.h"
 #include "ziti/ziti_buffer.h"
 #include "buffer.h"
+#include "internal_model.h"
+#include "zt_internal.h"
 
 #define state_len 30
 #define state_code_len sodium_base64_ENCODED_LEN(code_len, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
@@ -461,6 +463,10 @@ static void login_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
     }
 }
 
+static void free_body_cb(tlsuv_http_req_t * UNUSED(req), char *body, ssize_t UNUSED(len)) {
+    free(body);
+}
+
 static void auth_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
     auth_req *req = ctx;
     if (http_resp->code / 100 == 3) {
@@ -470,11 +476,11 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
         char *p = strstr(uri.query, "authRequestID=");
         p += strlen("authRequestID=");
         req->id = strdup(p);
-        const char *path = NULL;
+        char path[256] = {};
         if (req->clt->jwt_token_auth) {
-            path = "/oidc/login/ext-jwt";
+            snprintf(path, sizeof(path),"/oidc/login/ext-jwt?id=%s", req->id);
         } else {
-            path = "/oidc/login/cert";
+            snprintf(path, sizeof(path),"/oidc/login/cert?id=%s", req->id);
         }
         ZITI_LOG(DEBUG, "login with path[%s] ", path);
         tlsuv_http_set_path_prefix(&req->clt->http, NULL);
@@ -482,7 +488,22 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
         if (req->clt->jwt_token_auth) {
             tlsuv_http_req_header(login_req, "Authorization", req->clt->jwt_token_auth);
         }
-        tlsuv_http_req_form(login_req, 1, &(tlsuv_http_pair) {"id", p});
+        tlsuv_http_req_header(login_req, "Content-Type", "application/json");
+        ziti_auth_req authreq = {
+            .sdk_info = {
+                .type = "ziti-sdk-c",
+                .version = ziti_get_build_version(0),
+                .revision = ziti_git_commit(),
+                .branch = ziti_git_branch(),
+                .app_id = APP_ID,
+                .app_version = APP_VERSION,
+            },
+            .env_info = (ziti_env_info *)get_env_info(),
+        };
+
+        size_t body_len;
+        const char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
+        tlsuv_http_req_data(login_req, body, body_len, free_body_cb);
     } else {
         failed_auth_req(req, http_resp->status);
     }

@@ -741,11 +741,11 @@ void ziti_ctrl_login(
     ziti_auth_req authreq = {
             .sdk_info = {
                     .type = "ziti-sdk-c",
-                    .version = (char *) ziti_get_build_version(0),
-                    .revision = (char *) ziti_git_commit(),
-                    .branch = (char *) ziti_git_branch(),
-                    .app_id = (char *) APP_ID,
-                    .app_version = (char *) APP_VERSION,
+                    .version = ziti_get_build_version(0),
+                    .revision = ziti_git_commit(),
+                    .branch = ziti_git_branch(),
+                    .app_id = APP_ID,
+                    .app_version = APP_VERSION,
             },
             .env_info = (ziti_env_info *)get_env_info(),
             .config_types = {0}
