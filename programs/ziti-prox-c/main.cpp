@@ -25,6 +25,7 @@
 #endif
 
 
+#include "ziti/ziti.h"
 #include "proxy.h"
 
 class Run: public CLI::App {
@@ -75,7 +76,7 @@ private:
 int main(int argc, char *argv[]) {
     const char *name = basename(argv[0]);
     CLI::App app{name};
-
+    ziti_set_app_info(name, ziti_get_version()->revision);
     bool verbose = false;
     auto ver = app.add_subcommand("version", "print version information");
     ver->add_flag("--verbose,-v", verbose, "verbose output");

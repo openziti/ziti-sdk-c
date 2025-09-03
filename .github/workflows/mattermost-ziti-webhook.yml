@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   ziti-webhook:
+    continue-on-error: true
     runs-on: ubuntu-latest
     name: Ziti Mattermost Action - Py
     steps:

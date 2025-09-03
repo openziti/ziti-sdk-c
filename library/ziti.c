@@ -1946,7 +1946,7 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
     bool found = ctx->config.controller_url == NULL;
     MODEL_LIST_FOREACH(url, (config->controllers)) {
         model_list_append(&ctx->config.controllers, strdup(url));
-        found = found || strcmp(ctx->config.controller_url, url) == 0;
+        found = found || strncmp(ctx->config.controller_url, url, strlen(ctx->config.controller_url)) == 0;
     }
     if (!found) {
         model_list_append(&ctx->config.controllers, strdup(ctx->config.controller_url));
