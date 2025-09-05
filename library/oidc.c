@@ -116,7 +116,7 @@ static const char HTTP_SUCCESS_BODY[] =
         "</head>\n"
         "<script type=\"text/javascript\">closeWindow()</script>"
         "<body onload=\"closeWindow()\">\n"
-        "    <img height=\"40px\" src=\"https://openziti.io/img/ziti-logo-dark.svg\"/>"
+        "    <img height=\"40px\" src=\"https://netfoundry.io/docs/img/openziti-logo-light.svg\"/>"
         "    <h2>Successfully authenticated with external provider.</h2><p>You may close this page. It will attempt to close itself in 3 seconds.</p>\n"
         "</body>\n"
         "</html>\n";
