@@ -686,7 +686,7 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
 
     int proto = 0;
     socklen_t optlen = sizeof(proto);
-    if (getsockopt(req->fd, SOL_SOCKET, SO_TYPE, &proto, &optlen)) {
+    if (getsockopt(req->fd, SOL_SOCKET, SO_TYPE, (void *) &proto, &optlen)) {
         ZITI_LOG(WARN, "unknown socket type fd[%d]: %d(%s)", req->fd, errno, strerror(errno));
     }
 
