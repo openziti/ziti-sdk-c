@@ -91,6 +91,33 @@ ZITI_FUNC
 int Ziti_load_context(ziti_handle_t *h, const char *identity);
 
 /**
+ * @brief Load Ziti identity with timeout control.
+ *
+ * Same as Ziti_load_context but with a timeout parameter to control
+ * how long the context loading process should wait for API calls to complete.
+ * This helps prevent indefinite retries when endpoints are not reachable.
+ *
+ * @param h pointer to ziti_handle_t to be initialized
+ * @param identity identity config JSON or path to a file.
+ * @param timeout_ms timeout in milliseconds for context loading operations.
+ *                   If 0, uses default behavior (no timeout).
+ *                   If > 0, context loading will fail with ZITI_TIMEOUT if not completed within this time.
+ * @return
+ *   [ZITI_OK] success, returned handle can be used to access/bind ziti services
+ *   [ZITI_EXTERNAL_LOGIN_REQUIRED] if the identity requires external login,
+ *               application must call [Ziti_get_ext_signers] to get available external signers
+ *               and then call [Ziti_login_external] with the selected signer name.
+ *   [ZITI_PARTIALLY_AUTHENTICATED] if the identity is partially authenticated and requires additional authentication (TOTP)
+ *   [ZITI_MFA_NOT_ENROLLED] if the identity is not enrolled in MFA but is required for authentication
+ *   [ZITI_TIMEOUT] if context loading did not complete within the specified timeout
+ *   [ZITI_INVALID_STATE] if [h] is NULL
+ *   [ZITI_INVALID_CONFIG] if [identity] is not a valid Ziti identity JSON
+ */
+ZITI_FUNC
+int Ziti_load_context_with_timeout(ziti_handle_t *h, const char *identity, int timeout_ms);
+
+
+/**
  * @brief Get the names of external signers available for authentication.
  *
  * @return a dynamically allocated array of ziti_jwt_signer pointers, terminated with NULL.

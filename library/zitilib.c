@@ -64,6 +64,7 @@ static void internal_init();
 static future_t *schedule_on_loop(loop_work_cb cb, void *arg, bool wait);
 
 static void do_shutdown(void *args, future_t *f, uv_loop_t *l);
+static void do_timeout_cleanup(void *args, future_t *f, uv_loop_t *l);
 
 static uv_once_t init;
 static uv_loop_t *lib_loop;
@@ -316,6 +317,49 @@ int Ziti_load_context(ziti_handle_t *h, const char *identity) {
     future_t *f = schedule_on_loop(load_ziti_ctx, (void *) identity, true);
     void *res;
     int err = await_future(f, &res);
+    set_error(err);
+
+    destroy_future(f);
+    switch (err) {
+        case ZITI_OK:
+        case ZITI_MFA_NOT_ENROLLED:
+        case ZITI_EXTERNAL_LOGIN_REQUIRED:
+        case ZITI_PARTIALLY_AUTHENTICATED:
+            *h = (ziti_handle_t)(uintptr_t)res;
+            break;
+        default:
+            *h = ZITI_INVALID_HANDLE;
+            break;
+    }
+    return err;
+}
+
+int Ziti_load_context_with_timeout(ziti_handle_t *h, const char *identity, int timeout_ms) {
+    if (h == NULL || identity == NULL) {
+        return ZITI_INVALID_STATE;
+    }
+
+    future_t *f = schedule_on_loop(load_ziti_ctx, (void *) identity, true);
+    void *res;
+    int err;
+
+    if (timeout_ms > 0) {
+        err = await_future_timed(f, &res, timeout_ms);
+        if (err == UV_ETIMEDOUT) {
+            // Timeout occurred - we need to clean up the context that may still be running
+            ZITI_LOG(WARN, "Context loading timed out after %d ms, scheduling cleanup...", timeout_ms);
+
+            // Schedule cleanup on the looper thread to ensure thread safety
+            // Don't wait for cleanup to complete - it will happen asynchronously
+            // If the process is terminated (SIGTERM), uv_stop() will cancel all pending operations
+            schedule_on_loop(do_timeout_cleanup, (void *)identity, false);
+
+            err = ZITI_TIMEOUT;
+        }
+    } else {
+        err = await_future(f, &res);
+    }
+
     set_error(err);
 
     destroy_future(f);
@@ -1209,6 +1253,31 @@ void do_shutdown(void *args, future_t *f, uv_loop_t *l) {
     uv_close((uv_handle_t *) &q_async, NULL);
 
     uv_stop(q_async.loop);
+}
+
+void do_timeout_cleanup(void *args, future_t *f, uv_loop_t *l) {
+    char *identity = (char *)args;
+    if (identity == NULL) {
+        complete_future(f, NULL, ZITI_INVALID_STATE);
+        return;
+    }
+
+    // Find the context that was being loaded
+    ztx_wrap_t *wrap = model_map_get(&ziti_contexts, identity);
+    if (wrap && wrap->ztx) {
+        ZITI_LOG(DEBUG, "Cleaning up timed out context ztx[%d]", wrap->ztx->id);
+
+        // Remove from contexts map first to prevent further access
+        model_map_remove(&ziti_contexts, identity);
+
+        // Shutdown the context properly - this will set closing=true and handle cleanup
+        ziti_shutdown(wrap->ztx);
+
+        // Free the wrap
+        free_wrap(wrap);
+    }
+    
+    complete_future(f, NULL, ZITI_OK);
 }
 
 static void on_enroll(const ziti_config *cfg, int status, const char *error, void *ctx) {
