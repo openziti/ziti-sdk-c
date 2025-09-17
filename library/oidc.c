@@ -511,7 +511,7 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
 
 static int set_blocking(uv_os_sock_t sock) {
     int yes = 1;
-    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));
+    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (void *) &yes, sizeof(yes));
 #ifdef _WIN32
     unsigned long mode = 0;
     if (ioctlsocket(sock, FIONBIO, &mode) != 0) {
@@ -726,12 +726,12 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
     int sock = socket(AF_INET6, SOCK_STREAM, 0);
     int off = 0;
     int on = 1;
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void *) &on, sizeof(on));
 #if defined(SO_REUSEPORT)
     setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on));
 #endif
 #if defined(IPV6_V6ONLY)
-    setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
+    setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (void *) &off, sizeof(off));
 #endif
     if (bind(sock, (const struct sockaddr *) &addr, sizeof(addr)) || listen(sock, 1)) {
         failed_auth_req(req, strerror(errno));
