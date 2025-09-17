@@ -22,8 +22,8 @@
 br ? br->conn->ziti_ctx->id : -1, br ? br->conn->conn_id : -1, ##__VA_ARGS__)
 
 struct fd_bridge_s {
-    uv_os_fd_t in;
-    uv_os_fd_t out;
+    uv_file in;
+    uv_file out;
 
     void (*close_cb)(void *ctx);
 
@@ -130,7 +130,7 @@ static void on_pipes_close(uv_handle_t *h) {
     }
 }
 
-extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd_t output, void (*close_cb)(void *ctx), void *ctx) {
+extern int ziti_conn_bridge_fds(ziti_connection conn, uv_file input, uv_file output, void (*close_cb)(void *ctx), void *ctx) {
     if (conn == NULL) return UV_EINVAL;
 
     uv_loop_t *l = ziti_conn_context(conn)->loop;
@@ -145,7 +145,7 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
         uv_handle_t *sock = NULL;
         int type;
         socklen_t len = sizeof(type);
-        if (getsockopt(input, SOL_SOCKET, SO_TYPE, &type, &len) == 0) {
+        if (getsockopt(input, SOL_SOCKET, SO_TYPE, (void *) &type, &len) == 0) {
             if (type == SOCK_STREAM) {
                 sock = calloc(1, sizeof(uv_tcp_t));
                 uv_tcp_init(l, (uv_tcp_t *) sock);
@@ -426,7 +426,6 @@ int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen) {
     int rport = 0;
     char remote_str[128] = "unknown";
     char local_str[128] = "unknown";
-    size_t remote_str_size = sizeof(remote_str);
 
     switch (br->output->type) {
         case UV_NAMED_PIPE: {
