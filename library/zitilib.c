@@ -578,7 +578,7 @@ static void on_ziti_connect(ziti_connection conn, int status) {
 
         ZITI_LOG(DEBUG, "bridge connected to ziti fd[%d]->ziti_fd[%d]->conn[%d]->service[%s]",
                  zs->fd, zs->ziti_fd, zs->conn->conn_id, zs->service);
-        ziti_conn_bridge_fds(conn, (uv_file) zs->ziti_fd, (uv_file) zs->ziti_fd, on_bridge_close, zs);
+        ziti_conn_bridge_fds(conn, (uv_os_fd_t) zs->ziti_fd, (uv_os_fd_t) zs->ziti_fd, on_bridge_close, zs);
         complete_future(zs->f, conn, 0);
     } else {
         ZITI_LOG(WARN, "failed to establish ziti connection: %d(%s)", status, ziti_errorstr(status));
@@ -863,7 +863,7 @@ static void on_ziti_accept(ziti_connection client, int status) {
     zs->ziti_fd = ziti_fd;
     ziti_conn_set_data(client, zs);
     model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
-    ziti_conn_bridge_fds(client, (uv_file) zs->ziti_fd, (uv_file) zs->ziti_fd, on_bridge_close, zs);
+    ziti_conn_bridge_fds(client, (uv_os_fd_t) zs->ziti_fd, (uv_os_fd_t) zs->ziti_fd, on_bridge_close, zs);
     NEWP(si, struct sock_info_s);
     si->fd = zs->fd;
     si->peer = pending->caller_id;
