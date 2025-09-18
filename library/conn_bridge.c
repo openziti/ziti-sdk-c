@@ -142,18 +142,19 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
     fdbr->ctx = ctx;
 
     if (input == output) {
+        uv_os_sock_t input_sock = (uv_os_sock_t) input;
         uv_handle_t *sock = NULL;
         int type;
         socklen_t len = sizeof(type);
-        if (getsockopt(input, SOL_SOCKET, SO_TYPE, &type, &len) == 0) {
+        if (getsockopt(input_sock, SOL_SOCKET, SO_TYPE, (void *) &type, &len) == 0) {
             if (type == SOCK_STREAM) {
                 sock = calloc(1, sizeof(uv_tcp_t));
                 uv_tcp_init(l, (uv_tcp_t *) sock);
-                uv_tcp_open((uv_tcp_t *) sock, input);
+                uv_tcp_open((uv_tcp_t *) sock, input_sock);
             } else if (type == SOCK_DGRAM) {
                 sock = calloc(1, sizeof(uv_udp_t));
                 uv_udp_init(l, (uv_udp_t *) sock);
-                uv_udp_open((uv_udp_t *) sock, input);
+                uv_udp_open((uv_udp_t *) sock, input_sock);
             }
         }
         if (sock) {
@@ -174,8 +175,10 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
 
     uv_pipe_init(l, (uv_pipe_t *) br->input, 0);
     uv_pipe_init(l, (uv_pipe_t *) br->output, 0);
-    uv_pipe_open((uv_pipe_t *) br->input, input);
-    uv_pipe_open((uv_pipe_t *) br->output, output);
+    uv_file input_file = uv_open_osfhandle(input);
+    uv_file output_file = uv_open_osfhandle(output);
+    uv_pipe_open((uv_pipe_t *) br->input, input_file);
+    uv_pipe_open((uv_pipe_t *) br->output, output_file);
     br->input->data = br;
     br->output->data = br;
 
@@ -426,7 +429,6 @@ int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen) {
     int rport = 0;
     char remote_str[128] = "unknown";
     char local_str[128] = "unknown";
-    size_t remote_str_size = sizeof(remote_str);
 
     switch (br->output->type) {
         case UV_NAMED_PIPE: {
