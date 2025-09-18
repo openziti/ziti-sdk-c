@@ -17,8 +17,13 @@
 #include <stdio.h>
 #include "ziti/ziti_log.h"
 
+#ifdef _WIN32
+#define STDIN GetStdHandle(STD_INPUT_HANDLE)
+#define STDOUT GetStdHandle(STD_OUTPUT_HANDLE)
+#else
 #define STDIN 0
 #define STDOUT 1
+#endif
 
 typedef struct {
     uv_loop_t *loop;
