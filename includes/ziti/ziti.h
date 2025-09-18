@@ -859,7 +859,7 @@ extern int ziti_conn_bridge_idle_timeout(ziti_connection conn, unsigned long mil
  * @return
  */
 ZITI_FUNC
-extern int ziti_conn_bridge_fds(ziti_connection conn, uv_file input, uv_file output, void (*close_cb)(void *ctx), void *ctx);
+extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd_t output, void (*close_cb)(void *ctx), void *ctx);
 
 /**
  * @brief Callback called after ziti_mfa_enroll()
