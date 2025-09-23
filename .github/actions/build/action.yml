@@ -24,7 +24,7 @@ runs:
       if: runner.os == 'linux'
       shell: bash
       run: |
-        sudo apt install -y  libssl-dev libssl-dev:armhf libssl-dev:arm64
+        echo "now installing linux deps"
 
     - name: macOS tools
       if: runner.os == 'macOS'
