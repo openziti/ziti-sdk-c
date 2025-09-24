@@ -20,6 +20,12 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: install linux deps
+      if: runner.os == 'linux'
+      shell: bash
+      run: |
+        echo "now installing linux deps"
+
     - name: macOS tools
       if: runner.os == 'macOS'
       uses: gerlero/brew-install@v1
