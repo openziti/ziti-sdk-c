@@ -534,7 +534,7 @@ static int set_blocking(uv_os_sock_t sock) {
 static void url_decode(const char *src, size_t src_len, char *dest) {
     char *p = dest;
     const char *end = src + src_len;
-    while (src <= end) {
+    while (src < end) {
         if (*src == '%' && isxdigit((unsigned char) src[1]) && isxdigit((unsigned char) src[2])) {
             char hex[3] = { src[1], src[2], '\0' };
             *p++ = (char) strtol(hex, NULL, 16);
