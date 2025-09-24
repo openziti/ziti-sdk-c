@@ -823,7 +823,7 @@ int run_proxy(struct run_opts *opts) {
     free_ziti_config(&cfg);
 
     ziti_options zopts = {
-            .events = -1,
+            .events = ZitiContextEvent | ZitiServiceEvent | ZitiRouterEvent | ZitiAuthEvent,
             .api_page_size = 25,
             .event_cb = on_ziti_event,
             .refresh_interval = 60,

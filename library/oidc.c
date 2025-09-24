@@ -62,7 +62,7 @@
 #define close_socket(s) close(s)
 #define sock_error errno
 #endif
-#define OIDC_ACCEPT_TIMEOUT 30
+#define OIDC_ACCEPT_TIMEOUT 60
 #define OIDC_REQ_TIMEOUT 5
 
 typedef struct oidc_req oidc_req;
