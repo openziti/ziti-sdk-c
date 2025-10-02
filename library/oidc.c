@@ -963,6 +963,12 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
     struct json_object *ttl = json_object_object_get(clt->tokens, "expires_in");
     if (clt->timer && refresher && ttl) {
         int32_t t = json_object_get_int(ttl);
+        if (t <= 60) {
+            ZITI_LOG(WARN, "token lifetime is too short[%d seconds]. this may cause problems", t);
+            t = t / 2;
+        } else {
+            t = t - 30; // refresh 30 seconds before expiry
+        }
         ZITI_LOG(DEBUG, "scheduling token refresh in %d seconds", t);
         uv_timer_start(clt->timer, refresh_time_cb, t * 1000, 0);
     }
