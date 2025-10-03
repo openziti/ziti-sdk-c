@@ -168,6 +168,9 @@ static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx
     if (session) {
         auth->backoff = 0;
         ZITI_LOG(DEBUG, "logged in successfully => api_session[%s]", session->id);
+        if (auth->jwt) {
+            ziti_ctrl_set_token(auth->ctrl, auth->jwt);
+        }
 
         auth->session = session;
         const ziti_auth_query_mfa *ziti_mfa = get_mfa(session);

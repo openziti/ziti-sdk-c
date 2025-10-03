@@ -443,6 +443,35 @@ static void code_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
     }
 }
 
+static void parse_login_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
+    auth_req *req = r->data;
+    if (req == NULL) return;
+
+    oidc_client_t *clt = req->clt;
+    clt->request = NULL;
+    int err;
+    if (len > 0) {
+        if (req->json_parser) {
+            json_object *j = json_tokener_parse_ex(req->json_parser, body, (int) len);
+
+            if (j != NULL) {
+                ZITI_LOG(INFO, "login response: %s",
+                    json_object_to_json_string_ext(j, JSON_C_TO_STRING_PRETTY));
+                // oidc_client_set_tokens(clt, j);
+                // r->data = NULL;
+                // r->resp.body_cb = NULL;
+                // free_auth_req(req);
+            } else {
+                if ((err = json_tokener_get_error(req->json_parser)) != json_tokener_continue) {
+                    r->data = NULL;
+                    r->resp.body_cb = NULL;
+                    failed_auth_req(req, json_tokener_error_desc(err));
+                }
+            }
+        }
+    }
+}
+
 static void login_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
     auth_req *req = ctx;
     if (http_resp->code / 100 == 2) {
@@ -452,6 +481,11 @@ static void login_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
             req->clt->request = req;
             req->clt->token_cb(req->clt, OIDC_TOTP_NEEDED, NULL);
         }
+        if (strcmp("application/json", tlsuv_http_resp_header(http_resp, "Content-Type")) == 0){
+            req->json_parser = json_tokener_new();
+            http_resp->body_cb = parse_login_cb;
+        }
+
     } else if (http_resp->code / 100 == 3) {
         const char *redirect = tlsuv_http_resp_header(http_resp, "Location");
         struct tlsuv_url_s uri;

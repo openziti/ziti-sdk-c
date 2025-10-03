@@ -2042,12 +2042,13 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         ZTX_LOG(WARN, "failed to get controller version: %s/%s", err->code, err->message);
         ztx_set_deadline(ztx, 5000, &ztx->refresh_deadline, pre_auth_retry, ztx);
     } else {
-        bool ha = ziti_has_capability(version, ziti_ctrl_caps.HA_CONTROLLER);
+        bool ha = false;//ziti_has_capability(version, ziti_ctrl_caps.HA_CONTROLLER);
         ZTX_LOG(INFO, "connected to %s controller %s version %s(%s %s)",
                 ha ? "HA" : "Legacy",
                 ztx_controller(ztx), version->version, version->revision, version->build_date);
 
-        enum AuthenticationMethod m = ha ? HA : LEGACY;
+        enum AuthenticationMethod m = //ha ? HA :
+            LEGACY;
 
         if (ztx->auth_method && ztx->auth_method->kind != m) {
             ZTX_LOG(INFO, "current auth method does not match controller, switching to %s method",
