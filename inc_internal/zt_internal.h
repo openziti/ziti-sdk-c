@@ -332,10 +332,7 @@ struct ziti_ctx {
     uv_timer_t deadline_timer;
 
     uv_prepare_t prepper;
-
     ztx_work_q w_queue;
-    uv_mutex_t w_lock;
-    uv_async_t w_async;
 };
 
 #ifdef __cplusplus
