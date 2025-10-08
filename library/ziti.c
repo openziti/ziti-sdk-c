@@ -62,7 +62,7 @@ static void ziti_re_auth(ziti_context ztx);
 static void ztx_prepare(uv_prepare_t *prep);
 static void grim_reaper(ziti_context ztx);
 
-static void ztx_work_async(uv_async_t *ar);
+static void ztx_work_async(ziti_context ztx);
 
 static void ziti_stop_internal(ziti_context ztx, void *data);
 
@@ -504,6 +504,10 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         ziti_ctrl_clear_api_session(ztx_get_controller(ztx));
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
         ztx->enabled = false;
+
+        if (ztx->closing) {
+            shutdown_and_free(ztx);
+        }
     }
 }
 
@@ -613,12 +617,7 @@ static int ztx_init_controller(ziti_context ztx) {
 }
 
 static void ziti_init_async(ziti_context ztx, void *data) {
-    uv_loop_t *loop = ztx->w_async.loop;
-    
-    uv_prepare_init(loop, &ztx->prepper);
-    ztx->prepper.data = ztx;
-    uv_unref((uv_handle_t *) &ztx->prepper);
-
+    uv_loop_t *loop = ztx->prepper.loop;
     metrics_init(5, (time_fn)uv_now, loop);
 
     if (!ztx->opts.disabled) {
@@ -746,8 +745,7 @@ static void free_ztx(uv_handle_t *h) {
     model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_session_ptr);
     ziti_set_unauthenticated(ztx, NULL);
-    free_ziti_identity_data(ztx->identity_data);
-    FREE(ztx->identity_data);
+    free_ziti_identity_data_ptr(ztx->identity_data);
     FREE(ztx->last_update);
     FREE(ztx->session_token);
 
@@ -769,7 +767,6 @@ static void free_ztx(uv_handle_t *h) {
 
     ziti_send_event(ztx, &ev);
 
-
     ZTX_LOG(INFO, "shutdown is complete\n");
     free(ztx);
 }
@@ -789,9 +786,8 @@ static void shutdown_and_free(ziti_context ztx) {
 
     // N.B.: libuv processes close callbacks in reverse order
     // so we put the free on the first uv_close()
-    uv_close((uv_handle_t *) &ztx->w_async, free_ztx);
+    uv_close((uv_handle_t *) &ztx->prepper, free_ztx);
     uv_close((uv_handle_t *)&ztx->deadline_timer, NULL);
-    uv_close((uv_handle_t *)&ztx->prepper, NULL);
 }
 
 int ziti_shutdown(ziti_context ztx) {
@@ -1783,6 +1779,9 @@ void ztx_prepare(uv_prepare_t *prep) {
         ziti_channel_prepare(ch);
     }
 
+    // process queued work
+    ztx_work_async(ztx);
+
     if (!ztx->enabled || ztx->closing) {
         uv_timer_stop(&ztx->deadline_timer);
         uv_prepare_stop(&ztx->prepper);
@@ -1804,9 +1803,6 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, int er
 
     if (status == EdgeRouterRemoved) {
         model_map_remove(&ztx->channels, ch->name);
-        if (ztx->closing) {
-            shutdown_and_free(ztx);
-        }
     }
 
     if (status == EdgeRouterDisconnected && err == ZITI_CONNABORT) {
@@ -1843,16 +1839,13 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, int er
     }
 }
 
-static void ztx_work_async(uv_async_t *ar) {
-    ziti_context ztx = ar->data;
+static void ztx_work_async(ziti_context ztx) {
     ztx_work_q work;
     STAILQ_INIT(&work);
 
     struct ztx_work_s *w;
-    uv_mutex_lock(&ztx->w_lock);
     work = ztx->w_queue;
     STAILQ_INIT(&ztx->w_queue);
-    uv_mutex_unlock(&ztx->w_lock);
 
     while (!STAILQ_EMPTY(&work)) {
         w = STAILQ_FIRST(&work);
@@ -1869,11 +1862,7 @@ void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data) {
     wrk->w = w;
     wrk->w_data = data;
 
-    uv_mutex_trylock(&ztx->w_lock);
     STAILQ_INSERT_TAIL(&ztx->w_queue, wrk, _next);
-    uv_mutex_unlock(&ztx->w_lock);
-
-    uv_async_send(&ztx->w_async);
 }
 
 static void copy_oidc(ziti_context ztx, const ziti_jwt_signer *oidc) {
@@ -1999,9 +1988,9 @@ int ziti_context_run(ziti_context ztx, uv_loop_t *loop) {
     ztx->deadline_timer.data = ztx;
 
     STAILQ_INIT(&ztx->w_queue);
-    uv_async_init(loop, &ztx->w_async, ztx_work_async);
-    ztx->w_async.data = ztx;
-    uv_mutex_init(&ztx->w_lock);
+    uv_prepare_init(loop, &ztx->prepper);
+    ztx->prepper.data = ztx;
+    uv_prepare_start(&ztx->prepper, ztx_prepare);
 
     ziti_queue_work(ztx, ziti_init_async, NULL);
 
