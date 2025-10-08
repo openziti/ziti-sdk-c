@@ -201,12 +201,7 @@ static int close_conn_internal(struct ziti_conn *conn) {
 
         free_key_exchange(&conn->key_ex);
 
-        if (conn->flusher) {
-            conn->flusher->data = NULL;
-            uv_close((uv_handle_t *) conn->flusher, free_handle);
-            conn->flusher = NULL;
-        }
-
+        clear_deadline(&conn->flusher);
         int count = 0;
         while (!TAILQ_EMPTY(&conn->in_q)) {
             message *m = TAILQ_FIRST(&conn->in_q);
@@ -506,8 +501,6 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
         return;
     }
 
-    uv_loop_t *loop = ztx->loop;
-
     // find service
     if (req->service_id == NULL) {
         // connect_get_service_cb will re-enter process_connect() if service is already cached in the context
@@ -600,10 +593,6 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
 
     conn->data_cb = data_cb;
     conn_set_state(conn, Connecting);
-
-    conn->flusher = calloc(1, sizeof(uv_idle_t));
-    uv_idle_init(conn->ziti_ctx->loop, conn->flusher);
-    conn->flusher->data = conn;
 
     conn->start = uv_now(conn->ziti_ctx->loop);
 
@@ -789,26 +778,21 @@ static int send_crypto_header(ziti_connection conn) {
     return ZITI_OK;
 }
 
-static void on_flush(uv_idle_t *fl) {
-    ziti_connection conn = fl->data;
-    if (conn == NULL) {
-        uv_close((uv_handle_t *) fl, (uv_close_cb) free);
-        return;
-    }
+static void on_flush(void *ctx) {
+    ziti_connection conn = ctx;
 
     bool more_to_client = flush_to_client(conn);
     bool more_to_service = flush_to_service(conn);
 
-    if (!more_to_client && !more_to_service) {
-        CONN_LOG(TRACE, "stopping flusher");
-        uv_idle_stop(fl);
+    if (more_to_client || more_to_service) {
+        ztx_set_deadline(conn->ziti_ctx, 0, &conn->flusher, on_flush, conn);
     }
 }
 
 static void flush_connection(ziti_connection conn) {
-    if (conn->flusher && !uv_is_active((const uv_handle_t *) conn->flusher)) {
+    if (conn->flusher.expire_cb != on_flush) {
         CONN_LOG(TRACE, "starting flusher");
-        uv_idle_start(conn->flusher, on_flush);
+        ztx_set_deadline(conn->ziti_ctx, 0, &conn->flusher, on_flush, conn);
     }
     conn->last_activity = uv_now(conn->ziti_ctx->loop);
 }
@@ -1235,10 +1219,6 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     conn->data_cb = data_cb;
 
     TAILQ_INIT(&conn->in_q);
-    conn->flusher = calloc(1, sizeof(uv_idle_t));
-    uv_idle_init(conn->ziti_ctx->loop, conn->flusher);
-    conn->flusher->data = conn;
-    uv_unref((uv_handle_t *) &conn->flusher);
 
     ziti_channel_add_receiver(ch, conn->rt_conn_id, conn, (void (*)(void *, message *, int)) queue_edge_message);
 

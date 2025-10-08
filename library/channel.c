@@ -135,7 +135,7 @@ int ziti_channel_prepare(ziti_channel_t *ch) {
 
     // process_inbound() may consume all message buffers from the pool,
     // but it will put ziti connection(s) into `flush` state
-    // activating uv_idle_t handle, causing zero-timeout IO
+    // causing zero-timeout IO
     // and a flush attempt on the next loop iteration
     if (ch->state == Connected) {
         if (pool_has_available(ch->in_msg_pool) || ch->in_next != NULL) {
