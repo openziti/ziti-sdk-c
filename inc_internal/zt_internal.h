@@ -210,9 +210,9 @@ struct ziti_conn {
             int fin_recv; // 0 - not received, 1 - received, 2 - called app data cb
             bool disconnecting;
 
+            deadline_t flusher;
             TAILQ_HEAD(, message_s) in_q;
             buffer *inbound;
-            uv_idle_t *flusher;
             TAILQ_HEAD(, ziti_write_req_s) wreqs;
             TAILQ_HEAD(, ziti_write_req_s) pending_wreqs;
 
