@@ -72,7 +72,7 @@ void ziti_ctrl_set_callbacks(ziti_controller *ctrl, void *ctx,
 
 int ziti_ctrl_close(ziti_controller *ctrl);
 
-void ziti_ctrl_clear_api_session(ziti_controller *ctrl);
+void ziti_ctrl_clear_auth(ziti_controller *ctrl);
 
 void ziti_ctrl_get_version(ziti_controller *ctrl, ctrl_version_cb cb, void *ctx);
 

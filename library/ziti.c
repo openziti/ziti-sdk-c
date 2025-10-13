@@ -246,7 +246,7 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
 
     model_map_clear(&ztx->sessions, (void (*)(void *)) free_ziti_session_ptr);
 
-    ziti_ctrl_clear_api_session(ztx_get_controller(ztx));
+    ziti_ctrl_clear_auth(ztx_get_controller(ztx));
 
     if (err && !ztx->closing) {
         ziti_send_event(ztx, &(ziti_event_t) {
@@ -270,7 +270,7 @@ void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err
 
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthImpossibleToAuthenticate);
     FREE(ztx->session_token);
-    ziti_ctrl_clear_api_session(ztx_get_controller(ztx));
+    ziti_ctrl_clear_auth(ztx_get_controller(ztx));
     ziti_send_event(ztx, &(ziti_event_t){
         .type = ZitiContextEvent,
         .ctx = (struct ziti_context_event){
@@ -501,7 +501,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
 
         ziti_ctrl_cancel(ztx_get_controller(ztx));
         // logout
-        ziti_ctrl_clear_api_session(ztx_get_controller(ztx));
+        ziti_ctrl_clear_auth(ztx_get_controller(ztx));
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
         ztx->enabled = false;
 
