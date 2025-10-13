@@ -387,7 +387,7 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         ztx->session_token = strdup(session_token);
     }
     ziti_controller *ctrl = ztx_get_controller(ztx);
-    if (ztx->auth_method->kind == HA) {
+    if (ztx->auth_method->kind == OIDC) {
         ziti_ctrl_set_token(ztx_get_controller(ztx), session_token);
         ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
 
@@ -875,7 +875,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
 
     if (ztx->auth_method) {
         printer(ctx, "Session Info: \nauth_method[%s]\napi_session_state[%d]\n",
-                ztx->auth_method->kind == HA ? "HA" : "Legacy",
+                ztx->auth_method->kind == OIDC ? "OIDC" : "Legacy",
                 ztx->auth_state);
     } else {
         printer(ctx, "No Session found\n");
@@ -2031,16 +2031,15 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         ZTX_LOG(WARN, "failed to get controller version: %s/%s", err->code, err->message);
         ztx_set_deadline(ztx, 5000, &ztx->refresh_deadline, pre_auth_retry, ztx);
     } else {
-        bool ha = ziti_has_capability(version, ziti_ctrl_caps.HA_CONTROLLER);
-        ZTX_LOG(INFO, "connected to %s controller %s version %s(%s %s)",
-                ha ? "HA" : "Legacy",
+        bool use_oidc = ziti_has_capability(version, ziti_ctrl_caps.OIDC_AUTH);
+        ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
                 ztx_controller(ztx), version->version, version->revision, version->build_date);
-
-        enum AuthenticationMethod m = ha ? HA : LEGACY;
+        ZTX_LOG(INFO, "using %s authentication method", use_oidc ? "OIDC" : "Legacy");
+        enum AuthenticationMethod m = use_oidc ? OIDC : LEGACY;
 
         if (ztx->auth_method && ztx->auth_method->kind != m) {
             ZTX_LOG(INFO, "current auth method does not match controller, switching to %s method",
-                     ha ? "HA" : "LEGACY");
+                    use_oidc ? "OIDC" : "LEGACY");
             ztx->auth_method->stop(ztx->auth_method);
             ztx->auth_method->free(ztx->auth_method);
             ztx->auth_method = NULL;
@@ -2049,8 +2048,8 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         bool start = false;
         if (!ztx->auth_method) {
             start = true;
-            if (ha) {
-                ztx->auth_method = new_ha_auth(ztx->loop, ztx->ctrl.url, ztx->tlsCtx);
+            if (use_oidc) {
+                ztx->auth_method = new_oidc_auth(ztx->loop, ztx->ctrl.url, ztx->tlsCtx);
             } else {
                 ztx->auth_method = new_legacy_auth(ztx_get_controller(ztx));
             }

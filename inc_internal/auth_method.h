@@ -19,7 +19,7 @@
 
 enum AuthenticationMethod {
     LEGACY,
-    HA
+    OIDC
 };
 
 static const ziti_auth_query_mfa ZITI_MFA = {
@@ -54,6 +54,6 @@ struct ziti_auth_method_s {
 };
 
 ziti_auth_method_t *new_legacy_auth(ziti_controller *ctrl);
-ziti_auth_method_t *new_ha_auth(uv_loop_t *l, const char *url, tls_context *tls);
+ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const char *url, tls_context *tls);
 
 #endif // ZITI_SDK_AUTH_METHOD_H

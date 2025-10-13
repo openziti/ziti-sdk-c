@@ -44,11 +44,11 @@ struct ha_auth_s {
     auth_mfa_cb mfa_cb;
 };
 
-ziti_auth_method_t *new_ha_auth(uv_loop_t *l, const char* url, tls_context *tls) {
+ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const char* url, tls_context *tls) {
     struct ha_auth_s *auth = calloc(1, sizeof(*auth));
 
     auth->api = (ziti_auth_method_t){
-        .kind = HA,
+        .kind = OIDC,
         .start = ha_auth_start,
         .set_endpoint = ha_set_endpoint,
         .stop = ha_auth_stop,
