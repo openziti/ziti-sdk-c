@@ -20,11 +20,10 @@
 #include <uv.h>
 #include <stdlib.h>
 #include <tlsuv/http.h>
-#include <json-c/json.h>
 #include <ziti/ziti_log.h>
 
 #include "ziti/model_collections.h"
-
+#include "ziti/model_support.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
