@@ -19,9 +19,10 @@
 #include <string.h>
 #include <uv.h>
 #include <stdlib.h>
-#include <tlsuv/tlsuv.h>
-#include <tlsuv/queue.h>
+#include <tlsuv/http.h>
+#include <json-c/json.h>
 #include <ziti/ziti_log.h>
+
 #include "ziti/model_collections.h"
 
 #ifdef __cplusplus
@@ -154,6 +155,11 @@ int gen_p11_key_internal(tls_context *tls, tlsuv_private_key_t *key, const char 
 int load_file(const char *path, size_t pathlen, char **content, size_t *size);
 
 uint64_t next_backoff(int *count, int max, uint64_t base);
+
+tlsuv_http_req_t* ziti_json_request(
+    tlsuv_http_t *clt, const char *method, const char *path,
+    void (*cb)(tlsuv_http_resp_t *resp, const char *err, json_object *content, void *ctx),
+    void *ctx);
 
 #ifdef __cplusplus
 }

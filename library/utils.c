@@ -63,6 +63,7 @@
 #endif
 #endif
 
+#define APPLICATION_JSON "application/json"
 /*
  * from https://sourceforge.net/p/predef/wiki/Architectures/
  */
@@ -688,4 +689,77 @@ uint64_t next_backoff(int *count, int max, uint64_t base) {
 
     *count = c;
     return random % ((1U << backoff) * base);
+}
+
+
+struct json_req_ctx {
+    void (*cb)(tlsuv_http_resp_t *resp, const char *err, json_object *content, void *ctx);
+    void *ctx;
+    json_tokener *json_parser;
+};
+
+static void json_body_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
+    struct json_req_ctx *jctx = r->data;
+    if (jctx == NULL) return;
+
+    if (len > 0) {
+        json_object *j = json_tokener_parse_ex(jctx->json_parser, body, (int) len);
+        if (j != NULL) {
+            jctx->cb(&r->resp, NULL,  j, jctx->ctx);
+            r->data = NULL;
+            r->resp.body_cb = NULL;
+            json_tokener_free(jctx->json_parser);
+            free(jctx);
+            return;
+        }
+
+        int err = json_tokener_get_error(jctx->json_parser);
+        if (err != json_tokener_continue) {
+            r->data = NULL;
+            r->resp.body_cb = NULL;
+            jctx->cb(&r->resp, json_tokener_error_desc(err), NULL, jctx->ctx);
+            json_tokener_free(jctx->json_parser);
+            free(jctx);
+        }
+        return;
+    }
+
+    // error before req is complete
+    r->data = NULL;
+    r->resp.body_cb = NULL;
+    const char *err = (len == 0) ? NULL : uv_strerror((int)len);
+    jctx->cb(&r->resp, uv_strerror((int)len), NULL, jctx->ctx);
+    json_tokener_free(jctx->json_parser);
+    free(jctx);
+}
+static void json_req_cb(tlsuv_http_resp_t *resp, void *ctx) {
+    struct json_req_ctx *jctx = ctx;
+    const char *ct = tlsuv_http_resp_header(resp, "Content-Type");
+    if (ct == NULL) {
+        jctx->cb(resp, NULL, NULL, jctx->ctx);
+        free(jctx);
+        return;
+    }
+    if (strncmp(ct, APPLICATION_JSON, sizeof(APPLICATION_JSON) - 1) != 0) {
+        jctx->cb(resp, "unexpected content", NULL, jctx->ctx);
+        free(jctx);
+        return;
+    }
+
+    jctx->json_parser = json_tokener_new();
+    resp->body_cb = json_body_cb;
+}
+
+tlsuv_http_req_t* ziti_json_request(
+    tlsuv_http_t *clt, const char *method, const char *path,
+    void (*cb)(tlsuv_http_resp_t *resp, const char *err, json_object *content, void *ctx),
+    void *ctx) {
+
+    struct json_req_ctx *jctx = calloc(1, sizeof(*jctx));
+    jctx->cb = cb;
+    jctx->ctx = ctx;
+
+    tlsuv_http_req_t *req = tlsuv_http_req(clt, method, path, json_req_cb, jctx);
+    tlsuv_http_req_header(req, "Accept", APPLICATION_JSON);
+    return req;
 }
