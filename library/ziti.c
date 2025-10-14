@@ -388,7 +388,8 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     }
     ziti_controller *ctrl = ztx_get_controller(ztx);
     if (ztx->auth_method->kind == OIDC) {
-        ziti_ctrl_set_token(ztx_get_controller(ztx), session_token);
+        ziti_ctrl_clear_auth(ctrl);
+        ziti_ctrl_set_token(ctrl, session_token);
         ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
 
         const char* er_name;
