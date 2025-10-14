@@ -1697,7 +1697,7 @@ static void grim_reaper(ziti_context ztx) {
 
 void do_ztx_set_deadline(ziti_context ztx, uint64_t timeout, deadline_t *d, void (*cb)(void *), const char *cb_name, void *ctx) {
     assert(cb != NULL);
-    ZTX_LOG(DEBUG, "expire_cb[%s] timeout[%" PRIu64 "]", cb_name, timeout);
+    ZTX_LOG(TRACE, "expire_cb[%s] timeout[%" PRIu64 "]", cb_name, timeout);
     clear_deadline(d);
 
     uint64_t now = uv_now(ztx->loop);
@@ -1740,7 +1740,7 @@ static void ztx_process_deadlines(uv_timer_t *t) {
         void *ctx = d->ctx;
         void (*cb)(void *) = d->expire_cb;
         d->expire_cb = NULL;
-        ZTX_LOG(DEBUG, "calling %s(%p)", d->expire_cb_name, d->ctx);
+        ZTX_LOG(TRACE, "calling %s(%p)", d->expire_cb_name, d->ctx);
         n++;
         cb(d->ctx);
     }
@@ -2046,15 +2046,16 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         }
 
         bool start = false;
+        api_path *oidc_path = model_map_get(&version->api_versions->oidc, "v1");
         if (!ztx->auth_method) {
             start = true;
             if (use_oidc) {
-                ztx->auth_method = new_oidc_auth(ztx->loop, ztx->ctrl.url, ztx->tlsCtx);
+                ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->tlsCtx);
             } else {
                 ztx->auth_method = new_legacy_auth(ztx_get_controller(ztx));
             }
         } else if (ztx->auth_method->set_endpoint){
-            ztx->auth_method->set_endpoint(ztx->auth_method, ztx->ctrl.url);
+            ztx->auth_method->set_endpoint(ztx->auth_method, oidc_path);
         }
 
         if (ztx->ext_auth == NULL && ztx->id_creds.key == NULL) {

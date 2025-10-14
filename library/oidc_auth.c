@@ -19,6 +19,9 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include "buffer.h"
+#include "ziti/ziti_buffer.h"
+
 #define HA_AUTH(s) container_of((s), struct ha_auth_s, api)
 #define HA_AUTH_FROM_OIDC(o) container_of((o), struct ha_auth_s, oidc)
 
@@ -28,9 +31,9 @@ static int ha_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb c
 static int ha_auth_stop(ziti_auth_method_t *self);
 static int ha_auth_refresh(ziti_auth_method_t *self);
 static int ha_ext_jwt(ziti_auth_method_t *self, const char *token);
-static int ha_set_endpoint(ziti_auth_method_t *self, const char *url);
+static int ha_set_endpoint(ziti_auth_method_t *self, const api_path *api);
 static void config_cb(oidc_client_t *oidc, int status, const char *err);
-static char* internal_oidc_path(const char *url);
+static char* internal_oidc_path(const api_path *api);
 
 struct ha_auth_s {
     ziti_auth_method_t api;
@@ -44,7 +47,7 @@ struct ha_auth_s {
     auth_mfa_cb mfa_cb;
 };
 
-ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const char* url, tls_context *tls) {
+ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context *tls) {
     struct ha_auth_s *auth = calloc(1, sizeof(*auth));
 
     auth->api = (ziti_auth_method_t){
@@ -63,29 +66,40 @@ ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const char* url, tls_context *tl
             .client_id = "openziti",
             .name = "ziti-internal-oidc",
             .enabled = true,
-            .provider_url = internal_oidc_path(url),
+            .provider_url = internal_oidc_path(api),
             .target_token = ziti_target_token_access_token,
     };
     model_list_append(&auth->config.scopes, "offline_access");
 
     oidc_client_init(l, &auth->oidc, &auth->config, tls);
-    return &auth->api;
+    return (ziti_auth_method_t*)auth;
 }
 
-static char *internal_oidc_path(const char *url) {
-    struct tlsuv_url_s u;
-    tlsuv_parse_url(&u, url);
+static char *internal_oidc_path(const api_path *api) {
+    struct tlsuv_url_s base_url = {};
+    tlsuv_parse_url(&base_url, api->base_urls[0]);
 
-    size_t baselen = u.path ? u.path - url : strlen(url);
-    size_t maxlen = baselen + 6;
-    char *ep = malloc(maxlen);
-    snprintf(ep, maxlen, "%.*s/oidc", (int)baselen, url);
-    return ep;
+    string_buf_t *url_buf = new_string_buf();
+    string_buf_fmt(url_buf, "%.*s://%.*s",
+        (int)base_url.scheme_len, base_url.scheme,
+        (int)base_url.hostname_len, base_url.hostname);
+    if (base_url.port) {
+        string_buf_fmt(url_buf, ":%d", base_url.port);
+    }
+    // older controllers did not have path in the base URL
+    if (base_url.path) {
+        string_buf_appendn(url_buf, base_url.path, base_url.path_len);
+    } else if (api->path) {
+        string_buf_append(url_buf, api->path);
+    }
+
+    char *url = string_buf_to_string(url_buf, NULL);
+    return url;
 }
 
-static int ha_set_endpoint(ziti_auth_method_t *self, const char *url) {
+static int ha_set_endpoint(ziti_auth_method_t *self, const api_path *api) {
     struct ha_auth_s *auth = HA_AUTH(self);
-    char *ep = internal_oidc_path(url);
+    char *ep = internal_oidc_path(api);
     if (auth->config.provider_url && strcmp(ep, auth->config.provider_url) == 0) {
         free(ep);
         return -1;

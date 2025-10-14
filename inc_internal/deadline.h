@@ -35,7 +35,7 @@ struct deadline_s {
 static inline void clear_deadline(deadline_t *dl) {
     if (dl->expire_cb == NULL) return;
 
-    ZITI_LOG(DEBUG, "expire_cb[%s]", dl->expire_cb_name);
+    ZITI_LOG(TRACE, "expire_cb[%s]", dl->expire_cb_name);
     dl->expire_cb = NULL;
     dl->expire_cb_name = NULL;
     LIST_REMOVE(dl, _next);
