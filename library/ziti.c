@@ -260,9 +260,11 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
 }
 
 void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err) {
+    ziti_controller *ctrl = ztx_get_controller(ztx);
     if (err->err == UV_ECONNREFUSED) {
+        api_path *oidc_api = model_map_get(&ctrl->version.api_versions->oidc, "v1");
         if (ztx->auth_method->set_endpoint &&
-            ztx->auth_method->set_endpoint(ztx->auth_method, ztx_controller(ztx)) == 0) {
+            ztx->auth_method->set_endpoint(ztx->auth_method, oidc_api) == 0) {
             ZTX_LOG(DEBUG, "updating internal OIDC endpoint[%s]", ztx_controller(ztx));
             return;
         }
@@ -270,7 +272,7 @@ void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err
 
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthImpossibleToAuthenticate);
     FREE(ztx->session_token);
-    ziti_ctrl_clear_auth(ztx_get_controller(ztx));
+    ziti_ctrl_clear_auth(ctrl);
     ziti_send_event(ztx, &(ziti_event_t){
         .type = ZitiContextEvent,
         .ctx = (struct ziti_context_event){
@@ -1735,7 +1737,7 @@ static void ztx_process_deadlines(uv_timer_t *t) {
     uint8_t n = 0;
     uint64_t now = uv_now(ztx->loop);
     deadline_t *d;
-    while ((d = LIST_FIRST(&ztx->deadlines)) && now >= d->expiration) {
+    while ((d = LIST_FIRST(&ztx->deadlines)) != NULL && now >= d->expiration) {
         LIST_REMOVE(d, _next);
 
         void *ctx = d->ctx;
