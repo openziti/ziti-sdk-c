@@ -728,7 +728,7 @@ static void json_body_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
     r->data = NULL;
     r->resp.body_cb = NULL;
     const char *err = (len == 0) ? NULL : uv_strerror((int)len);
-    jctx->cb(&r->resp, uv_strerror((int)len), NULL, jctx->ctx);
+    jctx->cb(&r->resp, err, NULL, jctx->ctx);
     json_tokener_free(jctx->json_parser);
     free(jctx);
 }

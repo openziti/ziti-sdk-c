@@ -94,6 +94,7 @@ static char *internal_oidc_path(const api_path *api) {
     }
 
     char *url = string_buf_to_string(url_buf, NULL);
+    delete_string_buf(url_buf);
     return url;
 }
 
