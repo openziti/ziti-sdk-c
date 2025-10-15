@@ -1737,19 +1737,24 @@ static void ztx_process_deadlines(uv_timer_t *t) {
     uint8_t n = 0;
     uint64_t now = uv_now(ztx->loop);
     deadline_t *d;
+    model_list expired = {0};
     while ((d = LIST_FIRST(&ztx->deadlines)) != NULL && now >= d->expiration) {
         LIST_REMOVE(d, _next);
-
-        void *ctx = d->ctx;
-        void (*cb)(void *) = d->expire_cb;
-        d->expire_cb = NULL;
-        ZTX_LOG(TRACE, "calling %s(%p)", d->expire_cb_name, d->ctx);
+        model_list_append(&expired, d);
         n++;
-        cb(d->ctx);
     }
     if (n == 0) {
         ZTX_LOG(TRACE, "no deadlines expired");
     }
+
+    MODEL_LIST_FOREACH(d, expired) {
+        void *ctx = d->ctx;
+        void (*cb)(void *) = d->expire_cb;
+        d->expire_cb = NULL;
+        ZTX_LOG(TRACE, "calling %s(%p)", d->expire_cb_name, ctx);
+        cb(ctx);
+    }
+    model_list_clear(&expired, NULL);
 }
 
 static void ztx_prep_deadlines(ziti_context ztx) {

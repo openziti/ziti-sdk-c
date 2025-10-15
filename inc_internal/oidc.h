@@ -32,6 +32,7 @@ enum oidc_status {
     OIDC_TOTP_SUCCESS = 3,
     OIDC_TOKEN_FAILED = 4,
     OIDC_RESTART     = 5,
+    OIDC_EXT_JWT_NEEDED = 6,
 };
 
 typedef struct oidc_client_s oidc_client_t;
@@ -59,6 +60,7 @@ struct oidc_client_s {
     oidc_ext_link_cb link_cb;
     void *link_ctx;
 
+    char name[32];
     void *config;
     void *tokens;
     const char *refresh_grant;
