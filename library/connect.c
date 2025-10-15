@@ -29,7 +29,7 @@ static const int MAX_CONNECT_RETRY = 3;
 
 #define CONN_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "conn[%u.%u/%.*s/%s](%s) " fmt, \
 conn->ziti_ctx->id, conn->conn_id, (int)sizeof(conn->marker),                 \
-conn->marker, conn_state_str[conn->state], conn->service,                     \
+conn->marker, conn_state_str[conn->state], conn->parent ? conn->parent->service : conn->service,                     \
 ##__VA_ARGS__)
 
 

@@ -246,7 +246,7 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
 
     model_map_clear(&ztx->sessions, (void (*)(void *)) free_ziti_session_ptr);
 
-    ziti_ctrl_clear_api_session(ztx_get_controller(ztx));
+    ziti_ctrl_clear_auth(ztx_get_controller(ztx));
 
     if (err && !ztx->closing) {
         ziti_send_event(ztx, &(ziti_event_t) {
@@ -260,9 +260,11 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
 }
 
 void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err) {
+    ziti_controller *ctrl = ztx_get_controller(ztx);
     if (err->err == UV_ECONNREFUSED) {
+        api_path *oidc_api = model_map_get(&ctrl->version.api_versions->oidc, "v1");
         if (ztx->auth_method->set_endpoint &&
-            ztx->auth_method->set_endpoint(ztx->auth_method, ztx_controller(ztx)) == 0) {
+            ztx->auth_method->set_endpoint(ztx->auth_method, oidc_api) == 0) {
             ZTX_LOG(DEBUG, "updating internal OIDC endpoint[%s]", ztx_controller(ztx));
             return;
         }
@@ -270,7 +272,7 @@ void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err
 
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthImpossibleToAuthenticate);
     FREE(ztx->session_token);
-    ziti_ctrl_clear_api_session(ztx_get_controller(ztx));
+    ziti_ctrl_clear_auth(ctrl);
     ziti_send_event(ztx, &(ziti_event_t){
         .type = ZitiContextEvent,
         .ctx = (struct ziti_context_event){
@@ -387,8 +389,9 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         ztx->session_token = strdup(session_token);
     }
     ziti_controller *ctrl = ztx_get_controller(ztx);
-    if (ztx->auth_method->kind == HA) {
-        ziti_ctrl_set_token(ztx_get_controller(ztx), session_token);
+    if (ztx->auth_method->kind == OIDC) {
+        ziti_ctrl_clear_auth(ctrl);
+        ziti_ctrl_set_token(ctrl, session_token);
         ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
 
         const char* er_name;
@@ -501,7 +504,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
 
         ziti_ctrl_cancel(ztx_get_controller(ztx));
         // logout
-        ziti_ctrl_clear_api_session(ztx_get_controller(ztx));
+        ziti_ctrl_clear_auth(ztx_get_controller(ztx));
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
         ztx->enabled = false;
 
@@ -875,7 +878,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
 
     if (ztx->auth_method) {
         printer(ctx, "Session Info: \nauth_method[%s]\napi_session_state[%d]\n",
-                ztx->auth_method->kind == HA ? "HA" : "Legacy",
+                ztx->auth_method->kind == OIDC ? "OIDC" : "Legacy",
                 ztx->auth_state);
     } else {
         printer(ctx, "No Session found\n");
@@ -1697,7 +1700,7 @@ static void grim_reaper(ziti_context ztx) {
 
 void do_ztx_set_deadline(ziti_context ztx, uint64_t timeout, deadline_t *d, void (*cb)(void *), const char *cb_name, void *ctx) {
     assert(cb != NULL);
-    ZTX_LOG(DEBUG, "expire_cb[%s] timeout[%" PRIu64 "]", cb_name, timeout);
+    ZTX_LOG(TRACE, "expire_cb[%s] timeout[%" PRIu64 "]", cb_name, timeout);
     clear_deadline(d);
 
     uint64_t now = uv_now(ztx->loop);
@@ -1734,13 +1737,13 @@ static void ztx_process_deadlines(uv_timer_t *t) {
     uint8_t n = 0;
     uint64_t now = uv_now(ztx->loop);
     deadline_t *d;
-    while ((d = LIST_FIRST(&ztx->deadlines)) && now >= d->expiration) {
+    while ((d = LIST_FIRST(&ztx->deadlines)) != NULL && now >= d->expiration) {
         LIST_REMOVE(d, _next);
 
         void *ctx = d->ctx;
         void (*cb)(void *) = d->expire_cb;
         d->expire_cb = NULL;
-        ZTX_LOG(DEBUG, "calling %s(%p)", d->expire_cb_name, d->ctx);
+        ZTX_LOG(TRACE, "calling %s(%p)", d->expire_cb_name, d->ctx);
         n++;
         cb(d->ctx);
     }
@@ -2031,31 +2034,31 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         ZTX_LOG(WARN, "failed to get controller version: %s/%s", err->code, err->message);
         ztx_set_deadline(ztx, 5000, &ztx->refresh_deadline, pre_auth_retry, ztx);
     } else {
-        bool ha = ziti_has_capability(version, ziti_ctrl_caps.HA_CONTROLLER);
-        ZTX_LOG(INFO, "connected to %s controller %s version %s(%s %s)",
-                ha ? "HA" : "Legacy",
+        bool use_oidc = ziti_has_capability(version, ziti_ctrl_caps.OIDC_AUTH);
+        ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
                 ztx_controller(ztx), version->version, version->revision, version->build_date);
-
-        enum AuthenticationMethod m = ha ? HA : LEGACY;
+        ZTX_LOG(INFO, "using %s authentication method", use_oidc ? "OIDC" : "Legacy");
+        enum AuthenticationMethod m = use_oidc ? OIDC : LEGACY;
 
         if (ztx->auth_method && ztx->auth_method->kind != m) {
             ZTX_LOG(INFO, "current auth method does not match controller, switching to %s method",
-                     ha ? "HA" : "LEGACY");
+                    use_oidc ? "OIDC" : "LEGACY");
             ztx->auth_method->stop(ztx->auth_method);
             ztx->auth_method->free(ztx->auth_method);
             ztx->auth_method = NULL;
         }
 
         bool start = false;
+        api_path *oidc_path = model_map_get(&version->api_versions->oidc, "v1");
         if (!ztx->auth_method) {
             start = true;
-            if (ha) {
-                ztx->auth_method = new_ha_auth(ztx->loop, ztx->ctrl.url, ztx->tlsCtx);
+            if (use_oidc) {
+                ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->tlsCtx);
             } else {
                 ztx->auth_method = new_legacy_auth(ztx_get_controller(ztx));
             }
         } else if (ztx->auth_method->set_endpoint){
-            ztx->auth_method->set_endpoint(ztx->auth_method, ztx->ctrl.url);
+            ztx->auth_method->set_endpoint(ztx->auth_method, oidc_path);
         }
 
         if (ztx->ext_auth == NULL && ztx->id_creds.key == NULL) {

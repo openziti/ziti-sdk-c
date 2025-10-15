@@ -75,10 +75,12 @@ XX(id, ziti_id_cfg, none, id, __VA_ARGS__)           \
 XX(cfg_source, model_string, none, , __VA_ARGS__)
 
 #define ZITI_API_PATH_MODEL(XX, ...) \
-XX(path, model_string, none, path, __VA_ARGS__)
+XX(path, model_string, none, path, __VA_ARGS__) \
+XX(base_urls, model_string, array, apiBaseUrls, __VA_ARGS__)
 
 #define ZITI_API_VERSIONS_MODEL(XX, ...) \
-XX(edge, api_path, map, edge, __VA_ARGS__)
+XX(edge, api_path, map, edge, __VA_ARGS__) \
+XX(oidc, api_path, map, edge-oidc, __VA_ARGS__)
 
 #define ZITI_CTRL_CAP_ENUM(XX, ...) \
 XX(HA_CONTROLLER, __VA_ARGS__)      \

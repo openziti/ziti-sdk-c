@@ -13,10 +13,10 @@
 // limitations under the License.
 
 
-#include <utils.h>
 #include <CLI/CLI.hpp>
 
 #if _WIN32
+#include <winsock2.h>
 #include <windows.h>
 #include <shlwapi.h>
 #define basename(p) PathFindFileName(p)
@@ -81,7 +81,11 @@ int main(int argc, char *argv[]) {
     auto ver = app.add_subcommand("version", "print version information");
     ver->add_flag("--verbose,-v", verbose, "verbose output");
     ver->final_callback([&verbose] {
-        std::cout << ziti_get_build_version(verbose) << std::endl;
+        std::cout << ziti_get_version()->version << std::endl;
+        if (verbose) {
+            std::cout << ziti_get_version()->revision << std::endl
+                    << ziti_get_version()->build_date << std::endl;
+        }
     });
 
     app.add_subcommand(std::make_shared<Run>());
@@ -89,3 +93,4 @@ int main(int argc, char *argv[]) {
     CLI11_PARSE(app, argc, argv);
     return 0;
 }
+

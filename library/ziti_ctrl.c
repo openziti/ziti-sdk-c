@@ -374,7 +374,7 @@ static void internal_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp
     ctrl_default_cb(NULL, e, resp);
 }
 
-void ziti_ctrl_clear_api_session(ziti_controller *ctrl) {
+void ziti_ctrl_clear_auth(ziti_controller *ctrl) {
     ctrl->has_token = false;
     if (ctrl->client) {
         CTRL_LOG(DEBUG, "clearing api session token for ziti_controller");
@@ -387,13 +387,14 @@ static void ctrl_login_cb(ziti_api_session *s, ziti_error *e, struct ctrl_resp *
     ziti_controller *ctrl = resp->ctrl;
     if (e) {
         CTRL_LOG(ERROR, "%s(%s)", e->code, e->message);
-        ziti_ctrl_clear_api_session(resp->ctrl);
+        ziti_ctrl_clear_auth(resp->ctrl);
     }
 
     if (s) {
         CTRL_LOG(DEBUG, "authenticated successfully session[%s]", s->id);
         ctrl->has_token = true;
         if (!ctrl->is_ha) {
+            tlsuv_http_header(ctrl->client, "zt-session", NULL);
             tlsuv_http_header(ctrl->client, "zt-session", s->token);
         }
     }
