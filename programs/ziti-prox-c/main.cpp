@@ -16,6 +16,7 @@
 #include <CLI/CLI.hpp>
 
 #if _WIN32
+#include <winsock2.h>
 #include <windows.h>
 #include <shlwapi.h>
 #define basename(p) PathFindFileName(p)
