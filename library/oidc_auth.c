@@ -64,7 +64,7 @@ ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context
     auth->loop = l;
     auth->config = (ziti_jwt_signer){
             .client_id = "openziti",
-            .name = "ziti-internal-oidc",
+            .name = "internal",
             .enabled = true,
             .provider_url = internal_oidc_path(api),
             .target_token = ziti_target_token_access_token,
