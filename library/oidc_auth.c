@@ -135,6 +135,9 @@ static void token_cb(oidc_client_t *oidc, enum oidc_status status, const char *t
             case OIDC_TOKEN_OK:
                 auth->cb(auth->cb_ctx, ZitiAuthStateFullyAuthenticated, (void*)token);
                 break;
+            case OIDC_EXT_JWT_NEEDED:
+                auth->cb(auth->cb_ctx, ZitiAuthStatePartiallyAuthenticated, (void *)token);
+                break;
             case OIDC_TOTP_NEEDED:
                 auth->cb(auth->cb_ctx, ZitiAuthStatePartiallyAuthenticated, (void *) &ZITI_MFA);
                 break;
