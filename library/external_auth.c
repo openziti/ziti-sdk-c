@@ -86,7 +86,7 @@ static void internal_link_cb(oidc_client_t *oidc, const char *url, void *ctx) {
     ztx->ext_launch_ctx = NULL;
 }
 
-static void ext_token_cb(oidc_client_t *oidc, enum oidc_status status, const char *data) {
+static void ext_token_cb(oidc_client_t *oidc, enum oidc_status status, const void *data) {
     ziti_context ztx = oidc->data;
     switch (status) {
         case OIDC_TOKEN_OK: {
