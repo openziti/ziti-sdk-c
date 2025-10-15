@@ -366,7 +366,7 @@ static void login_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
                     break;
                 case ziti_auth_query_type_EXT_JWT:
                     clt->request = req;
-                    clt->token_cb(req->clt, OIDC_EXT_JWT_NEEDED, q);
+                    clt->token_cb(req->clt, OIDC_EXT_JWT_NEEDED, (void *)q);
                     break;
                 default:
                     OIDC_LOG(ERROR, "unknown auth query type[%d]", q->type_id);
