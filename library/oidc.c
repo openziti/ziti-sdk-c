@@ -280,11 +280,17 @@ static void free_auth_req(auth_req *req) {
 
 static void failed_auth_req(auth_req *req, const char *error) {
     oidc_client_t *clt = req->clt;
-    if (clt && clt->token_cb) {
-        OIDC_LOG(WARN, "OIDC authorization failed: %s", error);
-        clt->token_cb(clt, ZITI_AUTHENTICATION_FAILED, error);
-        clt->request = NULL;
-        clt = NULL;
+    if (clt) {
+        if (clt->request == req) {
+            clt->request = NULL;
+        }
+
+        if (clt->token_cb) {
+            OIDC_LOG(WARN, "OIDC authorization failed: %s", error);
+            clt->token_cb(clt, ZITI_AUTHENTICATION_FAILED, error);
+            clt->request = NULL;
+            clt = NULL;
+        }
     }
 
     if (req->elr) {
@@ -841,6 +847,7 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
         return UV_EALREADY;
     }
 
+    OIDC_LOG(DEBUG, "closing");
     clt->token_cb = NULL;
     clt->close_cb = cb;
     tlsuv_http_close(&clt->http, http_close_cb);
@@ -849,7 +856,6 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
     free_ziti_jwt_signer(&clt->signer_cfg);
 
     if (clt->request) {
-        clt->request->clt = NULL;
         failed_auth_req(clt->request, strerror(ECANCELED));
     }
 

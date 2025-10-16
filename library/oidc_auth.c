@@ -126,17 +126,17 @@ static void ha_auth_free(ziti_auth_method_t *self) {
     oidc_client_close(&auth->oidc, close_cb);
 }
 
-static void token_cb(oidc_client_t *oidc, enum oidc_status status, const char *token) {
+static void token_cb(oidc_client_t *oidc, enum oidc_status status, const void *data) {
     struct ha_auth_s *auth = HA_AUTH_FROM_OIDC(oidc);
     char err[128];
 
     if (auth->cb) {
         switch (status) {
             case OIDC_TOKEN_OK:
-                auth->cb(auth->cb_ctx, ZitiAuthStateFullyAuthenticated, (void*)token);
+                auth->cb(auth->cb_ctx, ZitiAuthStateFullyAuthenticated, data);
                 break;
             case OIDC_EXT_JWT_NEEDED:
-                auth->cb(auth->cb_ctx, ZitiAuthStatePartiallyAuthenticated, (void *)token);
+                auth->cb(auth->cb_ctx, ZitiAuthStatePartiallyAuthenticated, data);
                 break;
             case OIDC_TOTP_NEEDED:
                 auth->cb(auth->cb_ctx, ZitiAuthStatePartiallyAuthenticated, (void *) &ZITI_MFA);
