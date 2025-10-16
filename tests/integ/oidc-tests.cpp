@@ -71,10 +71,11 @@ TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
 
     std::string token;
     oidcClient.data = &token;
-    oidc_client_start(&oidcClient, [](oidc_client_t *clt, enum oidc_status status, const char *token) {
-        auto out = (std::string *) clt->data;
-        REQUIRE(status == OIDC_TOKEN_OK);
-        *out = token;
+    oidc_client_start(&oidcClient, [](oidc_client_t *clt, enum oidc_status status, const void *d) {
+        auto out = static_cast<std::string *>(clt->data);
+        if(status == OIDC_TOKEN_OK) {
+            *out = static_cast<const char *>(d);
+        }
     });
 
     uv_run(l, UV_RUN_DEFAULT);

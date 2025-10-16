@@ -22,6 +22,7 @@ if (NOT sodium_libs)
 endif ()
 
 pkg_check_modules(PBUFC REQUIRED IMPORTED_TARGET libprotobuf-c)
+message("libprotobuf-c[${PBUFC_VERSION}] is ${PBUFC_LINK_LIBRARIES}")
 
 if (ziti_DEVELOPER_MODE)
     find_program(PROTO_GEN protoc)

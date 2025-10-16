@@ -37,7 +37,7 @@ enum oidc_status {
 
 typedef struct oidc_client_s oidc_client_t;
 typedef void (*oidc_config_cb)(oidc_client_t *, int, const char *);
-typedef void (*oidc_token_cb)(oidc_client_t *, enum oidc_status, const char *access_token);
+typedef void (*oidc_token_cb)(oidc_client_t *, enum oidc_status, const void *data);
 typedef void (*oidc_close_cb)(oidc_client_t *);
 typedef void (*oidc_ext_link_cb)(oidc_client_t *, const char *link, void *ctx);
 
