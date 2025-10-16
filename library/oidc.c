@@ -309,6 +309,7 @@ static void token_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
     OIDC_LOG(DEBUG, "%d %s err[%s]", http_resp->code, http_resp->status, err);
     if (http_resp->code == 200) {
         oidc_client_set_tokens(clt, resp);
+        clt->request = NULL;
         free_auth_req(req);
     } else {
         failed_auth_req(req, http_resp->status);
