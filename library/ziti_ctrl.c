@@ -174,7 +174,7 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
             e = ZITI_DISABLED;
             code = ziti_errorstr(ZITI_DISABLED);
         } else {
-            CTRL_LOG(WARN, "request failed: %d(%s)", r->code, uv_strerror(r->code));
+            CTRL_LOG(WARN, "request[%s] failed: %d(%s)", r->req->path, r->code, uv_strerror(r->code));
 
             if (ctrl->active_reqs == 0) {
                 CTRL_LOG(INFO, "attempting to switch endpoint");
