@@ -210,6 +210,7 @@ extern bool ziti_is_enabled(ziti_context ztx) {
 }
 
 extern void ziti_set_enabled(ziti_context ztx, bool enabled) {
+    uv_prepare_start(&ztx->prepper, ztx_prepare);
     ziti_queue_work(ztx, enabled ? ziti_start_internal : ziti_stop_internal, NULL);
 }
 
