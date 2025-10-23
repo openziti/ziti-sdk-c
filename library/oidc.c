@@ -358,7 +358,9 @@ static void login_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
     OIDC_LOG(DEBUG, "%d login[%s] body = %s", http_resp->code, err, json_object_to_json_string(body));
     json_object *auth_queries = json_object_object_get(body, "authQueries");
     model_list queries = {};
-    ziti_auth_query_mfa_list_from_json(&queries, auth_queries);
+    if (auth_queries) {
+        ziti_auth_query_mfa_list_from_json(&queries, auth_queries);
+    }
     json_object_put(body);
 
     if (model_list_size(&queries) > 0) {
