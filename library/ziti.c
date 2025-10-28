@@ -108,7 +108,6 @@ static size_t parse_ref(const char *val, const char **res) {
             // load file
             struct tlsuv_url_s url;
             tlsuv_parse_url(&url, val);
-            size_t start = strlen(val) - strlen(url.path);
             *res = url.path;
             len = url.path_len;
         } else if (strncmp("pem:", val, 4) == 0) {
@@ -462,6 +461,8 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
 
         if (ztx->auth_method) {
             ztx->auth_method->stop(ztx->auth_method);
+            ztx->auth_method->free(ztx->auth_method);
+            ztx->auth_method = NULL;
         }
 
         // stop updates
@@ -478,8 +479,6 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         ziti_close_channels(ztx, ZITI_DISABLED);
 
         FREE(ztx->last_update);
-        const char *svc_name;
-        ziti_service *svc;
         ziti_event_t ev = {0};
         ev.type = ZitiServiceEvent;
         ev.service.removed = calloc(model_map_size(&ztx->services) + 1, sizeof(ziti_service *));
@@ -504,8 +503,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         free_ziti_service_array(&ev.service.removed);
 
         ziti_ctrl_cancel(ztx_get_controller(ztx));
-        // logout
-        ziti_ctrl_clear_auth(ztx_get_controller(ztx));
+        ziti_set_unauthenticated(ztx, NULL);
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
         ztx->enabled = false;
 
@@ -1172,10 +1170,6 @@ int ziti_listen_with_options(ziti_connection serv_conn, const char *service, zit
  * @param ztx
  */
 static void ziti_re_auth(ziti_context ztx) {
-    if (ztx->ext_auth) {
-        oidc_client_refresh(ztx->ext_auth);
-    }
-
     // always get controller version to get the right auth method
     ziti_ctrl_get_version(ztx_get_controller(ztx), version_pre_auth_cb, ztx);
 
@@ -2022,18 +2016,6 @@ static void pre_auth_retry(void *data) {
     }
 }
 
-static void jwt_signers_cb(ziti_jwt_signer_array arr, const ziti_error *err, void *ctx) {
-    ziti_context ztx = ctx;
-    const ziti_jwt_signer *js = NULL;
-
-    if (err) {
-        ZTX_LOG(ERROR, "failed to get external signers: %d/%s", (int)err->err, err->message);
-    }
-    FOR(js, arr) {
-        ZTX_LOG(INFO, "ext jwt: %s", js->provider_url);
-    }
-}
-
 static void version_pre_auth_cb(const ziti_version *version, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err) {
@@ -2054,10 +2036,8 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
             ztx->auth_method = NULL;
         }
 
-        bool start = false;
         api_path *oidc_path = model_map_get(&version->api_versions->oidc, "v1");
         if (!ztx->auth_method) {
-            start = true;
             if (use_oidc) {
                 ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->tlsCtx);
             } else {
@@ -2072,10 +2052,9 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
             return;
         }
 
-        if (start) {
-            ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
-        } else if (ztx->auth_state  == ZitiAuthStateUnauthenticated) {
-            ziti_force_api_session_refresh(ztx);
+        ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
+        if (ztx->ext_auth) {
+            oidc_client_refresh(ztx->ext_auth);
         }
     }
 }

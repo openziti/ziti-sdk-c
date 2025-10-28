@@ -497,7 +497,7 @@ static void url_decode(const char *src, size_t src_len, char *dest) {
 static void ext_accept(uv_work_t *wr) {
     struct ext_link_req *elr = (struct ext_link_req *) wr;
 
-    int rc;
+    int rc = 0;
     fd_set fds;
     uint64_t timeout = OIDC_ACCEPT_TIMEOUT;
 
