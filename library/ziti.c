@@ -747,7 +747,6 @@ static void free_ztx(uv_handle_t *h) {
     model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_session_ptr);
     ziti_set_unauthenticated(ztx, NULL);
-    free_ziti_identity_data_ptr(ztx->identity_data);
     FREE(ztx->last_update);
     FREE(ztx->session_token);
 
@@ -768,6 +767,7 @@ static void free_ztx(uv_handle_t *h) {
     ev.ctx.err = ziti_errorstr(ZITI_DISABLED);
 
     ziti_send_event(ztx, &ev);
+    free_ziti_identity_data_ptr(ztx->identity_data);
 
     ZTX_LOG(INFO, "shutdown is complete\n");
     free(ztx);
