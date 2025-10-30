@@ -736,7 +736,11 @@ static void json_req_cb(tlsuv_http_resp_t *resp, void *ctx) {
     struct json_req_ctx *jctx = ctx;
     const char *ct = tlsuv_http_resp_header(resp, "Content-Type");
     if (ct == NULL) {
-        jctx->cb(resp, NULL, NULL, jctx->ctx);
+        const char *err = "missing content-type";
+        if (resp->code < 0) {
+            err = uv_strerror((int) resp->code);
+        }
+        jctx->cb(resp, err, NULL, jctx->ctx);
         free(jctx);
         return;
     }

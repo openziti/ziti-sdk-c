@@ -932,7 +932,7 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
 
 static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *resp, void *ctx) {
     oidc_client_t *clt = ctx;
-    if (err == NULL) {
+    if (http_resp->code == 200 && resp != NULL) {
         OIDC_LOG(DEBUG,  "token refresh success");
         oidc_client_set_tokens(clt, resp);
         return;
