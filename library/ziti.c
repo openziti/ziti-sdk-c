@@ -333,6 +333,12 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
         ZTX_LOG(WARN, "failed to list HA controllers %s/%s", err->code, err->message);
         return;
     }
+
+    if (ctrls == NULL || ctrls[0] == NULL) {
+        ZTX_LOG(INFO, "not processing empty controller list");
+        free(ctrls);
+        return;
+    }
     
     const char *url;
     model_map diff = {};
@@ -392,7 +398,9 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     if (ztx->auth_method->kind == OIDC) {
         ziti_ctrl_clear_auth(ctrl);
         ziti_ctrl_set_token(ctrl, session_token);
-        ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
+        if (ctrl->is_ha) {
+            ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
+        }
 
         const char* er_name;
         ziti_channel_t *ch;
