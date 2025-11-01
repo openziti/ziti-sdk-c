@@ -261,13 +261,12 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
 
 void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err) {
     ziti_controller *ctrl = ztx_get_controller(ztx);
-    if (err->err == UV_ECONNREFUSED) {
-        api_path *oidc_api = model_map_get(&ctrl->version.api_versions->oidc, "v1");
-        if (ztx->auth_method->set_endpoint &&
-            ztx->auth_method->set_endpoint(ztx->auth_method, oidc_api) == 0) {
-            ZTX_LOG(DEBUG, "updating internal OIDC endpoint[%s]", ztx_controller(ztx));
-            return;
-        }
+    if (err->err == UV_ECONNREFUSED || err->err == UV_EAI_NONAME) {
+        ZTX_LOG(ERROR, "auth provider is not available: %s", uv_strerror(err->err));
+        // current controller became unavailable
+        // re-auth will find another controller if possible or start back-off retries
+        ziti_re_auth(ztx);
+        return;
     }
 
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthImpossibleToAuthenticate);
@@ -1178,11 +1177,11 @@ int ziti_listen_with_options(ziti_connection serv_conn, const char *service, zit
  * @param ztx
  */
 static void ziti_re_auth(ziti_context ztx) {
-    // always get controller version to get the right auth method
-    ziti_ctrl_get_version(ztx_get_controller(ztx), version_pre_auth_cb, ztx);
-
     // load external signers in case they are needed for auth
     ziti_get_ext_jwt_signers(ztx, NULL, NULL);
+
+    // always get controller version to get the right auth method
+    ziti_ctrl_get_version(ztx_get_controller(ztx), version_pre_auth_cb, ztx);
 }
 
 static void set_posture_query_defaults(ziti_service *service) {
