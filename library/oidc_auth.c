@@ -33,7 +33,7 @@ static int ha_auth_refresh(ziti_auth_method_t *self);
 static int ha_ext_jwt(ziti_auth_method_t *self, const char *token);
 static int ha_set_endpoint(ziti_auth_method_t *self, const api_path *api);
 static void config_cb(oidc_client_t *oidc, int status, const char *err);
-static char* internal_oidc_path(const api_path *api);
+static char* internal_oidc_path(const char *base, const char *path);
 
 struct ha_auth_s {
     ziti_auth_method_t api;
@@ -41,6 +41,9 @@ struct ha_auth_s {
     uv_loop_t *loop;
     auth_state_cb cb;
     void *cb_ctx;
+
+    model_list urls;
+    model_list_iter cur_url;
 
     oidc_client_t oidc;
     ziti_jwt_signer config;
@@ -61,12 +64,19 @@ ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context
         .set_ext_jwt = ha_ext_jwt,
     };
 
+    const char *u;
+    FOR(u, api->base_urls) {
+        model_list_append(&auth->urls, strdup(u));
+    }
+    auth->cur_url = model_list_iterator(&auth->urls);
+    u = model_list_it_element(auth->cur_url);
+
     auth->loop = l;
     auth->config = (ziti_jwt_signer){
             .client_id = "openziti",
             .name = "internal",
             .enabled = true,
-            .provider_url = internal_oidc_path(api),
+            .provider_url = internal_oidc_path(u, api->path),
             .target_token = ziti_target_token_access_token,
     };
     model_list_append(&auth->config.scopes, "offline_access");
@@ -75,9 +85,9 @@ ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context
     return (ziti_auth_method_t*)auth;
 }
 
-static char *internal_oidc_path(const api_path *api) {
+static char *internal_oidc_path(const char *base, const char *path) {
     struct tlsuv_url_s base_url = {};
-    tlsuv_parse_url(&base_url, api->base_urls[0]);
+    tlsuv_parse_url(&base_url, base);
 
     string_buf_t *url_buf = new_string_buf();
     string_buf_fmt(url_buf, "%.*s://%.*s",
@@ -89,8 +99,8 @@ static char *internal_oidc_path(const api_path *api) {
     // older controllers did not have path in the base URL
     if (base_url.path) {
         string_buf_appendn(url_buf, base_url.path, base_url.path_len);
-    } else if (api->path) {
-        string_buf_append(url_buf, api->path);
+    } else if (path) {
+        string_buf_append(url_buf, path);
     }
 
     char *url = string_buf_to_string(url_buf, NULL);
@@ -100,14 +110,17 @@ static char *internal_oidc_path(const api_path *api) {
 
 static int ha_set_endpoint(ziti_auth_method_t *self, const api_path *api) {
     struct ha_auth_s *auth = HA_AUTH(self);
-    char *ep = internal_oidc_path(api);
-    if (auth->config.provider_url && strcmp(ep, auth->config.provider_url) == 0) {
-        free(ep);
-        return -1;
+
+    model_list_clear(&auth->urls, free);
+    const char *u;
+    FOR(u, api->base_urls) {
+        model_list_append(&auth->urls, strdup(u));
     }
+    auth->cur_url = model_list_iterator(&auth->urls);
+    u = model_list_it_element(auth->cur_url);
 
     FREE(auth->config.provider_url);
-    auth->config.provider_url = ep;
+    auth->config.provider_url = internal_oidc_path(u, api->path);
 
     oidc_client_set_cfg(&auth->oidc, &auth->config);
     return oidc_client_configure(&auth->oidc, config_cb);
@@ -118,6 +131,7 @@ static void close_cb(oidc_client_t *oidc) {
     struct ha_auth_s *auth = HA_AUTH_FROM_OIDC(oidc);
     free((char*)auth->config.provider_url);
     model_list_clear(&auth->config.scopes, NULL);
+    model_list_clear(&auth->urls, free);
     free(auth);
 }
 
@@ -166,12 +180,34 @@ static void token_cb(oidc_client_t *oidc, enum oidc_status status, const void *d
 }
 
 static void config_cb(oidc_client_t *oidc, int status, const char *err) {
+    ZITI_LOG(DEBUG, "oidc config callback: %d/%s", status, err);
     struct ha_auth_s *auth = HA_AUTH_FROM_OIDC(oidc);
     if (status == 0) {
         oidc_client_start(oidc, token_cb);
     } else {
-        ZITI_LOG(ERROR, "failed to configure OIDC[%s] client: %d/%s",
+        auth->cur_url = model_list_it_next(auth->cur_url);
+        if (auth->cur_url == NULL) {
+            ZITI_LOG(ERROR, "failed to configure OIDC[%s] (no more URLs to try): %d/%s",
+                     auth->config.provider_url, status, err);
+            if (auth->cb) {
+                ziti_error error = {
+                    .err = status,
+                    .message = err,
+                };
+                auth->cb(auth->cb_ctx, ZitiAuthImpossibleToAuthenticate, &error);
+            }
+            return;
+        }
+
+        ZITI_LOG(DEBUG, "failed to configure OIDC[%s] client: %d/%s",
                  auth->config.provider_url, status, err);
+        FREE(auth->config.provider_url);
+
+        const char *u = model_list_it_element(auth->cur_url);
+        auth->config.provider_url = internal_oidc_path(u, "/oidc");
+        ZITI_LOG(DEBUG, "trying next url[%s]", auth->config.provider_url);
+        oidc_client_set_cfg(oidc, &auth->config);
+        oidc_client_configure(&auth->oidc, config_cb);
     }
 }
 

@@ -192,10 +192,18 @@ void oidc_client_set_link_cb(oidc_client_t *clt, oidc_ext_link_cb cb, void *ctx)
     clt->link_ctx = ctx;
 }
 
-static void internal_config_cb(tlsuv_http_resp_t *req, const char * err, json_object *resp, void *ctx) {
+static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_object *resp, void *ctx) {
     oidc_client_t *clt = ctx;
     int status = 0;
-    if (err == NULL) {
+
+    if (r->code < 0) {
+        status = r->code;
+        err = err ? err : uv_strerror((int) r->code);
+    } else if (r->code != 200 && resp == NULL) {
+        OIDC_LOG(ERROR, "unexpected response code[%d] body=%s", r->code, json_object_get_string(resp));
+        status = UV_EINVAL;
+        err = r->status;
+    } else {
         // check expected configuration values are present and valid
         // to avoid surprises later
         if (json_object_get_type(resp) != json_type_object) {
@@ -209,7 +217,7 @@ static void internal_config_cb(tlsuv_http_resp_t *req, const char * err, json_ob
 
     if (status == 0) {
         json_object_put(clt->config);
-        clt->config = resp;
+        clt->config = json_object_get(resp);
         clt->refresh_grant = "refresh_token";
         // config has full URLs, so we can drop the prefix now
         tlsuv_http_set_path_prefix(&clt->http, "");
@@ -230,10 +238,13 @@ static void internal_config_cb(tlsuv_http_resp_t *req, const char * err, json_ob
         }
     }
 
-    if (clt->config_cb) {
-        clt->config_cb(clt, status, NULL);
+    json_object_put(resp);
+
+    oidc_config_cb cb = clt->config_cb;
+    if (cb) {
+        clt->config_cb = NULL;
+        cb(clt, status, err);
     }
-    clt->config_cb = NULL;
 }
 
 int oidc_client_configure(oidc_client_t *clt, oidc_config_cb cb) {
@@ -241,6 +252,7 @@ int oidc_client_configure(oidc_client_t *clt, oidc_config_cb cb) {
 
     if (clt->request) return 0;
 
+    OIDC_LOG(DEBUG, "configuring provider[%s]", clt->signer_cfg.provider_url);
     tlsuv_http_set_url(&clt->http, clt->signer_cfg.provider_url);
     ziti_json_request(&clt->http, "GET", OIDC_CONFIG, internal_config_cb, clt);
     return 0;
@@ -713,6 +725,7 @@ static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
 int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     clt->token_cb = cb;
     if (clt->config == NULL) {
+        OIDC_LOG(DEBUG, "deferring auth flow until configuration is complete");
         return 0;
     }
     if (clt->request) {
@@ -720,6 +733,7 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
         return 0;
     }
 
+    OIDC_LOG(DEBUG, "starting auth flow");
     json_object *cfg = (json_object *) clt->config;
     json_object *auth_ep = json_object_object_get(cfg, AUTH_EP);
     if (auth_ep  == NULL) {

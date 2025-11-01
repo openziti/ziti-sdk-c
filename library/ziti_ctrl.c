@@ -181,8 +181,8 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
                 const char *next_ep = ctrl_next_ep(ctrl, ctrl->url);
                 if (next_ep != NULL) {
                     FREE(ctrl->url);
+                    CTRL_LOG(INFO, "switching to endpoint[%s]", next_ep);
                     ctrl->url = strdup(next_ep);
-                    CTRL_LOG(INFO, "switching to endpoint[%s]", ctrl->url);
                     tlsuv_http_set_url(ctrl->client, next_ep);
                     internal_get_version(ctrl);
                 }
