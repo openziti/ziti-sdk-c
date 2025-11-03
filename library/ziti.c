@@ -1291,6 +1291,9 @@ static void update_services(ziti_service_array services, const ziti_error *error
     ziti_services_refresh(ztx, false);
 
     if (error) {
+        // clear the update tag because it is now stale
+        FREE(ztx->last_update);
+
         ZTX_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
                 ztx_controller(ztx));
         if (error->err == ZITI_AUTHENTICATION_FAILED) {
@@ -1298,15 +1301,12 @@ static void update_services(ziti_service_array services, const ziti_error *error
             ziti_re_auth(ztx);
         } else if (error->err == ZITI_PARTIALLY_AUTHENTICATED) {
             ZTX_LOG(VERBOSE, "api session partially authenticated, waiting for api session state change");
-            return;
         } else {
-            FREE(ztx->last_update);
             update_ctrl_status(ztx, ZITI_CONTROLLER_UNAVAILABLE, error->message);
         }
         return;
     }
     update_ctrl_status(ztx, ZITI_OK, NULL);
-
 
     ZTX_LOG(VERBOSE, "processing service updates");
 
@@ -1657,6 +1657,12 @@ static void update_ctrl_status(ziti_context ztx, int errCode, const char *errMsg
                         .err = errMsg,
                 }};
         ziti_send_event(ztx, &ev);
+
+        // force refresh now if the previous service refresh failed
+        // because of controller unavailability
+        if (errCode == ZITI_OK && ztx->last_update == NULL) {
+            ziti_services_refresh(ztx, true);
+        }
     }
     ztx->ctrl_status = errCode;
 }
