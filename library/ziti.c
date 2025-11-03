@@ -1228,6 +1228,11 @@ void ziti_force_service_update(ziti_context ztx, const char* service_id) {
 // and configurations have not been altered. Will return non-0
 // values if they have. This ignores posture query alterations.
 static int is_service_updated(ziti_context ztx, ziti_service *new, ziti_service *old) {
+    if (strcmp(old->id, new->id) != 0) {
+        ZTX_LOG(VERBOSE, "service [%s] was re-created, ID changed", new->name);
+        return 1;
+    }
+
     //compare updated at, if changed, signal update
     if (strcmp(old->updated_at, new->updated_at) != 0) {
         ZTX_LOG(VERBOSE, "service [%s] is updated, update_at property changes", new->name);
@@ -1291,6 +1296,9 @@ static void update_services(ziti_service_array services, const ziti_error *error
     ziti_services_refresh(ztx, false);
 
     if (error) {
+        // clear the update tag because it is now stale
+        FREE(ztx->last_update);
+
         ZTX_LOG(ERROR, "failed to get service updates err[%s/%s] from ctrl[%s]", error->code, error->message,
                 ztx_controller(ztx));
         if (error->err == ZITI_AUTHENTICATION_FAILED) {
@@ -1298,15 +1306,12 @@ static void update_services(ziti_service_array services, const ziti_error *error
             ziti_re_auth(ztx);
         } else if (error->err == ZITI_PARTIALLY_AUTHENTICATED) {
             ZTX_LOG(VERBOSE, "api session partially authenticated, waiting for api session state change");
-            return;
         } else {
-            FREE(ztx->last_update);
             update_ctrl_status(ztx, ZITI_CONTROLLER_UNAVAILABLE, error->message);
         }
         return;
     }
     update_ctrl_status(ztx, ZITI_OK, NULL);
-
 
     ZTX_LOG(VERBOSE, "processing service updates");
 
@@ -1352,12 +1357,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
             ZTX_LOG(DEBUG, "service[%s] is not longer available", model_map_it_key(it));
             s = model_map_it_value(it);
             ev.service.removed[remIdx++] = s;
-
-            ziti_session *session = model_map_remove(&ztx->sessions, s->id);
-            if (session) {
-                free_ziti_session(session);
-                free(session);
-            }
+            ziti_invalidate_session(ztx, s->id, ziti_session_types.Dial);
             it = model_map_it_remove(it);
         }
     }
@@ -1374,8 +1374,8 @@ static void update_services(ziti_service_array services, const ziti_error *error
     for (idx = 0; ev.service.changed[idx] != NULL; idx++) {
         s = ev.service.changed[idx];
         ziti_service *old = model_map_set(&ztx->services, s->name, s);
-        free_ziti_service(old);
-        FREE(old);
+        ziti_invalidate_session(ztx, old ? old->id : NULL, ziti_session_types.Dial);
+        free_ziti_service_ptr(old);
 
         if ((s->perm_flags & ZITI_CAN_DIAL) == 0) {
             ziti_invalidate_session(ztx, s->id, ziti_session_types.Dial);
@@ -1657,12 +1657,18 @@ static void update_ctrl_status(ziti_context ztx, int errCode, const char *errMsg
                         .err = errMsg,
                 }};
         ziti_send_event(ztx, &ev);
+
+        // force refresh now if the previous service refresh failed
+        // because of controller unavailability
+        if (errCode == ZITI_OK && ztx->last_update == NULL) {
+            ziti_services_refresh(ztx, true);
+        }
     }
     ztx->ctrl_status = errCode;
 }
 
 void ziti_invalidate_session(ziti_context ztx, const char *service_id, ziti_session_type type) {
-    if (type == ziti_session_types.Dial) {
+    if (type == ziti_session_types.Dial && service_id != NULL) {
         ziti_session *s = model_map_remove(&ztx->sessions, service_id);
         free_ziti_session_ptr(s);
     }
