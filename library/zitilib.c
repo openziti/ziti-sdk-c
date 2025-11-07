@@ -1195,36 +1195,6 @@ void process_on_loop(uv_async_t *async) {
     }
 }
 
-static void child_load_contexts(void *load_list, future_t *f, uv_loop_t *l) {
-    model_list *load_ids = load_list;
-
-    void *id;
-    MODEL_LIST_FOREACH(id, *load_ids) {
-        ZITI_LOG(INFO, "loading %s", (const char *) id);
-        load_ziti_ctx(id, NULL, l);
-    }
-
-    complete_future(f, NULL, 0);
-}
-
-static void child_init() {
-    lib_loop = uv_loop_new();
-    memset(&loop_q, 0, sizeof(loop_q));
-    ziti_log_init(lib_loop, -1, NULL);
-    uv_async_init(lib_loop, &q_async, process_on_loop);
-
-    model_map_iter it = model_map_iterator(&ziti_contexts);
-    model_list *idents = calloc(1, sizeof(*idents));
-    while (it) {
-        const char *ident = model_map_it_key(it);
-        model_list_append(idents, strdup(ident));
-        it = model_map_it_remove(it);
-    }
-
-    child_init_future = schedule_on_loop(child_load_contexts, idents, true);
-    uv_thread_create(&lib_thread, looper, lib_loop);
-}
-
 
 static void internal_init() {
 #if defined(PTHREAD_ONCE_INIT)
@@ -1321,7 +1291,7 @@ static void resolve_cb(void *r, future_t *f) {
     ZITI_LOG(DEBUG, "resolving %s", req->host);
     in_addr_t ip = (in_addr_t)(intptr_t)model_map_get(&host_to_ip, req->host);
     if (ip == 0) {
-        const char *service_name;
+        const char *service_name = NULL;
         MODEL_MAP_FOR(it, ziti_contexts) {
             ztx_wrap_t *wrap = model_map_it_value(it);
             service_name = find_service(wrap, 0, req->host, req->port);
@@ -1452,7 +1422,7 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
 
         res->ai_family = AF_INET;
         res->ai_addr = (struct sockaddr *) addr4;
-        res->ai_socktype = hints->ai_socktype;
+        res->ai_socktype = socktype;
 
         res->ai_addrlen = sizeof(*addr4);
         *addrlist = res;
