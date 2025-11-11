@@ -39,12 +39,6 @@ typedef struct oidc_client_s oidc_client_t;
 typedef void (*oidc_config_cb)(oidc_client_t *, int, const char *);
 typedef void (*oidc_token_cb)(oidc_client_t *, enum oidc_status, const void *data);
 typedef void (*oidc_close_cb)(oidc_client_t *);
-typedef void (*oidc_ext_link_cb)(oidc_client_t *, const char *link, void *ctx);
-
-typedef enum {
-    oidc_native,
-    oidc_external,
-} oidc_auth_mode;
 
 struct oidc_client_s {
     void *data;
@@ -52,13 +46,9 @@ struct oidc_client_s {
 
     ziti_jwt_signer signer_cfg;
 
-    oidc_auth_mode mode;
     oidc_config_cb config_cb;
     oidc_token_cb token_cb;
     oidc_close_cb close_cb;
-
-    oidc_ext_link_cb link_cb;
-    void *link_ctx;
 
     char name[32];
     void *config;
@@ -75,8 +65,6 @@ struct oidc_client_s {
 int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
                      const struct ziti_jwt_signer_s *cfg, tls_context *tls);
 int oidc_client_set_cfg(oidc_client_t *clt, const struct ziti_jwt_signer_s *cfg);
-
-void oidc_client_set_link_cb(oidc_client_t *clt, oidc_ext_link_cb, void *ctx);
 
 // configure client
 int oidc_client_configure(oidc_client_t *clt, oidc_config_cb);

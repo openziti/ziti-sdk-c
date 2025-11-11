@@ -108,6 +108,7 @@ SET(ZITI_SRC_FILES
         util/future.c
         external_auth.c
         edge_protocol.c
+        ext_oidc.c
         )
 
 SET(ZITI_INCLUDE_DIRS
