@@ -123,14 +123,14 @@ static void unhandled_body_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
     }
 }
 
-static void handle_unexpected_resp(tlsuv_http_resp_t *resp) {
-    ZITI_LOG(WARN, "unexpected OIDC response");
-    ZITI_LOG(WARN, "%s %d %s", resp->http_version, resp->code, resp->status);
+static void handle_unexpected_resp(ext_oidc_client_t *clt, tlsuv_http_resp_t *resp, json_object *body) {
+    OIDC_LOG(WARN, "unexpected OIDC response");
+    OIDC_LOG(WARN, "%s %d %s", resp->http_version, resp->code, resp->status);
     tlsuv_http_hdr *h;
     LIST_FOREACH(h, &resp->headers, _next) {
-        ZITI_LOG(WARN, "%s: %s", h->name, h->value);
+        OIDC_LOG(WARN, "%s: %s", h->name, h->value);
     }
-    resp->body_cb = unhandled_body_cb;
+    OIDC_LOG(WARN, "%s", json_object_get_string(body));
 }
 
 int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
@@ -316,7 +316,7 @@ static void token_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
     } else {
         failed_auth_req(req, http_resp->status);
         http_resp->req->data = NULL;
-        handle_unexpected_resp(http_resp);
+        handle_unexpected_resp(clt, http_resp, resp);
     }
 }
 
@@ -549,7 +549,7 @@ static void ext_done(uv_work_t *wr, int status) {
     free(elr);
 }
 
-static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pair q[]) {
+static void ext_start_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pair q[]) {
     uv_loop_t *loop = req->clt->timer->loop;
     struct sockaddr_in6 addr = {
             .sin6_family = AF_INET6,
@@ -654,7 +654,7 @@ int ext_oidc_client_start(ext_oidc_client_t *clt, ext_oidc_token_cb cb) {
                                       clt->signer_cfg.audience : "openziti"},
     };
 
-    start_ext_auth(req, auth_url, sizeof(query)/sizeof(query[0]), query);
+    ext_start_auth(req, auth_url, sizeof(query)/sizeof(query[0]), query);
     free(scope);
     delete_string_buf(scopes_buf);
     return 0;
