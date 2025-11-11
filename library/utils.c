@@ -709,6 +709,7 @@ static void json_body_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
             r->data = NULL;
             r->resp.body_cb = NULL;
             json_tokener_free(jctx->json_parser);
+            json_object_put(j);
             free(jctx);
             return;
         }
