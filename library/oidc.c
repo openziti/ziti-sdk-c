@@ -238,8 +238,6 @@ static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_obje
         }
     }
 
-    json_object_put(resp);
-
     oidc_config_cb cb = clt->config_cb;
     if (cb) {
         clt->config_cb = NULL;
@@ -373,7 +371,6 @@ static void login_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
     if (auth_queries) {
         ziti_auth_query_mfa_list_from_json(&queries, auth_queries);
     }
-    json_object_put(body);
 
     if (model_list_size(&queries) > 0) {
         ziti_auth_query_mfa *q;
@@ -900,11 +897,9 @@ static const char *jwt_payload(const char *jwt) {
 }
 
 static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
-    if (clt->tokens) {
-        json_object_put(clt->tokens);
-    }
+    json_object_put(clt->tokens);
 
-    clt->tokens = tok_json;
+    clt->tokens = json_object_get(tok_json);
     if (clt->token_cb) {
         const char *token_type;
         switch (clt->signer_cfg.target_token) {
@@ -960,9 +955,6 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
 
     OIDC_LOG(WARN, "OIDC token refresh failed: %d[%s]", http_resp->code, err);
     clt->token_cb(clt, OIDC_RESTART, NULL);
-    if (resp) {
-        json_object_put(resp);
-    }
 }
 
 static const char* get_basic_auth_header(const char *client_id) {
