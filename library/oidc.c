@@ -48,23 +48,6 @@
 
 #define TOKEN_EXCHANGE_GRANT "urn:ietf:params:oauth:grant-type:token-exchange"
 
-#define HTTP_RESP_FMT "HTTP/1.0 %d %s\r\n"\
-"Connection: close\r\n"\
-"Content-Type: text/html\r\n"\
-"Content-Length: %zd\r\n"\
-"\r\n%s"
-
-
-#if _WIN32
-#define close_socket(s) closesocket(s)
-#define sock_error WSAGetLastError()
-#else
-#define close_socket(s) close(s)
-#define sock_error errno
-#endif
-#define OIDC_ACCEPT_TIMEOUT 60
-#define OIDC_REQ_TIMEOUT 5
-
 #define OIDC_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "oidc[%s] " fmt, clt->name, ##__VA_ARGS__)
 
 static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json);
@@ -72,14 +55,6 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json);
 static void failed_auth_req(struct auth_req *req, const char *error);
 
 static void refresh_time_cb(uv_timer_t *t);
-
-struct ext_link_req {
-    uv_work_t wr;
-    uv_os_sock_t sock;
-    struct auth_req *req;
-    char *code;
-    int err;
-};
 
 typedef struct auth_req {
     oidc_client_t *clt;
@@ -89,66 +64,35 @@ typedef struct auth_req {
     json_tokener *json_parser;
     char *id;
     bool totp;
-    struct ext_link_req *elr;
 } auth_req;
 
-static const char HTTP_SUCCESS_BODY[] =
-        "<!DOCTYPE html>\n"
-        "<html lang=\"en\">\n"
-        "<head>\n"
-        "    <title>OpenZiti: Successful Authentication with External Provider.</title>\n"
-        "    <script>\n"
-        "        function closeWindow() {\n"
-        "            setTimeout(function() {\n"
-        "                window.close(); // Close the current window\n"
-        "            }, 3000);\n"
-        "        }\n"
-        "    </script>\n"
-        "</head>\n"
-        "<script type=\"text/javascript\">closeWindow()</script>"
-        "<body onload=\"closeWindow()\">\n"
-        "    <img height=\"40px\" src=\"https://netfoundry.io/docs/img/openziti-logo-light.svg\"/>"
-        "    <h2>Successfully authenticated with external provider.</h2><p>You may close this page. It will attempt to close itself in 3 seconds.</p>\n"
-        "</body>\n"
-        "</html>\n";
 
-
-static void unhandled_body_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
-    if (len > 0) {
-        ZITI_LOG(WARN, "%.*s", (int)len, data);
-    } else {
-        ZITI_LOG(WARN, "status = %zd\n", len);
-    }
-}
-
-static void handle_unexpected_resp(tlsuv_http_resp_t *resp) {
-    ZITI_LOG(WARN, "unexpected OIDC response");
-    ZITI_LOG(WARN, "%s %d %s", resp->http_version, resp->code, resp->status);
+static void handle_unexpected_resp(oidc_client_t *clt, tlsuv_http_resp_t *resp, json_object *body) {
+    OIDC_LOG(WARN, "unexpected OIDC response");
+    OIDC_LOG(WARN, "%s %d %s", resp->http_version, resp->code, resp->status);
     tlsuv_http_hdr *h;
     LIST_FOREACH(h, &resp->headers, _next) {
-        ZITI_LOG(WARN, "%s: %s", h->name, h->value);
+        OIDC_LOG(WARN, "%s: %s", h->name, h->value);
     }
-    resp->body_cb = unhandled_body_cb;
+    OIDC_LOG(WARN, "%s", json_object_get_string(body));
 }
 
 int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
                      const ziti_jwt_signer *cfg, tls_context *tls) {
     assert(clt != NULL);
     assert(cfg != NULL);
+    snprintf(clt->name, sizeof(clt->name), "%s", cfg->name ? cfg->name : cfg->provider_url);
     if (cfg->provider_url == NULL) {
-        ZITI_LOG(ERROR, "ziti_jwt_signer.provider_url is missing");
+        OIDC_LOG(ERROR, "ziti_jwt_signer.provider_url is missing");
         return ZITI_INVALID_CONFIG;
     }
 
-    snprintf(clt->name, sizeof(clt->name), "%s", cfg->name ? cfg->name : cfg->provider_url);
     OIDC_LOG(INFO, "initializing with provider[%s]", cfg->provider_url);
     clt->config = NULL;
     clt->tokens = NULL;
     clt->config_cb = NULL;
     clt->token_cb = NULL;
     clt->close_cb = NULL;
-    clt->link_cb = NULL;
-    clt->link_ctx = NULL;
 
     if (tlsuv_http_init(loop, &clt->http, cfg->provider_url) != 0) {
         OIDC_LOG(ERROR, "ziti_jwt_signer.provider_url[%s] is invalid", cfg->provider_url);
@@ -184,12 +128,6 @@ int oidc_client_set_cfg(oidc_client_t *clt, const ziti_jwt_signer *cfg) {
         model_list_append(&clt->signer_cfg.scopes, strdup(scope));
     }
     return tlsuv_http_set_url(&clt->http, clt->signer_cfg.provider_url);
-}
-
-void oidc_client_set_link_cb(oidc_client_t *clt, oidc_ext_link_cb cb, void *ctx) {
-    clt->mode = oidc_external;
-    clt->link_cb = cb;
-    clt->link_ctx = ctx;
 }
 
 static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_object *resp, void *ctx) {
@@ -248,7 +186,10 @@ static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_obje
 int oidc_client_configure(oidc_client_t *clt, oidc_config_cb cb) {
     clt->config_cb = cb;
 
-    if (clt->request) return 0;
+    if (clt->request) {
+        OIDC_LOG(ERROR, "cannot configure while another request is in progress");
+        return UV_EALREADY;
+    }
 
     OIDC_LOG(DEBUG, "configuring provider[%s]", clt->signer_cfg.provider_url);
     tlsuv_http_set_url(&clt->http, clt->signer_cfg.provider_url);
@@ -303,13 +244,6 @@ static void failed_auth_req(auth_req *req, const char *error) {
         }
     }
 
-    if (req->elr) {
-        req->elr->err = ECANCELED;
-        if (uv_cancel((uv_req_t *) &req->elr->wr) == 0) {
-            free(req->elr);
-        }
-    }
-
     free_auth_req(req);
 }
 
@@ -324,7 +258,7 @@ static void token_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
     } else {
         failed_auth_req(req, http_resp->status);
         http_resp->req->data = NULL;
-        handle_unexpected_resp(http_resp);
+        handle_unexpected_resp(clt, http_resp, resp);
     }
 }
 
@@ -332,7 +266,7 @@ static void request_token(auth_req *req, const char *auth_code) {
     oidc_client_t *clt = req->clt;
     json_object *token_ep = json_object_object_get(clt->config, TOKEN_EP);
     const char *token_url = json_object_get_string(token_ep);
-    ZITI_LOG(INFO, "requesting token path[%s] auth[%s]", token_url, auth_code);
+    OIDC_LOG(INFO, "requesting token path[%s] auth[%s]", token_url, auth_code);
     tlsuv_http_set_url(&clt->http, token_url);
     tlsuv_http_req_t *token_req = ziti_json_request(&clt->http, "POST", NULL, token_cb, req);
     tlsuv_http_pair form[] = {
@@ -460,265 +394,6 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
     }
 }
 
-static int set_blocking(uv_os_sock_t sock) {
-    int yes = 1;
-    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (void *) &yes, sizeof(yes));
-#ifdef _WIN32
-    unsigned long mode = 0;
-    if (ioctlsocket(sock, FIONBIO, &mode) != 0) {
-        int err = WSAGetLastError();
-        ZITI_LOG(ERROR, "failed to set socket to blocking: %d", err);
-        return err;
-    }
-#else
-    int flags = fcntl(sock, F_GETFL, 0);
-    flags = flags & ~O_NONBLOCK;
-    if (fcntl(sock, F_SETFL, flags) != 0) {
-        int err = errno;
-        ZITI_LOG(ERROR, "failed to set socket to blocking: %d/%s", err, strerror(err));
-        return err;
-    }
-#endif
-    return 0;
-}
-
-static void url_decode(const char *src, size_t src_len, char *dest) {
-    char *p = dest;
-    const char *end = src + src_len;
-    while (src < end) {
-        if (*src == '%' && isxdigit((unsigned char) src[1]) && isxdigit((unsigned char) src[2])) {
-            char hex[3] = { src[1], src[2], '\0' };
-            *p++ = (char) strtol(hex, NULL, 16);
-            src += 3;
-        } else if (*src == '+') {
-            *p++ = ' ';
-            src++;
-        } else {
-            if (*src != '&') {
-                *p++ = *src;
-            }
-            src++;
-        }
-    }
-    *p = '\0';
-}
-
-static void ext_accept(uv_work_t *wr) {
-    struct ext_link_req *elr = (struct ext_link_req *) wr;
-
-    int rc = 0;
-    fd_set fds;
-    uint64_t timeout = OIDC_ACCEPT_TIMEOUT;
-
-    while(timeout > 0) {
-        FD_ZERO(&fds);
-        FD_SET(elr->sock, &fds);
-        rc = select(elr->sock + 1, &fds, NULL, NULL, &(struct timeval) {
-                .tv_sec = 1,
-        });
-        if (elr->err == ECANCELED) {
-            close_socket(elr->sock);
-            elr->sock = (uv_os_sock_t)-1;
-            return;
-        }
-        if (rc == 0) {
-            timeout--;
-            continue;
-        }
-
-        if (rc < 0) {
-            elr->err = sock_error;
-            return;
-        }
-
-        break;
-    }
-
-    if (rc == 0) {
-        elr->err = ETIMEDOUT;
-        ZITI_LOG(WARN, "redirect_uri was not called in time");
-        return;
-    }
-
-    uv_os_sock_t clt = accept(elr->sock, NULL, NULL);
-    FD_ZERO(&fds);
-    FD_SET(clt, &fds);
-    rc = select(clt + 1, &fds, NULL, NULL, &(struct timeval){
-            .tv_sec = OIDC_REQ_TIMEOUT,
-    });
-    if (rc <= 0) {
-        elr->err = rc == 0 ? ETIMEDOUT : sock_error;
-        close_socket(clt);
-        return;
-    }
-
-    char buf[4096];
-    ssize_t c;
-#if _WIN32
-    c = recv(clt, buf, sizeof(buf) -1, 0);
-#else
-    c = read(clt, buf, sizeof(buf) - 1);
-#endif
-    if (c < 0) {
-        int err = sock_error;
-        ZITI_LOG(ERROR, "read failed: %d/%s", err, strerror(err));
-        elr->err = err;
-        close_socket(clt);
-        return;
-    }
-
-    buf[c] = 0;
-
-    char *cs = strstr(buf, "code=");
-    if (!cs) {
-        ZITI_LOG(WARN, "no code parameter found: %s", buf);
-        char resp[] = "HTTP/1.1 400 Invalid Request\r\n"
-                      "Content-Type: text/html\r\n"
-                      "Connection: close\r\n"
-                      "\r\n"
-                      "<body>Unexpected auth request:<pre>";
-#if _WIN32
-        send(clt, resp, sizeof(resp), 0);
-        send(clt, buf, c, 0);
-#else
-        if (write(clt, resp, sizeof(resp) - 1) <= 0 ||
-            write(clt, buf, c) <= 0) {
-            ZITI_LOG(DEBUG, "failed to write error response: %s", strerror(sock_error));
-        }
-#endif
-        close_socket(clt);
-        return;
-    }
-    cs += strlen("code=");
-    char *ce = strchr(cs, ' ');
-    *ce = 0;
-    char *amp = strchr(cs, '&');
-    if (amp) {
-        ce = amp;
-    }
-
-    size_t param_len = ce - cs;
-    char* decoded_code = calloc(param_len + 1, sizeof(char));
-    url_decode(cs, param_len, decoded_code);
-    elr->code = decoded_code;
-
-    string_buf_t resp_buf;
-    string_buf_init(&resp_buf);
-
-    string_buf_fmt(&resp_buf, HTTP_RESP_FMT, 200, "OK", strlen(HTTP_SUCCESS_BODY), HTTP_SUCCESS_BODY);
-    size_t resp_len;
-    char *resp = string_buf_to_string(&resp_buf, &resp_len);
-    const char *rp = resp;
-
-    while (resp_len > 0) {
-        ssize_t wc =
-#if _WIN32
-                send(clt, rp, resp_len, 0);
-#else
-                write(clt, rp, resp_len);
-#endif
-        if (wc < 0) {
-            int err =
-#if _WIN32
-                    WSAGetLastError();
-#else
-                    errno;
-#endif
-            ZITI_LOG(WARN, "failed to write HTTP resp: %d/%s", err, strerror(err));
-            break;
-        }
-        resp_len -= wc;
-        rp += wc;
-    }
-
-    free(resp);
-    string_buf_free(&resp_buf);
-
-#if _WIN32
-    shutdown(clt, SD_SEND);
-#else
-    shutdown(clt, SHUT_WR);
-#endif
-    close_socket(clt);
-}
-
-static void ext_done(uv_work_t *wr, int status) {
-    struct ext_link_req *elr = (struct ext_link_req *) wr;
-    close_socket(elr->sock);
-    elr->sock = (uv_os_sock_t)-1;
-
-    if (elr->err) {
-        ZITI_LOG(ERROR, "accept failed: %s", strerror(elr->err));
-    }
-
-    if (status != UV_ECANCELED && elr->err != ECANCELED) {
-        struct auth_req *req = elr->req;
-        req->elr = NULL;
-        if (elr->code) {
-            request_token(req, elr->code);
-        } else {
-            failed_auth_req(req, elr->err ? strerror(elr->err) : "code not received");
-        }
-    } else {
-
-    }
-
-    free(elr->code);
-    free(elr);
-}
-
-static void start_ext_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pair q[]) {
-    uv_loop_t *loop = req->clt->timer->loop;
-    struct sockaddr_in6 addr = {
-            .sin6_family = AF_INET6,
-            .sin6_addr = IN6ADDR_LOOPBACK_INIT,
-            .sin6_port = htons(auth_cb_port),
-    };
-    int sock = socket(AF_INET6, SOCK_STREAM, 0);
-    int off = 0;
-    int on = 1;
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void *) &on, sizeof(on));
-#if defined(SO_REUSEPORT)
-    setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on));
-#endif
-#if defined(IPV6_V6ONLY)
-    setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (void *) &off, sizeof(off));
-#endif
-    if (bind(sock, (const struct sockaddr *) &addr, sizeof(addr)) || listen(sock, 1)) {
-        failed_auth_req(req, strerror(errno));
-        close_socket(sock);
-        return;
-    }
-    set_blocking(sock);
-
-    struct ext_link_req *elr = calloc(1, sizeof(*elr));
-    elr->sock = sock;
-    elr->req = req;
-    int rc = uv_queue_work(loop, &elr->wr, ext_accept, ext_done);
-    if (rc != 0) {
-        free(elr);
-        close_socket(sock);
-        failed_auth_req(req, uv_strerror(rc));
-        return;
-    }
-
-    string_buf_t *buf = new_string_buf();
-    string_buf_append(buf, ep);
-    for (int i = 0; i < qc; i++) {
-        string_buf_append_byte(buf, (i == 0) ? '?' : '&');
-        string_buf_append_urlsafe(buf, q[i].name);
-        string_buf_append_byte(buf, '=');
-        string_buf_append_urlsafe(buf, q[i].value);
-    }
-    char *url = string_buf_to_string(buf, NULL);
-
-    req->elr = elr;
-    req->clt->link_cb(req->clt, url, req->clt->link_ctx);
-
-    free(url);
-    delete_string_buf(buf);
-}
-
 int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     clt->token_cb = cb;
     if (clt->config == NULL) {
@@ -734,7 +409,7 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     json_object *cfg = (json_object *) clt->config;
     json_object *auth_ep = json_object_object_get(cfg, AUTH_EP);
     if (auth_ep  == NULL) {
-        ZITI_LOG(ERROR, "OIDC configuration is missing `%s'", AUTH_EP);
+        OIDC_LOG(ERROR, "OIDC configuration is missing `%s'", AUTH_EP);
         return ZITI_INVALID_CONFIG;
     }
     const char *auth_url = json_object_get_string(auth_ep);
@@ -764,17 +439,12 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
                                       clt->signer_cfg.audience : "openziti"},
     };
 
-    int rc = 0;
-    if (clt->mode == oidc_external) {
-        start_ext_auth(req, auth_url, sizeof(query)/sizeof(query[0]), query);
+    int rc = tlsuv_http_set_url(&clt->http, auth_url);
+    if (rc == 0) {
+        tlsuv_http_req_t *http_req = ziti_json_request(&clt->http, "POST", NULL, auth_cb, req);
+        rc = tlsuv_http_req_query(http_req, sizeof(query) / sizeof(query[0]), query);
     } else {
-        rc = tlsuv_http_set_url(&clt->http, auth_url);
-        if (rc == 0) {
-            tlsuv_http_req_t *http_req = ziti_json_request(&clt->http, "POST", NULL, auth_cb, req);
-            rc = tlsuv_http_req_query(http_req, sizeof(query) / sizeof(query[0]), query);
-        } else {
-            ZITI_LOG(ERROR, AUTH_EP "[%s] is an invalid URL", auth_url);
-        }
+        OIDC_LOG(ERROR, AUTH_EP "[%s] is an invalid URL", auth_url);
     }
 
     free(scope);
@@ -795,7 +465,8 @@ static void http_close_cb(tlsuv_http_t *h) {
 
 static void on_totp(tlsuv_http_resp_t *resp, void *ctx) {
     auth_req *req = ctx;
-    ZITI_LOG(VERBOSE, "%d:%s", resp->code, resp->status);
+    oidc_client_t *clt = req->clt;
+    OIDC_LOG(VERBOSE, "TOTP result[%d:%s]", resp->code, resp->status);
 
     int code = resp->code / 100;
     if (code == 3) {
@@ -806,10 +477,10 @@ static void on_totp(tlsuv_http_resp_t *resp, void *ctx) {
         tlsuv_parse_url(&uri, redirect);
         tlsuv_http_req(&req->clt->http, "GET", uri.path, code_cb, req);
     } else if (code == 4) {
-        ZITI_LOG(WARN, "totp failed: %s", resp->status);
+        OIDC_LOG(WARN, "totp failed: %s", resp->status);
         req->clt->token_cb(req->clt, OIDC_TOTP_FAILED, NULL);
     } else {
-        ZITI_LOG(WARN, "totp request failed: %s", resp->status);
+        OIDC_LOG(WARN, "totp request failed: %s", resp->status);
         req->clt->token_cb(req->clt, OIDC_TOTP_FAILED, NULL);
     }
 }
@@ -834,7 +505,7 @@ int oidc_client_token(oidc_client_t *clt, const char *token) {
 int oidc_client_mfa(oidc_client_t *clt, const char *code) {
     struct auth_req *req = clt->request;
     if (req == NULL || !req->totp) {
-        ZITI_LOG(ERROR, "TOTP is not required or completed");
+        OIDC_LOG(ERROR, "TOTP is not required or completed");
         return -1;
     }
 

@@ -90,7 +90,6 @@ typedef struct auth_req {
     char state[state_code_len];
     json_tokener *json_parser;
     char *id;
-    bool totp;
     struct ext_link_req *elr;
 } auth_req;
 
@@ -114,14 +113,6 @@ static const char HTTP_SUCCESS_BODY[] =
         "</body>\n"
         "</html>\n";
 
-
-static void unhandled_body_cb(tlsuv_http_req_t *r, char *data, ssize_t len) {
-    if (len > 0) {
-        ZITI_LOG(WARN, "%.*s", (int)len, data);
-    } else {
-        ZITI_LOG(WARN, "status = %zd\n", len);
-    }
-}
 
 static void handle_unexpected_resp(ext_oidc_client_t *clt, tlsuv_http_resp_t *resp, json_object *body) {
     OIDC_LOG(WARN, "unexpected OIDC response");
