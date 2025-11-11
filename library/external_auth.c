@@ -16,9 +16,9 @@
 
 #include <ziti/ziti_events.h>
 #include "zt_internal.h"
-#include "oidc.h"
+#include "ext_oidc.h"
 
-static void ext_oath_cfg_cb(oidc_client_t *oidc, int status, const char *err) {
+static void ext_oath_cfg_cb(ext_oidc_client_t *oidc, int status, const char *err) {
     ziti_context ztx = oidc->data;
     ziti_event_t ev = {
             .type = ZitiAuthEvent,
@@ -61,8 +61,8 @@ static void ext_signers_cb(ziti_context ztx, int status, ziti_jwt_signer_array s
 
 int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg) {
     if (oidc_cfg != NULL) {
-        NEWP(oidc, oidc_client_t);
-        int rc = oidc_client_init(ztx->loop, oidc, oidc_cfg, NULL);
+        NEWP(oidc, ext_oidc_client_t);
+        int rc = ext_oidc_client_init(ztx->loop, oidc, oidc_cfg);
         if (rc != ZITI_OK) {
             free(oidc);
             ZTX_LOG(ERROR, "failed to initialize OIDC client: %s", ziti_errorstr(rc));
@@ -70,13 +70,13 @@ int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg) {
         }
         oidc->data = ztx;
         ztx->ext_auth = oidc;
-        return oidc_client_configure(oidc, ext_oath_cfg_cb);
+        return 0;
     }
 
     return ziti_get_ext_jwt_signers(ztx, ext_signers_cb, ztx);
 }
 
-static void internal_link_cb(oidc_client_t *oidc, const char *url, void *ctx) {
+static void internal_link_cb(ext_oidc_client_t *oidc, const char *url, void *ctx) {
     ziti_context ztx = oidc->data;
     ZITI_LOG(INFO, "received link request: %s", url);
     if (ztx->ext_launch_cb) {
@@ -86,14 +86,23 @@ static void internal_link_cb(oidc_client_t *oidc, const char *url, void *ctx) {
     ztx->ext_launch_ctx = NULL;
 }
 
-static void ext_token_cb(oidc_client_t *oidc, enum oidc_status status, const void *data) {
+static void ext_token_cb(ext_oidc_client_t *oidc, enum ext_oidc_status status, const void *data) {
     ziti_context ztx = oidc->data;
     switch (status) {
-        case OIDC_TOKEN_OK: {
+        case EXT_OIDC_TOKEN_OK: {
             ziti_ext_auth_token(ztx, (const char*)data);
             break;
         }
-        case OIDC_RESTART: {
+        case EXT_OIDC_CONFIG_FAILED: {
+            const char *message = data;
+            ZTX_LOG(WARN, "failed to configure external signer: %s", message);
+            ztx_auth_state_cb(ztx, ZitiAuthImpossibleToAuthenticate, &(ziti_error) {
+                    .err = ZITI_AUTHENTICATION_FAILED,
+                    .message = message,
+            });
+            break;
+        }
+        case EXT_OIDC_RESTART: {
             ziti_event_t ev = {
                     .type = ZitiAuthEvent,
                     .auth = {
@@ -105,7 +114,7 @@ static void ext_token_cb(oidc_client_t *oidc, enum oidc_status status, const voi
             ziti_send_event(ztx, &ev);
             break;
         }
-        default: {
+        case EXT_OIDC_TOKEN_FAILED: {
             const char *message = data;
             ZTX_LOG(WARN, "failed to get external authentication token: %d", status);
             char err[256];
@@ -136,8 +145,8 @@ extern int ziti_ext_auth(ziti_context ztx,
 
     ztx->ext_launch_cb = ziti_ext_launch;
     ztx->ext_launch_ctx = ctx;
-    oidc_client_set_link_cb(ztx->ext_auth, internal_link_cb, NULL);
-    oidc_client_start(ztx->ext_auth, ext_token_cb);
+    ext_oidc_client_set_link_cb(ztx->ext_auth, internal_link_cb, NULL);
+    ext_oidc_client_start(ztx->ext_auth, ext_token_cb);
     return ZITI_OK;
 }
 

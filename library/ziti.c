@@ -19,6 +19,7 @@
 #include <time.h>
 
 #include <uv.h>
+#include <ext_oidc.h>
 
 #include "deadline.h"
 #include "oidc.h"
@@ -502,7 +503,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         }
 
         if (ztx->ext_auth) {
-            oidc_client_close(ztx->ext_auth, (oidc_close_cb) free);
+            ext_oidc_client_close(ztx->ext_auth, (ext_oidc_close_cb) free);
             ztx->ext_auth = NULL;
         }
 
@@ -707,7 +708,7 @@ int ziti_use_ext_jwt_signer(ziti_context ztx, const char *name) {
 
     if (ztx->ext_auth) {
         ZTX_LOG(INFO, "clearing up previous OIDC provider");
-        oidc_client_close(ztx->ext_auth, (oidc_close_cb) free);
+        ext_oidc_client_close(ztx->ext_auth, (ext_oidc_close_cb) free);
         ztx->ext_auth = NULL;
     }
 
@@ -2067,7 +2068,7 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
 
         ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
         if (ztx->ext_auth) {
-            oidc_client_refresh(ztx->ext_auth);
+            ext_oidc_client_refresh(ztx->ext_auth);
         }
     }
 }
