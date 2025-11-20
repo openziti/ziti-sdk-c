@@ -20,6 +20,10 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Setup GitHub CLI
+      if: runner.os == 'linux' 
+      uses: ksivamuthu/actions-setup-gh-cli@v3
+
     - name: install linux deps
       if: runner.os == 'linux'
       shell: bash
@@ -46,10 +50,7 @@ runs:
         echo "CI_CACHE=${CI_CACHE}" >> $GITHUB_ENV
         echo "VCPKG_BINARY_SOURCES=${VCPKG_BINARY_SOURCES}" >> $GITHUB_ENV
 
-    - uses: actions/setup-go@v5
-      with:
-        go-version: '1.23.x'
-        cache-dependency-path: "**/*.sum"
+    - uses: openziti/ziti/setup-cli@main
 
     - uses: lukka/get-cmake@v3.30.1
 
