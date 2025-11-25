@@ -1,4 +1,11 @@
 
+find_program(ZITI_CLI NAMES ziti)
+if (NOT ZITI_CLI)
+    message(WARNING "ziti cli was not found: integration testing is not possible")
+    return()
+endif ()
+message(NOTICE "ziti cli: ${ZITI_CLI}")
+
 find_program(EXPECTOR NAMES expect)
 if (NOT EXPECTOR)
     message(WARNING "expect not found: integration testing is not enabled")
@@ -7,15 +14,12 @@ endif ()
 
 execute_process(COMMAND ${EXPECTOR} -v)
 
-find_program(GOLANG_EXE NAMES go REQUIRED)
-
 set(qs_home ${CMAKE_CURRENT_BINARY_DIR}/qs-home)
 set(test_client_jwt ${qs_home}/test-client.jwt)
 set(test_server_jwt ${qs_home}/test-server.jwt)
 set(test_client_json ${qs_home}/test-client.json)
 set(test_server_json ${qs_home}/test-server.json)
 set(test_service test-service)
-set(ZITI_CLI ${CMAKE_CURRENT_BINARY_DIR}/ziti)
 
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
         ${CMAKE_CURRENT_BINARY_DIR}/include/test-data.h
@@ -43,13 +47,6 @@ else ()
     set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
 endif ()
 
-set(ZITI_CLI_VER "v1.4.3" CACHE STRING "ziti version for integration tests")
-add_custom_target(ziti-cli ALL
-        COMMAND ${CMAKE_COMMAND} -E env GOBIN=${CMAKE_CURRENT_BINARY_DIR}
-        ${GOLANG_EXE} install github.com/openziti/ziti/ziti@${ZITI_CLI_VER}
-        BYPRODUCTS ${ZITI_CLI}
-)
-
 add_custom_target(cleanup-qs
         COMMAND cat -n /etc/hosts
         COMMAND cat -n ${qs_home}/ctrl.yaml || true
@@ -57,7 +54,7 @@ add_custom_target(cleanup-qs
 )
 
 add_custom_target(run-qs
-        DEPENDS ziti-cli cleanup-qs
+        DEPENDS cleanup-qs
         COMMAND ${CMAKE_COMMAND} -E env
         ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>
         ${EXPECTOR} ${CMAKE_CURRENT_SOURCE_DIR}/bootstrap.exp
