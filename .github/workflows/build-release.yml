@@ -14,6 +14,7 @@ jobs:
       image: ${{ matrix.spec.builder }}
     env:
       BUILD_NUMBER: ${{ github.run_number }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
