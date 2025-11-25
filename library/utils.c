@@ -274,8 +274,10 @@ static void init_debug(uv_loop_t *loop) {
         ziti_log_lvl = ERROR;
     }
 
-    // always log TLSUV errors
-    ziti_log_set_level(ERROR, TLSUV_MODULE);
+    // always log TLSUV errors, but preserve existing level if it has already been set
+    if (ziti_log_level(TLSUV_MODULE, NULL) == 0) {
+        ziti_log_set_level(ERROR, TLSUV_MODULE);
+    }
     model_list levels = {0};
     str_split(getenv("ZITI_LOG"), ";:", &levels);
 
