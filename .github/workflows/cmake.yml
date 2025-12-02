@@ -2,6 +2,9 @@ name: C/C++ CI
 
 on:
   workflow_dispatch:
+  schedule:
+    # run weekly Sun at 5am UTC to keep caches fresh
+    - cron: '5 5 * * 0'
   push:
     branches:
       - main
