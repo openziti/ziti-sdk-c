@@ -22,6 +22,8 @@
 #include "tlsuv/http.h"
 #include "ziti/errors.h"
 
+#include <sodium/utils.h>
+
 #if _WIN32
 #include <time.h>
 #endif
@@ -769,4 +771,24 @@ tlsuv_http_req_t* ziti_json_request(
     tlsuv_http_req_t *req = tlsuv_http_req(clt, method, path, json_req_cb, jctx);
     tlsuv_http_req_header(req, "Accept", APPLICATION_JSON);
     return req;
+}
+
+const char *jwt_payload(const char *jwt) {
+    static uint8_t payload[4096];
+    size_t payload_len;
+
+    jwt = strchr(jwt, '.');
+    if (jwt == NULL) {
+        ZITI_LOG(ERROR, "invalid JWT provided");
+        return "<invalid JWT>";
+    }
+
+    jwt++;
+    const char *end;
+    if (sodium_base642bin(payload, sizeof(payload), jwt, strlen(jwt), NULL,
+                          &payload_len, &end, sodium_base64_VARIANT_URLSAFE_NO_PADDING) == 0) {
+        payload[payload_len] = '\0';
+        return (const char *)payload;
+    }
+    return "<JWT too long?>";
 }

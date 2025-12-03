@@ -691,26 +691,6 @@ int ext_oidc_client_close(ext_oidc_client_t *clt, ext_oidc_close_cb cb) {
     return 0;
 }
 
-static const char *jwt_payload(const char *jwt) {
-    static uint8_t payload[4096];
-    size_t payload_len;
-
-    jwt = strchr(jwt, '.');
-    if (jwt == NULL) {
-        ZITI_LOG(ERROR, "invalid JWT provided");
-        return "<invalid JWT>";
-    }
-
-    jwt++;
-    const char *end;
-    if (sodium_base642bin(payload, sizeof(payload), jwt, strlen(jwt), NULL,
-                          &payload_len, &end, sodium_base64_VARIANT_URLSAFE_NO_PADDING) == 0) {
-        payload[payload_len] = '\0';
-        return (const char*)payload;
-    }
-    return "<JWT too long?>";
-}
-
 static void ext_oidc_client_set_tokens(ext_oidc_client_t *clt, json_object *tok_json) {
     json_object_put(clt->tokens);
 
