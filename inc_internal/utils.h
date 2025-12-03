@@ -65,6 +65,8 @@ extern const char *ziti_git_commit();
 
 extern void hexDump(char *desc, void *addr, int len);
 
+extern const char *jwt_payload(const char *jwt);
+
 void ziti_fmt_time(char *time_str, size_t time_str_len, uv_timeval64_t *tv);
 
 int lt_zero(int v);

@@ -887,6 +887,10 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         printer(ctx, "Session Info: \nauth_method[%s]\napi_session_state[%d]\n",
                 ztx->auth_method->kind == OIDC ? "OIDC" : "Legacy",
                 ztx->auth_state);
+
+        if (ztx->auth_method->kind == OIDC) {
+            printer(ctx, "Session Token: %s", jwt_payload(ztx->session_token));
+        }
     } else {
         printer(ctx, "No Session found\n");
     }
@@ -929,6 +933,12 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     ziti_session *sess;
     MODEL_MAP_FOREACH(name, sess, &ztx->sessions) {
         printer(ctx, "%s: service_id[%s]\n", sess->id, name);
+        const char *token = jwt_payload(sess->token);
+        if (token[0] == '{') {
+            printer(ctx, "\ttoken: %s\n", token);
+        } else {
+            printer(ctx, "\ttoken: %s\n", sess->token);
+        }
     }
 
     printer(ctx, "\n==================\nChannels:\n");
