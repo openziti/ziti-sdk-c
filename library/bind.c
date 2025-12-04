@@ -71,6 +71,9 @@ static void free_binding(struct binding_s *b) {
     free(b);
 }
 
+// convert random byte to printable char (between 32 and 126)
+#define make_printable(c) c = (uint8_t)(((c) % (127 - 32)) + 32)
+
 int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts *listen_opts,
               ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb) {
 
@@ -82,7 +85,10 @@ int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts 
     conn->type = Server;
     conn->disposer = dispose;
     conn->service = strdup(service);
-    uv_random(NULL, NULL, conn->server.listener_id, sizeof(conn->server.listener_id), 0 , NULL);
+    randombytes_buf(conn->server.listener_id, sizeof(conn->server.listener_id));
+    for (int i = 0; i < sizeof(conn->server.listener_id); i++) {
+        make_printable(conn->server.listener_id[i]);
+    }
     conn->server.cost = get_terminator_cost(listen_opts, service, conn->ziti_ctx);
     conn->server.precedence = get_terminator_precedence(listen_opts, service, conn->ziti_ctx);
     conn->server.max_bindings = listen_opts && listen_opts->max_connections > 0 ?

@@ -190,7 +190,7 @@ struct ziti_conn {
             model_map children;
             deadline_t rebinder;
             unsigned int attempt;
-            char listener_id[32];
+            uint8_t listener_id[32];
         } server;
 
         struct {
