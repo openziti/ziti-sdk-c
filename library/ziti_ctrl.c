@@ -1250,3 +1250,28 @@ static struct ctrl_resp *prepare_resp(ziti_controller *ctrl, ctrl_resp_cb_t cb, 
     resp->ctrl_cb = ctrl_default_cb;
     return resp;
 }
+
+void ziti_ctrl_enroll_token(ziti_controller *ctrl, const char *token, const char *csr,
+                            void (*cb)(ziti_create_api_cert_resp *, const ziti_error *, void *), void *ctx) {
+    assert(token != NULL);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_create_api_cert_resp_ptr_from_json, ctx);
+    string_buf_t auth_header;
+    string_buf_init(&auth_header);
+    string_buf_append(&auth_header, "Bearer ");
+    string_buf_append(&auth_header, token);
+    char *bearer = string_buf_to_string(&auth_header, NULL);
+
+    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/enroll/token", ctrl_resp_cb, resp);
+    tlsuv_http_req_header(req, "Authorization", bearer);
+    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    json_object *body = json_object_new_object();
+    if (csr) {
+        json_object_object_add(body, "clientCsr", json_object_new_string(csr));
+    }
+    char *body_str = strdup(json_object_to_json_string(body));
+    tlsuv_http_req_data(req, body_str, strlen(body_str), free_body_cb);
+
+    free(bearer);
+    json_object_put(body);
+    string_buf_free(&auth_header);
+}

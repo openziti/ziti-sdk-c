@@ -60,7 +60,9 @@ XX(provider_url, model_string, none, externalAuthUrl, __VA_ARGS__) \
 XX(client_id, model_string, none, clientId, __VA_ARGS__)           \
 XX(audience, model_string, none, audience, __VA_ARGS__)           \
 XX(scopes, model_string, list, scopes, __VA_ARGS__) \
-XX(target_token, ziti_target_token, none, targetToken, __VA_ARGS__)
+XX(target_token, ziti_target_token, none, targetToken, __VA_ARGS__) \
+XX(can_token_enroll, model_bool, none, enrollToTokenEnabled, __VA_ARGS__) \
+XX(can_cert_enroll, model_bool, none, enrollToCertEnabled, __VA_ARGS__)
 
 #define ZITI_ID_CFG_MODEL(XX, ...) \
 XX(cert, model_string, none, cert, __VA_ARGS__) \
