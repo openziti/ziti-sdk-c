@@ -55,6 +55,8 @@
     XX(ZITI_MISSING_CERT_CLAIM, "the certificate is expected to contain an externalId but none was not found") \
     XX(ZITI_ALLOC_FAILED, "memory allocation failed")    \
     XX(ZITI_EXTERNAL_LOGIN_REQUIRED, "identity required external login") \
+    XX(ZITI_ALREADY_ENROLLED, "identity already enrolled")               \
+    XX(ZITI_ENROLLMENT_NOT_ALLOWED, "identity enrollment not allowed")   \
     XX(ZITI_WTF, "WTF: programming error")
 
 
