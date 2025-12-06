@@ -166,6 +166,8 @@ int ext_oidc_client_set_cfg(ext_oidc_client_t *clt, const ziti_jwt_signer *cfg) 
     clt->signer_cfg.provider_url = strdup(cfg->provider_url);
     clt->signer_cfg.audience = cfg->audience ? strdup(cfg->audience) : NULL;
     clt->signer_cfg.target_token = cfg->target_token;
+    clt->signer_cfg.can_token_enroll = cfg->can_token_enroll;
+    clt->signer_cfg.can_cert_enroll = cfg->can_cert_enroll;
     const char *scope;
     MODEL_LIST_FOREACH(scope, cfg->scopes) {
         model_list_append(&clt->signer_cfg.scopes, strdup(scope));

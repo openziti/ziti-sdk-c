@@ -115,6 +115,11 @@ is offline or did not respond to the request*/
 #define ZITI_ALLOC_FAILED                                       (-38)
 /** returned when an external login is required to complete authentication */
 #define ZITI_EXTERNAL_LOGIN_REQUIRED                            (-39)
+/** returned when attempted enrollment failed because identity already exists */
+#define ZITI_ALREADY_ENROLLED                                   (-40)
+/** returned when attempted enrollment failed because it is not allowed */
+#define ZITI_ENROLLMENT_NOT_ALLOWED                             (-41)
+
 
 
 // Put new error codes here and add error string in error.c

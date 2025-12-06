@@ -138,6 +138,9 @@ void ziti_ctrl_enroll(ziti_controller *ctrl, ziti_enrollment_method method, cons
                       const char *name,
                       void (*cb)(ziti_enrollment_resp *, const ziti_error *, void *), void *ctx);
 
+void ziti_ctrl_enroll_token(ziti_controller *ctrl, const char *token, const char *csr,
+                            void (*cb)(ziti_create_api_cert_resp *, const ziti_error *, void *), void *ctx);
+
 //Posture
 void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(ziti_pr_response *, const ziti_error *, void *), void *ctx);
 

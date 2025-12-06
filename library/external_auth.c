@@ -14,9 +14,12 @@
 // 	limitations under the License.
 //
 
-#include <ziti/ziti_events.h>
-#include "zt_internal.h"
 #include "ext_oidc.h"
+#include "zt_internal.h"
+#include <assert.h>
+#include <ziti/ziti_events.h>
+
+static void ext_token_cb(ext_oidc_client_t *oidc, enum ext_oidc_status status, const void *data);
 
 static void ext_oath_cfg_cb(ext_oidc_client_t *oidc, int status, const char *err) {
     ziti_context ztx = oidc->data;
@@ -70,6 +73,7 @@ int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg) {
         }
         oidc->data = ztx;
         ztx->ext_auth = oidc;
+        ext_oath_cfg_cb(oidc, 0, NULL);
         return 0;
     }
 
@@ -150,13 +154,38 @@ extern int ziti_ext_auth(ziti_context ztx,
     return ZITI_OK;
 }
 
-extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
-    ZTX_LOG(DEBUG, "received access token: %.*s...", 20, token);
-    if (ztx->auth_method) {
-        ztx->auth_method->set_ext_jwt(ztx->auth_method, token);
-        ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
-        return 0;
+static void ztx_on_token_enroll(ziti_create_api_cert_resp *cert_resp, const ziti_error *error, void *ctx) {
+    ziti_context ztx = ctx;
+    assert(ztx->auth_method);
+
+    if (cert_resp && cert_resp->client_cert_pem != NULL) {
+        ZTX_LOG(ERROR, "not handling client cert for now");
     }
-    ZTX_LOG(ERROR, "no auth method configured");
-    return ZITI_INVALID_STATE;
+    assert(cert_resp == NULL || cert_resp->client_cert_pem == NULL);
+
+    if (error) {
+        if (error->err == ZITI_ALREADY_ENROLLED) {
+            ZTX_LOG(DEBUG, "already enrolled");
+        } else {
+            ZTX_LOG(WARN, "failed to enroll: %s", error->message);
+        }
+    }
+    ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
+    free_ziti_create_api_cert_resp_ptr(cert_resp);
+}
+
+extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
+    ZTX_LOG(DEBUG, "received access token: %s", jwt_payload(token));
+    assert(ztx->auth_method);
+    ztx->auth_method->set_ext_jwt(ztx->auth_method, token);
+
+    // create identity if needed and allowed
+    if (ztx->identity_data == NULL && ztx->id_creds.cert == NULL) {
+        ZTX_LOG(DEBUG, "received access token: %.*s...", 20, token);
+        ziti_ctrl_enroll_token(ztx_get_controller(ztx), token, NULL, ztx_on_token_enroll, ztx);
+        return ZITI_OK;
+    }
+
+    ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
+    return ZITI_OK;
 }
