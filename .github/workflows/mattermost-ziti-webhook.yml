@@ -21,19 +21,19 @@ jobs:
     runs-on: ubuntu-latest
     name: Ziti Mattermost Action - Py
     steps:
-    - uses: openziti/ziti-mattermost-action-py@main
+    - uses: openziti/ziti-mattermost-action-py@v1
       if: github.event_name != 'pull_request_review'
       with:
         zitiId: ${{ secrets.ZITI_MATTERMOST_IDENTITY }}
-        webhookUrl: ${{ secrets.ZHOOK_URL }}
+        webhookUrl: ${{ secrets.ZHOOK_URL_DEV_NOTIFICATIONS }}
         eventJson: ${{ toJson(github.event) }}
         senderUsername: "GitHubZ"
-        destChannel: "dev-notifications"
-    - uses: openziti/ziti-mattermost-action-py@main
+
+    - uses: openziti/ziti-mattermost-action-py@v1
       if: github.event_name == 'pull_request_review' && github.event.review.state == 'approved'
       with:
         zitiId: ${{ secrets.ZITI_MATTERMOST_IDENTITY }}
-        webhookUrl: ${{ secrets.ZHOOK_URL }}
+        webhookUrl: ${{ secrets.ZHOOK_URL_DEV_NOTIFICATIONS }}
         eventJson: ${{ toJson(github.event) }}
         senderUsername: "GitHubZ"
-        destChannel: "dev-notifications"
+
