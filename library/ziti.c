@@ -2061,6 +2061,10 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         }
 
         api_path *oidc_path = model_map_get(&version->api_versions->oidc, "v1");
+        if (use_oidc && oidc_path == NULL) {
+            ZTX_LOG(ERROR, "controller reported OIDC_AUTH capability without OIDC API version");
+            use_oidc = false;
+        }
         if (!ztx->auth_method) {
             if (use_oidc) {
                 ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->tlsCtx);
