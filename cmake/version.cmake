@@ -17,7 +17,7 @@ macro(do_git out_var err_var)
 endmacro(do_git)
 
 function(get_version version_file version_var branch_var commit_var)
-    do_git(GIT_INFO GIT_ERROR describe --always)
+    do_git(GIT_INFO GIT_ERROR describe --always --match "[0-9].*")
     if (GIT_ERROR)
         unset(GIT_INFO)
         message(NOTICE "getting version from ${version_file}")
@@ -33,7 +33,7 @@ function(get_version version_file version_var branch_var commit_var)
     endif ()
 
     do_git(_branch GIT_ERROR rev-parse --abbrev-ref HEAD)
-    do_git(GIT_INFO GIT_ERROR describe --tags --long --first-parent HEAD)
+    do_git(GIT_INFO GIT_ERROR describe --tags --long --first-parent --match "[0-9].*")
     if (${GIT_INFO} MATCHES "^(.*)-([0-9]+)-([^-]*)") # <closest tag>-<distance>-<commit>
         set(_commit ${CMAKE_MATCH_3})
         if (${CMAKE_MATCH_2} EQUAL "0") #exact tag
