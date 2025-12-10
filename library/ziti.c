@@ -398,6 +398,11 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     const struct timeval *exp = ztx->auth_method->expiration(ztx->auth_method);
     assert(exp);
     ztx->session_expiration = *exp;
+    if (ztx->auth_method->kind == OIDC) {
+        ZTX_LOG(VERBOSE, "token%s exp[%lu]", jwt_payload(session_token), (unsigned long)exp->tv_sec);
+    } else {
+        ZTX_LOG(VERBOSE, "legacy token exp[%lu]", (unsigned long)exp->tv_sec);
+    }
 
     if (ztx->session_token == NULL || strcmp(ztx->session_token, session_token) != 0) {
         free(ztx->session_token);
