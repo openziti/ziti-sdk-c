@@ -289,6 +289,7 @@ struct ziti_ctx {
 
     // HA access_token(JWT) or legacy ziti_api_session.token
     char *session_token;
+    timestamp session_expiration;
 
     ziti_identity_data *identity_data;
 

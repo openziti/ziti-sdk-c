@@ -249,6 +249,13 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
 
     ziti_ctrl_clear_auth(ztx_get_controller(ztx));
 
+    // disconnect all channels since ER may not enforce session expiration
+    const char *k;
+    ziti_channel_t *ch;
+    MODEL_MAP_FOREACH(k, ch, &ztx->channels) {
+        ziti_channel_disconnect(ch, ZITI_NOT_AUTHORIZED);
+    }
+
     if (err && !ztx->closing) {
         ziti_send_event(ztx, &(ziti_event_t) {
                 .type = ZitiContextEvent,
@@ -386,9 +393,11 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
 
 void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     assert(session_token);
-    ZTX_LOG(DEBUG, "setting auth_state[%d] to %d",
-            ztx->auth_state, ZitiAuthStateFullyAuthenticated);
+    ZTX_LOG(DEBUG, "setting auth_state[%d] to %d", ztx->auth_state, ZitiAuthStateFullyAuthenticated);
     ztx->auth_state = ZitiAuthStateFullyAuthenticated;
+    const struct timeval *exp = ztx->auth_method->expiration(ztx->auth_method);
+    assert(exp);
+    ztx->session_expiration = *exp;
 
     if (ztx->session_token == NULL || strcmp(ztx->session_token, session_token) != 0) {
         free(ztx->session_token);
@@ -1791,6 +1800,22 @@ static void ztx_prep_deadlines(ziti_context ztx) {
 
 void ztx_prepare(uv_prepare_t *prep) {
     ziti_context ztx = prep->data;
+
+    if (ztx->session_token && ztx->session_expiration.tv_sec > 0) {
+        // session token should be kept upto date by the auth_method,
+        // but sometimes it may be expired due to device going to sleep
+        // so we want to clear it to avoid any channels getting outdated token
+        uv_timeval64_t now;
+        uv_gettimeofday(&now);
+        if (ztx->session_expiration.tv_sec < now.tv_sec) {
+            ziti_error error = {
+                .err = ZITI_NOT_AUTHORIZED,
+                .message = "session token has expired",
+            };
+            ziti_set_unauthenticated(ztx, &error);
+            ziti_force_api_session_refresh(ztx);
+        }
+    }
 
     grim_reaper(ztx);
     ztx_prep_deadlines(ztx);
