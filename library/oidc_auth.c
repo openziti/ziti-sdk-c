@@ -30,6 +30,7 @@ static int ha_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
 static int ha_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
 static int ha_auth_stop(ziti_auth_method_t *self);
 static int ha_auth_refresh(ziti_auth_method_t *self);
+static const struct timeval *ha_expiration(ziti_auth_method_t *self);
 static int ha_ext_jwt(ziti_auth_method_t *self, const char *token);
 static int ha_set_endpoint(ziti_auth_method_t *self, const api_path *api);
 static void config_cb(oidc_client_t *oidc, int status, const char *err);
@@ -48,6 +49,7 @@ struct ha_auth_s {
     oidc_client_t oidc;
     ziti_jwt_signer config;
     auth_mfa_cb mfa_cb;
+    struct timeval expiration;
 };
 
 ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context *tls) {
@@ -59,6 +61,7 @@ ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context
         .set_endpoint = ha_set_endpoint,
         .stop = ha_auth_stop,
         .force_refresh = ha_auth_refresh,
+        .expiration = ha_expiration,
         .submit_mfa = ha_auth_mfa,
         .free = ha_auth_free,
         .set_ext_jwt = ha_ext_jwt,
@@ -140,13 +143,28 @@ static void ha_auth_free(ziti_auth_method_t *self) {
     oidc_client_close(&auth->oidc, close_cb);
 }
 
+static void set_expiration(struct ha_auth_s *auth, const char *token) {
+    json_object *payload = json_tokener_parse(jwt_payload(token));
+    json_object *exp = json_object_object_get(payload, "exp");
+    if (exp) {
+        int exp_time = json_object_get_int(exp);
+        auth->expiration.tv_sec = exp_time;
+        auth->expiration.tv_usec = 0;
+    } else {
+        auth->expiration = (struct timeval){};
+    }
+    json_object_put(payload);
+}
+
 static void token_cb(oidc_client_t *oidc, enum oidc_status status, const void *data) {
     struct ha_auth_s *auth = HA_AUTH_FROM_OIDC(oidc);
     char err[128];
 
+    auth->expiration = (struct timeval){};
     if (auth->cb) {
         switch (status) {
             case OIDC_TOKEN_OK:
+                set_expiration(auth, (const char*)data);
                 auth->cb(auth->cb_ctx, ZitiAuthStateFullyAuthenticated, data);
                 break;
             case OIDC_EXT_JWT_NEEDED:
@@ -247,4 +265,10 @@ static int ha_auth_refresh(ziti_auth_method_t *self) {
     struct ha_auth_s *auth = HA_AUTH(self);
 
     return oidc_client_refresh(&auth->oidc);
+}
+
+static const struct timeval *ha_expiration(ziti_auth_method_t *self) {
+    struct ha_auth_s *auth = HA_AUTH(self);
+    if (auth->expiration.tv_sec > 0) return &auth->expiration;
+    return NULL;
 }

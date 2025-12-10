@@ -48,6 +48,7 @@ struct ziti_auth_method_s {
     int (*set_endpoint)(ziti_auth_method_t *self, const api_path *api);
     int (*start)(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
     int (*force_refresh)(ziti_auth_method_t *self);
+    const struct timeval* (*expiration)(ziti_auth_method_t *self);
     int (*submit_mfa)(ziti_auth_method_t *self, const char *code, auth_mfa_cb);
     int (*stop)(ziti_auth_method_t *self);
     void (*free)(ziti_auth_method_t *self);

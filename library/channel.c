@@ -214,6 +214,13 @@ static void on_tls_close(uv_handle_t *s) {
     free(tls);
 }
 
+int ziti_channel_disconnect(ziti_channel_t *ch, int err) {
+    if (ch->state != Closed) {
+        on_channel_close(ch, err, 0);
+    }
+    return 0;
+}
+
 int ziti_channel_close(ziti_channel_t *ch, int err) {
     if (ch->state != Closed) {
         CH_LOG(INFO, "closing[%s]", ch->name);
@@ -339,7 +346,7 @@ int ziti_channel_update_token(ziti_channel_t *ch, const char *token) {
         return ZITI_GATEWAY_UNAVAILABLE;
     }
 
-    CH_LOG(DEBUG, "sending token update");
+    CH_LOG(DEBUG, "sending token update: %s", jwt_payload(token));
     ziti_channel_send_for_reply(ch, ContentTypeUpdateToken, NULL, 0,
                                 (const uint8_t *)token, strlen(token),
                                 token_update_cb, ch);
@@ -963,7 +970,7 @@ static void on_tls_connect(uv_connect_t *req, int status) {
     if (status == 0) {
         const char *token = ziti_get_api_session_token(ch->ztx);
         if (token != NULL) {
-            CH_LOG(DEBUG, "connected alpn[%s]", tlsuv_stream_get_protocol(tls));
+            CH_LOG(DEBUG, "connected sending Hello with token[%s]", jwt_payload(token));
             tlsuv_stream_read_start(tls, channel_alloc_cb, on_channel_data);
             ch->reconnect_count = 0;
             send_hello(ch, token);
