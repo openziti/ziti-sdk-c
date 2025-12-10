@@ -367,6 +367,7 @@ int ziti_channel_connect(ziti_context ztx, const ziti_edge_router *er);
 
 int ziti_channel_prepare(ziti_channel_t *ch);
 
+int ziti_channel_disconnect(ziti_channel_t *ch, int err);
 int ziti_channel_close(ziti_channel_t *ch, int err);
 
 void ziti_channel_add_receiver(ziti_channel_t *ch, uint32_t id, void *receiver, void (*receive_f)(void *, message *, int));
