@@ -17,8 +17,12 @@
 #include <json-c/json.h>
 #include <sodium.h>
 #include <ctype.h>
-#ifndef _WIN32
+#ifdef _WIN32
+#include <winsock2.h>
+#define poll(fds,n,to) WSAPoll(fds, n, to)
+#else
 #include <unistd.h>
+#include <sys/poll.h>
 #endif
 
 #include "ziti/ziti_log.h"
@@ -382,18 +386,14 @@ static void ext_accept(uv_work_t *wr) {
     struct ext_link_req *elr = (struct ext_link_req *) wr;
 
     int rc = 0;
-    fd_set fds;
     uint64_t timeout = OIDC_ACCEPT_TIMEOUT;
-
+    struct pollfd pfd = {
+        .fd = elr->sock,
+        .events = POLLIN,
+    };
     while(timeout > 0) {
-        FD_ZERO(&fds);
-        FD_SET(elr->sock, &fds);
-        rc = select(elr->sock + 1, &fds, NULL, NULL, &(struct timeval) {
-                .tv_sec = 1,
-        });
+        rc = poll(&pfd, 1, 1000);
         if (elr->err == ECANCELED) {
-            close_socket(elr->sock);
-            elr->sock = (uv_os_sock_t)-1;
             return;
         }
         if (rc == 0) {
@@ -416,11 +416,15 @@ static void ext_accept(uv_work_t *wr) {
     }
 
     uv_os_sock_t clt = accept(elr->sock, NULL, NULL);
-    FD_ZERO(&fds);
-    FD_SET(clt, &fds);
-    rc = select(clt + 1, &fds, NULL, NULL, &(struct timeval){
-            .tv_sec = OIDC_REQ_TIMEOUT,
-    });
+    if (clt < 0) {
+        elr->err = sock_error;
+        ZITI_LOG(WARN, "failed to accept callback connection: %d/%s", elr->err, strerror(elr->err));
+        return;
+    }
+
+    pfd.fd = clt;
+    pfd.events = POLLIN;
+    rc = poll(&pfd, 1, OIDC_REQ_TIMEOUT * 1000);
     if (rc <= 0) {
         elr->err = rc == 0 ? ETIMEDOUT : sock_error;
         close_socket(clt);
@@ -493,12 +497,7 @@ static void ext_accept(uv_work_t *wr) {
                 write(clt, rp, resp_len);
 #endif
         if (wc < 0) {
-            int err =
-#if _WIN32
-                    WSAGetLastError();
-#else
-                    errno;
-#endif
+            int err = sock_error;
             ZITI_LOG(WARN, "failed to write HTTP resp: %d/%s", err, strerror(err));
             break;
         }
@@ -519,8 +518,9 @@ static void ext_accept(uv_work_t *wr) {
 
 static void ext_done(uv_work_t *wr, int status) {
     struct ext_link_req *elr = (struct ext_link_req *) wr;
-    close_socket(elr->sock);
-    elr->sock = (uv_os_sock_t)-1;
+    if (elr->sock != -1) {
+        close_socket(elr->sock);
+    }
 
     if (elr->err) {
         ZITI_LOG(ERROR, "accept failed: %s", strerror(elr->err));
@@ -534,8 +534,6 @@ static void ext_done(uv_work_t *wr, int status) {
         } else {
             failed_auth_req(req, elr->err ? strerror(elr->err) : "code not received");
         }
-    } else {
-
     }
 
     free(elr->code);
