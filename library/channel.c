@@ -970,7 +970,7 @@ static void on_tls_connect(uv_connect_t *req, int status) {
     if (status == 0) {
         const char *token = ziti_get_api_session_token(ch->ztx);
         if (token != NULL) {
-            CH_LOG(DEBUG, "connected sending Hello with token[%s]", tlsuv_stream_get_protocol(tls), jwt_payload(token));
+            CH_LOG(DEBUG, "connected sending Hello with token[%s]", jwt_payload(token));
             tlsuv_stream_read_start(tls, channel_alloc_cb, on_channel_data);
             ch->reconnect_count = 0;
             send_hello(ch, token);
