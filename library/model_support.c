@@ -772,12 +772,24 @@ static int timeval_from_json(timestamp *t, json_object *j, type_meta * UNUSED(me
     if (json_object_get_type(j) == json_type_string) {
         struct tm t2 = {0};
         // "2019-08-05T14:02:52.337619Z"
+        // or "2019-08-05T09:02:52.337619-05:00"
         unsigned long usec;
-        sscanf(json_object_get_string(j), "%d-%d-%dT%d:%d:%d.%ldZ",
+        char sign = 0;
+        int offset_hr = 0;
+        int offset_min = 0;
+        sscanf(json_object_get_string(j), "%d-%d-%dT%d:%d:%d.%ld%c%d:%d",
                &t2.tm_year, &t2.tm_mon, &t2.tm_mday,
-               &t2.tm_hour, &t2.tm_min, &t2.tm_sec, &usec);
+               &t2.tm_hour, &t2.tm_min, &t2.tm_sec, &usec, &sign, &offset_hr, &offset_min);
         t2.tm_year -= 1900;
         t2.tm_mon -= 1;
+
+        if (sign == '-') {
+            t2.tm_hour += offset_hr;
+            t2.tm_min += offset_min;
+        } else if (sign == '+') {
+            t2.tm_hour -= offset_hr;
+            t2.tm_min -= offset_min;
+        }
 
         t->tv_sec = timegm(&t2);
         t->tv_usec = (int)usec;
