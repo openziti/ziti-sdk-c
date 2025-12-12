@@ -82,6 +82,7 @@ enum header_id {
     SupportsInspectHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsInspect,
     SupportsBindSuccessHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsBindSuccess,
     ConnectionMarkerHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnectionMarker,
+    StickyTokenHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__StickinessToken,
 };
 
 typedef uint8_t connection_type_t;
