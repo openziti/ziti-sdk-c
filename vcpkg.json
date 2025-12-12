@@ -16,6 +16,7 @@
     "llhttp",
     "libsodium",
     "json-c",
+    "stc",
     "protobuf-c"
   ],
   "features": {
