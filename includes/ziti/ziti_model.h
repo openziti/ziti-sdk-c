@@ -52,6 +52,12 @@ XX(PC_Endpoint_State, "ENDPOINT_STATE", __VA_ARGS__)
 XX(access_token, "ACCESS", __VA_ARGS__)   \
 XX(id_token, "ID", __VA_ARGS__)
 
+#define ZITI_TERMINATOR_STRATEGY(XX, ...) \
+    XX(random, __VA_ARGS__)               \
+    XX(smartrouting, __VA_ARGS__)         \
+    XX(sticky, __VA_ARGS__)               \
+    XX(weighted, __VA_ARGS__)
+
 #define ZITI_JWT_SIGNER_MODEL(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__) \
 XX(name, model_string, none, name, __VA_ARGS__) \
@@ -119,16 +125,17 @@ XX(is_passing, model_bool, none, isPassing, __VA_ARGS__) \
 XX(policy_type, model_string, none, policyType, __VA_ARGS__) \
 XX(posture_queries, ziti_posture_query, array, postureQueries, __VA_ARGS__)
 
-#define ZITI_SERVICE_MODEL(XX, ...) \
-XX(id, model_string, none, id, __VA_ARGS__) \
-XX(name, model_string, none, name, __VA_ARGS__) \
-XX(permissions, ziti_session_type, array, permissions, __VA_ARGS__) \
-XX(encryption, model_bool, none, encryptionRequired, __VA_ARGS__) \
-XX(perm_flags, model_number, none, NULL, __VA_ARGS__) \
-XX(config, json, map, config, __VA_ARGS__) \
-XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__) \
-XX(posture_query_map, ziti_posture_query_set, map, posturePolicies, __VA_ARGS__) \
-XX(updated_at,model_string, none, updatedAt, __VA_ARGS__)
+#define ZITI_SERVICE_MODEL(XX, ...)                                                          \
+    XX(id, model_string, none, id, __VA_ARGS__)                                              \
+    XX(name, model_string, none, name, __VA_ARGS__)                                          \
+    XX(permissions, ziti_session_type, array, permissions, __VA_ARGS__)                      \
+    XX(encryption, model_bool, none, encryptionRequired, __VA_ARGS__)                        \
+    XX(perm_flags, model_number, none, NULL, __VA_ARGS__)                                    \
+    XX(config, json, map, config, __VA_ARGS__)                                               \
+    XX(posture_query_set, ziti_posture_query_set, array, postureQueries, __VA_ARGS__)        \
+    XX(posture_query_map, ziti_posture_query_set, map, posturePolicies, __VA_ARGS__)         \
+    XX(terminator_strategy, ziti_terminator_strategy, none, terminatorStrategy, __VA_ARGS__) \
+    XX(updated_at,model_string, none, updatedAt, __VA_ARGS__)
 
 #define ZITI_TERMINATOR_MODEL(XX, ...) \
 XX(identity, model_string, none, identity, __VA_ARGS__) \
@@ -262,6 +269,8 @@ DECLARE_ENUM(ziti_posture_query_type, ZITI_POSTURE_QUERY_TYPE_ENUM)
 DECLARE_ENUM(ziti_ctrl_cap, ZITI_CTRL_CAP_ENUM)
 
 DECLARE_ENUM(ziti_target_token, ZITI_SIGNER_TARGET_TOKEN)
+
+DECLARE_ENUM(ziti_terminator_strategy, ZITI_TERMINATOR_STRATEGY)
 
 DECLARE_MODEL(api_path, ZITI_API_PATH_MODEL)
 
