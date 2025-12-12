@@ -49,7 +49,8 @@ enum content_type {
     ContentTypeBindSuccess = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__BindSuccess,
 
     ContentTypePostureResponse = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureResponseType,
-    ContentTypePostureResponseSuccess = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureResponseSuccessType,
+    ContentTypeServicePostureRequest = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ServicePostureStateRequestType,
+    ContentTypeServicePostureResponse = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ServicePostureStateResponseType,
 };
 
 extern const char* content_type_id(enum content_type ct);

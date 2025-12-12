@@ -271,7 +271,7 @@ static void on_client(uv_stream_t *server, int status) {
     NEWP(clt, struct client);
     int len = sizeof(clt->addr);
     TRY(uv, uv_tcp_getpeername(c, (struct sockaddr *) &clt->addr, &len));
-    sprintf(clt->addr_s, "%s:%hu", inet_ntoa(clt->addr.sin_addr), ntohs(clt->addr.sin_port));
+    snprintf(clt->addr_s, sizeof(clt->addr_s), "%s:%hu", inet_ntoa(clt->addr.sin_addr), ntohs(clt->addr.sin_port));
     CATCH(uv) {
         return;
     }
