@@ -159,6 +159,7 @@ int process_bindings(struct ziti_conn *conn) {
 
 void update_bindings(ziti_connection conn) {
     if (conn->type != Server) return;
+    if (conn->close) return;
 
     int target = MIN(conn->server.max_bindings,
                      model_list_size(&conn->server.routers));
@@ -186,7 +187,7 @@ void update_bindings(ziti_connection conn) {
 }
 
 static void schedule_rebind(struct ziti_conn *conn) {
-    if (!ziti_is_enabled(conn->ziti_ctx)) {
+    if (!ziti_is_enabled(conn->ziti_ctx) || conn->close) {
         return;
     }
 
@@ -394,6 +395,13 @@ static int dispose(ziti_connection server) {
 
 static void process_inspect(struct binding_s *b, message *msg) {
     struct ziti_conn *conn = b->conn;
+
+    if (conn->close) {
+        // just drop the inspect request and let unbind handle it
+        CONN_LOG(ERROR, "service connection is already closed");
+        return;
+    }
+
     char conn_info[256];
     char listener_id[sodium_base64_ENCODED_LEN(sizeof(conn->server.listener_id), sodium_base64_VARIANT_URLSAFE)];
     sodium_bin2base64(listener_id, sizeof(listener_id),
@@ -411,6 +419,12 @@ static void process_inspect(struct binding_s *b, message *msg) {
 static void process_dial(struct binding_s *b, message *msg) {
     struct ziti_conn *conn = b->conn;
 
+    if (conn->close) {
+        CONN_LOG(ERROR, "service connection is already closed");
+        reject_dial_request(conn->conn_id, b->ch, msg->header.seq, "application closed connection");
+        return;
+    }
+
     size_t peer_key_len, marker_len;
     const uint8_t *peer_key;
     const uint8_t *marker;
@@ -420,7 +434,7 @@ static void process_dial(struct binding_s *b, message *msg) {
     bool rt_conn_id_sent = message_get_int32_header(msg, RouterProvidedConnId, (int32_t*)&rt_conn_id);
 
     if (!peer_key_sent && conn->encrypted) {
-        ZITI_LOG(ERROR, "failed to establish crypto for encrypted service: did not receive peer key");
+        CONN_LOG(ERROR, "failed to establish crypto for encrypted service: did not receive peer key");
         reject_dial_request(conn->conn_id, b->ch, msg->header.seq, "did not receive peer crypto key");
         return;
     }
@@ -651,6 +665,9 @@ int ziti_close_server(struct ziti_conn *conn) {
 
 static void notify_status(struct ziti_conn *conn, int err) {
     assert(conn->type == Server);
+
+    // application already closed this connection
+    if (conn->close) return;
 
     // first notification
     if (conn->server.listen_cb) {
