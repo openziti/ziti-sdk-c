@@ -23,25 +23,30 @@ typedef struct sticky_key {
     cstr id;
     cstr group;
 } sticky_key;
-
 #ifdef __cplusplus
-#define STICKY_KEY(s, i, g) sticky_key{.service = (s), .id = (i),  .group = (g) }
-#else
-#define STICKY_KEY(s, i, g) (sticky_key){ .service = (s),  .id = (i),  .group = (g)  }
+extern "C" {
 #endif
 
-static inline sticky_key sticky_key_make(cstr_raw service, cstr_raw id, cstr_raw group)  {
+#ifdef __cplusplus
+#define STICKY_KEY(s, i, g) sticky_key { .service = (s), .id = (i), .group = (g) }
+#define STICKY_KEY_RAW(s, i, g) sticky_key_raw { .service = (s), .id = (i), .group = (g) }
+#else
+#define STICKY_KEY(s, i, g) (sticky_key) { .service = (s), .id = (i), .group = (g) }
+#define STICKY_KEY_RAW(s, i, g) (sticky_key_raw) { .service = (s), .id = (i), .group = (g) }
+#endif
+
+static inline sticky_key sticky_key_make(cstr_raw service, cstr_raw id, cstr_raw group) {
     return STICKY_KEY(cstr_from(service), cstr_from(id), cstr_from(group));
 }
 
-static inline void sticky_key_drop(sticky_key *key)  {
+static inline void sticky_key_drop(sticky_key *key) {
     cstr_drop(&key->service);
     cstr_drop(&key->id);
     cstr_drop(&key->group);
 }
 
-static inline sticky_key sticky_key_clone(sticky_key key)  {
-    return STICKY_KEY(cstr_clone(key.service),cstr_clone(key.id), cstr_clone(key.group));
+static inline sticky_key sticky_key_clone(sticky_key key) {
+    return STICKY_KEY(cstr_clone(key.service), cstr_clone(key.id), cstr_clone(key.group));
 }
 
 typedef struct {
@@ -55,17 +60,11 @@ static inline sticky_key sticky_key_from(sticky_key_raw raw) {
 }
 
 static inline sticky_key_raw sticky_key_toraw(const sticky_key *key) {
-    return (sticky_key_raw){
-        .service = cstr_str(&key->service),
-        .id = cstr_str(&key->id),
-        .group = cstr_str(&key->group),
-    };
+    return STICKY_KEY_RAW(cstr_str(&key->service), cstr_str(&key->id), cstr_str(&key->group));
 }
 
 static inline int sticky_key_raw_eq(const sticky_key_raw *a, const sticky_key_raw *b) {
-    return strcmp(nsafe(a->service), nsafe(b->service)) == 0 &&
-        strcmp(nsafe(a->id), nsafe(b->id)) == 0 &&
-            strcmp(nsafe(a->group), nsafe(b->group)) == 0;
+    return strcmp(nsafe(a->service), nsafe(b->service)) == 0 && strcmp(nsafe(a->id), nsafe(b->id)) == 0 && strcmp(nsafe(a->group), nsafe(b->group)) == 0;
 }
 
 static inline size_t sticky_key_raw_hash(const sticky_key_raw *r) {
@@ -80,5 +79,10 @@ static inline size_t sticky_key_raw_hash(const sticky_key_raw *r) {
 #define i_keypro sticky_key
 #define i_valpro cstr
 #include <stc/hmap.h>
+
+#ifdef __cplusplus
+}
+#endif
+
 
 #endif // ZITI_SDK_STICKINESS_H
