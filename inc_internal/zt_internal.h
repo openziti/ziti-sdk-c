@@ -21,14 +21,16 @@
 #include <tlsuv/queue.h>
 
 #include <ziti/ziti.h>
-#include "buffer.h"
-#include "pool.h"
-#include "ziti_ctrl.h"
-#include "metrics.h"
-#include "posture.h"
-#include "authenticators.h"
+
 #include "auth_method.h"
+#include "buffer.h"
 #include "deadline.h"
+#include "metrics.h"
+#include "pool.h"
+#include "posture.h"
+#include "stickiness.h"
+#include "utils.h"
+#include "ziti_ctrl.h"
 
 #include <sodium.h>
 
@@ -298,6 +300,8 @@ struct ziti_ctx {
     model_map services;
     // map<service_id,ziti_session>
     model_map sessions;
+
+    sticky_tokens_map sticky_tokens;
 
     // map<service_id,*bool>
     model_map service_forced_updates;
