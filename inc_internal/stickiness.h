@@ -67,12 +67,7 @@ static inline int sticky_key_raw_eq(const sticky_key_raw *a, const sticky_key_ra
     return strcmp(nsafe(a->service), nsafe(b->service)) == 0 && strcmp(nsafe(a->id), nsafe(b->id)) == 0 && strcmp(nsafe(a->group), nsafe(b->group)) == 0;
 }
 
-static inline size_t sticky_key_raw_hash(const sticky_key_raw *r) {
-    return c_hash_mix(
-        c_hash_str(nsafe(r->service)),
-        c_hash_str(nsafe(r->id)),
-        c_hash_str(nsafe(r->group)));
-}
+extern size_t sticky_key_raw_hash(const sticky_key_raw *r);
 
 // type: sticky_tokens_map = hashmap<sticky_key, cstr>
 #define i_type sticky_tokens_map
