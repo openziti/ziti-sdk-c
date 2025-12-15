@@ -24,12 +24,14 @@ typedef struct sticky_key {
     cstr group;
 } sticky_key;
 
+#ifdef __cplusplus
+#define STICKY_KEY(s, i, g) sticky_key{.service = (s), .id = (i),  .group = (g) }
+#else
+#define STICKY_KEY(s, i, g) (sticky_key){ .service = (s),  .id = (i),  .group = (g)  }
+#endif
+
 static inline sticky_key sticky_key_make(cstr_raw service, cstr_raw id, cstr_raw group)  {
-    return (sticky_key){
-        .service = cstr_from(service),
-        .id = cstr_from(id),
-        .group = cstr_from(group)
-    };
+    return STICKY_KEY(cstr_from(service), cstr_from(id), cstr_from(group));
 }
 
 static inline void sticky_key_drop(sticky_key *key)  {
@@ -39,11 +41,7 @@ static inline void sticky_key_drop(sticky_key *key)  {
 }
 
 static inline sticky_key sticky_key_clone(sticky_key key)  {
-    return (sticky_key){
-        .service = cstr_clone(key.service),
-        .id = cstr_clone(key.id),
-        .group = cstr_clone(key.group),
-    };
+    return STICKY_KEY(cstr_clone(key.service),cstr_clone(key.id), cstr_clone(key.group));
 }
 
 typedef struct {
