@@ -283,7 +283,14 @@ typedef struct ziti_dial_opts_s {
      */
     bool stream;
     int connect_timeout_seconds;
-    char *identity;
+    const char *identity;
+    /**
+     * indicates that this connection is part of a group.
+     * grouped connections will use the same terminator if the service allows it (`service.routingStrategy == "sticky"`)
+     * this is useful when service can be more efficient when a client hits the same instance
+     * (client session caching for example)
+     */
+    const char *group;
     void *app_data;
     size_t app_data_sz;
 } ziti_dial_opts;

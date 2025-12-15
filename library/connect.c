@@ -32,11 +32,6 @@ conn->ziti_ctx->id, conn->conn_id, (int)sizeof(conn->marker),                 \
 conn->marker, conn_state_str[conn->state], conn->parent ? conn->parent->service : conn->service,                     \
 ##__VA_ARGS__)
 
-
-#define DEFAULT_DIAL_OPTS (ziti_dial_opts){ \
-                 .connect_timeout_seconds = ZITI_DEFAULT_TIMEOUT/1000, \
-    }
-
 static const char *conn_state_str[] = {
 #define state_str(ST) #ST ,
         conn_states(state_str)
@@ -68,9 +63,15 @@ struct local_hash {
 
 struct ziti_conn_req {
     ziti_session_type session_type;
-    char *service_id;
     ziti_conn_cb cb;
-    ziti_dial_opts dial_opts;
+    cstr service_id;
+
+    // dial options
+    int connect_timeout_seconds;
+    bool stream;
+    cstr app_data;
+    cstr group;
+    cstr identity;
 
     int retry_count;
     struct waiter_s *waiter;
@@ -98,12 +99,16 @@ static int ziti_disconnect(ziti_connection conn);
 
 static void restart_connect(struct ziti_conn *conn);
 
-static void free_handle(uv_handle_t *h) {
-    free(h);
-}
-
 const char *ziti_conn_state(ziti_connection conn) {
     return conn ? conn_state_str[conn->state] : "<NULL>";
+}
+
+static inline sticky_key_raw req_sticky_key (const struct ziti_conn_req *req) {
+    return c_literal(sticky_key_raw){
+        .service = cstr_str(&req->service_id),
+        .id = cstr_str(&req->identity),
+        .group = cstr_str(&req->group),
+    };
 }
 
 int ziti_conn_set_data_cb(ziti_connection conn, ziti_data_cb cb) {
@@ -133,32 +138,29 @@ static void conn_set_state(struct ziti_conn *conn, enum conn_state state) {
     }
 }
 
-static void clone_ziti_dial_opts(ziti_dial_opts *dest, const ziti_dial_opts *dial_opts) {
-    *dest = DEFAULT_DIAL_OPTS;
+static void clone_ziti_dial_opts(struct ziti_conn_req *req, const ziti_dial_opts *dial_opts) {
+    req->stream = dial_opts->stream;
+    req->connect_timeout_seconds = dial_opts->connect_timeout_seconds;
+    if (dial_opts->identity != NULL) {
+        req->identity = cstr_from(dial_opts->identity);
+    }
 
-    dest->stream = dial_opts->stream;
-    dest->connect_timeout_seconds = dial_opts->connect_timeout_seconds;
-    if (dial_opts->identity != NULL && dial_opts->identity[0] != '\0') {
-        dest->identity = strdup(dial_opts->identity);
+    if (dial_opts->group) {
+        req->group = cstr_from(dial_opts->group);
     }
 
     if (dial_opts->app_data != NULL && dial_opts->app_data_sz > 0) {
-        dest->app_data = malloc(dial_opts->app_data_sz);
-        dest->app_data_sz = dial_opts->app_data_sz;
-        memcpy(dest->app_data, dial_opts->app_data, dial_opts->app_data_sz);
+        req->app_data = cstr_with_n(dial_opts->app_data, (long)dial_opts->app_data_sz);
     }
-}
-
-static void free_ziti_dial_opts(ziti_dial_opts *dial_opts) {
-    FREE(dial_opts->identity);
-    FREE(dial_opts->app_data);
 }
 
 static void free_conn_req(struct ziti_conn_req *r) {
     clear_deadline(&r->deadline);
 
-    free_ziti_dial_opts(&r->dial_opts);
-    FREE(r->service_id);
+    cstr_drop(&r->app_data);
+    cstr_drop(&r->service_id);
+    cstr_drop(&r->group);
+    cstr_drop(&r->identity);
     free(r);
 }
 
@@ -360,7 +362,7 @@ static void connect_timeout(void *data) {
             CONN_LOG(WARN, "connect timeout: no suitable edge router for service[%s]", conn->service);
         } else {
             CONN_LOG(WARN, "failed to establish connection to service[%s] in %ds on ch[%d]",
-                     conn->service, conn->conn_req->dial_opts.connect_timeout_seconds, ch->id);
+                     conn->service, conn->conn_req->connect_timeout_seconds, ch->id);
         }
         complete_conn_req(conn, ZITI_TIMEOUT);
         ziti_disconnect(conn);
@@ -431,7 +433,7 @@ static void connect_get_service_cb(ziti_context ztx, const ziti_service *s, int 
             return;
         }
 
-        req->service_id = strdup(s->id);
+        req->service_id = cstr_from(s->id);
         conn->encrypted = s->encryption;
         process_connect(conn, NULL);
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
@@ -471,7 +473,7 @@ static void connect_get_net_session_cb(ziti_session *s, const ziti_error *err, v
             complete_conn_req(conn, e);
         }
     } else {
-        ziti_session *existing = model_map_set(&ztx->sessions, req->service_id, s);
+        ziti_session *existing = model_map_set(&ztx->sessions, cstr_str(&req->service_id), s);
         // this happens with concurrent connection requests for the same service (common with browsers)
         if (existing) {
             CONN_LOG(DEBUG, "discarding existing session[%s] for service[%s]", existing->id, conn->service);
@@ -502,7 +504,7 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
     }
 
     // find service
-    if (req->service_id == NULL) {
+    if (cstr_is_empty(&req->service_id)) {
         // connect_get_service_cb will re-enter process_connect() if service is already cached in the context
         int rc = ziti_service_available(ztx, conn->service, connect_get_service_cb, conn);
         if (rc != ZITI_OK) {
@@ -513,13 +515,13 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
 
     ziti_send_posture_data(ztx);
     if (session == NULL) {
-        session = model_map_get(&ztx->sessions, req->service_id);
+        session = model_map_get(&ztx->sessions, cstr_str(&req->service_id));
     }
 
     if (session == NULL) {
         CONN_LOG(DEBUG, "requesting 'Dial' session for service[%s]", conn->service);
         // this will re-enter with session if create succeeds
-        ziti_ctrl_create_session(ztx_get_controller(ztx), req->service_id, ziti_session_types.Dial,
+        ziti_ctrl_create_session(ztx_get_controller(ztx), cstr_str(&req->service_id), ziti_session_types.Dial,
                                  connect_get_net_session_cb, conn);
         return;
     }
@@ -535,15 +537,14 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
         }
     }
 
-    if (req->dial_opts.connect_timeout_seconds > 0) {
-        ztx_set_deadline(ztx, req->dial_opts.connect_timeout_seconds * 1000,
+    if (req->connect_timeout_seconds > 0) {
+        ztx_set_deadline(ztx, req->connect_timeout_seconds * 1000,
                          &req->deadline, connect_timeout, conn);
     }
 
     CONN_LOG(DEBUG, "starting Dial connection for service[%s] with session[%s]", conn->service, session->id);
     if (!ziti_connect(ztx, session, conn)) {
         CONN_LOG(DEBUG, "no active edge routers, pending ER connection");
-        // TODO deal with pending connect
     }
 
     if (session->refresh) {
@@ -581,10 +582,10 @@ static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opt
     req->session_type = ziti_session_types.Dial;
     req->cb = conn_cb;
 
-    req->dial_opts = DEFAULT_DIAL_OPTS;
+    req->connect_timeout_seconds = ZITI_DEFAULT_TIMEOUT / 1000;
     if (dial_opts != NULL) {
         // clone dial_opts to survive the async request
-        clone_ziti_dial_opts(&req->dial_opts, dial_opts);
+        clone_ziti_dial_opts(req, dial_opts);
 
         if (dial_opts->stream) {
             conn->flags |= EDGE_STREAM;
@@ -1029,6 +1030,7 @@ static void restart_connect(struct ziti_conn *conn) {
 void connect_reply_cb(void *ctx, message *msg, int err) {
     struct ziti_conn *conn = ctx;
     struct ziti_conn_req *req = conn->conn_req;
+    struct ziti_ctx *ztx = conn->ziti_ctx;
 
     clear_deadline(&req->deadline);
 
@@ -1044,7 +1046,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
         case ContentTypeStateClosed:
             if (strncmp(INVALID_SESSION, (const char *) msg->body, msg->header.body_len) == 0) {
                 CONN_LOG(WARN, "session for service[%s] became invalid", conn->service);
-                ziti_invalidate_session(conn->ziti_ctx, conn->conn_req->service_id, ziti_session_types.Dial);
+                ziti_invalidate_session(ztx, cstr_str(&req->service_id), ziti_session_types.Dial);
                 ziti_channel_rem_receiver(conn->channel, conn->rt_conn_id);
                 conn->channel = NULL;
                 restart_connect(conn);
@@ -1066,6 +1068,16 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
                     if (rc == ZITI_OK) {
                         send_crypto_header(conn);
                     }
+                }
+                const uint8_t *sticky_token = NULL;
+                size_t sticky_token_len = 0;
+                if (message_get_bytes_header(msg, StickyTokenHeader, &sticky_token, &sticky_token_len)) {
+                    CONN_LOG(DEBUG, "sticky token received");
+                    cstr token = cstr_with_n((const char*)sticky_token, (long)sticky_token_len);
+                    sticky_tokens_map_put(&ztx->sticky_tokens,
+                                          req_sticky_key(req),
+                                          cstr_str(&token));
+                    cstr_drop(&token);
                 }
                 conn_set_state(conn, rc == ZITI_OK ? Connected : Disconnected);
                 complete_conn_req(conn, rc);
@@ -1140,21 +1152,10 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
                     .value = conn->key_pair.pk,
             },
             // blank hdr_t's to be filled in if needed by options
-            {
-                    .header_id = -1,
-                    .length = 0,
-                    .value = NULL,
-            },
-            {
-                    .header_id = -1,
-                    .length = 0,
-                    .value = NULL,
-            },
-            {
-                    .header_id = -1,
-                    .length = 0,
-                    .value = NULL,
-            }
+            { .header_id = -1, },
+            { .header_id = -1, },
+            { .header_id = -1, },
+            { .header_id = -1, },
     };
     int nheaders = 4;
     if (conn->encrypted) {
@@ -1162,20 +1163,31 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
         nheaders++;
     }
 
-    if (req->dial_opts.identity != NULL) {
+    if (!cstr_is_empty(&req->identity)) {
         headers[nheaders].header_id = TerminatorIdentityHeader;
-        headers[nheaders].value = (uint8_t *) req->dial_opts.identity;
-        headers[nheaders].length = strlen(req->dial_opts.identity);
+        headers[nheaders].value = (uint8_t *) cstr_str(&req->identity);
+        headers[nheaders].length = cstr_size(&req->identity);
         nheaders++;
     }
 
-    if (req->dial_opts.app_data != NULL) {
+    if (!cstr_is_empty(&req->app_data)) {
         headers[nheaders].header_id = AppDataHeader;
-        headers[nheaders].value = req->dial_opts.app_data;
-        headers[nheaders].length = req->dial_opts.app_data_sz;
+        headers[nheaders].value = (uint8_t *)cstr_str(&req->app_data);
+        headers[nheaders].length = cstr_size(&req->app_data);
         nheaders++;
     }
 
+    const sticky_tokens_map_value *token_entry = sticky_tokens_map_get(
+        &conn->ziti_ctx->sticky_tokens, req_sticky_key(req));
+
+    if (token_entry) {
+        headers[nheaders].header_id = StickyTokenHeader;
+        headers[nheaders].value = (const uint8_t*)cstr_str(&token_entry->second);
+        headers[nheaders].length = cstr_size(&token_entry->second);
+        nheaders++;
+    }
+
+    assert(nheaders < c_arraylen(headers));
     req->waiter = ziti_channel_send_for_reply(ch, content_type, headers, nheaders,
                                               (const uint8_t*)session->token, strlen(session->token),
                                               connect_reply_cb, conn);
@@ -1441,7 +1453,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
                 case Accepting: {
                     if (strncmp(INVALID_SESSION, (const char *) msg->body, msg->header.body_len) == 0) {
                         CONN_LOG(WARN, "session for service[%s] became invalid", conn->service);
-                        ziti_invalidate_session(conn->ziti_ctx, conn->conn_req->service_id, conn->conn_req->session_type);
+                        ziti_invalidate_session(conn->ziti_ctx, cstr_str(&conn->conn_req->service_id), conn->conn_req->session_type);
                         retry_connect = true;
                     }
                     if (retry_connect) {
