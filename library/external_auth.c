@@ -92,42 +92,40 @@ static void internal_link_cb(ext_oidc_client_t *oidc, const char *url, void *ctx
 
 static void ext_token_cb(ext_oidc_client_t *oidc, enum ext_oidc_status status, const void *data) {
     ziti_context ztx = oidc->data;
+    enum ziti_auth_action action = ziti_auth_login_external;
+    const char *err = NULL;
     switch (status) {
         case EXT_OIDC_TOKEN_OK: {
             ziti_ext_auth_token(ztx, (const char*)data);
-            break;
+            return;
         }
         case EXT_OIDC_CONFIG_FAILED: {
-            const char *message = data;
-            ZTX_LOG(WARN, "failed to configure external signer: %s", message);
-            ztx_auth_state_cb(ztx, ZitiAuthImpossibleToAuthenticate, &(ziti_error) {
-                    .err = ZITI_AUTHENTICATION_FAILED,
-                    .message = message,
-            });
+            err = (const char*)data;
+            action = ziti_auth_cannot_continue;
+            ZTX_LOG(WARN, "failed to configure external signer: %s", err);
             break;
         }
         case EXT_OIDC_RESTART: {
-            ziti_event_t ev = {
-                    .type = ZitiAuthEvent,
-                    .auth = {
-                            .type = ziti_auth_query_types.name(ziti_auth_query_type_EXT_JWT),
-                            .action = ziti_auth_login_external,
-                            .detail = ztx->ext_auth->signer_cfg.name,
-                    }
-            };
-            ziti_send_event(ztx, &ev);
+            action = ziti_auth_login_external;
             break;
         }
         case EXT_OIDC_TOKEN_FAILED: {
-            const char *message = data;
-            ZTX_LOG(WARN, "failed to get external authentication token: %d", status);
-            char err[256];
-            snprintf(err, sizeof(err), "failed to get external auth token: %s", message);
-            ztx_auth_state_cb(ztx, ZitiAuthImpossibleToAuthenticate, &(ziti_error) {
-                    .err = status,
-                    .message = message,
-            });
+            action = ziti_auth_cannot_continue;
+            err = data;
+            ZTX_LOG(WARN, "failed to get external authentication token: %d/%s", status, err);
         }
+    }
+
+    if (ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
+        ziti_event_t ev = {
+            .type = ZitiAuthEvent,
+            .auth = {
+                .type = ziti_auth_query_types.name(ziti_auth_query_type_EXT_JWT),
+                .action = action,
+                .error = err,
+                .detail = ztx->ext_auth->signer_cfg.name,
+            }};
+        ziti_send_event(ztx, &ev);
     }
 }
 
@@ -135,16 +133,6 @@ extern int ziti_ext_auth(ziti_context ztx,
                          void (*ziti_ext_launch)(ziti_context, const char*, void *), void *ctx) {
     if (ztx->ext_auth == NULL) {
         return ZITI_INVALID_STATE;
-    }
-
-    switch (ztx->auth_state) {
-        case ZitiAuthStateAuthStarted:
-        case ZitiAuthStateFullyAuthenticated:
-            return ZITI_INVALID_STATE;
-        case ZitiAuthStatePartiallyAuthenticated:
-        case ZitiAuthStateUnauthenticated:
-        case ZitiAuthImpossibleToAuthenticate:
-            break;
     }
 
     ztx->ext_launch_cb = ziti_ext_launch;
@@ -179,14 +167,16 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
     assert(ztx->auth_method);
     ztx->auth_method->set_ext_jwt(ztx->auth_method, token);
 
+    ZTX_LOG(DEBUG, "received access token: %s", jwt_payload(token));
     // create identity if needed and allowed
     if (ztx->identity_data == NULL && ztx->id_creds.cert == NULL) {
-        ZTX_LOG(DEBUG, "received access token: %.*s...", 20, token);
+        ZTX_LOG(INFO, "no credentials present trying just-in-time enrollment");
         ziti_ctrl_enroll_token(ztx_get_controller(ztx), token, NULL, ztx_on_token_enroll, ztx);
         return ZITI_OK;
     }
 
     if (ztx->auth_state == ZitiAuthStateUnauthenticated) {
+        ZTX_LOG(DEBUG, "initiating authentication flow");
         ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
     }
     return ZITI_OK;
