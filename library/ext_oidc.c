@@ -782,18 +782,9 @@ static void ext_refresh_time_cb(uv_timer_t *t) {
     tlsuv_http_req_header(req, "Authorization",
                           get_basic_auth_header(clt->signer_cfg.client_id));
     const char *refresher = json_object_get_string(tok);
-    if (clt->refresh_grant && strcmp(clt->refresh_grant, TOKEN_EXCHANGE_GRANT) == 0) {
-        tlsuv_http_req_form(req, 4, (tlsuv_http_pair[]) {
-                {"grant_type", TOKEN_EXCHANGE_GRANT},
-                {"requested_token_type", "urn:ietf:params:oauth:token-type:refresh_token"},
-                {"subject_token_type",   "urn:ietf:params:oauth:token-type:refresh_token"},
-                {"subject_token",        refresher},
-        });
-    } else {
-        tlsuv_http_req_form(req, 3, (tlsuv_http_pair[]) {
-                {"client_id",     clt->signer_cfg.client_id},
-                {"grant_type",    "refresh_token"},
-                {"refresh_token", refresher},
-        });
-    }
+    tlsuv_http_req_form(req, 3, (tlsuv_http_pair[]) {
+        {"client_id",     clt->signer_cfg.client_id},
+        {"grant_type",    "refresh_token"},
+        {"refresh_token", refresher},
+    });
 }

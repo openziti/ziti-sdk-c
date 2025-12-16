@@ -186,6 +186,8 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
         return ZITI_OK;
     }
 
-    ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
+    if (ztx->auth_state == ZitiAuthStateUnauthenticated) {
+        ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
+    }
     return ZITI_OK;
 }
