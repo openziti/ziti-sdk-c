@@ -1078,6 +1078,8 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
                                           req_sticky_key(req),
                                           cstr_str(&token));
                     cstr_drop(&token);
+                } else {
+                    sticky_tokens_map_erase(&ztx->sticky_tokens, req_sticky_key(req));
                 }
                 conn_set_state(conn, rc == ZITI_OK ? Connected : Disconnected);
                 complete_conn_req(conn, rc);
