@@ -1021,7 +1021,12 @@ ZITI_FUNC
 extern void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb auth_cb, void *ctx);
 
 /**
- * @brief Authenticate with an external JWT signer
+ * @brief Start authentication process with an external JWT signer.
+ *
+ * External signer must be selected via [ziti_use_ext_jwt_signer()] prior to calling this function.
+ *
+ * It is the application's responsibility to complete the authentication process by navigating user to
+ * the URL provided in the [launch_cb] callback
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
  * @param launch_cb callback to complete authentication with the JWT provider
@@ -1032,6 +1037,20 @@ extern void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb auth_c
 ZITI_FUNC
 extern int ziti_ext_auth(ziti_context ztx, ziti_ext_auth_launch_cb launch_cb, void *ctx);
 
+/**
+ * @brief Submit external authentication token
+ *
+ * This function is used to submit the token received from the external JWT signer
+ * to complete authentication.
+ *
+ * This is an alternative to [ziti_ext_auth()] that allows application to manage the authentication flow.
+ *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param token the token received from the external JWT signer
+ *
+ * @see ziti_ext_auth()
+ */
+ZITI_FUNC
 extern int ziti_ext_auth_token(ziti_context ztx, const char *token);
 
 /**

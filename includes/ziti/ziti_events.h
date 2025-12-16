@@ -130,6 +130,8 @@ enum ziti_auth_action {
  */
 struct ziti_auth_event {
     enum ziti_auth_action action;
+    /** error message, if any action == ziti_auth_cannot_continue */
+    const char *error;
     const char *type;
     const char *detail;
     ziti_jwt_signer_array providers;
