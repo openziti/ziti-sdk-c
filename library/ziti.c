@@ -762,6 +762,8 @@ int ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
 static void free_ztx(uv_handle_t *h) {
     ziti_context ztx = h->data;
 
+    sticky_tokens_map_drop(&ztx->sticky_tokens);
+
     model_map_clear(&ztx->ext_signers, (_free_f)free_ziti_jwt_signer_ptr);
     model_map_clear(&ztx->ctrl_details, (_free_f) free_ziti_controller_detail_ptr);
     ziti_auth_query_free(ztx->auth_queries);

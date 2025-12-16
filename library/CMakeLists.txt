@@ -62,6 +62,7 @@ else()
     endif()
 endif()
 
+pkg_check_modules(STC REQUIRED IMPORTED_TARGET stc)
 
 set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/errors.h
@@ -109,7 +110,7 @@ SET(ZITI_SRC_FILES
         external_auth.c
         edge_protocol.c
         ext_oidc.c
-        )
+)
 
 SET(ZITI_INCLUDE_DIRS
     PUBLIC ../includes
@@ -160,6 +161,7 @@ function(config_ziti_library target)
             ${sodium_libs}
             ${jsonc_libs}
             PkgConfig::PBUFC
+            PkgConfig::STC
     )
 
     if (CMAKE_SYSTEM_NAME MATCHES "Linux")

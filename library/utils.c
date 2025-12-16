@@ -21,6 +21,7 @@
 #include "utils.h"
 #include "tlsuv/http.h"
 #include "ziti/errors.h"
+#include "stickiness.h"
 
 #include <sodium/utils.h>
 
@@ -791,4 +792,11 @@ const char *jwt_payload(const char *jwt) {
         return (const char *)payload;
     }
     return "<JWT too long?>";
+}
+
+size_t sticky_key_raw_hash(const sticky_key_raw *r) {
+    return c_hash_mix(
+        c_hash_str(nsafe(r->service)),
+        c_hash_str(nsafe(r->id)),
+        c_hash_str(nsafe(r->group)));
 }
