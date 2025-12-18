@@ -2097,6 +2097,9 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
             ZTX_LOG(ERROR, "controller reported OIDC_AUTH capability without OIDC API version");
             use_oidc = false;
         }
+        // make sure ziti_ctrl client is configured for correct auth
+        ziti_ctrl_set_legacy(ztx_get_controller(ztx), !use_oidc);
+
         if (!ztx->auth_method) {
             if (use_oidc) {
                 ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->tlsCtx);
