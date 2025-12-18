@@ -44,6 +44,7 @@ typedef struct ziti_controller_s {
     // tuning options
     unsigned int page_size;
 
+    bool legacy;
     bool is_ha;
     ziti_version version;
     ctrl_version_cb version_cb;
@@ -61,6 +62,8 @@ typedef struct ziti_controller_s {
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls_context *tls);
 
 int ziti_ctrl_set_token(ziti_controller *ctrl, const char *access_token);
+
+void ziti_ctrl_set_legacy(ziti_controller *ctrl, bool legacy);
 
 int ziti_ctrl_cancel(ziti_controller *ctrl);
 
