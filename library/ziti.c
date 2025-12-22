@@ -1801,7 +1801,6 @@ static void ztx_prep_deadlines(ziti_context ztx) {
     deadline_t *next = LIST_FIRST(&ztx->deadlines);
     uint64_t now = uv_now(ztx->loop);
     uint64_t wait_time = next->expiration > now ? next->expiration - now : 0;
-    ZTX_LOG(TRACE, "processing deadlines in %" PRIu64, wait_time);
     uv_timer_start(&ztx->deadline_timer, ztx_process_deadlines, wait_time, 0);
 }
 
