@@ -58,6 +58,7 @@ struct oidc_client_s {
     char *jwt_token_auth;
 
     struct auth_req *request;
+    tlsuv_http_req_t *refresh_req;
 };
 
 // init

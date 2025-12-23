@@ -383,6 +383,7 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
 }
 
 int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
+    assert(cb != NULL);
     clt->token_cb = cb;
     if (clt->config == NULL) {
         OIDC_LOG(DEBUG, "deferring auth flow until configuration is complete");
@@ -507,8 +508,19 @@ int oidc_client_mfa(oidc_client_t *clt, const char *code) {
 }
 
 int oidc_client_refresh(oidc_client_t *clt) {
-    if (clt->timer == NULL || uv_is_closing((const uv_handle_t *) clt->timer)) {
+    if (clt->close_cb) {
+        OIDC_LOG(ERROR, "already closed");
         return UV_EINVAL;
+    }
+
+    if (clt->timer == NULL || uv_is_closing((const uv_handle_t *) clt->timer)) {
+        OIDC_LOG(ERROR, "invalid state: refresh timer is %s", clt->timer ? "closing" : "null");
+        return UV_EINVAL;
+    }
+
+    if (clt->refresh_req) {
+        OIDC_LOG(DEBUG, "refresh is already in progress");
+        return UV_EALREADY;
     }
 
     uv_ref((uv_handle_t *) clt->timer);
@@ -563,9 +575,13 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
             clt->token_cb(clt, OIDC_TOKEN_FAILED, NULL);
         }
     }
-    struct json_object *refresher = json_object_object_get(clt->tokens, "refresh_token");
+    assert(clt->timer && !uv_is_closing((uv_handle_t*)clt->timer));
+
     struct json_object *ttl = json_object_object_get(clt->tokens, "expires_in");
-    if (clt->timer && refresher && ttl) {
+    if (!ttl) {
+        OIDC_LOG(ERROR, "`expires_in` is missing from response");
+    }
+    if (ttl) {
         int32_t t = json_object_get_int(ttl);
         if (t <= 60) {
             OIDC_LOG(WARN, "token lifetime is too short[%d seconds]. this may cause problems", t);
@@ -573,7 +589,6 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
         } else {
             t = t - 30; // refresh 30 seconds before expiry
         }
-        t = 30;
         OIDC_LOG(DEBUG, "scheduling token refresh in %d seconds", t);
         uv_timer_start(clt->timer, refresh_time_cb, t * 1000, 0);
     }
@@ -581,10 +596,26 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
 
 static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *resp, void *ctx) {
     oidc_client_t *clt = ctx;
+    assert(clt->refresh_req == http_resp->req);
+    clt->refresh_req = NULL;
+
     if (http_resp->code == 200 && resp != NULL) {
         OIDC_LOG(DEBUG,  "token refresh success");
         oidc_client_set_tokens(clt, resp);
         return;
+    }
+
+    if (http_resp->code >= 0 || http_resp->code == UV_EOF) {
+        // controller may abruptly terminate shutdown connection (EOF) if auth has failed
+        OIDC_LOG(WARN, "OIDC token refresh failed: %d %s [%s]",
+                 http_resp->code, http_resp->status, err);
+        if (resp) {
+            OIDC_LOG(WARN, "response: %s", json_object_get_string(resp));
+        }
+        json_object_put(clt->tokens);
+        clt->tokens = NULL;
+
+        oidc_client_start(clt, clt->token_cb);
     }
 
     if (http_resp->code < 0) {  // connection failure, try another refresh
@@ -592,9 +623,6 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
         uv_timer_start(clt->timer, refresh_time_cb, 5 * 1000, 0);
         return;
     }
-
-    OIDC_LOG(WARN, "OIDC token refresh failed: %d[%s]", http_resp->code, err);
-    clt->token_cb(clt, OIDC_RESTART, NULL);
 }
 
 static const char* get_basic_auth_header(const char *client_id) {
@@ -615,7 +643,12 @@ static void refresh_time_cb(uv_timer_t *t) {
     json_object *tok = json_object_object_get(clt->tokens, "refresh_token");
     if (tok == NULL) {
         OIDC_LOG(DEBUG, "must restart authentication flow: no refresh_token");
-        clt->token_cb(clt, OIDC_RESTART, NULL);
+        oidc_client_start(clt, clt->token_cb);
+        return;
+    }
+
+    if (clt->refresh_req) {
+        OIDC_LOG(DEBUG, "refresh is already in progress");
         return;
     }
 
@@ -632,4 +665,6 @@ static void refresh_time_cb(uv_timer_t *t) {
         {"grant_type",    "refresh_token"},
         {"refresh_token", refresher},
     });
+
+    clt->refresh_req = req;
 }
