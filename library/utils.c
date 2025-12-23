@@ -326,7 +326,7 @@ static const char *basename(const char *path) {
 #ifdef ZITI_DEBUG
 #define LOG_LINE_LENGTH 32768
 #else
-#define LOG_LINE_LENGTH 1024
+#define LOG_LINE_LENGTH 2048
 #endif
 
 static THREAD_LOCAL char log_buf[LOG_LINE_LENGTH];

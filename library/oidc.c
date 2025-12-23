@@ -660,6 +660,7 @@ static void refresh_time_cb(uv_timer_t *t) {
     tlsuv_http_req_header(req, "Authorization",
                           get_basic_auth_header(clt->signer_cfg.client_id));
     const char *refresher = json_object_get_string(tok);
+    OIDC_LOG(DEBUG, "using refresh_token[%s]", jwt_payload(refresher));
     tlsuv_http_req_form(req, 3, (tlsuv_http_pair[]) {
         {"client_id",     clt->signer_cfg.client_id},
         {"grant_type",    "refresh_token"},
