@@ -53,12 +53,12 @@ struct oidc_client_s {
     char name[32];
     void *config;
     void *tokens;
-    const char *refresh_grant;
 
     uv_timer_t *timer;
     char *jwt_token_auth;
 
     struct auth_req *request;
+    tlsuv_http_req_t *refresh_req;
 };
 
 // init
