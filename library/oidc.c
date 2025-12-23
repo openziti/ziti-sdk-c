@@ -156,21 +156,9 @@ static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_obje
     if (status == 0) {
         json_object_put(clt->config);
         clt->config = json_object_get(resp);
-        clt->refresh_grant = "refresh_token";
         // config has full URLs, so we can drop the prefix now
         tlsuv_http_set_path_prefix(&clt->http, "");
 
-        struct json_object *grants = json_object_object_get(resp, "grant_types_supported");
-        if (grants != NULL && json_object_is_type(grants, json_type_array)) {
-            for (int i = 0; i < json_object_array_length(grants); i++) {
-                struct json_object *g = json_object_array_get_idx(grants, i);
-                const char *name = json_object_get_string(g);
-                if (strcmp(name, TOKEN_EXCHANGE_GRANT) == 0) {
-                    clt->refresh_grant = name;
-                    break;
-                }
-            }
-        }
         if (clt->token_cb != NULL) {
             oidc_client_start(clt, clt->token_cb);
         }
@@ -585,6 +573,7 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
         } else {
             t = t - 30; // refresh 30 seconds before expiry
         }
+        t = 30;
         OIDC_LOG(DEBUG, "scheduling token refresh in %d seconds", t);
         uv_timer_start(clt->timer, refresh_time_cb, t * 1000, 0);
     }
@@ -638,18 +627,9 @@ static void refresh_time_cb(uv_timer_t *t) {
     tlsuv_http_req_header(req, "Authorization",
                           get_basic_auth_header(clt->signer_cfg.client_id));
     const char *refresher = json_object_get_string(tok);
-    if (clt->refresh_grant && strcmp(clt->refresh_grant, TOKEN_EXCHANGE_GRANT) == 0) {
-        tlsuv_http_req_form(req, 4, (tlsuv_http_pair[]) {
-                {"grant_type", TOKEN_EXCHANGE_GRANT},
-                {"requested_token_type", "urn:ietf:params:oauth:token-type:refresh_token"},
-                {"subject_token_type",   "urn:ietf:params:oauth:token-type:refresh_token"},
-                {"subject_token",        refresher},
-        });
-    } else {
-        tlsuv_http_req_form(req, 3, (tlsuv_http_pair[]) {
-                {"client_id",     clt->signer_cfg.client_id},
-                {"grant_type",    "refresh_token"},
-                {"refresh_token", refresher},
-        });
-    }
+    tlsuv_http_req_form(req, 3, (tlsuv_http_pair[]) {
+        {"client_id",     clt->signer_cfg.client_id},
+        {"grant_type",    "refresh_token"},
+        {"refresh_token", refresher},
+    });
 }
