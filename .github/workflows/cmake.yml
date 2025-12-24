@@ -83,7 +83,7 @@ jobs:
           merge-multiple: 'false'
 
       - run: ls -lR ./artifacts
-      - uses: pyTooling/Actions/releaser@main
+      - uses: pyTooling/Actions/releaser@v6.7.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: nightly
