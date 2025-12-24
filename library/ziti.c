@@ -463,8 +463,12 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
 }
 
 void ziti_force_api_session_refresh(ziti_context ztx) {
-    ZTX_LOG(DEBUG, "forcing session refresh");
-    ztx->auth_method->force_refresh(ztx->auth_method);
+    if (ztx->auth_method) {
+        ZTX_LOG(DEBUG, "forcing session refresh");
+        ztx->auth_method->force_refresh(ztx->auth_method);
+    } else {
+        ZTX_LOG(WARN, "cannot refresh: auth_method was never set up");
+    }
 }
 
 const char* ziti_get_api_session_token(ziti_context ztx) {
@@ -1597,15 +1601,14 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
             ziti_set_unauthenticated(ztx, err);
             ziti_force_api_session_refresh(ztx);
         }
+        update_ctrl_status(ztx, (int)err->err, err->message);
     } else {
-        free_ziti_identity_data(ztx->identity_data);
-        FREE(ztx->identity_data);
-        ztx->identity_data = data;
+        if (data != NULL) {
+            free_ziti_identity_data_ptr(ztx->identity_data);
+            ztx->identity_data = data;
+            update_ctrl_status(ztx, ZITI_OK, ziti_errorstr(ZITI_OK));
+        }
     }
-
-    update_ctrl_status(ztx,
-                       FIELD_OR_ELSE(err, err, ZITI_OK),
-                       FIELD_OR_ELSE(err, message, ziti_errorstr(ZITI_OK)));
 }
 
 static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e, void *ctx) {
