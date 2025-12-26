@@ -775,6 +775,10 @@ tlsuv_http_req_t* ziti_json_request(
 }
 
 const char *jwt_payload(const char *jwt) {
+    if (jwt == NULL) {
+        return "null";
+    }
+
     static uint8_t payload[4096];
     size_t payload_len;
 
