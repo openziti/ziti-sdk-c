@@ -523,15 +523,27 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
     struct ziti_conn *conn = b->conn;
 
     b->waiter = NULL;
-    if (code == ZITI_OK && msg->header.content == ContentTypeStateConnected) {
+    if (code != ZITI_OK) { // channel error
+        CONN_LOG(WARN, "bind request failed on router[%s]: %d/%s", b->ch->name, code, ziti_errorstr(code));
+        ziti_channel_rem_receiver(b->ch, b->conn_id);
+        b->ch = NULL;
+        b->state = st_unbound;
+        schedule_rebind(b->conn);
+        return;
+    }
+
+
+    if (msg->header.content == ContentTypeStateConnected) {
         CONN_LOG(TRACE, "received msg ct[%s] code[%d]", content_type_id(msg->header.content), code);
         CONN_LOG(DEBUG, "bound successfully on router[%s]", b->ch->name);
         ziti_channel_add_receiver(b->ch, b->conn_id, b,
                                   (void (*)(void *, message *, int)) on_message);
         b->state = st_bound;
     } else {
-        CONN_LOG(DEBUG, "failed to bind on router[%s]: %s", b->ch->name,
-                 ziti_errorstr(code));
+        CONN_LOG(WARN, "bind request rejected on router[%s]: ct[%s] %.*s",
+                 b->ch->name, content_type_id(msg->header.content), msg->header.body_len, msg->body);
+
+        FREE(conn->server.token);
         ziti_channel_rem_receiver(b->ch, b->conn_id);
         b->ch = NULL;
         b->state = st_unbound;
