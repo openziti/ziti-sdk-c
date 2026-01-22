@@ -2079,48 +2079,56 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
     if (err) {
         ZTX_LOG(WARN, "failed to get controller version: %s/%s", err->code, err->message);
         ztx_set_deadline(ztx, 5000, &ztx->refresh_deadline, pre_auth_retry, ztx);
-    } else {
-        bool use_oidc = ziti_has_capability(version, ziti_ctrl_caps.OIDC_AUTH);
-        ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
-                ztx_controller(ztx), version->version, version->revision, version->build_date);
-        ZTX_LOG(INFO, "using %s authentication method", use_oidc ? "OIDC" : "Legacy");
-        enum AuthenticationMethod m = use_oidc ? OIDC : LEGACY;
+        return;
+    }
 
-        if (ztx->auth_method && ztx->auth_method->kind != m) {
-            ZTX_LOG(INFO, "current auth method does not match controller, switching to %s method",
-                    use_oidc ? "OIDC" : "LEGACY");
-            ztx->auth_method->stop(ztx->auth_method);
-            ztx->auth_method->free(ztx->auth_method);
-            ztx->auth_method = NULL;
+    bool use_oidc = ziti_has_capability(version, ziti_ctrl_caps.OIDC_AUTH);
+    ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
+            ztx_controller(ztx), version->version, version->revision, version->build_date);
+    ZTX_LOG(INFO, "using %s authentication method", use_oidc ? "OIDC" : "Legacy");
+    enum AuthenticationMethod m = use_oidc ? OIDC : LEGACY;
+
+    if (ztx->auth_method && ztx->auth_method->kind != m) {
+        ZTX_LOG(INFO, "current auth method does not match controller, switching to %s method",
+                use_oidc ? "OIDC" : "LEGACY");
+        ztx->auth_method->stop(ztx->auth_method);
+        ztx->auth_method->free(ztx->auth_method);
+        ztx->auth_method = NULL;
+    }
+
+    api_path *oidc_path = model_map_get(&version->api_versions->oidc, "v1");
+    if (use_oidc && oidc_path == NULL) {
+        ZTX_LOG(ERROR, "controller reported OIDC_AUTH capability without OIDC API version");
+        use_oidc = false;
+    }
+    // make sure ziti_ctrl client is configured for correct auth
+    ziti_ctrl_set_legacy(ztx_get_controller(ztx), !use_oidc);
+
+    if (!ztx->auth_method) {
+        if (use_oidc) {
+            ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->tlsCtx);
+        } else {
+            ztx->auth_method = new_legacy_auth(ztx_get_controller(ztx));
         }
 
-        api_path *oidc_path = model_map_get(&version->api_versions->oidc, "v1");
-        if (use_oidc && oidc_path == NULL) {
-            ZTX_LOG(ERROR, "controller reported OIDC_AUTH capability without OIDC API version");
-            use_oidc = false;
-        }
-        // make sure ziti_ctrl client is configured for correct auth
-        ziti_ctrl_set_legacy(ztx_get_controller(ztx), !use_oidc);
-
-        if (!ztx->auth_method) {
-            if (use_oidc) {
-                ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->tlsCtx);
-            } else {
-                ztx->auth_method = new_legacy_auth(ztx_get_controller(ztx));
-            }
-        } else if (ztx->auth_method->set_endpoint){
-            ztx->auth_method->set_endpoint(ztx->auth_method, oidc_path);
-        }
-
+        // can't start authentication without credentials
+        // it will get started once we get external token
         if (ztx->ext_auth == NULL && ztx->id_creds.key == NULL) {
+            ZTX_LOG(DEBUG, "no credentials available, starting external auth");
             ztx_init_external_auth(ztx, ztx->config.id.oidc);
             return;
         }
-
         ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
-        if (ztx->ext_auth) {
-            ext_oidc_client_refresh(ztx->ext_auth);
-        }
+
+    } else if (ztx->auth_method->set_endpoint) {
+        // OIDC endpoint may have changed
+        // force refresh with the new endpoint
+        ztx->auth_method->set_endpoint(ztx->auth_method, oidc_path);
+        ztx->auth_method->force_refresh(ztx->auth_method);
+    }
+
+    if (ztx->ext_auth) {
+        ext_oidc_client_refresh(ztx->ext_auth);
     }
 }
 
