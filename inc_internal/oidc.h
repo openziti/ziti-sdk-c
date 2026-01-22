@@ -20,6 +20,7 @@
 #include <uv.h>
 #include <ziti/ziti_model.h>
 #include "tlsuv/http.h"
+#include <stc/cstr.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,29 +43,29 @@ typedef void (*oidc_close_cb)(oidc_client_t *);
 
 struct oidc_client_s {
     void *data;
+    cstr provider_url;
     tlsuv_http_t http;
-
-    ziti_jwt_signer signer_cfg;
 
     oidc_config_cb config_cb;
     oidc_token_cb token_cb;
     oidc_close_cb close_cb;
 
-    char name[32];
     void *config;
     void *tokens;
 
     uv_timer_t *timer;
     char *jwt_token_auth;
 
+    bool configuring;
+    bool need_refresh;
     struct auth_req *request;
     tlsuv_http_req_t *refresh_req;
 };
 
 // init
 int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
-                     const struct ziti_jwt_signer_s *cfg, tls_context *tls);
-int oidc_client_set_cfg(oidc_client_t *clt, const struct ziti_jwt_signer_s *cfg);
+                     const char *provider, tls_context *tls);
+int oidc_client_set_cfg(oidc_client_t *clt, const char *provider);
 
 // configure client
 int oidc_client_configure(oidc_client_t *clt, oidc_config_cb);

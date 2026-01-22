@@ -17,6 +17,10 @@
 
 #include "ziti_ctrl.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum AuthenticationMethod {
     LEGACY,
     OIDC
@@ -56,5 +60,9 @@ struct ziti_auth_method_s {
 
 ziti_auth_method_t *new_legacy_auth(ziti_controller *ctrl);
 ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context *tls);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // ZITI_SDK_AUTH_METHOD_H
