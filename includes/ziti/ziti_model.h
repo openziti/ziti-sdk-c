@@ -73,8 +73,7 @@ XX(can_cert_enroll, model_bool, none, enrollToCertEnabled, __VA_ARGS__)
 #define ZITI_ID_CFG_MODEL(XX, ...) \
 XX(cert, model_string, none, cert, __VA_ARGS__) \
 XX(key, model_string, none, key, __VA_ARGS__) \
-XX(ca, model_string, none, ca, __VA_ARGS__)     \
-XX(oidc, ziti_jwt_signer, ptr, oidc, __VA_ARGS__)
+XX(ca, model_string, none, ca, __VA_ARGS__)
 
 #define ZITI_CONFIG_MODEL(XX, ...) \
 XX(controller_url, model_string, none, ztAPI, __VA_ARGS__) \

@@ -1936,17 +1936,6 @@ static void copy_oidc(ziti_context ztx, const ziti_jwt_signer *oidc) {
         ZTX_LOG(ERROR, "invalid OIDC config `clientId` is missing");
         return;
     }
-
-    ztx->config.id.oidc = calloc(1, sizeof(*oidc));
-    ztx->config.id.oidc->client_id = strdup(oidc->client_id);
-    ztx->config.id.oidc->provider_url = strdup(oidc->provider_url);
-    if (oidc->audience) {
-        ztx->config.id.oidc->audience = strdup(oidc->audience);
-    }
-    const char *scope;
-    MODEL_LIST_FOREACH(scope, oidc->scopes) {
-        model_list_append(&ztx->config.id.oidc->scopes, strdup(scope));
-    }
 }
 
 int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
@@ -2004,7 +1993,6 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
 
     if (config->id.key) ctx->config.id.key = strdup(config->id.key);
     if (config->id.cert) ctx->config.id.cert = strdup(config->id.cert);
-    copy_oidc(ctx, config->id.oidc);
 
     ctx->opts = default_options;
 
@@ -2115,7 +2103,7 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         // it will get started once we get external token
         if (ztx->ext_auth == NULL && ztx->id_creds.key == NULL) {
             ZTX_LOG(DEBUG, "no credentials available, starting external auth");
-            ztx_init_external_auth(ztx, ztx->config.id.oidc);
+            ztx_init_external_auth(ztx, NULL);
             return;
         }
         ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
