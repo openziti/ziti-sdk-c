@@ -46,9 +46,12 @@
 #define TOKEN_EP "token_endpoint"
 #define OIDC_CONFIG ".well-known/openid-configuration"
 
-#define TOKEN_EXCHANGE_GRANT "urn:ietf:params:oauth:grant-type:token-exchange"
+#define INTERNAL_CLIENT_ID  "openziti"
+#define INTERNAL_TOKEN_TYPE "access_token"
+#define INTERNAL_SCOPES     "openid offline_access"
 
-#define OIDC_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "oidc[%s] " fmt, clt->name, ##__VA_ARGS__)
+
+#define OIDC_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "oidc[internal] " fmt, ##__VA_ARGS__)
 
 static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json);
 
@@ -78,27 +81,23 @@ static void handle_unexpected_resp(oidc_client_t *clt, tlsuv_http_resp_t *resp, 
 }
 
 int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
-                     const ziti_jwt_signer *cfg, tls_context *tls) {
+                     const char *provider, tls_context *tls) {
     assert(clt != NULL);
-    assert(cfg != NULL);
-    snprintf(clt->name, sizeof(clt->name), "%s", cfg->name ? cfg->name : cfg->provider_url);
-    if (cfg->provider_url == NULL) {
-        OIDC_LOG(ERROR, "ziti_jwt_signer.provider_url is missing");
-        return ZITI_INVALID_CONFIG;
-    }
+    assert(provider != NULL);
 
-    OIDC_LOG(INFO, "initializing with provider[%s]", cfg->provider_url);
+    OIDC_LOG(INFO, "initializing with provider[%s]", provider);
     clt->config = NULL;
     clt->tokens = NULL;
     clt->config_cb = NULL;
     clt->token_cb = NULL;
     clt->close_cb = NULL;
+    clt->provider_url = cstr_init();
 
-    if (tlsuv_http_init(loop, &clt->http, cfg->provider_url) != 0) {
-        OIDC_LOG(ERROR, "ziti_jwt_signer.provider_url[%s] is invalid", cfg->provider_url);
+    if (tlsuv_http_init(loop, &clt->http, provider) != 0) {
+        OIDC_LOG(ERROR, "ziti_jwt_signer.provider_url[%s] is invalid", provider);
         return ZITI_INVALID_CONFIG;
     }
-    int rc = oidc_client_set_cfg(clt, cfg);
+    int rc = oidc_client_set_cfg(clt, provider);
     if (rc != 0) {
         return rc;
     }
@@ -112,22 +111,10 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
     return 0;
 }
 
-int oidc_client_set_cfg(oidc_client_t *clt, const ziti_jwt_signer *cfg) {
-    free_ziti_jwt_signer(&clt->signer_cfg);
-
-    if (cfg->provider_url == NULL) {
-        return ZITI_INVALID_CONFIG;
-    }
-
-    clt->signer_cfg.client_id = cfg->client_id ? strdup(cfg->client_id) : NULL;
-    clt->signer_cfg.provider_url = strdup(cfg->provider_url);
-    clt->signer_cfg.audience = cfg->audience ? strdup(cfg->audience) : NULL;
-    clt->signer_cfg.target_token = cfg->target_token;
-    const char *scope;
-    MODEL_LIST_FOREACH(scope, cfg->scopes) {
-        model_list_append(&clt->signer_cfg.scopes, strdup(scope));
-    }
-    return tlsuv_http_set_url(&clt->http, clt->signer_cfg.provider_url);
+int oidc_client_set_cfg(oidc_client_t *clt, const char *provider) {
+    assert(provider != NULL);
+    cstr_assign(&clt->provider_url, provider);
+    return 0;
 }
 
 static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_object *resp, void *ctx) {
@@ -153,13 +140,19 @@ static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_obje
         }
     }
 
+    clt->configuring = false;
+
     if (status == 0) {
         json_object_put(clt->config);
         clt->config = json_object_get(resp);
         // config has full URLs, so we can drop the prefix now
         tlsuv_http_set_path_prefix(&clt->http, "");
 
-        if (clt->token_cb != NULL) {
+        if (clt->need_refresh) {
+            clt->need_refresh = false;
+            uv_timer_start(clt->timer, refresh_time_cb, 0, 0);
+            OIDC_LOG(DEBUG, "continuing pending token refresh");
+        } else if (clt->token_cb != NULL) {
             oidc_client_start(clt, clt->token_cb);
         }
     }
@@ -172,15 +165,24 @@ static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_obje
 }
 
 int oidc_client_configure(oidc_client_t *clt, oidc_config_cb cb) {
-    clt->config_cb = cb;
-
     if (clt->request) {
         OIDC_LOG(ERROR, "cannot configure while another request is in progress");
         return UV_EALREADY;
     }
+    if (clt->refresh_req) {
+        OIDC_LOG(DEBUG, "cancelling pending refresh request");
+        tlsuv_http_req_cancel(&clt->http, clt->refresh_req);
+        clt->refresh_req = NULL;
+        clt->need_refresh = true;
+    }
 
-    OIDC_LOG(DEBUG, "configuring provider[%s]", clt->signer_cfg.provider_url);
-    tlsuv_http_set_url(&clt->http, clt->signer_cfg.provider_url);
+    clt->configuring = true;
+    clt->config_cb = cb;
+    json_object_put(clt->config);
+    clt->config = NULL;
+
+    OIDC_LOG(DEBUG, "configuring provider[%s]", cstr_str(&clt->provider_url));
+    tlsuv_http_set_url(&clt->http, cstr_str(&clt->provider_url));
     ziti_json_request(&clt->http, "GET", OIDC_CONFIG, internal_config_cb, clt);
     return 0;
 }
@@ -262,7 +264,7 @@ static void request_token(auth_req *req, const char *auth_code) {
             {"code",          auth_code},
             {"grant_type",    "authorization_code"},
             {"code_verifier", req->code_verifier},
-            {"client_id",     clt->signer_cfg.client_id},
+            {"client_id",     INTERNAL_CLIENT_ID},
             {"redirect_uri",  default_cb_url},
     };
     tlsuv_http_req_form(token_req, sizeof(form) / sizeof(form[0]), form);
@@ -407,25 +409,16 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     auth_req *req = new_auth_req(clt);
     clt->request = req;
 
-    string_buf_t *scopes_buf = new_string_buf();
-    string_buf_append(scopes_buf, default_scope);
-    const char *s;
-    MODEL_LIST_FOREACH(s, clt->signer_cfg.scopes) {
-        string_buf_append(scopes_buf, " ");
-        string_buf_append(scopes_buf, s);
-    }
 
-    char *scope = string_buf_to_string(scopes_buf, NULL);
     tlsuv_http_pair query[] = {
-            {"client_id",             clt->signer_cfg.client_id},
-            {"scope",                 scope},
+            {"client_id",             INTERNAL_CLIENT_ID},
+            {"scope",                 INTERNAL_SCOPES},
             {"response_type",         "code"},
             {"redirect_uri",          default_cb_url},
             {"code_challenge",        req->code_challenge},
             {"code_challenge_method", "S256"},
             {"state",                 req->state},
-            {"audience",              clt->signer_cfg.audience ?
-                                      clt->signer_cfg.audience : "openziti"},
+            {"audience",              "openziti"},
     };
 
     int rc = tlsuv_http_set_url(&clt->http, auth_url);
@@ -436,8 +429,6 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
         OIDC_LOG(ERROR, AUTH_EP "[%s] is an invalid URL", auth_url);
     }
 
-    free(scope);
-    delete_string_buf(scopes_buf);
     return rc;
 }
 
@@ -513,6 +504,11 @@ int oidc_client_refresh(oidc_client_t *clt) {
         return UV_EINVAL;
     }
 
+    if (clt->token_cb == NULL) {
+        OIDC_LOG(ERROR, "token callback is not set");
+        return UV_EINVAL;
+    }
+
     if (clt->timer == NULL || uv_is_closing((const uv_handle_t *) clt->timer)) {
         OIDC_LOG(ERROR, "invalid state: refresh timer is %s", clt->timer ? "closing" : "null");
         return UV_EINVAL;
@@ -521,6 +517,12 @@ int oidc_client_refresh(oidc_client_t *clt) {
     if (clt->refresh_req) {
         OIDC_LOG(DEBUG, "refresh is already in progress");
         return UV_EALREADY;
+    }
+
+    if (clt->configuring) {
+        OIDC_LOG(DEBUG, "configuration is in progress, deferring refresh");
+        clt->need_refresh = true;
+        return 0;
     }
 
     uv_ref((uv_handle_t *) clt->timer);
@@ -538,7 +540,7 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
     tlsuv_http_close(&clt->http, http_close_cb);
     uv_close((uv_handle_t *) clt->timer, (uv_close_cb) free);
     clt->timer = NULL;
-    free_ziti_jwt_signer(&clt->signer_cfg);
+    cstr_drop(&clt->provider_url);
 
     if (clt->request) {
         failed_auth_req(clt->request, strerror(ECANCELED));
@@ -552,26 +554,13 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
 
     clt->tokens = json_object_get(tok_json);
     if (clt->token_cb) {
-        const char *token_type;
-        switch (clt->signer_cfg.target_token) {
-            case ziti_target_token_id_token:
-                token_type = "id_token";
-                break;
-
-            case ziti_target_token_access_token:
-            case ziti_target_token_Unknown:
-            default:
-                token_type = "access_token";
-                break;
-        }
-
-        struct json_object *jt = json_object_object_get(clt->tokens, token_type);
+        struct json_object *jt = json_object_object_get(clt->tokens, INTERNAL_TOKEN_TYPE);
         if (jt) {
             const char *token = json_object_get_string(jt);
-            OIDC_LOG(DEBUG, "using %s=%s", token_type, jwt_payload(token));
+            OIDC_LOG(DEBUG, "using " INTERNAL_TOKEN_TYPE "=%s", jwt_payload(token));
             clt->token_cb(clt, OIDC_TOKEN_OK, token);
         } else {
-            OIDC_LOG(ERROR, "%s was not provided by IdP", token_type);
+            OIDC_LOG(ERROR, INTERNAL_TOKEN_TYPE " was not provided by IdP");
             clt->token_cb(clt, OIDC_TOKEN_FAILED, NULL);
         }
     }
@@ -618,6 +607,11 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
         oidc_client_start(clt, clt->token_cb);
     }
 
+    if (http_resp->code == UV_ECANCELED) {
+        OIDC_LOG(DEBUG, "OIDC token refresh was canceled");
+        return;
+    }
+
     if (http_resp->code < 0) {  // connection failure, try another refresh
         OIDC_LOG(WARN, "OIDC token refresh failed (trying again): %d/%s", http_resp->code, err);
         uv_timer_start(clt->timer, refresh_time_cb, 5 * 1000, 0);
@@ -638,6 +632,12 @@ static const char* get_basic_auth_header(const char *client_id) {
 static void refresh_time_cb(uv_timer_t *t) {
     uv_unref((uv_handle_t *) t);
     oidc_client_t *clt = t->data;
+    if (clt->configuring) {
+        OIDC_LOG(DEBUG, "configuration is in progress, deferring refresh");
+        clt->need_refresh = true;
+        return;
+    }
+
     OIDC_LOG(DEBUG, "refreshing OIDC token");
     assert(clt->config);
     json_object *tok = json_object_object_get(clt->tokens, "refresh_token");
@@ -657,12 +657,11 @@ static void refresh_time_cb(uv_timer_t *t) {
 
     tlsuv_http_set_url(&clt->http, token_url);
     tlsuv_http_req_t *req = ziti_json_request(&clt->http, "POST", NULL, refresh_cb, clt);
-    tlsuv_http_req_header(req, "Authorization",
-                          get_basic_auth_header(clt->signer_cfg.client_id));
+    tlsuv_http_req_header(req, "Authorization", get_basic_auth_header(INTERNAL_CLIENT_ID));
     const char *refresher = json_object_get_string(tok);
     OIDC_LOG(DEBUG, "using refresh_token[%s]", jwt_payload(refresher));
     tlsuv_http_req_form(req, 3, (tlsuv_http_pair[]) {
-        {"client_id",     clt->signer_cfg.client_id},
+        {"client_id",     INTERNAL_CLIENT_ID},
         {"grant_type",    "refresh_token"},
         {"refresh_token", refresher},
     });
