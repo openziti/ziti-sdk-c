@@ -784,8 +784,7 @@ const char *jwt_payload(const char *jwt) {
 
     jwt = strchr(jwt, '.');
     if (jwt == NULL) {
-        ZITI_LOG(ERROR, "invalid JWT provided");
-        return "<invalid JWT>";
+        return "<legacy token>";
     }
 
     jwt++;
