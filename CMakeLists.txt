@@ -13,7 +13,10 @@ set(PROJECT_VERSION ${GIT_VERSION})
 include(cmake/variables.cmake)
 
 set(tlsuv_DIR "" CACHE FILEPATH "developer option: use local tlsuv checkout")
-set(tlsuv_VERSION "v0.40.6" CACHE STRING "developer option: tlsuv branch or tag to use (if tlsuv_DIR is unset)")
+# developer setting: tlsuv branch or tag to use (if tlsuv_DIR is unset)
+if (NOT tlsuv_VERSION)
+    set(tlsuv_VERSION "v0.40.7")
+endif (NOT tlsuv_VERSION)
 
 message("project version: ${PROJECT_VERSION}")
 message("git info:")
