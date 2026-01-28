@@ -61,7 +61,7 @@ runs:
     - uses: actions/cache/restore@v4
       id: restore
       with:
-        key: vbc-${{ inputs.target }}-${{ hashFiles('./vcpkg.json') }}
+        key: vbc-${{ inputs.target }}-${{ hashFiles('./vcpkg.json', './vcpkg-overlays/**/*') }}
         restore-keys: vbc-${{ inputs.target }}-
         path: ${{ env.CI_CACHE }}
 

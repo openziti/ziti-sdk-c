@@ -1,0 +1,15 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -183,6 +183,12 @@
+ 
+ if (CMAKE_GNU_C_MACHINE MATCHES "uclibc")
+ 	message(STATUS "Detected uClibc compiler, disabling locale handling")
++	set(HAVE_SETLOCALE 0)
++	set(HAVE_USELOCALE 0)
++endif()
++
++if (APPLE)
++	message(STATUS "Detected apple, disabling locale handling to avoid leaks.")
+ 	set(HAVE_SETLOCALE 0)
+ 	set(HAVE_USELOCALE 0)
+ endif()
