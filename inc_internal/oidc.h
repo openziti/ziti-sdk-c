@@ -54,7 +54,7 @@ struct oidc_client_s {
     void *tokens;
 
     uv_timer_t *timer;
-    char *jwt_token_auth;
+    cstr jwt_token_auth;
 
     bool configuring;
     bool need_refresh;

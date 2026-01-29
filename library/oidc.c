@@ -352,7 +352,7 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
         p += strlen("authRequestID=");
         req->id = strdup(p);
         char path[256] = {};
-        if (req->clt->jwt_token_auth) {
+        if (!cstr_is_empty(&req->clt->jwt_token_auth)) {
             snprintf(path, sizeof(path),"/oidc/login/ext-jwt?id=%s", req->id);
         } else {
             snprintf(path, sizeof(path),"/oidc/login/cert?id=%s", req->id);
@@ -360,8 +360,8 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
         OIDC_LOG(DEBUG, "login with path[%s] ", path);
         tlsuv_http_set_path_prefix(&req->clt->http, NULL);
         tlsuv_http_req_t *login_req = ziti_json_request(&req->clt->http, "POST", path, login_cb, req);
-        if (req->clt->jwt_token_auth) {
-            tlsuv_http_req_header(login_req, "Authorization", req->clt->jwt_token_auth);
+        if (!cstr_is_empty(&clt->jwt_token_auth)) {
+            tlsuv_http_req_header(login_req, "Authorization", cstr_str(&clt->jwt_token_auth));
         }
         tlsuv_http_req_header(login_req, "Content-Type", "application/json");
         ziti_auth_req authreq = {
@@ -466,17 +466,14 @@ static void on_totp(tlsuv_http_resp_t *resp, void *ctx) {
 }
 
 int oidc_client_token(oidc_client_t *clt, const char *token) {
-    string_buf_t *buf = new_string_buf();
-    string_buf_fmt(buf, "Bearer %s", token);
-
-    clt->jwt_token_auth = string_buf_to_string(buf, NULL);
-    delete_string_buf(buf);
+    cstr_clear(&clt->jwt_token_auth);
+    cstr_append_fmt(&clt->jwt_token_auth, "Bearer %s", token);
 
     if (clt->request) {
         auth_req *req = clt->request;
         tlsuv_http_set_path_prefix(&clt->http, NULL);
         tlsuv_http_req_t *r = ziti_json_request(&clt->http, "POST", "/oidc/login/ext-jwt", login_cb, req);
-        tlsuv_http_req_header(r, "Authorization", clt->jwt_token_auth);
+        tlsuv_http_req_header(r, "Authorization", cstr_str(&clt->jwt_token_auth));
         tlsuv_http_req_form(r, 1, &(tlsuv_http_pair) {"id", req->id});
     }
     return 0;
@@ -541,6 +538,7 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
     uv_close((uv_handle_t *) clt->timer, (uv_close_cb) free);
     clt->timer = NULL;
     cstr_drop(&clt->provider_url);
+    cstr_drop(&clt->jwt_token_auth);
 
     if (clt->request) {
         failed_auth_req(clt->request, strerror(ECANCELED));
