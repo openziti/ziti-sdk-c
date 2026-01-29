@@ -1,10 +1,18 @@
+include(FindPkgConfig)
+find_package(PkgConfig)
+pkg_check_modules(STC REQUIRED IMPORTED_TARGET stc)
 
 add_executable(ziti-prox-c proxy.c
         main.cpp
         proxy.h)
 
 
-target_link_libraries(ziti-prox-c PUBLIC ziti CLI11::CLI11)
+target_link_libraries(ziti-prox-c
+        PUBLIC ziti
+        CLI11::CLI11
+        PkgConfig::STC
+)
+
 if (MSVC)
     target_link_libraries(ziti-prox-c PUBLIC shlwapi)
 endif (MSVC)

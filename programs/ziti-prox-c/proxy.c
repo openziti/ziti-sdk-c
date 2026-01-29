@@ -24,6 +24,15 @@
 #include <ziti/ziti.h>
 #include "proxy.h"
 
+#include <stc/algorithm.h>
+#include <stc/cstr.h>
+#include <stc/common.h>
+#include <stc/types.h>
+
+// type vec_cstr = vec<cstr>
+#define i_keypro cstr
+#include <stc/vec.h>
+
 #if(_WIN32)
 #define strsignal(s) "_windows_unimplemented_"
 #endif
@@ -40,6 +49,8 @@ static uv_timer_t shutdown_timer;
 static void signal_cb(uv_signal_t *s, int signum);
 
 static void on_ziti_close(ziti_connection conn);
+
+void ext_auth_select(ziti_context ztx, const ziti_jwt_signer *providers[]);
 
 static struct sig_handlers {
     uv_signal_t sig;
@@ -60,6 +71,7 @@ struct proxy_app_ctx {
     LIST_HEAD(clients, client) clients;
     ziti_context ziti;
     uv_loop_t *loop;
+    cstr auth_provider;
 };
 
 struct binding {
@@ -538,8 +550,7 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             } else if (event->auth.action == ziti_auth_login_external) {
                 ext_auth_event_handler(ztx, NULL);
             } else if (event->auth.action == ziti_auth_select_external) {
-                const char *name = event->auth.providers[0]->name;
-                ext_auth_event_handler(ztx, name);
+                ext_auth_select(ztx, (const ziti_jwt_signer **)event->auth.providers);
             } else {
                 ZITI_LOG(ERROR, "unhandled auth event %d/%s", event->auth.action, event->auth.type);
             }
@@ -658,6 +669,44 @@ void ext_auth_event_handler(ziti_context ztx, const char *name) {
     NEWP(ext_wr, uv_work_t);
     ext_wr->data = pxy;
     uv_queue_work(pxy->loop, ext_wr, ext_auth_prompt, ext_auth_done);
+}
+
+static vec_cstr ext_auth_providers;
+static void ext_auth_select_done(uv_work_t *wr, int status) {
+    struct proxy_app_ctx *pxy = wr->data;
+    ziti_use_ext_jwt_signer(pxy->ziti, cstr_str(&pxy->auth_provider));
+    free(wr);
+}
+
+static void ext_auth_select_work(uv_work_t *wr) {
+    struct proxy_app_ctx *pxy = wr->data;
+
+    printf("the following external auth providers are available:\n");
+
+    for (int i = 0; i < vec_cstr_size(&ext_auth_providers); i++) {
+        printf("%d - %s\n", i, cstr_str(vec_cstr_at(&ext_auth_providers, i)));
+    }
+    printf("select provider[0-%d]: ", (int)vec_cstr_size(&ext_auth_providers) - 1);
+    fflush(stdout);
+
+    char resp[8];
+    prompt_stdin(resp, sizeof(resp));
+
+    int idx = atoi(resp);
+    cstr_assign(&pxy->auth_provider, cstr_str(vec_cstr_at(&ext_auth_providers, idx)));
+}
+
+void ext_auth_select(ziti_context ztx, const ziti_jwt_signer *providers[]) {
+    struct proxy_app_ctx *pxy = ziti_app_ctx(ztx);
+
+    vec_cstr_clear(&ext_auth_providers);
+    for(int i = 0; providers[i] != NULL; i++) {
+        vec_cstr_emplace(&ext_auth_providers, providers[i]->name);
+    }
+
+    NEWP(ext_wr, uv_work_t);
+    ext_wr->data = pxy;
+    uv_queue_work(pxy->loop, ext_wr, ext_auth_select_work, ext_auth_select_done);
 }
 
 static struct proxy_app_ctx app_ctx = {0};
