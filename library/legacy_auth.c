@@ -34,7 +34,8 @@ struct legacy_auth_s {
     ziti_api_session *session;
     model_list config_types;
     int backoff;
-    char *jwt;
+    cstr jwt;
+    bool refreshing;
 };
 
 static const char *AUTH_QUERY_TYPE_MFA = "MFA";
@@ -78,10 +79,12 @@ ziti_auth_method_t *new_legacy_auth(ziti_controller *ctrl) {
 
 static int legacy_auth_jwt_token(ziti_auth_method_t *self, const char *token) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
-    free(auth->jwt);
-    auth->jwt = strdup(token);
-    if (auth->session) {
-        ziti_ctrl_mfa_jwt(auth->ctrl, auth->jwt, login_cb, auth);
+    cstr_clear(&auth->jwt);
+    if (token != NULL) {
+        cstr_assign(&auth->jwt, token);
+        if (auth->session) {
+            ziti_ctrl_mfa_jwt(auth->ctrl, cstr_str(&auth->jwt), login_cb, auth);
+        }
     }
     return 0;
 }
@@ -109,6 +112,11 @@ int legacy_auth_refresh(ziti_auth_method_t *self) {
     assert(auth->ctx);
     assert(auth->cb);
 
+    if (auth->refreshing) {
+        ZITI_LOG(DEBUG, "refresh already in progress");
+        return 0;
+    }
+
     return uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
 }
 
@@ -128,7 +136,7 @@ void legacy_auth_free(ziti_auth_method_t *self) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
     model_list_clear(&auth->config_types, NULL);
     free_ziti_api_session_ptr(auth->session);
-    free(auth->jwt);
+    cstr_drop(&auth->jwt);
     uv_close((uv_handle_t *)&auth->timer, (uv_close_cb)close_cb);
 }
 
@@ -147,7 +155,7 @@ static void mfa_cb(void * UNUSED(empty), const ziti_error *err, void *ctx) {
         if (err->http_code == HTTP_STATUS_UNAUTHORIZED) {
             free_ziti_api_session_ptr(auth->session);
             auth->session = NULL;
-            FREE(auth->jwt);
+            cstr_drop(&auth->jwt);
             auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, err);
             uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
         } else {
@@ -168,6 +176,8 @@ static int legacy_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_
 
 static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx) {
     struct legacy_auth_s *auth = ctx;
+    auth->refreshing = false;
+
     free_ziti_api_session_ptr(auth->session);
     auth->session = NULL;
 
@@ -202,6 +212,8 @@ static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx
 
 static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *ctx) {
     struct legacy_auth_s *auth = ctx;
+    auth->refreshing = false;
+
     if (err == NULL) {
         auth->backoff = 0;
         assert(session);
@@ -243,10 +255,11 @@ static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *c
 void auth_timer_cb(uv_timer_t *t) {
     struct legacy_auth_s *auth = container_of(t, struct legacy_auth_s, timer);
     ZITI_LOG(DEBUG, "refreshing session[%p]", auth->session);
+    auth->refreshing = true;
 
     if (auth->session == NULL) {
-        if (auth->jwt) {
-            ziti_ctrl_login_ext_jwt(auth->ctrl, auth->jwt, login_cb, auth);
+        if (!cstr_is_empty(&auth->jwt)) {
+            ziti_ctrl_login_ext_jwt(auth->ctrl, cstr_str(&auth->jwt), login_cb, auth);
         } else {
             ziti_ctrl_login(auth->ctrl, &auth->config_types, login_cb, auth);
         }
