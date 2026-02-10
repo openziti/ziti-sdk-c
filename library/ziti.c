@@ -545,6 +545,7 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
                     .type = ZitiContextEvent,
                     .ctx = {
                         .ctrl_status = rc,
+                        .err = ziti_errorstr(rc),
                     }
             };
             ziti_send_event(ztx, &ev);

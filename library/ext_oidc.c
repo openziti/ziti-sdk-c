@@ -155,6 +155,10 @@ int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
         return rc;
     }
 
+    tlsuv_http_connect_timeout(&clt->http, 10 * 1000);
+    tlsuv_http_idle_keepalive(&clt->http, 0); // no reason to keep idle connections
+    tlsuv_http_header(&clt->http, "Accept", "application/json");
+
     clt->timer = calloc(1, sizeof(*clt->timer));
     uv_timer_init(loop, clt->timer);
     clt->timer->data = clt;
