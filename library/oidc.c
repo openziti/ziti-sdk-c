@@ -102,6 +102,7 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
         return rc;
     }
     tlsuv_http_set_ssl(&clt->http, tls);
+    tlsuv_http_connect_timeout(&clt->http, 15000);
 
     clt->timer = calloc(1, sizeof(*clt->timer));
     uv_timer_init(loop, clt->timer);
@@ -570,12 +571,7 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
     }
     if (ttl) {
         int32_t t = json_object_get_int(ttl);
-        if (t <= 60) {
-            OIDC_LOG(WARN, "token lifetime is too short[%d seconds]. this may cause problems", t);
-            t = t / 2;
-        } else {
-            t = t - 30; // refresh 30 seconds before expiry
-        }
+        t = t / 2; // refresh at half the token lifetime
         OIDC_LOG(DEBUG, "scheduling token refresh in %d seconds", t);
         uv_timer_start(clt->timer, refresh_time_cb, t * 1000, 0);
     }
@@ -588,21 +584,9 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
 
     if (http_resp->code == 200 && resp != NULL) {
         OIDC_LOG(DEBUG,  "token refresh success");
+        clt->refresh_failures = 0;
         oidc_client_set_tokens(clt, resp);
         return;
-    }
-
-    if (http_resp->code >= 0 || http_resp->code == UV_EOF) {
-        // controller may abruptly terminate shutdown connection (EOF) if auth has failed
-        OIDC_LOG(WARN, "OIDC token refresh failed: %d %s [%s]",
-                 http_resp->code, http_resp->status, err);
-        if (resp) {
-            OIDC_LOG(WARN, "response: %s", json_object_get_string(resp));
-        }
-        json_object_put(clt->tokens);
-        clt->tokens = NULL;
-
-        oidc_client_start(clt, clt->token_cb);
     }
 
     if (http_resp->code == UV_ECANCELED) {
@@ -610,11 +594,30 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
         return;
     }
 
-    if (http_resp->code < 0) {  // connection failure, try another refresh
-        OIDC_LOG(WARN, "OIDC token refresh failed (trying again): %d/%s", http_resp->code, err);
+    if (http_resp->code < 0) {
+        clt->refresh_failures++;
+        OIDC_LOG(WARN, "OIDC token refresh failed (%d/%s), attempt %d",
+                 http_resp->code, err, clt->refresh_failures);
+        if (clt->refresh_failures >= 3) {
+            OIDC_LOG(WARN, "resetting OIDC connection after %d consecutive failures", clt->refresh_failures);
+            tlsuv_http_cancel_all(&clt->http);
+            clt->refresh_failures = 0;
+        }
         uv_timer_start(clt->timer, refresh_time_cb, 5 * 1000, 0);
         return;
     }
+
+    // http_resp->code >= 0 but not 200: server-side rejection (e.g. EOF, 401, etc.)
+    OIDC_LOG(WARN, "OIDC token refresh failed: %d %s [%s]",
+             http_resp->code, http_resp->status, err);
+    if (resp) {
+        OIDC_LOG(WARN, "response: %s", json_object_get_string(resp));
+    }
+    clt->refresh_failures = 0;
+    json_object_put(clt->tokens);
+    clt->tokens = NULL;
+
+    oidc_client_start(clt, clt->token_cb);
 }
 
 static const char* get_basic_auth_header(const char *client_id) {
