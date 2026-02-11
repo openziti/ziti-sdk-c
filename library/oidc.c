@@ -104,6 +104,7 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
     tlsuv_http_set_ssl(&clt->http, tls);
     tlsuv_http_connect_timeout(&clt->http, 15000);
 
+    clt->token_expiry = 0;
     clt->timer = calloc(1, sizeof(*clt->timer));
     uv_timer_init(loop, clt->timer);
     clt->timer->data = clt;
@@ -571,6 +572,7 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
     }
     if (ttl) {
         int32_t t = json_object_get_int(ttl);
+        clt->token_expiry = uv_now(clt->timer->loop) + (uint64_t)t * 1000;
         t = t / 2; // refresh at half the token lifetime
         OIDC_LOG(DEBUG, "scheduling token refresh in %d seconds", t);
         uv_timer_start(clt->timer, refresh_time_cb, t * 1000, 0);
@@ -601,13 +603,15 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
         OIDC_LOG(WARN, "OIDC token refresh failed (%d/%s), attempt %d (total: %d)",
                  http_resp->code, err, clt->refresh_failures, clt->total_refresh_failures);
 
-        // after sustained failure (5 min at 5s intervals), give up on refresh and restart full auth
-        if (clt->total_refresh_failures >= 60) {
-            OIDC_LOG(WARN, "OIDC token refresh has failed %d times, restarting full authentication",
+        // token expired, give up on refresh and restart full auth
+        uint64_t now = uv_now(clt->timer->loop);
+        if (clt->token_expiry > 0 && now >= clt->token_expiry) {
+            OIDC_LOG(WARN, "OIDC token has expired after %d refresh attempts, restarting full authentication",
                      clt->total_refresh_failures);
             tlsuv_http_cancel_all(&clt->http);
             clt->refresh_failures = 0;
             clt->total_refresh_failures = 0;
+            clt->token_expiry = 0;
             json_object_put(clt->tokens);
             clt->tokens = NULL;
             oidc_client_start(clt, clt->token_cb);
@@ -619,11 +623,26 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
             tlsuv_http_cancel_all(&clt->http);
             clt->refresh_failures = 0;
         }
-        uv_timer_start(clt->timer, refresh_time_cb, 5 * 1000, 0);
+
+        // exponential backoff with jitter to avoid stampeding controller after outage
+        int shift = clt->total_refresh_failures - 1;
+        if (shift > 4) shift = 4; // cap at 80s base
+        uint64_t delay = 5000ULL << shift;
+        if (delay > 60000) delay = 60000;
+        // jitter: [delay/2, delay]
+        uint32_t half = (uint32_t)(delay / 2);
+        if (half > 0) delay = half + randombytes_uniform(half + 1);
+        // clamp to remaining token lifetime
+        if (clt->token_expiry > 0 && now + delay > clt->token_expiry) {
+            delay = clt->token_expiry - now;
+        }
+
+        OIDC_LOG(DEBUG, "scheduling token refresh retry in %llu ms", (unsigned long long)delay);
+        uv_timer_start(clt->timer, refresh_time_cb, delay, 0);
         return;
     }
 
-    // http_resp->code >= 0 but not 200: server-side rejection (e.g. EOF, 401, etc.)
+    // http_resp->code > 0 but not 200: server-side rejection (e.g. 401, 403, etc.)
     OIDC_LOG(WARN, "OIDC token refresh failed: %d %s [%s]",
              http_resp->code, http_resp->status, err);
     if (resp) {
@@ -631,6 +650,7 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
     }
     clt->refresh_failures = 0;
     clt->total_refresh_failures = 0;
+    clt->token_expiry = 0;
     json_object_put(clt->tokens);
     clt->tokens = NULL;
 
