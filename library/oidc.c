@@ -585,6 +585,7 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
     if (http_resp->code == 200 && resp != NULL) {
         OIDC_LOG(DEBUG,  "token refresh success");
         clt->refresh_failures = 0;
+        clt->total_refresh_failures = 0;
         oidc_client_set_tokens(clt, resp);
         return;
     }
@@ -596,8 +597,23 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
 
     if (http_resp->code < 0) {
         clt->refresh_failures++;
-        OIDC_LOG(WARN, "OIDC token refresh failed (%d/%s), attempt %d",
-                 http_resp->code, err, clt->refresh_failures);
+        clt->total_refresh_failures++;
+        OIDC_LOG(WARN, "OIDC token refresh failed (%d/%s), attempt %d (total: %d)",
+                 http_resp->code, err, clt->refresh_failures, clt->total_refresh_failures);
+
+        // after sustained failure (5 min at 5s intervals), give up on refresh and restart full auth
+        if (clt->total_refresh_failures >= 60) {
+            OIDC_LOG(WARN, "OIDC token refresh has failed %d times, restarting full authentication",
+                     clt->total_refresh_failures);
+            tlsuv_http_cancel_all(&clt->http);
+            clt->refresh_failures = 0;
+            clt->total_refresh_failures = 0;
+            json_object_put(clt->tokens);
+            clt->tokens = NULL;
+            oidc_client_start(clt, clt->token_cb);
+            return;
+        }
+
         if (clt->refresh_failures >= 3) {
             OIDC_LOG(WARN, "resetting OIDC connection after %d consecutive failures", clt->refresh_failures);
             tlsuv_http_cancel_all(&clt->http);
@@ -614,6 +630,7 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
         OIDC_LOG(WARN, "response: %s", json_object_get_string(resp));
     }
     clt->refresh_failures = 0;
+    clt->total_refresh_failures = 0;
     json_object_put(clt->tokens);
     clt->tokens = NULL;
 
