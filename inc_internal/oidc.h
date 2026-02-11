@@ -61,6 +61,7 @@ struct oidc_client_s {
     struct auth_req *request;
     tlsuv_http_req_t *refresh_req;
     int refresh_failures;
+    int total_refresh_failures;
 };
 
 // init
