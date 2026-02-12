@@ -277,8 +277,15 @@ static void code_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
     if (http_resp->code / 100 == 3) {
         const char *redirect = tlsuv_http_resp_header(http_resp, "Location");
         struct tlsuv_url_s uri;
-        tlsuv_parse_url(&uri, redirect);
-        char *code = strstr(uri.query, "code=");
+        if (redirect == NULL || tlsuv_parse_url(&uri, redirect) != 0) { // guard against missing/invalid Location header
+            failed_auth_req(req, "missing or invalid redirect");
+            return;
+        }
+        char *code = uri.query ? strstr(uri.query, "code=") : NULL; // guard against missing query string
+        if (code == NULL) { // guard against missing code= parameter
+            failed_auth_req(req, "missing auth code in redirect");
+            return;
+        }
         code += strlen("code=");
 
         request_token(req, code);
@@ -349,10 +356,18 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
     if (http_resp->code / 100 == 3) {
         const char *redirect = tlsuv_http_resp_header(http_resp, "Location");
         struct tlsuv_url_s uri;
-        tlsuv_parse_url(&uri, redirect);
-        char *p = strstr(uri.query, "authRequestID=");
+        if (redirect == NULL || tlsuv_parse_url(&uri, redirect) != 0) { // guard against missing/invalid Location header
+            failed_auth_req(req, "missing or invalid redirect");
+            return;
+        }
+        char *p = uri.query ? strstr(uri.query, "authRequestID=") : NULL; // guard against missing query string
+        if (p == NULL) { // guard against missing authRequestID parameter
+            failed_auth_req(req, "missing authRequestID in redirect");
+            return;
+        }
         p += strlen("authRequestID=");
-        req->id = strdup(p);
+        char *end = strchr(p, '&'); // stop at next query param to avoid capturing trailing params
+        req->id = end ? strndup(p, end - p) : strdup(p);
         char path[256] = {};
         if (!cstr_is_empty(&req->clt->jwt_token_auth)) {
             snprintf(path, sizeof(path),"/oidc/login/ext-jwt?id=%s", req->id);
