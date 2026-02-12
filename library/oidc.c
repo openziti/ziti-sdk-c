@@ -587,7 +587,6 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
     if (http_resp->code == 200 && resp != NULL) {
         OIDC_LOG(DEBUG,  "token refresh success");
         clt->refresh_failures = 0;
-        clt->total_refresh_failures = 0;
         oidc_client_set_tokens(clt, resp);
         return;
     }
@@ -599,18 +598,16 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
 
     if (http_resp->code < 0) {
         clt->refresh_failures++;
-        clt->total_refresh_failures++;
-        OIDC_LOG(WARN, "OIDC token refresh failed (%d/%s), attempt %d (total: %d)",
-                 http_resp->code, err, clt->refresh_failures, clt->total_refresh_failures);
+        OIDC_LOG(WARN, "OIDC token refresh failed (%d/%s), attempt %d",
+                 http_resp->code, err, clt->refresh_failures);
 
         // token expired, give up on refresh and restart full auth
         uint64_t now = uv_now(clt->timer->loop);
         if (clt->token_expiry > 0 && now >= clt->token_expiry) {
             OIDC_LOG(WARN, "OIDC token has expired after %d refresh attempts, restarting full authentication",
-                     clt->total_refresh_failures);
+                     clt->refresh_failures);
             tlsuv_http_cancel_all(&clt->http);
             clt->refresh_failures = 0;
-            clt->total_refresh_failures = 0;
             clt->token_expiry = 0;
             json_object_put(clt->tokens);
             clt->tokens = NULL;
@@ -618,14 +615,8 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
             return;
         }
 
-        if (clt->refresh_failures >= 3) {
-            OIDC_LOG(WARN, "resetting OIDC connection after %d consecutive failures", clt->refresh_failures);
-            tlsuv_http_cancel_all(&clt->http);
-            clt->refresh_failures = 0;
-        }
-
         // exponential backoff with jitter to avoid stampeding controller after outage
-        int shift = clt->total_refresh_failures - 1;
+        int shift = clt->refresh_failures - 1;
         if (shift > 4) shift = 4; // cap at 80s base
         uint64_t delay = 5000ULL << shift;
         if (delay > 60000) delay = 60000;
@@ -649,7 +640,6 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
         OIDC_LOG(WARN, "response: %s", json_object_get_string(resp));
     }
     clt->refresh_failures = 0;
-    clt->total_refresh_failures = 0;
     clt->token_expiry = 0;
     json_object_put(clt->tokens);
     clt->tokens = NULL;
