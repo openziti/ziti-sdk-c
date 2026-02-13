@@ -102,6 +102,9 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
         return rc;
     }
     tlsuv_http_set_ssl(&clt->http, tls);
+    tlsuv_http_connect_timeout(&clt->http, 10000);
+    tlsuv_http_idle_keepalive(&clt->http, 0);
+    tlsuv_http_header(&clt->http, "Accept", "application/json");
 
     clt->timer = calloc(1, sizeof(*clt->timer));
     uv_timer_init(loop, clt->timer);
