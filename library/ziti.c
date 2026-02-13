@@ -257,13 +257,7 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
     }
 
     if (err && !ztx->closing) {
-        ziti_send_event(ztx, &(ziti_event_t) {
-                .type = ZitiContextEvent,
-                .ctx = (struct ziti_context_event) {
-                        .err = err->message,
-                        .ctrl_status = (int) err->err,
-                },
-        });
+        update_ctrl_status(ztx, (int)err->err, err->message);
     }
 }
 
