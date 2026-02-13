@@ -102,10 +102,11 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
         return rc;
     }
     tlsuv_http_set_ssl(&clt->http, tls);
-    tlsuv_http_connect_timeout(&clt->http, 10000);
+    tlsuv_http_connect_timeout(&clt->http, 15000);
     tlsuv_http_idle_keepalive(&clt->http, 0);
     tlsuv_http_header(&clt->http, "Accept", "application/json");
 
+    clt->token_expiry = 0;
     clt->timer = calloc(1, sizeof(*clt->timer));
     uv_timer_init(loop, clt->timer);
     clt->timer->data = clt;
@@ -278,8 +279,15 @@ static void code_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
     if (http_resp->code / 100 == 3) {
         const char *redirect = tlsuv_http_resp_header(http_resp, "Location");
         struct tlsuv_url_s uri;
-        tlsuv_parse_url(&uri, redirect);
-        char *code = strstr(uri.query, "code=");
+        if (redirect == NULL || tlsuv_parse_url(&uri, redirect) != 0) { // guard against missing/invalid Location header
+            failed_auth_req(req, "missing or invalid redirect");
+            return;
+        }
+        char *code = uri.query ? strstr(uri.query, "code=") : NULL; // guard against missing query string
+        if (code == NULL) { // guard against missing code= parameter
+            failed_auth_req(req, "missing auth code in redirect");
+            return;
+        }
         code += strlen("code=");
 
         request_token(req, code);
@@ -350,10 +358,18 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
     if (http_resp->code / 100 == 3) {
         const char *redirect = tlsuv_http_resp_header(http_resp, "Location");
         struct tlsuv_url_s uri;
-        tlsuv_parse_url(&uri, redirect);
-        char *p = strstr(uri.query, "authRequestID=");
+        if (redirect == NULL || tlsuv_parse_url(&uri, redirect) != 0) { // guard against missing/invalid Location header
+            failed_auth_req(req, "missing or invalid redirect");
+            return;
+        }
+        char *p = uri.query ? strstr(uri.query, "authRequestID=") : NULL; // guard against missing query string
+        if (p == NULL) { // guard against missing authRequestID parameter
+            failed_auth_req(req, "missing authRequestID in redirect");
+            return;
+        }
         p += strlen("authRequestID=");
-        req->id = strdup(p);
+        char *end = strchr(p, '&'); // stop at next query param to avoid capturing trailing params
+        req->id = end ? strndup(p, end - p) : strdup(p);
         char path[256] = {};
         if (!cstr_is_empty(&req->clt->jwt_token_auth)) {
             snprintf(path, sizeof(path),"/oidc/login/ext-jwt?id=%s", req->id);
@@ -573,12 +589,8 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
     }
     if (ttl) {
         int32_t t = json_object_get_int(ttl);
-        if (t <= 60) {
-            OIDC_LOG(WARN, "token lifetime is too short[%d seconds]. this may cause problems", t);
-            t = t / 2;
-        } else {
-            t = t - 30; // refresh 30 seconds before expiry
-        }
+        clt->token_expiry = uv_now(clt->timer->loop) + (uint64_t)t * 1000;
+        t = t / 2; // refresh at half the token lifetime
         OIDC_LOG(DEBUG, "scheduling token refresh in %d seconds", t);
         uv_timer_start(clt->timer, refresh_time_cb, t * 1000, 0);
     }
@@ -591,21 +603,9 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
 
     if (http_resp->code == 200 && resp != NULL) {
         OIDC_LOG(DEBUG,  "token refresh success");
+        clt->refresh_failures = 0;
         oidc_client_set_tokens(clt, resp);
         return;
-    }
-
-    if (http_resp->code >= 0 || http_resp->code == UV_EOF) {
-        // controller may abruptly terminate shutdown connection (EOF) if auth has failed
-        OIDC_LOG(WARN, "OIDC token refresh failed: %d %s [%s]",
-                 http_resp->code, http_resp->status, err);
-        if (resp) {
-            OIDC_LOG(WARN, "response: %s", json_object_get_string(resp));
-        }
-        json_object_put(clt->tokens);
-        clt->tokens = NULL;
-
-        oidc_client_start(clt, clt->token_cb);
     }
 
     if (http_resp->code == UV_ECANCELED) {
@@ -613,11 +613,55 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
         return;
     }
 
-    if (http_resp->code < 0) {  // connection failure, try another refresh
-        OIDC_LOG(WARN, "OIDC token refresh failed (trying again): %d/%s", http_resp->code, err);
-        uv_timer_start(clt->timer, refresh_time_cb, 5 * 1000, 0);
+    if (http_resp->code < 0) {
+        clt->refresh_failures++;
+        OIDC_LOG(WARN, "OIDC token refresh failed (%d/%s), attempt %d",
+                 http_resp->code, err, clt->refresh_failures);
+
+        // token expired, give up on refresh and restart full auth
+        uint64_t now = uv_now(clt->timer->loop);
+        if (clt->token_expiry > 0 && now >= clt->token_expiry) {
+            OIDC_LOG(WARN, "OIDC token has expired after %d refresh attempts, restarting full authentication",
+                     clt->refresh_failures);
+            tlsuv_http_cancel_all(&clt->http);
+            clt->refresh_failures = 0;
+            clt->token_expiry = 0;
+            json_object_put(clt->tokens);
+            clt->tokens = NULL;
+            oidc_client_start(clt, clt->token_cb);
+            return;
+        }
+
+        // exponential backoff with jitter to avoid stampeding controller after outage
+        int shift = clt->refresh_failures - 1;
+        if (shift > 4) shift = 4; // cap at 80s base
+        uint64_t delay = 5000ULL << shift;
+        if (delay > 60000) delay = 60000;
+        // jitter: [delay/2, delay]
+        uint32_t half = (uint32_t)(delay / 2);
+        if (half > 0) delay = half + randombytes_uniform(half + 1);
+        // clamp to remaining token lifetime
+        if (clt->token_expiry > 0 && now + delay > clt->token_expiry) {
+            delay = clt->token_expiry - now;
+        }
+
+        OIDC_LOG(DEBUG, "scheduling token refresh retry in %llu ms", (unsigned long long)delay);
+        uv_timer_start(clt->timer, refresh_time_cb, delay, 0);
         return;
     }
+
+    // http_resp->code > 0 but not 200: server-side rejection (e.g. 401, 403, etc.)
+    OIDC_LOG(WARN, "OIDC token refresh failed: %d %s [%s]",
+             http_resp->code, http_resp->status, err);
+    if (resp) {
+        OIDC_LOG(WARN, "response: %s", json_object_get_string(resp));
+    }
+    clt->refresh_failures = 0;
+    clt->token_expiry = 0;
+    json_object_put(clt->tokens);
+    clt->tokens = NULL;
+
+    oidc_client_start(clt, clt->token_cb);
 }
 
 static const char* get_basic_auth_header(const char *client_id) {
