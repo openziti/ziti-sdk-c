@@ -103,6 +103,8 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
     }
     tlsuv_http_set_ssl(&clt->http, tls);
     tlsuv_http_connect_timeout(&clt->http, 15000);
+    tlsuv_http_idle_keepalive(&clt->http, 0);
+    tlsuv_http_header(&clt->http, "Accept", "application/json");
 
     clt->token_expiry = 0;
     clt->timer = calloc(1, sizeof(*clt->timer));
