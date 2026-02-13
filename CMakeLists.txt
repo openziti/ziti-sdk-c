@@ -15,7 +15,7 @@ include(cmake/variables.cmake)
 set(tlsuv_DIR "" CACHE FILEPATH "developer option: use local tlsuv checkout")
 # developer setting: tlsuv branch or tag to use (if tlsuv_DIR is unset)
 if (NOT tlsuv_VERSION)
-    set(tlsuv_VERSION "v0.40.9")
+    set(tlsuv_VERSION "v0.40.10")
 endif (NOT tlsuv_VERSION)
 
 message("project version: ${PROJECT_VERSION}")
