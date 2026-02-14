@@ -201,6 +201,7 @@ XX(provisioning_url, model_string, none, provisioningUrl, __VA_ARGS__)
 
 #define ZITI_LISTEN_OPTS_MODEL(XX, ...) \
 XX(bind_with_identity, model_bool, none, bindUsingEdgeIdentity, __VA_ARGS__) \
+XX(bind_with_identity_wildcard, model_bool, none, bindUsingEdgeIdentityWildcard, __VA_ARGS__) \
 XX(connect_timeout, duration, none, connectTimeout, __VA_ARGS__)       \
 XX(connect_timeout_seconds, model_number, none, connectTimeoutSeconds, __VA_ARGS__) \
 XX(cost, model_number, none, cost, __VA_ARGS__) \
