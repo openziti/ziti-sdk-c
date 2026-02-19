@@ -1231,13 +1231,26 @@ const ziti_service *ziti_dial_opts_for_addr(
         cstr_drop(&terminator);
     }
 
+    // check if dest_host is an ip address,
+    // to match tunneler behavior
+    struct in6_addr ip_addr;
+    cstr dst_ip = cstr_init();
+    if (uv_inet_pton(AF_INET, dest_host, &ip_addr) == 0 ||
+        uv_inet_pton(AF_INET6, dest_host, &ip_addr) == 0) {
+        dst_ip = cstr_from(dest_host);
+    }
+
     // underlay app data
     const ziti_identity *zid = ziti_get_identity(ztx);
     cstr source_addr = cstr_from(intercept.source_ip ? intercept.source_ip : "");
     if (!cstr_is_empty(&source_addr)) {
         cstr src_port_str = cstr_from_fmt("%d", src_port);
         cstr_replace(&source_addr, "$tunneler_id.name", zid->name);
-        cstr_replace(&source_addr, "$dst_ip", dest_host);
+        if (!cstr_is_empty(&dst_ip)) {
+            cstr_replace(&source_addr, "$dst_ip", cstr_str(&dst_ip));
+        } else {
+            cstr_replace(&source_addr, "$dst_ip", dest_host);
+        }
         cstr_replace(&source_addr, "$dst_port", cstr_str(&dest_port_str));
         if (src_host) {
             cstr_replace(&source_addr, "$src_ip", src_host);
@@ -1248,7 +1261,11 @@ const ziti_service *ziti_dial_opts_for_addr(
 
     cstr underlay = cstr_from("{");
     cstr_append_fmt(&underlay, "\"dst_protocol\":\"%s\"", ziti_protocols.name(proto));
-    cstr_append_fmt(&underlay, ",\"dst_hostname\":\"%s\"", dest_host);
+    if (!cstr_is_empty(&dst_ip)) {
+        cstr_append_fmt(&underlay, ",\"dst_ip\":\"%s\"", cstr_str(&dst_ip));
+    } else {
+        cstr_append_fmt(&underlay, ",\"dst_hostname\":\"%s\"", dest_host);
+    }
     cstr_append_fmt(&underlay, ",\"dst_port\":\"%d\"", dest_port);
     if (src_host) {
         cstr_append_fmt(&underlay, ",\"src_ip\":\"%s\"", src_host);
@@ -1264,6 +1281,7 @@ const ziti_service *ziti_dial_opts_for_addr(
     opts->app_data_sz = cstr_size(&underlay);
 
     free_ziti_intercept_cfg_v1(&intercept);
+    cstr_drop(&dst_ip);
     cstr_drop(&underlay);
     cstr_drop(&source_addr);
     cstr_drop(&dest_port_str);
