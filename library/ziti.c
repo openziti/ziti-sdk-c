@@ -1188,6 +1188,8 @@ const ziti_service *ziti_service_for_addr(ziti_context ztx, ziti_protocol proto,
         if (get_service_intercept(srv, &intercept) == ZITI_OK) {
             int match = ziti_intercept_match2(&intercept, proto, addr, port);
 
+            free_ziti_intercept_cfg_v1(&intercept);
+
             if (match == -1) { continue; }
 
             // best possible match
