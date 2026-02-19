@@ -689,7 +689,45 @@ extern const ziti_service *ziti_service_for_addr_str(ziti_context ztx, ziti_prot
 ZITI_FUNC
 extern const ziti_service *ziti_service_for_addr(ziti_context ztx, ziti_protocol proto, const ziti_address *addr, int port);
 
+/**
+ * @brief returns ziti_service and fills in ziti_dial_opts based on intercepted and source addresses.
+ * This could be used to call ziti_dial_with_options().
+ * Populated ziti_dial_opts should be freed with ziti_dial_opts_free().
+ *
+ * @code
+ * ziti_connection conn;
+ * ziti_conn_init(ztx, &conn, NULL);
+ * ziti_dial_opts opts = {0};
+ * const ziti_service *s = ziti_dial_opts_for_addr(&opts, ztx, proto, dest_host, dest_port, src_host, src_port);
+ * if (s) {
+ *     ziti_dial_with_options(conn, s->name, &opts, cb, data_cb);
+ *     ziti_dial_opts_free(&opts);
+ * } else {
+ *    // handle error
+ * }
+ * @endcode
+ *
+ * @param opts structure to be filled with dial information
+ * @param ztx
+ * @param proto
+ * @param dest_host
+ * @param dest_port
+ * @param src_host
+ * @param src_port
+ * @return ZITI_OK or error code
+ */
+ZITI_FUNC
+extern const ziti_service* ziti_dial_opts_for_addr(ziti_dial_opts *opts, ziti_context ztx, ziti_protocol proto,
+                                                   const char *dest_host, int dest_port,
+                                                   const char *src_host, int src_port);
 
+/**
+ * @brief Free the memory associated with the ziti_dial_opts struct.
+ *
+ * @param opts the ziti_dial_opts struct to free
+ */
+ZITI_FUNC
+extern void ziti_dial_opts_free(ziti_dial_opts *opts);
 /**
  * @brief Establishes connection to a Ziti service.
  *
