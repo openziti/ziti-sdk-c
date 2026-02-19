@@ -1218,19 +1218,6 @@ const ziti_service *ziti_dial_opts_for_addr(
 
     opts->stream = proto == ziti_protocol_tcp;
 
-    cstr dest_port_str = cstr_from_fmt("%d", dest_port);
-    tag *t = (tag *) model_map_get(&intercept.dial_options, "identity");
-    if (t && t->type == tag_string) {
-        cstr terminator = cstr_from(t->string_value);
-        cstr_replace(&terminator, "$dst_protocol", ziti_protocols.name(proto));
-        cstr_replace(&terminator, "$dst_hostname", dest_host);
-        cstr_replace(&terminator, "$dst_port", cstr_str(&dest_port_str));
-        if (!cstr_is_empty(&terminator)) {
-            opts->identity = strdup(cstr_str(&terminator));
-        }
-        cstr_drop(&terminator);
-    }
-
     // check if dest_host is an ip address,
     // to match tunneler behavior
     struct in6_addr ip_addr;
@@ -1238,6 +1225,20 @@ const ziti_service *ziti_dial_opts_for_addr(
     if (uv_inet_pton(AF_INET, dest_host, &ip_addr) == 0 ||
         uv_inet_pton(AF_INET6, dest_host, &ip_addr) == 0) {
         dst_ip = cstr_from(dest_host);
+    }
+
+    cstr dest_port_str = cstr_from_fmt("%d", dest_port);
+    tag *t = (tag *) model_map_get(&intercept.dial_options, "identity");
+    if (t && t->type == tag_string) {
+        cstr terminator = cstr_from(t->string_value);
+        cstr_replace(&terminator, "$dst_protocol", ziti_protocols.name(proto));
+        cstr_replace(&terminator, "$dst_hostname", dest_host);
+        cstr_replace(&terminator, "$dst_ip", cstr_str(&dst_ip));
+        cstr_replace(&terminator, "$dst_port", cstr_str(&dest_port_str));
+        if (!cstr_is_empty(&terminator)) {
+            opts->identity = strdup(cstr_str(&terminator));
+        }
+        cstr_drop(&terminator);
     }
 
     // underlay app data
