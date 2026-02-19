@@ -595,6 +595,7 @@ struct conn_req_s {
 
     const char *host;
     uint16_t port;
+    ziti_dial_opts opts;
 };
 
 static void on_bridge_close(void *ctx) {
@@ -733,6 +734,12 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
     if (getsockopt(req->fd, SOL_SOCKET, SO_TYPE, (void *) &proto, &optlen)) {
         ZITI_LOG(WARN, "unknown socket type fd[%d]: %d(%s)", req->fd, errno, strerror(errno));
     }
+    ziti_protocol zproto = ziti_protocol_Unknown;
+    switch (proto) {
+        case SOCK_STREAM: zproto = ziti_protocols.tcp;break;
+        case SOCK_DGRAM: zproto = ziti_protocols.udp;break;
+        default: break;
+    }
 
     in_addr_t ip;
     const char *host = NULL;
@@ -743,22 +750,21 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
         host = req->host;
     }
 
-    ziti_intercept_cfg_v1 *intercept = NULL;
     if (wrap == NULL) {
         MODEL_MAP_FOR(it, ziti_contexts) {
             wrap = model_map_it_value(it);
-            const char *service_name = find_service(wrap, proto, host, req->port);
+            const ziti_service *svc = ziti_dial_opts_for_addr(
+                    &req->opts, wrap->ztx,
+                    zproto, host, req->port, NULL, 0);
 
-            if (service_name != NULL) {
-                req->service = service_name;
-                intercept = model_map_get(&wrap->intercepts, service_name);
+            if (svc != NULL) {
+                req->service = strdup(svc->name);
                 break;
             }
             wrap = NULL;
         }
     }
 
-    const char *proto_str = proto == SOCK_DGRAM ? "udp" : "tcp";
     if (wrap != NULL && req->service != NULL) {
         zs = calloc(1, sizeof(*zs));
         zs->fd = req->fd;
@@ -768,26 +774,14 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
         model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
 
         ziti_conn_init(wrap->ztx, &zs->conn, zs);
-        char app_data[1024];
-        size_t len = snprintf(app_data, sizeof(app_data),
-                              "{\"" DST_PROTOCOL "\": \"%s\","
-                               "\"" DST_HOSTNAME "\": \"%s\","
-                               "\"" DST_PORT     "\": \"%u\"}",
-                              proto_str, host, req->port);
 
-        ziti_dial_opts opts = {
-                .app_data = app_data,
-                .app_data_sz = len,
-                .identity = (char*)(req->terminator ?
-                                    req->terminator :
-                                    fmt_identity(intercept, proto_str, host, req->port)),
-        };
         ZITI_LOG(DEBUG, "connecting fd[%d] to service[%s]", zs->fd, req->service);
-        ZITI_LOG(VERBOSE, "appdata[%.*s]", (int)opts.app_data_sz, (char*)opts.app_data);
-        ZITI_LOG(VERBOSE, "identity[%s]", opts.identity);
-        ziti_dial_with_options(zs->conn, req->service, &opts, on_ziti_connect, NULL);
+        ZITI_LOG(VERBOSE, "appdata[%.*s]", (int)req->opts.app_data_sz, (char*)req->opts.app_data);
+        ZITI_LOG(VERBOSE, "identity[%s]", req->opts.identity);
+        ziti_dial_with_options(zs->conn, req->service, &req->opts, on_ziti_connect, NULL);
     } else {
-        ZITI_LOG(WARN, "no service for target address[%s:%s:%d]", proto_str, req->host, req->port);
+        ZITI_LOG(WARN, "no service for target address[%s:%s:%d]",
+                 ziti_protocols.name(zproto), req->host, req->port);
         fail_future(f, ECONNREFUSED);
     }
 }
