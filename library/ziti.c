@@ -1145,6 +1145,29 @@ int ziti_list_terminators(ziti_context ztx, const char *service, ziti_terminator
     return ziti_service_available(ztx, service, term_srv_cb, req);
 }
 
+static int get_service_intercept(const ziti_service *s, ziti_intercept_cfg_v1 *intercept) {
+    ziti_client_cfg_v1 clt_cfg = {0};
+    *intercept = (ziti_intercept_cfg_v1){0};
+    if (s == NULL) {
+        return ZITI_SERVICE_UNAVAILABLE;
+    }
+
+    int rc = ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept,
+                                    (parse_service_cfg_f) parse_ziti_intercept_cfg_v1);
+    if (rc != ZITI_OK) {
+        rc = ziti_service_get_config(s, ZITI_CLIENT_CFG_V1, &clt_cfg,
+                                     (parse_service_cfg_f) parse_ziti_client_cfg_v1);
+        if (rc == ZITI_OK) {
+            rc = ziti_intercept_from_client_cfg(intercept, &clt_cfg);
+        }
+        free_ziti_client_cfg_v1(&clt_cfg);
+    }
+    if (rc != ZITI_OK) {
+        free_ziti_intercept_cfg_v1(intercept);
+    }
+    return rc;
+}
+
 const ziti_service *ziti_service_for_addr_str(ziti_context ztx, ziti_protocol proto, const char *addr, int port) {
     ziti_address a;
     if (parse_ziti_address_str(&a, addr) != -1) {
@@ -1162,13 +1185,10 @@ const ziti_service *ziti_service_for_addr(ziti_context ztx, ziti_protocol proto,
     const char *name;
     MODEL_MAP_FOREACH(name, srv, &ztx->services) {
         ziti_intercept_cfg_v1 intercept = {0};
-        ziti_client_cfg_v1 clt_cfg = {0};
-        if (ziti_service_get_config(srv, ZITI_INTERCEPT_CFG_V1, &intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK ||
-                (ziti_service_get_config(srv, ZITI_CLIENT_CFG_V1, &clt_cfg, (parse_service_cfg_f) parse_ziti_client_cfg_v1) == ZITI_OK &&
-                 ziti_intercept_from_client_cfg(&intercept, &clt_cfg) == ZITI_OK
-                )
-        ) {
+        if (get_service_intercept(srv, &intercept) == ZITI_OK) {
             int match = ziti_intercept_match2(&intercept, proto, addr, port);
+
+            free_ziti_intercept_cfg_v1(&intercept);
 
             if (match == -1) { continue; }
 
@@ -1181,9 +1201,92 @@ const ziti_service *ziti_service_for_addr(ziti_context ztx, ziti_protocol proto,
             }
         }
         free_ziti_intercept_cfg_v1(&intercept);
-        free_ziti_client_cfg_v1(&clt_cfg);
     }
     return best;
+}
+
+const ziti_service *ziti_dial_opts_for_addr(
+        ziti_dial_opts *opts, ziti_context ztx, ziti_protocol proto,
+        const char *dest_host, int dest_port,
+        const char *src_host, int src_port) {
+    *opts = (ziti_dial_opts){0};
+
+    const ziti_service *s = ziti_service_for_addr_str(ztx, proto, dest_host, dest_port);
+    ziti_intercept_cfg_v1 intercept = {0};
+    int rc = get_service_intercept(s, &intercept);
+    if (rc != ZITI_OK) return NULL;
+
+    opts->stream = proto == ziti_protocol_tcp;
+
+    // check if dest_host is an ip address,
+    // to match tunneler behavior
+    struct in6_addr ip_addr;
+    cstr dst_ip = cstr_init();
+    if (uv_inet_pton(AF_INET, dest_host, &ip_addr) == 0 ||
+        uv_inet_pton(AF_INET6, dest_host, &ip_addr) == 0) {
+        dst_ip = cstr_from(dest_host);
+    }
+
+    cstr dest_port_str = cstr_from_fmt("%d", dest_port);
+    tag *t = (tag *) model_map_get(&intercept.dial_options, "identity");
+    if (t && t->type == tag_string) {
+        cstr terminator = cstr_from(t->string_value);
+        cstr_replace(&terminator, "$dst_protocol", ziti_protocols.name(proto));
+        cstr_replace(&terminator, "$dst_hostname", dest_host);
+        cstr_replace(&terminator, "$dst_ip", cstr_str(&dst_ip));
+        cstr_replace(&terminator, "$dst_port", cstr_str(&dest_port_str));
+        if (!cstr_is_empty(&terminator)) {
+            opts->identity = strdup(cstr_str(&terminator));
+        }
+        cstr_drop(&terminator);
+    }
+
+    // underlay app data
+    const ziti_identity *zid = ziti_get_identity(ztx);
+    cstr source_addr = cstr_from(intercept.source_ip ? intercept.source_ip : "");
+    if (!cstr_is_empty(&source_addr)) {
+        cstr src_port_str = cstr_from_fmt("%d", src_port);
+        cstr_replace(&source_addr, "$tunneler_id.name", zid->name);
+        if (!cstr_is_empty(&dst_ip)) {
+            cstr_replace(&source_addr, "$dst_ip", cstr_str(&dst_ip));
+        } else {
+            cstr_replace(&source_addr, "$dst_ip", dest_host);
+        }
+        cstr_replace(&source_addr, "$dst_port", cstr_str(&dest_port_str));
+        if (src_host) {
+            cstr_replace(&source_addr, "$src_ip", src_host);
+        }
+        cstr_replace(&source_addr, "$src_port", cstr_str(&src_port_str));
+        cstr_drop(&src_port_str);
+    }
+
+    cstr underlay = cstr_from("{");
+    cstr_append_fmt(&underlay, "\"dst_protocol\":\"%s\"", ziti_protocols.name(proto));
+    if (!cstr_is_empty(&dst_ip)) {
+        cstr_append_fmt(&underlay, ",\"dst_ip\":\"%s\"", cstr_str(&dst_ip));
+    } else {
+        cstr_append_fmt(&underlay, ",\"dst_hostname\":\"%s\"", dest_host);
+    }
+    cstr_append_fmt(&underlay, ",\"dst_port\":\"%d\"", dest_port);
+    if (src_host) {
+        cstr_append_fmt(&underlay, ",\"src_ip\":\"%s\"", src_host);
+        cstr_append_fmt(&underlay, ",\"src_port\":\"%d\"", src_port);
+    }
+    if (!cstr_is_empty(&source_addr)) {
+        cstr_append_fmt(&underlay, ",\"source_addr\":\"%s\"", cstr_str(&source_addr));
+    }
+
+    cstr_append(&underlay, "}");
+
+    opts->app_data = strdup(cstr_str(&underlay));
+    opts->app_data_sz = cstr_size(&underlay);
+
+    free_ziti_intercept_cfg_v1(&intercept);
+    cstr_drop(&dst_ip);
+    cstr_drop(&underlay);
+    cstr_drop(&source_addr);
+    cstr_drop(&dest_port_str);
+    return s;
 }
 
 
