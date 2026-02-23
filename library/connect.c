@@ -154,6 +154,15 @@ static void clone_ziti_dial_opts(struct ziti_conn_req *req, const ziti_dial_opts
     }
 }
 
+void ziti_dial_opts_free(ziti_dial_opts *opts) {
+    if (opts) {
+        free((void*)opts->identity);
+        free((void*)opts->group);
+        free(opts->app_data);
+    }
+}
+
+
 static void free_conn_req(struct ziti_conn_req *r) {
     clear_deadline(&r->deadline);
 
