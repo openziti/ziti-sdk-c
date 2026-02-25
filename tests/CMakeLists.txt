@@ -35,7 +35,7 @@ target_include_directories(all_tests
 
 target_link_libraries(all_tests
         PRIVATE ziti
-        PRIVATE Catch2::Catch2 Catch2::Catch2WithMain)
+        PRIVATE Catch2::Catch2WithMain)
 
 add_executable(zitilib-tests zitilib-tests.cpp)
 target_link_libraries(zitilib-tests

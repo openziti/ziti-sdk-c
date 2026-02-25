@@ -1,16 +1,16 @@
-// Copyright (c) 2022-2024. NetFoundry Inc.
+// Copyright (c) 2022-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// You may obtain a copy of the License at
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #ifndef ZT_SDK_ZT_INTERNAL_H
 #define ZT_SDK_ZT_INTERNAL_H
@@ -38,9 +38,6 @@
 #define UUID_STR_LEN 37
 #endif
 
-#define MARKER_BIN_LEN 6
-#define MARKER_CHAR_LEN sodium_base64_ENCODED_LEN(MARKER_BIN_LEN, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
-
 #define ZTX_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ztx[%u] " fmt, ztx->id, ##__VA_ARGS__)
 
 #define DST_PROTOCOL "dst_protocol"
@@ -67,7 +64,6 @@ typedef void (*ch_notify_state)(
         ziti_channel_t *ch, ziti_router_status status, int err, void *ctx);
 
 typedef int ch_state;
-typedef int conn_state;
 
 struct ziti_channel {
     uv_loop_t *loop;
@@ -135,108 +131,6 @@ struct ziti_write_req_s {
     TAILQ_ENTRY(ziti_write_req_s) _next;
     model_list chain;
     size_t chain_len;
-};
-
-struct key_pair {
-    uint8_t sk[crypto_kx_SECRETKEYBYTES];
-    uint8_t pk[crypto_kx_PUBLICKEYBYTES];
-};
-
-struct key_exchange {
-    uint8_t *rx;
-    uint8_t *tx;
-};
-
-int init_key_pair(struct key_pair *kp);
-
-int init_crypto(struct key_exchange *key_ex, struct key_pair *kp, const uint8_t *peer_key, bool server);
-
-void free_key_exchange(struct key_exchange *key_ex);
-
-enum ziti_conn_type {
-    None,
-    Transport,
-    Server,
-};
-
-struct ziti_conn {
-    struct ziti_ctx *ziti_ctx;
-    enum ziti_conn_type type;
-    char *service;
-    char *source_identity;
-    uint32_t conn_id;
-    uint32_t rt_conn_id;
-    void *data;
-
-    int (*disposer)(struct ziti_conn *self);
-
-    ziti_close_cb close_cb;
-    bool close;
-    bool encrypted;
-
-    union {
-        struct {
-            char *identity;
-            uint16_t cost;
-            uint8_t precedence;
-            int max_bindings;
-
-            ziti_listen_cb listen_cb;
-            ziti_client_cb client_cb;
-
-            bool srv_routers_api_missing;
-            model_list routers;
-            char *token;
-            ziti_session *session;
-            model_map bindings;
-            model_map children;
-            deadline_t rebinder;
-            unsigned int attempt;
-            uint8_t listener_id[32];
-        } server;
-
-        struct {
-            struct key_pair key_pair;
-            struct ziti_conn_req *conn_req;
-
-            char marker[MARKER_CHAR_LEN];
-
-            uint32_t edge_msg_seq;
-            uint32_t in_msg_seq;
-            uint32_t flags;
-
-            ziti_channel_t *channel;
-            ziti_data_cb data_cb;
-            conn_state state;
-            bool fin_sent;
-            int fin_recv; // 0 - not received, 1 - received, 2 - called app data cb
-            bool disconnecting;
-
-            deadline_t flusher;
-            TAILQ_HEAD(, message_s) in_q;
-            buffer *inbound;
-            TAILQ_HEAD(, ziti_write_req_s) wreqs;
-            TAILQ_HEAD(, ziti_write_req_s) pending_wreqs;
-
-            struct ziti_conn *parent;
-            uint32_t dial_req_seq;
-
-            struct key_exchange key_ex;
-
-            crypto_secretstream_xchacha20poly1305_state crypt_o;
-            crypto_secretstream_xchacha20poly1305_state crypt_i;
-
-            // stats
-            bool bridged;
-            uint64_t start;
-            uint64_t connect_time;
-            uint64_t last_activity;
-            uint64_t sent;
-            uint64_t received;
-        };
-    };
-
-
 };
 
 struct process {
@@ -396,23 +290,6 @@ int parse_enrollment_jwt(const char *token, ziti_enrollment_jwt_header *zejh, zi
 
 int load_tls(ziti_config *cfg, tls_context **tls, struct tls_credentials *creds);
 
-int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts *listen_opts,
-              ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb);
-
-void conn_inbound_data_msg(ziti_connection conn, message *msg);
-
-void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, int status);
-
-void update_bindings(struct ziti_conn *conn);
-const char *ziti_conn_state(ziti_connection conn);
-
-int establish_crypto(ziti_connection conn, message *msg);
-
-
-void hexify(const uint8_t *bin, size_t bin_len, char sep, char **buf);
-
-void ziti_re_auth_with_cb(ziti_context ztx, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
-
 void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data);
 
 void ziti_force_service_update(ziti_context ztx, const char *service_id);
@@ -424,10 +301,6 @@ extern void ziti_send_event(ziti_context ztx, const ziti_event_t *e);
 void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, uint32_t req_id, const char *reason);
 
 const ziti_env_info* get_env_info();
-
-int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen);
-
-void process_connect(struct ziti_conn *conn, ziti_session *session);
 
 int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer);
 
