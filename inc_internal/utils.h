@@ -1,16 +1,16 @@
-// Copyright (c) 2022-2024. NetFoundry Inc.
+// Copyright (c) 2022-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// You may obtain a copy of the License at
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #ifndef ZITI_UTILS_H
 #define ZITI_UTILS_H
@@ -68,6 +68,8 @@ extern void hexDump(char *desc, void *addr, int len);
 extern const char *jwt_payload(const char *jwt);
 
 void ziti_fmt_time(char *time_str, size_t time_str_len, uv_timeval64_t *tv);
+
+void hexify(const uint8_t *bin, size_t bin_len, char sep, char **buf);
 
 int lt_zero(int v);
 

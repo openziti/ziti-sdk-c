@@ -80,8 +80,6 @@ if (DEFINED ENV{BUILD_NUMBER})
     set(ZITI_BUILDNUM $ENV{BUILD_NUMBER})
 endif ()
 
-link_directories(${CMAKE_BINARY_DIR}/lib)
-
 add_subdirectory(deps)
 
 set(CPACK_INSTALL_CMAKE_PROJECTS

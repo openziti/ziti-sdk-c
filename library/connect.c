@@ -1,22 +1,23 @@
-// Copyright (c) 2022-2024. NetFoundry Inc.
+// Copyright (c) 2022-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// You may obtain a copy of the License at
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #include <stdlib.h>
 #include <posture.h>
 #include <assert.h>
 
 #include "message.h"
+#include "edge_protocol.h"
 #include "endian_internal.h"
 #include "win32_compat.h"
 #include "connect.h"
@@ -1382,7 +1383,7 @@ void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, uint32_t req_id, 
 static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {
     if (msg == NULL) {
         CONN_LOG(DEBUG, "closed due to err[%d](%s)", code, ziti_errorstr(code));
-        conn_state st = conn->state;
+        enum conn_state st = conn->state;
         on_disconnect(conn, code, NULL);
 
         switch (st) {
