@@ -60,6 +60,8 @@ struct oidc_client_s {
     bool need_refresh;
     struct auth_req *request;
     tlsuv_http_req_t *refresh_req;
+    int refresh_failures;
+    uint64_t token_expiry;
 };
 
 // init
