@@ -31,7 +31,7 @@ if (ziti_DEVELOPER_MODE)
         message(NOTICE "protobuf generator: ${PROTO_GEN}")
         FetchContent_Declare(sdk_golang
                 GIT_REPOSITORY https://github.com/openziti/sdk-golang.git
-                GIT_TAG main
+                GIT_TAG v1.4.2
                 GIT_SHALLOW 1
         )
         FetchContent_MakeAvailable(sdk_golang)
