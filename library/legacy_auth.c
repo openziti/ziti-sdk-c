@@ -1,16 +1,16 @@
-// Copyright (c) 2023-2024. NetFoundry Inc.
+// Copyright (c) 2023-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// You may obtain a copy of the License at
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #include "auth_method.h"
 #include "zt_internal.h"
@@ -23,18 +23,23 @@
 #define API_SESSION_DELAY_WINDOW_SECONDS 60
 #define API_SESSION_EXPIRATION_TOO_SMALL_SECONDS 120
 
+#define AUTH_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "legacy_auth[%s]: " fmt, auth->http.host, ##__VA_ARGS__)
 
 struct legacy_auth_s {
     ziti_auth_method_t api;
     auth_state_cb cb;
     auth_mfa_cb mfa_cb;
     void *ctx;
-    ziti_controller *ctrl;
+
+    tlsuv_http_t http;
     uv_timer_t timer;
     ziti_api_session *session;
-    model_list config_types;
-    int backoff;
-    cstr jwt;
+    
+    bool has_x509;
+    cstr primary_jwt;
+    cstr secondary_jwt;
+    
+    int fail_count;
     bool refreshing;
 };
 
@@ -46,15 +51,18 @@ static int legacy_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *c
 static int legacy_auth_stop(ziti_auth_method_t *self);
 static int legacy_auth_refresh(ziti_auth_method_t *self);
 static void legacy_auth_free(ziti_auth_method_t *self);
-static int legacy_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
+static int legacy_auth_totp(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
 static const ziti_auth_query_mfa* get_mfa(ziti_api_session *session);
-static uint64_t refresh_delay(ziti_api_session *);
+static uint64_t refresh_delay(struct legacy_auth_s *auth, ziti_api_session *);
 static const struct timeval* legacy_auth_expiration(ziti_auth_method_t *self);
 
 char *ziti_mfa_code_body(const char *code);
 
-static void auth_timer_cb(uv_timer_t *t);
-static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx);
+static void free_body_cb(tlsuv_http_req_t *req, char *body, ssize_t len) {
+    free(body);
+}
+
+static void legacy_timer_cb(uv_timer_t *t);
 
 #define LEGACY_AUTH_INIT()          \
     (ziti_auth_method_t) {          \
@@ -65,27 +73,36 @@ static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx
         .expiration = legacy_auth_expiration, \
         .stop = legacy_auth_stop,   \
         .free = legacy_auth_free,   \
-        .submit_mfa = legacy_auth_mfa, \
+        .submit_mfa = legacy_auth_totp, \
     }
 
-ziti_auth_method_t *new_legacy_auth(ziti_controller *ctrl) {
+ziti_auth_method_t *new_legacy_auth(uv_loop_t *loop, const char *url, tls_context *tls, bool x509) {
     struct legacy_auth_s *auth = calloc(1, sizeof(*auth));
     auth->api = LEGACY_AUTH_INIT();
-    auth->ctrl = ctrl;
-    uv_timer_init(ctrl->loop, &auth->timer);
-    model_list_append(&auth->config_types, "all");
+    auth->has_x509 = x509;
+
+    tlsuv_http_init(loop, &auth->http, url);
+    tlsuv_http_set_ssl(&auth->http, tls);
+    uv_timer_init(loop, &auth->timer);
+    AUTH_LOG(DEBUG, "method initialized");
     return &auth->api;
 }
 
 static int legacy_auth_jwt_token(ziti_auth_method_t *self, const char *token) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
-    cstr_clear(&auth->jwt);
-    if (token != NULL) {
-        cstr_assign(&auth->jwt, token);
-        if (auth->session) {
-            ziti_ctrl_mfa_jwt(auth->ctrl, cstr_str(&auth->jwt), login_cb, auth);
-        }
-    }
+    
+    token = token != NULL ? token : "";
+    
+    if (auth->has_x509 || auth->session) {
+        AUTH_LOG(DEBUG, "setting secondary JWT token: %s", 
+                 token[0] ? jwt_payload(token) : "<empty>");
+        cstr_assign(&auth->secondary_jwt, token);
+    } else {
+        AUTH_LOG(DEBUG, "setting primary JWT token: %s", 
+                 token[0] ? jwt_payload(token) : "<empty>");
+        cstr_assign(&auth->primary_jwt, token);
+    } 
+    
     return 0;
 }
 
@@ -96,7 +113,7 @@ int legacy_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx) {
     auth->ctx = ctx;
 
     if (!uv_is_active((const uv_handle_t *)&auth->timer)) {
-        uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
+        uv_timer_start(&auth->timer, legacy_timer_cb, 0, 0);
     }
 
     return ZITI_OK;
@@ -113,11 +130,11 @@ int legacy_auth_refresh(ziti_auth_method_t *self) {
     assert(auth->cb);
 
     if (auth->refreshing) {
-        ZITI_LOG(DEBUG, "refresh already in progress");
+        AUTH_LOG(DEBUG, "refresh already in progress");
         return 0;
     }
 
-    return uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
+    return uv_timer_start(&auth->timer, legacy_timer_cb, 0, 0);
 }
 
 
@@ -129,158 +146,232 @@ int legacy_auth_stop(ziti_auth_method_t *self) {
 
 static void close_cb(uv_timer_t *t) {
     struct legacy_auth_s *auth = container_of(t, struct legacy_auth_s, timer);
+    free_ziti_api_session_ptr(auth->session);
+    cstr_drop(&auth->primary_jwt);
+    cstr_drop(&auth->secondary_jwt);
     free(auth);
 }
 
 void legacy_auth_free(ziti_auth_method_t *self) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
-    model_list_clear(&auth->config_types, NULL);
     free_ziti_api_session_ptr(auth->session);
-    cstr_drop(&auth->jwt);
+    cstr_drop(&auth->primary_jwt);
+    cstr_drop(&auth->secondary_jwt);
+    tlsuv_http_close(&auth->http, NULL);
+    
     uv_close((uv_handle_t *)&auth->timer, (uv_close_cb)close_cb);
+    tlsuv_http_close(&auth->http, NULL);
 }
 
-static void mfa_cb(void * UNUSED(empty), const ziti_error *err, void *ctx) {
-    struct legacy_auth_s *auth = container_of(ctx, struct legacy_auth_s, api);
+static void legacy_totp_cb(tlsuv_http_resp_t *resp, const char *err, json_object *body, void *ctx) {
+    struct legacy_auth_s *auth = ctx;
 
-    if (auth->mfa_cb) {
-        auth->mfa_cb(auth->ctx, err ? (int)err->err : ZITI_OK);
-        auth->mfa_cb = NULL;
-    }
+    int status = ZITI_OK;
 
-    if (err == NULL) { // success
+    switch (resp->code) {
+    case HTTP_STATUS_OK:
+        AUTH_LOG(DEBUG, "MFA code accepted");
         // refresh session to clear auth_query
-        uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
-    } else {
-        if (err->http_code == HTTP_STATUS_UNAUTHORIZED) {
-            free_ziti_api_session_ptr(auth->session);
-            auth->session = NULL;
-            cstr_drop(&auth->jwt);
-            auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, err);
-            uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
+        uv_timer_start(&auth->timer, legacy_timer_cb, 0, 0);
+        break;
+    case HTTP_STATUS_BAD_REQUEST: // this is not specified in the spec but is returned by controller
+    case HTTP_STATUS_UNAUTHORIZED:
+        AUTH_LOG(DEBUG, "MFA code rejected");
+        status = ZITI_MFA_INVALID_TOKEN;
+        break;
+    default:
+        if (resp->code < 0) {
+            AUTH_LOG(WARN, "failed to submit MFA code: %d/%s", resp->code, uv_strerror(resp->code));
         } else {
-            ZITI_LOG(ERROR, "failed to submit MFA code: %d/%s", (int)err->err, err->message);
-            uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
+            AUTH_LOG(WARN, "failed to submit MFA code: %d %s", resp->code, resp->status);
         }
+        status = ZITI_CONTROLLER_UNAVAILABLE;
+        break;
+    }
+    if (auth->mfa_cb) {
+        auth->mfa_cb(auth->ctx, status);
+    }
+
+    if (status != ZITI_OK && auth->session) {
+        auth->cb(auth->ctx, ZitiAuthStatePartiallyAuthenticated, get_mfa(auth->session));
     }
 }
 
-static int legacy_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb) {
+static int legacy_auth_totp(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
 
+    if (auth->session == NULL) {
+        AUTH_LOG(ERROR, "cannot submit MFA code without an active session");
+        return ZITI_INVALID_STATE;
+    }
+
     auth->mfa_cb = cb;
-    char *req = ziti_mfa_code_body(code);
-    ziti_ctrl_login_mfa(auth->ctrl, req, strlen(req), mfa_cb, auth);
+    char *code_json = ziti_mfa_code_body(code);
+
+    tlsuv_http_req_t *req = ziti_json_request(&auth->http, "POST", "/authenticate/mfa", legacy_totp_cb, auth);
+    tlsuv_http_req_header(req, "zt-session", auth->session ? auth->session->token : NULL);
+    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_data(req, code_json, strlen(code_json), free_body_cb);
     return 0;
 }
 
-static void login_cb(ziti_api_session *session, const ziti_error *err, void *ctx) {
+static void legacy_session_cb(tlsuv_http_resp_t *resp, const char *err, json_object *json, void *ctx) {
     struct legacy_auth_s *auth = ctx;
     auth->refreshing = false;
+    const char *delay_type = "refresh";
+    uint64_t delay = 0;
+    json_object *session_json = json_object_object_get(json, "data");
+    ziti_api_session *session = NULL;
 
-    free_ziti_api_session_ptr(auth->session);
-    auth->session = NULL;
-
-    int errCode = err ? (int)err->err : ZITI_OK;
-    if (session) {
-        auth->backoff = 0;
-        ZITI_LOG(DEBUG, "logged in successfully => api_session[%s]", session->id);
-
-        auth->session = session;
-        const ziti_auth_query_mfa *ziti_mfa = get_mfa(session);
-
-        if (ziti_mfa) {
-            auth->cb(auth->ctx, ZitiAuthStatePartiallyAuthenticated, ziti_mfa);
+    switch(resp->code) {
+    case HTTP_STATUS_UNAUTHORIZED:
+        if (auth->session) {
+            AUTH_LOG(DEBUG, "session is no longer valid: %s", resp->status);
+            free_ziti_api_session_ptr(auth->session);
+            auth->session = NULL;
+            AUTH_LOG(DEBUG, "restarting authentication flow");
         } else {
-            auth->cb(auth->ctx, ZitiAuthStateFullyAuthenticated, session->token);
+            auth->fail_count++;
+            AUTH_LOG(DEBUG, "authentication failed");
+            auth->cb(auth->ctx, ZitiAuthImpossibleToAuthenticate,
+                     &(ziti_error){
+                         .err = ZITI_AUTHENTICATION_FAILED,
+                         .code = resp->status,
+                         .message = "authentication failed",
+                     });
+            delay = next_backoff(&auth->fail_count, MAX_BACKOFF, BACKOFF_BASE_DELAY);
+            delay_type = "backoff";
         }
-        uint64_t delay = refresh_delay(session);
-        uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
-    } else if (err) {
-        ZITI_LOG(WARN, "failed to login to ctrl[%s] %s[%d] %s", auth->ctrl->url, err->code, errCode, err->message);
+        break;
 
-        if (errCode == ZITI_AUTHENTICATION_FAILED) {
-            auth->cb(auth->ctx, ZitiAuthImpossibleToAuthenticate, err);
+    case HTTP_STATUS_OK:
+        if (session_json == NULL || ziti_api_session_ptr_from_json(&session, session_json) != 0 || session == NULL) {
+            // this should never happen but handle it just in case
+            AUTH_LOG(ERROR, "failed to parse api session from response");
+            auth->fail_count++;
+            delay = auth->session ? refresh_delay(auth, auth->session)
+                                  : next_backoff(&auth->fail_count, MAX_BACKOFF, BACKOFF_BASE_DELAY);
+            delay_type = auth->session ? "refresh" : "backoff";
         } else {
-            uint64_t delay = next_backoff(&auth->backoff, 5, 5000);
-            ZITI_LOG(DEBUG, "failed to login [%d/%s] setting retry in %" PRIu64 "ms",
-                     errCode, err->message, delay);
-            uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
+            auth->fail_count = 0;
+            ziti_api_session *old_session = auth->session;
+            auth->session = session;
+
+            const ziti_auth_query_mfa *ziti_mfa = get_mfa(session);
+            if (ziti_mfa) {
+                AUTH_LOG(DEBUG, "received api session with pending MFA query type[%s] provider[%s]",
+                         ziti_auth_query_types.name(ziti_mfa->type_id), ziti_mfa->provider);
+                auth->cb(auth->ctx, ZitiAuthStatePartiallyAuthenticated, ziti_mfa);
+            } else {
+                const ziti_auth_query_mfa *old_mfa = old_session ? get_mfa(old_session) : NULL;
+                // if new session or current session had pending MFA notify as fully authenticated
+                if (old_session == NULL || strcmp(old_session->id, session->id) != 0 || old_mfa) {
+                    AUTH_LOG(DEBUG, "logged in successfully => api_session[%s]", auth->session->id);
+                    auth->cb(auth->ctx, ZitiAuthStateFullyAuthenticated, auth->session->token);
+                } else {
+                    AUTH_LOG(DEBUG, "refreshed api session[%s]", session->id);
+                }
+            }
+            free_ziti_api_session_ptr(old_session);
+            delay = refresh_delay(auth, auth->session);
         }
+        break;
+
+    default:  // non-auth related error, usually means controller cannot be reached
+        auth->fail_count++;
+        if (auth->session) {
+            AUTH_LOG(WARN, "failed[%d] to refresh session: %d %s", auth->fail_count, resp->code, resp->status);
+            delay = refresh_delay(auth, auth->session);
+        } else {
+            AUTH_LOG(WARN, "failed[%d] to acquire response: %d %s", auth->fail_count, resp->code, resp->status);
+            delay = next_backoff(&auth->fail_count, MAX_BACKOFF, BACKOFF_BASE_DELAY);
+            delay_type = "backoff";
+        }
+        break;
     }
+
+    AUTH_LOG(INFO, "%s in %" PRIu64 " ms", delay_type, delay);
+    uv_timer_start(&auth->timer, legacy_timer_cb, delay, 0);
 }
 
-static void refresh_cb(ziti_api_session *session, const ziti_error *err, void *ctx) {
-    struct legacy_auth_s *auth = ctx;
-    auth->refreshing = false;
+void legacy_timer_cb(uv_timer_t *t) {
+    struct legacy_auth_s *auth = container_of(t, struct legacy_auth_s, timer);
+    auth->refreshing = true;
 
-    if (err == NULL) {
-        auth->backoff = 0;
-        assert(session);
-        free_ziti_api_session_ptr(auth->session);
-        auth->session = session;
-
-        const ziti_auth_query_mfa *ziti_mfa = get_mfa(auth->session);
-        if (ziti_mfa) {
-            auth->cb(auth->ctx, ZitiAuthStatePartiallyAuthenticated, ziti_mfa);
+    if (auth->session) {
+        uv_timeval64_t now;
+        if (uv_gettimeofday(&now) == 0 && auth->session->expires.tv_sec < now.tv_sec) {
+            AUTH_LOG(WARN, "session expired according to local clock");
+            free_ziti_api_session_ptr(auth->session);
+            auth->session = NULL;
         } else {
-            auth->cb(auth->ctx, ZitiAuthStateFullyAuthenticated, session->token);
+            AUTH_LOG(DEBUG, "refreshing session[%p]", auth->session->id);
+            tlsuv_http_req_t *req = ziti_json_request(&auth->http, "GET", "/current-api-session", legacy_session_cb, auth);
+            tlsuv_http_req_header(req, "zt-session", auth->session->token);
+            return;
         }
+    }
 
-        uint64_t delay = refresh_delay(session);
-        ZITI_LOG(DEBUG, "scheduling api session refresh in %" PRIu64 " ms", delay);
-        uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
-
+    if (cstr_is_empty(&auth->primary_jwt) && !auth->has_x509) {
+        AUTH_LOG(ERROR, "no primary x509 or JWT credentials available for authentication");
+        auth->cb(auth->ctx, ZitiAuthImpossibleToAuthenticate,
+                 &(ziti_error){
+                     .err = ZITI_AUTHENTICATION_FAILED,
+                     .code = 0,
+                     .message = "no primary x509 or JWT credentials available for authentication",
+                 });
+        auth->refreshing = false;
         return;
     }
 
-    switch (err->err) {
-        case ZITI_AUTHENTICATION_FAILED:
-            // session expired or was deleted, try to re-auth
-            auth->cb(auth->ctx, ZitiAuthStateUnauthenticated, err);
-            free_ziti_api_session_ptr(auth->session);
-            auth->session = NULL;
-            ZITI_LOG(DEBUG, "api session expired, attempting refresh now");
-            uv_timer_start(&auth->timer, auth_timer_cb, 0, 0);
-            break;
-        default: {
-            uint64_t delay = next_backoff(&auth->backoff, MAX_BACKOFF, BACKOFF_BASE_DELAY);
-            ZITI_LOG(WARN, "failed to refresh API session: %d/%s, retry in %" PRIu64 "ms",
-                     (int)err->err, err->message, delay);
-            uv_timer_start(&auth->timer, auth_timer_cb, delay, 0);
-        }
-    }
-}
+    ziti_auth_req authreq = {
+        .sdk_info = {
+            .type = "ziti-sdk-c",
+            .version = ziti_get_build_version(0),
+            .revision = ziti_git_commit(),
+            .branch = ziti_git_branch(),
+            .app_id = APP_ID,
+            .app_version = APP_VERSION,
+        },
+        .env_info = (ziti_env_info *)get_env_info(),
+    };
 
-void auth_timer_cb(uv_timer_t *t) {
-    struct legacy_auth_s *auth = container_of(t, struct legacy_auth_s, timer);
-    ZITI_LOG(DEBUG, "refreshing session[%p]", auth->session);
-    auth->refreshing = true;
+    size_t body_len;
+    char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
 
-    if (auth->session == NULL) {
-        if (!cstr_is_empty(&auth->jwt)) {
-            ziti_ctrl_login_ext_jwt(auth->ctrl, cstr_str(&auth->jwt), login_cb, auth);
-        } else {
-            ziti_ctrl_login(auth->ctrl, &auth->config_types, login_cb, auth);
-        }
+    tlsuv_http_req_t *req = ziti_json_request(&auth->http, "POST", "/authenticate", legacy_session_cb, auth);
+
+    if (auth->has_x509) {
+        tlsuv_http_req_query(req, 1, &(tlsuv_http_pair){"method", "cert"});
     } else {
-        ziti_ctrl_current_api_session(auth->ctrl, refresh_cb, auth);
+        cstr bearer = cstr_from_fmt("Bearer %s", cstr_str(&auth->primary_jwt));
+        tlsuv_http_req_header(req, "authorization", cstr_str(&bearer));
+        tlsuv_http_req_query(req, 1, &(tlsuv_http_pair){"method", "ext-jwt"});
     }
+
+    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }
 
 static const ziti_auth_query_mfa* get_mfa(ziti_api_session *session) {
-    if (model_list_size(&session->auth_queries) > 1) {
-        ZITI_LOG(WARN, "multiple auth queries are not supported");
-    }
     const ziti_auth_query_mfa *aq = model_list_head(&session->auth_queries);
     return aq;
 }
 
-static uint64_t refresh_delay(ziti_api_session *session) {
+static uint64_t refresh_delay(struct legacy_auth_s *auth, ziti_api_session *session) {
     uint64_t delay_seconds;
     const char *source;
 
-    if (session->expireSeconds > 0) {
+    uv_timeval64_t now;
+    if (uv_gettimeofday(&now) == 0 && session->expires.tv_sec > 0) {
+        if (session->expires.tv_sec < now.tv_sec) {
+            AUTH_LOG(WARN, "api session is already expired according to local clock");
+            return 0;
+        }
+
+        delay_seconds = session->expires.tv_sec - now.tv_sec;
+        source = "session->expires";
+    } else if (session->expireSeconds > 0) {
         delay_seconds = session->expireSeconds;
         source = "session->expireSeconds";
     } else {
@@ -289,25 +380,25 @@ static uint64_t refresh_delay(ziti_api_session *session) {
         uv_timeval64_t session_received_at;
         int err = uv_gettimeofday(&session_received_at);
         if (err != 0) {
-            ZITI_LOG(WARN, "gettimeofday failed: %d(%s)", err, uv_strerror(err));
+            AUTH_LOG(WARN, "gettimeofday failed: %d(%s)", err, uv_strerror(err));
             delay_seconds = API_SESSION_EXPIRATION_TOO_SMALL_SECONDS; // ensure another attempt
         }
 
         if (session->cached_last_activity_at.tv_sec > 0) {
-            ZITI_LOG(TRACE, "API supports cached_last_activity_at");
+            AUTH_LOG(TRACE, "API supports cached_last_activity_at");
             time_diff = session_received_at.tv_sec - session->cached_last_activity_at.tv_sec;
             time_diff_abs =
                     MAX(session_received_at.tv_sec,session->cached_last_activity_at.tv_sec) -
                     MIN(session_received_at.tv_sec, session->cached_last_activity_at.tv_sec);
         } else {
-            ZITI_LOG(TRACE, "API doesn't support cached_last_activity_at - using updated");
+            AUTH_LOG(TRACE, "API doesn't support cached_last_activity_at - using updated");
             time_diff = session_received_at.tv_sec - session->updated.tv_sec;
             time_diff_abs =
                     MAX(session_received_at.tv_sec, session->updated.tv_sec) -
                     MIN(session_received_at.tv_sec, session->updated.tv_sec);
         }
         if (time_diff_abs > 10) {
-            ZITI_LOG(ERROR, "local clock is %" PRIu64 " seconds %s UTC (as reported by controller)", time_diff_abs,
+            AUTH_LOG(ERROR, "local clock is %" PRIu64 " seconds %s UTC (as reported by controller)", time_diff_abs,
                      time_diff > 0 ? "ahead" : "behind");
         }
 
@@ -317,15 +408,20 @@ static uint64_t refresh_delay(ziti_api_session *session) {
         source = "calculation";
     }
 
-    delay_seconds = delay_seconds - API_SESSION_DELAY_WINDOW_SECONDS; //renew a little early
+    // add some jitter and time buffer
+    // renew some time between 1/2 and 5/6 of remaining time
+    uint64_t rando = randombytes_random();
+    rando = rando % (delay_seconds / 3);
+    delay_seconds = delay_seconds / 2 + rando;
+
 
     if (delay_seconds < API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS) {
         delay_seconds = API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS;
-        ZITI_LOG(WARN, "api session expiration window is set too small (<%d) and may cause issues with "
+        AUTH_LOG(WARN, "api session expiration window is set too small (<%d) and may cause issues with "
                       "connectivity and api session maintenance, defaulting api session refresh delay [%ds]",
                 API_SESSION_EXPIRATION_TOO_SMALL_SECONDS, API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS);
     }
 
-    ZITI_LOG(DEBUG, "api session set based on %s, next refresh in %" PRIu64 "s", source, delay_seconds);
+    AUTH_LOG(DEBUG, "api session set based on %s, next refresh in %" PRIu64 "s", source, delay_seconds);
     return delay_seconds * 1000;
 }
