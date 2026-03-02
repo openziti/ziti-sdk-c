@@ -76,8 +76,16 @@ int verify_controller_jwt(const struct tlsuv_certificate_s *cert, void *ctx) {
             return -1;
     }
 
+    // find second dot to get the signing input portion of the JWT
+    // should never fail here since we already parsed the JWT
+    const char *dot = strchr(er->opts.token, '.');
+    if (dot == NULL || (dot = strchr(dot + 1, '.')) == NULL) {
+        ZITI_LOG(ERROR, "invalid JWT format");
+        return -1;
+    }
+
     int rc = cert->verify(cert, md, er->opts.token,
-                          strlen(er->opts.token),
+                          dot - er->opts.token,
                           er->sig, er->sig_len);
     if (rc != 0) {
         ZITI_LOG(ERROR, "failed to verify JWT signature");
