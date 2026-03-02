@@ -404,9 +404,20 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         ztx->session_token = strdup(session_token);
     }
     ziti_controller *ctrl = ztx_get_controller(ztx);
+    ziti_ctrl_clear_auth(ctrl);
+    ziti_ctrl_set_token(ctrl, session_token);
+    const char *iss;
+    zt_jwt *jwt;
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+    MODEL_MAP_FOREACH(iss, jwt, &ztx->ext_jwt_tokens) {
+        if (jwt->expiration != 0 && jwt->expiration < now.tv_sec) {
+            ZTX_LOG(WARN, "external JWT[%s] is expired: skipped", iss);
+            continue;
+        }
+        ziti_ctrl_set_ext_token(ctrl, cstr_str(&jwt->encoded));
+    }
     if (ztx->auth_method->kind == OIDC) {
-        ziti_ctrl_clear_auth(ctrl);
-        ziti_ctrl_set_token(ctrl, session_token);
         if (ctrl->is_ha) {
             ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
         }
@@ -764,6 +775,7 @@ static void free_ztx(uv_handle_t *h) {
 
     sticky_tokens_map_drop(&ztx->sticky_tokens);
 
+    model_map_clear(&ztx->ext_jwt_tokens, (_free_f)zt_jwt_free);
     model_map_clear(&ztx->ext_signers, (_free_f)free_ziti_jwt_signer_ptr);
     model_map_clear(&ztx->ctrl_details, (_free_f) free_ziti_controller_detail_ptr);
     ziti_auth_query_free(ztx->auth_queries);
@@ -1374,7 +1386,7 @@ static int is_service_updated(ziti_context ztx, ziti_service *new, ziti_service 
         return 1;
     }
 
-    // config is a map of raw json
+    // config is a map of encoded json
     if (model_map_compare(&old->config, &new->config, get_json_meta()) != 0) {
         ZTX_LOG(VERBOSE, "service [%s] is updated, config changed", new->name);
         return 1;
@@ -2170,6 +2182,12 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
     }
 
     bool use_oidc = ziti_has_capability(version, ziti_ctrl_caps.OIDC_AUTH);
+    const char *force_legacy = getenv("ZITI_FORCE_LEGACY_AUTH");
+    if (force_legacy) {
+        ZTX_LOG(WARN, "ZITI_FORCE_LEGACY_AUTH is set, forcing legacy authentication method");
+        use_oidc = false;
+    }
+
     ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
             ztx_controller(ztx), version->version, version->revision, version->build_date);
     ZTX_LOG(INFO, "using %s authentication method", use_oidc ? "OIDC" : "Legacy");
@@ -2188,6 +2206,7 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         ZTX_LOG(ERROR, "controller reported OIDC_AUTH capability without OIDC API version");
         use_oidc = false;
     }
+
     // make sure ziti_ctrl client is configured for correct auth
     ziti_ctrl_set_legacy(ztx_get_controller(ztx), !use_oidc);
 
@@ -2195,7 +2214,8 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         if (use_oidc) {
             ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->tlsCtx);
         } else {
-            ztx->auth_method = new_legacy_auth(ztx_get_controller(ztx));
+            ztx->auth_method = new_legacy_auth(ztx->loop, ziti_get_controller(ztx), ztx->tlsCtx,
+                                               ztx->id_creds.key != NULL);
         }
 
         // can't start authentication without credentials

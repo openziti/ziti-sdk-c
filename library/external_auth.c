@@ -1,5 +1,4 @@
-//
-// 	Copyright NetFoundry Inc.
+// Copyright (c) 2026.  NetFoundry Inc
 //
 // 	Licensed under the Apache License, Version 2.0 (the "License");
 // 	you may not use this file except in compliance with the License.
@@ -12,7 +11,6 @@
 // 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // 	See the License for the specific language governing permissions and
 // 	limitations under the License.
-//
 
 #include "ext_oidc.h"
 #include "zt_internal.h"
@@ -165,9 +163,19 @@ static void ztx_on_token_enroll(ziti_create_api_cert_resp *cert_resp, const ziti
 extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
     ZTX_LOG(DEBUG, "received access token: %s", jwt_payload(token));
     assert(ztx->auth_method);
+
+    NEWP(jwt, zt_jwt);
+    if (zt_jwt_parse(token, jwt) != 0) {
+        ZTX_LOG(WARN, "failed to parse JWT token");
+        return ZITI_JWT_INVALID;
+    }
+    ZTX_LOG(DEBUG, "received access token: %s", json_object_get_string(jwt->claims));
+    zt_jwt *prev = model_map_set(&ztx->ext_jwt_tokens, cstr_str(&jwt->issuer), jwt);
+    zt_jwt_drop(prev);
+    free(prev);
+
     ztx->auth_method->set_ext_jwt(ztx->auth_method, token);
 
-    ZTX_LOG(DEBUG, "received access token: %s", jwt_payload(token));
     // create identity if needed and allowed
     if (ztx->identity_data == NULL && ztx->id_creds.cert == NULL) {
         ZTX_LOG(INFO, "no credentials present trying just-in-time enrollment");

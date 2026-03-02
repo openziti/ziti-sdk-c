@@ -174,6 +174,7 @@ struct ziti_ctx {
     ziti_auth_state auth_state;
     ziti_mfa_cb mfa_cb;
     void *mfa_ctx;
+    model_map ext_jwt_tokens; // map<issuer, zt_jwt>
 
     model_map ext_signers;
     struct ext_oidc_client_s *ext_auth;
