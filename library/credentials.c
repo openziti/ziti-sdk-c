@@ -57,6 +57,7 @@ int zt_jwt_parse(const char *jwt_str, zt_jwt *jwt) {
     if (sodium_base642bin((uint8_t *)buf, jwt_len, jwt_str, jwt_len, NULL,
                           &len, &b64_end, sodium_base64_VARIANT_URLSAFE_NO_PADDING) != 0 ||
         *b64_end != '.') {
+        ZITI_LOG(TRACE, "failed to decode JWT header");
         goto error;
     }
     header = json_tokener_parse_verbose(buf, &json_err);
@@ -68,10 +69,12 @@ int zt_jwt_parse(const char *jwt_str, zt_jwt *jwt) {
                           NULL,
                           &len, &b64_end, sodium_base64_VARIANT_URLSAFE_NO_PADDING) != 0 ||
         *b64_end != '.') {
+        ZITI_LOG(TRACE, "failed to decode JWT claims");
         goto error;
     }
     payload = json_tokener_parse_verbose(buf, &json_err);
     if (!payload) {
+        ZITI_LOG(TRACE, "failed to parse JWT claims: %s", json_tokener_error_desc(json_err));
         goto error;
     }
 
@@ -108,6 +111,7 @@ int ziti_credential_from_jwt(const char *jwt, ziti_credential_t **cred) {
 
     if (zt_jwt_parse(jwt, &c->jwt) != 0) {
         free(c);
+        *cred = NULL;
         return ZITI_JWT_INVALID;
     }
     c->type = ZITI_CRED_TYPE_JWT;

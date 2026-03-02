@@ -1,16 +1,16 @@
-// Copyright (c) 2023.  NetFoundry Inc.
+// Copyright (c) 2023-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/matchers/catch_matchers_string.hpp"
@@ -95,10 +95,11 @@ TEST_CASE("zt_jwt_parse","[model]") {
 }
 
 TEST_CASE("jwt cred", "[model]") {
-    ziti_credential_t *cred;
+    ziti_log_init(uv_default_loop(), TRACE, NULL);
+    ziti_credential_t *cred = nullptr;
     int rc = ziti_credential_from_jwt(jwt, &cred);
     CHECK(rc == 0);
-    CHECK(cred != nullptr);
+    REQUIRE(cred != nullptr);
     CHECK(cred->type == ZITI_CRED_TYPE_JWT);
     CHECK(cstr_equals(&cred->jwt.issuer, "https://fd200fd3-a2d9-457f-bc0b-f9b8ee7d2898.production.netfoundry.io:443"));
     ziti_credential_drop(cred);
