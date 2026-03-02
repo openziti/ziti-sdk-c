@@ -389,33 +389,6 @@ void ziti_ctrl_clear_auth(ziti_controller *ctrl) {
     }
 }
 
-static void ctrl_login_cb(ziti_api_session *s, ziti_error *e, struct ctrl_resp *resp) {
-    ziti_controller *ctrl = resp->ctrl;
-    if (e) {
-        CTRL_LOG(ERROR, "%s(%s)", e->code, e->message);
-        ziti_ctrl_clear_auth(resp->ctrl);
-    }
-
-    if (s) {
-        CTRL_LOG(DEBUG, "authenticated successfully session[%s]", s->id);
-        ctrl->has_token = true;
-        if (ctrl->legacy) {
-            tlsuv_http_header(ctrl->client, "zt-session", NULL);
-            tlsuv_http_header(ctrl->client, "zt-session", s->token);
-        }
-    }
-    ctrl_default_cb(s, e, resp);
-}
-
-static void ctrl_logout_cb(void *s, ziti_error *e, struct ctrl_resp *resp) {
-    ziti_controller *ctrl = resp->ctrl;
-    CTRL_LOG(DEBUG, "logged out");
-
-    ctrl->has_token = false;
-    tlsuv_http_header(ctrl->client, "zt-session", NULL);
-    ctrl_default_cb(s, e, resp);
-}
-
 static void ctrl_service_cb(ziti_service **services, ziti_error *e, struct ctrl_resp *resp) {
     ziti_service *s = services != NULL ? services[0] : NULL;
     ctrl_default_cb(s, e, resp);
@@ -599,7 +572,7 @@ static const char* ctrl_next_ep(ziti_controller *ctrl, const char *current) {
     } else if (model_list_size(&check) > 0) {
         model_list_iter it = model_list_iterator(&check);
 
-        // no controller is online just try random one from the check list
+        // no controller is online just try random one from the list
         int rand = (int) (uv_now(ctrl->loop) % model_map_size(&ctrl->endpoints));
         for (int i = 0; i < rand; i++) {
             it = model_list_it_next(it);
@@ -747,84 +720,6 @@ void ziti_ctrl_get_version(ziti_controller *ctrl, ctrl_version_cb cb, void *ctx)
     }
 }
 
-void ziti_ctrl_login(
-        ziti_controller *ctrl,
-        model_list *cfg_types,
-        void(*cb)(ziti_api_session *, const ziti_error *, void *),
-        void *ctx) {
-
-    ziti_auth_req authreq = {
-            .sdk_info = {
-                    .type = "ziti-sdk-c",
-                    .version = ziti_get_build_version(0),
-                    .revision = ziti_git_commit(),
-                    .branch = ziti_git_branch(),
-                    .app_id = APP_ID,
-                    .app_version = APP_VERSION,
-            },
-            .env_info = (ziti_env_info *)get_env_info(),
-            .config_types = {0}
-    };
-    if (cfg_types) {
-        authreq.config_types = *cfg_types;
-    }
-
-    size_t body_len;
-    char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
-
-
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_api_session_ptr_from_json, ctx);
-    resp->ctrl_cb = (ctrl_cb_t)ctrl_login_cb;
-
-    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/authenticate?method=cert", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
-    tlsuv_http_req_data(req, body, body_len, free_body_cb);
-
-    if (ctrl->is_ha) {
-        ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
-    }
-}
-
-
-void ziti_ctrl_login_ext_jwt(ziti_controller *ctrl, const char *jwt,
-                             void (*cb)(ziti_api_session *, const ziti_error *, void *),
-                             void *ctx) {
-    ziti_auth_req authreq = {
-            .sdk_info = {
-                    .type = "ziti-sdk-c",
-                    .version = (char *) ziti_get_build_version(0),
-                    .revision = (char *) ziti_git_commit(),
-                    .branch = (char *) ziti_git_branch(),
-                    .app_id = (char *) APP_ID,
-                    .app_version = (char *) APP_VERSION,
-            },
-            .env_info = (ziti_env_info *)get_env_info(),
-            .config_types = {0}
-    };
-
-    size_t body_len;
-    char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
-
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_api_session_ptr_from_json, ctx);
-    resp->ctrl_cb = (ctrl_cb_t)ctrl_login_cb;
-
-    string_buf_t *auth = new_string_buf();
-    string_buf_append(auth, "Bearer ");
-    string_buf_append(auth, jwt);
-    char *auth_hdr = string_buf_to_string(auth, NULL);
-
-    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/authenticate", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "authorization", auth_hdr);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
-    tlsuv_http_req_query(req, 1, &(tlsuv_http_pair){"method", "ext-jwt"});
-    tlsuv_http_req_data(req, body, body_len, free_body_cb);
-
-    free(auth_hdr);
-    string_buf_free(auth);
-    FREE(auth);
-}
-
-
 static bool verify_api_session(ziti_controller *ctrl, ctrl_resp_cb_t cb, void *ctx) {
     if(!ctrl->has_token) {
         CTRL_LOG(WARN, "no API session");
@@ -851,24 +746,9 @@ void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_ses
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_api_session_ptr_from_json, ctx);
-    resp->ctrl_cb = (ctrl_cb_t) ctrl_login_cb;
+    resp->ctrl_cb = (ctrl_cb_t)ctrl_default_cb;
 
     start_request(ctrl->client, "GET", "/current-api-session", ctrl_resp_cb, resp);
-}
-
-void ziti_ctrl_mfa_jwt(ziti_controller *ctrl, const char *token, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx) {
-    if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
-
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_api_session_ptr_from_json, ctx);
-    resp->ctrl_cb = (ctrl_cb_t) ctrl_login_cb;
-
-    string_buf_t *b = new_string_buf();
-    string_buf_fmt(b, "Bearer %s", token);
-    char *header = string_buf_to_string(b, NULL);
-
-
-    tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/current-api-session", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Authorization", header);
 }
 
 void ziti_ctrl_list_terminators(ziti_controller *ctrl, const char *service_id,
@@ -908,15 +788,6 @@ void ziti_ctrl_get_network_jwt(ziti_controller *ctrl, void(*cb)(ziti_network_jwt
     resp->paging = true;
     resp->base_path = "/network-jwts";
     ctrl_paging_req(resp);
-}
-
-void ziti_ctrl_logout(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
-    if(!verify_api_session(ctrl, cb, ctx)) return;
-
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
-    resp->ctrl_cb = (ctrl_cb_t) ctrl_logout_cb;
-
-    start_request(ctrl->client, "DELETE", "/current-api-session", ctrl_resp_cb, resp);
 }
 
 void ziti_ctrl_get_services_update(ziti_controller *ctrl, void (*cb)(ziti_service_update *, const ziti_error *, void *), void *ctx) {
@@ -1013,16 +884,6 @@ void ziti_ctrl_create_session(
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/sessions", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, "Content-Type", "application/json");
     tlsuv_http_req_data(req, content, len, free_body_cb);
-}
-
-void ziti_ctrl_get_sessions(
-        ziti_controller *ctrl, void (*cb)(ziti_session **, const ziti_error *, void *), void *ctx) {
-    if(!verify_api_session(ctrl, (ctrl_resp_cb_t)cb, ctx)) return;
-
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_session_array_from_json, ctx);
-    resp->paging = true;
-    resp->base_path = "/sessions";
-    ctrl_paging_req(resp);
 }
 
 static void enroll_pem_cb(void *body, const ziti_error *err, struct ctrl_resp *resp) {
@@ -1125,16 +986,6 @@ static void ctrl_paging_req(struct ctrl_resp *resp) {
     snprintf(path, sizeof(path), "%s%climit=%d&offset=%d", resp->base_path, query, resp->limit, resp->recd);
     CTRL_LOG(VERBOSE, "requesting %s", path);
     start_request(resp->ctrl->client, "GET", path, ctrl_resp_cb, resp);
-}
-
-
-void ziti_ctrl_login_mfa(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
-    if (!verify_api_session(ctrl, cb, ctx)) { return; }
-
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
-    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/authenticate/mfa", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
-    tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }
 
 void ziti_ctrl_post_mfa(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
@@ -1256,6 +1107,7 @@ void ziti_ctrl_create_api_certificate(ziti_controller *ctrl, const char *csr_pem
 
 static struct ctrl_resp *prepare_resp(ziti_controller *ctrl, ctrl_resp_cb_t cb, body_parse_fn parser, void *ctx) {
     struct ctrl_resp *resp = calloc(1, sizeof(struct ctrl_resp));
+    assert(resp);
     resp->body_parse_func = parser;
     resp->resp_cb = cb;
     resp->ctx = ctx;
@@ -1268,14 +1120,10 @@ void ziti_ctrl_enroll_token(ziti_controller *ctrl, const char *token, const char
                             void (*cb)(ziti_create_api_cert_resp *, const ziti_error *, void *), void *ctx) {
     assert(token != NULL);
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_create_api_cert_resp_ptr_from_json, ctx);
-    string_buf_t auth_header;
-    string_buf_init(&auth_header);
-    string_buf_append(&auth_header, "Bearer ");
-    string_buf_append(&auth_header, token);
-    char *bearer = string_buf_to_string(&auth_header, NULL);
+    cstr auth_header = cstr_from_fmt("Bearer %s", token);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/enroll/token", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Authorization", bearer);
+    tlsuv_http_req_header(req, "Authorization", cstr_str(&auth_header));
     tlsuv_http_req_header(req, "Content-Type", "application/json");
     json_object *body = json_object_new_object();
     if (csr) {
@@ -1284,7 +1132,6 @@ void ziti_ctrl_enroll_token(ziti_controller *ctrl, const char *token, const char
     char *body_str = strdup(json_object_to_json_string(body));
     tlsuv_http_req_data(req, body_str, strlen(body_str), free_body_cb);
 
-    free(bearer);
     json_object_put(body);
-    string_buf_free(&auth_header);
+    cstr_drop(&auth_header);
 }

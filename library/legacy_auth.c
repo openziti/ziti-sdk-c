@@ -290,7 +290,7 @@ static void legacy_session_cb(tlsuv_http_resp_t *resp, const char *err, json_obj
         break;
     }
 
-    AUTH_LOG(INFO, "%s in %" PRIu64 " ms", delay_type, delay);
+    AUTH_LOG(INFO, "%s in %" PRIu64 " s", delay_type, delay / 1000);
     uv_timer_start(&auth->timer, legacy_timer_cb, delay, 0);
 }
 
