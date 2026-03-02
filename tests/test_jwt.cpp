@@ -42,7 +42,7 @@ static char* url64to64(const char* in, size_t ilen, size_t *olen) {
     return out;
 }
 
-static char jwt[] =
+static const char jwt[] =
     "eyJhbGciOiJSUzI1NiIsImtpZCI6ImUwYzZhZTkxYzE0YzljOTViOGMwYTUyMzY4NmEzNzF"
     "jOGY1MGUxNDAiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2ZkMjAwZmQzLWEyZDk"
     "tNDU3Zi1iYzBiLWY5YjhlZTdkMjg5OC5wcm9kdWN0aW9uLm5ldGZvdW5kcnkuaW86NDQzIi"
@@ -95,7 +95,6 @@ TEST_CASE("zt_jwt_parse","[model]") {
 }
 
 TEST_CASE("jwt cred", "[model]") {
-    ziti_log_init(uv_default_loop(), TRACE, NULL);
     ziti_credential_t *cred = nullptr;
     int rc = ziti_credential_from_jwt(jwt, &cred);
     CHECK(rc == 0);
