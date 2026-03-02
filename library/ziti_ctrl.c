@@ -385,7 +385,7 @@ void ziti_ctrl_clear_auth(ziti_controller *ctrl) {
     if (ctrl->client) {
         CTRL_LOG(DEBUG, "clearing api session token for ziti_controller");
         tlsuv_http_header(ctrl->client, "zt-session", NULL);
-        tlsuv_http_header(ctrl->client, "authorization", NULL);
+        tlsuv_http_header(ctrl->client, "Authorization", NULL);
     }
 }
 

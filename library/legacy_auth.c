@@ -345,7 +345,7 @@ void legacy_timer_cb(uv_timer_t *t) {
         tlsuv_http_req_query(req, 1, &(tlsuv_http_pair){"method", "cert"});
     } else {
         cstr bearer = cstr_from_fmt("Bearer %s", cstr_str(&auth->primary_jwt));
-        tlsuv_http_req_header(req, "authorization", cstr_str(&bearer));
+        tlsuv_http_req_header(req, "Authorization", cstr_str(&bearer));
         tlsuv_http_req_query(req, 1, &(tlsuv_http_pair){"method", "ext-jwt"});
     }
 
