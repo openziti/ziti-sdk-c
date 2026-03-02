@@ -24,6 +24,7 @@
 
 #include "auth_method.h"
 #include "buffer.h"
+#include "credentials.h"
 #include "deadline.h"
 #include "metrics.h"
 #include "pool.h"
@@ -151,10 +152,6 @@ struct ztx_work_s {
 
 typedef STAILQ_HEAD(work_q, ztx_work_s) ztx_work_q;
 
-struct tls_credentials {
-    tlsuv_private_key_t key;
-    tlsuv_certificate_t cert;
-};
 
 struct ziti_ctx {
     ziti_config config;
