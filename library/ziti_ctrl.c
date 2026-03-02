@@ -1,16 +1,16 @@
-// Copyright (c) 2022-2024. NetFoundry Inc.
+// Copyright (c) 2022-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// You may obtain a copy of the License at
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #include <inttypes.h>
 #include <stdlib.h>
@@ -385,7 +385,7 @@ void ziti_ctrl_clear_auth(ziti_controller *ctrl) {
     if (ctrl->client) {
         CTRL_LOG(DEBUG, "clearing api session token for ziti_controller");
         tlsuv_http_header(ctrl->client, "zt-session", NULL);
-        ziti_ctrl_set_token(ctrl, NULL);
+        tlsuv_http_header(ctrl->client, "authorization", NULL);
     }
 }
 
@@ -657,27 +657,35 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
     return ZITI_OK;
 }
 
+int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const char *jwt) {
+    assert(jwt);
+
+    cstr header = cstr_from_fmt("Bearer %s", jwt);
+    tlsuv_http_header(ctrl->client, "Authorization", cstr_str(&header));
+    cstr_drop(&header);
+    return 0;
+}
+
+
 int ziti_ctrl_set_token(ziti_controller *ctrl, const char *token) {
     if (token == NULL) {
-        tlsuv_http_header(ctrl->client, "Authorization", NULL);
+        tlsuv_http_header(ctrl->client, ctrl->legacy ? "zt-session" : "Authorization", NULL);
         ctrl->has_token = false;
         return 0;
     }
 
-    string_buf_t *b = new_string_buf();
-    string_buf_fmt(b, "Bearer %s", token);
-    char *header = string_buf_to_string(b, NULL);
-
     ctrl->has_token = true;
-    tlsuv_http_header(ctrl->client, "Authorization", header);
+    if (ctrl->legacy) {
+        tlsuv_http_header(ctrl->client, "zt-session", token);
+    } else {
+        c_with(cstr bearer = cstr_from_fmt("Bearer %s", token), cstr_drop(&bearer)) {
+            tlsuv_http_header(ctrl->client, "Authorization", cstr_str(&bearer));
+        }
 
-    free(header);
-    delete_string_buf(b);
-
-    if (ctrl->is_ha) {
-        ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
+        if (ctrl->is_ha) {
+            ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
+        }
     }
-
     return ZITI_OK;
 }
 
