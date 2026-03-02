@@ -392,7 +392,6 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     ztx->auth_state = ZitiAuthStateFullyAuthenticated;
     const struct timeval *exp = ztx->auth_method->expiration(ztx->auth_method);
     assert(exp);
-    ztx->session_expiration = *exp;
     if (ztx->auth_method->kind == OIDC) {
         ZTX_LOG(VERBOSE, "token%s exp[%lu]", jwt_payload(session_token), (unsigned long)exp->tv_sec);
     } else {
@@ -1921,13 +1920,14 @@ static void ztx_prep_deadlines(ziti_context ztx) {
 void ztx_prepare(uv_prepare_t *prep) {
     ziti_context ztx = prep->data;
 
-    if (ztx->session_token && ztx->session_expiration.tv_sec > 0) {
+    if (ztx->session_token) {
+        const struct timeval *exp = ztx->auth_method ? ztx->auth_method->expiration(ztx->auth_method) : NULL;
         // session token should be kept upto date by the auth_method,
         // but sometimes it may be expired due to device going to sleep
         // so we want to clear it to avoid any channels getting outdated token
         uv_timeval64_t now;
         uv_gettimeofday(&now);
-        if (ztx->session_expiration.tv_sec < now.tv_sec) {
+        if (exp == NULL || exp->tv_sec < now.tv_sec) {
             ziti_error error = {
                 .err = ZITI_NOT_AUTHORIZED,
                 .message = "session token has expired",
