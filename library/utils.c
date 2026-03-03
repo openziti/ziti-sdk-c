@@ -778,11 +778,9 @@ cstr jwt_issuer(const char *jwt) {
     assert(jwt);
     json_object *claims = json_tokener_parse(jwt_payload(jwt));
     json_object *iss = json_object_object_get(claims, "iss");
-    if (iss) {
-        return cstr_from(json_object_get_string(iss));
-    }
-
-    return cstr_lit("<unknown>");
+    cstr result = iss ? cstr_from(json_object_get_string(iss)) : cstr_lit("<unknown>");
+    json_object_put(claims);
+    return result;
 }
 
 const char *jwt_payload(const char *jwt) {

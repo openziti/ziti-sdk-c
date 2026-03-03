@@ -167,6 +167,7 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
     NEWP(jwt, zt_jwt);
     if (zt_jwt_parse(token, jwt) != 0) {
         ZTX_LOG(WARN, "failed to parse JWT token");
+        free(jwt);
         return ZITI_JWT_INVALID;
     }
     ZTX_LOG(DEBUG, "received access token: %s", json_object_get_string(jwt->claims));
