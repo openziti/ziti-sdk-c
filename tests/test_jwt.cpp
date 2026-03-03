@@ -14,6 +14,7 @@
 
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/matchers/catch_matchers_string.hpp"
+#include <catch2/generators/catch_generators.hpp>
 #include <cstring>
 #include <zt_internal.h>
 #include "internal_model.h"
@@ -91,6 +92,92 @@ TEST_CASE("zt_jwt_parse","[model]") {
     CHECK_THAT(json_object_get_string(json_object_object_get(jwt_struct.claims, "sub")), Catch::Matchers::Equals("AZ5jYB-0F"));
     CHECK_THAT(json_object_get_string(json_object_object_get(jwt_struct.claims, "jti")), Catch::Matchers::Equals("09297479-4894-40a0-bb42-9030d4bdd05a"));
 
+    zt_jwt_drop(&jwt_struct);
+}
+
+TEST_CASE("zt_jwt_parse negative", "[model]") {
+    auto tc = GENERATE(table<const char*, const char*>({
+        // structure errors
+        {"empty string",           ""},
+        {"no dots",                "eyJhbGciOiJSUzI1NiJ9"},
+        {"only one dot",           "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJ0ZXN0In0"},
+        {"dots only",              "..."},
+        {"empty segments",         ".."},
+
+        // header decode/parse errors
+        {"invalid base64 header",  "!!!invalid!!!.cGF5bG9hZA.c2ln"},
+        {"header not json",        "bm90IGpzb24.cGF5bG9hZA.c2ln"},             // "not json"
+
+        // payload decode/parse errors
+        {"invalid base64 payload", "eyJhbGciOiJSUzI1NiJ9.!!!invalid!!!.c2ln"},
+        {"payload not json",       "eyJhbGciOiJSUzI1NiJ9.bm90IGpzb24.c2ln"},  // "not json"
+        {"payload is json array",  "eyJhbGciOiJSUzI1NiJ9.WzEsIDJd.c2ln"},     // [1, 2]
+        {"empty json payload",     "eyJhbGciOiJSUzI1NiJ9.e30.c2ln"},           // {}
+
+        // iss claim errors
+        {"missing iss claim",      "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.c2ln"},         // {"sub":"test"}
+        {"iss not a string",       "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOjEyM30.c2ln"},              // {"iss":123}
+        {"iss is null",            "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiBudWxsfQ.c2ln"},            // {"iss": null}
+        {"iss is boolean",         "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiB0cnVlfQ.c2ln"},            // {"iss": true}
+        {"iss is array",           "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiBbImEiXX0.c2ln"},           // {"iss": ["a"]}
+        {"iss is object",          "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiB7fX0.c2ln"},               // {"iss": {}}
+
+        // exp claim errors
+        {"exp not an int",         "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJ0ZXN0IiwiZXhwIjoibm90YW5pbnQifQ.c2ln"},  // {"iss":"test","exp":"notanint"}
+        {"exp is boolean",         "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiAidGVzdCIsICJleHAiOiB0cnVlfQ.c2ln"},       // {"iss":"test","exp":true}
+        {"exp is float",           "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiAidGVzdCIsICJleHAiOiAxLjV9.c2ln"},         // {"iss":"test","exp":1.5}
+    }));
+
+    DYNAMIC_SECTION(std::get<0>(tc)) {
+        zt_jwt jwt_struct{};
+        int rc = zt_jwt_parse(std::get<1>(tc), &jwt_struct);
+        CHECK(rc != 0);
+    }
+}
+
+TEST_CASE("zt_jwt_parse valid", "[model]") {
+    struct valid_case {
+        const char *label;
+        const char *input;
+        const char *expected_iss;
+        uint64_t expected_exp;
+    };
+    auto tc = GENERATE(values<valid_case>({
+        // {"iss":"https://example.com","exp":1704661695}
+        {"with exp",
+         "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJodHRwczovL2V4YW1wbGUuY29tIiwiZXhwIjoxNzA0NjYxNjk1fQ.c2ln",
+         "https://example.com", 1704661695},
+        // {"iss":"https://example.com"}
+        {"without exp",
+         "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJodHRwczovL2V4YW1wbGUuY29tIn0.c2ln",
+         "https://example.com", 0},
+        // json-c represents JSON null as NULL pointer, parser treats it as absent exp
+        // {"iss":"test","exp":null}
+        {"exp is null",
+         "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiAidGVzdCIsICJleHAiOiBudWxsfQ.c2ln",
+         "test", 0},
+        // parser doesn't validate header structure, only that it's valid JSON
+        // header: [1, 2], payload: {"iss":"test"}
+        {"header is json array",
+         "WzEsIDJd.eyJpc3MiOiJ0ZXN0In0.c2ln",
+         "test", 0},
+    }));
+
+    DYNAMIC_SECTION(tc.label) {
+        zt_jwt jwt_struct{};
+        int rc = zt_jwt_parse(tc.input, &jwt_struct);
+        CHECK(rc == 0);
+        CHECK_THAT(cstr_str(&jwt_struct.issuer), Catch::Matchers::Equals(tc.expected_iss));
+        CHECK(jwt_struct.expiration == tc.expected_exp);
+        zt_jwt_drop(&jwt_struct);
+    }
+}
+
+TEST_CASE("zt_jwt_parse extra dots", "[model]") {
+    zt_jwt jwt_struct{};
+    // header.payload.sig.extra — extra segment; verify no crash
+    int rc = zt_jwt_parse("eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJ0ZXN0In0.c2ln.ZXh0cmE", &jwt_struct);
+    (void)rc;
     zt_jwt_drop(&jwt_struct);
 }
 
