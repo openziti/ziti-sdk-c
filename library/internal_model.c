@@ -1,16 +1,16 @@
-// Copyright (c) 2020-2024. NetFoundry Inc.
+// Copyright (c) 2020-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// You may obtain a copy of the License at
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 
 #include <internal_model.h>
@@ -184,11 +184,11 @@ bool ziti_service_has_permission(const ziti_service *service, ziti_session_type 
     return false;
 }
 
-const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type) {
+const char *ziti_service_get_raw_config(const ziti_service *service, const char *cfg_type) {
     return (const char *) model_map_get(&service->config, cfg_type);
 }
 
-int ziti_service_get_config(ziti_service *service, const char *cfg_type, void *cfg,
+int ziti_service_get_config(const ziti_service *service, const char *cfg_type, void *cfg,
                             int (*parser)(void *, const char *, size_t)) {
     const char *cfg_json = ziti_service_get_raw_config(service, cfg_type);
     if (cfg_json == NULL) {

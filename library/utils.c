@@ -66,7 +66,6 @@
 #endif
 #endif
 
-#define APPLICATION_JSON "application/json"
 /*
  * from https://sourceforge.net/p/predef/wiki/Architectures/
  */
@@ -740,7 +739,7 @@ static void json_body_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
 }
 static void json_req_cb(tlsuv_http_resp_t *resp, void *ctx) {
     struct json_req_ctx *jctx = ctx;
-    const char *ct = tlsuv_http_resp_header(resp, "Content-Type");
+    const char *ct = tlsuv_http_resp_header(resp, HTTP_CONTENT_TYPE);
     if (ct == NULL) {
         const char *err = "missing content-type";
         if (resp->code < 0) {
@@ -770,7 +769,7 @@ tlsuv_http_req_t* ziti_json_request(
     jctx->ctx = ctx;
 
     tlsuv_http_req_t *req = tlsuv_http_req(clt, method, path, json_req_cb, jctx);
-    tlsuv_http_req_header(req, "Accept", APPLICATION_JSON);
+    tlsuv_http_req_header(req, HTTP_ACCEPT, APPLICATION_JSON);
     return req;
 }
 
