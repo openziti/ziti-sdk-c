@@ -24,6 +24,7 @@
 
 #include "auth_method.h"
 #include "buffer.h"
+#include "credentials.h"
 #include "deadline.h"
 #include "metrics.h"
 #include "pool.h"
@@ -151,10 +152,6 @@ struct ztx_work_s {
 
 typedef STAILQ_HEAD(work_q, ztx_work_s) ztx_work_q;
 
-struct tls_credentials {
-    tlsuv_private_key_t key;
-    tlsuv_certificate_t cert;
-};
 
 struct ziti_ctx {
     ziti_config config;
@@ -177,6 +174,7 @@ struct ziti_ctx {
     ziti_auth_state auth_state;
     ziti_mfa_cb mfa_cb;
     void *mfa_ctx;
+    model_map ext_jwt_tokens; // map<issuer, zt_jwt>
 
     model_map ext_signers;
     struct ext_oidc_client_s *ext_auth;
@@ -185,7 +183,6 @@ struct ziti_ctx {
 
     // HA access_token(JWT) or legacy ziti_api_session.token
     char *session_token;
-    timestamp session_expiration;
 
     ziti_identity_data *identity_data;
 

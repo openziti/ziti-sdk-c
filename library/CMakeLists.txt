@@ -79,6 +79,7 @@ set(ZITI_HEADER_FILES
 SET(ZITI_SRC_FILES
         sdk_info.c
         utils.c
+        credentials.c
         ziti.c
         config.c
         errors.c

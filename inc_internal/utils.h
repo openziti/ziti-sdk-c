@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <tlsuv/http.h>
 #include <ziti/ziti_log.h>
+#include <stc/cstr.h>
 
 #include "ziti/model_collections.h"
 #include "ziti/model_support.h"
@@ -65,6 +66,7 @@ extern const char *ziti_git_commit();
 
 extern void hexDump(char *desc, void *addr, int len);
 
+extern cstr jwt_issuer(const char *jwt);
 extern const char *jwt_payload(const char *jwt);
 
 void ziti_fmt_time(char *time_str, size_t time_str_len, uv_timeval64_t *tv);

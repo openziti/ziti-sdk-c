@@ -1,16 +1,16 @@
-// Copyright (c) 2019-2024. NetFoundry Inc.
+// Copyright (c) 2019-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// You may obtain a copy of the License at
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #include "../catch2_includes.hpp"
 
@@ -31,7 +31,7 @@ using namespace Catch::Matchers;
 TEST_CASE("invalid_controller", "[controller][GH-44]") {
     ziti_controller ctrl;
     uv_loop_t *loop = uv_default_loop();
-    resp_capture<ziti_version> version;
+    resp_capture<ziti_version*> version;
 
     PREP(ziti);
     model_list endpoints = {nullptr};
@@ -69,10 +69,11 @@ TEST_CASE("controller_test","[integ]") {
     REQUIRE(ziti_load_config(&config, conf) == ZITI_OK);
     REQUIRE(load_tls(&config, &tls, &creds) == ZITI_OK);
     REQUIRE(ziti_ctrl_init(loop, &ctrl, &config.controllers, tls) == ZITI_OK);
+    ziti_ctrl_set_legacy(&ctrl, true);
 
-    resp_capture<ziti_version> version;
-    resp_capture<ziti_api_session> session;
-    resp_capture<ziti_service> service;
+    resp_capture<ziti_version*> version;
+    resp_capture<ziti_api_session*> session;
+    resp_capture<ziti_service*> service;
 
     WHEN("get version and login") {
         auto v = ctrl_get(ctrl, ziti_ctrl_get_version);
@@ -81,8 +82,10 @@ TEST_CASE("controller_test","[integ]") {
         auto v1 = (const char*)model_map_get(&v->api_versions->edge, "v1");
         CHECK(v1 != nullptr);
 
-        auto s = ctrl_login(ctrl);
-        free_ziti_api_session_ptr(s);
+        auto auth = new_legacy_auth(loop, config.controller_url, tls, true);
+        auto token = auth_login(auth, loop);
+        CHECK(!token.empty());
+        auth->free(auth);
     }
 
     WHEN("try to get services before login") {
@@ -90,17 +93,19 @@ TEST_CASE("controller_test","[integ]") {
     }
 
     WHEN("try to login and get non-existing service") {
-        auto api_sesh = ctrl_login(ctrl);
-
+        ziti_auth_method_t *auth = new_legacy_auth(loop, config.controller_url, tls, true);
+        auto api_sesh = auth_login(auth, loop);
+        ziti_ctrl_set_token(&ctrl, api_sesh.c_str());
         auto s = ctrl_get1(ctrl, ziti_ctrl_get_service, "this-service-should-not-exist");
         THEN("should NOT get non-existent service") {
-            REQUIRE(s == nullptr);
+            CHECK(s == nullptr);
         }
-        free_ziti_api_session_ptr(api_sesh);
     }
 
     WHEN("try to login, get service, and session") {
-        auto api_session = ctrl_login(ctrl);
+        ziti_auth_method_t *auth = new_legacy_auth(loop, config.controller_url, tls, true);
+        auto token = auth_login(auth, loop);
+        ziti_ctrl_set_token(&ctrl, token.c_str());
 
         auto services = ctrl_get(ctrl, ziti_ctrl_get_services);
         ziti_service *s = services[0];
@@ -114,11 +119,9 @@ TEST_CASE("controller_test","[integ]") {
             free_ziti_session_ptr(ns);
             free_ziti_service_array(&services);
         }
-        AND_THEN("logout should succeed") {
-            ctrl_get(ctrl, ziti_ctrl_logout);
-        }
 
-        free_ziti_api_session_ptr(api_session);
+        auth->stop(auth);
+        auth->free(auth);
     }
 
     free_ziti_version(version.resp);

@@ -1,5 +1,19 @@
 
 
+// Copyright (c) 2026.  NetFoundry Inc
+//
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
+//
+// 	https://www.apache.org/licenses/LICENSE-2.0
+//
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
+
 #include <catch2/catch_all.hpp>
 #include <ziti/ziti.h>
 #include "oidc.h"
@@ -64,29 +78,6 @@ TEST_CASE("cltr-network-jwt", "[integ]") {
     free(sig);
 }
 
-TEST_CASE("ctrl-list-terminators", "[integ]") {
-    auto conf = TEST_CLIENT;
-    ziti_config config{};
-    tls_credentials creds{};
-    tls_context *tls = nullptr;
-    ziti_controller ctrl{};
-    uv_loop_t *loop = uv_default_loop();
-
-    REQUIRE(ziti_load_config(&config, conf) == ZITI_OK);
-    REQUIRE(load_tls(&config, &tls, &creds) == ZITI_OK);
-    REQUIRE(ziti_ctrl_init(loop, &ctrl, &config.controllers, tls) == ZITI_OK);
-
-    auto session = ctrl_login(ctrl);
-    CHECK(session != nullptr);
-
-    auto service = ctrl_get1(ctrl, ziti_ctrl_get_service, TEST_SERVICE);
-    auto list = ctrl_get1(ctrl, ziti_ctrl_list_terminators, service->id);
-    CHECK(list != nullptr);
-    free_ziti_terminator_array(&list);
-    free_ziti_service_ptr(service);
-    free_ziti_api_session_ptr(session);
-    ziti_ctrl_close(&ctrl);
-}
 
 TEST_CASE("ctrl-token-auth", "[integ]") {
     // auto l = uv_default_loop();

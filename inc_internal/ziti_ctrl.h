@@ -1,16 +1,16 @@
-// Copyright (c) 2019-2024. NetFoundry Inc.
+// Copyright (c) 2019-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// You may obtain a copy of the License at
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 
 #ifndef ZITI_SDK_CONTROLLER_H
@@ -62,6 +62,7 @@ typedef struct ziti_controller_s {
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls_context *tls);
 
 int ziti_ctrl_set_token(ziti_controller *ctrl, const char *access_token);
+int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const char *jwt);
 
 void ziti_ctrl_set_legacy(ziti_controller *ctrl, bool legacy);
 
@@ -79,13 +80,6 @@ void ziti_ctrl_clear_auth(ziti_controller *ctrl);
 
 void ziti_ctrl_get_version(ziti_controller *ctrl, ctrl_version_cb cb, void *ctx);
 
-void ziti_ctrl_login(ziti_controller *ctrl, model_list *cfg_types,
-                     void (*cb)(ziti_api_session *, const ziti_error *, void *),
-                     void *ctx);
-
-void ziti_ctrl_login_ext_jwt(ziti_controller *ctrl, const char *jwt,
-                             void (*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
-
 void ziti_ctrl_list_ext_jwt_signers(ziti_controller *ctrl,
                                     void (*cb)(ziti_jwt_signer_array, const ziti_error*, void*),
                                     void *ctx);
@@ -98,8 +92,6 @@ void ziti_ctrl_list_controllers(ziti_controller *ctrl,
                                 void (*cb)(ziti_controller_detail_array, const ziti_error*, void *ctx), void *ctx);
 
 void ziti_ctrl_current_api_session(ziti_controller *ctrl, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
-
-void ziti_ctrl_mfa_jwt(ziti_controller *ctrl, const char *token, void(*cb)(ziti_api_session *, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_create_api_certificate(ziti_controller *ctrl, const char *csr_pem, void(*cb)(ziti_create_api_cert_resp *, const ziti_error *, void *), void *ctx);
 
@@ -132,9 +124,6 @@ void ziti_ctrl_get_session(
         ziti_controller *ctrl, const char *session_id,
         void (*cb)(ziti_session *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_get_sessions(
-        ziti_controller *ctrl, void (*cb)(ziti_session **, const ziti_error *, void *), void *ctx);
-
 void ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_enroll(ziti_controller *ctrl, ziti_enrollment_method method, const char *token, const char *csr,
@@ -148,10 +137,6 @@ void ziti_ctrl_enroll_token(ziti_controller *ctrl, const char *token, const char
 void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(ziti_pr_response *, const ziti_error *, void *), void *ctx);
 
 void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(ziti_pr_response *, const ziti_error *, void *), void *ctx);
-
-
-//MFA
-void ziti_ctrl_login_mfa(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_post_mfa(ziti_controller *ctrl, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 

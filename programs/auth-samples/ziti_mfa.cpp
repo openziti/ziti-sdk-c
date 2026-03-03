@@ -1,18 +1,16 @@
-/*
- Copyright 2024 NetFoundry Inc.
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-
- https://www.apache.org/licenses/LICENSE-2.0
-
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
- */
+// Copyright (c) 2026.  NetFoundry Inc
+//
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
+//
+// 	https://www.apache.org/licenses/LICENSE-2.0
+//
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #include <CLI/CLI.hpp>
 
@@ -284,17 +282,21 @@ static void delete_mfa() {
 
 std::ofstream logfile("/tmp/ZITI_MFA", std::ios::ate);
 const char *lbl[] = {
-        "E", "W", "I", "D", "V", "T",
+       "Q", "E", "W", "I", "D", "V", "T",
 };
 
 static void logger(int level, const char *loc, const char *msg, size_t msglen) {
+    if (level < 0) return;
+    if (level > TRACE) {
+        level = TRACE;
+    }
     logfile << lbl[level] << ": " << loc << " " << std::string(msg, msglen) << std::endl;
 }
 
 int main(int argc, char *argv[]) {
     CLI::App app("ziti MFA test program", "ZITI_MFA");
 
-    ziti_log_init(loop, 3, logger);
+    ziti_log_init(loop, ZITI_LOG_DEFAULT_LEVEL, logger);
     app.add_option("-i,--identity", identity, "ziti identity")->required()->check(CLI::ExistingFile);
 
     app.add_subcommand("enroll", "enroll identity to MFA")->final_callback(enroll_mfa);
