@@ -1,16 +1,16 @@
-// Copyright (c) 2020-2024. NetFoundry Inc.
+// Copyright (c) 2020-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// You may obtain a copy of the License at
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #ifndef ZITI_SDK_ZITI_MODEL_H
 #define ZITI_SDK_ZITI_MODEL_H
@@ -319,11 +319,11 @@ DECLARE_MODEL(ziti_mfa_enrollment, ZITI_MFA_ENROLLMENT_MODEL)
 
 ZITI_FUNC model_bool ziti_service_has_permission(const ziti_service *service, ziti_session_type sessionType);
 
-ZITI_FUNC const char *ziti_service_get_raw_config(ziti_service *service, const char *cfg_type);
+ZITI_FUNC const char *ziti_service_get_raw_config(const ziti_service *service, const char *cfg_type);
 
 typedef int (*parse_service_cfg_f)(void *, const char *, size_t);
 
-ZITI_FUNC int ziti_service_get_config(ziti_service *service, const char *cfg_type, void *cfg,
+ZITI_FUNC int ziti_service_get_config(const ziti_service *service, const char *cfg_type, void *cfg,
                                       parse_service_cfg_f parse_func);
 
 ZITI_FUNC int ziti_intercept_from_client_cfg(ziti_intercept_cfg_v1 *intercept, const ziti_client_cfg_v1 *client_cfg);

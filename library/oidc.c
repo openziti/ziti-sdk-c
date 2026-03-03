@@ -1,16 +1,16 @@
-// Copyright (c) 2023-2024. NetFoundry Inc.
+// Copyright (c) 2023-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// You may obtain a copy of the License at
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #include <oidc.h>
 #include <assert.h>
@@ -104,7 +104,7 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
     tlsuv_http_set_ssl(&clt->http, tls);
     tlsuv_http_connect_timeout(&clt->http, 10000);
     tlsuv_http_idle_keepalive(&clt->http, 0);
-    tlsuv_http_header(&clt->http, "Accept", "application/json");
+    tlsuv_http_header(&clt->http, HTTP_ACCEPT, APPLICATION_JSON);
 
     clt->timer = calloc(1, sizeof(*clt->timer));
     uv_timer_init(loop, clt->timer);
@@ -276,7 +276,7 @@ static void request_token(auth_req *req, const char *auth_code) {
 static void code_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
     auth_req *req = ctx;
     if (http_resp->code / 100 == 3) {
-        const char *redirect = tlsuv_http_resp_header(http_resp, "Location");
+        const char *redirect = tlsuv_http_resp_header(http_resp, HTTP_LOCATION);
         struct tlsuv_url_s uri;
         tlsuv_parse_url(&uri, redirect);
         char *code = strstr(uri.query, "code=");
@@ -329,7 +329,7 @@ static void login_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
             req->clt->token_cb(req->clt, OIDC_TOTP_NEEDED, NULL);
         }
     } else if (http_resp->code / 100 == 3) {
-        const char *redirect = tlsuv_http_resp_header(http_resp, "Location");
+        const char *redirect = tlsuv_http_resp_header(http_resp, HTTP_LOCATION);
         struct tlsuv_url_s uri;
         tlsuv_parse_url(&uri, redirect);
         tlsuv_http_set_path_prefix(&req->clt->http, NULL);
@@ -348,7 +348,7 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
     oidc_client_t *clt = req->clt;
     OIDC_LOG(DEBUG, "%d %s err[%s] body=%s", http_resp->code, http_resp->status, err, json_object_to_json_string(resp));
     if (http_resp->code / 100 == 3) {
-        const char *redirect = tlsuv_http_resp_header(http_resp, "Location");
+        const char *redirect = tlsuv_http_resp_header(http_resp, HTTP_LOCATION);
         struct tlsuv_url_s uri;
         tlsuv_parse_url(&uri, redirect);
         char *p = strstr(uri.query, "authRequestID=");
@@ -364,9 +364,9 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
         tlsuv_http_set_path_prefix(&req->clt->http, NULL);
         tlsuv_http_req_t *login_req = ziti_json_request(&req->clt->http, "POST", path, login_cb, req);
         if (!cstr_is_empty(&clt->jwt_token_auth)) {
-            tlsuv_http_req_header(login_req, "Authorization", cstr_str(&clt->jwt_token_auth));
+            tlsuv_http_req_header(login_req, HTTP_AUTHORIZATION, cstr_str(&clt->jwt_token_auth));
         }
-        tlsuv_http_req_header(login_req, "Content-Type", "application/json");
+        tlsuv_http_req_header(login_req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
         ziti_auth_req authreq = {
             .sdk_info = {
                 .type = "ziti-sdk-c",
@@ -455,7 +455,7 @@ static void on_totp(tlsuv_http_resp_t *resp, void *ctx) {
     if (code == 3) {
         req->clt->token_cb(req->clt, OIDC_TOTP_SUCCESS, NULL);
         req->totp = false;
-        const char *redirect = tlsuv_http_resp_header(resp, "Location");
+        const char *redirect = tlsuv_http_resp_header(resp, HTTP_LOCATION);
         struct tlsuv_url_s uri;
         tlsuv_parse_url(&uri, redirect);
         tlsuv_http_req(&req->clt->http, "GET", uri.path, code_cb, req);
@@ -470,13 +470,13 @@ static void on_totp(tlsuv_http_resp_t *resp, void *ctx) {
 
 int oidc_client_token(oidc_client_t *clt, const char *token) {
     cstr_clear(&clt->jwt_token_auth);
-    cstr_append_fmt(&clt->jwt_token_auth, "Bearer %s", token);
+    cstr_append_fmt(&clt->jwt_token_auth, HTTP_BEARER_FMT, token);
 
     if (clt->request) {
         auth_req *req = clt->request;
         tlsuv_http_set_path_prefix(&clt->http, NULL);
         tlsuv_http_req_t *r = ziti_json_request(&clt->http, "POST", "/oidc/login/ext-jwt", login_cb, req);
-        tlsuv_http_req_header(r, "Authorization", cstr_str(&clt->jwt_token_auth));
+        tlsuv_http_req_header(r, HTTP_AUTHORIZATION, cstr_str(&clt->jwt_token_auth));
         tlsuv_http_req_form(r, 1, &(tlsuv_http_pair) {"id", req->id});
     }
     return 0;
@@ -658,7 +658,7 @@ static void refresh_time_cb(uv_timer_t *t) {
 
     tlsuv_http_set_url(&clt->http, token_url);
     tlsuv_http_req_t *req = ziti_json_request(&clt->http, "POST", NULL, refresh_cb, clt);
-    tlsuv_http_req_header(req, "Authorization", get_basic_auth_header(INTERNAL_CLIENT_ID));
+    tlsuv_http_req_header(req, HTTP_AUTHORIZATION, get_basic_auth_header(INTERNAL_CLIENT_ID));
     const char *refresher = json_object_get_string(tok);
     OIDC_LOG(DEBUG, "using refresh_token[%s]", jwt_payload(refresher));
     tlsuv_http_req_form(req, 3, (tlsuv_http_pair[]) {

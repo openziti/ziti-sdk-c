@@ -209,8 +209,8 @@ static int legacy_auth_totp(ziti_auth_method_t *self, const char *code, auth_mfa
     char *code_json = ziti_mfa_code_body(code);
 
     tlsuv_http_req_t *req = ziti_json_request(&auth->http, "POST", "/authenticate/mfa", legacy_totp_cb, auth);
-    tlsuv_http_req_header(req, "zt-session", auth->session ? auth->session->token : NULL);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_ZT_SESSION, auth->session ? auth->session->token : NULL);
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     tlsuv_http_req_data(req, code_json, strlen(code_json), free_body_cb);
     return 0;
 }
@@ -307,7 +307,7 @@ void legacy_timer_cb(uv_timer_t *t) {
         } else {
             AUTH_LOG(DEBUG, "refreshing session[%p]", auth->session->id);
             tlsuv_http_req_t *req = ziti_json_request(&auth->http, "GET", "/current-api-session", legacy_session_cb, auth);
-            tlsuv_http_req_header(req, "zt-session", auth->session->token);
+            tlsuv_http_req_header(req, HTTP_ZT_SESSION, auth->session->token);
             return;
         }
     }
@@ -344,12 +344,12 @@ void legacy_timer_cb(uv_timer_t *t) {
     if (auth->has_x509) {
         tlsuv_http_req_query(req, 1, &(tlsuv_http_pair){"method", "cert"});
     } else {
-        cstr bearer = cstr_from_fmt("Bearer %s", cstr_str(&auth->primary_jwt));
-        tlsuv_http_req_header(req, "Authorization", cstr_str(&bearer));
+        cstr bearer = cstr_from_fmt(HTTP_BEARER_FMT, cstr_str(&auth->primary_jwt));
+        tlsuv_http_req_header(req, HTTP_AUTHORIZATION, cstr_str(&bearer));
         tlsuv_http_req_query(req, 1, &(tlsuv_http_pair){"method", "ext-jwt"});
     }
 
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }
 

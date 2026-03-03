@@ -203,8 +203,8 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
         r->body_cb = ctrl_body_cb;
 
         const char *hv;
-        if ((hv = find_header(r, "content-type")) != NULL &&
-            strncmp(hv, "application/json", strlen("application/json")) == 0) {
+        if ((hv = find_header(r, HTTP_CONTENT_TYPE)) != NULL &&
+            strncmp(hv, APPLICATION_JSON, strlen(APPLICATION_JSON)) == 0) {
             resp->resp_content = ctrl_content_json;
             resp->content_proc = json_tokener_new();
         } else {
@@ -384,8 +384,8 @@ void ziti_ctrl_clear_auth(ziti_controller *ctrl) {
     ctrl->has_token = false;
     if (ctrl->client) {
         CTRL_LOG(DEBUG, "clearing api session token for ziti_controller");
-        tlsuv_http_header(ctrl->client, "zt-session", NULL);
-        tlsuv_http_header(ctrl->client, "Authorization", NULL);
+        tlsuv_http_header(ctrl->client, HTTP_ZT_SESSION, NULL);
+        tlsuv_http_header(ctrl->client, HTTP_AUTHORIZATION, NULL);
     }
 }
 
@@ -621,7 +621,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
     tlsuv_http_set_ssl(ctrl->client, tls);
     tlsuv_http_idle_keepalive(ctrl->client, ZITI_CTRL_KEEPALIVE);
     tlsuv_http_connect_timeout(ctrl->client, ZITI_CTRL_TIMEOUT);
-    tlsuv_http_header(ctrl->client, "Accept", "application/json");
+    tlsuv_http_header(ctrl->client, HTTP_ACCEPT, APPLICATION_JSON);
     ctrl->has_token = false;
     ctrl->instance_id = NULL;
 
@@ -633,8 +633,8 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
 int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const char *jwt) {
     assert(jwt);
 
-    cstr header = cstr_from_fmt("Bearer %s", jwt);
-    tlsuv_http_header(ctrl->client, "Authorization", cstr_str(&header));
+    cstr header = cstr_from_fmt(HTTP_BEARER_FMT, jwt);
+    tlsuv_http_header(ctrl->client, HTTP_AUTHORIZATION, cstr_str(&header));
     cstr_drop(&header);
     return 0;
 }
@@ -642,17 +642,17 @@ int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const char *jwt) {
 
 int ziti_ctrl_set_token(ziti_controller *ctrl, const char *token) {
     if (token == NULL) {
-        tlsuv_http_header(ctrl->client, ctrl->legacy ? "zt-session" : "Authorization", NULL);
+        tlsuv_http_header(ctrl->client, ctrl->legacy ? HTTP_ZT_SESSION : HTTP_AUTHORIZATION, NULL);
         ctrl->has_token = false;
         return 0;
     }
 
     ctrl->has_token = true;
     if (ctrl->legacy) {
-        tlsuv_http_header(ctrl->client, "zt-session", token);
+        tlsuv_http_header(ctrl->client, HTTP_ZT_SESSION, token);
     } else {
-        c_with(cstr bearer = cstr_from_fmt("Bearer %s", token), cstr_drop(&bearer)) {
-            tlsuv_http_header(ctrl->client, "Authorization", cstr_str(&bearer));
+        c_with(cstr bearer = cstr_from_fmt(HTTP_BEARER_FMT, token), cstr_drop(&bearer)) {
+            tlsuv_http_header(ctrl->client, HTTP_AUTHORIZATION, cstr_str(&bearer));
         }
 
         if (ctrl->is_ha) {
@@ -865,7 +865,7 @@ void ziti_ctrl_get_session(
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_session_ptr_from_json, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", req_path, ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
 }
 
 void ziti_ctrl_create_session(
@@ -882,7 +882,7 @@ void ziti_ctrl_create_session(
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_session_ptr_from_json, ctx);
     resp->ctrl = ctrl;
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/sessions", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     tlsuv_http_req_data(req, content, len, free_body_cb);
 }
 
@@ -899,7 +899,7 @@ static void ctrl_enroll_http_cb(tlsuv_http_resp_t *http_resp, void *data) {
         ctrl_resp_cb(http_resp, data);
     }
     else {
-        const char *content_type = tlsuv_http_resp_header(http_resp, "content-type");
+        const char *content_type = tlsuv_http_resp_header(http_resp, HTTP_CONTENT_TYPE);
         if (content_type != NULL && strcasecmp("application/x-pem-file", content_type) == 0) {
             struct ctrl_resp *resp = data;
             resp->resp_content = ctrl_content_text;
@@ -927,10 +927,10 @@ ziti_ctrl_enroll(ziti_controller *ctrl, ziti_enrollment_method method, const cha
     tlsuv_http_req_query(req, q_count, q_params);
 
     if (csr_copy) {
-        tlsuv_http_req_header(req, "Content-Type", "text/plain");
+        tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, TEXT_PLAIN);
         tlsuv_http_req_data(req, csr_copy, strlen(csr_copy), free_body_cb);
     } else {
-        tlsuv_http_req_header(req, "Content-Type", "application/json");
+        tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
         if (name != NULL) {
             ziti_identity id = {.name = name};
             size_t body_len;
@@ -945,7 +945,7 @@ ziti_ctrl_get_well_known_certs(ziti_controller *ctrl, void (*cb)(char *, const z
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
     resp->resp_content = ctrl_content_text;   // Make no attempt in ctrl_resp_cb to parse response as JSON
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/.well-known/est/cacerts", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Accept", "application/pkcs7-mime");
+    tlsuv_http_req_header(req, HTTP_ACCEPT, "application/pkcs7-mime");
 }
 
 void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
@@ -955,7 +955,7 @@ void ziti_pr_post(ziti_controller *ctrl, char *body, size_t body_len,
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_pr_response_ptr_from_json, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/posture-response", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     char *copy = strdup(body);
     tlsuv_http_req_data(req, copy, body_len, free_body_cb);
 }
@@ -967,7 +967,7 @@ void ziti_pr_post_bulk(ziti_controller *ctrl, char *body, size_t body_len,
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_pr_response_ptr_from_json, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/posture-response-bulk", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     char *copy = strdup(body);
     tlsuv_http_req_data(req, copy, body_len, free_body_cb);
 }
@@ -993,7 +993,7 @@ void ziti_ctrl_post_mfa(ziti_controller *ctrl, void(*cb)(void *, const ziti_erro
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/current-identity/mfa", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     tlsuv_http_req_data(req, NULL, 0, free_body_cb);
 }
 
@@ -1003,7 +1003,7 @@ void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, c
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_mfa_enrollment_ptr_from_json, ctx);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/current-identity/mfa", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
 }
 
 void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char *code, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
@@ -1011,7 +1011,7 @@ void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char *code, void(*cb)(void *, c
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "DELETE", "/current-identity/mfa", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     tlsuv_http_req_header(req, "mfa-validation-code", code);
 }
 
@@ -1020,7 +1020,7 @@ void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char *body, size_t body_le
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/current-identity/mfa/verify", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }
 
@@ -1032,7 +1032,7 @@ void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char *code, void(*c
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/current-identity/mfa/recovery-codes", ctrl_resp_cb,
                                           resp);
     tlsuv_http_req_header(req, "mfa-validation-code", code);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
 }
 
 void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
@@ -1042,7 +1042,7 @@ void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/current-identity/mfa/recovery-codes", ctrl_resp_cb,
                                           resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }
 
@@ -1061,7 +1061,7 @@ void ziti_ctrl_extend_cert_authenticator(ziti_controller *ctrl, const char *auth
     char *body = ziti_extend_cert_authenticator_req_to_json(&extend_req, 0, &body_len);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", path, ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }
 
@@ -1080,7 +1080,7 @@ void ziti_ctrl_verify_extend_cert_authenticator(ziti_controller *ctrl, const cha
     char *body = ziti_verify_extend_cert_authenticator_req_to_json(&verify_req, 0, &body_len);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", path, ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }
 
@@ -1101,7 +1101,7 @@ void ziti_ctrl_create_api_certificate(ziti_controller *ctrl, const char *csr_pem
     char *body = ziti_create_api_cert_req_to_json(&cert_req, 0, &body_len);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", path, ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }
 
@@ -1120,11 +1120,11 @@ void ziti_ctrl_enroll_token(ziti_controller *ctrl, const char *token, const char
                             void (*cb)(ziti_create_api_cert_resp *, const ziti_error *, void *), void *ctx) {
     assert(token != NULL);
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_create_api_cert_resp_ptr_from_json, ctx);
-    cstr auth_header = cstr_from_fmt("Bearer %s", token);
+    cstr auth_header = cstr_from_fmt(HTTP_BEARER_FMT, token);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/enroll/token", ctrl_resp_cb, resp);
-    tlsuv_http_req_header(req, "Authorization", cstr_str(&auth_header));
-    tlsuv_http_req_header(req, "Content-Type", "application/json");
+    tlsuv_http_req_header(req, HTTP_AUTHORIZATION, cstr_str(&auth_header));
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     json_object *body = json_object_new_object();
     if (csr) {
         json_object_object_add(body, "clientCsr", json_object_new_string(csr));

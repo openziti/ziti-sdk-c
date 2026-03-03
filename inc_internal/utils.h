@@ -142,6 +142,17 @@ if (!uv_is_closing((uv_handle_t*)(h))) uv_close((uv_handle_t*)(h), (uv_close_cb)
 
 #define CALL_CB(cb, ...) if ((cb) != NULL) (cb)(__VA_ARGS__)
 
+// common HTTP constants
+#define HTTP_AUTHORIZATION "Authorization"
+#define HTTP_CONTENT_TYPE "Content-Type"
+#define HTTP_ACCEPT "Accept"
+#define HTTP_LOCATION "Location"
+#define APPLICATION_JSON "application/json"
+#define TEXT_PLAIN "text/plain"
+#define HTTP_BEARER_FMT "Bearer %s"
+#define HTTP_ZT_SESSION "zt-session"
+
+
 /**
  * Split string based on delimiters.
  * strings are appended to the provided list. Caller is responsible to freeing resulting strings -

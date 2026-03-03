@@ -1,16 +1,16 @@
-// Copyright (c) 2023-2024. NetFoundry Inc.
+// Copyright (c) 2023-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// You may obtain a copy of the License at
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #include <oidc.h>
 #include <assert.h>
@@ -157,7 +157,7 @@ int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
 
     tlsuv_http_connect_timeout(&clt->http, 10 * 1000);
     tlsuv_http_idle_keepalive(&clt->http, 0); // no reason to keep idle connections
-    tlsuv_http_header(&clt->http, "Accept", "application/json");
+    tlsuv_http_header(&clt->http, HTTP_ACCEPT, APPLICATION_JSON);
 
     clt->timer = calloc(1, sizeof(*clt->timer));
     uv_timer_init(loop, clt->timer);
@@ -783,7 +783,7 @@ static void ext_refresh_time_cb(uv_timer_t *t) {
 
     tlsuv_http_set_url(&clt->http, token_url);
     tlsuv_http_req_t *req = ziti_json_request(&clt->http, "POST", NULL, refresh_cb, clt);
-    tlsuv_http_req_header(req, "Authorization",
+    tlsuv_http_req_header(req, HTTP_AUTHORIZATION,
                           get_basic_auth_header(clt->signer_cfg.client_id));
     const char *refresher = json_object_get_string(tok);
     tlsuv_http_req_form(req, 3, (tlsuv_http_pair[]) {
