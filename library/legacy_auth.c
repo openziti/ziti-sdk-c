@@ -146,19 +146,16 @@ int legacy_auth_stop(ziti_auth_method_t *self) {
 
 static void close_cb(uv_timer_t *t) {
     struct legacy_auth_s *auth = container_of(t, struct legacy_auth_s, timer);
-    free_ziti_api_session_ptr(auth->session);
-    cstr_drop(&auth->primary_jwt);
-    cstr_drop(&auth->secondary_jwt);
     free(auth);
 }
 
 void legacy_auth_free(ziti_auth_method_t *self) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
     free_ziti_api_session_ptr(auth->session);
+    auth->session = NULL;
     cstr_drop(&auth->primary_jwt);
     cstr_drop(&auth->secondary_jwt);
-    tlsuv_http_close(&auth->http, NULL);
-    
+
     uv_close((uv_handle_t *)&auth->timer, (uv_close_cb)close_cb);
     tlsuv_http_close(&auth->http, NULL);
 }
