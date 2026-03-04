@@ -179,6 +179,7 @@ int oidc_client_configure(oidc_client_t *clt, oidc_config_cb cb) {
         clt->need_refresh = true;
     }
 
+    uv_timer_stop(clt->timer);
     clt->configuring = true;
     clt->config_cb = cb;
     json_object_put(clt->config);
@@ -640,10 +641,9 @@ static void refresh_time_cb(uv_timer_t *t) {
     }
 
     OIDC_LOG(DEBUG, "refreshing OIDC token");
-    assert(clt->config);
     json_object *tok = json_object_object_get(clt->tokens, "refresh_token");
-    if (tok == NULL) {
-        OIDC_LOG(DEBUG, "must restart authentication flow: no refresh_token");
+    if (clt->config == NULL || tok == NULL) {
+        OIDC_LOG(DEBUG, "must restart authentication flow: no configuration or refresh_token");
         oidc_client_start(clt, clt->token_cb);
         return;
     }
