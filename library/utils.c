@@ -126,8 +126,6 @@ static const char *(*get_elapsed)();
 
 static const char *get_elapsed_time();
 
-static const char *get_utc_time();
-
 static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen);
 
 static uv_loop_t *ts_loop;
@@ -397,22 +395,24 @@ static const char *get_elapsed_time() {
     return log_timestamp;
 }
 
-static const char *get_utc_time() {
+const char *get_utc_time() {
     uint64_t now = uv_now(ts_loop);
-    if (now > last_update) {
-        last_update = now;
+    static uint64_t utc_last_update = 0;
+    static char utc_timestamp[64];
+    if (now > utc_last_update) {
+        utc_last_update = now;
 
         uv_timeval64_t ts;
         uv_gettimeofday(&ts);
         time_t t = ts.tv_sec;
         struct tm *tm = gmtime(&t);
 
-        snprintf(log_timestamp, sizeof(log_timestamp), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
+        snprintf(utc_timestamp, sizeof(utc_timestamp), "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
                  1900 + tm->tm_year, tm->tm_mon + 1, tm->tm_mday,
                  tm->tm_hour, tm->tm_min, tm->tm_sec, ts.tv_usec / 1000
         );
     }
-    return log_timestamp;
+    return utc_timestamp;
 }
 
 int lt_zero(int v) { return v < 0; }

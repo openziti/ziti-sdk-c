@@ -172,6 +172,8 @@ int load_file(const char *path, size_t pathlen, char **content, size_t *size);
 
 uint64_t next_backoff(int *count, int max, uint64_t base);
 
+const char *get_utc_time();
+
 tlsuv_http_req_t* ziti_json_request(
     tlsuv_http_t *clt, const char *method, const char *path,
     void (*cb)(tlsuv_http_resp_t *resp, const char *err, json_object *content, void *ctx),

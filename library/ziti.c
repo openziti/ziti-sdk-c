@@ -858,6 +858,9 @@ int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
 
 void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
     uint64_t now = uv_now(ztx->loop);
+    uv_timeval64_t now_ts = {};
+    uv_gettimeofday(&now_ts);
+
     printer(ctx, "\n======= Application Info ==========\n");
     printer(ctx, "Application:\t%s@%s\n", APP_ID ? APP_ID : "<unset>", APP_VERSION ? APP_VERSION : "<unknown>");
     const ziti_version *sdk_ver = ziti_get_version();
@@ -871,8 +874,10 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     if (info->device_id) {
         printer(ctx, "Device ID: %s\n", info->device_id);
     }
-    printer(ctx, "OS/arch:  %s %s (%s/%s)\n", info->os, info->arch, info->os_release, info->os_version);
-    printer(ctx, "Hostname: %s/%s\n", info->hostname, info->domain);
+    printer(ctx, "OS/arch:      %s %s (%s/%s)\n", info->os, info->arch, info->os_release, info->os_version);
+    printer(ctx, "Hostname:     %s/%s\n", info->hostname, info->domain);
+    printer(ctx, "Current time: %s (%" PRIu64 ".%0" PRIu64 ")",
+            get_utc_time(), now_ts.tv_sec, now_ts.tv_usec / 1000);
 
     printer(ctx, "\n=================\nZiti Context:\n");
     printer(ctx, "ID:\t%d\n", ztx->id);
@@ -920,6 +925,25 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         }
     } else {
         printer(ctx, "No Session found\n");
+    }
+
+    printer(ctx, "\n=================\nExternal Credentials:\n");
+    const char *signer_name;
+    ziti_jwt_signer *signer;
+    printer(ctx, "ext signers[%zd]:\n", model_map_size(&ztx->ext_signers));
+    MODEL_MAP_FOREACH(signer_name, signer, &ztx->ext_signers) {
+        printer(ctx, "\t%s: id[%s] provider[%s]\n",
+                signer_name, signer->id,
+                signer->provider_url ? signer->provider_url : "(none)");
+    }
+
+    const char *iss;
+    zt_jwt *jwt;
+    printer(ctx, "ext jwt tokens[%zd]:\n", model_map_size(&ztx->ext_jwt_tokens));
+    MODEL_MAP_FOREACH(iss, jwt, &ztx->ext_jwt_tokens) {
+        printer(ctx, "\tissuer[%s] expiration[%" PRIu64 "]%s\n",
+                iss, jwt->expiration,
+                (jwt->expiration != 0 && jwt->expiration < now_ts.tv_sec) ? " EXPIRED" : "");
     }
 
     printer(ctx, "\n=================\nServices:\n");
