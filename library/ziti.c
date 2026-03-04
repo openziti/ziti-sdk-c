@@ -537,6 +537,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         ziti_set_unauthenticated(ztx, NULL);
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
         ztx->enabled = false;
+        ziti_ctrl_close(ztx_get_controller(ztx));
 
         if (ztx->closing) {
             shutdown_and_free(ztx);
