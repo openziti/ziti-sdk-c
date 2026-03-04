@@ -538,6 +538,10 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
         ztx->enabled = false;
         ziti_ctrl_close(ztx_get_controller(ztx));
+        if (ztx->tlsCtx) {
+            ztx->tlsCtx->free_ctx(ztx->tlsCtx);
+            ztx->tlsCtx = NULL;
+        }
 
         if (ztx->closing) {
             shutdown_and_free(ztx);
