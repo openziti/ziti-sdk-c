@@ -735,6 +735,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         message_get_bytes_header(msg, HelloVersionHeader, (const uint8_t **) &erVersion, &erVersionLen);
         CH_LOG(INFO, "connected. EdgeRouter version: %.*s", (int) erVersionLen, erVersion);
         ch->state = Connected;
+        ch->connect_time = uv_now(ch->loop);
         FREE(ch->version);
         ch->version = calloc(1, erVersionLen + 1);
         memcpy(ch->version, erVersion, erVersionLen);
@@ -853,6 +854,7 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
         ch->notify_cb(ch, EdgeRouterDisconnected, ziti_err, ch->notify_ctx);
     }
     ch->state = Disconnected;
+    ch->connect_time = 0;
 
     ch->latency = UINT64_MAX;
     clear_deadline(&ch->deadline);

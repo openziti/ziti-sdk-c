@@ -976,7 +976,8 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         printer(ctx, "\tconnected[%c] version[%s] address[%s]",
                 ziti_channel_is_connected(ch) ? 'Y' : 'N', ch->version, ch->url);
         if (ziti_channel_is_connected(ch)) {
-            printer(ctx, " latency[%" PRIu64 "]\n", ziti_channel_latency(ch));
+            printer(ctx, " latency[%" PRIu64 "] connected[%" PRIu64 "s]\n",
+                    ziti_channel_latency(ch), (now - ch->connect_time) / 1000);
         } else {
             printer(ctx, "\n");
         }

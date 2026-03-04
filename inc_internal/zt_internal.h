@@ -88,6 +88,7 @@ struct ziti_channel {
 
     uint64_t latency;
     struct waiter_s *latency_waiter;
+    uint64_t connect_time;
     uint64_t last_read;
     uint64_t last_write;
     uint64_t last_write_delay;
