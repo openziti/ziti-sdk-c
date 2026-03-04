@@ -941,9 +941,10 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     zt_jwt *jwt;
     printer(ctx, "ext jwt tokens[%zd]:\n", model_map_size(&ztx->ext_jwt_tokens));
     MODEL_MAP_FOREACH(iss, jwt, &ztx->ext_jwt_tokens) {
-        printer(ctx, "\tissuer[%s] expiration[%" PRIu64 "]%s\n",
-                iss, jwt->expiration,
-                (jwt->expiration != 0 && jwt->expiration < now_ts.tv_sec) ? " EXPIRED" : "");
+        printer(ctx,
+                "\tissuer[%s] expiration[%" PRIu64 "]%s claims%s\n",
+                iss, jwt->expiration, (jwt->expiration != 0 && jwt->expiration < now_ts.tv_sec) ? " EXPIRED" : "",
+                json_object_get_string(jwt->claims));
     }
 
     printer(ctx, "\n=================\nServices:\n");
