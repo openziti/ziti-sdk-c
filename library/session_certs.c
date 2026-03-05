@@ -29,24 +29,27 @@ static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e,
         ZTX_LOG(ERROR, "failed to create session cert: %d/%s", (int)e->err, e->message);
     } else {
         ZTX_LOG(DEBUG, "received API session certificate");
-        if (ztx->session_creds.cert) {
-            ztx->session_creds.cert->free(ztx->session_creds.cert);
-            ztx->session_creds.cert = NULL;
-        }
-
         tlsuv_private_key_t pk = ztx->session_creds.key ? ztx->session_creds.key : ztx->id_creds.key;
         tlsuv_certificate_t cert;
         if (ztx->channel_tls->load_cert(&cert, resp->client_cert_pem, strlen(resp->client_cert_pem)) != 0) {
             ZTX_LOG(ERROR, "failed to parse supplied session cert");
-        } else if (ztx->channel_tls->set_own_cert(ztx->channel_tls, pk, cert) != 0) {
-            ZTX_LOG(ERROR, "failed to set session cert");
-            // what to do here? this shouldn't happen
-            cert->free(cert);
         } else {
-            ztx->session_creds.cert = cert;
-            ZTX_LOG(VERBOSE, "API session cert: %s", cert->get_text(cert));
+            ztx->channel_tls->set_own_cert(ztx->channel_tls, NULL, NULL);
+            if (ztx->channel_tls->set_own_cert(ztx->channel_tls, pk, cert) != 0) {
+                ZTX_LOG(ERROR, "failed to set session cert");
+                // what to do here? this shouldn't happen
+                cert->free(cert);
+            } else {
+                if (ztx->session_creds.cert) {
+                    ztx->session_creds.cert->free(ztx->session_creds.cert);
+                    ztx->session_creds.cert = NULL;
+                }
 
-            free_ziti_create_api_cert_resp_ptr(resp);
+                ztx->session_creds.cert = cert;
+                ZTX_LOG(VERBOSE, "API session cert: %s", cert->get_text(cert));
+
+                free_ziti_create_api_cert_resp_ptr(resp);
+            }
         }
     }
 
