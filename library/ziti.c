@@ -926,10 +926,17 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
                 ztx->auth_state);
 
         if (ztx->auth_method->kind == OIDC) {
-            printer(ctx, "Session Token: %s", jwt_payload(ztx->session_token));
+            printer(ctx, "Session Token: %s\n", jwt_payload(ztx->session_token));
         }
     } else {
         printer(ctx, "No Session found\n");
+    }
+
+    if (ztx->session_creds.cert) {
+        const char *cert_text = ztx->session_creds.cert->get_text(ztx->session_creds.cert);
+        printer(ctx, "\nSession Cert: ====\n");
+        printer(ctx, "%s", cert_text);
+        printer(ctx, "====\n");
     }
 
     printer(ctx, "\n=================\nExternal Credentials:\n");
