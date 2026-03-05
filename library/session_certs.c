@@ -47,10 +47,9 @@ static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e,
 
                 ztx->session_creds.cert = cert;
                 ZTX_LOG(VERBOSE, "API session cert: %s", cert->get_text(cert));
-
-                free_ziti_create_api_cert_resp_ptr(resp);
             }
         }
+        free_ziti_create_api_cert_resp_ptr(resp);
     }
 
     if (ztx->session_creds.cert) {
@@ -112,7 +111,8 @@ void ztx_request_session_cert(ziti_context ztx) {
 void ztx_clear_session_creds(ziti_context ztx) {
     if (ztx->session_creds.cert || ztx->session_creds.key) {
         if (ztx->channel_tls) {
-            ztx->channel_tls->set_own_cert(ztx->tlsCtx, NULL, NULL);
+            ztx->channel_tls->set_own_cert(ztx->channel_tls, NULL, NULL);
+            ztx->channel_tls->set_own_cert(ztx->channel_tls, ztx->id_creds.key, ztx->id_creds.cert);
         }
 
         if (ztx->session_creds.cert) {
