@@ -17,6 +17,12 @@
 
 #include "zt_internal.h"
 
+#ifdef _WIN32
+#define timegm _mkgmtime
+#endif
+#include <time.h>
+
+
 static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e, void *ctx) {
     ziti_context ztx = ctx;
     if (e) {
