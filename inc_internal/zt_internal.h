@@ -200,6 +200,7 @@ struct ziti_ctx {
 
     tls_context *channel_tls;
     struct tls_credentials session_creds;
+    deadline_t session_creds_deadline;
     // map<erUrl,ziti_channel>
     model_map channels;
     // map<id,ziti_conn>
@@ -301,11 +302,13 @@ void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, uint32_t req_id, 
 const ziti_env_info* get_env_info();
 
 int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer);
+extern void ztx_request_session_cert(ziti_context ztx);
+extern void ztx_clear_session_creds(ziti_context ztx);
 
 void ztx_auth_state_cb(void *, ziti_auth_state , const void *);
 ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er);
 
-#define ztx_set_deadline(ztx, timeout, d, cb, ctx) do_ztx_set_deadline((ztx), (timeout), (d), (cb), (FILE_BASENAME":"#cb), (ctx))
+#define ztx_set_deadline(ztx, timeout, d, cb, ctx) do_ztx_set_deadline((ztx), (timeout), (d), (void (*)(void *))(cb), (FILE_BASENAME":"#cb), (ctx))
 void do_ztx_set_deadline(ziti_context ztx, uint64_t timeout, deadline_t *d, void (*cb)(void *), const char *cb_name, void *ctx);
 
 int ch_send_conn_closed(ziti_channel_t *ch, uint32_t conn_id);

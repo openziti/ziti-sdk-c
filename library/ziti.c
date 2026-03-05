@@ -229,21 +229,7 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
     ztx->auth_state = ZitiAuthStateUnauthenticated;
     FREE(ztx->session_token);
 
-    if (ztx->session_creds.cert || ztx->session_creds.key) {
-        if (ztx->channel_tls) {
-            ztx->channel_tls->set_own_cert(ztx->tlsCtx, NULL, NULL);
-        }
-
-        if (ztx->session_creds.cert) {
-            ztx->session_creds.cert->free(ztx->session_creds.cert);
-            ztx->session_creds.cert = NULL;
-        }
-
-        if (ztx->session_creds.key) {
-            ztx->session_creds.key->free(ztx->session_creds.key);
-            ztx->session_creds.key = NULL;
-        }
-    }
+    ztx_clear_session_creds(ztx);
 
     model_map_clear(&ztx->sessions, (void (*)(void *)) free_ziti_session_ptr);
 
@@ -441,27 +427,7 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     }
 
     if (ztx->id_creds.cert == NULL && ztx->session_creds.cert == NULL) {
-        char *csr = NULL;
-        char common_name[65]; // X509.CN has a limit of 64 chars
-        // maybe hash session token?
-        snprintf(common_name, sizeof(common_name), "ziti-%u-%" PRIu64,
-                 ztx->id, uv_now(ztx->loop));
-
-        ZTX_LOG(DEBUG, "creating session CSR with CN=%s", common_name);
-        size_t csr_len;
-        int rc = ztx->channel_tls->generate_csr_to_pem(pk, &csr, &csr_len,
-                                                       "O", "OpenZiti",
-                                                       "OU", "ziti-sdk",
-                                                       "CN", common_name,
-                                                       NULL);
-        if (rc != 0) {
-            ZTX_LOG(ERROR, "failed to generate CSR for session cert");
-        } else {
-            ZTX_LOG(DEBUG, "sending CSR to sign");
-            ZTX_LOG(DEBUG, "%.*s", (int)csr_len, csr);
-            ziti_ctrl_create_api_certificate(ztx_get_controller(ztx), csr, on_create_cert, ztx);
-        }
-        free(csr);
+        ztx_request_session_cert(ztx);
     }
 
     ziti_services_refresh(ztx, true);
@@ -1770,33 +1736,6 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
     }
 }
 
-static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e, void *ctx) {
-    ziti_context ztx = ctx;
-    if (e) {
-        ZTX_LOG(ERROR, "failed to create session cert: %d/%s", (int)e->err, e->message);
-    } else {
-        ZTX_LOG(DEBUG, "received API session certificate");
-        ZTX_LOG(VERBOSE, "cert => %s", resp->client_cert_pem);
-
-        if (ztx->session_creds.cert) {
-            ztx->session_creds.cert->free(ztx->session_creds.cert);
-            ztx->session_creds.cert = NULL;
-        }
-
-        if (ztx->channel_tls->load_cert(&ztx->session_creds.cert, resp->client_cert_pem, strlen(resp->client_cert_pem)) != 0) {
-            ZTX_LOG(ERROR, "failed to parse supplied session cert");
-        }
-
-        tlsuv_private_key_t pk = ztx->session_creds.key ? ztx->session_creds.key : ztx->id_creds.key;
-        int rc = ztx->channel_tls->set_own_cert(ztx->channel_tls, pk, ztx->session_creds.cert);
-        if (rc != 0) {
-            ZTX_LOG(ERROR, "failed to set session cert: %d", rc);
-        }
-
-        free_ziti_create_api_cert_resp_ptr(resp);
-    }
-}
-
 static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     tlsuv_certificate_t new_bundle = NULL;
@@ -2348,7 +2287,6 @@ static void cert_verify_cb(void *r, const ziti_error *err, void *ctx) {
             goto done;
         }
     }
-
 
     struct tm exp;
     req->new_cert->get_expiration(req->new_cert, &exp);
