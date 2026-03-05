@@ -82,6 +82,7 @@ ziti_auth_method_t *new_legacy_auth(uv_loop_t *loop, const char *url, tls_contex
     auth->has_x509 = x509;
 
     tlsuv_http_init(loop, &auth->http, url);
+    tlsuv_http_connect_timeout(&auth->http, 10 * 1000);
     tlsuv_http_set_ssl(&auth->http, tls);
     uv_timer_init(loop, &auth->timer);
     AUTH_LOG(DEBUG, "method initialized");
