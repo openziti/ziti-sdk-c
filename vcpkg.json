@@ -2,9 +2,17 @@
   "name": "ziti",
   "version-semver": "1.0.0",
   "description": [
-    "using vcpkg baseline: 2025.10.17"
+    "using vcpkg baseline: 2026.02.27"
   ],
-  "builtin-baseline": "74e6536215718009aae747d86d84b78376bf9e09",
+  "builtin-baseline": "62159a45e18f3a9ac0548628dcaf74fcb60c6ff9",
+  "overrides": [
+    {
+      "name": "libsodium",
+      "version": "1.0.20",
+      "port-version": 3,
+      "$comment": "1.0.21 breaks on linux-arm64 so we're sticking with 1.0.20 until fix released and available in vcpkg"
+    }
+  ],
   "dependencies": [
     "libuv",
     {
