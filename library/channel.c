@@ -117,7 +117,7 @@ static void ch_init_stream(ziti_channel_t *ch) {
     assert(ch->connection == NULL);
 
     ch->connection = calloc(1, sizeof(*ch->connection));
-    tlsuv_stream_init(ch->loop, ch->connection, ch->ztx->tlsCtx);
+    tlsuv_stream_init(ch->loop, ch->connection, ch->ztx->channel_tls);
     tlsuv_stream_keepalive(ch->connection, true, 30);
     tlsuv_stream_nodelay(ch->connection, true);
     tlsuv_stream_set_protocols(ch->connection, 1, edge_alpn);

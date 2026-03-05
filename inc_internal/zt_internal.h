@@ -164,8 +164,6 @@ struct ziti_ctx {
 
     tls_context *tlsCtx;
     struct tls_credentials id_creds;
-    struct tls_credentials session_creds;
-    char *sessionCsr;
 
     bool closing;
     bool enabled;
@@ -200,6 +198,8 @@ struct ziti_ctx {
 
     char *last_update;
 
+    tls_context *channel_tls;
+    struct tls_credentials session_creds;
     // map<erUrl,ziti_channel>
     model_map channels;
     // map<id,ziti_conn>

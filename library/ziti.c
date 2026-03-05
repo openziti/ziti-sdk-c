@@ -174,7 +174,7 @@ int load_tls(ziti_config *cfg, tls_context **ctx, struct tls_credentials *creds)
     }
 
     int rc = ZITI_OK;
-    if (cfg->id.key != NULL) {
+    if (creds && cfg->id.key != NULL) {
         rc = init_tls_from_config(tls, cfg, creds);
     }
 
@@ -230,8 +230,8 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
     FREE(ztx->session_token);
 
     if (ztx->session_creds.cert || ztx->session_creds.key) {
-        if (ztx->tlsCtx) {
-            ztx->tlsCtx->set_own_cert(ztx->tlsCtx, NULL, NULL);
+        if (ztx->channel_tls) {
+            ztx->channel_tls->set_own_cert(ztx->tlsCtx, NULL, NULL);
         }
 
         if (ztx->session_creds.cert) {
@@ -243,7 +243,6 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
             ztx->session_creds.key->free(ztx->session_creds.key);
             ztx->session_creds.key = NULL;
         }
-        init_tls_from_config(ztx->tlsCtx, &ztx->config, &ztx->id_creds);
     }
 
     model_map_clear(&ztx->sessions, (void (*)(void *)) free_ziti_session_ptr);
@@ -434,7 +433,7 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     tlsuv_private_key_t pk;
     if (ztx->id_creds.key == NULL) {
         if (ztx->session_creds.key == NULL) {
-            ztx->tlsCtx->generate_key(&ztx->session_creds.key);
+            ztx->channel_tls->generate_key(&ztx->session_creds.key);
         }
         pk = ztx->session_creds.key;
     } else {
@@ -442,6 +441,7 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     }
 
     if (ztx->id_creds.cert == NULL && ztx->session_creds.cert == NULL) {
+        char *csr = NULL;
         char common_name[65]; // X509.CN has a limit of 64 chars
         // maybe hash session token?
         snprintf(common_name, sizeof(common_name), "ziti-%u-%" PRIu64,
@@ -449,18 +449,19 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
 
         ZTX_LOG(DEBUG, "creating session CSR with CN=%s", common_name);
         size_t csr_len;
-        int rc = ztx->tlsCtx->generate_csr_to_pem(pk, &ztx->sessionCsr, &csr_len,
-                                                  "O", "OpenZiti",
-                                                  "OU", "ziti-sdk",
-                                                  "CN", common_name,
-                                                  NULL);
+        int rc = ztx->channel_tls->generate_csr_to_pem(pk, &csr, &csr_len,
+                                                       "O", "OpenZiti",
+                                                       "OU", "ziti-sdk",
+                                                       "CN", common_name,
+                                                       NULL);
         if (rc != 0) {
             ZTX_LOG(ERROR, "failed to generate CSR for session cert");
         } else {
             ZTX_LOG(DEBUG, "sending CSR to sign");
-            ZTX_LOG(DEBUG, "%.*s", (int)csr_len, ztx->sessionCsr);
-            ziti_ctrl_create_api_certificate(ztx_get_controller(ztx), ztx->sessionCsr, on_create_cert, ztx);
+            ZTX_LOG(DEBUG, "%.*s", (int)csr_len, csr);
+            ziti_ctrl_create_api_certificate(ztx_get_controller(ztx), csr, on_create_cert, ztx);
         }
+        free(csr);
     }
 
     ziti_services_refresh(ztx, true);
@@ -542,6 +543,10 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
             ztx->tlsCtx->free_ctx(ztx->tlsCtx);
             ztx->tlsCtx = NULL;
         }
+        if (ztx->channel_tls) {
+            ztx->channel_tls->free_ctx(ztx->channel_tls);
+            ztx->channel_tls = NULL;
+        }
 
         if (ztx->closing) {
             shutdown_and_free(ztx);
@@ -567,6 +572,12 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
             ziti_send_event(ztx, &ev);
             return;
         }
+        rc = load_tls(&ztx->config, &ztx->channel_tls, NULL);
+        if (rc != 0) {
+            ZTX_LOG(ERROR, "failed to create channel TLS context: %s", ziti_errorstr(rc));
+            return;
+        }
+        ztx->channel_tls->set_own_cert(ztx->channel_tls, ztx->id_creds.key, ztx->id_creds.cert);
 
         ZTX_LOG(INFO, "using tlsuv[%s/%s]", tlsuv_version(),
                 ztx->tlsCtx->version ? ztx->tlsCtx->version() : "unspecified");
@@ -1772,19 +1783,18 @@ static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e,
             ztx->session_creds.cert = NULL;
         }
 
-        if (ztx->tlsCtx->load_cert(&ztx->session_creds.cert, resp->client_cert_pem, strlen(resp->client_cert_pem)) != 0) {
+        if (ztx->channel_tls->load_cert(&ztx->session_creds.cert, resp->client_cert_pem, strlen(resp->client_cert_pem)) != 0) {
             ZTX_LOG(ERROR, "failed to parse supplied session cert");
         }
 
         tlsuv_private_key_t pk = ztx->session_creds.key ? ztx->session_creds.key : ztx->id_creds.key;
-        int rc = ztx->tlsCtx->set_own_cert(ztx->tlsCtx, pk, ztx->session_creds.cert);
+        int rc = ztx->channel_tls->set_own_cert(ztx->channel_tls, pk, ztx->session_creds.cert);
         if (rc != 0) {
             ZTX_LOG(ERROR, "failed to set session cert: %d", rc);
         }
 
         free_ziti_create_api_cert_resp_ptr(resp);
     }
-    FREE(ztx->sessionCsr);
 }
 
 static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
@@ -1805,6 +1815,7 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
 
         if (ztx->config.id.ca == NULL || strcmp(new_pem, ztx->config.id.ca) != 0) {
             ztx->tlsCtx->set_ca_bundle(ztx->tlsCtx, new_pem, strlen(new_pem));
+            ztx->channel_tls->set_ca_bundle(ztx->channel_tls, new_pem, strlen(new_pem));
             char *old_ca = (char*)ztx->config.id.ca;
             free(old_ca);
 
@@ -2329,6 +2340,13 @@ static void cert_verify_cb(void *r, const ziti_error *err, void *ctx) {
     if (ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->id_creds.key, req->new_cert) != 0) {
         ZTX_LOG(ERROR, "extended certificate did not match key");
         goto done;
+    }
+
+    if (ztx->session_creds.cert == NULL) {
+        if (ztx->channel_tls->set_own_cert(ztx->channel_tls, ztx->id_creds.key, req->new_cert) != 0) {
+            ZTX_LOG(ERROR, "extended certificate did not match key");
+            goto done;
+        }
     }
 
 
