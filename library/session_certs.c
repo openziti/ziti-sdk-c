@@ -63,7 +63,7 @@ static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e,
                 expires_in = 30;
             } else {
                 ZTX_LOG(DEBUG, "session cert expires in %" PRId64 " seconds", expires_in);
-                expires_in *= 2 / 3;
+                expires_in = (expires_in * 2) / 3;
             }
             ztx_set_deadline(ztx, expires_in * 1000, &ztx->session_creds_deadline,
                              ztx_request_session_cert, ztx);
