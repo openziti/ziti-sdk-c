@@ -1,16 +1,16 @@
-// Copyright (c) 2022-2024. NetFoundry Inc.
+// Copyright (c) 2022-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// You may obtain a copy of the License at
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 #define _GNU_SOURCE
 
 #include <uv.h>
@@ -747,7 +747,7 @@ static void stopper_recv(uv_udp_t *u, ssize_t len,
             break;
         case ProxyCmd_stop:
             process_stop(u->loop, &app_ctx);
-            uv_close((uv_handle_t *) u, NULL);
+            uv_unref((uv_handle_t *) u);
             break;
         case ProxyCmd_enable:
             ziti_set_enabled(app_ctx.ziti, true);
@@ -836,7 +836,6 @@ int run_proxy(struct run_opts *opts) {
     uv_ip4_addr("127.0.0.1", 12345, &stopper_addr);
     int rc = uv_udp_bind(&stopper, (const struct sockaddr *) &stopper_addr, 0);
     rc = uv_udp_recv_start(&stopper, stopper_alloc, stopper_recv);
-    uv_unref((uv_handle_t *) &stopper);
 
     if (opts->proxy) set_proxy(opts->proxy);
 
@@ -922,9 +921,9 @@ int run_proxy(struct run_opts *opts) {
     model_map_clear(&app_ctx.listeners, (_free_f) free_listener);
 
     int close_rc = uv_loop_close(loop);
-    if (close_rc != 0) {
-        uv_print_active_handles(loop, stderr);
-    }
+//    if (close_rc != 0) {
+//        uv_print_active_handles(loop, stderr);
+//    }
     free(loop);
     exit(excode);
 }

@@ -111,6 +111,7 @@ SET(ZITI_SRC_FILES
         external_auth.c
         edge_protocol.c
         ext_oidc.c
+        session_certs.c
 )
 
 SET(ZITI_INCLUDE_DIRS
