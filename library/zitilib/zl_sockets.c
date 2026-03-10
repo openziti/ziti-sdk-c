@@ -19,6 +19,7 @@
 #include <fcntl.h>
 #include <stdbool.h>
 #include <ziti/ziti_log.h>
+#include "utils.h"
 
 bool zl_is_blocking(ziti_socket_t s) {
 #if _WIN32
