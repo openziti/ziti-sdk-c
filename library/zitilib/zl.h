@@ -29,6 +29,18 @@ extern "C" {
 
 #include <stc/cstr.h>
 
+#if _WIN32
+typedef uint32_t in_addr_t;
+typedef uint16_t in_port_t;
+#if !defined(__MINGW32__)
+#pragma comment(lib, "ws2_32.lib")
+#include <afunix.h>
+#endif
+#else
+#include <unistd.h>
+#define SOCKET_ERROR (-1)
+#endif
+
 typedef struct ztx_wrap {
     ziti_options opts;
     ziti_context ztx;

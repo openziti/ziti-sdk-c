@@ -19,17 +19,7 @@
 #include <stdlib.h>
 #include <uv.h>
 
-#if _WIN32
-typedef uint32_t in_addr_t;
-typedef uint16_t in_port_t;
-#if !defined(__MINGW32__)
-#pragma comment(lib, "ws2_32.lib")
-#include <afunix.h>
-#endif
-#else
-#include <unistd.h>
-#define SOCKET_ERROR (-1)
-#endif
+
 
 #include <ziti/zitilib.h>
 #include <ziti/ziti.h>
