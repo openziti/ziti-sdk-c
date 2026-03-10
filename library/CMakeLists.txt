@@ -96,7 +96,6 @@ SET(ZITI_SRC_FILES
         posture.c
         auth_queries.c
         conn_bridge.c
-        zitilib.c
         pool.c
         model_collections.c
         authenticators.c
@@ -114,12 +113,16 @@ SET(ZITI_SRC_FILES
         session_certs.c
 )
 
+FILE(GLOB zitilib_FILES ${CMAKE_CURRENT_LIST_DIR}/zitilib/*.c)
+LIST(APPEND ZITI_SRC_FILES ${zitilib_FILES})
+
 SET(ZITI_INCLUDE_DIRS
-    PUBLIC ../includes
-    PRIVATE ../inc_internal
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/proto
-    PRIVATE ${PROJECT_BINARY_DIR}/include
-    PRIVATE ${tlsuv_SOURCE_DIR}/src
+        PUBLIC ../includes
+        PRIVATE ../inc_internal
+        PRIVATE ${CMAKE_CURRENT_LIST_DIR}
+        PRIVATE ${CMAKE_CURRENT_LIST_DIR}/proto
+        PRIVATE ${PROJECT_BINARY_DIR}/include
+        PRIVATE ${tlsuv_SOURCE_DIR}/src
 )
 
 set(ziti_compile_defs
