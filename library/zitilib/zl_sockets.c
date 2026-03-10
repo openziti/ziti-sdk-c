@@ -21,6 +21,22 @@
 #include <ziti/ziti_log.h>
 #include "utils.h"
 
+#if _WIN32
+static const char * fmt_win32err(int err) {
+    static char wszMsgBuff[512];  // Buffer for text.
+
+    // Try to get the message from the system errors.
+    FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                  NULL,
+                  WSAGetLastError(),
+                  0,
+                  wszMsgBuff,
+                  512,
+                  NULL);
+    return wszMsgBuff;
+}
+#endif
+
 bool zl_is_blocking(ziti_socket_t s) {
 #if _WIN32
     /*

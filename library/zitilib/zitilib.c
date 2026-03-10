@@ -336,22 +336,7 @@ int Ziti_load_context_with_timeout(ziti_handle_t *h, const char *identity, int t
     return err;
 }
 
-#if _WIN32
-static const char * fmt_win32err(int err) {
-    static char wszMsgBuff[512];  // Buffer for text.
 
-    // Try to get the message from the system errors.
-    FormatMessage( FORMAT_MESSAGE_FROM_SYSTEM |
-                   FORMAT_MESSAGE_IGNORE_INSERTS,
-                   NULL,
-                   WSAGetLastError(),
-                   0,
-                   wszMsgBuff,
-                   512,
-                   NULL );
-    return wszMsgBuff;
-}
-#endif
 
 #ifdef __MINGW32__
 static const IN_ADDR in4addr_loopback;
