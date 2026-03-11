@@ -164,6 +164,14 @@ XX(protocol, model_string, none, protocol, __VA_ARGS__) \
 XX(hostname, model_string, none, hostname, __VA_ARGS__) \
 XX(port, model_number, none, port, __VA_ARGS__)
 
+#define ZITI_L2_INTERCEPT_CFG_V1_MODEL(XX, ...) \
+    XX(ethtypes, model_string, list, ethTypes, __VA_ARGS__) \
+    XX(dial_options, tag, map, dialOptions, __VA_ARGS__)
+
+#define ZITI_L2_HOST_CFG_V1_MODEL(XX, ...) \
+    XX(bridge_ifs, model_string, list, bridgeIfs, __VA_ARGS__) \
+    XX(listen_options, ziti_listen_options, ptr, listenOptions, __VA_ARGS__)
+
 #define ZITI_PROXY_SERVER_TYPE_ENUM(XX, ...) \
 XX(http, __VA_ARGS__)
 
@@ -304,6 +312,10 @@ DECLARE_MODEL(ziti_intercept_cfg_v1, ZITI_INTERCEPT_CFG_V1_MODEL)
 DECLARE_MODEL(ziti_listen_options, ZITI_LISTEN_OPTS_MODEL)
 
 DECLARE_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
+
+DECLARE_MODEL(ziti_l2_intercept_cfg_v1, ZITI_L2_INTERCEPT_CFG_V1_MODEL)
+
+DECLARE_MODEL(ziti_l2_host_cfg_v1, ZITI_L2_HOST_CFG_V1_MODEL)
 
 DECLARE_ENUM(ziti_proxy_server_type, ZITI_PROXY_SERVER_TYPE_ENUM)
 
