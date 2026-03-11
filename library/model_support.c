@@ -839,6 +839,7 @@ static int m_cmp_tag(const tag *lh, const tag *rh) {
         case tag_null:
             return 0;
     }
+    return 0;
 }
 
 static int null_to_json(string_buf_t *buf, int UNUSED(indent), int UNUSED(flags)) {
