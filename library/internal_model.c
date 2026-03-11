@@ -68,6 +68,10 @@ IMPL_MODEL(ziti_listen_options, ZITI_LISTEN_OPTS_MODEL)
 
 IMPL_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
 
+IMPL_MODEL(ziti_l2_intercept_cfg_v1, ZITI_L2_INTERCEPT_CFG_V1_MODEL)
+
+IMPL_MODEL(ziti_l2_host_cfg_v1, ZITI_L2_HOST_CFG_V1_MODEL)
+
 IMPL_ENUM(ziti_proxy_server_type, ZITI_PROXY_SERVER_TYPE_ENUM)
 
 IMPL_MODEL(ziti_proxy_server, ZITI_PROXY_SERVER_MODEL)
