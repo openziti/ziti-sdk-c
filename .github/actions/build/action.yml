@@ -39,7 +39,7 @@ runs:
     - name: windows tools
       if: runner.os == 'Windows'
       shell: bash
-      run: choco install pkgconfiglite
+      run: echo "windows tools placeholder"
 
     - name: setup build
       shell: bash
