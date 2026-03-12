@@ -37,6 +37,13 @@
       }
     },
     {
+      "name": "vcpkg-win64-mingw-static",
+      "hidden": true,
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-static"
+      }
+    },
+    {
       "name": "ninja",
       "hidden": true,
       "generator": "Ninja"
@@ -79,6 +86,15 @@
       "cacheVariables": {
         "CMAKE_C_FLAGS": "/utf-8 /W4 /permissive- /volatile:iso /Zc:preprocessor",
         "CMAKE_CXX_FLAGS": "/utf-8 /W4 /permissive- /volatile:iso /Zc:preprocessor /Zc:__cplusplus /Zc:externConstexpr /Zc:throwingNew /EHsc"
+      }
+    },
+    {
+      "name": "flags-windows-mingw",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_EXE_LINKER_FLAGS": "-Wl,-Bstatic -lpthread"
       }
     },
     {
@@ -134,6 +150,19 @@
         "VCPKG_TARGET_TRIPLET": "arm64-windows-static-md",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Windows-arm64-msvc.cmake"
       }
+    },
+    {
+      "name": "ci-win64-mingw",
+      "inherits": [
+        "flags-windows-mingw",
+        "ci-std",
+        "ninja"
+      ],
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "hidden": true
     },
     {
       "name": "ci-build",
@@ -237,6 +266,17 @@
         "ci-win-arm64",
         "dev-mode",
         "vcpkg"
+      ]
+    },
+
+    {
+      "name": "ci-windows-x64-mingw",
+      "inherits": [
+        "ci-build",
+        "ci-win64-mingw",
+        "dev-mode",
+        "vcpkg",
+        "vcpkg-win64-mingw-static"
       ]
     }
   ]
