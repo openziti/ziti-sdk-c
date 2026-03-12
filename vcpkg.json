@@ -28,6 +28,7 @@
     "protobuf-c",
     {
       "name": "pkgconf",
+      "host": true,
       "platform": "windows"
     }
   ],
