@@ -22,6 +22,7 @@
 #include "utils.h"
 
 #if _WIN32
+#include <winsock2.h>
 static const char * fmt_win32err(int err) {
     static char wszMsgBuff[512];  // Buffer for text.
 
@@ -82,7 +83,7 @@ int connect_socket(ziti_socket_t clt_sock, ziti_socket_t *ziti_sock) {
     int laddrlen = sizeof(laddr);
     laddr.sin_port = 0;
     laddr.sin_family = AF_INET;
-    laddr.sin_addr = in4addr_loopback;
+    laddr.sin_addr.S_un.S_addr = htonl(INADDR_LOOPBACK);
 
     TRY(WSOCK, bind(lsock, (const struct sockaddr *) &laddr, laddrlen));
     TRY(WSOCK, getsockname(lsock, (struct sockaddr *) &laddr, &laddrlen));

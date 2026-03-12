@@ -336,18 +336,6 @@ int Ziti_load_context_with_timeout(ziti_handle_t *h, const char *identity, int t
     return err;
 }
 
-
-
-#ifdef __MINGW32__
-static const IN_ADDR in4addr_loopback;
-static void init_in4addr_loopback() {
-    IN_ADDR *lo = (IN_ADDR *)&in4addr_loopback;
-    lo->S_un.S_addr = htonl(INADDR_LOOPBACK);
-}
-#else
-#define init_in4addr_loopback() {}
-#endif
-
 /**
  * create bridge socket and connect client socket to it
  * @param clt_sock client socket
@@ -818,7 +806,6 @@ static void internal_init() {
 #if defined(PTHREAD_ONCE_INIT)
 //    pthread_atfork(NULL, NULL, child_init);
 #endif
-    init_in4addr_loopback();
     uv_key_create(&err_key);
     uv_mutex_init(&q_mut);
     lib_loop = uv_loop_new();
