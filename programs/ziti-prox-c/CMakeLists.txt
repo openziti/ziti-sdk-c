@@ -13,9 +13,9 @@ target_link_libraries(ziti-prox-c
         PkgConfig::STC
 )
 
-if (MSVC)
+if (WIN32)
     target_link_libraries(ziti-prox-c PUBLIC shlwapi)
-endif (MSVC)
+endif (WIN32)
 target_include_directories(ziti-prox-c PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
 
 set(ZITI_ARCHIVE_NAME "ziti-prox-c-${CPACK_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}.${archive_sfx}")
