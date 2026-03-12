@@ -25,7 +25,8 @@
       "name": "vcpkg-win64-static",
       "hidden": true,
       "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md",
+        "VCPKG_HOST_TRIPLET": "x64-windows"
       }
     },
     {
@@ -33,14 +34,16 @@
       "hidden": true,
       "cacheVariables": {
         "VCPKG_TARGET_ARCHITECTURE": "x86",
-        "VCPKG_TARGET_TRIPLET": "x86-windows-static-md"
+        "VCPKG_TARGET_TRIPLET": "x86-windows-static-md",
+        "VCPKG_HOST_TRIPLET": "x64-windows"
       }
     },
     {
       "name": "vcpkg-win64-mingw-static",
       "hidden": true,
       "cacheVariables": {
-        "VCPKG_TARGET_TRIPLET": "x64-mingw-static"
+        "VCPKG_TARGET_TRIPLET": "x64-mingw-static",
+        "VCPKG_HOST_TRIPLET": "x64-windows"
       }
     },
     {
@@ -148,6 +151,7 @@
         "CMAKE_GENERATOR_PLATFORM": "ARM64",
         "VCPKG_TARGET_ARCHITECTURE": "arm64",
         "VCPKG_TARGET_TRIPLET": "arm64-windows-static-md",
+        "VCPKG_HOST_TRIPLET": "x64-windows",
         "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/Windows-arm64-msvc.cmake"
       }
     },
