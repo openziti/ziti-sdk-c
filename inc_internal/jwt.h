@@ -18,14 +18,12 @@
 #ifndef ZITI_SDK_JWT_H
 #define ZITI_SDK_JWT_H
 
+#include <stc/cstr.h>
+#include <json-c/json.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include <stc/cstr.h>
-#include <json-c/json.h>
-#include <sodium/utils.h>
 
 typedef struct zt_jwt_s {
     cstr issuer;

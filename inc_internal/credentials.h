@@ -21,9 +21,7 @@
 #define ZITI_SDK_CREDENTIALS_H
 
 #include <tlsuv/tls_engine.h>
-#include <stc/cstr.h>
 
-#include <ziti/errors.h>
 #include "internal_model.h"
 #include "utils.h"
 #include "jwt.h"
