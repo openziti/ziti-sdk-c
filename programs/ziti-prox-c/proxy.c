@@ -829,9 +829,9 @@ int run_proxy(struct run_opts *opts) {
     // test shutting down by sending a UDP packet
     uv_udp_t stopper;
     struct sockaddr_in stopper_addr = {
-            .sin_addr = INADDR_LOOPBACK,
             .sin_port = htons(12345),
             .sin_family = AF_INET};
+    stopper_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     uv_udp_init(loop, &stopper);
     uv_ip4_addr("127.0.0.1", 12345, &stopper_addr);
     int rc = uv_udp_bind(&stopper, (const struct sockaddr *) &stopper_addr, 0);

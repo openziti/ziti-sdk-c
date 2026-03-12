@@ -17,6 +17,9 @@
 
 #include "jwt.h"
 #include "credentials.h"
+#include <ziti/errors.h>
+
+#include <sodium/utils.h>
 
 void zt_jwt_drop(zt_jwt *jwt) {
     if (jwt == NULL) {

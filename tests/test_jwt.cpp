@@ -16,32 +16,13 @@
 #include "catch2/matchers/catch_matchers_string.hpp"
 #include <catch2/generators/catch_generators.hpp>
 #include <cstring>
-#include <zt_internal.h>
 #include "internal_model.h"
 #include <jwt.h>
 #include "credentials.h"
 
-static char* url64to64(const char* in, size_t ilen, size_t *olen) {
-    size_t size = ((ilen - 1)/4 + 1) * 4;
-    assert(size >= ilen);
-    assert(size - ilen <= 3);
-
-    char *out = (char*)malloc(size);
-    size_t i;
-    for(i = 0; i < ilen; i++) {
-        switch (in[i]) {
-            case '_': out[i] = '/'; break;
-            case '-': out[i] = '+';break;
-            default: out[i] = in[i];
-        }
-    }
-
-    while(i < size) {
-        out[i++] = '=';
-    }
-    *olen = size;
-    return out;
-}
+extern "C" int parse_enrollment_jwt(
+    const char *token, ziti_enrollment_jwt_header *zejh, ziti_enrollment_jwt *zej,
+    char **sig, size_t *sig_len);
 
 static const char jwt[] =
     "eyJhbGciOiJSUzI1NiIsImtpZCI6ImUwYzZhZTkxYzE0YzljOTViOGMwYTUyMzY4NmEzNzF"
@@ -59,7 +40,6 @@ static const char jwt[] =
     "5yr0QxpWjpJAPj7VAvBDb91HYXFA4VpvbLeCuhgJSchMK0w_RDGdd5Td-27DIQOIMaf17Hy"
     "5iYxWOfCa0G_2zDMxMCTuxmQksMata0uaEdf6bE_Uj4ZfWd3oY7ExINm_oXjhG7lcZvzd9y"
     "EgJuxV98N7JfQwVkGynSEiivjd2hvRuUYnJXxszI";
-
 
 TEST_CASE("load_jwt","[model]") {
 

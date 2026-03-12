@@ -42,6 +42,7 @@ jobs:
           - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64', test: 'true' }
           - { name: 'Windows x86', runner: 'windows-2022', target: 'windows-x86', test: 'true' }
           - { name: 'Windows ARM64', runner: 'windows-2022', target: 'windows-arm64' }
+          - { name: 'Windows ming64', runner: 'windows-2022', target: 'windows-x64-mingw', test: 'true' }
     steps:
       - name: Add msbuild to PATH
         if: startsWith(matrix.spec.runner, 'windows')

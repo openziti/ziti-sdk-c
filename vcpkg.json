@@ -25,7 +25,12 @@
     "libsodium",
     "json-c",
     "stc",
-    "protobuf-c"
+    "protobuf-c",
+    {
+      "name": "pkgconf",
+      "host": true,
+      "platform": "windows"
+    }
   ],
   "features": {
     "test": {
