@@ -217,7 +217,7 @@ extern void ziti_set_enabled(ziti_context ztx, bool enabled) {
 
 void ziti_set_auth_started(ziti_context ztx) {
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthStateAuthStarted);
-    FREE(ztx->session_token);
+    cstr_clear(&ztx->session_token);
 }
 
 void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
@@ -227,7 +227,9 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
 
     ZTX_LOG(DEBUG, "setting auth_state[%d] to %d", ztx->auth_state, ZitiAuthStateUnauthenticated);
     ztx->auth_state = ZitiAuthStateUnauthenticated;
-    FREE(ztx->session_token);
+    cstr_clear(&ztx->session_token);
+    free_ziti_api_session_ptr(ztx->session);
+    ztx->session = NULL;
 
     ztx_clear_session_creds(ztx);
 
@@ -258,7 +260,10 @@ void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err
     }
 
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthImpossibleToAuthenticate);
-    FREE(ztx->session_token);
+    cstr_clear(&ztx->session_token);
+    free_ziti_api_session_ptr(ztx->session);
+    ztx->session = NULL;
+
     ziti_ctrl_clear_auth(ctrl);
     ziti_send_event(ztx, &(ziti_event_t){
         .type = ZitiContextEvent,
@@ -383,10 +388,7 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         ZTX_LOG(VERBOSE, "legacy token exp[%lu]", (unsigned long)exp->tv_sec);
     }
 
-    if (ztx->session_token == NULL || strcmp(ztx->session_token, session_token) != 0) {
-        free(ztx->session_token);
-        ztx->session_token = strdup(session_token);
-    }
+    cstr_assign(&ztx->session_token, session_token);
     ziti_controller *ctrl = ztx_get_controller(ztx);
     ziti_ctrl_clear_auth(ctrl);
     ziti_ctrl_set_token(ctrl, session_token);
@@ -413,24 +415,9 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         }
     }
     ziti_ctrl_get_well_known_certs(ctrl, ca_bundle_cb, ztx);
-    ziti_ctrl_current_api_session(ctrl, api_session_cb, ztx);
     ziti_ctrl_current_identity(ctrl, update_identity_data, ztx);
+    ziti_ctrl_current_api_session(ctrl, api_session_cb, ztx);
 
-    tlsuv_private_key_t pk;
-    if (ztx->id_creds.key == NULL) {
-        if (ztx->session_creds.key == NULL) {
-            ztx->channel_tls->generate_key(&ztx->session_creds.key);
-        }
-        pk = ztx->session_creds.key;
-    } else {
-        pk = ztx->id_creds.key;
-    }
-
-    if (ztx->id_creds.cert == NULL && ztx->session_creds.cert == NULL) {
-        ztx_request_session_cert(ztx);
-    }
-
-    ziti_services_refresh(ztx, true);
     ziti_posture_init(ztx, 20);
 }
 
@@ -445,7 +432,7 @@ void ziti_force_api_session_refresh(ziti_context ztx) {
 
 const char* ziti_get_api_session_token(ziti_context ztx) {
     if (ztx->auth_state == ZitiAuthStateFullyAuthenticated) {
-        return ztx->session_token;
+        return cstr_str(&ztx->session_token);
     }
     return NULL;
 }
@@ -765,7 +752,9 @@ static void free_ztx(uv_handle_t *h) {
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_session_ptr);
     ziti_set_unauthenticated(ztx, NULL);
     FREE(ztx->last_update);
-    FREE(ztx->session_token);
+    cstr_drop(&ztx->session_token);
+    free_ziti_api_session_ptr(ztx->session);
+    ztx->session = NULL;
 
     ziti_ctrl_close(ztx_get_controller(ztx));
     if (ztx->tlsCtx) ztx->tlsCtx->free_ctx(ztx->tlsCtx);
@@ -903,7 +892,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
                 ztx->auth_state);
 
         if (ztx->auth_method->kind == OIDC) {
-            printer(ctx, "Session Token: %s\n", jwt_payload(ztx->session_token));
+            printer(ctx, "Session Token: %s\n", jwt_payload(cstr_str(&ztx->session_token)));
         }
     } else {
         printer(ctx, "No Session found\n");
@@ -1621,6 +1610,7 @@ static void refresh_cb(void *data) {
     }
 
     ziti_ctrl_current_identity(ztx_get_controller(ztx), update_identity_data, ztx);
+
     ziti_ctrl_current_edge_routers(ztx_get_controller(ztx), edge_routers_cb, ztx);
     ziti_ctrl_get_services_update(ztx_get_controller(ztx), check_service_update, ztx);
 }
@@ -1785,12 +1775,6 @@ static void update_ctrl_status(ziti_context ztx, int errCode, const char *errMsg
                         .err = errMsg,
                 }};
         ziti_send_event(ztx, &ev);
-
-        // force refresh now if the previous service refresh failed
-        // because of controller unavailability
-        if (errCode == ZITI_OK && ztx->last_update == NULL) {
-            ziti_services_refresh(ztx, true);
-        }
     }
     ztx->ctrl_status = errCode;
 }
@@ -1908,7 +1892,7 @@ static void ztx_prep_deadlines(ziti_context ztx) {
 void ztx_prepare(uv_prepare_t *prep) {
     ziti_context ztx = prep->data;
 
-    if (ztx->session_token) {
+    if (!cstr_is_empty(&ztx->session_token)) {
         const struct timeval *exp = ztx->auth_method ? ztx->auth_method->expiration(ztx->auth_method) : NULL;
         // session token should be kept upto date by the auth_method,
         // but sometimes it may be expired due to device going to sleep
@@ -2339,93 +2323,104 @@ static void cert_extend_cb(ziti_extend_cert_authenticator_resp *resp, const ziti
 
 }
 
-static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, void *ctx) {
-    ziti_context ztx = ctx;
+static void ztx_check_cert_extension(ziti_context ztx, ziti_api_session *api_sess) {
     char *csr = NULL;
     size_t len = 0;
-    if (api_sess) {
-        model_map_iter it = model_map_iterator(&ztx->sessions);
-        while(it) {
-            ziti_session *s = model_map_it_value(it);
-            if (strcmp(s->api_session_id, api_sess->id) != 0) {
-                ZTX_LOG(DEBUG, "evicted stale session for service_id[%s]", s->service_id);
-                it = model_map_it_remove(it);
-                free_ziti_session_ptr(s);
-            } else {
-                it = model_map_it_next(it);
-            }
-        }
 
-        if (ztx->id_creds.cert == NULL) {
+    if (ztx->id_creds.cert == NULL) {
+        goto done;
+    }
+
+    // it is a 3rd party cert, no need for the rest of checks
+    if (!api_sess->is_cert_extendable) {
+        ZTX_LOG(DEBUG, "identity certificate is not renewable");
+        goto done;
+    }
+
+    if (api_sess->cert_extend_requested || api_sess->key_roll_requested) {
+        ZTX_LOG(INFO, "controller requested certificate renewal (%s key roll)",
+                api_sess->key_roll_requested ? "with" : "without");
+        goto extend;
+    }
+
+    if (api_sess->is_cert_improper) {
+        ZTX_LOG(INFO, "controller reported certificate chain as incomplete");
+        goto extend;
+    }
+
+    // check if identity cert is expiring or expired
+    if (ztx->opts.cert_extension_window > 0) {
+        struct tm exp;
+        ztx->id_creds.cert->get_expiration(ztx->id_creds.cert, &exp);
+        time_t now = time(0);
+        time_t exptime = mktime(&exp);
+
+        bool renew = exptime - now < ztx->opts.cert_extension_window * ONE_DAY;
+        if (!renew) {
             goto done;
         }
+        ZTX_LOG(INFO, "renewing identity certificate exp[%04d-%02d-%02d %02d:%02d]",
+                1900 + exp.tm_year, exp.tm_mon + 1, exp.tm_mday, exp.tm_hour, exp.tm_min);
+    } else {
+        ZTX_LOG(DEBUG, "app is not requiring expiration check");
+        goto done;
+    }
 
-        // it is a 3rd party cert, no need for the rest of checks
-        if (!api_sess->is_cert_extendable) {
-            ZTX_LOG(DEBUG, "identity certificate is not renewable");
-            goto done;
-        }
+extend:
 
-        if (api_sess->cert_extend_requested || api_sess->key_roll_requested) {
-            ZTX_LOG(INFO, "controller requested certificate renewal (%s key roll)",
-                    api_sess->key_roll_requested ? "with" : "without");
-            goto extend;
-        }
+    if ((ztx->opts.events & ZitiConfigEvent) == 0) {
+        ZTX_LOG(WARN, "identity certificate needs to be renewed "
+                      "but application is not handling ZitiConfigEvent");
+        goto done;
+    }
 
-        if (api_sess->is_cert_improper) {
-            ZTX_LOG(INFO, "controller reported certificate chain as incomplete");
-            goto extend;
-        }
+    if (api_sess->key_roll_requested) {
+        ZTX_LOG(WARN, "key roll requested, but not yet supported");
+    }
 
-        // check if identity cert is expiring or expired
-        if (ztx->opts.cert_extension_window > 0) {
-            struct tm exp;
-            ztx->id_creds.cert->get_expiration(ztx->id_creds.cert, &exp);
-            time_t now = time(0);
-            time_t exptime = mktime(&exp);
-
-            bool renew = exptime - now < ztx->opts.cert_extension_window * ONE_DAY;
-            if (!renew) {
-                goto done;
-            }
-            ZTX_LOG(INFO, "renewing identity certificate exp[%04d-%02d-%02d %02d:%02d]",
-                    1900 + exp.tm_year, exp.tm_mon + 1, exp.tm_mday, exp.tm_hour, exp.tm_min);
-        } else {
-            ZTX_LOG(DEBUG, "app is not requiring expiration check");
-            goto done;
-        }
-
-        extend:
-
-        if ((ztx->opts.events & ZitiConfigEvent) == 0) {
-            ZTX_LOG(WARN, "identity certificate needs to be renewed "
-                          "but application is not handling ZitiConfigEvent");
-            goto done;
-        }
-
-        if (api_sess->key_roll_requested) {
-            ZTX_LOG(WARN, "key roll requested, but not yet supported");
-        }
-
-        if (ztx->tlsCtx->generate_csr_to_pem(ztx->id_creds.key, &csr, &len, "O", "OpenZiti",
+    if (ztx->tlsCtx->generate_csr_to_pem(ztx->id_creds.key, &csr, &len, "O", "OpenZiti",
                                          "DC", ztx->config.controller_url,
                                          "CN", api_sess->identity_id,
                                          NULL) != 0) {
-            ZTX_LOG(WARN, "failed to generate certificate request");
-            goto done;
-        }
-
-        NEWP(ext_req, struct cert_ext_req);
-        ext_req->session = api_sess;
-        ext_req->ztx = ztx;
-
-        api_sess = NULL;
-        ziti_ctrl_extend_cert_authenticator(ztx_get_controller(ztx),
-                                            ext_req->session->authenticator_id, csr,
-                                            cert_extend_cb, ext_req);
+        ZTX_LOG(WARN, "failed to generate certificate request");
+        goto done;
     }
 
-    done:
-    free_ziti_api_session_ptr(api_sess);
+    NEWP(ext_req, struct cert_ext_req);
+    ext_req->session = api_sess;
+    ext_req->ztx = ztx;
+
+    api_sess = NULL;
+    ziti_ctrl_extend_cert_authenticator(ztx_get_controller(ztx),
+                                        ext_req->session->authenticator_id, csr,
+                                        cert_extend_cb, ext_req);
+
+done:
     free(csr);
+}
+
+static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, void *ctx) {
+    ziti_context ztx = ctx;
+    if (err) {
+        ZTX_LOG(ERROR, "failed to get api session: %s/%s", err->code, err->message);
+        return;
+    }
+
+    if (api_sess) {
+        bool changed = ztx->session == NULL || strcmp(api_sess->id, ztx->session->id) != 0;
+        if (changed) {
+            model_map_clear(&ztx->sessions, (_free_f)free_ziti_session_ptr);
+        }
+        ztx_check_cert_extension(ztx, api_sess);
+
+        free_ziti_api_session_ptr(ztx->session);
+        ztx->session = api_sess;
+
+        if (ztx->id_creds.cert == NULL && (changed || ztx->session_creds.cert == NULL)) {
+            ztx_request_session_cert(ztx);
+        }
+
+        ziti_services_refresh(ztx, true);
+    }
+
 }

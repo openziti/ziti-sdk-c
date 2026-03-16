@@ -786,7 +786,7 @@ static void reconnect_cb(void *data) {
     ziti_channel_t *ch = data;
     ziti_context ztx = ch->ztx;
 
-    if (ziti_get_api_session_token(ztx) == NULL) {
+    if (ziti_get_api_session_token(ztx) == NULL || (ztx->id_creds.cert == NULL && ztx->session_creds.cert == NULL)) {
         CH_LOG(INFO, "ztx[%d] is not fully authenticated (auth_state[%d]), delaying re-connect",
                ztx->id, ztx->auth_state);
         reconnect_channel(ch, false);
