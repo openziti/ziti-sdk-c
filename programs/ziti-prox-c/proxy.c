@@ -647,7 +647,11 @@ static void ext_auth_prompt(uv_work_t *wr) {
 
 static void ext_url_launch(ziti_context ztx, const char *url, void *ctx) {
     char cmd[1024];
+#if _WIN32
+    snprintf(cmd, sizeof(cmd), "start \"\" \"%s\"", url);
+#else
     snprintf(cmd, sizeof(cmd), "/usr/bin/open '%s'", url);
+#endif
     int status = system(cmd);
     fprintf(stderr, "open url[%s] in browser status[%d]\n", url, status);
 }
