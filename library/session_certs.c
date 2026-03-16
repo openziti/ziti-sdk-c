@@ -79,13 +79,24 @@ void ztx_request_session_cert(ziti_context ztx) {
         return;
     }
 
+    if (ztx->session_creds.key == NULL &&
+        ztx->channel_tls->generate_key(&ztx->session_creds.key) != 0) {
+        ZTX_LOG(ERROR, "failed to generate key for session cert");
+        return;
+    }
+
+    // avoid triggering deadline during current request
+    clear_deadline(&ztx->session_creds_deadline);
+
     ZTX_LOG(DEBUG, "requesting session certificate");
     char *csr = NULL;
     char common_name[65]; // X509.CN has a limit of 64 chars
 
-    if (ztx->identity_data) {
+    ziti_identity *identity = (ziti_identity*)ztx->identity_data;
+    if (identity == NULL) identity = &ztx->session->identity;
+    if (identity) {
         snprintf(common_name, sizeof(common_name), "%s-%" PRIu64,
-                 ztx->identity_data->id, uv_now(ztx->loop));
+                 identity->id, uv_now(ztx->loop));
     } else {
         snprintf(common_name, sizeof(common_name), "ziti-%u-%" PRIu64,
                  ztx->id, uv_now(ztx->loop));

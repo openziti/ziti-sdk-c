@@ -181,9 +181,9 @@ struct ziti_ctx {
     void *ext_launch_ctx;
 
     // HA access_token(JWT) or legacy ziti_api_session.token
-    char *session_token;
-
+    cstr session_token;
     ziti_identity_data *identity_data;
+    ziti_api_session *session;
 
     bool services_loaded;
     // map<name,ziti_service>

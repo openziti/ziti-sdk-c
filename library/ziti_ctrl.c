@@ -144,7 +144,7 @@ start_request(tlsuv_http_t *http, const char *method, const char *path, tlsuv_ht
     ziti_controller *ctrl = resp->ctrl;
     ctrl->active_reqs++;
     uv_gettimeofday(&resp->start);
-    CTRL_LOG(VERBOSE, "starting %s[%s]", method, path);
+    CTRL_LOG(DEBUG, "starting %s[%s]", method, path);
     return tlsuv_http_req(http, method, path, cb, resp);
 }
 

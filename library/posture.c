@@ -1,16 +1,16 @@
-// Copyright (c) 2019-2022.  NetFoundry Inc.
+// Copyright (c) 2019-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #include "edge_protocol.h"
 #include "posture.h"
@@ -188,14 +188,14 @@ void ziti_send_posture_data(ziti_context ztx) {
         return;
     }
 
-    if(ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
+    if(ztx->auth_state != ZitiAuthStateFullyAuthenticated || ztx->session == NULL) {
         ZTX_LOG(DEBUG, "api_session is partially authenticated, can't submit posture responses");
         return;
     }
 
     ZTX_LOG(VERBOSE, "starting to send posture data");
     bool new_session_id = checks->previous_api_session_id == NULL ||
-                          strcmp(checks->previous_api_session_id, ztx->session_token) != 0;
+                          strcmp(checks->previous_api_session_id, ztx->session->id) != 0;
 
     ziti_controller *ctrl = ztx_get_controller(ztx);
     bool new_controller_instance =
@@ -215,7 +215,7 @@ void ziti_send_posture_data(ziti_context ztx) {
         checks->must_send = true;
         FREE(checks->previous_api_session_id);
         FREE(checks->controller_instance_id);
-        checks->previous_api_session_id = strdup(ztx->session_token);
+        checks->previous_api_session_id = strdup(ztx->session->id);
         checks->controller_instance_id = strdup(ctrl->instance_id);
     } else {
         ZTX_LOG(DEBUG, "posture checks must_send set to FALSE, new_session_id[%s], must_send_every_time[%s], new_controller_instance[%s]",
