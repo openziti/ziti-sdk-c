@@ -887,6 +887,9 @@ int run_proxy(struct run_opts *opts) {
 
     ziti_context_run(app_ctx.ziti, loop);
 
+    if (opts->http_proxy_port > 0) {
+        run_http_proxy(loop, opts->http_proxy_port, app_ctx.ziti);
+    }
 
 #if __unix__ || __unix
     // prevent termination when running under valgrind
