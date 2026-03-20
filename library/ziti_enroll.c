@@ -400,7 +400,11 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     ziti_ctrl_close(&er->controller);
     er->tls->free_ctx(er->tls);
 
-    er->tls = default_tls_context(er->cfg.id.ca, strlen(er->cfg.id.ca));
+    // Use system CA bundle during enrollment so we can verify both:
+    // - publicly-trusted enrollment endpoints (Let's Encrypt)
+    // - Ziti internal CA endpoints (discovered via /version)
+    // The Ziti CA is already saved in er->cfg.id.ca for the identity file.
+    er->tls = default_tls_context(NULL, 0);
     ziti_ctrl_init(er->loop, &er->controller, &er->cfg.controllers, er->tls);
 
     switch (er->enrollment.method) {
