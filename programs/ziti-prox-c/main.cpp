@@ -38,7 +38,10 @@ public:
         add_option("listener", intercepts, "<name:port>");
         add_option("--bind,-b", bindings, "bind service <name:host:port>");
         add_option("--bind-udp,-B", udp_bindings, "bind udp service <name:host:port>");
-        add_option("--proxy,-p", proxy, "proxy url");
+        add_option("--proxy,-p", proxy, "upstream proxy url -- will be used to connect to ziti network");
+        add_option("--http-proxy,-P", http_proxy_port, "enables http proxy behavior")
+            ->expected(0,1)
+            ->default_str("3128");
 
         final_callback([this] {
             this->execute();
@@ -53,11 +56,13 @@ private:
     std::vector<std::string> bindings;
     std::vector<std::string> udp_bindings;
     std::string proxy;
+    int http_proxy_port = 0;
 
     void execute() const {
         run_opts opts{};
         opts.identity = this->identity.c_str();
         opts.debug = this->debug;
+        opts.http_proxy_port = this->http_proxy_port;
         for (auto &intercept: this->intercepts) {
             model_list_append(&opts.intercepts, intercept.c_str());
         }

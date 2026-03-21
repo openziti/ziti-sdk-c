@@ -24,7 +24,6 @@
 #include <ziti/ziti.h>
 #include "proxy.h"
 
-#include <stc/algorithm.h>
 #include <stc/cstr.h>
 #include <stc/common.h>
 #include <stc/types.h>
@@ -82,7 +81,7 @@ struct binding {
 };
 
 struct listener {
-    char *service_name;
+    cstr service_name;
     int port;
     uv_tcp_t server;
     struct proxy_app_ctx *app_ctx;
@@ -106,7 +105,7 @@ void ext_auth_event_handler(ziti_context ztx, const char *name);
 
 static void close_server_cb(uv_handle_t *h) {
     struct listener *l = h->data;
-    ZITI_LOG(DEBUG, "listener closed for %s", l->service_name);
+    ZITI_LOG(DEBUG, "listener closed for %s", cstr_str(&l->service_name));
 }
 
 static void close_binding_cb(ziti_connection conn) {
@@ -122,7 +121,7 @@ static void shutdown_timer_cb(uv_timer_t *t) {
 }
 
 static void free_listener(struct listener *l) {
-    free(l->service_name);
+    cstr_drop(&l->service_name);
     free(l);
 }
 
@@ -184,7 +183,7 @@ static void debug_dump(struct proxy_app_ctx *app_ctx,
     print_fn(printer, "==== listeners ====\n");
     MODEL_MAP_FOR(it, app_ctx->listeners) {
         struct listener *l = model_map_it_value(it);
-        print_fn(printer, "listening for service[%s] on port[%d]\n", l->service_name, l->port);
+        print_fn(printer, "listening for service[%s] on port[%d]\n", cstr_str(&l->service_name), l->port);
     }
 
     print_fn(printer, "\n==== bindings ====\n");
@@ -290,7 +289,7 @@ static void on_client(uv_stream_t *server, int status) {
 
     struct listener *l = server->data;
     ZITI_LOG(DEBUG, "client connection accepted from %s (%s:%d)",
-             clt->addr_s, l->service_name, l->port);
+             clt->addr_s, cstr_str(&l->service_name), l->port);
     LIST_INSERT_HEAD(&l->app_ctx->clients, clt, next);
 
     PREPF(ziti, ziti_errorstr);
@@ -298,7 +297,7 @@ static void on_client(uv_stream_t *server, int status) {
     ziti_dial_opts opts = {
             .stream = true,
     };
-    TRY(ziti, ziti_dial_with_options(clt->ziti_conn, l->service_name, &opts, on_ziti_connect, NULL));
+    TRY(ziti, ziti_dial_with_options(clt->ziti_conn, cstr_str(&l->service_name), &opts, on_ziti_connect, NULL));
     c->data = clt;
 
     CATCH(ziti) {
@@ -319,11 +318,11 @@ static void update_listener(ziti_service *service, int status, struct listener *
 
     if (status == ZITI_OK && (service->perm_flags & ZITI_CAN_DIAL)) {
         if (uv_is_active((const uv_handle_t *) &l->server)) {
-            ZITI_LOG(INFO, "listener for service[%s] is already active on port[%d]", l->service_name, l->port);
+            ZITI_LOG(INFO, "listener for service[%s] is already active on port[%d]", cstr_str(&l->service_name), l->port);
             return;
         }
 
-        ZITI_LOG(INFO, "starting listener for service[%s] on port[%d]", l->service_name, l->port);
+        ZITI_LOG(INFO, "starting listener for service[%s] on port[%d]", cstr_str(&l->service_name), l->port);
 
         NEWP(addr, struct sockaddr_in);
         TRY(uv, uv_ip4_addr("0.0.0.0", l->port, addr));
@@ -332,7 +331,7 @@ static void update_listener(ziti_service *service, int status, struct listener *
         free(addr);
     } else {
         if (uv_is_active((const uv_handle_t *) &l->server)) {
-            ZITI_LOG(WARN, "service %s is not available. stopping listener[%d]", l->service_name, l->port);
+            ZITI_LOG(WARN, "service %s is not available. stopping listener[%d]", cstr_str(&l->service_name), l->port);
             uv_close((uv_handle_t *) &l->server, on_listener_close);
         }
     }
@@ -560,8 +559,6 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
             break;
     }
 }
-
-char *pxoxystrndup(const char *s, size_t n);
 
 const char *my_configs[] = {
         "all", NULL
@@ -821,7 +818,7 @@ static void set_proxy(const char *proxy_url) {
 }
 
 int run_proxy(struct run_opts *opts) {
-
+    int rc;
     PREPF(uv, uv_strerror);
 
     NEWP(loop, uv_loop_t);
@@ -838,18 +835,18 @@ int run_proxy(struct run_opts *opts) {
     stopper_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     uv_udp_init(loop, &stopper);
     uv_ip4_addr("127.0.0.1", 12345, &stopper_addr);
-    int rc = uv_udp_bind(&stopper, (const struct sockaddr *) &stopper_addr, 0);
-    rc = uv_udp_recv_start(&stopper, stopper_alloc, stopper_recv);
+    if ((rc = uv_udp_bind(&stopper, (const struct sockaddr *) &stopper_addr, 0)) ||
+        (rc = uv_udp_recv_start(&stopper, stopper_alloc, stopper_recv))) {
+        ZITI_LOG(WARN, "failed to start UDP control listener: %d/%s", rc, uv_strerror(rc));
+    }
 
     if (opts->proxy) set_proxy(opts->proxy);
 
     const char* intercept;
     MODEL_LIST_FOREACH(intercept, opts->intercepts) {
         char *p = strchr(intercept, ':');
-        char *service_name = pxoxystrndup(intercept, p - intercept);
-
         NEWP(l, struct listener);
-        l->service_name = service_name;
+        cstr_assign_n(&l->service_name, intercept, p - intercept);
         l->port = (int) strtol(p + 1, NULL, 10);
         l->app_ctx = &app_ctx;
 
@@ -857,7 +854,7 @@ int run_proxy(struct run_opts *opts) {
 
         l->server.data = l;
 
-        model_map_set(&app_ctx.listeners, service_name, l);
+        model_map_set(&app_ctx.listeners, cstr_str(&l->service_name), l);
     }
 
     const char *binding;
@@ -887,6 +884,9 @@ int run_proxy(struct run_opts *opts) {
 
     ziti_context_run(app_ctx.ziti, loop);
 
+    if (opts->http_proxy_port > 0) {
+        run_http_proxy(loop, opts->http_proxy_port, app_ctx.ziti);
+    }
 
 #if __unix__ || __unix
     // prevent termination when running under valgrind
@@ -932,12 +932,3 @@ int run_proxy(struct run_opts *opts) {
     exit(excode);
 }
 
-char *pxoxystrndup(const char *s, size_t n) {
-    size_t len = strnlen(s, n);
-    char *new = (char *) malloc(len + 1);
-    if (new == NULL) {
-        return NULL;
-    }
-    new[len] = '\0';
-    return (char *) memcpy(new, s, len);
-}

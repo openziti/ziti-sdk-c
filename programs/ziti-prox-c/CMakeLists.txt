@@ -4,7 +4,9 @@ pkg_check_modules(STC REQUIRED IMPORTED_TARGET stc)
 
 add_executable(ziti-prox-c proxy.c
         main.cpp
-        proxy.h)
+        proxy.h
+        http_proxy.c
+)
 
 
 target_link_libraries(ziti-prox-c

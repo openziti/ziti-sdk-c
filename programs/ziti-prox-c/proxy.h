@@ -20,6 +20,8 @@
 #define PROXY_H
 
 #include <ziti/model_collections.h>
+#include <ziti/ziti.h>
+#include <uv.h>
 
 struct run_opts {
     int debug;
@@ -28,6 +30,7 @@ struct run_opts {
     model_list bindings;
     model_list udp_bindings;
     const char *proxy;
+    int http_proxy_port;
 };
 
 #if __cplusplus
@@ -35,6 +38,8 @@ extern "C" {
 #endif
 
 extern int run_proxy(struct run_opts*);
+
+extern int run_http_proxy(uv_loop_t *loop, int port, ziti_context ztx);
 
 #if __cplusplus
     }
