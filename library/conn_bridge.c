@@ -24,8 +24,8 @@
 br ? br->conn->ziti_ctx->id : -1, br ? br->conn->conn_id : -1, ##__VA_ARGS__)
 
 struct fd_bridge_s {
-    uv_os_fd_t in;
-    uv_os_fd_t out;
+    uv_os_sock_t in;
+    uv_os_sock_t out;
 
     void (*close_cb)(void *ctx);
 
@@ -177,8 +177,8 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_sock_t input, uv_os_
 
     uv_pipe_init(l, (uv_pipe_t *) br->input, 0);
     uv_pipe_init(l, (uv_pipe_t *) br->output, 0);
-    uv_file input_file = uv_open_osfhandle(input);
-    uv_file output_file = uv_open_osfhandle(output);
+    uv_file input_file = uv_open_osfhandle((uv_os_fd_t)input);
+    uv_file output_file = uv_open_osfhandle((uv_os_fd_t)output);
     uv_pipe_open((uv_pipe_t *) br->input, input_file);
     uv_pipe_open((uv_pipe_t *) br->output, output_file);
     br->input->data = br;
