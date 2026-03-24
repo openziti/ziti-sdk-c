@@ -14,10 +14,10 @@
 
 #include <ziti/zitilib.h>
 
+#include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
-#include <errno.h>
-#include <assert.h>
 
 #if !defined(_WIN32)
 
@@ -27,14 +27,21 @@
 #include <unistd.h>
 #include <poll.h>
 
+#define sock_error errno
+#define IN_PROGRESS EINPROGRESS
+
 #else
 
 #include <WinSock2.h>
+#include <ws2tcpip.h>
 #include <io.h>
 
 #define write(s,b,l) send(s,b,l,0)
 #define read(s,b,l)  recv(s,b,l,0)
 #define close(s)     closesocket(s)
+#define poll(fds,c,t) WSAPoll(fds,c,t)
+#define sock_error WSAGetLastError()
+#define IN_PROGRESS WSAEWOULDBLOCK
 
 #define SHUT_WR SD_SEND
 #endif
@@ -82,19 +89,22 @@ int main(int argc, char *argv[]) {
     }
 
     long rc = service ? Ziti_connect(soc, ztx, service, "ziggy") : Ziti_connect_addr(soc, hostname, port);
-    err = errno;
-    if (rc == -1 && err == EINPROGRESS) {
-        printf("polling for connect to complete...\n");
-        struct pollfd p = { .fd = soc, .events = POLLOUT };
+    err = sock_error;
+    struct pollfd p = { .fd = soc, .events = POLLOUT };
+    if (rc == -1 && err == IN_PROGRESS) {
         rc = poll(&p, 1, 10000);
         if (rc == 0) {
             fprintf(stderr, "connect timed out\n");
             goto DONE;
-        } else if (rc < 0) {
-            fprintf(stderr, "poll failed: %d(%s)\n", errno, strerror(errno));
+        }
+
+        if (rc < 0) {
+            err = sock_error;
+            fprintf(stderr, "poll failed: %d(%s)\n", err, strerror(err));
             goto DONE;
         }
-        getsockopt(soc, SOL_SOCKET, SO_ERROR, &err, &(socklen_t){sizeof(err)});
+        socklen_t err_len = sizeof(err);
+        getsockopt(soc, SOL_SOCKET, SO_ERROR, (void*)&err, &err_len);
         if (err != 0) {
             fprintf(stderr, "failed to connect: %d(%s)\n", err, strerror(err));
             goto DONE;
@@ -113,7 +123,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "write failed: %d(%s)\n", errno, strerror(errno));
         goto DONE;
     }
-    shutdown(soc, SHUT_WR);
+
     do {
         char buf[1024];
 

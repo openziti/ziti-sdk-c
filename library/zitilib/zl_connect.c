@@ -118,7 +118,6 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
     if (rc != ZITI_OK) {
         ZITI_LOG(WARN, "no service for target address[%s:%s:%d]: %s",
                  ziti_protocols.name(zproto), cstr_str(&req->host), req->port, ziti_errorstr(rc));
-        fail_future(f, rc);
         // this will close the acceptor socket
         // and cause ECONNREFUSED on the client socket
         conn_req_drop(req);
@@ -138,7 +137,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
 
     int so_type = 0;
     socklen_t so_type_len = sizeof(so_type);
-    getsockopt(socket, SOL_SOCKET, SO_TYPE, &so_type, &so_type_len);
+    getsockopt(socket, SOL_SOCKET, SO_TYPE, (void*)&so_type, &so_type_len);
 
     int af = zl_socket_af(socket);
     struct sockaddr_storage accept_addr = {.ss_family = af,};
@@ -175,7 +174,7 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
     }
     int so_type = 0;
     socklen_t so_type_len = sizeof(so_type);
-    getsockopt(socket, SOL_SOCKET, SO_TYPE, &so_type, &so_type_len);
+    getsockopt(socket, SOL_SOCKET, SO_TYPE, (void*)&so_type, &so_type_len);
 
     int af = zl_socket_af(socket);
     struct sockaddr_storage addr = { .ss_family = af, };

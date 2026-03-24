@@ -19,8 +19,11 @@
 #include "zl.h"
 #include <fcntl.h>
 #include <stdbool.h>
-#include <poll.h>
 #include <ziti/ziti_log.h>
+
+#if !defined(_WIN32)
+#include <poll.h>
+#endif
 
 #if _WIN32
 #include <winsock2.h>
