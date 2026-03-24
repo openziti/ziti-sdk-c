@@ -493,7 +493,7 @@ static void on_ziti_accept(ziti_connection client, int status) {
 
     ziti_socket_t fd, ziti_fd;
     fd = socket(AF_INET, SOCK_STREAM, 0);
-    int rc = connect_socket(fd, &ziti_fd);
+    int rc = connect_socket(AF_INET, fd, &ziti_fd);
     if (rc != 0) {
         ZITI_LOG(WARN, "failed to connect client socket[%d]: %d", fd, rc);
         fail_future(pending->accept_f, rc);
@@ -510,7 +510,7 @@ static void on_ziti_accept(ziti_connection client, int status) {
     zs->ziti_fd = ziti_fd;
     ziti_conn_set_data(client, zs);
     model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
-    ziti_conn_bridge_fds(client, (uv_os_fd_t) zs->ziti_fd, (uv_os_fd_t) zs->ziti_fd, on_bridge_close, zs);
+    ziti_conn_bridge_fds(client, zs->ziti_fd, zs->ziti_fd, on_bridge_close, zs);
     NEWP(si, struct sock_info_s);
     si->fd = zs->fd;
     si->peer = pending->caller_id;
@@ -577,7 +577,7 @@ static void on_ziti_bind(ziti_connection server, int status) {
         cstr_drop(&zs->service);
         free(zs);
     } else {
-        connect_socket(zs->fd, &zs->ziti_fd);
+        connect_socket(AF_INET, zs->fd, &zs->ziti_fd);
         model_map_set_key(&ziti_sockets, &zs->fd, sizeof(zs->fd), zs);
 
         ZITI_LOG(DEBUG, "successfully bound fd[%d] to service[%s]", zs->fd, cstr_str(&zs->service));

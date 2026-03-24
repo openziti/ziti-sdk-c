@@ -132,7 +132,7 @@ static void on_pipes_close(uv_handle_t *h) {
     }
 }
 
-extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd_t output, void (*close_cb)(void *ctx), void *ctx) {
+extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_sock_t input, uv_os_sock_t output, void (*close_cb)(void *ctx), void *ctx) {
     if (conn == NULL) return UV_EINVAL;
 
     uv_loop_t *l = ziti_conn_context(conn)->loop;
@@ -144,7 +144,7 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_fd_t input, uv_os_fd
     fdbr->ctx = ctx;
 
     if (input == output) {
-        uv_os_sock_t input_sock = (uv_os_sock_t) input;
+        uv_os_sock_t input_sock = input;
         uv_handle_t *sock = NULL;
         int type;
         socklen_t len = sizeof(type);
