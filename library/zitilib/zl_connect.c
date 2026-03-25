@@ -208,8 +208,10 @@ static void connect_work_done(uv_work_t *w, int status) {
     free(w);
     if (status != 0) {
         ZITI_LOG(ERROR, "error in connect work: %d/%s", status, uv_strerror(status));
+        ziti_close(req->conn, NULL);
     } else  if (req->ziti_fd == SOCKET_ERROR) {
         ZITI_LOG(ERROR, "failed to accept connection on bridge socket: %d/%s", errno, strerror(errno));
+        ziti_close(req->conn, NULL);
     } else {
         ziti_conn_bridge_fds(req->conn, req->ziti_fd, req->ziti_fd, NULL, NULL);
     }
