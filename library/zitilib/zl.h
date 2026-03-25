@@ -77,12 +77,14 @@ ztx_wrap_t *zl_find_wrap(ziti_handle_t handle);
 
 /**
  * create bridge socket and connect client socket to it
+ * @param af address family
  * @param clt_sock client socket
  * @param ziti_sock[out] bridge socket
  * @return
  */
-int connect_socket(ziti_socket_t clt_sock, ziti_socket_t *ziti_sock);
+int connect_socket(int af, ziti_socket_t clt_sock, ziti_socket_t *ziti_sock);
 bool zl_is_blocking(ziti_socket_t s);
+int zl_socket_af(ziti_socket_t s);
 void zl_set_error(int err);
 
 ZITI_FUNC

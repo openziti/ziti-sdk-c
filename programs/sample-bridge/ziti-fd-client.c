@@ -1,44 +1,60 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 #include <ziti/zitilib.h>
 
+#include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
-#include <errno.h>
-#include <assert.h>
 
 #if !defined(_WIN32)
 
-#include <unistd.h>
-#include <sys/socket.h>
+#include <fcntl.h>
 #include <stdlib.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <poll.h>
+
+#define sock_error errno
+#define IN_PROGRESS EINPROGRESS
 
 #else
 
 #include <WinSock2.h>
+#include <ws2tcpip.h>
 #include <io.h>
 
 #define write(s,b,l) send(s,b,l,0)
 #define read(s,b,l)  recv(s,b,l,0)
 #define close(s)     closesocket(s)
+#define poll(fds,c,t) WSAPoll(fds,c,t)
+#define sock_error WSAGetLastError()
+#define IN_PROGRESS WSAEWOULDBLOCK
 
 #define SHUT_WR SD_SEND
 #endif
 
 int main(int argc, char *argv[]) {
     if (argc < 3) { return -1; }
+
+    int blocking = getenv("ZITI_SAMPLE_BLOCKING") != NULL;
+
+#if _WIN32
+        WSADATA wsaData;
+        WSAStartup(MAKEWORD(2, 2), &wsaData);
+#endif
 
     const char *path = argv[1];
     const char *service = NULL;
@@ -50,37 +66,90 @@ int main(int argc, char *argv[]) {
         hostname = argv[2];
         port = atol(argv[3]);
     }
+    ziti_socket_t soc = socket(AF_INET6, SOCK_STREAM, 0);
 
     Ziti_lib_init();
 
     ziti_handle_t ztx;
     int err = Ziti_load_context(&ztx, path);
-    if (err == ZITI_OK) {
+    if (err != ZITI_OK) {
         err = Ziti_last_error();
         fprintf(stderr, "failed to load Ziti: %d(%s)\n", err, ziti_errorstr(err));
-    }
-    ziti_socket_t socket = Ziti_socket(SOCK_STREAM);
-
-    long rc = service ? Ziti_connect(socket, ztx, service, "ziggy") : Ziti_connect_addr(socket, hostname, port);
-
-    if (rc != 0) {
-        fprintf(stderr, "failed to connect: %ld(%s)\n", rc, ziti_errorstr(Ziti_last_error()));
         goto DONE;
     }
 
+    if (!blocking) {
+#if _WIN32
+        u_long mode = 1;  // 1 to enable non-blocking socket
+        ioctlsocket(soc, FIONBIO, &mode);
+#else
+        int opt = fcntl(soc, F_GETFL);
+        fcntl(soc, F_SETFL, opt | O_NONBLOCK);
+#endif
+    }
+
+    long rc = service ? Ziti_connect(soc, ztx, service, "ziggy") : Ziti_connect_addr(soc, hostname, port);
+    err = sock_error;
+    struct pollfd p = { .fd = soc, .events = POLLOUT };
+    if (rc == -1 && err == IN_PROGRESS) {
+        rc = poll(&p, 1, 10000);
+        if (rc == 0) {
+            fprintf(stderr, "connect timed out\n");
+            goto DONE;
+        }
+
+        if (rc < 0) {
+            err = sock_error;
+            fprintf(stderr, "poll failed: %d(%s)\n", err, strerror(err));
+            goto DONE;
+        }
+        socklen_t err_len = sizeof(err);
+        getsockopt(soc, SOL_SOCKET, SO_ERROR, (void*)&err, &err_len);
+        if (err != 0) {
+            fprintf(stderr, "failed to connect: %d(%s)\n", err, strerror(err));
+            goto DONE;
+        }
+    } else if (rc != 0) {
+        err = errno;
+        fprintf(stderr, "failed to connect: %d(%s)\n", err, strerror(err));
+        goto DONE;
+    } else {
+        printf("connected immediately\n");
+    }
+
     const char msg[] = "this is a test";
-    assert(write(socket, msg, sizeof(msg) - 1) == sizeof(msg) - 1);
-    shutdown(socket, SHUT_WR);
-    char buf[1024];
+    rc = write(soc, msg, sizeof(msg) - 1);
+    if (rc < 0) {
+        fprintf(stderr, "write failed: %d(%s)\n", errno, strerror(errno));
+        goto DONE;
+    }
+
     do {
-        rc = read(socket, buf, sizeof(buf));
+        char buf[1024];
+
+        if (!blocking) {
+            printf("polling for data to read...\n");
+
+            struct pollfd p = {.fd = soc, .events = POLLIN};
+            rc = poll(&p, 1, 10000);
+            if (rc == 0) {
+                fprintf(stderr, "read timed out\n");
+                break;
+            } else if (rc < 0) {
+                fprintf(stderr, "poll failed: %d(%s)\n", errno, strerror(errno));
+                break;
+            }
+        }
+        rc = read(soc, buf, sizeof(buf));
         if (rc > 0) {
-            printf("read rc=%ld(%.*s)\n", rc, (int)rc, buf);
+            printf("read rc=%ld\n%.*s\n", rc, (int)rc, buf);
+            fflush(stdout);
         }
     } while (rc > 0);
     printf("rc = %ld, errno = %d\n", rc, errno);
 
     DONE:
-    close(socket);
+    fflush(stderr);
+    close(soc);
     Ziti_lib_shutdown();
 }

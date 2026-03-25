@@ -1,16 +1,16 @@
-// Copyright (c) 2022-2023.  NetFoundry Inc.
+// Copyright (c) 2022-2026.  NetFoundry Inc
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// 	Licensed under the Apache License, Version 2.0 (the "License");
+// 	you may not use this file except in compliance with the License.
+// 	You may obtain a copy of the License at
 //
-// https://www.apache.org/licenses/LICENSE-2.0
+// 	https://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// 	Unless required by applicable law or agreed to in writing, software
+// 	distributed under the License is distributed on an "AS IS" BASIS,
+// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// 	See the License for the specific language governing permissions and
+// 	limitations under the License.
 
 
 #include <ziti/ziti.h>
@@ -33,7 +33,7 @@ typedef struct {
 // on successful connect bridge Ziti connection to standard input and output
 void on_connect(ziti_connection conn, int status) {
     if (status == ZITI_OK) {
-        ziti_conn_bridge_fds(conn, STDIN, STDOUT, (void (*)(void *)) ziti_shutdown, ziti_conn_context(conn));
+        ziti_conn_bridge_fds(conn, (uv_os_sock_t)STDIN, (uv_os_sock_t)STDOUT, (void (*)(void *)) ziti_shutdown, ziti_conn_context(conn));
     } else {
         fprintf(stderr, "ziti connection failed: %s", ziti_errorstr(status));
         ziti_shutdown(ziti_conn_context(conn));
@@ -43,9 +43,11 @@ void on_connect(ziti_connection conn, int status) {
 void on_ziti_event(ziti_context ztx, const ziti_event_t *ev) {
     if (ev->type == ZitiContextEvent && ev->ctx.ctrl_status == ZITI_OK) {
         zcat_opts *opts = ziti_app_ctx(ztx);
+        if (opts->service == NULL) return;
         ziti_connection zconn;
         ziti_conn_init(ztx, &zconn, NULL);
         ziti_dial(zconn, opts->service, on_connect, NULL);
+        opts->service = NULL; // only dial once
     }
 }
 
