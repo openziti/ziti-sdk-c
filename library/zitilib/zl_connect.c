@@ -82,8 +82,12 @@ static void do_ziti_connect(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
 
     in_addr_t ip;
     cstr host = cstr_init();
-    if (uv_inet_pton(AF_INET, cstr_str(&req->host), &ip) == 0) { // try reverse lookup
-        cstr_assign(&host, Ziti_lookup(ip));
+    if (uv_inet_pton(AF_INET, cstr_str(&req->host), &ip) == 0) {
+        // try reverse lookup
+        const char *h = Ziti_lookup(ip);
+        if (h != NULL) {
+            cstr_assign(&host, h);
+        }
     }
     if (cstr_is_empty(&host)) {
         cstr_copy(&host, req->host);
@@ -252,6 +256,7 @@ static void on_ziti_connect(ziti_connection conn, int status) {
         if (uv_queue_work(req->loop, w, connect_work, connect_work_done) == 0) {
             return;
         }
+        free(w);
         ZITI_LOG(ERROR, "failed to queue work for ziti connect");
     }
 
