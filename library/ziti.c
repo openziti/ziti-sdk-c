@@ -81,7 +81,6 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
 static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e, void *ctx);
 
 static int ztx_init_controller(ziti_context ztx);
-static void ztx_config_update(ziti_context ztx);
 
 static void api_session_cb(ziti_api_session *, const ziti_error *, void *);
 

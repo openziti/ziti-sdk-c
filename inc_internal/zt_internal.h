@@ -296,6 +296,7 @@ void ziti_force_service_update(ziti_context ztx, const char *service_id);
 void ziti_services_refresh(ziti_context ztx, bool now);
 
 extern void ziti_send_event(ziti_context ztx, const ziti_event_t *e);
+void ztx_config_update(ziti_context ztx);
 
 void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, uint32_t req_id, const char *reason);
 
