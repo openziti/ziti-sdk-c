@@ -951,6 +951,23 @@ static void enroll_url_ca_cb(char *pkcs7, const ziti_error *err, void *ctx) {
     free(pkcs7);
     chain->free(chain);
 
+    // check controller version
+    const char *ctrl_ver = req->tmp_ctrl.version.version;
+    if (ctrl_ver) {
+        const char *vnum = ctrl_ver[0] == 'v' ? ctrl_ver + 1 : ctrl_ver;
+        int major = atoi(vnum);
+        if (major == 0) {
+            ZITI_LOG(INFO, "controller %s is a dev build, assuming enrollToCert support", ctrl_ver);
+        } else if (major < 2) {
+            ZITI_LOG(ERROR, "controller %s does not support enrollToCert (requires v2.0+)", ctrl_ver);
+            free(ca_pem);
+            ziti_ctrl_close(&req->tmp_ctrl);
+            req->tmp_tls->free_ctx(req->tmp_tls);
+            fail_future(req->enroll_f, ZITI_INVALID_STATE);
+            return;
+        }
+    }
+
     // clean up temp connection
     ziti_ctrl_close(&req->tmp_ctrl);
     req->tmp_tls->free_ctx(req->tmp_tls);

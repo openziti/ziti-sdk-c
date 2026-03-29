@@ -220,6 +220,16 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
         char *csr = NULL;
         bool cert_enroll = ztx->ext_auth && ztx->ext_auth->signer_cfg.can_cert_enroll;
         if (cert_enroll) {
+            const char *ctrl_ver = ztx_get_controller(ztx)->version.version;
+            if (ctrl_ver) {
+                const char *vnum = ctrl_ver[0] == 'v' ? ctrl_ver + 1 : ctrl_ver;
+                int major = atoi(vnum);
+                if (major == 0) {
+                    ZTX_LOG(DEBUG, "controller %s is a dev build, assuming enrollToCert support", ctrl_ver);
+                } else if (major < 2) {
+                    ZTX_LOG(WARN, "controller %s may not support enrollToCert (requires v2.0+)", ctrl_ver);
+                }
+            }
             ZTX_LOG(INFO, "enrollToCert enabled, generating CSR");
             if (ztx->id_creds.key == NULL) {
                 if (ztx->enroll_key_cb) {
