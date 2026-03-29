@@ -216,6 +216,11 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         process_auth_event(wrap, &ev->auth);
     } else if (ev->type == ZitiServiceEvent) {
         process_service_event(wrap, &ev->service);
+    } else if (ev->type == ZitiConfigEvent && wrap->enroll_future) {
+        char *cfg_json = ziti_config_to_json(ev->cfg.config, 0, NULL);
+        complete_future(wrap->enroll_future, cfg_json, ZITI_OK);
+        wrap->enroll_future = NULL;
+        ziti_shutdown(ztx);
     }
 }
 
@@ -883,6 +888,87 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert, cha
         *id_json_len = strlen(*id_json);
     }
     destroy_future(f);
+    return rc;
+}
+
+struct enroll_url_req {
+    const char *url;
+    future_t *enroll_f;
+};
+
+static void do_enroll_url(void *arg, future_t *f, uv_loop_t *l) {
+    struct enroll_url_req *req = arg;
+
+    ziti_config cfg = {0};
+    model_list_append(&cfg.controllers, (char *)req->url);
+
+    ziti_context ztx = NULL;
+    int rc = ziti_context_init(&ztx, &cfg);
+    model_list_clear(&cfg.controllers, NULL);
+    if (rc != ZITI_OK) {
+        fail_future(f, rc);
+        return;
+    }
+
+    ztx_wrap_t *wrap = calloc(1, sizeof(ztx_wrap_t));
+    wrap->ztx = ztx;
+    wrap->auth_future = f;
+    wrap->enroll_future = req->enroll_f;
+
+    ziti_context_set_options(ztx, &(ziti_options){
+            .app_ctx = wrap,
+            .event_cb = on_ctx_event,
+            .events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent,
+    });
+
+    ziti_context_run(ztx, l);
+}
+
+int Ziti_enroll_url(const char *url, char **id_json, unsigned long *id_json_len) {
+    if (url == NULL || id_json == NULL || id_json_len == NULL) {
+        return ZITI_INVALID_STATE;
+    }
+
+    future_t *enroll_f = new_future();
+    struct enroll_url_req req = {
+            .url = url,
+            .enroll_f = enroll_f,
+    };
+
+    // this future completes when auth event arrives (ext login required)
+    future_t *auth_f = schedule_on_loop((loop_work_cb) do_enroll_url, &req, true);
+    void *result;
+    int rc = await_future(auth_f, &result);
+    destroy_future(auth_f);
+
+    if (rc != ZITI_OK && rc != ZITI_EXTERNAL_LOGIN_REQUIRED) {
+        destroy_future(enroll_f);
+        return rc;
+    }
+
+    ziti_handle_t handle = (ziti_handle_t)(uintptr_t)result;
+
+    // get signers and pick one with enrollToCert
+    const char *const *signers = Ziti_get_ext_signers(handle);
+    if (signers == NULL) {
+        destroy_future(enroll_f);
+        return ZITI_INVALID_STATE;
+    }
+
+    // use the first available signer (controller configured with enrollToCert)
+    char *login_url = Ziti_login_external(handle, signers[0]);
+    if (login_url) {
+        printf("open this URL to authenticate:\n  %s\n", login_url);
+        free(login_url);
+    }
+
+    // wait for enrollToCert to complete (config event)
+    rc = await_future(enroll_f, &result);
+    if (rc == ZITI_OK) {
+        *id_json = result;
+        *id_json_len = strlen(*id_json);
+    }
+    destroy_future(enroll_f);
     return rc;
 }
 
