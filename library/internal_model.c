@@ -163,6 +163,7 @@ IMPL_ENUM(ziti_protocol, ZITI_PROTOCOL_ENUM)
 IMPL_MODEL(ziti_create_api_cert_req, ZITI_CREATE_API_CERT_REQ)
 
 IMPL_MODEL(ziti_create_api_cert_resp, ZITI_CREATE_API_CERT_RESP)
+IMPL_MODEL(ziti_enrollment_cert_resp, ZITI_ENROLLMENT_CERT_RESP)
 
 IMPL_MODEL(api_address, API_ADDRESS_MODEL)
 

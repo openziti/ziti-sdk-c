@@ -21,6 +21,7 @@ set(test_client_json ${qs_home}/test-client.json)
 set(test_server_json ${qs_home}/test-server.json)
 set(test_service test-service)
 set(test_jwt_signer_key ${qs_home}/test-jwt-signer.key)
+set(test_jwt_signer_kid ${qs_home}/test-jwt-signer.kid)
 
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
         ${CMAKE_CURRENT_BINARY_DIR}/include/test-data.h

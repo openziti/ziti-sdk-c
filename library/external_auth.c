@@ -140,7 +140,7 @@ extern int ziti_ext_auth(ziti_context ztx,
     return ZITI_OK;
 }
 
-static void ztx_on_token_enroll(ziti_create_api_cert_resp *cert_resp, const ziti_error *error, void *ctx) {
+static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti_error *error, void *ctx) {
     ziti_context ztx = ctx;
     assert(ztx->auth_method);
 
@@ -151,6 +151,11 @@ static void ztx_on_token_enroll(ziti_create_api_cert_resp *cert_resp, const ziti
             ZTX_LOG(WARN, "failed to enroll: %s", error->message);
         }
     }
+
+    ZTX_LOG(DEBUG, "enroll response: cert_resp=%p cert_pem=%s cas_pem=%s",
+            cert_resp,
+            cert_resp ? (cert_resp->client_cert_pem ? "present" : "NULL") : "N/A",
+            cert_resp ? (cert_resp->cas_pem ? "present" : "NULL") : "N/A");
 
     if (cert_resp && cert_resp->client_cert_pem) {
         ZTX_LOG(INFO, "received client certificate from enrollToCert");
@@ -188,7 +193,7 @@ static void ztx_on_token_enroll(ziti_create_api_cert_resp *cert_resp, const ziti
     }
 
     ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
-    if (cert_resp) { free_ziti_create_api_cert_resp_ptr(cert_resp); }
+    if (cert_resp) { free_ziti_enrollment_cert_resp_ptr(cert_resp); }
 }
 
 extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
