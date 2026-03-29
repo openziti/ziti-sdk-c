@@ -179,6 +179,8 @@ struct ziti_ctx {
     struct ext_oidc_client_s *ext_auth;
     void (*ext_launch_cb)(ziti_context, const char*, void*);
     void *ext_launch_ctx;
+    ziti_enroll_key_cb enroll_key_cb;
+    void *enroll_key_ctx;
 
     // HA access_token(JWT) or legacy ziti_api_session.token
     cstr session_token;

@@ -205,6 +205,11 @@ int ziti_set_client_cert(ziti_context ztx, const char *cert_buf, size_t cert_len
     return ZITI_OK;
 }
 
+extern void ziti_set_enroll_key_cb(ziti_context ztx, ziti_enroll_key_cb cb, void *ctx) {
+    ztx->enroll_key_cb = cb;
+    ztx->enroll_key_ctx = ctx;
+}
+
 extern bool ziti_is_enabled(ziti_context ztx) {
     return ztx->enabled;
 }
