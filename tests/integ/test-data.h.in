@@ -16,3 +16,8 @@
 #define TEST_CLIENT "@test_client_json@"
 #define TEST_SERVER "@test_server_json@"
 #define TEST_SERVICE "@test_service@"
+
+#define TEST_JWT_SIGNER_KEY "@test_jwt_signer_key@"
+#define TEST_JWT_SIGNER_KID "@test_jwt_signer_kid@"
+#define TEST_JWT_SIGNER_ISSUER "https://test-jwt-issuer.example.com"
+#define TEST_JWT_SIGNER_AUDIENCE "openziti"

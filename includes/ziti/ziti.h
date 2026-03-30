@@ -1092,6 +1092,37 @@ ZITI_FUNC
 extern int ziti_ext_auth_token(ziti_context ztx, const char *token);
 
 /**
+ * @brief Callback to provide a private key for enrollToCert enrollment.
+ *
+ * When set via ziti_set_enroll_key_cb(), this callback is invoked during
+ * enrollToCert to let the caller provide a private key. The callback must
+ * allocate and return a PEM-formatted key string in *key_pem. The SDK takes
+ * ownership and will free it.
+ *
+ * If not set, the SDK generates a software key internally.
+ *
+ * @param ztx the Ziti context performing enrollment
+ * @param key_pem output: caller-allocated PEM string for the private key
+ * @param ctx the context passed to ziti_set_enroll_key_cb()
+ * @return ZITI_OK on success, or an error code
+ */
+typedef int (*ziti_enroll_key_cb)(ziti_context ztx, char **key_pem, void *ctx);
+
+/**
+ * @brief Set a callback to provide a private key for enrollToCert enrollment.
+ *
+ * This allows callers (e.g., CZiti/ziti-sdk-swift) to generate and manage
+ * private keys in a platform keychain rather than using SDK-generated software
+ * keys. The SDK will generate the CSR and handle all enrollment networking.
+ *
+ * @param ztx the Ziti context
+ * @param cb the callback, or NULL to use the default SDK key generation
+ * @param ctx additional context passed to the callback
+ */
+ZITI_FUNC
+extern void ziti_set_enroll_key_cb(ziti_context ztx, ziti_enroll_key_cb cb, void *ctx);
+
+/**
  * @brief Alerts that the host running the `ziti_context` has undergone a state change.
  *
  * Notifies that the host has undergone a state change: either woke or unlocked.

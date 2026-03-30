@@ -66,6 +66,31 @@ expect {
     eof { error "not cool" }
 }
 
+puts "Setting up ext-jwt-signer for enrollToCert tests"
+puts "================================================="
+
+spawn openssl genrsa -out $env(QUICKSTART_HOME)/test-jwt-signer.key 2048
+expect eof
+wait
+
+spawn openssl req -new -x509 -key $env(QUICKSTART_HOME)/test-jwt-signer.key -out $env(QUICKSTART_HOME)/test-jwt-signer.crt -days 365 -subj "/CN=test-jwt-signer/O=OpenZiti Test"
+expect eof
+wait
+
+set kid [exec sh -c "openssl x509 -in $env(QUICKSTART_HOME)/test-jwt-signer.crt -outform DER | shasum -a 1 | awk '{print \$1}'"]
+exec sh -c "echo $kid > $env(QUICKSTART_HOME)/test-jwt-signer.kid"
+
+spawn $ziti edge create ext-jwt-signer test-ext-jwt-signer "https://test-jwt-issuer.example.com" --cert-file $env(QUICKSTART_HOME)/test-jwt-signer.crt --audience openziti --enroll-to-cert --kid $kid
+expect {
+    -re "New ext-jwt-signer .* created" {}
+    -re "\[a-zA-Z0-9\]+" {}
+    "error" { abort $expect_out(buffer) }
+    eof { abort "ext-jwt-signer not created" }
+}
+
+puts "Enrolling test identities"
+puts "========================="
+
 spawn $enroller $env(QUICKSTART_HOME)/test-server.jwt $env(QUICKSTART_HOME)/test-server.json
 expect {
     "ziti identity is saved" {}

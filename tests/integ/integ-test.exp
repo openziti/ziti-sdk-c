@@ -1,5 +1,7 @@
 #!expect
 
+set timeout 120
+
 set ziti $env(ZITI_CLI)
 puts "ziti = $ziti"
 
@@ -12,7 +14,7 @@ spawn $ziti edge quickstart --home $env(QUICKSTART_HOME)
 set qs_id $spawn_id
 
 expect {
-    "finished synchronizing api sessions" { }
+    "controller and router started" { }
     timeout { error "qs not started in time" }
     eof { error "qs not started" }
 }

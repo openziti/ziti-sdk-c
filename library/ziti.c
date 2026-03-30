@@ -81,7 +81,6 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
 static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e, void *ctx);
 
 static int ztx_init_controller(ziti_context ztx);
-static void ztx_config_update(ziti_context ztx);
 
 static void api_session_cb(ziti_api_session *, const ziti_error *, void *);
 
@@ -204,6 +203,11 @@ int ziti_set_client_cert(ziti_context ztx, const char *cert_buf, size_t cert_len
     }
 
     return ZITI_OK;
+}
+
+extern void ziti_set_enroll_key_cb(ziti_context ztx, ziti_enroll_key_cb cb, void *ctx) {
+    ztx->enroll_key_cb = cb;
+    ztx->enroll_key_ctx = ctx;
 }
 
 extern bool ziti_is_enabled(ziti_context ztx) {

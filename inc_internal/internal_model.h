@@ -216,6 +216,10 @@ XX(cas_pem, model_string, none, ca, __VA_ARGS__)
 XX(client_cert_pem, model_string, none, certificate, __VA_ARGS__) \
 XX(cas_pem, model_string, none, cas, __VA_ARGS__)
 
+#define ZITI_ENROLLMENT_CERT_RESP(XX, ...) \
+XX(client_cert_pem, model_string, none, cert, __VA_ARGS__) \
+XX(cas_pem, model_string, none, ca, __VA_ARGS__)
+
 #define ZITI_AUTHENTICATOR_MODEL(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__) \
 XX(method, model_string, none, method, __VA_ARGS__) \
@@ -310,6 +314,7 @@ DECLARE_MODEL(ziti_extend_cert_authenticator_resp, ZITI_EXTEND_CERT_AUTHENTICATO
 DECLARE_MODEL(ziti_create_api_cert_req, ZITI_CREATE_API_CERT_REQ)
 
 DECLARE_MODEL(ziti_create_api_cert_resp, ZITI_CREATE_API_CERT_RESP)
+DECLARE_MODEL(ziti_enrollment_cert_resp, ZITI_ENROLLMENT_CERT_RESP)
 
 DECLARE_MODEL(api_address, API_ADDRESS_MODEL)
 
