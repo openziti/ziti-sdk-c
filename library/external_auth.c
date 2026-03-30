@@ -140,14 +140,9 @@ extern int ziti_ext_auth(ziti_context ztx,
     return ZITI_OK;
 }
 
-static void ztx_on_token_enroll(ziti_create_api_cert_resp *cert_resp, const ziti_error *error, void *ctx) {
+static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti_error *error, void *ctx) {
     ziti_context ztx = ctx;
     assert(ztx->auth_method);
-
-    if (cert_resp && cert_resp->client_cert_pem != NULL) {
-        ZTX_LOG(ERROR, "not handling client cert for now");
-    }
-    assert(cert_resp == NULL || cert_resp->client_cert_pem == NULL);
 
     if (error) {
         if (error->err == ZITI_ALREADY_ENROLLED) {
@@ -156,8 +151,49 @@ static void ztx_on_token_enroll(ziti_create_api_cert_resp *cert_resp, const ziti
             ZTX_LOG(WARN, "failed to enroll: %s", error->message);
         }
     }
+
+    ZTX_LOG(DEBUG, "enroll response: cert_resp=%p cert_pem=%s cas_pem=%s",
+            cert_resp,
+            cert_resp ? (cert_resp->client_cert_pem ? "present" : "NULL") : "N/A",
+            cert_resp ? (cert_resp->cas_pem ? "present" : "NULL") : "N/A");
+
+    if (cert_resp && cert_resp->client_cert_pem) {
+        ZTX_LOG(INFO, "received client certificate from enrollToCert");
+
+        // store cert in config for persistence
+        FREE(ztx->config.id.cert);
+        ztx->config.id.cert = strdup(cert_resp->client_cert_pem);
+
+        if (cert_resp->cas_pem) {
+            FREE(ztx->config.id.ca);
+            ztx->config.id.ca = strdup(cert_resp->cas_pem);
+        }
+
+        // store key PEM in config for persistence
+        if (ztx->id_creds.key) {
+            char *key_pem = NULL;
+            size_t key_pem_len = 0;
+            if (ztx->id_creds.key->to_pem(ztx->id_creds.key, &key_pem, &key_pem_len) == 0) {
+                FREE(ztx->config.id.key);
+                ztx->config.id.key = key_pem;
+            }
+        }
+
+        // load cert into TLS credentials
+        if (ztx->tlsCtx->load_cert(&ztx->id_creds.cert,
+                                    cert_resp->client_cert_pem,
+                                    strlen(cert_resp->client_cert_pem)) != 0) {
+            ZTX_LOG(ERROR, "failed to load enrolled certificate");
+        } else {
+            ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->id_creds.key, ztx->id_creds.cert);
+        }
+
+        // notify app to persist the updated config
+        ztx_config_update(ztx);
+    }
+
     ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
-    free_ziti_create_api_cert_resp_ptr(cert_resp);
+    if (cert_resp) { free_ziti_enrollment_cert_resp_ptr(cert_resp); }
 }
 
 extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
@@ -180,7 +216,54 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
     // create identity if needed and allowed
     if (ztx->identity_data == NULL && ztx->id_creds.cert == NULL) {
         ZTX_LOG(INFO, "no credentials present trying just-in-time enrollment");
-        ziti_ctrl_enroll_token(ztx_get_controller(ztx), token, NULL, ztx_on_token_enroll, ztx);
+
+        char *csr = NULL;
+        bool cert_enroll = ztx->ext_auth && ztx->ext_auth->signer_cfg.can_cert_enroll;
+        if (cert_enroll) {
+            const char *ctrl_ver = ztx_get_controller(ztx)->version.version;
+            if (ctrl_ver) {
+                const char *vnum = ctrl_ver[0] == 'v' ? ctrl_ver + 1 : ctrl_ver;
+                int major = atoi(vnum);
+                if (major == 0) {
+                    ZTX_LOG(DEBUG, "controller %s is a dev build, assuming enrollToCert support", ctrl_ver);
+                } else if (major < 2) {
+                    ZTX_LOG(WARN, "controller %s may not support enrollToCert (requires v2.0+)", ctrl_ver);
+                }
+            }
+            ZTX_LOG(INFO, "enrollToCert enabled, generating CSR");
+            if (ztx->id_creds.key == NULL) {
+                if (ztx->enroll_key_cb) {
+                    char *key_pem = NULL;
+                    int rc = ztx->enroll_key_cb(ztx, &key_pem, ztx->enroll_key_ctx);
+                    if (rc != ZITI_OK || key_pem == NULL) {
+                        ZTX_LOG(ERROR, "enroll_key_cb failed to provide private key");
+                        FREE(key_pem);
+                        return rc != ZITI_OK ? rc : ZITI_KEY_GENERATION_FAILED;
+                    }
+                    if (ztx->tlsCtx->load_key(&ztx->id_creds.key, key_pem, strlen(key_pem)) != 0) {
+                        ZTX_LOG(ERROR, "failed to load private key from enroll_key_cb");
+                        FREE(key_pem);
+                        return ZITI_KEY_LOAD_FAILED;
+                    }
+                    FREE(ztx->config.id.key);
+                    ztx->config.id.key = key_pem;
+                } else if (ztx->tlsCtx->generate_key(&ztx->id_creds.key) != 0) {
+                    ZTX_LOG(ERROR, "failed to generate private key for enrollToCert");
+                    return ZITI_KEY_GENERATION_FAILED;
+                }
+            }
+            size_t csr_len = 0;
+            if (ztx->tlsCtx->generate_csr_to_pem(ztx->id_creds.key, &csr, &csr_len,
+                                                   "O", "OpenZiti",
+                                                   "CN", "enrollToCert",
+                                                   NULL) != 0) {
+                ZTX_LOG(ERROR, "failed to generate CSR for enrollToCert");
+                return ZITI_CSR_GENERATION_FAILED;
+            }
+        }
+
+        ziti_ctrl_enroll_token(ztx_get_controller(ztx), token, csr, ztx_on_token_enroll, ztx);
+        free(csr);
         return ZITI_OK;
     }
 

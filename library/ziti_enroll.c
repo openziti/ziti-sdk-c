@@ -47,6 +47,10 @@ static int fetch_network_token(struct ziti_enroll_req * er);
 
 static int start_enrollment(struct ziti_enroll_req * er);
 
+static void url_ca_cb(char *base64_encoded_pkcs7, const ziti_error *err, void *req);
+static void complete_request(struct ziti_enroll_req *er, int err);
+static int verify_bootstrap_cert(const struct tlsuv_certificate_s *cert, void *ctx) { return 0; }
+
 
 static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *err, void *req);
 
@@ -204,6 +208,75 @@ int fetch_network_token(struct ziti_enroll_req *er) {
 
     model_list_clear(&ctrls, NULL);
     return rc;
+}
+
+int ziti_enroll_url(const char *url, uv_loop_t *loop,
+                    ziti_enroll_cb enroll_cb, void *enroll_ctx) {
+    if (url == NULL || loop == NULL || enroll_cb == NULL) {
+        return ZITI_INVALID_STATE;
+    }
+
+    struct tlsuv_url_s parsed;
+    if (tlsuv_parse_url(&parsed, url) != 0) {
+        ZITI_LOG(ERROR, "URL[%s] is invalid", url);
+        return ZITI_INVALID_CONFIG;
+    }
+
+    NEWP(er, struct ziti_enroll_req);
+    er->enroll_cb = enroll_cb;
+    er->ctx = enroll_ctx;
+    er->loop = loop;
+    er->opts.url = strdup(url);
+    er->tls = default_tls_context("", 0);
+    er->tls->set_cert_verify(er->tls, verify_bootstrap_cert, NULL);
+
+    model_list ctrls = {};
+    model_list_append(&ctrls, (char *)url);
+    int rc = ziti_ctrl_init(loop, &er->controller, &ctrls, er->tls);
+    model_list_clear(&ctrls, NULL);
+
+    if (rc != ZITI_OK) {
+        er->tls->free_ctx(er->tls);
+        free_enroll_req(er);
+        return rc;
+    }
+
+    ziti_ctrl_get_well_known_certs(&er->controller, url_ca_cb, er);
+    return ZITI_OK;
+}
+
+static void url_ca_cb(char *base64_encoded_pkcs7, const ziti_error *err, void *req) {
+    struct ziti_enroll_req *er = req;
+
+    if (err != NULL) {
+        ZITI_LOG(ERROR, "failed to fetch CA bundle from %s: %s", er->opts.url, err->message);
+        complete_request(er, (int)err->err);
+        return;
+    }
+
+    tlsuv_certificate_t chain = NULL;
+    char *ca_pem = NULL;
+    size_t ca_pem_len = 0;
+    if (er->tls->parse_pkcs7_certs(&chain, base64_encoded_pkcs7, strlen(base64_encoded_pkcs7)) != 0 ||
+        chain->to_pem(chain, 1, &ca_pem, &ca_pem_len) != 0) {
+        free(base64_encoded_pkcs7);
+        if (chain) chain->free(chain);
+        complete_request(er, ZITI_PKCS7_ASN1_PARSING_FAILED);
+        return;
+    }
+    free(base64_encoded_pkcs7);
+    chain->free(chain);
+
+    er->cfg.id.ca = ca_pem;
+    model_list_append(&er->cfg.controllers, strdup(er->opts.url));
+
+    ZITI_LOG(INFO, "fetched CA bundle (%zd bytes) from %s", ca_pem_len, er->opts.url);
+
+    ziti_ctrl_close(&er->controller);
+    er->tls->free_ctx(er->tls);
+    er->tls = NULL;
+
+    complete_request(er, ZITI_OK);
 }
 
 static int start_enrollment(struct ziti_enroll_req *er) {

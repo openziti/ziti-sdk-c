@@ -69,6 +69,21 @@ typedef void (*ziti_enroll_cb)(const ziti_config *cfg, int status, const char *e
 ZITI_FUNC extern int ziti_enroll(const ziti_enroll_opts *opts, uv_loop_t *loop,
                                  ziti_enroll_cb enroll_cb, void *enroll_ctx);
 
+/**
+ * @brief Bootstrap a ziti_config from a controller URL.
+ *
+ * Connects to the controller, fetches the CA bundle, and returns a
+ * ziti_config with the CA and controller URL set. 
+ *
+ * @param url controller URL (e.g., "https://ctrl.example.com:1280")
+ * @param loop event loop
+ * @param enroll_cb callback invoked with the bootstrapped config
+ * @param enroll_ctx additional context passed to the callback
+ * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ */
+ZITI_FUNC extern int ziti_enroll_url(const char *url, uv_loop_t *loop,
+                                     ziti_enroll_cb enroll_cb, void *enroll_ctx);
+
 
 #ifdef __cplusplus
     }

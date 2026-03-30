@@ -1117,9 +1117,9 @@ static struct ctrl_resp *prepare_resp(ziti_controller *ctrl, ctrl_resp_cb_t cb, 
 }
 
 void ziti_ctrl_enroll_token(ziti_controller *ctrl, const char *token, const char *csr,
-                            void (*cb)(ziti_create_api_cert_resp *, const ziti_error *, void *), void *ctx) {
+                            void (*cb)(ziti_enrollment_cert_resp *, const ziti_error *, void *), void *ctx) {
     assert(token != NULL);
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_create_api_cert_resp_ptr_from_json, ctx);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_enrollment_cert_resp_ptr_from_json, ctx);
     cstr auth_header = cstr_from_fmt(HTTP_BEARER_FMT, token);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/enroll/token", ctrl_resp_cb, resp);

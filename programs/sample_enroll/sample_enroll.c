@@ -74,7 +74,7 @@ struct enroll_cert {
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <JWT file> <ID file> [ <key_file> [ <cert_file> ] ]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <JWT file | URL> <ID file> [ <key_file> [ <cert_file> ] ]\n", argv[0]);
         exit(1);
     }
 
@@ -82,6 +82,28 @@ int main(int argc, char **argv) {
     //changes the output to UTF-8 so that the windows output looks correct and not all jumbly
     SetConsoleOutputCP(65001);
 #endif
+
+    // URL-based enrollToCert
+    if (strncmp(argv[1], "https://", 8) == 0) {
+        Ziti_lib_init();
+        char *cfg = NULL;
+        unsigned long len;
+        int rc = Ziti_enroll_url(argv[1], &cfg, &len);
+        if (rc == ZITI_OK) {
+            FILE *id_file = fopen(argv[2], "w");
+            if (id_file) {
+                fprintf(id_file, "%.*s", (int) len, cfg);
+                printf("ziti identity is saved in %s\n", argv[2]);
+            } else {
+                printf("err = %d(%s)\n", errno, strerror(errno));
+            }
+        } else {
+            printf("err = %d(%s)\n", rc, ziti_errorstr(rc));
+        }
+        free(cfg);
+        Ziti_lib_shutdown();
+        return rc;
+    }
 #if 0
     uv_loop_t *loop = uv_default_loop();
 

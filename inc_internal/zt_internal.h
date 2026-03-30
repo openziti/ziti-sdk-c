@@ -179,6 +179,8 @@ struct ziti_ctx {
     struct ext_oidc_client_s *ext_auth;
     void (*ext_launch_cb)(ziti_context, const char*, void*);
     void *ext_launch_ctx;
+    ziti_enroll_key_cb enroll_key_cb;
+    void *enroll_key_ctx;
 
     // HA access_token(JWT) or legacy ziti_api_session.token
     cstr session_token;
@@ -296,6 +298,7 @@ void ziti_force_service_update(ziti_context ztx, const char *service_id);
 void ziti_services_refresh(ziti_context ztx, bool now);
 
 extern void ziti_send_event(ziti_context ztx, const ziti_event_t *e);
+void ztx_config_update(ziti_context ztx);
 
 void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, uint32_t req_id, const char *reason);
 
