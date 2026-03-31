@@ -110,7 +110,7 @@ int main(int argc, char **argv) {
         Ziti_lib_init();
         char *cfg = NULL;
         unsigned long len;
-        int rc = Ziti_enroll_url(argv[1], net_jwt, &cfg, &len);
+        int rc = Ziti_enroll_controller(argv[1], net_jwt, &cfg, &len);
         if (rc == ZITI_OK) {
             FILE *id_file = fopen(argv[2], "w");
             if (id_file) {

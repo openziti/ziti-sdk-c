@@ -68,9 +68,9 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert,
                          char **id_json, unsigned long *id_json_len);
 
 /**
- * @brief Enroll a new Ziti identity via URL using enrollToCert.
+ * @brief Enroll a new Ziti identity with the controller using enrollToCert.
  *
- * Connects to the controller at the given URL, discovers external JWT signers
+ * Connects to the controller, discovers external JWT signers
  * with enrollToCertEnabled, opens a browser for OIDC authentication, generates
  * a CSR, and exchanges the OIDC token + CSR for a client certificate.
  *
@@ -90,7 +90,7 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert,
  * @return ZITI_OK on success, error code on failure
  */
 ZITI_FUNC
-int Ziti_enroll_url(const char *url, const char *jwt, char **id_json, unsigned long *id_json_len);
+int Ziti_enroll_controller(const char *url, const char *jwt, char **id_json, unsigned long *id_json_len);
 /**
  * @brief Load Ziti identity.
  *
