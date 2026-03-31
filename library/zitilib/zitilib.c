@@ -218,6 +218,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             for (int i = 0; ev->auth.providers && ev->auth.providers[i]; i++) {
                 if (ev->auth.providers[i]->can_cert_enroll) {
                     ZITI_LOG(INFO, "enrollToCert: using signer[%s]", ev->auth.providers[i]->name);
+                    wrap->enroll_started = true;
                     ziti_use_ext_jwt_signer(ztx, ev->auth.providers[i]->name);
                     ziti_ext_auth(ztx, NULL, NULL);
                     return;
@@ -239,7 +240,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         process_auth_event(wrap, &ev->auth);
     } else if (ev->type == ZitiServiceEvent) {
         process_service_event(wrap, &ev->service);
-    } else if (ev->type == ZitiConfigEvent && wrap->enroll_future) {
+    } else if (ev->type == ZitiConfigEvent && wrap->enroll_future && wrap->enroll_started) {
         char *cfg_json = ziti_config_to_json(ev->cfg.config, 0, NULL);
         complete_future(wrap->enroll_future, cfg_json, ZITI_OK);
         wrap->enroll_future = NULL;
@@ -914,76 +915,28 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert, cha
     return rc;
 }
 
-static int accept_any_cert(const struct tlsuv_certificate_s *cert, void *ctx) { return 0; }
-
 struct enroll_url_req {
     const char *url;
+    const char *jwt;
     future_t *enroll_f;
     uv_loop_t *loop;
-    tls_context *tmp_tls;
-    ziti_controller tmp_ctrl;
 };
 
-static void enroll_url_ca_cb(char *pkcs7, const ziti_error *err, void *ctx) {
+static void enroll_url_bootstrap_cb(const ziti_config *cfg, int status, const char *err, void *ctx) {
     struct enroll_url_req *req = ctx;
 
-    if (err) {
-        ZITI_LOG(ERROR, "failed to fetch CA bundle from %s: %s", req->url, err->message);
-        fail_future(req->enroll_f, (int)err->err);
-        ziti_ctrl_close(&req->tmp_ctrl);
-        req->tmp_tls->free_ctx(req->tmp_tls);
+    if (status != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to bootstrap from %s: %s", req->url, err ? err : ziti_errorstr(status));
+        fail_future(req->enroll_f, status);
         return;
     }
 
-    // parse PKCS7 CA bundle into PEM
-    tlsuv_certificate_t chain = NULL;
-    char *ca_pem = NULL;
-    size_t ca_pem_len = 0;
-    if (req->tmp_tls->parse_pkcs7_certs(&chain, pkcs7, strlen(pkcs7)) != 0 ||
-        chain->to_pem(chain, 1, &ca_pem, &ca_pem_len) != 0) {
-        free(pkcs7);
-        if (chain) chain->free(chain);
-        fail_future(req->enroll_f, ZITI_PKCS7_ASN1_PARSING_FAILED);
-        ziti_ctrl_close(&req->tmp_ctrl);
-        req->tmp_tls->free_ctx(req->tmp_tls);
-        return;
-    }
-    free(pkcs7);
-    chain->free(chain);
+    ZITI_LOG(INFO, "bootstrapped config from %s", req->url);
 
-    // check controller version
-    const char *ctrl_ver = req->tmp_ctrl.version.version;
-    if (ctrl_ver) {
-        const char *vnum = ctrl_ver[0] == 'v' ? ctrl_ver + 1 : ctrl_ver;
-        int major = atoi(vnum);
-        if (major == 0) {
-            ZITI_LOG(INFO, "controller %s is a dev build, assuming enrollToCert support", ctrl_ver);
-        } else if (major < 2) {
-            ZITI_LOG(ERROR, "controller %s does not support enrollToCert (requires v2.0+)", ctrl_ver);
-            free(ca_pem);
-            ziti_ctrl_close(&req->tmp_ctrl);
-            req->tmp_tls->free_ctx(req->tmp_tls);
-            fail_future(req->enroll_f, ZITI_INVALID_STATE);
-            return;
-        }
-    }
-
-    // clean up temp connection
-    ziti_ctrl_close(&req->tmp_ctrl);
-    req->tmp_tls->free_ctx(req->tmp_tls);
-    req->tmp_tls = NULL;
-
-    ZITI_LOG(INFO, "fetched CA bundle (%zd bytes) from %s", ca_pem_len, req->url);
-
-    // create context with the fetched CA
-    ziti_config cfg = {0};
-    cfg.id.ca = ca_pem;
-    model_list_append(&cfg.controllers, (char *)req->url);
-
+    // cfg points into the enroll request and is freed after this callback returns,
+    // but ziti_context_init copies everything it needs
     ziti_context ztx = NULL;
-    int rc = ziti_context_init(&ztx, &cfg);
-    model_list_clear(&cfg.controllers, NULL);
-    free(ca_pem);
+    int rc = ziti_context_init(&ztx, cfg);
     if (rc != ZITI_OK) {
         fail_future(req->enroll_f, rc);
         return;
@@ -1006,23 +959,13 @@ static void do_enroll_url(void *arg, future_t *f, uv_loop_t *l) {
     struct enroll_url_req *req = arg;
     req->loop = l;
 
-    // first fetch CA bundle - accept any server cert for this initial connection
-    req->tmp_tls = default_tls_context("", 0);
-    req->tmp_tls->set_cert_verify(req->tmp_tls, accept_any_cert, NULL);
-    model_list ctrls = {};
-    model_list_append(&ctrls, (char *)req->url);
-    int rc = ziti_ctrl_init(l, &req->tmp_ctrl, &ctrls, req->tmp_tls);
-    model_list_clear(&ctrls, NULL);
+    int rc = ziti_enroll_url(req->url, req->jwt, l, enroll_url_bootstrap_cb, req);
     if (rc != ZITI_OK) {
-        req->tmp_tls->free_ctx(req->tmp_tls);
         fail_future(req->enroll_f, rc);
-        return;
     }
-
-    ziti_ctrl_get_well_known_certs(&req->tmp_ctrl, enroll_url_ca_cb, req);
 }
 
-int Ziti_enroll_url(const char *url, char **id_json, unsigned long *id_json_len) {
+int Ziti_enroll_url(const char *url, const char *jwt, char **id_json, unsigned long *id_json_len) {
     if (url == NULL || id_json == NULL || id_json_len == NULL) {
         return ZITI_INVALID_STATE;
     }
@@ -1030,6 +973,7 @@ int Ziti_enroll_url(const char *url, char **id_json, unsigned long *id_json_len)
     future_t *enroll_f = new_future();
     struct enroll_url_req *req = calloc(1, sizeof(struct enroll_url_req));
     req->url = url;
+    req->jwt = jwt;
     req->enroll_f = enroll_f;
 
     // schedule context creation - auth events drive signer selection and OIDC

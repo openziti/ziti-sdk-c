@@ -74,15 +74,23 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert,
  * with enrollToCertEnabled, opens a browser for OIDC authentication, generates
  * a CSR, and exchanges the OIDC token + CSR for a client certificate.
  *
+ * If \p jwt is NULL, the network JWT is fetched from the controller's
+ * /network-jwts endpoint, which requires the controller's TLS certificate
+ * to be verifiable by the OS trust store (publicly-trusted CA).
+ *
+ * If \p jwt is provided (obtained out of band), it is used directly to
+ * verify the controller, allowing privately-signed controllers.
+ *
  * This is a blocking call that returns when enrollment is complete.
  *
  * @param url controller URL (e.g., "https://ctrl.example.com:1280")
+ * @param jwt network JWT string, or NULL to fetch from controller
  * @param id_json (output) identity in JSON format, caller is responsible for freeing it
  * @param id_json_len (output) length of id_json
  * @return ZITI_OK on success, error code on failure
  */
 ZITI_FUNC
-int Ziti_enroll_url(const char *url, char **id_json, unsigned long *id_json_len);
+int Ziti_enroll_url(const char *url, const char *jwt, char **id_json, unsigned long *id_json_len);
 /**
  * @brief Load Ziti identity.
  *

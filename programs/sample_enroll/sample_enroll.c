@@ -75,6 +75,7 @@ struct enroll_cert {
 int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <JWT file | URL> <ID file> [ <key_file> [ <cert_file> ] ]\n", argv[0]);
+        fprintf(stderr, "       %s <URL> <ID file> --jwt <network JWT file>\n", argv[0]);
         exit(1);
     }
 
@@ -85,10 +86,31 @@ int main(int argc, char **argv) {
 
     // URL-based enrollToCert
     if (strncmp(argv[1], "https://", 8) == 0) {
+        // check for --jwt <file> option
+        const char *net_jwt = NULL;
+        char jwt_buf[8 * 1024];
+        for (int i = 3; i < argc - 1; i++) {
+            if (strcmp(argv[i], "--jwt") == 0) {
+                FILE *jf = fopen(argv[i + 1], "r");
+                if (jf == NULL) {
+                    perror("failed to open network JWT file");
+                    return 1;
+                }
+                if (fgets(jwt_buf, sizeof(jwt_buf), jf) == NULL) {
+                    perror("failed to read network JWT file");
+                    fclose(jf);
+                    return 1;
+                }
+                fclose(jf);
+                net_jwt = jwt_buf;
+                break;
+            }
+        }
+
         Ziti_lib_init();
         char *cfg = NULL;
         unsigned long len;
-        int rc = Ziti_enroll_url(argv[1], &cfg, &len);
+        int rc = Ziti_enroll_url(argv[1], net_jwt, &cfg, &len);
         if (rc == ZITI_OK) {
             FILE *id_file = fopen(argv[2], "w");
             if (id_file) {
