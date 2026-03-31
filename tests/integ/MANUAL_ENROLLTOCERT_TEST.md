@@ -1,10 +1,10 @@
 # Manual enrollToCert Testing Notes
 
-Tested 2026-03-29.
+Tested 2026-03-31.
 
 ## Environment
 
-- **Ziti controller + CLI**: dev build from openziti/ziti main branch (v2.0 pre-release, `go install ./ziti`)
+- **Ziti controller + CLI**: dev build from openziti/ziti main branch (v2.0 pre-release)
 - **Ziti C SDK**: enroll-to-cert branch of ziti-sdk-c
 - **OIDC provider**: Keycloak 26.x via Docker
 
@@ -46,20 +46,45 @@ Notes:
 
 ## Running sample_enroll
 
+**Public CA controller** (network JWT fetched automatically):
+
 ```bash
 ZITI_LOG=4 ./build/programs/sample_enroll/RelWithDebInfo/sample_enroll \
-  https://localhost:1280 /tmp/test-enrolled.json
+  https://ctrl.example.com:443 /tmp/test-enrolled.json
 ```
 
-The program:
-1. Fetches CA bundle from `/.well-known/est/cacerts` (accepts self-signed)
-2. Connects to controller, discovers ext-jwt-signers
-3. Selects the signer with `enrollToCertEnabled`
-4. Prints an OIDC auth URL (also logged at INFO level with full query params)
-5. User opens URL in browser, authenticates as `testuser`/`testpass`
-6. SDK receives JWT, generates keypair + CSR, calls `POST /enroll/token`
-7. Controller creates identity and returns response
-8. Identity config saved to output file
+**Private CA controller** (network JWT provided out of band):
+
+```bash
+# Fetch network JWT manually (conscious trust decision with -k)
+curl -sk https://localhost:1280/network-jwts | jq -r '.data[0].token' > /tmp/network.jwt
+
+ZITI_LOG=4 ./build/programs/sample_enroll/RelWithDebInfo/sample_enroll \
+  https://localhost:1280 /tmp/test-enrolled.json --jwt /tmp/network.jwt
+```
+
+### Trust bootstrapping
+
+The SDK uses the network JWT to verify the controller's identity before
+fetching the CA bundle. This prevents MITM attacks during bootstrap.
+
+- If no `--jwt` is given, the SDK fetches the network JWT from the
+  controller's `/network-jwts` endpoint. This requires the controller's
+  TLS certificate to be verifiable by the OS trust store (publicly-trusted CA).
+- If `--jwt` is given, it is used directly to verify the controller,
+  allowing privately-signed controllers.
+
+### What the program does
+
+1. Fetches network JWT (or uses provided one) and verifies controller identity
+2. Fetches CA bundle from `/.well-known/est/cacerts` over the verified connection
+3. Connects to controller, discovers ext-jwt-signers
+4. Selects the signer with `enrollToCertEnabled`
+5. Prints an OIDC auth URL (also logged at INFO level with full query params)
+6. User opens URL in browser, authenticates as `testuser`/`testpass`
+7. SDK receives JWT, generates keypair + CSR, calls `POST /enroll/token`
+8. Controller creates identity and returns response
+9. Identity config saved to output file
 
 ## Results
 
@@ -87,6 +112,10 @@ The program:
 3. **Duplicate identity** - re-enrolling with the same `sub` claim
    fails with `ENROLLMENT_IDENTITY_ALREADY_ENROLLED`. Must delete the
    existing identity before re-testing.
+
+4. **Premature config event** - the SDK fires `ZitiConfigEvent` during
+   context initialization (before enrollToCert). The zitilib handler must
+   ignore config events until the cert is present.
 
 ## Cleanup
 

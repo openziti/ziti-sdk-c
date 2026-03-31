@@ -72,8 +72,14 @@ ZITI_FUNC extern int ziti_enroll(const ziti_enroll_opts *opts, uv_loop_t *loop,
 /**
  * @brief Bootstrap a ziti_config from a controller URL.
  *
- * Connects to the controller, fetches the CA bundle, and returns a
- * ziti_config with the CA and controller URL set. 
+ * Fetches the network JWT from the controller's /network-jwts endpoint,
+ * verifies the controller identity using the JWT signature, then fetches
+ * the CA bundle over the verified connection.
+ *
+ * Requires the controller's TLS certificate to be verifiable by the OS
+ * trust store (publicly-trusted CA). For privately-signed controllers,
+ * obtain the network JWT out of band and pass it via ziti_enroll_opts.token
+ * to ziti_enroll() instead.
  *
  * @param url controller URL (e.g., "https://ctrl.example.com:1280")
  * @param loop event loop

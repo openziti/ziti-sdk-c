@@ -145,11 +145,17 @@ static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti
     assert(ztx->auth_method);
 
     if (error) {
-        if (error->err == ZITI_ALREADY_ENROLLED) {
-            ZTX_LOG(DEBUG, "already enrolled");
-        } else {
-            ZTX_LOG(WARN, "failed to enroll: %s", error->message);
-        }
+        ZTX_LOG(WARN, "enrollToCert failed: %s", error->message);
+        ziti_send_event(ztx, &(ziti_event_t){
+                .type = ZitiAuthEvent,
+                .auth = {
+                        .action = ziti_auth_cannot_continue,
+                        .type = "enrollToCert",
+                        .error = error->message,
+                },
+        });
+        if (cert_resp) { free_ziti_enrollment_cert_resp_ptr(cert_resp); }
+        return;
     }
 
     ZTX_LOG(DEBUG, "enroll response: cert_resp=%p cert_pem=%s cas_pem=%s",
@@ -227,7 +233,8 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
                 if (major == 0) {
                     ZTX_LOG(DEBUG, "controller %s is a dev build, assuming enrollToCert support", ctrl_ver);
                 } else if (major < 2) {
-                    ZTX_LOG(WARN, "controller %s may not support enrollToCert (requires v2.0+)", ctrl_ver);
+                    ZTX_LOG(ERROR, "controller %s does not support enrollToCert (requires v2.0+)", ctrl_ver);
+                    return ZITI_INVALID_STATE;
                 }
             }
             ZTX_LOG(INFO, "enrollToCert enabled, generating CSR");
