@@ -218,7 +218,6 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             for (int i = 0; ev->auth.providers && ev->auth.providers[i]; i++) {
                 if (ev->auth.providers[i]->can_cert_enroll) {
                     ZITI_LOG(INFO, "enrollToCert: using signer[%s]", ev->auth.providers[i]->name);
-                    wrap->enroll_started = true;
                     ziti_use_ext_jwt_signer(ztx, ev->auth.providers[i]->name);
                     ziti_ext_auth(ztx, NULL, NULL);
                     return;
@@ -240,7 +239,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         process_auth_event(wrap, &ev->auth);
     } else if (ev->type == ZitiServiceEvent) {
         process_service_event(wrap, &ev->service);
-    } else if (ev->type == ZitiConfigEvent && wrap->enroll_future && wrap->enroll_started) {
+    } else if (ev->type == ZitiConfigEvent && wrap->enroll_future && ev->cfg.config->id.cert) {
         char *cfg_json = ziti_config_to_json(ev->cfg.config, 0, NULL);
         complete_future(wrap->enroll_future, cfg_json, ZITI_OK);
         wrap->enroll_future = NULL;
