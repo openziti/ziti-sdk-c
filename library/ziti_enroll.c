@@ -208,7 +208,7 @@ int fetch_network_token(struct ziti_enroll_req *er) {
     return rc;
 }
 
-int ziti_enroll_url(const char *url, const char *jwt, uv_loop_t *loop,
+int ziti_enroll_url(const char *url, uv_loop_t *loop,
                     ziti_enroll_cb enroll_cb, void *enroll_ctx) {
     if (url == NULL || loop == NULL || enroll_cb == NULL) {
         return ZITI_INVALID_STATE;
@@ -216,7 +216,6 @@ int ziti_enroll_url(const char *url, const char *jwt, uv_loop_t *loop,
 
     ziti_enroll_opts opts = {
         .url = (char *)url,
-        .token = (char *)jwt,
     };
     return ziti_enroll(&opts, loop, enroll_cb, enroll_ctx);
 }

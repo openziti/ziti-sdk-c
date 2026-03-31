@@ -959,7 +959,16 @@ static void do_enroll_url(void *arg, future_t *f, uv_loop_t *l) {
     struct enroll_url_req *req = arg;
     req->loop = l;
 
-    int rc = ziti_enroll_url(req->url, req->jwt, l, enroll_url_bootstrap_cb, req);
+    int rc;
+    if (req->jwt) {
+        ziti_enroll_opts opts = {
+            .url = (char *)req->url,
+            .token = (char *)req->jwt,
+        };
+        rc = ziti_enroll(&opts, l, enroll_url_bootstrap_cb, req);
+    } else {
+        rc = ziti_enroll_url(req->url, l, enroll_url_bootstrap_cb, req);
+    }
     if (rc != ZITI_OK) {
         fail_future(req->enroll_f, rc);
     }
