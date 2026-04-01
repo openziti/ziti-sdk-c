@@ -46,6 +46,7 @@ typedef struct ztx_wrap {
     ziti_context ztx;
     future_t *auth_future;
     future_t *enroll_future;
+    ziti_enroll_mode enroll_mode;
 
     future_t *services_loaded;
     model_map intercepts;

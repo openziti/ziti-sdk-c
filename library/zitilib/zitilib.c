@@ -216,21 +216,28 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         // enrollment-specific auth event handling
         if (ev->auth.action == ziti_auth_select_external) {
             for (int i = 0; ev->auth.providers && ev->auth.providers[i]; i++) {
-                if (ev->auth.providers[i]->can_cert_enroll) {
-                    ZITI_LOG(INFO, "enrollToCert: using signer[%s]", ev->auth.providers[i]->name);
+                bool match = false;
+                switch (wrap->enroll_mode) {
+                case ziti_enroll_cert:  match = ev->auth.providers[i]->can_cert_enroll; break;
+                case ziti_enroll_token: match = ev->auth.providers[i]->can_token_enroll; break;
+                case ziti_enroll_none:  match = true; break;
+                }
+                if (match) {
+                    ZITI_LOG(INFO, "enrollment: using signer[%s] mode=%d",
+                             ev->auth.providers[i]->name, wrap->enroll_mode);
                     ziti_use_ext_jwt_signer(ztx, ev->auth.providers[i]->name);
                     ziti_ext_auth(ztx, NULL, NULL);
                     return;
                 }
             }
-            ZITI_LOG(ERROR, "enrollToCert: no signer with enrollToCertEnabled found");
+            ZITI_LOG(ERROR, "no compatible signer found for enroll_mode=%d", wrap->enroll_mode);
             fail_future(wrap->enroll_future, ZITI_INVALID_STATE);
             wrap->enroll_future = NULL;
             ziti_shutdown(ztx);
         } else if (ev->auth.action == ziti_auth_login_external) {
-            ZITI_LOG(INFO, "enrollToCert: open this URL to authenticate: %s", ev->auth.detail);
+            ZITI_LOG(INFO, "enrollment: open this URL to authenticate: %s", ev->auth.detail);
         } else if (ev->auth.action == ziti_auth_cannot_continue) {
-            ZITI_LOG(ERROR, "enrollToCert: authentication failed: %s", ev->auth.error);
+            ZITI_LOG(ERROR, "enrollment: authentication failed: %s", ev->auth.error);
             fail_future(wrap->enroll_future, ZITI_AUTHENTICATION_FAILED);
             wrap->enroll_future = NULL;
             ziti_shutdown(ztx);
@@ -239,11 +246,14 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         process_auth_event(wrap, &ev->auth);
     } else if (ev->type == ZitiServiceEvent) {
         process_service_event(wrap, &ev->service);
-    } else if (ev->type == ZitiConfigEvent && wrap->enroll_future && ev->cfg.config->id.cert) {
-        char *cfg_json = ziti_config_to_json(ev->cfg.config, 0, NULL);
-        complete_future(wrap->enroll_future, cfg_json, ZITI_OK);
-        wrap->enroll_future = NULL;
-        ziti_shutdown(ztx);
+    } else if (ev->type == ZitiConfigEvent && wrap->enroll_future) {
+        // cert mode: wait for cert; token/none mode: any config event
+        if (wrap->enroll_mode != ziti_enroll_cert || ev->cfg.config->id.cert) {
+            char *cfg_json = ziti_config_to_json(ev->cfg.config, 0, NULL);
+            complete_future(wrap->enroll_future, cfg_json, ZITI_OK);
+            wrap->enroll_future = NULL;
+            ziti_shutdown(ztx);
+        }
     }
 }
 
@@ -917,6 +927,7 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert, cha
 struct enroll_url_req {
     const char *url;
     const char *jwt;
+    ziti_enroll_mode mode;
     future_t *enroll_f;
     uv_loop_t *loop;
 };
@@ -932,6 +943,14 @@ static void enroll_url_bootstrap_cb(const ziti_config *cfg, int status, const ch
 
     ZITI_LOG(INFO, "bootstrapped config from %s", req->url);
 
+    // none/token mode: just return the bootstrap config, no OIDC auth needed
+    // (token enrollment happens on first auth when the SDK runs with enroll_mode set)
+    if (req->mode != ziti_enroll_cert) {
+        char *cfg_json = ziti_config_to_json(cfg, 0, NULL);
+        complete_future(req->enroll_f, cfg_json, ZITI_OK);
+        return;
+    }
+
     // cfg points into the enroll request and is freed after this callback returns,
     // but ziti_context_init copies everything it needs
     ziti_context ztx = NULL;
@@ -944,11 +963,13 @@ static void enroll_url_bootstrap_cb(const ziti_config *cfg, int status, const ch
     ztx_wrap_t *wrap = calloc(1, sizeof(ztx_wrap_t));
     wrap->ztx = ztx;
     wrap->enroll_future = req->enroll_f;
+    wrap->enroll_mode = req->mode;
 
     ziti_context_set_options(ztx, &(ziti_options){
             .app_ctx = wrap,
             .event_cb = on_ctx_event,
             .events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent,
+            .enroll_mode = req->mode,
     });
 
     ziti_context_run(ztx, req->loop);
@@ -973,7 +994,8 @@ static void do_enroll_url(void *arg, future_t *f, uv_loop_t *l) {
     }
 }
 
-int Ziti_enroll_controller(const char *url, const char *jwt, char **id_json, unsigned long *id_json_len) {
+int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mode,
+                           char **id_json, unsigned long *id_json_len) {
     if (url == NULL || id_json == NULL || id_json_len == NULL) {
         return ZITI_INVALID_STATE;
     }
@@ -982,6 +1004,7 @@ int Ziti_enroll_controller(const char *url, const char *jwt, char **id_json, uns
     struct enroll_url_req *req = calloc(1, sizeof(struct enroll_url_req));
     req->url = url;
     req->jwt = jwt;
+    req->mode = mode;
     req->enroll_f = enroll_f;
 
     // schedule context creation - auth events drive signer selection and OIDC

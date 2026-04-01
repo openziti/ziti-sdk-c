@@ -275,6 +275,17 @@ typedef struct ziti_options_s {
      * To enable certificate extension the value must be greater than 0
      */
     unsigned int cert_extension_window;
+
+    /**
+     * \brief enrollment mode for just-in-time identity creation.
+     *
+     * Controls behavior when authenticating via an external JWT signer
+     * and no identity credentials exist yet.
+     * - ziti_enroll_none (0, default): no enrollment, identity pre-created by admin
+     * - ziti_enroll_cert: generate CSR, exchange for client certificate
+     * - ziti_enroll_token: auto-create identity, authenticate via external JWT
+     */
+    ziti_enroll_mode enroll_mode;
 } ziti_options;
 
 typedef struct ziti_dial_opts_s {
