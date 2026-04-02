@@ -9,6 +9,23 @@ CLIENT_ID="ziti-enrolltocert"
 TEST_USER="testuser"
 TEST_PASS="testpass"
 
+# install docker CLI if not available (e.g., inside ziti-builder container with socket mounted)
+if ! command -v docker &> /dev/null; then
+    echo "Docker CLI not found, attempting to install..."
+    if command -v apt-get &> /dev/null; then
+        apt-get update -qq && apt-get install -y -qq docker.io > /dev/null 2>&1
+    elif command -v apk &> /dev/null; then
+        apk add --no-cache docker-cli > /dev/null 2>&1
+    elif command -v yum &> /dev/null; then
+        yum install -y -q docker > /dev/null 2>&1
+    fi
+    if ! command -v docker &> /dev/null; then
+        echo "Failed to install Docker CLI"
+        exit 1
+    fi
+    echo "Docker CLI installed"
+fi
+
 echo "Starting Keycloak container..."
 docker run -d --name ziti-test-keycloak \
   -p 8080:8080 \
