@@ -9,24 +9,37 @@ TEST_USER="testuser"
 TEST_PASS="testpass"
 KC_CONTAINER="ziti-test-keycloak"
 
-# install docker CLI and jq if not available (e.g., inside ziti-builder container)
-for tool in docker jq; do
-    if ! command -v "$tool" &> /dev/null; then
-        echo "$tool not found, attempting to install..."
-        if command -v apt-get &> /dev/null; then
-            apt-get update -qq && apt-get install -y -qq "$tool" > /dev/null 2>&1
-        elif command -v apk &> /dev/null; then
-            apk add --no-cache "$tool" > /dev/null 2>&1
-        elif command -v yum &> /dev/null; then
-            yum install -y -q "$tool" > /dev/null 2>&1
-        fi
-        if ! command -v "$tool" &> /dev/null; then
-            echo "Failed to install $tool"
-            exit 1
-        fi
-        echo "$tool installed"
+# install required tools if not available (e.g., inside ziti-builder container)
+install_pkg() {
+    local pkg="$1"
+    if command -v apt-get &> /dev/null; then
+        apt-get update -qq && apt-get install -y -qq "$pkg" > /dev/null 2>&1
+    elif command -v apk &> /dev/null; then
+        apk add --no-cache "$pkg" > /dev/null 2>&1
+    elif command -v yum &> /dev/null; then
+        yum install -y -q "$pkg" > /dev/null 2>&1
     fi
-done
+}
+
+if ! command -v docker &> /dev/null; then
+    echo "docker not found, attempting to install..."
+    install_pkg docker.io || install_pkg docker-cli || install_pkg docker
+    if ! command -v docker &> /dev/null; then
+        echo "Failed to install docker"
+        exit 1
+    fi
+    echo "docker installed"
+fi
+
+if ! command -v jq &> /dev/null; then
+    echo "jq not found, attempting to install..."
+    install_pkg jq
+    if ! command -v jq &> /dev/null; then
+        echo "Failed to install jq"
+        exit 1
+    fi
+    echo "jq installed"
+fi
 
 # detect if we're running inside a container and find its Docker network
 KC_NETWORK_ARGS=""
