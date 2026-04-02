@@ -943,9 +943,8 @@ static void enroll_url_bootstrap_cb(const ziti_config *cfg, int status, const ch
 
     ZITI_LOG(INFO, "bootstrapped config from %s", req->url);
 
-    // none/token mode: just return the bootstrap config, no OIDC auth needed
-    // (token enrollment happens on first auth when the SDK runs with enroll_mode set)
-    if (req->mode != ziti_enroll_cert) {
+    // none mode: just return the bootstrap config, no OIDC auth needed
+    if (req->mode == ziti_enroll_none) {
         char *cfg_json = ziti_config_to_json(cfg, 0, NULL);
         complete_future(req->enroll_f, cfg_json, ZITI_OK);
         return;

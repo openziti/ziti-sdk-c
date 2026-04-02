@@ -74,8 +74,10 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert,
  * Bootstraps a Ziti identity from a controller URL. Behavior depends
  * on the enrollment mode:
  *
- * - ziti_enroll_none / ziti_enroll_token: returns the bootstrap config
- *   (CA + controller URL) immediately, no OIDC authentication.
+ * - ziti_enroll_none: returns the bootstrap config (CA + controller URL)
+ *   immediately, no OIDC authentication.
+ * - ziti_enroll_token: performs OIDC authentication, auto-creates identity
+ *   on the controller (no CSR). Returns config without cert/key.
  * - ziti_enroll_cert: performs OIDC authentication, generates a CSR,
  *   and exchanges the OIDC token + CSR for a client certificate.
  *
