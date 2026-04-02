@@ -93,12 +93,14 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert,
  * @param url controller URL (e.g., "https://ctrl.example.com:1280")
  * @param jwt network JWT string, or NULL to fetch from controller
  * @param mode enrollment mode (ziti_enroll_none, ziti_enroll_cert, ziti_enroll_token)
+ * @param signer_name ext-jwt-signer name to use, or NULL to auto-select
  * @param id_json (output) identity in JSON format, caller is responsible for freeing it
  * @param id_json_len (output) length of id_json
  * @return ZITI_OK on success, error code on failure
  */
 ZITI_FUNC
 int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mode,
+                           const char *signer_name,
                            char **id_json, unsigned long *id_json_len);
 /**
  * @brief Load Ziti identity.

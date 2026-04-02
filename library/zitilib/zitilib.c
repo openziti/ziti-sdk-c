@@ -228,6 +228,11 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             }
 
             for (int i = 0; ev->auth.providers && ev->auth.providers[i]; i++) {
+                // if signer_name specified, skip non-matching signers
+                if (wrap->signer_name &&
+                    strcmp(ev->auth.providers[i]->name, wrap->signer_name) != 0) {
+                    continue;
+                }
                 bool match = false;
                 switch (wrap->enroll_mode) {
                 case ziti_enroll_cert:  match = ev->auth.providers[i]->can_cert_enroll; break;
@@ -243,7 +248,10 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
                     return;
                 }
             }
-            ZITI_LOG(ERROR, "no compatible signer found for enroll_mode=%d", wrap->enroll_mode);
+            ZITI_LOG(ERROR, "no compatible signer found for enroll_mode=%d%s%s",
+                     wrap->enroll_mode,
+                     wrap->signer_name ? " signer=" : "",
+                     wrap->signer_name ? wrap->signer_name : "");
             fail_future(wrap->enroll_future, ZITI_INVALID_STATE);
             wrap->enroll_future = NULL;
             ziti_shutdown(ztx);
@@ -941,6 +949,7 @@ struct enroll_url_req {
     const char *url;
     const char *jwt;
     ziti_enroll_mode mode;
+    const char *signer_name;
     future_t *enroll_f;
     uv_loop_t *loop;
 };
@@ -976,6 +985,7 @@ static void enroll_url_bootstrap_cb(const ziti_config *cfg, int status, const ch
     wrap->ztx = ztx;
     wrap->enroll_future = req->enroll_f;
     wrap->enroll_mode = req->mode;
+    wrap->signer_name = req->signer_name;
 
     ziti_context_set_options(ztx, &(ziti_options){
             .app_ctx = wrap,
@@ -1007,6 +1017,7 @@ static void do_enroll_url(void *arg, future_t *f, uv_loop_t *l) {
 }
 
 int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mode,
+                           const char *signer_name,
                            char **id_json, unsigned long *id_json_len) {
     if (url == NULL || id_json == NULL || id_json_len == NULL) {
         return ZITI_INVALID_STATE;
@@ -1017,6 +1028,7 @@ int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mo
     req->url = url;
     req->jwt = jwt;
     req->mode = mode;
+    req->signer_name = signer_name;
     req->enroll_f = enroll_f;
 
     // schedule context creation - auth events drive signer selection and OIDC
