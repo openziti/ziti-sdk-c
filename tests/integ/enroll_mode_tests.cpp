@@ -249,10 +249,26 @@ static bool keycloak_available() {
     return available;
 }
 
+static std::string get_keycloak_host() {
+    FILE *f = fopen(TEST_KEYCLOAK_HOST_FILE, "r");
+    if (!f) return "localhost";
+    char buf[256];
+    std::string host;
+    if (fgets(buf, sizeof(buf), f)) {
+        host = buf;
+        while (!host.empty() && (host.back() == '\n' || host.back() == '\r'))
+            host.pop_back();
+    }
+    fclose(f);
+    return host.empty() ? "localhost" : host;
+}
+
 // Get an access token from Keycloak via Resource Owner Password Credentials grant
 static std::string get_keycloak_token() {
+    auto kc_host = get_keycloak_host();
+    std::string kc_url = "http://" + kc_host + ":8080";
     std::string cmd = "curl -sf -X POST "
-        "'" TEST_KEYCLOAK_URL "/realms/" TEST_KEYCLOAK_REALM "/protocol/openid-connect/token' "
+        "'" + kc_url + "/realms/" TEST_KEYCLOAK_REALM "/protocol/openid-connect/token' "
         "-d 'grant_type=password"
         "&client_id=" TEST_KEYCLOAK_CLIENT_ID
         "&username=" TEST_KEYCLOAK_USERNAME

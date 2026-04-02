@@ -119,8 +119,12 @@ expect {
 exec sh -c "echo $keycloak_available > $env(QUICKSTART_HOME)/keycloak-available"
 
 if {$keycloak_available} {
+    # read Keycloak host (container name or localhost)
+    set kc_host [string trim [exec cat $env(QUICKSTART_HOME)/keycloak-host]]
+    set kc_url "http://$kc_host:8080/realms/ziti-test"
+
     # OIDC signer using Keycloak (for lifecycle tests)
-    spawn $ziti edge create ext-jwt-signer test-oidc-signer "http://localhost:8080/realms/ziti-test" --jwks-endpoint "http://localhost:8080/realms/ziti-test/protocol/openid-connect/certs" --external-auth-url "http://localhost:8080/realms/ziti-test" --client-id ziti-enrolltocert --audience account --enroll-to-cert --enroll-to-token
+    spawn $ziti edge create ext-jwt-signer test-oidc-signer "$kc_url" --jwks-endpoint "$kc_url/protocol/openid-connect/certs" --external-auth-url "$kc_url" --client-id ziti-enrolltocert --audience account --enroll-to-cert --enroll-to-token
     expect {
         -re "New ext-jwt-signer .* created" {}
         -re "\[a-zA-Z0-9\]+" {}

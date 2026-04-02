@@ -7,6 +7,7 @@ REALM="ziti-test"
 CLIENT_ID="ziti-enrolltocert"
 TEST_USER="testuser"
 TEST_PASS="testpass"
+KC_CONTAINER="ziti-test-keycloak"
 
 # install docker CLI if not available (e.g., inside ziti-builder container with socket mounted)
 if ! command -v docker &> /dev/null; then
@@ -25,16 +26,29 @@ if ! command -v docker &> /dev/null; then
     echo "Docker CLI installed"
 fi
 
-# use host networking so Keycloak is reachable at localhost from both
-# the host and any sibling container sharing the Docker socket
-echo "Starting Keycloak container..."
-docker run -d --name ziti-test-keycloak \
-  --network host \
+# detect if we're running inside a container and find its Docker network
+KC_NETWORK_ARGS=""
+KC_HOST="localhost"
+
+MY_CONTAINER_ID=$(cat /proc/1/cpuset 2>/dev/null | grep -oE '[a-f0-9]{64}' || true)
+if [ -n "$MY_CONTAINER_ID" ]; then
+    MY_NETWORK=$(docker inspect "$MY_CONTAINER_ID" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}' || true)
+    if [ -n "$MY_NETWORK" ] && [ "$MY_NETWORK" != "host" ]; then
+        echo "Running inside container on network: $MY_NETWORK"
+        KC_NETWORK_ARGS="--network $MY_NETWORK"
+        KC_HOST="$KC_CONTAINER"
+    fi
+fi
+
+KC_URL="http://${KC_HOST}:8080"
+
+echo "Starting Keycloak container (host=$KC_HOST)..."
+docker run -d --name "$KC_CONTAINER" \
+  $KC_NETWORK_ARGS \
+  -p 8080:8080 \
   -e KC_BOOTSTRAP_ADMIN_USERNAME=$KC_ADMIN_USER \
   -e KC_BOOTSTRAP_ADMIN_PASSWORD=$KC_ADMIN_PASS \
   quay.io/keycloak/keycloak start-dev
-
-KC_URL="http://localhost:8080"
 
 echo "Waiting for Keycloak to be ready (up to 3 minutes)..."
 for i in $(seq 1 90); do
@@ -44,7 +58,7 @@ for i in $(seq 1 90); do
   fi
   if [ "$i" -eq 90 ]; then
     echo "Keycloak failed to start within 3 minutes"
-    docker logs ziti-test-keycloak 2>&1 | tail -20
+    docker logs "$KC_CONTAINER" 2>&1 | tail -20
     exit 1
   fi
   sleep 2
@@ -103,7 +117,11 @@ USER_ID=$(curl -sf "$KC_URL/admin/realms/$REALM/users?username=$TEST_USER" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   | jq -r '.[0].id')
 
+# write the Keycloak host for tests to use
+echo "$KC_HOST" > "${QUICKSTART_HOME:-/tmp}/keycloak-host"
+
 echo "Keycloak setup complete"
+echo "  URL: $KC_URL"
 echo "  Realm: $REALM"
 echo "  Client: $CLIENT_ID"
 echo "  User: $TEST_USER (sub=$USER_ID)"
