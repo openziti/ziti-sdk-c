@@ -1,7 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-KC_URL="http://localhost:8080"
 KC_ADMIN_USER="admin"
 KC_ADMIN_PASS="admin"
 REALM="ziti-test"
@@ -26,21 +25,26 @@ if ! command -v docker &> /dev/null; then
     echo "Docker CLI installed"
 fi
 
+# use host networking so Keycloak is reachable at localhost from both
+# the host and any sibling container sharing the Docker socket
 echo "Starting Keycloak container..."
 docker run -d --name ziti-test-keycloak \
-  -p 8080:8080 \
+  --network host \
   -e KC_BOOTSTRAP_ADMIN_USERNAME=$KC_ADMIN_USER \
   -e KC_BOOTSTRAP_ADMIN_PASSWORD=$KC_ADMIN_PASS \
   quay.io/keycloak/keycloak start-dev
 
-echo "Waiting for Keycloak to be ready..."
-for i in $(seq 1 60); do
+KC_URL="http://localhost:8080"
+
+echo "Waiting for Keycloak to be ready (up to 3 minutes)..."
+for i in $(seq 1 90); do
   if curl -sf "$KC_URL/realms/master" > /dev/null 2>&1; then
-    echo "Keycloak is ready"
+    echo "Keycloak is ready (after ~$((i*2))s)"
     break
   fi
-  if [ "$i" -eq 60 ]; then
-    echo "Keycloak failed to start"
+  if [ "$i" -eq 90 ]; then
+    echo "Keycloak failed to start within 3 minutes"
+    docker logs ziti-test-keycloak 2>&1 | tail -20
     exit 1
   fi
   sleep 2
@@ -48,7 +52,7 @@ done
 
 # get admin token
 ADMIN_TOKEN=$(curl -sf -X POST "$KC_URL/realms/master/protocol/openid-connect/token" \
-  -d "grant_type=client_credentials&client_id=admin-cli&username=$KC_ADMIN_USER&password=$KC_ADMIN_PASS&grant_type=password" \
+  -d "grant_type=password&client_id=admin-cli&username=$KC_ADMIN_USER&password=$KC_ADMIN_PASS" \
   | jq -r '.access_token')
 
 if [ -z "$ADMIN_TOKEN" ] || [ "$ADMIN_TOKEN" = "null" ]; then
