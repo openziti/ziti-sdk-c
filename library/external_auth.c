@@ -152,6 +152,7 @@ static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti
                         .action = ziti_auth_cannot_continue,
                         .type = "enrollment",
                         .error = error->message,
+                        .error_code = error->code,
                 },
         });
         if (cert_resp) { free_ziti_enrollment_cert_resp_ptr(cert_resp); }
