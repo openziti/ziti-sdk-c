@@ -66,17 +66,22 @@ expect {
     eof { error "not cool" }
 }
 
-puts "Setting up Keycloak"
-puts "==================="
+puts "Setting up Keycloak (optional)"
+puts "=============================="
 
-spawn sh -c "QUICKSTART_HOME=$env(QUICKSTART_HOME) $env(BOOTSTRAP_DIR)/setup-keycloak.sh"
-expect {
-    "Keycloak setup complete" {}
-    "Failed" { abort "Keycloak setup failed" }
-    timeout { abort "Keycloak setup timeout" }
-    eof { abort "Keycloak setup failed" }
+set keycloak_available 0
+if {[info exists env(BOOTSTRAP_DIR)]} {
+    spawn sh -c "QUICKSTART_HOME=$env(QUICKSTART_HOME) $env(BOOTSTRAP_DIR)/setup-keycloak.sh"
+    expect {
+        "Keycloak setup complete" { set keycloak_available 1 }
+        "Failed" { puts "WARNING: Keycloak setup failed, lifecycle tests will be skipped" }
+        timeout { puts "WARNING: Keycloak setup timed out, lifecycle tests will be skipped" }
+        eof { puts "WARNING: Keycloak setup failed, lifecycle tests will be skipped" }
+    }
+    catch { wait }
+} else {
+    puts "WARNING: BOOTSTRAP_DIR not set, skipping Keycloak setup"
 }
-wait
 
 puts "Setting up ext-jwt-signers for enrollment tests"
 puts "================================================"
@@ -110,13 +115,18 @@ expect {
     eof { abort "ext-jwt-signer-token not created" }
 }
 
-# OIDC signer using Keycloak (for lifecycle tests)
-spawn $ziti edge create ext-jwt-signer test-oidc-signer "http://localhost:8080/realms/ziti-test" --jwks-endpoint "http://localhost:8080/realms/ziti-test/protocol/openid-connect/certs" --external-auth-url "http://localhost:8080/realms/ziti-test" --client-id ziti-enrolltocert --audience account --enroll-to-cert --enroll-to-token
-expect {
-    -re "New ext-jwt-signer .* created" {}
-    -re "\[a-zA-Z0-9\]+" {}
-    "error" { abort $expect_out(buffer) }
-    eof { abort "oidc signer not created" }
+# write marker so tests know if Keycloak is available
+exec sh -c "echo $keycloak_available > $env(QUICKSTART_HOME)/keycloak-available"
+
+if {$keycloak_available} {
+    # OIDC signer using Keycloak (for lifecycle tests)
+    spawn $ziti edge create ext-jwt-signer test-oidc-signer "http://localhost:8080/realms/ziti-test" --jwks-endpoint "http://localhost:8080/realms/ziti-test/protocol/openid-connect/certs" --external-auth-url "http://localhost:8080/realms/ziti-test" --client-id ziti-enrolltocert --audience account --enroll-to-cert --enroll-to-token
+    expect {
+        -re "New ext-jwt-signer .* created" {}
+        -re "\[a-zA-Z0-9\]+" {}
+        "error" { abort $expect_out(buffer) }
+        eof { abort "oidc signer not created" }
+    }
 }
 
 # pre-created identity for enroll-none tests

@@ -240,6 +240,15 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-token-expired-jwt", "[integ][enroll-mode]
 
 // === Lifecycle Tests (full ziti_context with OIDC via Keycloak) ===
 
+static bool keycloak_available() {
+    FILE *f = fopen(TEST_KEYCLOAK_AVAILABLE, "r");
+    if (!f) return false;
+    char buf[8];
+    bool available = fgets(buf, sizeof(buf), f) && buf[0] == '1';
+    fclose(f);
+    return available;
+}
+
 // Get an access token from Keycloak via Resource Owner Password Credentials grant
 static std::string get_keycloak_token() {
     std::string cmd = "curl -sf -X POST "
@@ -322,7 +331,7 @@ static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
 }
 
 TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-lifecycle", "[integ][enroll-mode][lifecycle]") {
-    // get Keycloak token before starting
+    if (!keycloak_available()) { SKIP("Keycloak not available"); }
     auto kc_token = get_keycloak_token();
 
     // load CA from test client config
@@ -380,6 +389,7 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-lifecycle", "[integ][enroll-mode
 
 
 TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-token-lifecycle", "[integ][enroll-mode][lifecycle]") {
+    if (!keycloak_available()) { SKIP("Keycloak not available"); }
     auto kc_token = get_keycloak_token();
 
     ziti_config client_cfg{};
@@ -429,6 +439,7 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-token-lifecycle", "[integ][enroll-mod
 
 
 TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-none-lifecycle", "[integ][enroll-mode][lifecycle]") {
+    if (!keycloak_available()) { SKIP("Keycloak not available"); }
     auto kc_token = get_keycloak_token();
 
     ziti_config client_cfg{};
