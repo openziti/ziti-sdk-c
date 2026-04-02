@@ -35,6 +35,7 @@ add_executable(integ-tests
         ctrl_tests.cpp
         enroll_tests.cpp
         enroll_token_tests.cpp
+        enroll_mode_tests.cpp
 )
 target_include_directories(integ-tests
         PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include
@@ -59,7 +60,7 @@ add_custom_target(cleanup-qs
 add_custom_target(run-qs
         DEPENDS cleanup-qs
         COMMAND ${CMAKE_COMMAND} -E env
-        ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>
+        ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>;BOOTSTRAP_DIR=${CMAKE_CURRENT_SOURCE_DIR}
         ${EXPECTOR} ${CMAKE_CURRENT_SOURCE_DIR}/bootstrap.exp
         COMMAND ${ZITI_CLI} edge quickstart --home ${qs_home}
         USES_TERMINAL
@@ -77,7 +78,7 @@ add_test(NAME quickstart-bootstrap
 )
 set_tests_properties(quickstart-bootstrap PROPERTIES
         FIXTURES_SETUP QS
-        ENVIRONMENT "ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>"
+        ENVIRONMENT "ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>;BOOTSTRAP_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
         DEPENDS "sample_enroll;ziti-cli"
 )
 

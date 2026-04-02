@@ -1,0 +1,89 @@
+#!/bin/bash
+set -euo pipefail
+
+KC_URL="http://localhost:8080"
+KC_ADMIN_USER="admin"
+KC_ADMIN_PASS="admin"
+REALM="ziti-test"
+CLIENT_ID="ziti-enrolltocert"
+TEST_USER="testuser"
+TEST_PASS="testpass"
+
+echo "Starting Keycloak container..."
+docker run -d --name ziti-test-keycloak \
+  -p 8080:8080 \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=$KC_ADMIN_USER \
+  -e KC_BOOTSTRAP_ADMIN_PASSWORD=$KC_ADMIN_PASS \
+  quay.io/keycloak/keycloak start-dev
+
+echo "Waiting for Keycloak to be ready..."
+for i in $(seq 1 60); do
+  if curl -sf "$KC_URL/realms/master" > /dev/null 2>&1; then
+    echo "Keycloak is ready"
+    break
+  fi
+  if [ "$i" -eq 60 ]; then
+    echo "Keycloak failed to start"
+    exit 1
+  fi
+  sleep 2
+done
+
+# get admin token
+ADMIN_TOKEN=$(curl -sf -X POST "$KC_URL/realms/master/protocol/openid-connect/token" \
+  -d "grant_type=client_credentials&client_id=admin-cli&username=$KC_ADMIN_USER&password=$KC_ADMIN_PASS&grant_type=password" \
+  | jq -r '.access_token')
+
+if [ -z "$ADMIN_TOKEN" ] || [ "$ADMIN_TOKEN" = "null" ]; then
+  echo "Failed to get admin token"
+  exit 1
+fi
+
+echo "Creating realm: $REALM"
+curl -sf -X POST "$KC_URL/admin/realms" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"realm\": \"$REALM\", \"enabled\": true}"
+
+echo "Creating client: $CLIENT_ID"
+curl -sf -X POST "$KC_URL/admin/realms/$REALM/clients" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"clientId\": \"$CLIENT_ID\",
+    \"enabled\": true,
+    \"publicClient\": true,
+    \"standardFlowEnabled\": true,
+    \"directAccessGrantsEnabled\": true,
+    \"redirectUris\": [\"http://localhost:20314/*\"],
+    \"webOrigins\": [\"+\"]
+  }"
+
+echo "Creating user: $TEST_USER"
+curl -sf -X POST "$KC_URL/admin/realms/$REALM/users" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"username\": \"$TEST_USER\",
+    \"enabled\": true,
+    \"email\": \"$TEST_USER@test.example.com\",
+    \"emailVerified\": true,
+    \"firstName\": \"Test\",
+    \"lastName\": \"User\",
+    \"credentials\": [{
+      \"type\": \"password\",
+      \"value\": \"$TEST_PASS\",
+      \"temporary\": false
+    }]
+  }"
+
+# get user's sub claim
+USER_ID=$(curl -sf "$KC_URL/admin/realms/$REALM/users?username=$TEST_USER" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  | jq -r '.[0].id')
+
+echo "Keycloak setup complete"
+echo "  Realm: $REALM"
+echo "  Client: $CLIENT_ID"
+echo "  User: $TEST_USER (sub=$USER_ID)"
+echo "$USER_ID" > "${QUICKSTART_HOME:-/tmp}/keycloak-user-id"

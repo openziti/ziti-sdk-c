@@ -21,3 +21,11 @@
 #define TEST_JWT_SIGNER_KID "@test_jwt_signer_kid@"
 #define TEST_JWT_SIGNER_ISSUER "https://test-jwt-issuer.example.com"
 #define TEST_JWT_SIGNER_AUDIENCE "openziti"
+
+#define TEST_JWT_TOKEN_SIGNER_ISSUER "https://test-jwt-issuer-token.example.com"
+
+#define TEST_KEYCLOAK_URL "http://localhost:8080"
+#define TEST_KEYCLOAK_REALM "ziti-test"
+#define TEST_KEYCLOAK_CLIENT_ID "ziti-enrolltocert"
+#define TEST_KEYCLOAK_USERNAME "testuser"
+#define TEST_KEYCLOAK_PASSWORD "testpass"
