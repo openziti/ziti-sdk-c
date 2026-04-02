@@ -2106,6 +2106,7 @@ int ziti_context_set_options(ziti_context ztx, const ziti_options *options) {
         copy_opt(pq_os_cb);
         copy_opt(pq_process_cb);
         copy_opt(cert_extension_window);
+        copy_opt(enroll_mode);
 
 #undef copy_opt
     }

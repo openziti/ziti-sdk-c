@@ -1,6 +1,6 @@
-# Manual enrollToCert Testing Notes
+# Manual Enrollment Testing Notes
 
-Tested 2026-03-31.
+Tested 2026-04-01.
 
 ## Environment
 
@@ -23,10 +23,13 @@ docker run -d -p 8080:8080 -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
    - Web origins: `+`
 3. Create user `testuser` with password `testpass` (non-temporary)
 
+Note: `start-dev` uses in-memory storage. Users are lost if the container
+is recreated, though the realm/client may survive if imported.
+
 ## Ziti Controller Setup
 
 ```bash
-# Create ext-jwt-signer (no --enroll-auth-policy)
+# Create ext-jwt-signer
 ziti edge create ext-jwt-signer test-enroll-signer \
   "http://localhost:8080/realms/ziti-test" \
   --jwks-endpoint "http://localhost:8080/realms/ziti-test/protocol/openid-connect/certs" \
@@ -34,6 +37,9 @@ ziti edge create ext-jwt-signer test-enroll-signer \
   --client-id "ziti-enrolltocert" \
   --audience "account" \
   --enroll-to-cert
+
+# To also test enrollToToken:
+ziti edge update ext-jwt-signer test-enroll-signer --enroll-to-token
 ```
 
 Notes:
@@ -44,57 +50,80 @@ Notes:
   issuance
 - Requires controller v2.0+ (v1.6.12 silently ignores `--enroll-to-cert`)
 
-## Running sample_enroll
-
-**Public CA controller** (network JWT fetched automatically):
-
-```bash
-ZITI_LOG=4 ./build/programs/sample_enroll/RelWithDebInfo/sample_enroll \
-  https://ctrl.example.com:443 /tmp/test-enrolled.json
-```
-
-**Private CA controller** (network JWT provided out of band):
-
-```bash
-# Fetch network JWT manually (conscious trust decision with -k)
-curl -sk https://localhost:1280/network-jwts | jq -r '.data[0].token' > /tmp/network.jwt
-
-ZITI_LOG=4 ./build/programs/sample_enroll/RelWithDebInfo/sample_enroll \
-  https://localhost:1280 /tmp/test-enrolled.json --jwt /tmp/network.jwt
-```
+## Three Enrollment Modes
 
 ### Trust bootstrapping
 
 The SDK uses the network JWT to verify the controller's identity before
-fetching the CA bundle. This prevents MITM attacks during bootstrap.
+fetching the CA bundle.
 
-- If no `--jwt` is given, the SDK fetches the network JWT from the
-  controller's `/network-jwts` endpoint. This requires the controller's
-  TLS certificate to be verifiable by the OS trust store (publicly-trusted CA).
-- If `--jwt` is given, it is used directly to verify the controller,
-  allowing privately-signed controllers.
+- **URL path** (public CA): fetches the network JWT from `/network-jwts`,
+  requires the controller's TLS cert to be verifiable by the OS trust store.
+- **JWT path** (private CA): fetch network JWT out of band and pass via
+  `--jwt`. Use `curl -sk` as a conscious trust decision.
 
-### What the program does
+```bash
+# For private CA controllers:
+curl -sk https://localhost:1280/network-jwts | jq -r '.data[0].token' > /tmp/network.jwt
+```
 
-1. Fetches network JWT (or uses provided one) and verifies controller identity
-2. Fetches CA bundle from `/.well-known/est/cacerts` over the verified connection
-3. Connects to controller, discovers ext-jwt-signers
-4. Selects the signer with `enrollToCertEnabled`
-5. Prints an OIDC auth URL (also logged at INFO level with full query params)
-6. User opens URL in browser, authenticates as `testuser`/`testpass`
-7. SDK receives JWT, generates keypair + CSR, calls `POST /enroll/token`
-8. Controller creates identity and returns response
-9. Identity config saved to output file
+### Mode 1: `--enrollTo none` (or no flag) - Pre-created identity
+
+Identity is pre-created by an admin. Enrollment just bootstraps the config
+(CA + controller URL). No OIDC, no browser prompt. Authentication happens
+later when the application runs with the identity.
+
+```bash
+# Create identity on the controller first
+ziti edge create identity testuser-precreated --auth-policy default
+
+# Bootstrap config - returns immediately, no OIDC
+ZITI_LOG=4 ./build/programs/sample_enroll/RelWithDebInfo/sample_enroll \
+  https://localhost:1280 /tmp/test-none.json --jwt /tmp/network.jwt
+```
+
+Expected: identity JSON with CA + controller URL, no cert/key. No browser
+prompt.
+
+### Mode 2: `--enrollTo cert` - enrollToCert
+
+Auto-creates identity on the controller. OIDC auth + CSR exchange for a
+client certificate.
+
+```bash
+# Clean up any existing identity first
+ziti edge list identities 'name contains "testuser"'
+ziti edge delete identity <id>
+
+ZITI_LOG=4 ./build/programs/sample_enroll/RelWithDebInfo/sample_enroll \
+  https://localhost:1280 /tmp/test-cert.json --jwt /tmp/network.jwt --enrollTo cert
+```
+
+Expected: browser opens for OIDC auth, identity JSON with CA + controller
+URL + cert + key.
+
+### Mode 3: `--enrollTo token` - enrollToToken
+
+Returns bootstrap config immediately (same as none mode). The actual
+identity auto-creation happens on first auth when the SDK runs with
+`enroll_mode = ziti_enroll_token`.
+
+```bash
+ZITI_LOG=4 ./build/programs/sample_enroll/RelWithDebInfo/sample_enroll \
+  https://localhost:1280 /tmp/test-token.json --jwt /tmp/network.jwt --enrollTo token
+```
+
+Expected: identity JSON with CA + controller URL, no cert/key. No browser
+prompt. Requires signer with `enrollToTokenEnabled`.
 
 ## Results
 
 **What worked:**
-- Full OIDC flow: discovery, browser auth, token exchange
-- CSR generation and submission to controller
-- Identity auto-creation on the controller
-- Controller signed the CSR and returned a client certificate
-- SDK stored cert + key in config and fired ZitiConfigEvent
-- Identity config saved with cert, key, and CA bundle
+- All three enrollment modes tested successfully
+- enrollToCert: full OIDC flow, CSR generation, cert exchange, identity saved
+- enrollToToken: bootstrap config returned immediately, no OIDC
+- none: bootstrap config returned immediately, no OIDC
+- Network JWT verification prevents MITM during bootstrap
 
 **Issues found and fixed during testing:**
 
@@ -117,11 +146,19 @@ fetching the CA bundle. This prevents MITM attacks during bootstrap.
    context initialization (before enrollToCert). The zitilib handler must
    ignore config events until the cert is present.
 
+5. **Pre-created identity regression** - enrollToCert changes caused the
+   SDK to unconditionally try enrollment when no cert was present. Fixed
+   by adding `ziti_enroll_mode` enum to make enrollment intent explicit.
+
+6. **enroll_mode not propagated** - `copy_opt` stored the mode in
+   `ztx->opts.enroll_mode` but `external_auth.c` read `ztx->enroll_mode`.
+   Fixed by reading from `ztx->opts.enroll_mode`.
+
 ## Cleanup
 
 ```bash
-# Delete test identity
-ziti edge list identities   # find the auto-created identity
+# Delete test identities
+ziti edge list identities
 ziti edge delete identity <id>
 
 # Delete signer

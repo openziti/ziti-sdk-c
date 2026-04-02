@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <ziti/ziti.h>
+#include <ziti/ziti_log.h>
 
 #include <string.h>
 #include <stdlib.h>
@@ -75,7 +76,7 @@ struct enroll_cert {
 int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <JWT file | URL> <ID file> [ <key_file> [ <cert_file> ] ]\n", argv[0]);
-        fprintf(stderr, "       %s <URL> <ID file> --jwt <network JWT file>\n", argv[0]);
+        fprintf(stderr, "       %s <URL> <ID file> [--jwt <network JWT file>] [--enrollTo none|cert|token]\n", argv[0]);
         exit(1);
     }
 
@@ -84,13 +85,16 @@ int main(int argc, char **argv) {
     SetConsoleOutputCP(65001);
 #endif
 
-    // URL-based enrollToCert
+    ziti_log_set_level(3, NULL);
+
+    // URL-based enrollment
     if (strncmp(argv[1], "https://", 8) == 0) {
-        // check for --jwt <file> option
         const char *net_jwt = NULL;
         char jwt_buf[8 * 1024];
-        for (int i = 3; i < argc - 1; i++) {
-            if (strcmp(argv[i], "--jwt") == 0) {
+        ziti_enroll_mode mode = ziti_enroll_none;
+
+        for (int i = 3; i < argc; i++) {
+            if (strcmp(argv[i], "--jwt") == 0 && i + 1 < argc) {
                 FILE *jf = fopen(argv[i + 1], "r");
                 if (jf == NULL) {
                     perror("failed to open network JWT file");
@@ -103,14 +107,26 @@ int main(int argc, char **argv) {
                 }
                 fclose(jf);
                 net_jwt = jwt_buf;
-                break;
+                i++;
+            } else if (strcmp(argv[i], "--enrollTo") == 0 && i + 1 < argc) {
+                if (strcmp(argv[i + 1], "none") == 0) {
+                    mode = ziti_enroll_none;
+                } else if (strcmp(argv[i + 1], "cert") == 0) {
+                    mode = ziti_enroll_cert;
+                } else if (strcmp(argv[i + 1], "token") == 0) {
+                    mode = ziti_enroll_token;
+                } else {
+                    fprintf(stderr, "unknown --enrollTo value: %s (expected none, cert, or token)\n", argv[i + 1]);
+                    return 1;
+                }
+                i++;
             }
         }
 
         Ziti_lib_init();
         char *cfg = NULL;
         unsigned long len;
-        int rc = Ziti_enroll_controller(argv[1], net_jwt, &cfg, &len);
+        int rc = Ziti_enroll_controller(argv[1], net_jwt, mode, &cfg, &len);
         if (rc == ZITI_OK) {
             FILE *id_file = fopen(argv[2], "w");
             if (id_file) {

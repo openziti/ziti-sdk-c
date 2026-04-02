@@ -145,12 +145,12 @@ static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti
     assert(ztx->auth_method);
 
     if (error) {
-        ZTX_LOG(WARN, "enrollToCert failed: %s", error->message);
+        ZTX_LOG(WARN, "enrollment failed: %s", error->message);
         ziti_send_event(ztx, &(ziti_event_t){
                 .type = ZitiAuthEvent,
                 .auth = {
                         .action = ziti_auth_cannot_continue,
-                        .type = "enrollToCert",
+                        .type = "enrollment",
                         .error = error->message,
                 },
         });
@@ -196,6 +196,10 @@ static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti
 
         // notify app to persist the updated config
         ztx_config_update(ztx);
+    } else if (cert_resp) {
+        // enrollToToken: no cert returned, save bootstrap config
+        ZTX_LOG(INFO, "enrollToToken complete, saving bootstrap config");
+        ztx_config_update(ztx);
     }
 
     ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
@@ -219,25 +223,29 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
 
     ztx->auth_method->set_ext_jwt(ztx->auth_method, token);
 
-    // create identity if needed and allowed
+    // enrollment based on configured mode
     if (ztx->identity_data == NULL && ztx->id_creds.cert == NULL) {
-        ZTX_LOG(INFO, "no credentials present trying just-in-time enrollment");
-
-        char *csr = NULL;
-        bool cert_enroll = ztx->ext_auth && ztx->ext_auth->signer_cfg.can_cert_enroll;
-        if (cert_enroll) {
+        if (ztx->opts.enroll_mode == ziti_enroll_cert || ztx->opts.enroll_mode == ziti_enroll_token) {
             const char *ctrl_ver = ztx_get_controller(ztx)->version.version;
             if (ctrl_ver) {
                 const char *vnum = ctrl_ver[0] == 'v' ? ctrl_ver + 1 : ctrl_ver;
                 int major = atoi(vnum);
                 if (major == 0) {
-                    ZTX_LOG(DEBUG, "controller %s is a dev build, assuming enrollToCert support", ctrl_ver);
+                    ZTX_LOG(DEBUG, "controller %s is a dev build, assuming enrollment support", ctrl_ver);
                 } else if (major < 2) {
-                    ZTX_LOG(ERROR, "controller %s does not support enrollToCert (requires v2.0+)", ctrl_ver);
+                    ZTX_LOG(ERROR, "controller %s does not support enrollment (requires v2.0+)", ctrl_ver);
                     return ZITI_INVALID_STATE;
                 }
             }
-            ZTX_LOG(INFO, "enrollToCert enabled, generating CSR");
+        }
+
+        switch (ztx->opts.enroll_mode) {
+        case ziti_enroll_none:
+            ZTX_LOG(INFO, "enroll_mode=none, skipping enrollment");
+            break;
+
+        case ziti_enroll_cert: {
+            ZTX_LOG(INFO, "enroll_mode=cert, enrolling with CSR");
             if (ztx->id_creds.key == NULL) {
                 if (ztx->enroll_key_cb) {
                     char *key_pem = NULL;
@@ -259,6 +267,7 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
                     return ZITI_KEY_GENERATION_FAILED;
                 }
             }
+            char *csr = NULL;
             size_t csr_len = 0;
             if (ztx->tlsCtx->generate_csr_to_pem(ztx->id_creds.key, &csr, &csr_len,
                                                    "O", "OpenZiti",
@@ -267,11 +276,20 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
                 ZTX_LOG(ERROR, "failed to generate CSR for enrollToCert");
                 return ZITI_CSR_GENERATION_FAILED;
             }
+            ziti_ctrl_enroll_token(ztx_get_controller(ztx), token, csr, ztx_on_token_enroll, ztx);
+            free(csr);
+            return ZITI_OK;
         }
 
-        ziti_ctrl_enroll_token(ztx_get_controller(ztx), token, csr, ztx_on_token_enroll, ztx);
-        free(csr);
-        return ZITI_OK;
+        case ziti_enroll_token:
+            ZTX_LOG(INFO, "enroll_mode=token, enrolling without CSR");
+            ziti_ctrl_enroll_token(ztx_get_controller(ztx), token, NULL, ztx_on_token_enroll, ztx);
+            return ZITI_OK;
+
+        default:
+            ZTX_LOG(ERROR, "unknown enroll_mode=%d", ztx->opts.enroll_mode);
+            return ZITI_INVALID_STATE;
+        }
     }
 
     if (ztx->auth_state == ZitiAuthStateUnauthenticated) {

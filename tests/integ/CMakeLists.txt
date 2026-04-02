@@ -22,6 +22,8 @@ set(test_server_json ${qs_home}/test-server.json)
 set(test_service test-service)
 set(test_jwt_signer_key ${qs_home}/test-jwt-signer.key)
 set(test_jwt_signer_kid ${qs_home}/test-jwt-signer.kid)
+set(test_keycloak_available ${qs_home}/keycloak-available)
+set(test_keycloak_host ${qs_home}/keycloak-host)
 
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
         ${CMAKE_CURRENT_BINARY_DIR}/include/test-data.h
@@ -35,6 +37,7 @@ add_executable(integ-tests
         ctrl_tests.cpp
         enroll_tests.cpp
         enroll_token_tests.cpp
+        enroll_mode_tests.cpp
 )
 target_include_directories(integ-tests
         PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include
@@ -59,7 +62,7 @@ add_custom_target(cleanup-qs
 add_custom_target(run-qs
         DEPENDS cleanup-qs
         COMMAND ${CMAKE_COMMAND} -E env
-        ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>
+        ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>;BOOTSTRAP_DIR=${CMAKE_CURRENT_SOURCE_DIR}
         ${EXPECTOR} ${CMAKE_CURRENT_SOURCE_DIR}/bootstrap.exp
         COMMAND ${ZITI_CLI} edge quickstart --home ${qs_home}
         USES_TERMINAL
@@ -77,7 +80,7 @@ add_test(NAME quickstart-bootstrap
 )
 set_tests_properties(quickstart-bootstrap PROPERTIES
         FIXTURES_SETUP QS
-        ENVIRONMENT "ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>"
+        ENVIRONMENT "ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>;BOOTSTRAP_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
         DEPENDS "sample_enroll;ziti-cli"
 )
 

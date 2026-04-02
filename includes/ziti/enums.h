@@ -1,5 +1,8 @@
 #ifndef ZITI_ENUM_H
 #define ZITI_ENUM_H
+
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -27,6 +30,12 @@ typedef enum {
     EWMA_5s,
     INSTANT,
 } rate_type;
+
+typedef enum {
+    ziti_enroll_none = 0,
+    ziti_enroll_cert,
+    ziti_enroll_token,
+} ziti_enroll_mode;
 
 #ifdef __cplusplus
 }

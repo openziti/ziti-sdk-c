@@ -66,8 +66,25 @@ expect {
     eof { error "not cool" }
 }
 
-puts "Setting up ext-jwt-signer for enrollToCert tests"
-puts "================================================="
+puts "Setting up Keycloak (optional)"
+puts "=============================="
+
+set keycloak_available 0
+if {[info exists env(BOOTSTRAP_DIR)]} {
+    spawn sh -c "QUICKSTART_HOME=$env(QUICKSTART_HOME) $env(BOOTSTRAP_DIR)/setup-keycloak.sh"
+    expect {
+        "Keycloak setup complete" { set keycloak_available 1 }
+        "Failed" { puts "WARNING: Keycloak setup failed, lifecycle tests will be skipped" }
+        timeout { puts "WARNING: Keycloak setup timed out, lifecycle tests will be skipped" }
+        eof { puts "WARNING: Keycloak setup failed, lifecycle tests will be skipped" }
+    }
+    catch { wait }
+} else {
+    puts "WARNING: BOOTSTRAP_DIR not set, skipping Keycloak setup"
+}
+
+puts "Setting up ext-jwt-signers for enrollment tests"
+puts "================================================"
 
 spawn openssl genrsa -out $env(QUICKSTART_HOME)/test-jwt-signer.key 2048
 expect eof
@@ -80,12 +97,48 @@ wait
 set kid [exec sh -c "openssl x509 -in $env(QUICKSTART_HOME)/test-jwt-signer.crt -outform DER | shasum -a 1 | awk '{print \$1}'"]
 exec sh -c "echo $kid > $env(QUICKSTART_HOME)/test-jwt-signer.kid"
 
+# cert-file signer for enrollToCert (existing tests)
 spawn $ziti edge create ext-jwt-signer test-ext-jwt-signer "https://test-jwt-issuer.example.com" --cert-file $env(QUICKSTART_HOME)/test-jwt-signer.crt --audience openziti --enroll-to-cert --kid $kid
 expect {
     -re "New ext-jwt-signer .* created" {}
     -re "\[a-zA-Z0-9\]+" {}
     "error" { abort $expect_out(buffer) }
     eof { abort "ext-jwt-signer not created" }
+}
+
+# cert-file signer for enrollToToken (distinct issuer, same key/cert/kid)
+spawn $ziti edge create ext-jwt-signer test-ext-jwt-signer-token "https://test-jwt-issuer-token.example.com" --cert-file $env(QUICKSTART_HOME)/test-jwt-signer.crt --audience openziti --enroll-to-token --kid $kid
+expect {
+    -re "New ext-jwt-signer .* created" {}
+    -re "\[a-zA-Z0-9\]+" {}
+    "error" { abort $expect_out(buffer) }
+    eof { abort "ext-jwt-signer-token not created" }
+}
+
+# write marker so tests know if Keycloak is available
+exec sh -c "echo $keycloak_available > $env(QUICKSTART_HOME)/keycloak-available"
+
+if {$keycloak_available} {
+    # read Keycloak host (container name or localhost)
+    set kc_host [string trim [exec cat $env(QUICKSTART_HOME)/keycloak-host]]
+    set kc_url "http://$kc_host:8080/realms/ziti-test"
+
+    # OIDC signer using Keycloak (for lifecycle tests)
+    spawn $ziti edge create ext-jwt-signer test-oidc-signer "$kc_url" --jwks-endpoint "$kc_url/protocol/openid-connect/certs" --external-auth-url "$kc_url" --client-id ziti-enrolltocert --audience account --enroll-to-cert --enroll-to-token
+    expect {
+        -re "New ext-jwt-signer .* created" {}
+        -re "\[a-zA-Z0-9\]+" {}
+        "error" { abort $expect_out(buffer) }
+        eof { abort "oidc signer not created" }
+    }
+}
+
+# pre-created identity for enroll-none tests
+spawn $ziti edge create identity test-precreated -a client
+expect {
+    "New identity test-precreated created" {}
+    "error" { abort $expect_out(buffer) }
+    eof { abort "test-precreated not created" }
 }
 
 puts "Enrolling test identities"
