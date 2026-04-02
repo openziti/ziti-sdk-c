@@ -225,6 +225,20 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
 
     // enrollment based on configured mode
     if (ztx->identity_data == NULL && ztx->id_creds.cert == NULL) {
+        if (ztx->opts.enroll_mode == ziti_enroll_cert || ztx->opts.enroll_mode == ziti_enroll_token) {
+            const char *ctrl_ver = ztx_get_controller(ztx)->version.version;
+            if (ctrl_ver) {
+                const char *vnum = ctrl_ver[0] == 'v' ? ctrl_ver + 1 : ctrl_ver;
+                int major = atoi(vnum);
+                if (major == 0) {
+                    ZTX_LOG(DEBUG, "controller %s is a dev build, assuming enrollment support", ctrl_ver);
+                } else if (major < 2) {
+                    ZTX_LOG(ERROR, "controller %s does not support enrollment (requires v2.0+)", ctrl_ver);
+                    return ZITI_INVALID_STATE;
+                }
+            }
+        }
+
         switch (ztx->opts.enroll_mode) {
         case ziti_enroll_none:
             ZTX_LOG(INFO, "enroll_mode=none, skipping enrollment");
@@ -232,17 +246,6 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
 
         case ziti_enroll_cert: {
             ZTX_LOG(INFO, "enroll_mode=cert, enrolling with CSR");
-            const char *ctrl_ver = ztx_get_controller(ztx)->version.version;
-            if (ctrl_ver) {
-                const char *vnum = ctrl_ver[0] == 'v' ? ctrl_ver + 1 : ctrl_ver;
-                int major = atoi(vnum);
-                if (major == 0) {
-                    ZTX_LOG(DEBUG, "controller %s is a dev build, assuming enrollToCert support", ctrl_ver);
-                } else if (major < 2) {
-                    ZTX_LOG(ERROR, "controller %s does not support enrollToCert (requires v2.0+)", ctrl_ver);
-                    return ZITI_INVALID_STATE;
-                }
-            }
             if (ztx->id_creds.key == NULL) {
                 if (ztx->enroll_key_cb) {
                     char *key_pem = NULL;
