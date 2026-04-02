@@ -282,6 +282,10 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
             ZTX_LOG(INFO, "enroll_mode=token, enrolling without CSR");
             ziti_ctrl_enroll_token(ztx_get_controller(ztx), token, NULL, ztx_on_token_enroll, ztx);
             return ZITI_OK;
+
+        default:
+            ZTX_LOG(ERROR, "unknown enroll_mode=%d", ztx->opts.enroll_mode);
+            return ZITI_INVALID_STATE;
         }
     }
 

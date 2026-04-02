@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <ziti/ziti.h>
+#include <ziti/ziti_log.h>
 
 #include <string.h>
 #include <stdlib.h>
@@ -83,6 +84,8 @@ int main(int argc, char **argv) {
     //changes the output to UTF-8 so that the windows output looks correct and not all jumbly
     SetConsoleOutputCP(65001);
 #endif
+
+    ziti_log_set_level(3, NULL);
 
     // URL-based enrollment
     if (strncmp(argv[1], "https://", 8) == 0) {

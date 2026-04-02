@@ -221,6 +221,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
                 case ziti_enroll_cert:  match = ev->auth.providers[i]->can_cert_enroll; break;
                 case ziti_enroll_token: match = ev->auth.providers[i]->can_token_enroll; break;
                 case ziti_enroll_none:  match = true; break;
+                default: break;
                 }
                 if (match) {
                     ZITI_LOG(INFO, "enrollment: using signer[%s] mode=%d",

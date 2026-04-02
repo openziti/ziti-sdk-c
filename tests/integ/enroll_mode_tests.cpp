@@ -311,10 +311,7 @@ static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
     } else if (ev->type == ZitiContextEvent) {
         if (ev->ctx.ctrl_status == ZITI_OK) {
             state->auth_ok = true;
-            // for non-cert modes, auth success is the end goal
-            if (!state->config_received) {
-                ziti_shutdown(ztx);
-            }
+            ziti_shutdown(ztx);
         } else if (ev->ctx.ctrl_status != ZITI_PARTIALLY_AUTHENTICATED) {
             state->auth_failed = true;
             state->error_msg = ev->ctx.err ? ev->ctx.err : "unknown";
@@ -431,6 +428,7 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-token-lifecycle", "[integ][enroll-mod
     INFO("error: " << state.error_msg);
     CHECK_FALSE(state.auth_failed);
     CHECK(state.auth_ok);
+    CHECK(state.config_received);
 
     free((void *)bootstrap_cfg.id.ca);
     model_list_clear(&bootstrap_cfg.controllers, nullptr);
