@@ -228,15 +228,9 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
     if (ztx->identity_data == NULL && ztx->id_creds.cert == NULL) {
         if (ztx->opts.enroll_mode == ziti_enroll_cert || ztx->opts.enroll_mode == ziti_enroll_token) {
             const char *ctrl_ver = ztx_get_controller(ztx)->version.version;
-            if (ctrl_ver) {
-                const char *vnum = ctrl_ver[0] == 'v' ? ctrl_ver + 1 : ctrl_ver;
-                int major = atoi(vnum);
-                if (major == 0) {
-                    ZTX_LOG(DEBUG, "controller %s is a dev build, assuming enrollment support", ctrl_ver);
-                } else if (major < 2) {
-                    ZTX_LOG(ERROR, "controller %s does not support enrollment (requires v2.0+)", ctrl_ver);
-                    return ZITI_INVALID_STATE;
-                }
+            if (!ctrl_version_supports_enrollment(ctrl_ver)) {
+                ZTX_LOG(ERROR, "controller %s does not support enrollToCert/enrollToToken (requires v2.0+)", ctrl_ver);
+                return ZITI_INVALID_STATE;
             }
         }
 
