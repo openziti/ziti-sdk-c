@@ -316,8 +316,11 @@ static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
 
     if (ev->type == ZitiAuthEvent) {
         if (ev->auth.action == ziti_auth_select_external) {
-            // select the OIDC signer and feed the pre-obtained token
+            // select the OIDC signer - token is fed after login_external event
             ziti_use_ext_jwt_signer(ztx, state->signer_name.c_str());
+            ziti_ext_auth(ztx, NULL, NULL);
+        } else if (ev->auth.action == ziti_auth_login_external) {
+            // signer is configured and ready - feed the pre-obtained token
             ziti_ext_auth_token(ztx, state->token.c_str());
         } else if (ev->auth.action == ziti_auth_cannot_continue) {
             state->auth_failed = true;
