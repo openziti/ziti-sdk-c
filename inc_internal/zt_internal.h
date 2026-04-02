@@ -303,7 +303,7 @@ void ztx_config_update(ziti_context ztx);
 void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, uint32_t req_id, const char *reason);
 
 // returns true if controller version supports enrollment (v2.0+ or dev builds)
-static inline bool ctrl_version_supports_enrollment(const char *ctrl_ver) {
+static inline bool ctrl_version_supports_enroll_to(const char *ctrl_ver) {
     if (ctrl_ver == NULL) return true; // unknown version, assume ok
     const char *vnum = ctrl_ver[0] == 'v' ? ctrl_ver + 1 : ctrl_ver;
     int major = atoi(vnum);

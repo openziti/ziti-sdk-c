@@ -228,7 +228,7 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
     if (ztx->identity_data == NULL && ztx->id_creds.cert == NULL) {
         if (ztx->opts.enroll_mode == ziti_enroll_cert || ztx->opts.enroll_mode == ziti_enroll_token) {
             const char *ctrl_ver = ztx_get_controller(ztx)->version.version;
-            if (!ctrl_version_supports_enrollment(ctrl_ver)) {
+            if (!ctrl_version_supports_enroll_to(ctrl_ver)) {
                 ZTX_LOG(ERROR, "controller %s does not support enrollToCert/enrollToToken (requires v2.0+)", ctrl_ver);
                 return ZITI_INVALID_STATE;
             }

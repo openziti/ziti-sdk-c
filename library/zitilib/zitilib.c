@@ -218,7 +218,7 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             // check controller version for cert/token enrollment
             if (wrap->enroll_mode == ziti_enroll_cert || wrap->enroll_mode == ziti_enroll_token) {
                 const char *ctrl_ver = ztx_get_controller(ztx)->version.version;
-                if (!ctrl_version_supports_enrollment(ctrl_ver)) {
+                if (!ctrl_version_supports_enroll_to(ctrl_ver)) {
                     ZITI_LOG(ERROR, "controller %s does not support enrollToCert/enrollToToken (requires v2.0+)", ctrl_ver);
                     fail_future(wrap->enroll_future, ZITI_INVALID_STATE);
                     wrap->enroll_future = NULL;
