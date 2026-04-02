@@ -30,14 +30,32 @@ fi
 KC_NETWORK_ARGS=""
 KC_HOST="localhost"
 
+# try multiple methods to find our container ID
+MY_CONTAINER_ID=""
+# method 1: cgroups v1
 MY_CONTAINER_ID=$(cat /proc/1/cpuset 2>/dev/null | grep -oE '[a-f0-9]{64}' || true)
+# method 2: HOSTNAME env (Docker sets this to short container ID)
+if [ -z "$MY_CONTAINER_ID" ] && [ -n "${HOSTNAME:-}" ]; then
+    # verify HOSTNAME looks like a container ID (hex string)
+    if echo "$HOSTNAME" | grep -qE '^[a-f0-9]{12}'; then
+        MY_CONTAINER_ID="$HOSTNAME"
+    fi
+fi
+# method 3: mountinfo
+if [ -z "$MY_CONTAINER_ID" ]; then
+    MY_CONTAINER_ID=$(grep -oE '[a-f0-9]{64}' /proc/self/mountinfo 2>/dev/null | head -1 || true)
+fi
+
 if [ -n "$MY_CONTAINER_ID" ]; then
+    echo "Detected container ID: $MY_CONTAINER_ID"
     MY_NETWORK=$(docker inspect "$MY_CONTAINER_ID" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}' || true)
     if [ -n "$MY_NETWORK" ] && [ "$MY_NETWORK" != "host" ]; then
         echo "Running inside container on network: $MY_NETWORK"
         KC_NETWORK_ARGS="--network $MY_NETWORK"
         KC_HOST="$KC_CONTAINER"
     fi
+else
+    echo "Not running inside a container, using localhost"
 fi
 
 KC_URL="http://${KC_HOST}:8080"
