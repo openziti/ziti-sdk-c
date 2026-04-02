@@ -215,6 +215,22 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
     } else if (ev->type == ZitiAuthEvent && wrap->enroll_future) {
         // enrollment-specific auth event handling
         if (ev->auth.action == ziti_auth_select_external) {
+            // check controller version for cert/token enrollment
+            if (wrap->enroll_mode == ziti_enroll_cert || wrap->enroll_mode == ziti_enroll_token) {
+                const char *ctrl_ver = ztx_get_controller(ztx)->version.version;
+                if (ctrl_ver) {
+                    const char *vnum = ctrl_ver[0] == 'v' ? ctrl_ver + 1 : ctrl_ver;
+                    int major = atoi(vnum);
+                    if (major != 0 && major < 2) {
+                        ZITI_LOG(ERROR, "controller %s does not support enrollment (requires v2.0+)", ctrl_ver);
+                        fail_future(wrap->enroll_future, ZITI_INVALID_STATE);
+                        wrap->enroll_future = NULL;
+                        ziti_shutdown(ztx);
+                        return;
+                    }
+                }
+            }
+
             for (int i = 0; ev->auth.providers && ev->auth.providers[i]; i++) {
                 bool match = false;
                 switch (wrap->enroll_mode) {
