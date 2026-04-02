@@ -132,6 +132,8 @@ struct ziti_auth_event {
     enum ziti_auth_action action;
     /** error message, if any action == ziti_auth_cannot_continue */
     const char *error;
+    /** controller error code, if any (e.g. "ENROLLMENT_IDENTITY_ALREADY_ENROLLED") */
+    const char *error_code;
     const char *type;
     const char *detail;
     ziti_jwt_signer_array providers;
