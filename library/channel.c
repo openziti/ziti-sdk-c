@@ -298,14 +298,33 @@ static void check_connecting_state(ziti_channel_t *ch) {
 static void token_update_cb(void *ctx, message *m, int status) {
     ziti_channel_t *ch = ctx;
     if (status != ZITI_OK) {
+        // connection-level error, not a token update failure
+        // channel will reconnect if necessary
         CH_LOG(ERROR, "failed to update token: %d[%s]", status, ziti_errorstr(status));
-    } else if (m->header.content == ContentTypeUpdateTokenSuccess) {
+        return;
+    }
+
+    if (m->header.content == ContentTypeUpdateTokenSuccess) {
         CH_LOG(DEBUG, "token update success");
-    } else if (m->header.content == ContentTypeUpdateTokenFailure) {
-        CH_LOG(WARN, "failed to update token: %.*s", m->header.body_len, m->body);
+        return;
+    }
+
+    // something went wrong with the token update
+    // disconnect and let the channel reconnect with the new token
+    const uint8_t *err = NULL;
+    size_t err_len = 0;
+    if (!message_get_bytes_header(m, StructuredErrorHeader, &err, &err_len)) {
+        err = m->body;
+        err_len = m->header.body_len;
+    }
+
+    if (m->header.content == ContentTypeUpdateTokenFailure) {
+        CH_LOG(WARN, "failed to update token: %.*s", (int)err_len, err);
     } else {
         CH_LOG(ERROR, "expected ContentType[%04x]", m->header.content);
     }
+
+    ziti_channel_disconnect(ch, ZITI_API_SESSION_INVALID);
 }
 
 void ziti_channel_set_url(ziti_channel_t *ch, const char *url) {
