@@ -14,21 +14,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <oidc.h>
 #include <assert.h>
+#include <ctype.h>
+
 #include <json-c/json.h>
 #include <sodium.h>
-#include <ctype.h>
+#include <stc/cstr.h>
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
-#include "ziti/ziti_log.h"
-#include "utils.h"
-#include "ziti/errors.h"
-#include "ziti/ziti_buffer.h"
+
 #include "buffer.h"
 #include "internal_model.h"
+#include "oidc.h"
+#include "utils.h"
 #include "zt_internal.h"
+
+#include "ziti/ziti_log.h"
+#include "ziti/errors.h"
+#include "ziti/ziti_buffer.h"
 
 #define state_len 30
 #define state_code_len sodium_base64_ENCODED_LEN(code_len, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
@@ -67,7 +72,7 @@ typedef struct auth_req {
     char code_challenge[code_challenge_len];
     char state[state_code_len];
     json_tokener *json_parser;
-    char *id;
+    cstr id;
     bool totp;
 } auth_req;
 
@@ -222,7 +227,7 @@ static void free_auth_req(auth_req *req) {
         json_tokener_free(req->json_parser);
         req->json_parser = NULL;
     }
-    FREE(req->id);
+    cstr_drop(&req->id);
     free(req);
 }
 
@@ -372,16 +377,20 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
         }
         p += strlen("authRequestID=");
         char *end = strchr(p, '&'); // stop at next query param to avoid capturing trailing params
-        req->id = end ? strndup(p, end - p) : strdup(p);
-        char path[256] = {};
-        if (!cstr_is_empty(&req->clt->jwt_token_auth)) {
-            snprintf(path, sizeof(path),"/oidc/login/ext-jwt?id=%s", req->id);
-        } else {
-            snprintf(path, sizeof(path),"/oidc/login/cert?id=%s", req->id);
-        }
+        req->id = end ? cstr_with_n(p, end - p) : cstr_from(p);
+
+        const char *path = !cstr_is_empty(&req->clt->jwt_token_auth) ?
+                    "/oidc/login/ext-jwt" :
+                    "/oidc/login/cert";
+
         OIDC_LOG(DEBUG, "login with path[%s] ", path);
         tlsuv_http_set_path_prefix(&req->clt->http, NULL);
         tlsuv_http_req_t *login_req = ziti_json_request(&req->clt->http, "POST", path, login_cb, req);
+        tlsuv_http_req_query(login_req, 1,
+                             &(tlsuv_http_pair){
+                                 .name="id",
+                                 .value=cstr_str(&req->id)
+                             });
         if (!cstr_is_empty(&clt->jwt_token_auth)) {
             tlsuv_http_req_header(login_req, HTTP_AUTHORIZATION, cstr_str(&clt->jwt_token_auth));
         }
@@ -472,18 +481,18 @@ static void on_totp(tlsuv_http_resp_t *resp, void *ctx) {
 
     int code = resp->code / 100;
     if (code == 3) {
-        req->clt->token_cb(req->clt, OIDC_TOTP_SUCCESS, NULL);
+        clt->token_cb(req->clt, OIDC_TOTP_SUCCESS, NULL);
         req->totp = false;
         const char *redirect = tlsuv_http_resp_header(resp, HTTP_LOCATION);
         struct tlsuv_url_s uri;
         tlsuv_parse_url(&uri, redirect);
-        tlsuv_http_req(&req->clt->http, "GET", uri.path, code_cb, req);
+        tlsuv_http_req(&clt->http, "GET", uri.path, code_cb, req);
     } else if (code == 4) {
         OIDC_LOG(WARN, "totp failed: %s", resp->status);
-        req->clt->token_cb(req->clt, OIDC_TOTP_FAILED, NULL);
+        clt->token_cb(clt, OIDC_TOTP_FAILED, NULL);
     } else {
         OIDC_LOG(WARN, "totp request failed: %s", resp->status);
-        req->clt->token_cb(req->clt, OIDC_TOTP_FAILED, NULL);
+        clt->token_cb(clt, OIDC_TOTP_FAILED, NULL);
     }
 }
 
@@ -496,7 +505,7 @@ int oidc_client_token(oidc_client_t *clt, const char *token) {
         tlsuv_http_set_path_prefix(&clt->http, NULL);
         tlsuv_http_req_t *r = ziti_json_request(&clt->http, "POST", "/oidc/login/ext-jwt", login_cb, req);
         tlsuv_http_req_header(r, HTTP_AUTHORIZATION, cstr_str(&clt->jwt_token_auth));
-        tlsuv_http_req_form(r, 1, &(tlsuv_http_pair) {"id", req->id});
+        tlsuv_http_req_form(r, 1, &(tlsuv_http_pair) {"id", cstr_str(&req->id)});
     }
     return 0;
 }
@@ -511,7 +520,7 @@ int oidc_client_mfa(oidc_client_t *clt, const char *code) {
     tlsuv_http_set_path_prefix(&clt->http, NULL);
     tlsuv_http_req_t *r = tlsuv_http_req(&clt->http, "POST", "/oidc/login/totp", on_totp, req);
     tlsuv_http_req_form(r, 2, (tlsuv_http_pair[]){
-            {"id", req->id},
+            {"id", cstr_str(&req->id)},
             {"code", code},
     });
     return 0;
