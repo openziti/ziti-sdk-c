@@ -252,6 +252,12 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
                      wrap->enroll_mode,
                      wrap->signer_name ? " signer=" : "",
                      wrap->signer_name ? wrap->signer_name : "");
+            for (int i = 0; ev->auth.providers && ev->auth.providers[i]; i++) {
+                ZITI_LOG(ERROR, "  available: %s (enrollToCert=%s, enrollToToken=%s)",
+                         ev->auth.providers[i]->name,
+                         ev->auth.providers[i]->can_cert_enroll ? "true" : "false",
+                         ev->auth.providers[i]->can_token_enroll ? "true" : "false");
+            }
             fail_future(wrap->enroll_future, ZITI_INVALID_STATE);
             wrap->enroll_future = NULL;
             ziti_shutdown(ztx);
