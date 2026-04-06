@@ -1025,7 +1025,7 @@ static void do_enroll_url(void *arg, future_t *f, uv_loop_t *l) {
 int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mode,
                            const char *signer_name,
                            char **id_json, unsigned long *id_json_len) {
-    if (url == NULL || id_json == NULL || id_json_len == NULL) {
+    if ((url == NULL && jwt == NULL) || id_json == NULL || id_json_len == NULL) {
         return ZITI_INVALID_STATE;
     }
 

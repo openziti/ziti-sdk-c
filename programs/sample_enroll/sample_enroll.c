@@ -75,8 +75,7 @@ struct enroll_cert {
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <JWT file | URL> <ID file> [ <key_file> [ <cert_file> ] ]\n", argv[0]);
-        fprintf(stderr, "       %s <URL> <ID file> [--jwt <file>] [--enrollTo none|cert|token] [--signer <name>]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <JWT file | URL> <ID file> [--enrollTo none|cert|token] [--signer <name>]\n", argv[0]);
         exit(1);
     }
 
@@ -87,29 +86,35 @@ int main(int argc, char **argv) {
 
     ziti_log_set_level(3, NULL);
 
-    // URL-based enrollment
-    if (strncmp(argv[1], "https://", 8) == 0) {
+    // controller-based enrollment (URL or network JWT file)
+    if (strncmp(argv[1], "https://", 8) == 0 || strncmp(argv[1], "eyJ", 3) == 0 ||
+        strstr(argv[1], ".jwt") != NULL) {
+
+        // determine if first arg is a URL or a JWT file
         const char *net_jwt = NULL;
-        const char *signer_name = NULL;
         char jwt_buf[8 * 1024];
+
+        if (strncmp(argv[1], "https://", 8) != 0) {
+            // treat as JWT file
+            FILE *jf = fopen(argv[1], "r");
+            if (jf == NULL) {
+                perror("failed to open network JWT file");
+                return 1;
+            }
+            if (fgets(jwt_buf, sizeof(jwt_buf), jf) == NULL) {
+                perror("failed to read network JWT file");
+                fclose(jf);
+                return 1;
+            }
+            fclose(jf);
+            net_jwt = jwt_buf;
+        }
+
+        const char *signer_name = NULL;
         ziti_enroll_mode mode = ziti_enroll_none;
 
         for (int i = 3; i < argc; i++) {
-            if (strcmp(argv[i], "--jwt") == 0 && i + 1 < argc) {
-                FILE *jf = fopen(argv[i + 1], "r");
-                if (jf == NULL) {
-                    perror("failed to open network JWT file");
-                    return 1;
-                }
-                if (fgets(jwt_buf, sizeof(jwt_buf), jf) == NULL) {
-                    perror("failed to read network JWT file");
-                    fclose(jf);
-                    return 1;
-                }
-                fclose(jf);
-                net_jwt = jwt_buf;
-                i++;
-            } else if (strcmp(argv[i], "--enrollTo") == 0 && i + 1 < argc) {
+            if (strcmp(argv[i], "--enrollTo") == 0 && i + 1 < argc) {
                 if (strcmp(argv[i + 1], "none") == 0) {
                     mode = ziti_enroll_none;
                 } else if (strcmp(argv[i + 1], "cert") == 0) {
@@ -130,7 +135,8 @@ int main(int argc, char **argv) {
         Ziti_lib_init();
         char *cfg = NULL;
         unsigned long len;
-        int rc = Ziti_enroll_controller(argv[1], net_jwt, mode, signer_name, &cfg, &len);
+        const char *url = strncmp(argv[1], "https://", 8) == 0 ? argv[1] : NULL;
+        int rc = Ziti_enroll_controller(url, net_jwt, mode, signer_name, &cfg, &len);
         if (rc == ZITI_OK) {
             FILE *id_file = fopen(argv[2], "w");
             if (id_file) {
