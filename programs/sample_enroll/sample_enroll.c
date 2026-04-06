@@ -76,6 +76,7 @@ struct enroll_cert {
 int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <JWT file | URL> <ID file> [--enrollTo none|cert|token] [--signer <name>]\n", argv[0]);
+        fprintf(stderr, "       %s <OTT JWT file> <ID file> [ <key_file> [ <cert_file> ] ]\n", argv[0]);
         exit(1);
     }
 
