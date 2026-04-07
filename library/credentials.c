@@ -12,9 +12,6 @@
 // 	See the License for the specific language governing permissions and
 // 	limitations under the License.
 
-//
-//
-
 #include "jwt.h"
 #include "credentials.h"
 #include <ziti/errors.h>
@@ -29,6 +26,9 @@ void zt_jwt_drop(zt_jwt *jwt) {
     cstr_drop(&jwt->encoded);
     json_object_put(jwt->claims);
     json_object_put(jwt->header);
+    jwt->claims = NULL;
+    jwt->header = NULL;
+    jwt->expiration = 0;
 }
 
 void zt_jwt_free(zt_jwt *jwt) {
@@ -91,12 +91,13 @@ int zt_jwt_parse(const char *jwt_str, zt_jwt *jwt) {
         goto error;
     }
 
-    // all good, populate jwt struct
-    cstr_assign(&jwt->issuer, json_object_get_string(iss));
+    // all good, clear and populate jwt struct
+    zt_jwt_drop(jwt);
+    jwt->encoded = cstr_from(jwt_str);
+    jwt->issuer = cstr_from(json_object_get_string(iss));
     jwt->expiration = exp ? json_object_get_int64(exp) : 0;
     jwt->claims = json_object_get(payload);
     jwt->header = json_object_get(header);
-    cstr_assign(&jwt->encoded, jwt_str);
     result = 0;
 
 error:
