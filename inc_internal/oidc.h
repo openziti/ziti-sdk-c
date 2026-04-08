@@ -1,5 +1,4 @@
-//
-// 	Copyright NetFoundry Inc.
+// Copyright (c) 2026.  NetFoundry Inc
 //
 // 	Licensed under the Apache License, Version 2.0 (the "License");
 // 	you may not use this file except in compliance with the License.
@@ -12,15 +11,15 @@
 // 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // 	See the License for the specific language governing permissions and
 // 	limitations under the License.
-//
 
 #ifndef ZITI_SDK_OIDC_H
 #define ZITI_SDK_OIDC_H
 
-#include <uv.h>
-#include <ziti/ziti_model.h>
+#include "jwt.h"
 #include "tlsuv/http.h"
 #include <stc/cstr.h>
+#include <uv.h>
+#include <ziti/ziti_model.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,6 +51,7 @@ struct oidc_client_s {
 
     void *config;
     void *tokens;
+    zt_jwt current;
 
     uv_timer_t *timer;
     cstr jwt_token_auth;
@@ -61,7 +61,6 @@ struct oidc_client_s {
     struct auth_req *request;
     tlsuv_http_req_t *refresh_req;
     int refresh_failures;
-    uint64_t token_expiry;
 };
 
 // init

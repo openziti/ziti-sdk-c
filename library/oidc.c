@@ -66,6 +66,8 @@ static void failed_auth_req(struct auth_req *req, const char *error);
 
 static void refresh_time_cb(uv_timer_t *t);
 
+static uint64_t oidc_refresh_delay(oidc_client_t *clt);
+
 typedef struct auth_req {
     oidc_client_t *clt;
     char code_verifier[code_verifier_len];
@@ -113,7 +115,6 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
     tlsuv_http_idle_keepalive(&clt->http, 0);
     tlsuv_http_header(&clt->http, HTTP_ACCEPT, APPLICATION_JSON);
 
-    clt->token_expiry = 0;
     clt->timer = calloc(1, sizeof(*clt->timer));
     uv_timer_init(loop, clt->timer);
     clt->timer->data = clt;
@@ -570,6 +571,7 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
     clt->timer = NULL;
     cstr_drop(&clt->provider_url);
     cstr_drop(&clt->jwt_token_auth);
+    zt_jwt_drop(&clt->current);
 
     if (clt->request) {
         failed_auth_req(clt->request, strerror(ECANCELED));
@@ -579,41 +581,44 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
 }
 
 static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
+    if (clt->close_cb) {
+        OIDC_LOG(WARN, "already closed");
+        return;
+    }
+    struct json_object *jt = json_object_object_get(tok_json, INTERNAL_TOKEN_TYPE);
+    if (!jt) {
+        OIDC_LOG(ERROR, INTERNAL_TOKEN_TYPE " was not provided by Ziti Controller");
+        clt->token_cb(clt, OIDC_TOKEN_FAILED, NULL);
+        return;
+    }
+
     json_object_put(clt->tokens);
-
     clt->tokens = json_object_get(tok_json);
-    if (clt->token_cb) {
-        struct json_object *jt = json_object_object_get(clt->tokens, INTERNAL_TOKEN_TYPE);
-        if (jt) {
-            const char *token = json_object_get_string(jt);
-            OIDC_LOG(DEBUG, "using " INTERNAL_TOKEN_TYPE "=%s", jwt_payload(token));
-            clt->token_cb(clt, OIDC_TOKEN_OK, token);
-        } else {
-            OIDC_LOG(ERROR, INTERNAL_TOKEN_TYPE " was not provided by IdP");
-            clt->token_cb(clt, OIDC_TOKEN_FAILED, NULL);
-        }
+    const char *token_str = json_object_get_string(jt);
+    if (zt_jwt_parse(token_str, &clt->current)) {
+        OIDC_LOG(ERROR, "failed to parse " INTERNAL_TOKEN_TYPE " as JWT");
+        clt->token_cb(clt, OIDC_TOKEN_FAILED, NULL);
+        return;
     }
-    assert(clt->timer && !uv_is_closing((uv_handle_t*)clt->timer));
+    OIDC_LOG(DEBUG, "using " INTERNAL_TOKEN_TYPE "=%s", json_object_get_string(clt->current.claims));
 
-    struct json_object *ttl = json_object_object_get(clt->tokens, "expires_in");
-    if (!ttl) {
-        OIDC_LOG(ERROR, "`expires_in` is missing from response");
+    if (clt->token_cb) {
+        clt->token_cb(clt, OIDC_TOKEN_OK, cstr_str(&clt->current.encoded));
     }
-    if (ttl) {
-        int32_t t = json_object_get_int(ttl);
-        clt->token_expiry = uv_now(clt->timer->loop) + (uint64_t)t * 1000;
-        t = t / 2; // refresh at half the token lifetime
-        OIDC_LOG(DEBUG, "scheduling token refresh in %d seconds", t);
-        uv_timer_start(clt->timer, refresh_time_cb, t * 1000, 0);
-    }
+
+    uint64_t delay = oidc_refresh_delay(clt);
+    assert(clt->timer && !uv_is_closing((uv_handle_t*)clt->timer));
+    OIDC_LOG(DEBUG, "scheduling token refresh in %" PRIu64 " ms", delay);
+    uv_timer_start(clt->timer, refresh_time_cb, delay, 0);
 }
 
-static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *resp, void *ctx) {
+static void oidc_refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *resp, void *ctx) {
     oidc_client_t *clt = ctx;
     assert(clt->refresh_req == http_resp->req);
     clt->refresh_req = NULL;
 
-    if (http_resp->code == 200 && resp != NULL) {
+    if (http_resp->code == 200) {
+        assert(resp != NULL);
         OIDC_LOG(DEBUG,  "token refresh success");
         clt->refresh_failures = 0;
         oidc_client_set_tokens(clt, resp);
@@ -625,39 +630,26 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
         return;
     }
 
-    if (http_resp->code < 0) {
+    if (http_resp->code < 0 || http_resp->code/100 == 5) {
         clt->refresh_failures++;
         OIDC_LOG(WARN, "OIDC token refresh failed (%d/%s), attempt %d",
                  http_resp->code, err, clt->refresh_failures);
 
+        uint64_t delay = oidc_refresh_delay(clt);
         // token expired, give up on refresh and restart full auth
-        uint64_t now = uv_now(clt->timer->loop);
-        if (clt->token_expiry > 0 && now >= clt->token_expiry) {
+        if (delay == 0) {
             OIDC_LOG(WARN, "OIDC token has expired after %d refresh attempts, restarting full authentication",
                      clt->refresh_failures);
             tlsuv_http_cancel_all(&clt->http);
             clt->refresh_failures = 0;
-            clt->token_expiry = 0;
             json_object_put(clt->tokens);
             clt->tokens = NULL;
+            zt_jwt_drop(&clt->current);
             oidc_client_start(clt, clt->token_cb);
             return;
         }
 
-        // exponential backoff with jitter to avoid stampeding controller after outage
-        int shift = clt->refresh_failures - 1;
-        if (shift > 4) shift = 4; // cap at 80s base
-        uint64_t delay = 5000ULL << shift;
-        if (delay > 60000) delay = 60000;
-        // jitter: [delay/2, delay]
-        uint32_t half = (uint32_t)(delay / 2);
-        if (half > 0) delay = half + randombytes_uniform(half + 1);
-        // clamp to remaining token lifetime
-        if (clt->token_expiry > 0 && now + delay > clt->token_expiry) {
-            delay = clt->token_expiry - now;
-        }
-
-        OIDC_LOG(DEBUG, "scheduling token refresh retry in %llu ms", (unsigned long long)delay);
+        OIDC_LOG(DEBUG, "scheduling token refresh retry in %" PRIu64 " ms", delay);
         uv_timer_start(clt->timer, refresh_time_cb, delay, 0);
         return;
     }
@@ -669,7 +661,6 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
         OIDC_LOG(WARN, "response: %s", json_object_get_string(resp));
     }
     clt->refresh_failures = 0;
-    clt->token_expiry = 0;
     json_object_put(clt->tokens);
     clt->tokens = NULL;
 
@@ -712,7 +703,7 @@ static void refresh_time_cb(uv_timer_t *t) {
     const char *token_url = json_object_get_string(token_ep);
 
     tlsuv_http_set_url(&clt->http, token_url);
-    tlsuv_http_req_t *req = ziti_json_request(&clt->http, "POST", NULL, refresh_cb, clt);
+    tlsuv_http_req_t *req = ziti_json_request(&clt->http, "POST", NULL, oidc_refresh_cb, clt);
     tlsuv_http_req_header(req, HTTP_AUTHORIZATION, get_basic_auth_header(INTERNAL_CLIENT_ID));
     const char *refresher = json_object_get_string(tok);
     OIDC_LOG(DEBUG, "using refresh_token[%s]", jwt_payload(refresher));
@@ -723,4 +714,25 @@ static void refresh_time_cb(uv_timer_t *t) {
     });
 
     clt->refresh_req = req;
+}
+
+static uint64_t oidc_refresh_delay(oidc_client_t *clt) {
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+
+    // check for already expired or too close to expiration
+    // avoid thrashing at the end of token life, give up and restart auth
+    if (clt->current.expiration - now.tv_sec < 15) {
+        OIDC_LOG(WARN, "token is invalid, expired, or too close to expiration");
+        return 0;
+    }
+
+    uint64_t delay_seconds = clt->current.expiration - now.tv_sec;
+    // add some jitter and time buffer
+    // renew some time between 1/2 and 5/6 of remaining time
+    uint64_t rando = randombytes_random();
+    rando = rando % (delay_seconds / 3);
+    delay_seconds = (uint64_t)delay_seconds / 2 + rando;
+
+    return delay_seconds * 1000;
 }
