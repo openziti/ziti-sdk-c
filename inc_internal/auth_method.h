@@ -59,7 +59,7 @@ struct ziti_auth_method_s {
 };
 
 ziti_auth_method_t *new_legacy_auth(uv_loop_t *l, const char *url, tls_context *tls, bool x509);
-ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context *tls);
+ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context *tls, long auth_timeout);
 
 #ifdef __cplusplus
 }

@@ -286,6 +286,16 @@ typedef struct ziti_options_s {
      * - ziti_enroll_token: auto-create identity, authenticate via external JWT
      */
     ziti_enroll_mode enroll_mode;
+
+    /**
+     * \brief maximum time in seconds to wait for initial OIDC authentication.
+     *
+     * When set to a value greater than 0, the SDK will retry OIDC authentication
+     * with exponential backoff, but give up after this many seconds and report
+     * ZitiAuthImpossibleToAuthenticate. A value of 0 (default) means retry
+     * indefinitely.
+     */
+    long auth_timeout;
 } ziti_options;
 
 typedef struct ziti_dial_opts_s {

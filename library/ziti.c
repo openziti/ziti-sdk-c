@@ -2194,7 +2194,7 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
 
     if (!ztx->auth_method) {
         if (use_oidc) {
-            ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->tlsCtx);
+            ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->tlsCtx, ztx->opts.auth_timeout);
         } else {
             ztx->auth_method = new_legacy_auth(ztx->loop, ziti_get_controller(ztx), ztx->tlsCtx,
                                                ztx->id_creds.key != NULL);
