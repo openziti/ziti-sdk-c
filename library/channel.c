@@ -264,7 +264,8 @@ static ziti_channel_t *new_ziti_channel(ziti_context ztx, const ziti_edge_router
     ziti_channel_init(ztx, ch, channel_counter++);
     const ziti_identity *identity = ziti_get_identity(ztx);
     ch->name = strdup(er->name);
-    CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id, identity->name);
+    CH_LOG(INFO, "(%s) new channel for ztx[%d] identity[%s]", ch->name, ztx->id,
+           identity ? identity->name : "(not yet loaded)");
 
     ziti_channel_set_url(ch, er->protocols.tls);
     model_map_set(&ztx->channels, er->name, ch);
