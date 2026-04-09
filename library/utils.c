@@ -1,16 +1,18 @@
 // Copyright (c) 2022-2026.  NetFoundry Inc
 //
-// 	Licensed under the Apache License, Version 2.0 (the "License");
-// 	you may not use this file except in compliance with the License.
-// 	You may obtain a copy of the License at
+// SPDX-License-Identifier: Apache-2.0
 //
-// 	https://www.apache.org/licenses/LICENSE-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// 	Unless required by applicable law or agreed to in writing, software
-// 	distributed under the License is distributed on an "AS IS" BASIS,
-// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// 	See the License for the specific language governing permissions and
-// 	limitations under the License.
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <uv.h>
 #include <tlsuv/tlsuv.h>
@@ -700,7 +702,19 @@ struct json_req_ctx {
     void (*cb)(tlsuv_http_resp_t *resp, const char *err, json_object *content, void *ctx);
     void *ctx;
     json_tokener *json_parser;
+    cstr error;
 };
+
+static void json_req_free(struct json_req_ctx *jctx) {
+    if (jctx == NULL) return;
+
+    if (jctx->json_parser) {
+        json_tokener_free(jctx->json_parser);
+        jctx->json_parser = NULL;
+    }
+    cstr_drop(&jctx->error);
+    free(jctx);
+}
 
 static void json_body_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
     struct json_req_ctx *jctx = r->data;
@@ -709,12 +723,12 @@ static void json_body_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
     if (len > 0) {
         json_object *j = json_tokener_parse_ex(jctx->json_parser, body, (int) len);
         if (j != NULL) {
-            jctx->cb(&r->resp, NULL,  j, jctx->ctx);
+            const char *err = cstr_is_empty(&jctx->error) ? NULL : cstr_str(&jctx->error);
+            jctx->cb(&r->resp, err,  j, jctx->ctx);
             r->data = NULL;
             r->resp.body_cb = NULL;
-            json_tokener_free(jctx->json_parser);
             json_object_put(j);
-            free(jctx);
+            json_req_free(jctx);
             return;
         }
 
@@ -723,8 +737,7 @@ static void json_body_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
             r->data = NULL;
             r->resp.body_cb = NULL;
             jctx->cb(&r->resp, json_tokener_error_desc(err), NULL, jctx->ctx);
-            json_tokener_free(jctx->json_parser);
-            free(jctx);
+            json_req_free(jctx);
         }
         return;
     }
@@ -734,11 +747,18 @@ static void json_body_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
     r->resp.body_cb = NULL;
     const char *err = (len == 0) ? NULL : uv_strerror((int)len);
     jctx->cb(&r->resp, err, NULL, jctx->ctx);
-    json_tokener_free(jctx->json_parser);
-    free(jctx);
+    json_req_free(jctx);
 }
+
 static void json_req_cb(tlsuv_http_resp_t *resp, void *ctx) {
     struct json_req_ctx *jctx = ctx;
+
+    if (resp->code < 0) {
+        jctx->cb(resp, resp->status, NULL, jctx->ctx);
+        json_req_free(jctx);
+        return;
+    }
+
     const char *ct = tlsuv_http_resp_header(resp, HTTP_CONTENT_TYPE);
     if (ct == NULL) {
         const char *err = "missing content-type";
@@ -746,13 +766,17 @@ static void json_req_cb(tlsuv_http_resp_t *resp, void *ctx) {
             err = uv_strerror((int) resp->code);
         }
         jctx->cb(resp, err, NULL, jctx->ctx);
-        free(jctx);
+        json_req_free(jctx);
         return;
     }
     if (strncmp(ct, APPLICATION_JSON, sizeof(APPLICATION_JSON) - 1) != 0) {
         jctx->cb(resp, "unexpected content", NULL, jctx->ctx);
-        free(jctx);
+        json_req_free(jctx);
         return;
+    }
+
+    if (resp->code != 200) {
+        cstr_assign(&jctx->error, resp->status ? resp->status : "unexpected response");
     }
 
     jctx->json_parser = json_tokener_new();
