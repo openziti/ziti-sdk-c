@@ -1,16 +1,18 @@
 // Copyright (c) 2026.  NetFoundry Inc
 //
-// 	Licensed under the Apache License, Version 2.0 (the "License");
-// 	you may not use this file except in compliance with the License.
-// 	You may obtain a copy of the License at
+// SPDX-License-Identifier: Apache-2.0
 //
-// 	https://www.apache.org/licenses/LICENSE-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// 	Unless required by applicable law or agreed to in writing, software
-// 	distributed under the License is distributed on an "AS IS" BASIS,
-// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// 	See the License for the specific language governing permissions and
-// 	limitations under the License.
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "jwt.h"
 #include "credentials.h"
@@ -23,7 +25,9 @@ void zt_jwt_drop(zt_jwt *jwt) {
         return;
     }
     cstr_drop(&jwt->issuer);
+    jwt->issuer = cstr_init();
     cstr_drop(&jwt->encoded);
+    jwt->encoded = cstr_init();
     json_object_put(jwt->claims);
     json_object_put(jwt->header);
     jwt->claims = NULL;
@@ -41,6 +45,11 @@ void zt_jwt_free(zt_jwt *jwt) {
 
 
 int zt_jwt_parse(const char *jwt_str, zt_jwt *jwt) {
+    assert(jwt);
+    if (jwt_str == NULL || *jwt_str == '\0') {
+        return -1;
+    }
+
     int result = -1;
 
     size_t len;
