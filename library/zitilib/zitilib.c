@@ -1,16 +1,18 @@
 // Copyright (c) 2022-2026.  NetFoundry Inc
 //
-// 	Licensed under the Apache License, Version 2.0 (the "License");
-// 	you may not use this file except in compliance with the License.
-// 	You may obtain a copy of the License at
+// SPDX-License-Identifier: Apache-2.0
 //
-// 	https://www.apache.org/licenses/LICENSE-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// 	Unless required by applicable law or agreed to in writing, software
-// 	distributed under the License is distributed on an "AS IS" BASIS,
-// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// 	See the License for the specific language governing permissions and
-// 	limitations under the License.
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 
 #include <tlsuv/queue.h>
@@ -36,27 +38,7 @@ static const char *configs[] = {
         NULL,
 };
 
-typedef struct queue_elem_s {
-    loop_work_cb cb;
-    void *arg;
-    future_t *f;
-    LIST_ENTRY(queue_elem_s) _next;
-} queue_elem_t;
-
-static void internal_init();
-
-static void do_shutdown(void *args, future_t *f, uv_loop_t *l);
 static void do_timeout_cleanup(void *args, future_t *f, uv_loop_t *l);
-
-static uv_once_t init;
-static uv_loop_t *lib_loop;
-static uv_thread_t lib_thread;
-static uv_key_t err_key;
-static uv_mutex_t q_mut;
-static uv_async_t q_async;
-static LIST_HEAD(loop_queue, queue_elem_s) loop_q;
-
-static future_t *child_init_future;
 
 #if _WIN32
 
@@ -70,7 +52,6 @@ struct sockaddr_un {
 #endif
 #endif
 
-
 struct backlog_entry_s {
     struct ziti_sock_s *parent;
     ziti_connection conn;
@@ -79,29 +60,9 @@ struct backlog_entry_s {
     TAILQ_ENTRY(backlog_entry_s) _next;
 };
 
-
-
 model_map ziti_contexts;
 
 model_map ziti_sockets;
-
-void Ziti_lib_init(void) {
-    uv_once(&init, internal_init);
-}
-
-ZITI_FUNC
-uv_thread_t Ziti_lib_thread() {
-    return lib_thread;
-}
-
-int Ziti_last_error() {
-    intptr_t p = (intptr_t) uv_key_get(&err_key);
-    return (int)p;
-}
-
-void zl_set_error(int err) {
-    uv_key_set(&err_key, (void *) (intptr_t) err);
-}
 
 static void free_wrap(ztx_wrap_t *w) {
     if (w == NULL) return;
@@ -335,7 +296,7 @@ error:
 }
 
 int Ziti_load_context(ziti_handle_t *h, const char *identity) {
-    if (h == NULL || identity == NULL) {
+    if (h == NULL || identity == NULL || !zl_check_daemon()) {
         return ZITI_INVALID_STATE;
     }
     future_t *f = schedule_on_loop(load_ziti_ctx, (void *) identity, true);
@@ -359,7 +320,7 @@ int Ziti_load_context(ziti_handle_t *h, const char *identity) {
 }
 
 int Ziti_load_context_with_timeout(ziti_handle_t *h, const char *identity, int timeout_ms) {
-    if (h == NULL || identity == NULL) {
+    if (h == NULL || identity == NULL || !zl_check_daemon()) {
         return ZITI_INVALID_STATE;
     }
 
@@ -678,7 +639,7 @@ static void do_ziti_bind(struct conn_req_s *req, future_t *f, uv_loop_t *l) {
 }
 
 int Ziti_bind(ziti_socket_t socket, ziti_handle_t zh, const char *service, const char *terminator) {
-
+    if (!zl_check_daemon()) { return EINVAL; }
     if (zh == ZITI_INVALID_HANDLE) { return EINVAL; }
     if (service == NULL) { return EINVAL; }
 
@@ -717,6 +678,10 @@ static void do_ziti_listen(void *arg, future_t *f, uv_loop_t *l) {
 }
 
 int Ziti_listen(ziti_socket_t socket, int backlog) {
+    if (!zl_check_daemon()) {
+        return ZITI_INVALID_STATE;
+    }
+
     if (backlog <= 0) {
         return EINVAL;
     }
@@ -809,92 +774,6 @@ ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
     return clt;
 }
 
-
-void Ziti_lib_shutdown(void) {
-    future_t *f = schedule_on_loop(do_shutdown, NULL, true);
-    await_future(f, NULL);
-    uv_thread_join(&lib_thread);
-    uv_once_t child_once = UV_ONCE_INIT;
-    memcpy(&init, &child_once, sizeof(child_once));
-    uv_key_delete(&err_key);
-    destroy_future(f);
-}
-
-static void looper(void *arg) {
-    uv_loop_t *l = arg;
-    ZITI_LOG(DEBUG, "loop is starting");
-    uv_run(l, UV_RUN_DEFAULT);
-    ZITI_LOG(DEBUG, "loop is done");
-}
-
-future_t *schedule_on_loop(loop_work_cb cb, void *arg, bool wait) {
-    future_t *f = NULL;
-    if (wait) {
-        f = new_future();
-    }
-
-    queue_elem_t *el = calloc(1, sizeof(queue_elem_t));
-    el->cb = cb;
-    el->arg = arg;
-    el->f = f;
-
-    uv_mutex_lock(&q_mut);
-    LIST_INSERT_HEAD(&loop_q, el, _next);
-    uv_mutex_unlock(&q_mut);
-    uv_async_send(&q_async);
-
-    return f;
-}
-
-void process_on_loop(uv_async_t *async) {
-    LIST_HEAD(loop_queue, queue_elem_s) q = {0};
-
-    // drain q
-    uv_mutex_lock(&q_mut);
-    while (!LIST_EMPTY(&loop_q)) {
-        queue_elem_t *el = LIST_FIRST(&loop_q);
-        LIST_REMOVE(el, _next);
-        LIST_INSERT_HEAD(&q, el, _next);
-    }
-    uv_mutex_unlock(&q_mut);
-
-    while (!LIST_EMPTY(&q)) {
-        queue_elem_t *el = LIST_FIRST(&q);
-        LIST_REMOVE(el, _next);
-        el->cb(el->arg, el->f, async->loop);
-        free(el);
-    }
-}
-
-
-static void internal_init() {
-#if defined(PTHREAD_ONCE_INIT)
-//    pthread_atfork(NULL, NULL, child_init);
-#endif
-    uv_key_create(&err_key);
-    uv_mutex_init(&q_mut);
-    lib_loop = uv_loop_new();
-    ziti_log_init(lib_loop, -1, NULL);
-    uv_async_init(lib_loop, &q_async, process_on_loop);
-    uv_thread_create(&lib_thread, looper, lib_loop);
-}
-
-void do_shutdown(void *args, future_t *f, uv_loop_t *l) {
-    model_map_iter *it = model_map_iterator(&ziti_contexts);
-    while (it) {
-        ztx_wrap_t *w = model_map_it_value(it);
-        it = model_map_it_remove(it);
-        if (w->ztx) {
-            ziti_shutdown(w->ztx);
-        }
-        model_map_clear(&w->intercepts, (void (*)(void *)) free_ziti_intercept_cfg_v1_ptr);
-    }
-    complete_future(f, NULL, 0);
-    uv_close((uv_handle_t *) &q_async, NULL);
-
-    uv_stop(q_async.loop);
-}
-
 void do_timeout_cleanup(void *args, future_t *f, uv_loop_t *l) {
     char *identity = (char *)args;
     if (identity == NULL) {
@@ -935,6 +814,10 @@ static void do_enroll(ziti_enroll_opts *opts, future_t *f, uv_loop_t *loop) {
 }
 
 int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert, char **id_json, unsigned long *id_json_len) {
+    if (!zl_check_daemon()) {
+        return ZITI_INVALID_STATE;
+    }
+
     ziti_enroll_opts opts = {
             .token = jwt,
             .key = key,
@@ -1026,6 +909,10 @@ int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mo
                            const char *signer_name,
                            char **id_json, unsigned long *id_json_len) {
     if ((url == NULL && jwt == NULL) || id_json == NULL || id_json_len == NULL) {
+        return ZITI_INVALID_STATE;
+    }
+
+    if (!zl_check_daemon()) {
         return ZITI_INVALID_STATE;
     }
 
@@ -1270,9 +1157,14 @@ static void get_signers(void *arg, future_t *f, uv_loop_t *loop) {
     ziti_get_ext_jwt_signers(wrap->ztx, signers_cb, req);
 }
 
-const char * const *  Ziti_get_ext_signers(ziti_handle_t handle) {
+const char * const *  Ziti_get_ext_signers(ziti_handle_t ztx) {
+    if (ztx == ZITI_INVALID_HANDLE || !zl_check_daemon()) {
+        zl_set_error(EINVAL);
+        return NULL;
+    }
+
     struct signers_req_s req = {
-            .ziti_handle = handle,
+            .ziti_handle = ztx,
     };
 
     future_t *f = schedule_on_loop(get_signers, &req, true);
@@ -1333,7 +1225,7 @@ static void set_ext_signer(void *arg, future_t *f, uv_loop_t *loop) {
 
 char* Ziti_login_external(ziti_handle_t ztx, const char *signer_name) {
 
-    if (ztx == ZITI_INVALID_HANDLE) {
+    if (ztx == ZITI_INVALID_HANDLE || !zl_check_daemon()) {
         zl_set_error(EINVAL);
         return NULL;
     }
@@ -1400,6 +1292,10 @@ static void do_totp_login(void *arg, future_t *f, uv_loop_t *l) {
 }
 
 int Ziti_login_totp(ziti_handle_t ztx, const char *code) {
+    if (ztx == ZITI_INVALID_HANDLE || !zl_check_daemon()) {
+        return ZITI_INVALID_STATE;
+    }
+
     struct login_req_s req = {
             .ziti_handle = ztx,
             .code = code,
@@ -1433,6 +1329,9 @@ static void wait_for_auth_cb(void *arg, future_t *f, uv_loop_t *l) {
 }
 
 int Ziti_wait_for_auth(ziti_handle_t ztx, int timeout_ms) {
+    if (ztx == ZITI_INVALID_HANDLE || !zl_check_daemon()) {
+        return ZITI_INVALID_STATE;
+    }
     future_t *f = schedule_on_loop(wait_for_auth_cb, (void *)(uintptr_t)ztx, true);
     int err = await_future_timed(f, NULL, timeout_ms);
     destroy_future(f);

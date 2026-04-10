@@ -2,20 +2,24 @@
 
 // Copyright (c) 2026.  NetFoundry Inc
 //
-// 	Licensed under the Apache License, Version 2.0 (the "License");
-// 	you may not use this file except in compliance with the License.
-// 	You may obtain a copy of the License at
+// SPDX-License-Identifier: Apache-2.0
 //
-// 	https://www.apache.org/licenses/LICENSE-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// 	Unless required by applicable law or agreed to in writing, software
-// 	distributed under the License is distributed on an "AS IS" BASIS,
-// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// 	See the License for the specific language governing permissions and
-// 	limitations under the License.
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <catch2/catch_all.hpp>
 #include <ziti/ziti.h>
+#include <ziti/zitilib.h>
+
 #include "oidc.h"
 #include "ziti/ziti_log.h"
 #include "ziti_ctrl.h"
@@ -158,4 +162,21 @@ TEST_CASE("ctrl-token-auth", "[integ]") {
     // free_ziti_version(&v);
     // free_ziti_service(&service);
     // free_ziti_config(&cfg);
+}
+
+TEST_CASE("zitilib startup/shutdown", "[zitilib]") {
+    Ziti_lib_init();
+    Ziti_lib_init();
+
+    ziti_handle_t mm;
+    CHECK(ZITI_OK == Ziti_load_context(&mm, TEST_CLIENT));
+
+    Ziti_lib_shutdown();
+    Ziti_lib_shutdown();
+
+    CHECK(ZITI_INVALID_STATE == Ziti_load_context(&mm, TEST_CLIENT));
+
+    Ziti_lib_init();
+    CHECK(ZITI_OK == Ziti_load_context(&mm, TEST_CLIENT));
+    Ziti_lib_shutdown();
 }

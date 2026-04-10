@@ -1715,6 +1715,10 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
 static void update_identity_data(ziti_identity_data *data, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
 
+    if (err && err->err == ZITI_DISABLED) {
+        return;
+    }
+
     if (err) {
         ZTX_LOG(ERROR, "failed to get identity_data: %s[%s]", err->message, err->code);
         if (err->err == ZITI_AUTHENTICATION_FAILED) {
@@ -1759,7 +1763,7 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
 
             ztx_config_update(ztx);
         }
-    } else {
+    } else if (err->err != ZITI_DISABLED) {
         ZTX_LOG(ERROR, "failed to get CA bundle from controller: %s", err->message);
     }
 
@@ -2404,7 +2408,9 @@ done:
 static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err) {
-        ZTX_LOG(ERROR, "failed to get api session: %s/%s", err->code, err->message);
+        if (err->err != ZITI_DISABLED) {
+            ZTX_LOG(ERROR, "failed to get api session: %s/%s", err->code, err->message);
+        }
         return;
     }
 
