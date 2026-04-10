@@ -112,6 +112,7 @@ void process_on_loop(uv_async_t *async) {
 
 static void looper(void *arg) {
     (void)arg;
+    uv_thread_setname("zitilib-daemon");
     uv_loop_t *loop = uv_loop_new();
     c_with(uv_mutex_lock(&loop_lock), uv_mutex_unlock(&loop_lock)) {
         ziti_log_init(loop, -1, NULL);
@@ -125,6 +126,15 @@ static void looper(void *arg) {
         ZITI_LOG(WARN, "queue is not empty at shutdown");
     }
     ZITI_LOG(DEBUG, "loop is done");
+
+    // there should not be any active loop handles at this point,
+    // but run the loop a few times to allow any pending close callbacks to run and free their handles
+    for (int i = 0; i < 10; i++) {
+        int n = uv_run(loop, UV_RUN_ONCE);
+        if (n == 0) {
+            break;
+        }
+    }
 
     if (uv_loop_close(loop) == UV_EBUSY) {
         ZITI_LOG(WARN, "some handles still active at shutdown");
