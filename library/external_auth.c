@@ -147,13 +147,17 @@ extern int ziti_ext_auth_set_params(ziti_context ztx, const ziti_auth_query_para
         return ZITI_OK;
     }
 
-    // copy params
+    // copy params, skip entries with NULL name or value
     ztx->ext_auth->auth_params = calloc(count, sizeof(tlsuv_http_pair));
-    ztx->ext_auth->auth_params_count = count;
+    int ci = 0;
     for (int i = 0; i < count; i++) {
-        ztx->ext_auth->auth_params[i].name = strdup(params[i].name);
-        ztx->ext_auth->auth_params[i].value = params[i].value ? strdup(params[i].value) : NULL;
+        if (params[i].name && params[i].value) {
+            ztx->ext_auth->auth_params[ci].name = strdup(params[i].name);
+            ztx->ext_auth->auth_params[ci].value = strdup(params[i].value);
+            ci++;
+        }
     }
+    ztx->ext_auth->auth_params_count = ci;
     return ZITI_OK;
 }
 
