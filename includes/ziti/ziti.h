@@ -953,6 +953,14 @@ typedef void (*ziti_mfa_cb)(ziti_context ztx, int status, void *ctx);
 typedef void (*ziti_ext_auth_launch_cb)(ziti_context ztx, const char *url, void *ctx);
 
 /**
+ * @brief Name/value pair for additional ext-auth query parameters.
+ */
+typedef struct ziti_auth_query_param_s {
+    const char *name;
+    const char *value;
+} ziti_auth_query_param;
+
+/**
  * @brief Callback called after ziti_mfa_get_recovery_codes() and ziti_mfa_new_recovery_codes()
  *
  * This function is invoked after a call to get or regenerate mfa recovery codes.
@@ -1085,6 +1093,20 @@ extern void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb auth_c
  */
 ZITI_FUNC
 extern int ziti_ext_auth(ziti_context ztx, ziti_ext_auth_launch_cb launch_cb, void *ctx);
+
+/**
+ * @brief Set additional query parameters for external authentication.
+ *
+ * Parameters are appended to the authorize URL when the SDK starts the
+ * OIDC flow with an external JWT signer. Call before ziti_ext_auth().
+ *
+ * @param ztx the handle to the Ziti Edge identity context
+ * @param params array of name/value pairs (copied by the SDK)
+ * @param count number of pairs in the array
+ * @return #ZITI_OK or corresponding error
+ */
+ZITI_FUNC
+extern int ziti_ext_auth_set_params(ziti_context ztx, const ziti_auth_query_param *params, int count);
 
 /**
  * @brief Submit external authentication token

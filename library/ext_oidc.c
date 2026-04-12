@@ -141,6 +141,18 @@ int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
 
     snprintf(clt->name, sizeof(clt->name), "%s", cfg->name ? cfg->name : cfg->provider_url);
     OIDC_LOG(INFO, "initializing with provider[%s]", cfg->provider_url);
+
+    // free previous auth params if re-initializing
+    if (clt->auth_params) {
+        for (int i = 0; i < clt->auth_params_count; i++) {
+            free((void *)clt->auth_params[i].name);
+            free((void *)clt->auth_params[i].value);
+        }
+        free(clt->auth_params);
+        clt->auth_params = NULL;
+        clt->auth_params_count = 0;
+    }
+
     clt->config = NULL;
     clt->tokens = NULL;
     clt->token_cb = NULL;
@@ -639,7 +651,7 @@ int ext_oidc_client_start(ext_oidc_client_t *clt, ext_oidc_token_cb cb) {
     }
 
     char *scope = string_buf_to_string(scopes_buf, NULL);
-    tlsuv_http_pair query[] = {
+    tlsuv_http_pair base_query[] = {
             {"client_id",             clt->signer_cfg.client_id},
             {"scope",                 scope},
             {"response_type",         "code"},
@@ -650,8 +662,21 @@ int ext_oidc_client_start(ext_oidc_client_t *clt, ext_oidc_token_cb cb) {
             {"audience",              clt->signer_cfg.audience ?
                                       clt->signer_cfg.audience : "openziti"},
     };
+    int base_count = sizeof(base_query) / sizeof(base_query[0]);
+    int extra_count = clt->auth_params_count;
+    int total = base_count + extra_count;
 
-    ext_start_auth(req, auth_url, sizeof(query)/sizeof(query[0]), query);
+    tlsuv_http_pair *query = calloc(total, sizeof(tlsuv_http_pair));
+    memcpy(query, base_query, base_count * sizeof(tlsuv_http_pair));
+    int qi = base_count;
+    for (int i = 0; i < extra_count; i++) {
+        if (clt->auth_params[i].name && clt->auth_params[i].value) {
+            query[qi++] = clt->auth_params[i];
+        }
+    }
+
+    ext_start_auth(req, auth_url, qi, query);
+    free(query);
     free(scope);
     delete_string_buf(scopes_buf);
     return 0;
@@ -689,6 +714,16 @@ int ext_oidc_client_close(ext_oidc_client_t *clt, ext_oidc_close_cb cb) {
     uv_close((uv_handle_t *) clt->timer, (uv_close_cb) free);
     clt->timer = NULL;
     free_ziti_jwt_signer(&clt->signer_cfg);
+
+    if (clt->auth_params) {
+        for (int i = 0; i < clt->auth_params_count; i++) {
+            free((void *)clt->auth_params[i].name);
+            free((void *)clt->auth_params[i].value);
+        }
+        free(clt->auth_params);
+        clt->auth_params = NULL;
+        clt->auth_params_count = 0;
+    }
 
     if (clt->request) {
         failed_auth_req(clt->request, strerror(ECANCELED));
