@@ -127,6 +127,40 @@ static void ext_token_cb(ext_oidc_client_t *oidc, enum ext_oidc_status status, c
     }
 }
 
+extern int ziti_ext_auth_set_params(ziti_context ztx, const ziti_auth_query_param *params, int count) {
+    if (ztx->ext_auth == NULL) {
+        return ZITI_INVALID_STATE;
+    }
+
+    // free previous params
+    if (ztx->ext_auth->auth_params) {
+        for (int i = 0; i < ztx->ext_auth->auth_params_count; i++) {
+            free((void *)ztx->ext_auth->auth_params[i].name);
+            free((void *)ztx->ext_auth->auth_params[i].value);
+        }
+        free(ztx->ext_auth->auth_params);
+        ztx->ext_auth->auth_params = NULL;
+        ztx->ext_auth->auth_params_count = 0;
+    }
+
+    if (params == NULL || count <= 0) {
+        return ZITI_OK;
+    }
+
+    // copy params, skip entries with NULL name or value
+    ztx->ext_auth->auth_params = calloc(count, sizeof(tlsuv_http_pair));
+    int ci = 0;
+    for (int i = 0; i < count; i++) {
+        if (params[i].name && params[i].value) {
+            ztx->ext_auth->auth_params[ci].name = strdup(params[i].name);
+            ztx->ext_auth->auth_params[ci].value = strdup(params[i].value);
+            ci++;
+        }
+    }
+    ztx->ext_auth->auth_params_count = ci;
+    return ZITI_OK;
+}
+
 extern int ziti_ext_auth(ziti_context ztx,
                          void (*ziti_ext_launch)(ziti_context, const char*, void *), void *ctx) {
     if (ztx->ext_auth == NULL) {

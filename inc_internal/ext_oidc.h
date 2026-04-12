@@ -57,6 +57,9 @@ struct ext_oidc_client_s {
     uv_timer_t *timer;
     char *jwt_token_auth;
 
+    tlsuv_http_pair *auth_params;
+    int auth_params_count;
+
     struct auth_req *request;
 };
 
