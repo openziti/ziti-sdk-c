@@ -189,7 +189,7 @@ int string_buf_appendn(string_buf_t *wb, const char *str, size_t len) {
 }
 
 int string_buf_append_urlsafe(string_buf_t *wb, const char *str) {
-    static const char unsafe[] = " /:\"<>%{}|\\^`";
+    static const char unsafe[] = " /:\"<>%{}|\\^`&=+#?";
 
     if (str == NULL) {
         return 0;
