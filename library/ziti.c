@@ -1271,7 +1271,7 @@ const ziti_service *ziti_dial_opts_for_addr(
     cstr source_addr = cstr_from(intercept.source_ip ? intercept.source_ip : "");
     if (!cstr_is_empty(&source_addr)) {
         cstr src_port_str = cstr_from_fmt("%d", src_port);
-        cstr_replace(&source_addr, "$tunneler_id.name", zid->name);
+        cstr_replace(&source_addr, "$tunneler_id.name", zid ? zid->name : "(not yet loaded)");
         if (!cstr_is_empty(&dst_ip)) {
             cstr_replace(&source_addr, "$dst_ip", cstr_str(&dst_ip));
         } else {
@@ -1715,6 +1715,13 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
     }
 }
 
+static void retry_identity_load(uv_timer_t *t) {
+    ziti_context ztx = t->data;
+    uv_close((uv_handle_t *)t, (uv_close_cb)free);
+    ZTX_LOG(DEBUG, "retrying identity load");
+    ziti_ctrl_current_identity(ztx_get_controller(ztx), update_identity_data, ztx);
+}
+
 static void update_identity_data(ziti_identity_data *data, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
 
@@ -1728,6 +1735,15 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
             ZTX_LOG(WARN, "api session is no longer valid. Trying to re-auth");
             ziti_set_unauthenticated(ztx, err);
             ziti_force_api_session_refresh(ztx);
+        } else if (ztx->identity_data == NULL && !ztx->closing) {
+            // Identity has never been loaded. Schedule a retry so the SDK
+            // doesn't run indefinitely with a NULL identity.
+            ZTX_LOG(WARN, "identity not yet loaded, retrying in 5s");
+            uv_timer_t *retry = calloc(1, sizeof(uv_timer_t));
+            uv_timer_init(ztx->loop, retry);
+            retry->data = ztx;
+            uv_unref((uv_handle_t *)retry);
+            uv_timer_start(retry, retry_identity_load, 5000, 0);
         }
         update_ctrl_status(ztx, (int)err->err, err->message);
     } else {

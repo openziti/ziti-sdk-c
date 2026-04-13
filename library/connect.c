@@ -449,7 +449,8 @@ static void connect_get_service_cb(ziti_context ztx, const ziti_service *s, int 
         conn->encrypted = s->encryption;
         process_connect(conn, NULL);
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
-        CONN_LOG(ERROR, "service[%s] is not available for ztx[%s]", conn->service, ziti_get_identity(ztx)->name);
+        const ziti_identity *id = ziti_get_identity(ztx);
+        CONN_LOG(ERROR, "service[%s] is not available for ztx[%s]", conn->service, id ? id->name : "(not yet loaded)");
         complete_conn_req(conn, ZITI_SERVICE_UNAVAILABLE);
     } else {
         CONN_LOG(WARN, "failed to load service[%s]: %d/%s", conn->service, status, ziti_errorstr(status));
@@ -1139,6 +1140,10 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
     int32_t msg_seq = htole32(0);
 
     const ziti_identity *identity = ziti_get_identity(conn->ziti_ctx);
+    if (!identity) {
+        CONN_LOG(ERROR, "identity not yet loaded, cannot start connection");
+        return ZITI_INVALID_STATE;
+    }
     hdr_t headers[] = {
             {
                     .header_id = ConnIdHeader,
