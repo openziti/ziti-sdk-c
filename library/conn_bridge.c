@@ -1,16 +1,18 @@
 // Copyright (c) 2022-2026.  NetFoundry Inc
 //
-// 	Licensed under the Apache License, Version 2.0 (the "License");
-// 	you may not use this file except in compliance with the License.
-// 	You may obtain a copy of the License at
+// SPDX-License-Identifier: Apache-2.0
 //
-// 	https://www.apache.org/licenses/LICENSE-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// 	Unless required by applicable law or agreed to in writing, software
-// 	distributed under the License is distributed on an "AS IS" BASIS,
-// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// 	See the License for the specific language governing permissions and
-// 	limitations under the License.
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include "connect.h"
 #include "pool.h"
@@ -22,6 +24,12 @@
 
 #define BR_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "br[%d.%d] " fmt, \
 br ? br->conn->ziti_ctx->id : -1, br ? br->conn->conn_id : -1, ##__VA_ARGS__)
+
+struct simple_bridge_s {
+    uv_handle_t *h;
+    void (*close_cb)(void *ctx);
+    void *ctx;
+};
 
 struct fd_bridge_s {
     uv_os_sock_t in;
@@ -82,6 +90,14 @@ extern int ziti_conn_bridge(ziti_connection conn, uv_handle_t *handle, uv_close_
         return UV_ECONNRESET;
     }
 
+    rc = (handle->type == UV_UDP) ?
+         uv_udp_recv_start((uv_udp_t *) handle, bridge_alloc, on_udp_input) :
+         uv_read_start((uv_stream_t *) handle, bridge_alloc, on_input);
+    if (rc != 0) {
+        ZITI_LOG(ERROR, "failed to start reading handle: %d/%s", rc, uv_strerror(rc));
+        return UV_ECONNABORTED;
+    }
+
     NEWP(br, struct ziti_bridge_s);
     br->conn = conn;
     br->input = handle;
@@ -94,30 +110,8 @@ extern int ziti_conn_bridge(ziti_connection conn, uv_handle_t *handle, uv_close_
     ziti_conn_set_data(conn, br);
     conn->bridged = true;
 
-    rc = (br->input->type == UV_UDP) ?
-         uv_udp_recv_start((uv_udp_t *) br->input, bridge_alloc, on_udp_input) :
-         uv_read_start((uv_stream_t *) br->input, bridge_alloc, on_input);
-
-    if (rc != 0) {
-        BR_LOG(WARN, "failed to start reading handle: %d/%s", rc, uv_strerror(rc));
-        close_bridge(br);
-        return UV_ECONNABORTED;
-    } else {
-        BR_LOG(DEBUG, "connected");
-    }
-
+    BR_LOG(DEBUG, "connected");
     return ZITI_OK;
-}
-
-static void on_sock_close(uv_handle_t *h) {
-    struct fd_bridge_s *fdbr = h->data;
-    if (fdbr) {
-        if (fdbr->close_cb) {
-            fdbr->close_cb(fdbr->ctx);
-        }
-        free(fdbr);
-    }
-    uv_close(h, (uv_close_cb) free);
 }
 
 static void on_pipes_close(uv_handle_t *h) {
@@ -132,10 +126,116 @@ static void on_pipes_close(uv_handle_t *h) {
     }
 }
 
-extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_sock_t input, uv_os_sock_t output, void (*close_cb)(void *ctx), void *ctx) {
+static uv_handle_t* create_uv_handle(uv_loop_t *l, uv_os_sock_t fd) {
+    int uv_type = UV_UNKNOWN_HANDLE;
+#if _WIN32
+    int type;
+    socklen_t len = sizeof(type);
+    if (getsockopt(fd, SOL_SOCKET, SO_TYPE, (void *)&type, &len) == 0) {
+        if (type == SOCK_STREAM) {
+            uv_type = UV_TCP;
+        } else if (type == SOCK_DGRAM) {
+            uv_type = UV_UDP;
+        }
+    } else {
+        if (WSAGetLastError() == WSAENOTSOCK) {
+            uv_type = uv_guess_handle((uv_file)fd);
+        }
+    }
+#else
+    uv_type = uv_guess_handle((uv_file)fd);
+#endif
+
+    uv_handle_t *sock = NULL;
+    switch (uv_type) {
+    case UV_TCP:
+        sock = calloc(1, sizeof(uv_tcp_t));
+        uv_tcp_init(l, (uv_tcp_t *) sock);
+        uv_tcp_open((uv_tcp_t *) sock, fd);
+        break;
+    case UV_UDP:
+        sock = calloc(1, sizeof(uv_udp_t));
+        uv_udp_init(l, (uv_udp_t *) sock);
+        uv_udp_open((uv_udp_t *) sock, fd);
+        break;
+    case UV_NAMED_PIPE:
+        sock = calloc(1, sizeof(uv_pipe_t));
+        uv_pipe_init(l, (uv_pipe_t *) sock, 0);
+        uv_pipe_open((uv_pipe_t *) sock, fd);
+        break;
+    default:
+        return NULL;
+    }
+
+    return sock;
+}
+
+static void on_simple_close(uv_handle_t *h) {
+    struct simple_bridge_s *br_ctx = h->data;
+    h->data = NULL;
+
+    if (br_ctx) {
+        if (br_ctx->close_cb) {
+            br_ctx->close_cb(br_ctx->ctx);
+        }
+        free(br_ctx);
+    }
+    uv_close(h, (uv_close_cb) free);
+}
+
+extern int ziti_conn_bridge_fd(ziti_connection conn, uv_os_sock_t fd, void (*close_cb)(void *ctx), void *ctx) {
     if (conn == NULL) return UV_EINVAL;
 
     uv_loop_t *l = ziti_conn_context(conn)->loop;
+    uv_handle_t *uvh = create_uv_handle(l, fd);
+    if (uvh == NULL) {
+        ZITI_LOG(ERROR, "unsupported fd type");
+        return UV_EINVAL;
+    }
+
+    NEWP(br_ctx, struct simple_bridge_s);
+    br_ctx->h = uvh;
+    br_ctx->close_cb = close_cb;
+    br_ctx->ctx = ctx;
+    uvh->data = br_ctx;
+    int err = ziti_conn_bridge(conn, uvh, on_simple_close);
+    if (err != ZITI_OK) {
+        free(br_ctx);
+        uv_close(uvh, (uv_close_cb) free);
+    }
+    return err;
+}
+
+extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_sock_t input, uv_os_sock_t output, void (*close_cb)(void *ctx), void *ctx) {
+    if (conn == NULL) return UV_EINVAL;
+
+    if (input == output) {
+        return ziti_conn_bridge_fd(conn, input, close_cb, ctx);
+    }
+    uv_loop_t *l = ziti_conn_context(conn)->loop;
+
+    uv_handle_t *output_uvh = create_uv_handle(l, output);
+    if (output_uvh == NULL) {
+        ZITI_LOG(ERROR, "unsupported output fd type");
+        return UV_EINVAL;
+    }
+
+    uv_handle_t *input_uvh = create_uv_handle(l, input);
+    if (input_uvh == NULL) {
+        ZITI_LOG(ERROR, "unsupported input fd type");
+        uv_close((uv_handle_t *) output_uvh, (uv_close_cb) free);
+        return UV_EINVAL;
+    }
+
+    int rc = input_uvh->type == UV_UDP ?
+             uv_udp_recv_start((uv_udp_t *) input_uvh, bridge_alloc, on_udp_input) :
+             uv_read_start((uv_stream_t *) input_uvh, bridge_alloc, on_input);
+    if (rc != 0) {
+        ZITI_LOG(WARN, "failed to start reading handle: %d/%s", rc, uv_strerror(rc));
+        uv_close((uv_handle_t *) output_uvh, (uv_close_cb) free);
+        uv_close((uv_handle_t *) input_uvh, (uv_close_cb) free);
+        return rc;
+    }
 
     NEWP(fdbr, struct fd_bridge_s);
     fdbr->in = input;
@@ -143,44 +243,12 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_sock_t input, uv_os_
     fdbr->close_cb = close_cb;
     fdbr->ctx = ctx;
 
-    if (input == output) {
-        uv_os_sock_t input_sock = input;
-        uv_handle_t *sock = NULL;
-        int type;
-        socklen_t len = sizeof(type);
-        if (getsockopt(input_sock, SOL_SOCKET, SO_TYPE, (void *) &type, &len) == 0) {
-            if (type == SOCK_STREAM) {
-                sock = calloc(1, sizeof(uv_tcp_t));
-                uv_tcp_init(l, (uv_tcp_t *) sock);
-                uv_tcp_open((uv_tcp_t *) sock, input_sock);
-            } else if (type == SOCK_DGRAM) {
-                sock = calloc(1, sizeof(uv_udp_t));
-                uv_udp_init(l, (uv_udp_t *) sock);
-                uv_udp_open((uv_udp_t *) sock, input_sock);
-            }
-        }
-        if (sock) {
-            sock->data = fdbr;
-        } else {
-            ZITI_LOG(ERROR, "unsupported fd type");
-            return UV_EINVAL;
-        }
-
-        return ziti_conn_bridge(conn, sock, on_sock_close);
-    }
-
     NEWP(br, struct ziti_bridge_s);
     br->conn = conn;
-    br->input = calloc(1, sizeof(uv_pipe_t));
-    br->output = calloc(1, sizeof(uv_pipe_t));
+    br->input = input_uvh;
+    br->output = output_uvh;
     br->input_pool = pool_new(BRIDGE_MSG_SIZE, BRIDGE_POOL_SIZE, NULL);
 
-    uv_pipe_init(l, (uv_pipe_t *) br->input, 0);
-    uv_pipe_init(l, (uv_pipe_t *) br->output, 0);
-    uv_file input_file = uv_open_osfhandle((uv_os_fd_t)input);
-    uv_file output_file = uv_open_osfhandle((uv_os_fd_t)output);
-    uv_pipe_open((uv_pipe_t *) br->input, input_file);
-    uv_pipe_open((uv_pipe_t *) br->output, output_file);
     br->input->data = br;
     br->output->data = br;
 
@@ -194,13 +262,8 @@ extern int ziti_conn_bridge_fds(ziti_connection conn, uv_os_sock_t input, uv_os_
     conn->bridged = true;
 
     ziti_conn_set_data_cb(conn, on_ziti_data);
-    int rc = uv_read_start((uv_stream_t *) br->input, bridge_alloc, on_input);
-    if (rc != 0) {
-        BR_LOG(WARN, "failed to start reading handle: %d/%s", rc, uv_strerror(rc));
-        close_bridge(br);
-    } else {
-        BR_LOG(DEBUG, "connected");
-    }
+
+    BR_LOG(DEBUG, "connected");
     return ZITI_OK;
 }
 
@@ -217,9 +280,12 @@ static void br_set_idle_timeout(struct ziti_bridge_s *br) {
 }
 
 int ziti_conn_bridge_idle_timeout(ziti_connection conn, unsigned long millis) {
-    struct ziti_bridge_s *br = ziti_conn_data(conn);
+    struct ziti_bridge_s *br;
+    if (conn == NULL || (br = ziti_conn_data(conn)) == NULL) return UV_EINVAL;
+
     if (millis == 0) {
         br->idle_timeout = 0;
+        clear_deadline(&br->idler);
     } else {
         br->idle_timeout = millis;
         br_set_idle_timeout(br);
@@ -229,6 +295,7 @@ int ziti_conn_bridge_idle_timeout(ziti_connection conn, unsigned long millis) {
 
 static void on_ziti_close(ziti_connection conn) {
     struct ziti_bridge_s *br = ziti_conn_data(conn);
+    if (br == NULL) return;
     pool_destroy(br->input_pool);
     free(br);
 }
@@ -259,7 +326,7 @@ static void on_shutdown(uv_shutdown_t *sr, int status) {
     free(sr);
 }
 
-ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
+static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
     struct ziti_bridge_s *br = ziti_conn_data(conn);
 
     if (br == NULL) {
@@ -338,8 +405,10 @@ static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
     if (status < ZITI_OK) {
         BR_LOG(DEBUG, "ziti_write failed: %zd/%s", status, ziti_errorstr(status));
         close_bridge(br);
+        return;
     }
-    else if (br->input) {
+
+    if (br->input) {
         if (br->input_throttle) {
             br->input_throttle = false;
             int rc = br->input->type == UV_UDP ?
@@ -350,7 +419,7 @@ static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
                 BR_LOG(WARN, "failed to start reading handle: %d/%s", rc, uv_strerror(rc));
                 close_bridge(br);
             } else {
-                BR_LOG(DEBUG, "connected");
+                BR_LOG(VERBOSE, "resumed reading");
             }
         }
     }
@@ -371,7 +440,7 @@ void on_udp_input(uv_udp_t *udp, ssize_t len, const uv_buf_t *b, const struct so
         pool_return_obj(b->base);
         if (len == UV_ENOBUFS) {
             if (!br->input_throttle) {
-                BR_LOG(TRACE, "stalled");
+                BR_LOG(VERBOSE, "input buffer full: reading stalled");
                 br->input_throttle = true;
                 uv_udp_recv_stop(udp);
             }
@@ -457,7 +526,7 @@ int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen) {
             return ZITI_INVALID_STATE;
     }
 
-    fmt_addr(&local, local_str, sizeof(local), &lport);
+    fmt_addr(&local, local_str, sizeof(local_str), &lport);
     fmt_addr(&remote, remote_str, sizeof(remote_str), &rport);
 
     snprintf(buf, buflen, "%s: %s:%d -> %s:%d", proto, local_str, lport, remote_str, rport);
@@ -479,6 +548,5 @@ static int fmt_addr(struct sockaddr_storage *ss, char *host, size_t host_len, in
         return ZITI_INVALID_STATE;
     }
 
-    uv_inet_ntop(ss->ss_family, addr, host, host_len);
-    return ZITI_OK;
+    return uv_inet_ntop(ss->ss_family, addr, host, host_len);
 }
