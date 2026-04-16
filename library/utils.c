@@ -797,6 +797,27 @@ tlsuv_http_req_t* ziti_json_request(
     return req;
 }
 
+bool ziti_http_error_is_temporary(tlsuv_http_resp_t *resp, json_object *body) {
+    // transport errors are temporary
+    if (resp->code < 0) {
+        return true;
+    }
+
+    // 5xx errors are temporary, may succeed on retry
+    if (resp->code / 100 == 5) {
+        return true;
+    }
+
+    // zitadel returns generic(400) error check error body for transient conditions
+    if (resp->code == 400) {
+        json_object *err = json_object_object_get(body, "error");
+        const char *err_str = err ? json_object_get_string(err) : "";
+        return strcmp(err_str, "server_error") == 0;
+    }
+
+    return false;
+}
+
 cstr jwt_issuer(const char *jwt) {
     assert(jwt);
     json_object *claims = json_tokener_parse(jwt_payload(jwt));

@@ -46,7 +46,7 @@
 #define auth_url_path "/auth/callback"
 #define cb_url(host,port,path) "http://" host ":" _str(port) path
 #define default_cb_url cb_url("localhost",auth_cb_port,auth_url_path)
-#define default_scope "openid"
+#define default_scope "openid offline_access"
 
 #define AUTH_EP "authorization_endpoint"
 #define TOKEN_EP "token_endpoint"
@@ -80,6 +80,8 @@ static int ext_oidc_client_set_cfg(ext_oidc_client_t *clt, const ziti_jwt_signer
 static void failed_auth_req(struct auth_req *req, const char *error);
 
 static void ext_refresh_time_cb(uv_timer_t *t);
+
+static uint64_t ext_oidc_refresh_delay(ext_oidc_client_t *clt);
 
 struct ext_link_req {
     uv_work_t wr;
@@ -642,18 +644,15 @@ int ext_oidc_client_start(ext_oidc_client_t *clt, ext_oidc_token_cb cb) {
     auth_req *req = new_auth_req(clt);
     clt->request = req;
 
-    string_buf_t *scopes_buf = new_string_buf();
-    string_buf_append(scopes_buf, default_scope);
+    cstr scope = cstr_from(default_scope);
     const char *s;
     MODEL_LIST_FOREACH(s, clt->signer_cfg.scopes) {
-        string_buf_append(scopes_buf, " ");
-        string_buf_append(scopes_buf, s);
+        cstr_append_fmt(&scope, " %s", s);
     }
 
-    char *scope = string_buf_to_string(scopes_buf, NULL);
     tlsuv_http_pair base_query[] = {
             {"client_id",             clt->signer_cfg.client_id},
-            {"scope",                 scope},
+            {"scope",                 cstr_str(&scope)},
             {"response_type",         "code"},
             {"redirect_uri",          default_cb_url},
             {"code_challenge",        req->code_challenge},
@@ -677,8 +676,7 @@ int ext_oidc_client_start(ext_oidc_client_t *clt, ext_oidc_token_cb cb) {
 
     ext_start_auth(req, auth_url, qi, query);
     free(query);
-    free(scope);
-    delete_string_buf(scopes_buf);
+    cstr_drop(&scope);
     return 0;
 }
 
@@ -729,6 +727,9 @@ int ext_oidc_client_close(ext_oidc_client_t *clt, ext_oidc_close_cb cb) {
         failed_auth_req(clt->request, strerror(ECANCELED));
     }
 
+    zt_jwt_drop(&clt->current);
+    zt_jwt_drop(&clt->refresh_token);
+
     return 0;
 }
 
@@ -760,36 +761,85 @@ static void ext_oidc_client_set_tokens(ext_oidc_client_t *clt, json_object *tok_
             clt->token_cb(clt, EXT_OIDC_TOKEN_FAILED, NULL);
         }
     }
-    struct json_object *refresher = json_object_object_get(clt->tokens, "refresh_token");
-    struct json_object *ttl = json_object_object_get(clt->tokens, "expires_in");
-    if (clt->timer && refresher && ttl) {
-        int32_t t = json_object_get_int(ttl);
-        if (t <= 60) {
-            OIDC_LOG(WARN, "token lifetime is too short[%d seconds]. this may cause problems", t);
-            t = t / 2;
-        } else {
-            t = t - 30; // refresh 30 seconds before expiry
+    // parse access_token (or id_token, depending on target_token) as JWT for expiration
+    zt_jwt_drop(&clt->current);
+    struct json_object *jt_for_exp = json_object_object_get(clt->tokens,
+        clt->signer_cfg.target_token == ziti_target_token_id_token ? "id_token" : "access_token");
+    if (jt_for_exp) {
+        const char *at = json_object_get_string(jt_for_exp);
+        if (zt_jwt_parse(at, &clt->current) != 0) {
+            // fallback for non-JWT tokens: use expires_in
+            struct json_object *ttl = json_object_object_get(clt->tokens, "expires_in");
+            if (ttl) {
+                uv_timeval64_t now;
+                uv_gettimeofday(&now);
+                clt->current.expiration = now.tv_sec + json_object_get_int(ttl);
+            }
         }
-        OIDC_LOG(DEBUG, "scheduling token refresh in %d seconds", t);
-        uv_timer_start(clt->timer, ext_refresh_time_cb, t * 1000, 0);
+    }
+
+    // parse refresh_token as JWT; fall back to refresh_expires_in if opaque
+    zt_jwt_drop(&clt->refresh_token);
+    clt->refresh_token_exp = 0;
+    struct json_object *refresher = json_object_object_get(clt->tokens, "refresh_token");
+    if (refresher) {
+        const char *rt = json_object_get_string(refresher);
+        if (zt_jwt_parse(rt, &clt->refresh_token) == 0) {
+            clt->refresh_token_exp = clt->refresh_token.expiration;
+        } else {
+            // opaque refresh_token — check refresh_expires_in
+            struct json_object *rexp = json_object_object_get(clt->tokens, "refresh_expires_in");
+            if (rexp) {
+                uv_timeval64_t now;
+                uv_gettimeofday(&now);
+                clt->refresh_token_exp = now.tv_sec + json_object_get_int(rexp);
+            }
+            // else: leave at 0 = unknown lifetime
+        }
+    }
+
+    if (clt->timer && refresher) {
+        uint64_t delay = ext_oidc_refresh_delay(clt);
+        OIDC_LOG(DEBUG, "scheduling token refresh in %" PRIu64 ".%03" PRIu64 " s",
+                 delay / 1000, delay % 1000);
+        uv_timer_start(clt->timer, ext_refresh_time_cb, delay, 0);
     }
 }
 
 static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *resp, void *ctx) {
     ext_oidc_client_t *clt = ctx;
+    assert(clt->refresh_req == http_resp->req);
+    clt->refresh_req = NULL;
+
     if (http_resp->code == 200 && resp != NULL) {
         OIDC_LOG(DEBUG,  "token refresh success");
+        clt->refresh_failures = 0;
         ext_oidc_client_set_tokens(clt, resp);
         return;
     }
 
-    if (http_resp->code < 0) {  // connection failure, try another refresh
-        OIDC_LOG(WARN, "OIDC token refresh failed (trying again): %d/%s", http_resp->code, err);
-        uv_timer_start(clt->timer, ext_refresh_time_cb, 5 * 1000, 0);
+    if (http_resp->code == UV_ECANCELED) {
+        OIDC_LOG(DEBUG, "OIDC token refresh was canceled");
         return;
     }
 
-    OIDC_LOG(WARN, "OIDC token refresh failed: %d[%s]", http_resp->code, err);
+    clt->refresh_failures++;
+    uint64_t delay = ext_oidc_refresh_delay(clt);
+    if (ziti_http_error_is_temporary(http_resp, resp) && delay > 0) {
+        OIDC_LOG(WARN, "OIDC token refresh failed (%d/%s), attempt %d",
+                 http_resp->code, err, clt->refresh_failures);
+        OIDC_LOG(DEBUG, "scheduling token refresh retry in %" PRIu64 ".%03" PRIu64 " s",
+                 delay / 1000, delay % 1000);
+        uv_timer_start(clt->timer, ext_refresh_time_cb, delay, 0);
+        return;
+    }
+
+    OIDC_LOG(WARN, "OIDC token refresh failed: %d %s [%s] %s",
+             http_resp->code, http_resp->status, err, json_object_get_string(resp));
+    clt->refresh_failures = 0;
+    zt_jwt_drop(&clt->current);
+    zt_jwt_drop(&clt->refresh_token);
+    clt->refresh_token_exp = 0;
     clt->token_cb(clt, EXT_OIDC_RESTART, NULL);
 }
 
@@ -808,6 +858,12 @@ static void ext_refresh_time_cb(uv_timer_t *t) {
     ext_oidc_client_t *clt = t->data;
     OIDC_LOG(DEBUG, "refreshing OIDC token");
     assert(clt->config);
+
+    if (clt->refresh_req) {
+        OIDC_LOG(DEBUG, "refresh is already in progress");
+        return;
+    }
+
     json_object *tok = json_object_object_get(clt->tokens, "refresh_token");
     if (tok == NULL) {
         OIDC_LOG(DEBUG, "must restart authentication flow: no refresh_token");
@@ -828,4 +884,35 @@ static void ext_refresh_time_cb(uv_timer_t *t) {
         {"grant_type",    "refresh_token"},
         {"refresh_token", refresher},
     });
+    clt->refresh_req = req;
+}
+
+// calculate delay until next token refresh attempt:
+// - if access_token is still valid, schedule before its expiration
+// - if access_token is expired, use exponential backoff, giving up when refresh_token expires
+//   (for opaque refresh tokens with unknown lifetime, keep retrying with backoff)
+static uint64_t ext_oidc_refresh_delay(ext_oidc_client_t *clt) {
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+
+    uint64_t rando = randombytes_random();
+    // access_token still valid: schedule between 1/2 and 5/6 of remaining lifetime
+    if (clt->current.expiration > now.tv_sec + 15) {
+        uint64_t delay = (clt->current.expiration - now.tv_sec) * 1000;
+        return delay / 2 + rando % (delay / 3);
+    }
+
+    // access_token expired — exponential backoff
+    int failures = clt->refresh_failures > 10 ? 10 : clt->refresh_failures;
+    uint64_t backoff = 1ULL << failures;  // seconds, max 1024 (~17 min)
+
+    if (clt->refresh_token_exp > 0) {
+        // known refresh_token lifetime: give up if backoff would exceed it
+        if (now.tv_sec + (int64_t)backoff >= clt->refresh_token_exp) {
+            return 0;
+        }
+    }
+    // unknown lifetime (opaque token) — keep retrying with backoff
+    backoff *= 1000; // convert to ms
+    return backoff / 2 + rando % (backoff / 2);
 }

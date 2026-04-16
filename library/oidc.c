@@ -63,7 +63,6 @@ static void failed_auth_req(struct auth_req *req, const char *error);
 static void refresh_time_cb(uv_timer_t *t);
 
 static uint64_t oidc_refresh_delay(oidc_client_t *clt);
-static bool oidc_error_is_temporary(tlsuv_http_resp_t *resp, json_object *body);
 
 typedef struct auth_req {
     oidc_client_t *clt;
@@ -636,7 +635,7 @@ static void oidc_refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_
 
     clt->refresh_failures++;
     uint64_t delay = oidc_refresh_delay(clt);
-    if (oidc_error_is_temporary(http_resp, resp) && delay > 0) {
+    if (ziti_http_error_is_temporary(http_resp, resp) && delay > 0) {
         OIDC_LOG(WARN, "OIDC token refresh failed (%d/%s), attempt %d",
                  http_resp->code, err, clt->refresh_failures);
 
@@ -748,23 +747,3 @@ static uint64_t oidc_refresh_delay(oidc_client_t *clt) {
     return 0;
 }
 
-static bool oidc_error_is_temporary(tlsuv_http_resp_t *resp, json_object *body) {
-    // transport errors are temporary
-    if (resp->code < 0) {
-        return true;
-    }
-
-    // 5xx errors are temporary, may succeed on retry
-    if (resp->code / 100 == 5) {
-        return true;
-    }
-
-    // zitadel returns generic(400) error check error body for transient conditions
-    if (resp->code == 400) {
-        json_object *err = json_object_object_get(body, "error");
-        const char *err_str = err ? json_object_get_string(err) : "";
-        return strcmp(err_str, "server_error") == 0;
-    }
-
-    return false;
-}
