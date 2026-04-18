@@ -384,6 +384,13 @@ static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t l
 }
 
 void bridge_alloc(uv_handle_t *h, size_t req, uv_buf_t *b) {
+    // libuv may call another alloc/read on UDP handles after we already closed the handle
+    // it was fixed here https://github.com/libuv/libuv/pull/5039 and released in 1.52.1
+    // but win32 build issues prevents us from upgrading
+    if (!uv_is_active(h)) {
+        *b = uv_buf_init(NULL, 0);
+        return;
+    }
     struct ziti_bridge_s *br = h->data;
 
     BR_LOG(TRACE, "alloc %s", br->input_throttle ? "stalled" : "live");
@@ -426,6 +433,13 @@ static void on_ziti_write(ziti_connection conn, ssize_t status, void *ctx) {
 }
 
 void on_udp_input(uv_udp_t *udp, ssize_t len, const uv_buf_t *b, const struct sockaddr *addr, unsigned int flags) {
+    // libuv may call another alloc/read on UDP handles after we already closed the handle
+    // it was fixed here https://github.com/libuv/libuv/pull/5039 and released in 1.52.1
+    // but win32 build issues prevents us from upgrading
+    if (!uv_is_active((uv_handle_t *) udp)) {
+        return;
+    }
+
     struct ziti_bridge_s *br = udp->data;
 
     br_set_idle_timeout(br);
