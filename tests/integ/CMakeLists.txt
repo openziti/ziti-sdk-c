@@ -55,13 +55,23 @@ if (Python3_EXECUTABLE)
         execute_process(
                 COMMAND ${Python3_EXECUTABLE} -m venv "${INTEG_VENV_DIR}"
                 RESULT_VARIABLE _venv_rc
+                ERROR_VARIABLE _venv_err
+                OUTPUT_VARIABLE _venv_out
         )
+        message(NOTICE "venv output: ${_venv_out}")
+        message(NOTICE "venv error: ${_venv_err}")
+        message(NOTICE "venv return code: ${_venv_rc}")
     endif ()
     execute_process(
             COMMAND "${INTEG_VENV_DIR}/bin/pip" install -U -r "${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt"
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             RESULT_VARIABLE _pip_rc
+            ERROR_VARIABLE _pip_err
+            OUTPUT_VARIABLE _pip_out
     )
+    message(NOTICE "pip output: ${_pip_out}")
+    message(NOTICE "pip error: ${_pip_err}")
+    message(NOTICE "pip return code: ${_pip_rc}")
     if (NOT _pip_rc EQUAL 0)
         message(WARNING "pip install pytest failed: pytest-based integration testing is not enabled")
     endif ()

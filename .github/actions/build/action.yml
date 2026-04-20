@@ -117,5 +117,5 @@ runs:
       with:
         name: ${{ inputs.target }}-integ-testdata
         path: |
-          ./build/**/testdata/**/*
+          ./build/tests/**/testdata/**/*
 
