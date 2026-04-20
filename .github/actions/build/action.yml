@@ -29,6 +29,7 @@ runs:
       shell: bash
       run: |
         echo "now installing linux deps"
+        apt update
         apt install -y python3-venv
 
     - name: macOS tools
