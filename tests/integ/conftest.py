@@ -13,6 +13,20 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+#
+#  SPDX-License-Identifier: Apache-2.0
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#  https://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
 
 import hashlib
 import logging
@@ -20,6 +34,7 @@ import os
 import shutil
 import subprocess
 import threading
+from semver import Version
 
 import pytest
 
@@ -62,6 +77,13 @@ def ziti_cli(tmp_path_factory):
     logger.info("Using ziti CLI version: %s", result.stdout.strip())
     logger.info("tmp_path = %s", tmp_path_factory.getbasetemp())
     return ziti_executable
+
+@pytest.fixture(scope="session")
+def ziti_version(ziti_cli):
+    result = subprocess.run([ziti_executable, "version"], capture_output=True, text=True, check=True)
+    ver_str = result.stdout.strip().lstrip("v")
+    logger.info("Ziti CLI version string: '%s'", ver_str)
+    return Version.parse(ver_str)
 
 
 @pytest.fixture(scope="session")
@@ -141,8 +163,12 @@ def ziti_model(ziti_cli, base_model, quickstart_home):
 
 
 @pytest.fixture(scope="session")
-def jwt_signers(ziti_model, ziti_cli, quickstart_home):
+def jwt_signers(ziti_model, ziti_cli, quickstart_home, ziti_version):
     """Generate JWT signing key/cert and create ext-jwt-signers."""
+
+    if ziti_version < '2':
+        pytest.skip("JWT signers require Ziti 2.0 or later")
+
     key_path = os.path.join(quickstart_home, "test-jwt-signer.key")
     cert_path = os.path.join(quickstart_home, "test-jwt-signer.crt")
     kid_path = os.path.join(quickstart_home, "test-jwt-signer.kid")
@@ -194,7 +220,7 @@ def jwt_signers(ziti_model, ziti_cli, quickstart_home):
 
 
 @pytest.fixture(scope="session")
-def enrolled_identities(jwt_signers, quickstart_home) -> dict[str, str]:
+def enrolled_identities(ziti_model, quickstart_home) -> dict[str, str]:
     """Enroll test-client and test-server identities."""
     enroller = os.environ.get("ENROLLER")
     if not enroller:
