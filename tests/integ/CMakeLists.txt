@@ -64,12 +64,12 @@ if (Python3_EXECUTABLE)
         message(NOTICE "venv error: ${_venv_err}")
         message(NOTICE "venv return code: ${_venv_rc}")
     endif ()
-    find_program(PIP_EXECUTABLE NAMES pip3 pip HINTS "${INTEG_VENV_DIR}")
-    find_program(PYTEST_EXECUTABLE NAMES pytest HINTS "${INTEG_VENV_DIR}")
+    find_program(PIP_EXECUTABLE NAMES pip3 pip PATHS "${INTEG_VENV_DIR}/bin" "${INTEG_VENV_DIR}/Scripts" NO_DEFAULT_PATH)
+    find_program(PYTEST_EXECUTABLE NAMES pytest PATHS "${INTEG_VENV_DIR}/bin" "${INTEG_VENV_DIR}/Scripts" NO_DEFAULT_PATH)
     message(NOTICE "pip: ${PIP_EXECUTABLE}")
     message(NOTICE "pytest: ${PYTEST_EXECUTABLE}")
     execute_process(
-            COMMAND "${INTEG_VENV_DIR}/bin/pip" install -U -r "${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt"
+            COMMAND "${PIP_EXECUTABLE}" install -U -r "${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt"
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             RESULT_VARIABLE _pip_rc
             ERROR_VARIABLE _pip_err
@@ -82,17 +82,16 @@ if (Python3_EXECUTABLE)
         message(WARNING "pip install pytest failed: pytest-based integration testing is not enabled")
     endif ()
 
-    if (EXISTS "${INTEG_VENV_DIR}/bin/pytest")
-        set(PYTEST "${INTEG_VENV_DIR}/bin/pytest")
+    if (EXISTS "${PYTEST_EXECUTABLE}")
         set(INTEG_TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/testdata")
         file(MAKE_DIRECTORY ${INTEG_TEST_DATA_DIR})
 
-        message(NOTICE "pytest: ${PYTEST}")
         configure_file(env.in env.in @ONLY)
         file(GENERATE OUTPUT "${INTEG_TEST_DATA_DIR}/.env.$<CONFIG>"
                 INPUT ${CMAKE_CURRENT_BINARY_DIR}/env.in)
         add_test(NAME pytest-integ
-                COMMAND ${PYTEST} -v ${CMAKE_CURRENT_SOURCE_DIR}/ --envfile ${INTEG_TEST_DATA_DIR}/.env.$<CONFIG>
+                COMMAND ${PYTEST_EXECUTABLE} -v ${CMAKE_CURRENT_SOURCE_DIR}/
+                --envfile ${INTEG_TEST_DATA_DIR}/.env.$<CONFIG>
                 --junitxml=${INTEG_TEST_DATA_DIR}/pytest-integ-results.xml
                 WORKING_DIRECTORY ${INTEG_TEST_DATA_DIR}
         )
