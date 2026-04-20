@@ -13,8 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#define TEST_CLIENT "@test_client_json@"
-#define TEST_SERVER "@test_server_json@"
+#define TEST_CLIENT test_client()
+#define TEST_SERVER test_server()
 #define TEST_SERVICE "@test_service@"
 
 #define TEST_JWT_SIGNER_KEY "@test_jwt_signer_key@"
@@ -30,3 +30,11 @@
 #define TEST_KEYCLOAK_CLIENT_ID "ziti-enrolltocert"
 #define TEST_KEYCLOAK_USERNAME "testuser"
 #define TEST_KEYCLOAK_PASSWORD "testpass"
+
+static const char* test_client() {
+    return getenv("test-client");
+}
+
+static const char* test_server() {
+    return getenv("test-server");
+}
