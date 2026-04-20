@@ -64,6 +64,10 @@ if (Python3_EXECUTABLE)
         message(NOTICE "venv error: ${_venv_err}")
         message(NOTICE "venv return code: ${_venv_rc}")
     endif ()
+    find_program(PIP_EXECUTABLE NAMES pip3 pip HINTS "${INTEG_VENV_DIR}")
+    find_program(PYTEST_EXECUTABLE NAMES pytest HINTS "${INTEG_VENV_DIR}")
+    message(NOTICE "pip: ${PIP_EXECUTABLE}")
+    message(NOTICE "pytest: ${PYTEST_EXECUTABLE}")
     execute_process(
             COMMAND "${INTEG_VENV_DIR}/bin/pip" install -U -r "${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt"
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
