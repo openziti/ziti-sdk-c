@@ -1,9 +1,11 @@
-// Copyright (c) 2026. NetFoundry Inc.
+// Copyright (c) 2026.  NetFoundry Inc
+//
+// SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-//
 // You may obtain a copy of the License at
+//
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -241,12 +243,16 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-token-expired-jwt", "[integ][enroll-mode]
 // === Lifecycle Tests (full ziti_context with OIDC via Keycloak) ===
 
 static bool keycloak_available() {
+#if defined(_WIN32)
+    return false; // skip Keycloak checks on Windows - requires additional setup (curl.exe in PATH, etc.)
+#else
     FILE *f = fopen(TEST_KEYCLOAK_AVAILABLE, "r");
     if (!f) return false;
     char buf[8];
     bool available = fgets(buf, sizeof(buf), f) && buf[0] == '1';
     fclose(f);
     return available;
+#endif
 }
 
 static std::string get_keycloak_host() {
@@ -265,6 +271,9 @@ static std::string get_keycloak_host() {
 
 // Get an access token from Keycloak via Resource Owner Password Credentials grant
 static std::string get_keycloak_token() {
+#if defined(_WIN32)
+    return ""; // skip token retrieval on Windows - requires additional setup (curl.exe in PATH, etc.)
+#else
     auto kc_host = get_keycloak_host();
     std::string kc_url = "http://" + kc_host + ":8080";
     std::string cmd = "curl -sf -X POST "
@@ -297,6 +306,7 @@ static std::string get_keycloak_token() {
 
     REQUIRE(!token.empty());
     return token;
+#endif
 }
 
 // State for lifecycle test event handling

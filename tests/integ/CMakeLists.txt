@@ -39,7 +39,9 @@ target_link_libraries(integ-tests
         PRIVATE Catch2::Catch2WithMain
 )
 
-if (WIN32)
+if (MINGW)
+    set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
+elseif (WIN32)
     set_property(TARGET integ-tests PROPERTY CXX_STANDARD 20)
 else ()
     set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
