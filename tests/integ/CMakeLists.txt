@@ -65,9 +65,7 @@ if (Python3_EXECUTABLE)
         message(NOTICE "venv return code: ${_venv_rc}")
     endif ()
     find_program(PIP_EXECUTABLE NAMES pip3 pip PATHS "${INTEG_VENV_DIR}/bin" "${INTEG_VENV_DIR}/Scripts" NO_DEFAULT_PATH)
-    find_program(PYTEST_EXECUTABLE NAMES pytest PATHS "${INTEG_VENV_DIR}/bin" "${INTEG_VENV_DIR}/Scripts" NO_DEFAULT_PATH)
     message(NOTICE "pip: ${PIP_EXECUTABLE}")
-    message(NOTICE "pytest: ${PYTEST_EXECUTABLE}")
     execute_process(
             COMMAND "${PIP_EXECUTABLE}" install -U -r "${CMAKE_CURRENT_SOURCE_DIR}/requirements.txt"
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -82,6 +80,8 @@ if (Python3_EXECUTABLE)
         message(WARNING "pip install pytest failed: pytest-based integration testing is not enabled")
     endif ()
 
+    find_program(PYTEST_EXECUTABLE NAMES pytest PATHS "${INTEG_VENV_DIR}/bin" "${INTEG_VENV_DIR}/Scripts" NO_DEFAULT_PATH)
+    message(NOTICE "pytest: ${PYTEST_EXECUTABLE}")
     if (EXISTS "${PYTEST_EXECUTABLE}")
         set(INTEG_TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/testdata")
         file(MAKE_DIRECTORY ${INTEG_TEST_DATA_DIR})
