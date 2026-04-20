@@ -102,14 +102,18 @@ runs:
       run: ctest -VV --no-compress-output -R quick_tests
 
     - name: integration tests
-      env:
-        TEST_ID: ${{ inputs.test_id }}
-        ZITI_TEST_IDENTITY: ${{ runner.workspace }}/test_id.json
-        ZITI_LOG: "4"
       if: inputs.test == 'true'
       working-directory: ./build
       continue-on-error: true
       shell: bash
       run: |
-        ctest -VV --no-compress-output -C ${{ inputs.config }} -R quickstart-test
-        
+        ctest -VV --no-compress-output -C ${{ inputs.config }} -R pytest-integ
+
+    - name: integration tests bundle
+      if: inputs.test == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.target }}-integ-testdata
+        path: |
+          ./build/testdata/**/*
+
