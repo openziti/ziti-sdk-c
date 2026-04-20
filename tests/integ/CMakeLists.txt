@@ -49,11 +49,13 @@ endif ()
 
 find_program(Python3_EXECUTABLE NAMES python3 python)
 if (Python3_EXECUTABLE)
+    message(NOTICE "python3: ${Python3_EXECUTABLE}")
     set(INTEG_VENV_DIR "${CMAKE_CURRENT_BINARY_DIR}/venv")
     if (NOT EXISTS "${INTEG_VENV_DIR}")
         message(NOTICE "creating pytest venv at ${INTEG_VENV_DIR}")
         execute_process(
-                COMMAND ${Python3_EXECUTABLE} -m venv "${INTEG_VENV_DIR}"
+                COMMAND ${Python3_EXECUTABLE} -m venv venv
+                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
                 RESULT_VARIABLE _venv_rc
                 ERROR_VARIABLE _venv_err
                 OUTPUT_VARIABLE _venv_out
