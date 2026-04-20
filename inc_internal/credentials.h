@@ -1,16 +1,18 @@
 // Copyright (c) 2026.  NetFoundry Inc
 //
-// 	Licensed under the Apache License, Version 2.0 (the "License");
-// 	you may not use this file except in compliance with the License.
-// 	You may obtain a copy of the License at
+// SPDX-License-Identifier: Apache-2.0
 //
-// 	https://www.apache.org/licenses/LICENSE-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// 	Unless required by applicable law or agreed to in writing, software
-// 	distributed under the License is distributed on an "AS IS" BASIS,
-// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// 	See the License for the specific language governing permissions and
-// 	limitations under the License.
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 //
 //
@@ -59,6 +61,9 @@ typedef struct ziti_credential_s {
 extern void ziti_credential_drop(ziti_credential_t *cred);
 
 extern int ziti_credential_from_jwt(const char *jwt, ziti_credential_t **cred);
+
+int load_tls(ziti_config *cfg, tls_context **tls, struct tls_credentials *creds);
+
 
 #ifdef __cplusplus
 }
