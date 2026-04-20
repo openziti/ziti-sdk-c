@@ -33,7 +33,7 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-then-list-services", "[integ][enroll
     REQUIRE(cs.tls->generate_csr_to_pem(pk, &csr, &csr_len,
                                          "O", "OpenZiti",
                                          "CN", "test-cert-svc",
-                                         NULL) == 0);
+                                         nullptr) == 0);
 
     auto sub = unique_subject("cert-svc");
     auto jwt = sign_test_jwt(cs.tls, TEST_JWT_SIGNER_KEY,
@@ -202,7 +202,7 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-with-token-only-signer", "[integ][en
     REQUIRE(cs.tls->generate_csr_to_pem(pk, &csr, &csr_len,
                                          "O", "OpenZiti",
                                          "CN", "test-wrong-signer",
-                                         NULL) == 0);
+                                         nullptr) == 0);
 
     auto sub = unique_subject("cert-wrong");
     // use the token-only signer issuer with a CSR - should be rejected
@@ -328,7 +328,7 @@ static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
         if (ev->auth.action == ziti_auth_select_external) {
             // select the OIDC signer - token is fed after login_external event
             ziti_use_ext_jwt_signer(ztx, state->signer_name.c_str());
-            ziti_ext_auth(ztx, NULL, NULL);
+            ziti_ext_auth(ztx, nullptr, nullptr);
         } else if (ev->auth.action == ziti_auth_login_external) {
             // signer is configured and ready - feed the pre-obtained token
             ziti_ext_auth_token(ztx, state->token.c_str());
