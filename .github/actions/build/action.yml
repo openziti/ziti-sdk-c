@@ -29,6 +29,7 @@ runs:
       shell: bash
       run: |
         echo "now installing linux deps"
+        apt install -y python3-venv
 
     - name: macOS tools
       if: runner.os == 'macOS'
@@ -115,5 +116,5 @@ runs:
       with:
         name: ${{ inputs.target }}-integ-testdata
         path: |
-          ./build/testdata/**/*
+          ./build/**/testdata/**/*
 

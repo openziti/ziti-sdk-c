@@ -6,14 +6,6 @@ if (NOT ZITI_CLI)
 endif ()
 message(NOTICE "ziti cli: ${ZITI_CLI}")
 
-find_program(EXPECTOR NAMES expect)
-if (NOT EXPECTOR)
-    message(WARNING "expect not found: integration testing is not enabled")
-    return()
-endif ()
-
-execute_process(COMMAND ${EXPECTOR} -v)
-
 set(qs_home ${CMAKE_CURRENT_BINARY_DIR}/qs-home)
 set(test_client_jwt ${qs_home}/test-client.jwt)
 set(test_server_jwt ${qs_home}/test-server.jwt)
@@ -52,55 +44,6 @@ if (WIN32)
 else ()
     set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
 endif ()
-
-add_custom_target(cleanup-qs
-        COMMAND cat -n /etc/hosts
-        COMMAND cat -n ${qs_home}/ctrl.yaml || true
-        COMMAND ${CMAKE_COMMAND} -E remove_directory "${qs_home}"
-)
-
-add_custom_target(run-qs
-        DEPENDS cleanup-qs
-        COMMAND ${CMAKE_COMMAND} -E env
-        ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>;BOOTSTRAP_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-        ${EXPECTOR} ${CMAKE_CURRENT_SOURCE_DIR}/bootstrap.exp
-        COMMAND ${ZITI_CLI} edge quickstart --home ${qs_home}
-        USES_TERMINAL
-        VERBATIM
-)
-
-set_target_properties(run-qs PROPERTIES
-        ADDITIONAL_CLEAN_FILES ${qs_home}
-)
-
-add_test(NAME quickstart-bootstrap
-        COMMAND ${EXPECTOR} ${CMAKE_CURRENT_SOURCE_DIR}/bootstrap.exp
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMAND_EXPAND_LISTS
-)
-set_tests_properties(quickstart-bootstrap PROPERTIES
-        FIXTURES_SETUP QS
-        ENVIRONMENT "ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};ENROLLER=$<TARGET_FILE:sample_enroll>;BOOTSTRAP_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
-        DEPENDS "sample_enroll;ziti-cli"
-)
-
-add_test(NAME quickstart-test
-        COMMAND ${EXPECTOR} ${CMAKE_CURRENT_SOURCE_DIR}/integ-test.exp
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-)
-set_tests_properties(quickstart-test PROPERTIES
-        FIXTURES_REQUIRED QS
-        DEPENDS "integ-tests"
-        ENVIRONMENT "ZITI_CLI=${ZITI_CLI};ZITI_CONFIG_DIR=${qs_home};QUICKSTART_HOME=${qs_home};TEST_EXE=$<TARGET_FILE:integ-tests>"
-)
-
-add_test(NAME quickstart-cleanup
-        COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target cleanup-qs
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-)
-set_tests_properties(quickstart-cleanup PROPERTIES
-        FIXTURES_CLEANUP QS
-)
 
 find_program(Python3_EXECUTABLE NAMES python3 python)
 if (Python3_EXECUTABLE)
