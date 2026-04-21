@@ -40,6 +40,7 @@ target_link_libraries(integ-tests
 )
 
 if (MINGW)
+    target_link_options(integ-tests PRIVATE -static-libgcc)
     set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
 elseif (WIN32)
     set_property(TARGET integ-tests PROPERTY CXX_STANDARD 20)
