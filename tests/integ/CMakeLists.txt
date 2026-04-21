@@ -88,11 +88,11 @@ if (Python3_EXECUTABLE)
         file(MAKE_DIRECTORY ${INTEG_TEST_DATA_DIR})
 
         configure_file(env.in env.in @ONLY)
-        file(GENERATE OUTPUT "${INTEG_TEST_DATA_DIR}/.env.$<CONFIG>"
+        file(GENERATE OUTPUT "${INTEG_TEST_DATA_DIR}/env.$<CONFIG>"
                 INPUT ${CMAKE_CURRENT_BINARY_DIR}/env.in)
         add_test(NAME pytest-integ
                 COMMAND ${PYTEST_EXECUTABLE} -v ${CMAKE_CURRENT_SOURCE_DIR}/
-                --envfile ${INTEG_TEST_DATA_DIR}/.env.$<CONFIG>
+                --envfile ${INTEG_TEST_DATA_DIR}/env.$<CONFIG>
                 --junitxml=${INTEG_TEST_DATA_DIR}/pytest-integ-results.xml
                 WORKING_DIRECTORY ${INTEG_TEST_DATA_DIR}
         )

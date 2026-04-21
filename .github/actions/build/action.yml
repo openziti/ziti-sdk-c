@@ -118,5 +118,4 @@ runs:
         name: ${{ inputs.target }}-integ-testdata
         path: |
           ./build/tests/**/testdata/**/*
-          ./build/tests/integ/venv/**/*
 
