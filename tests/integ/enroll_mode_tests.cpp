@@ -1,9 +1,11 @@
-// Copyright (c) 2026. NetFoundry Inc.
+// Copyright (c) 2026.  NetFoundry Inc
+//
+// SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-//
 // You may obtain a copy of the License at
+//
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -31,7 +33,7 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-then-list-services", "[integ][enroll
     REQUIRE(cs.tls->generate_csr_to_pem(pk, &csr, &csr_len,
                                          "O", "OpenZiti",
                                          "CN", "test-cert-svc",
-                                         NULL) == 0);
+                                         nullptr) == 0);
 
     auto sub = unique_subject("cert-svc");
     auto jwt = sign_test_jwt(cs.tls, TEST_JWT_SIGNER_KEY,
@@ -200,7 +202,7 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-with-token-only-signer", "[integ][en
     REQUIRE(cs.tls->generate_csr_to_pem(pk, &csr, &csr_len,
                                          "O", "OpenZiti",
                                          "CN", "test-wrong-signer",
-                                         NULL) == 0);
+                                         nullptr) == 0);
 
     auto sub = unique_subject("cert-wrong");
     // use the token-only signer issuer with a CSR - should be rejected
@@ -241,12 +243,16 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-token-expired-jwt", "[integ][enroll-mode]
 // === Lifecycle Tests (full ziti_context with OIDC via Keycloak) ===
 
 static bool keycloak_available() {
+#if defined(_WIN32)
+    return false; // skip Keycloak checks on Windows - requires additional setup (curl.exe in PATH, etc.)
+#else
     FILE *f = fopen(TEST_KEYCLOAK_AVAILABLE, "r");
     if (!f) return false;
     char buf[8];
     bool available = fgets(buf, sizeof(buf), f) && buf[0] == '1';
     fclose(f);
     return available;
+#endif
 }
 
 static std::string get_keycloak_host() {
@@ -265,6 +271,9 @@ static std::string get_keycloak_host() {
 
 // Get an access token from Keycloak via Resource Owner Password Credentials grant
 static std::string get_keycloak_token() {
+#if defined(_WIN32)
+    return ""; // skip token retrieval on Windows - requires additional setup (curl.exe in PATH, etc.)
+#else
     auto kc_host = get_keycloak_host();
     std::string kc_url = "http://" + kc_host + ":8080";
     std::string cmd = "curl -sf -X POST "
@@ -297,6 +306,7 @@ static std::string get_keycloak_token() {
 
     REQUIRE(!token.empty());
     return token;
+#endif
 }
 
 // State for lifecycle test event handling
@@ -318,7 +328,7 @@ static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
         if (ev->auth.action == ziti_auth_select_external) {
             // select the OIDC signer - token is fed after login_external event
             ziti_use_ext_jwt_signer(ztx, state->signer_name.c_str());
-            ziti_ext_auth(ztx, NULL, NULL);
+            ziti_ext_auth(ztx, nullptr, nullptr);
         } else if (ev->auth.action == ziti_auth_login_external) {
             // signer is configured and ready - feed the pre-obtained token
             ziti_ext_auth_token(ztx, state->token.c_str());

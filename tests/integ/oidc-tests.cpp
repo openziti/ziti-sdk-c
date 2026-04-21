@@ -1,9 +1,11 @@
-// Copyright (c) 2023-2024. NetFoundry Inc.
+// Copyright (c) 2023-2026.  NetFoundry Inc
+//
+// SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-//
 // You may obtain a copy of the License at
+//
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -25,7 +27,7 @@
 
 TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
     auto l = loop();
-    ziti_log_init(l, 4, NULL);
+    ziti_log_init(l, 4, nullptr);
     ziti_config cfg;
     REQUIRE(ziti_load_config(&cfg, TEST_CLIENT) == ZITI_OK);
     auto tls = default_tls_context(cfg.id.ca, strlen(cfg.id.ca));
@@ -62,7 +64,7 @@ TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
         uv_run(l, UV_RUN_DEFAULT);
         SKIP("OIDC endpoint not found");
     }
-    CHECK(oidcClient.config != NULL);
+    CHECK(oidcClient.config != nullptr);
 
     std::string token;
     oidcClient.data = &token;

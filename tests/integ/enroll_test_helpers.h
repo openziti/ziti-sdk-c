@@ -1,9 +1,11 @@
-// Copyright (c) 2026. NetFoundry Inc.
+// Copyright (c) 2026.  NetFoundry Inc
+//
+// SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-//
 // You may obtain a copy of the License at
+//
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -25,7 +27,6 @@
 
 #include "fixtures.h"
 #include "ziti_ctrl.h"
-#include "zt_internal.h"
 #include "utils.h"
 #include "test-data.h"
 

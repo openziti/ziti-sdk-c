@@ -1,9 +1,11 @@
-// Copyright (c) 2020-2024. NetFoundry Inc.
+// Copyright (c) 2020-2026.  NetFoundry Inc
+//
+// SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-//
 // You may obtain a copy of the License at
+//
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -325,6 +327,7 @@ DECLARE_MODEL(ziti_controller_detail, ZITI_CONTROLLER_DETAIL)
 DECLARE_MODEL(ziti_pr_base, ZITI_PR_BASE)
 
 bool ziti_has_capability(const ziti_version *v, ziti_ctrl_cap c);
+int parse_enrollment_jwt(const char *token, ziti_enrollment_jwt_header *zejh, ziti_enrollment_jwt *zej, char **sig, size_t *sig_len);
 
 #ifdef __cplusplus
 }

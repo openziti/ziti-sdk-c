@@ -1,16 +1,18 @@
 // Copyright (c) 2022-2026.  NetFoundry Inc
 //
-// 	Licensed under the Apache License, Version 2.0 (the "License");
-// 	you may not use this file except in compliance with the License.
-// 	You may obtain a copy of the License at
+// SPDX-License-Identifier: Apache-2.0
 //
-// 	https://www.apache.org/licenses/LICENSE-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
 //
-// 	Unless required by applicable law or agreed to in writing, software
-// 	distributed under the License is distributed on an "AS IS" BASIS,
-// 	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// 	See the License for the specific language governing permissions and
-// 	limitations under the License.
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef ZT_SDK_ZT_INTERNAL_H
 #define ZT_SDK_ZT_INTERNAL_H
@@ -287,9 +289,6 @@ ziti_channel_send_for_reply(ziti_channel_t *ch, uint32_t content, const hdr_t *h
 
 void ziti_channel_remove_waiter(ziti_channel_t *ch, struct waiter_s *waiter);
 
-int parse_enrollment_jwt(const char *token, ziti_enrollment_jwt_header *zejh, ziti_enrollment_jwt *zej, char **sig, size_t *sig_len);
-
-int load_tls(ziti_config *cfg, tls_context **tls, struct tls_credentials *creds);
 
 void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data);
 

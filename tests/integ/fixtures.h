@@ -19,7 +19,6 @@
 #include <cstdlib>
 #include "ziti_ctrl.h"
 #include "auth_method.h"
-#include <stc/cstr.h>
 
 class LoopTestCase {
     uv_loop_t *m_loop;

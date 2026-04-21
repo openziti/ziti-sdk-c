@@ -19,16 +19,14 @@
 #include <catch2/catch_all.hpp>
 #include <ziti/ziti.h>
 #include <ziti/zitilib.h>
+#include <ziti/ziti_log.h>
 
-#include "oidc.h"
-#include "ziti/ziti_log.h"
 #include "ziti_ctrl.h"
 #include <tlsuv/tlsuv.h>
 
 #include "fixtures.h"
 #include <test-data.h>
 #include <iostream>
-#include <zt_internal.h>
 
 TEST_CASE("cltr-network-jwt", "[integ]") {
     auto l = uv_default_loop();

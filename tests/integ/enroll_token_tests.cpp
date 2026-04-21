@@ -1,9 +1,11 @@
-// Copyright (c) 2026. NetFoundry Inc.
+// Copyright (c) 2026.  NetFoundry Inc
+//
+// SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-//
 // You may obtain a copy of the License at
+//
 // https://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
@@ -26,9 +28,9 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-token-happy-path", "[integ][enroll-token]
     char *csr = nullptr;
     size_t csr_len = 0;
     REQUIRE(cs.tls->generate_csr_to_pem(pk, &csr, &csr_len,
-                                         "O", "OpenZiti",
-                                         "CN", "test-enroll-cert",
-                                         NULL) == 0);
+                                        "O", "OpenZiti",
+                                        "CN", "test-enroll-cert",
+                                        nullptr) == 0);
 
     auto sub = unique_subject("enroll-cert-happy");
     auto jwt = sign_test_jwt(cs.tls, TEST_JWT_SIGNER_KEY,
@@ -68,9 +70,9 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-token-then-mtls", "[integ][enroll-token]"
     char *csr = nullptr;
     size_t csr_len = 0;
     REQUIRE(cs.tls->generate_csr_to_pem(pk, &csr, &csr_len,
-                                         "O", "OpenZiti",
-                                         "CN", "test-mtls-enroll",
-                                         NULL) == 0);
+                                        "O", "OpenZiti",
+                                        "CN", "test-mtls-enroll",
+                                        nullptr) == 0);
 
     auto sub = unique_subject("enroll-cert-mtls");
     auto jwt = sign_test_jwt(cs.tls, TEST_JWT_SIGNER_KEY,
@@ -138,9 +140,9 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-token-already-enrolled", "[integ][enroll-
     char *csr = nullptr;
     size_t csr_len = 0;
     REQUIRE(cs.tls->generate_csr_to_pem(pk, &csr, &csr_len,
-                                         "O", "OpenZiti",
-                                         "CN", "test-dup-enroll",
-                                         NULL) == 0);
+                                        "O", "OpenZiti",
+                                        "CN", "test-dup-enroll",
+                                        nullptr) == 0);
 
     auto sub = unique_subject("enroll-dup");
     auto jwt = sign_test_jwt(cs.tls, TEST_JWT_SIGNER_KEY,
