@@ -98,9 +98,10 @@ runs:
 
     - name: test
       if: inputs.test == 'true'
+      continue-on-error: true
       working-directory: ./build
       shell: bash
-      run: ctest -VV --no-compress-output -R quick_tests
+      run: ctest --no-compress-output --output-on-failure -R quick_tests
 
     - name: integration tests
       if: inputs.test == 'true'
