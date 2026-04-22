@@ -71,7 +71,7 @@ runs:
       id: configure
       shell: bash
       run: |
-        cmake --preset ci-${{ inputs.target }} -B ./build -Dziti_ASAN=ON
+        cmake --preset ci-${{ inputs.target }} -B ./build
 
     - name: upload config failures
       if: failure() && steps.configure.outcome == 'failure'
