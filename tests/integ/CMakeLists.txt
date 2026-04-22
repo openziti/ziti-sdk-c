@@ -22,6 +22,9 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
         @ONLY
 )
 
+add_executable(echo-server echo-server.c)
+target_link_libraries(echo-server PRIVATE ziti)
+
 add_executable(integ-tests
         main.cpp
         legacy-auth.cpp
@@ -39,13 +42,9 @@ target_link_libraries(integ-tests
         PRIVATE Catch2::Catch2WithMain
 )
 
+set_property(TARGET integ-tests PROPERTY CXX_STANDARD 20)
 if (MINGW)
     target_link_options(integ-tests PRIVATE -static-libgcc)
-    set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
-elseif (WIN32)
-    set_property(TARGET integ-tests PROPERTY CXX_STANDARD 20)
-else ()
-    set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
 endif ()
 
 find_program(Python3_EXECUTABLE NAMES python3 python)
@@ -98,7 +97,7 @@ if (Python3_EXECUTABLE)
         )
         set_tests_properties(pytest-integ PROPERTIES
                 TIMEOUT 600
-                DEPENDS "sample_enroll;integ-tests"
+                DEPENDS "sample_enroll;integ-tests;echo-server"
         )
     endif ()
 else ()
