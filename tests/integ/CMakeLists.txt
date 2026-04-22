@@ -85,16 +85,20 @@ if (Python3_EXECUTABLE)
     message(NOTICE "pytest: ${PYTEST_EXECUTABLE}")
     if (EXISTS "${PYTEST_EXECUTABLE}")
         set(INTEG_TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/testdata")
-        file(MAKE_DIRECTORY ${INTEG_TEST_DATA_DIR})
 
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests")
+        file(GLOB test_scripts "${CMAKE_CURRENT_SOURCE_DIR}/*.py")
+        file(COPY ${test_scripts} DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/tests")
+
+        file(MAKE_DIRECTORY ${INTEG_TEST_DATA_DIR})
         configure_file(env.in env.in @ONLY)
         file(GENERATE OUTPUT "${INTEG_TEST_DATA_DIR}/env.$<CONFIG>"
                 INPUT ${CMAKE_CURRENT_BINARY_DIR}/env.in)
         add_test(NAME pytest-integ
-                COMMAND ${PYTEST_EXECUTABLE} -v ${CMAKE_CURRENT_SOURCE_DIR}/
+                COMMAND ${PYTEST_EXECUTABLE} -v "${CMAKE_CURRENT_BINARY_DIR}/tests"
                 --envfile ${INTEG_TEST_DATA_DIR}/env.$<CONFIG>
                 --junitxml=${INTEG_TEST_DATA_DIR}/pytest-integ-results.xml
-                WORKING_DIRECTORY ${INTEG_TEST_DATA_DIR}
+                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         )
         set_tests_properties(pytest-integ PROPERTIES
                 TIMEOUT 600
