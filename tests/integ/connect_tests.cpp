@@ -24,6 +24,10 @@
 #include "test-data.h"
 
 TEST_CASE_METHOD(LoopTestCase, "connect", "[connection]") {
+    auto config = TEST_CLIENT;
+    if(!config) {
+        SKIP("test_client environment variable must be set to run this test");
+    }
     ziti_log_init(loop(), 5, nullptr);
     ziti_config cfg{};
     ziti_context ztx{};
@@ -32,7 +36,6 @@ TEST_CASE_METHOD(LoopTestCase, "connect", "[connection]") {
         free_ziti_config(&cfg);
     };
 
-    auto config = TEST_CLIENT;
     INFO("config file: " << config);
     REQUIRE(ziti_load_config(&cfg, TEST_CLIENT) == ZITI_OK);
     REQUIRE(ziti_context_init(&ztx, &cfg) == ZITI_OK);

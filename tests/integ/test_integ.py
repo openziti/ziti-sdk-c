@@ -31,7 +31,10 @@ def run_catch_test(test_tag, env, tmp_path):
     env = env.copy()
     env["ZITI_LOG"] = "5"
     proc = subprocess.Popen(
-        [test_exe, "--reporter", f"JUnit::out={tmp_path}/{test_tag}-tests.xml", "--reporter", "console::out=-", f"[{test_tag}]"],
+        [test_exe, "-s",
+         "--reporter", f"JUnit::out={tmp_path}/{test_tag}-tests.xml",
+         "--reporter", "console::out=-",
+         f"[{test_tag}]"],
         stdout=subprocess.PIPE,
         stderr=log,
         text=True,

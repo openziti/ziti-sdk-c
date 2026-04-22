@@ -95,9 +95,10 @@ if (Python3_EXECUTABLE)
         file(GENERATE OUTPUT "${INTEG_TEST_DATA_DIR}/env.$<CONFIG>"
                 INPUT ${CMAKE_CURRENT_BINARY_DIR}/env.in)
         add_test(NAME pytest-integ
-                COMMAND ${PYTEST_EXECUTABLE} -v "${CMAKE_CURRENT_BINARY_DIR}/tests"
+                COMMAND ${PYTEST_EXECUTABLE} -v --setup-show
                 --envfile ${INTEG_TEST_DATA_DIR}/env.$<CONFIG>
                 --junitxml=${INTEG_TEST_DATA_DIR}/pytest-integ-results.xml
+                "${CMAKE_CURRENT_BINARY_DIR}/tests"
                 WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         )
         set_tests_properties(pytest-integ PROPERTIES
