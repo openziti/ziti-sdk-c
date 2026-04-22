@@ -91,7 +91,7 @@ static void input_alloc(uv_handle_t *handle, size_t suggested_size, uv_buf_t *bu
 
 static void input_read(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf) {
     if (nread > 0) {
-        if (strncmp(buf->base, "stop", nread) == 0) {
+        if (nread >= 4 && strncmp(buf->base, "stop", 4) == 0) {
             ZITI_LOG(INFO, "exiting on user request");
             ziti_context ztx = stream->data;
             ziti_shutdown(ztx);
@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
     uv_pipe_t input = { .data = ztx, };
     uv_pipe_init(loop, &input, 0);
     uv_unref((uv_handle_t*)&input);
-    if (uv_pipe_open(&input, stdin->_file) == 0) {
+    if (uv_pipe_open(&input, fileno(stdin)) == 0) {
         uv_read_start((uv_stream_t*)&input, input_alloc, input_read);
     } else {
         ZITI_LOG(WARN, "failed to open stdin for reading");

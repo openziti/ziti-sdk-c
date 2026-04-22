@@ -34,10 +34,8 @@ import subprocess
 import threading
 import pytest
 
-from pip._internal.utils import temp_dir
-
 logger = logging.getLogger(__name__)
-test_exe = os.environ["TEST_EXE"]
+test_exe = os.environ.get("TEST_EXE")
 
 def run_catch_test(test_tag, env, tmp_path):
     """Run the C++ Catch2 integration test binary."""

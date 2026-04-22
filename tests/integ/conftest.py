@@ -27,25 +27,10 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-#
-#  SPDX-License-Identifier: Apache-2.0
-#
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#  https://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
 
 import hashlib
 import logging
 import os
-import shutil
 import subprocess
 import threading
 from semver import Version
@@ -168,12 +153,12 @@ def ziti_model(ziti_cli, base_model, quickstart_home):
     ziti_edge(ziti_cli,
               "create", "identity", "test-client",
               "-a", "client",
-              "-o", os.path.join(quickstart_home, "test-client.jwt"))
+              "-o", os.path.join(quickstart_home, "test_client.jwt"))
 
     ziti_edge(ziti_cli,
               "create", "identity", "test-server",
               "-a", "server",
-              "-o", os.path.join(quickstart_home, "test-server.jwt"))
+              "-o", os.path.join(quickstart_home, "test_server.jwt"))
 
 
 @pytest.fixture(scope="session")
@@ -241,7 +226,7 @@ def enrolled_identities(ziti_model, quickstart_home) -> dict[str, str]:
         pytest.skip("ENROLLER not set")
 
     ids = dict()
-    for name in ("test-server", "test-client"):
+    for name in ("test_server", "test_client"):
         jwt_file = os.path.join(quickstart_home, f"{name}.jwt")
         json_file = os.path.join(quickstart_home, f"{name}.json")
         result = subprocess.run(
@@ -313,36 +298,36 @@ def echo_server(server_identity, tmp_path):
     if not echo_exe:
         pytest.skip("ECHO_SERVER not set")
 
-    echo_server_log = open(tmp_path / "echo-server.log", "w")
-    proc = subprocess.Popen(
-        [echo_exe, server_identity, "test-service"],
-        stdout=subprocess.PIPE,
-        stderr=echo_server_log,
-        stdin=subprocess.PIPE,
-        text=True,
-        env=dict(ZITI_LOG="5")
-    )
+    with open(tmp_path / "echo-server.log", "w") as echo_server_log:
+        proc = subprocess.Popen(
+            [echo_exe, server_identity, "test-service"],
+            stdout=subprocess.PIPE,
+            stderr=echo_server_log,
+            stdin=subprocess.PIPE,
+            text=True,
+            env=dict(ZITI_LOG="5")
+        )
 
-    ready = threading.Event()
-    def _reader():
-        for line in proc.stdout:
-            if "ECHO_SERVER_READY" in line:
-                ready.set()
+        ready = threading.Event()
+        def _reader():
+            for line in proc.stdout:
+                if "ECHO_SERVER_READY" in line:
+                    ready.set()
 
-    t = threading.Thread(target=_reader, daemon=True)
-    t.start()
+        t = threading.Thread(target=_reader, daemon=True)
+        t.start()
 
-    if not ready.wait(timeout=60):
-        proc.kill()
-        pytest.fail("echo-server did not become ready within 60s")
+        if not ready.wait(timeout=60):
+            proc.kill()
+            pytest.fail("echo-server did not become ready within 60s")
 
-    yield proc
+        yield proc
 
-    proc.communicate(input="stop", timeout=10)
-    try:
-        proc.wait(timeout=10)
-        logger.info("echo-server stopped")
-    except subprocess.TimeoutExpired:
-        logger.error("echo-server did not stop within 10s, killing")
-        proc.kill()
-        proc.wait()
+        proc.communicate(input="stop", timeout=10)
+        try:
+            proc.wait(timeout=10)
+            logger.info("echo-server stopped")
+        except subprocess.TimeoutExpired:
+            logger.error("echo-server did not stop within 10s, killing")
+            proc.kill()
+            proc.wait()
