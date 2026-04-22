@@ -33,6 +33,7 @@ add_executable(integ-tests
         enroll_tests.cpp
         enroll_token_tests.cpp
         enroll_mode_tests.cpp
+        connect_tests.cpp
 )
 target_include_directories(integ-tests
         PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include

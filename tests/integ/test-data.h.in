@@ -32,9 +32,9 @@
 #define TEST_KEYCLOAK_PASSWORD "testpass"
 
 static const char* test_client() {
-    return getenv("test-client");
+    return getenv("test_client");
 }
 
 static const char* test_server() {
-    return getenv("test-server");
+    return getenv("test_server");
 }

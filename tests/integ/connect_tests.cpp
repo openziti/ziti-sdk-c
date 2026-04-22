@@ -57,8 +57,6 @@ TEST_CASE_METHOD(LoopTestCase, "connect", "[connection]") {
                 }
                 if (ev->ctx.ctrl_status == ZITI_DISABLED) {
                     capt->shutdown = true;
-                    ZITI_LOG(INFO, "context shutdown");
-                    fflush(stdout);
                 }
             }
         },
@@ -69,7 +67,6 @@ TEST_CASE_METHOD(LoopTestCase, "connect", "[connection]") {
 
     ziti_connection conn{};
     ziti_conn_init(ztx, &conn, &c);
-
     ziti_dial(conn, "test-service",
               [](ziti_connection conn, int status) {
                 auto capt = (capture*)ziti_conn_data(conn);
@@ -95,29 +92,5 @@ TEST_CASE_METHOD(LoopTestCase, "connect", "[connection]") {
       printf("ZITI_CONNECTION_CLOSED\n");
       fflush(stdout);
     });
-    run(UNTIL(c.closed));
-//    ZITI_LOG(INFO, "initiating context shutdown");
-//    ziti_shutdown(ztx);
-//    ZITI_LOG(INFO, "waiting for context shutdown");
-//    run(UNTIL(c.shutdown));
-}
-
-TEST_CASE("defer", "[defer]") {
-
-    ziti_config cfg{};
-    DEFER {
-        fprintf(stderr, "freeing config\n");
-        free_ziti_config(&cfg);
-    };
-
-    DEFER {
-        fprintf(stderr, "defer 2\n");
-    };
-
-    DEFER {
-        fprintf(stderr, "defer 3\n");
-    };
-
-    ziti_load_config(&cfg, "/Users/eugene/work/mm/mm.json");
-    REQUIRE(cfg.controller_url != nullptr);
+    CHECK(run(UNTIL(c.closed)));
 }
