@@ -22,6 +22,8 @@ concurrency:
 
 jobs:
   test:
+    permissions:
+      checks: write
     name: ${{ matrix.spec.name }}-test
     runs-on: ${{ matrix.spec.runner }}
     container:
@@ -58,7 +60,7 @@ jobs:
           detailed_summary: 'true'
           include_passed: 'true'
           include_skipped: 'true'
-          report_paths: ${{ github.workspace }}/build/tests/TEST-*.xml
+          report_paths: ${{ github.workspace }}/build/tests/**/TEST-*.xml
 
   build:
     needs: test
