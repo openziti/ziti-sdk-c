@@ -21,7 +21,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    name: ${{ matrix.spec.name }}-test
+    runs-on: ${{ matrix.spec.runner }}
+    container:
+      image: ${{ matrix.spec.builder }}
+    env:
+      BUILD_NUMBER: ${{ github.run_number }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        spec:
+          - { name: 'Linux x86_64', runner: 'ubuntu-latest', target: 'linux-x64', builder: 'openziti/ziti-builder:v3' }
+          - { name: 'MacOS x86_64', runner: 'macos-15-intel', target: 'macOS-x64' }
+          - { name: 'MacOS arm64', runner: 'macos-15', target: 'macOS-arm64' }
+          - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64' }
+          - { name: 'Windows x86', runner: 'windows-2022', target: 'windows-x86' }
+          - { name: 'Windows ming64', runner: 'windows-2022', target: 'windows-x64-mingw' }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: run build for ${{ matrix.spec.target }}
+        uses: ./.github/actions/build
+        with:
+          target: ${{ matrix.spec.target }}
+          test: 'true'
+          test_id: ${{ secrets.ZITI_TEST_IDENTITY }}
+
+      - name: upload test summary
+        if: always()
+        uses: mikepenz/action-junit-report@v6
+        with:
+          detailed_summary: 'true'
+          include_passed: 'true'
+          include_skipped: 'true'
+          report_paths: ${{ github.workspace }}/build/tests/TEST-*.xml
+
   build:
+    needs: test
     name: ${{ matrix.spec.name }}
     runs-on: ${{ matrix.spec.runner }}
     container:
@@ -34,15 +74,15 @@ jobs:
       fail-fast: false
       matrix:
         spec:
-          - { name: 'Linux x86_64', runner: 'ubuntu-latest', target: 'linux-x64', builder: 'openziti/ziti-builder:v3', test: 'true' }
+          - { name: 'Linux x86_64', runner: 'ubuntu-latest', target: 'linux-x64', builder: 'openziti/ziti-builder:v3'}
           - { name: 'Linux ARM', runner: 'ubuntu-latest', target: 'linux-arm', builder: 'openziti/ziti-builder:v3' }
           - { name: 'Linux ARM64', runner: 'ubuntu-latest', target: 'linux-arm64', builder: 'openziti/ziti-builder:v3' }
-          - { name: 'MacOS x86_64', runner: 'macos-15-intel', target: 'macOS-x64', test: 'true' }
-          - { name: 'MacOS arm64', runner: 'macos-15', target: 'macOS-arm64', test: 'true' }
-          - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64', test: 'true' }
-          - { name: 'Windows x86', runner: 'windows-2022', target: 'windows-x86', test: 'true' }
+          - { name: 'MacOS x86_64', runner: 'macos-15-intel', target: 'macOS-x64' }
+          - { name: 'MacOS arm64', runner: 'macos-15', target: 'macOS-arm64' }
+          - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64' }
+          - { name: 'Windows x86', runner: 'windows-2022', target: 'windows-x86' }
           - { name: 'Windows ARM64', runner: 'windows-2022', target: 'windows-arm64' }
-          - { name: 'Windows ming64', runner: 'windows-2022', target: 'windows-x64-mingw', test: 'true' }
+          - { name: 'Windows ming64', runner: 'windows-2022', target: 'windows-x64-mingw' }
     steps:
       - name: Add msbuild to PATH
         if: startsWith(matrix.spec.runner, 'windows')
@@ -56,8 +96,7 @@ jobs:
         uses: ./.github/actions/build
         with:
           target: ${{ matrix.spec.target }}
-          test: ${{ matrix.spec.test }}
-          test_id: ${{ secrets.ZITI_TEST_IDENTITY }}
+          test: 'false'
 
       - name: upload artifacts
         uses: actions/upload-artifact@v4
