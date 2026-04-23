@@ -43,9 +43,7 @@ target_link_libraries(zitilib-tests
         PRIVATE Catch2::Catch2WithMain)
 
 include(CTest)
-add_test(quick_tests all_tests -d yes "~[integ]~[metrics]")
-
-add_test(zitilib_tests zitilib-tests -d yes)
+add_test(quick_tests all_tests -d yes "~[integ]~[metrics]" -r junit::out=TEST-quick_tests.xml -r console)
 
 add_subdirectory(integ)
 

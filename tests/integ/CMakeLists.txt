@@ -96,8 +96,9 @@ if (Python3_EXECUTABLE)
                 INPUT ${CMAKE_CURRENT_BINARY_DIR}/env.in)
         add_test(NAME pytest-integ
                 COMMAND ${PYTEST_EXECUTABLE} -v --setup-show
+                --basetemp ${INTEG_TEST_DATA_DIR}/temp
                 --envfile ${INTEG_TEST_DATA_DIR}/env.$<CONFIG>
-                --junitxml=${INTEG_TEST_DATA_DIR}/pytest-integ-results.xml
+                --junitxml=${INTEG_TEST_DATA_DIR}/TEST-integration-tests.xml
                 "${CMAKE_CURRENT_BINARY_DIR}/tests"
                 WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         )
