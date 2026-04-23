@@ -41,7 +41,6 @@ TEST_CASE_METHOD(LoopTestCase, "connect", "[connection]") {
     REQUIRE(ziti_context_init(&ztx, &cfg) == ZITI_OK);
     struct capture {
         bool loaded;
-        bool shutdown;
         int connect_error;
         bool connected;
         bool closed;
@@ -57,9 +56,6 @@ TEST_CASE_METHOD(LoopTestCase, "connect", "[connection]") {
                     capt->loaded = true;
                     printf("ZITI_CONTEXT_READY\n");
                     fflush(stdout);
-                }
-                if (ev->ctx.ctrl_status == ZITI_DISABLED) {
-                    capt->shutdown = true;
                 }
             }
         },
