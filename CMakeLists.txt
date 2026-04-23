@@ -42,6 +42,8 @@ if (ziti_ASAN)
                 _DISABLE_VECTOR_ANNOTATION
                 _DISABLE_STRING_ANNOTATION
         )
+    elseif (MINGW)
+        message(WARNING "ASAN is not supported on MinGW builds")
     else ()
         add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
         add_link_options(-fsanitize=address)

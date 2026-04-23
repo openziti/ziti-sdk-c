@@ -39,7 +39,6 @@ jobs:
           - { name: 'MacOS x86_64', runner: 'macos-15-intel', target: 'macOS-x64' }
           - { name: 'MacOS arm64', runner: 'macos-15', target: 'macOS-arm64' }
           - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64' }
-          - { name: 'Windows x86', runner: 'windows-2022', target: 'windows-x86' }
           - { name: 'Windows ming64', runner: 'windows-2022', target: 'windows-x64-mingw' }
     steps:
       - uses: actions/checkout@v4
@@ -58,7 +57,6 @@ jobs:
         uses: mikepenz/action-junit-report@v6
         with:
           detailed_summary: 'true'
-          include_passed: 'true'
           include_skipped: 'true'
           report_paths: ${{ github.workspace }}/build/tests/**/TEST-*.xml
 
