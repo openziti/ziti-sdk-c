@@ -28,17 +28,19 @@ def run_catch_test(test_tag, env, tmp_path):
     """Run the C++ Catch2 integration test binary."""
     log = open(tmp_path / f"{test_tag}-tests.log", "w")
 
-    env = env.copy()
-    env["ZITI_LOG"] = "5"
+    environment = os.environ.copy()
+    environment.update(env)
+    environment["ZITI_LOG"] = "5"
     proc = subprocess.Popen(
         [test_exe, "-s",
          "--reporter", f"JUnit::out={tmp_path}/TEST-{test_tag}.xml",
          "--reporter", "console::out=-",
          f"[{test_tag}]"],
+        shell=True,
         stdout=subprocess.PIPE,
         stderr=log,
         text=True,
-        env=env,
+        env=environment,
     )
 
     def _reader():
