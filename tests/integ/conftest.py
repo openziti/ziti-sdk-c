@@ -303,14 +303,17 @@ def echo_server(server_identity, tmp_path):
     if not echo_exe:
         pytest.skip("ECHO_SERVER not set")
 
+    env = os.environ.copy()
+    env["ZITI_LOG"] = "5"
     with open(tmp_path / "echo-server.log", "w") as echo_server_log:
         proc = subprocess.Popen(
             [echo_exe, server_identity, "test-service"],
+            shell=True,
             stdout=subprocess.PIPE,
             stderr=echo_server_log,
             stdin=subprocess.PIPE,
             text=True,
-            env=dict(ZITI_LOG="5")
+            env=env
         )
 
         ready = threading.Event()
