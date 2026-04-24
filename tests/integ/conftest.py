@@ -108,11 +108,13 @@ def quickstart(ziti_cli, tmp_path_factory, quickstart_home):
 
     ready = threading.Event()
 
+    qs_log = f"{quickstart_home}/qs.log"
     def _reader():
-        for line in proc.stdout:
-            logger.info("[quickstart] %s", line.rstrip())
-            if "controller and router started" in line:
-                ready.set()
+        with open(qs_log, "wt") as log:
+            for line in proc.stdout:
+                log.write(line)
+                if "controller and router started" in line:
+                    ready.set()
 
     t = threading.Thread(target=_reader, daemon=True)
     t.start()
@@ -129,6 +131,9 @@ def quickstart(ziti_cli, tmp_path_factory, quickstart_home):
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()
+    with open(qs_log, "at") as log:
+        print(f"quickstart process exited with code {proc.returncode}", file=log)
+
 
 
 @pytest.fixture(scope="session")
