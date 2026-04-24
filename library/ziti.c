@@ -805,6 +805,9 @@ static void shutdown_and_free(ziti_context ztx) {
 }
 
 int ziti_shutdown(ziti_context ztx) {
+    if (ztx == NULL) {
+        return ZITI_INVALID_STATE;
+    }
     ZTX_LOG(INFO, "Ziti is shutting down");
     ztx->closing = true;
 
@@ -1901,6 +1904,7 @@ static void ztx_prep_deadlines(ziti_context ztx) {
 
 void ztx_prepare(uv_prepare_t *prep) {
     ziti_context ztx = prep->data;
+    ZTX_LOG(TRACE, "preparing ztx for IO");
 
     if (!cstr_is_empty(&ztx->session_token)) {
         const struct timeval *exp = ztx->auth_method ? ztx->auth_method->expiration(ztx->auth_method) : NULL;

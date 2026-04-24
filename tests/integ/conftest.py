@@ -31,7 +31,6 @@
 import hashlib
 import logging
 import os
-import shutil
 import subprocess
 import threading
 from semver import Version
@@ -109,11 +108,13 @@ def quickstart(ziti_cli, tmp_path_factory, quickstart_home):
 
     ready = threading.Event()
 
+    qs_log = f"{quickstart_home}/qs.log"
     def _reader():
-        for line in proc.stdout:
-            logger.info("[quickstart] %s", line.rstrip())
-            if "controller and router started" in line:
-                ready.set()
+        with open(qs_log, "wt") as log:
+            for line in proc.stdout:
+                log.write(line)
+                if "controller and router started" in line:
+                    ready.set()
 
     t = threading.Thread(target=_reader, daemon=True)
     t.start()
@@ -130,6 +131,9 @@ def quickstart(ziti_cli, tmp_path_factory, quickstart_home):
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()
+    with open(qs_log, "at") as log:
+        print(f"quickstart process exited with code {proc.returncode}", file=log)
+
 
 
 @pytest.fixture(scope="session")
@@ -154,12 +158,12 @@ def ziti_model(ziti_cli, base_model, quickstart_home):
     ziti_edge(ziti_cli,
               "create", "identity", "test-client",
               "-a", "client",
-              "-o", os.path.join(quickstart_home, "test-client.jwt"))
+              "-o", os.path.join(quickstart_home, "test_client.jwt"))
 
     ziti_edge(ziti_cli,
               "create", "identity", "test-server",
               "-a", "server",
-              "-o", os.path.join(quickstart_home, "test-server.jwt"))
+              "-o", os.path.join(quickstart_home, "test_server.jwt"))
 
 
 @pytest.fixture(scope="session")
@@ -227,7 +231,7 @@ def enrolled_identities(ziti_model, quickstart_home) -> dict[str, str]:
         pytest.skip("ENROLLER not set")
 
     ids = dict()
-    for name in ("test-server", "test-client"):
+    for name in ("test_server", "test_client"):
         jwt_file = os.path.join(quickstart_home, f"{name}.jwt")
         json_file = os.path.join(quickstart_home, f"{name}.json")
         result = subprocess.run(
@@ -239,3 +243,99 @@ def enrolled_identities(ziti_model, quickstart_home) -> dict[str, str]:
             pytest.fail(f"enrollment of {name} failed: {result.stderr}")
         ids[name] = json_file
     return ids
+
+
+def enrollment(ziti_cli, quickstart_home, name, attr) -> str:
+    """Create test client identity."""
+    jwt_path = f"{quickstart_home}/{name}.jwt"
+    ziti_edge(ziti_cli,"create", "identity",
+                                name, "-a", attr,
+                                "-o", jwt_path)
+    logger.info("[client enrollment] %s", jwt_path)
+    return jwt_path
+
+
+@pytest.fixture
+def client_identity(ziti_cli, quickstart_home, ziti_model, request) -> str:
+    """return new ziti identity config"""
+    enroller = os.environ.get("ENROLLER")
+    if not enroller:
+        pytest.skip("ENROLLER not set")
+
+    name = f"client-{request.node.name}"
+    jwt = enrollment(ziti_cli, quickstart_home, name, "client")
+    json_path = f"{quickstart_home}/{name}.json"
+    result = subprocess.run(
+        [enroller, jwt, json_path],
+        capture_output=True, text=True,
+    )
+    logger.info("[enroll %s] %s", name, result.stdout.rstrip())
+    if "ziti identity is saved" not in result.stdout:
+        pytest.fail(f"enrollment of {name} failed: {result.stderr}")
+
+    return json_path
+
+
+@pytest.fixture
+def server_identity(ziti_cli, quickstart_home, ziti_model, request) -> str:
+    """return new ziti identity config"""
+    enroller = os.environ.get("ENROLLER")
+    if not enroller:
+        pytest.skip("ENROLLER not set")
+
+    name = f"server-{request.node.name}"
+    jwt = enrollment(ziti_cli, quickstart_home, name, "server")
+    json_path = f"{quickstart_home}/{name}.json"
+    result = subprocess.run(
+        [enroller, jwt, json_path],
+        capture_output=True, text=True,
+    )
+    logger.info("[enroll %s] %s", name, result.stdout.rstrip())
+    if "ziti identity is saved" not in result.stdout:
+        pytest.fail(f"enrollment of {name} failed: {result.stderr}")
+
+    return json_path
+
+@pytest.fixture
+def echo_server(server_identity, tmp_path):
+    """Start the echo server and wait for it to be ready."""
+    echo_exe = os.environ.get("ECHO_SERVER")
+    if not echo_exe:
+        pytest.skip("ECHO_SERVER not set")
+
+    env = os.environ.copy()
+    env["ZITI_LOG"] = "5"
+    with open(tmp_path / "echo-server.log", "w") as echo_server_log:
+        proc = subprocess.Popen(
+            [echo_exe, server_identity, "test-service"],
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=echo_server_log,
+            stdin=subprocess.PIPE,
+            text=True,
+            env=env
+        )
+
+        ready = threading.Event()
+        def _reader():
+            for line in proc.stdout:
+                if "ECHO_SERVER_READY" in line:
+                    ready.set()
+
+        t = threading.Thread(target=_reader, daemon=True)
+        t.start()
+
+        if not ready.wait(timeout=60):
+            proc.kill()
+            pytest.fail("echo-server did not become ready within 60s")
+
+        yield proc
+
+        proc.communicate(input="stop", timeout=10)
+        try:
+            proc.wait(timeout=10)
+            logger.info("echo-server stopped")
+        except subprocess.TimeoutExpired:
+            logger.error("echo-server did not stop within 10s, killing")
+            proc.kill()
+            proc.wait()

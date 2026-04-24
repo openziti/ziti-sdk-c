@@ -194,7 +194,8 @@ TEST_CASE("map remove inside foreach", "[model]") {
     const char *k;
     const char *val;
     MODEL_MAP_FOREACH(k, val, &m) {
-        model_map_remove(&m, k);
+        void *v = model_map_remove(&m, k);
+        free(v);
     }
 
     REQUIRE(m.impl == nullptr);

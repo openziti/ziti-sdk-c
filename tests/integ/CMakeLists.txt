@@ -22,6 +22,9 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
         @ONLY
 )
 
+add_executable(echo-server echo-server.c)
+target_link_libraries(echo-server PRIVATE ziti)
+
 add_executable(integ-tests
         main.cpp
         legacy-auth.cpp
@@ -30,6 +33,7 @@ add_executable(integ-tests
         enroll_tests.cpp
         enroll_token_tests.cpp
         enroll_mode_tests.cpp
+        connect_tests.cpp
 )
 target_include_directories(integ-tests
         PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include
@@ -39,13 +43,9 @@ target_link_libraries(integ-tests
         PRIVATE Catch2::Catch2WithMain
 )
 
+set_property(TARGET integ-tests PROPERTY CXX_STANDARD 20)
 if (MINGW)
     target_link_options(integ-tests PRIVATE -static-libgcc)
-    set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
-elseif (WIN32)
-    set_property(TARGET integ-tests PROPERTY CXX_STANDARD 20)
-else ()
-    set_property(TARGET integ-tests PROPERTY CXX_STANDARD 14)
 endif ()
 
 find_program(Python3_EXECUTABLE NAMES python3 python)
@@ -85,20 +85,26 @@ if (Python3_EXECUTABLE)
     message(NOTICE "pytest: ${PYTEST_EXECUTABLE}")
     if (EXISTS "${PYTEST_EXECUTABLE}")
         set(INTEG_TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/testdata")
-        file(MAKE_DIRECTORY ${INTEG_TEST_DATA_DIR})
 
+        file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests")
+        file(GLOB test_scripts "${CMAKE_CURRENT_SOURCE_DIR}/*.py")
+        file(COPY ${test_scripts} DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/tests")
+
+        file(MAKE_DIRECTORY ${INTEG_TEST_DATA_DIR})
         configure_file(env.in env.in @ONLY)
         file(GENERATE OUTPUT "${INTEG_TEST_DATA_DIR}/env.$<CONFIG>"
                 INPUT ${CMAKE_CURRENT_BINARY_DIR}/env.in)
         add_test(NAME pytest-integ
-                COMMAND ${PYTEST_EXECUTABLE} -v ${CMAKE_CURRENT_SOURCE_DIR}/
+                COMMAND ${PYTEST_EXECUTABLE} -v --setup-show
+                --basetemp ${INTEG_TEST_DATA_DIR}/temp
                 --envfile ${INTEG_TEST_DATA_DIR}/env.$<CONFIG>
-                --junitxml=${INTEG_TEST_DATA_DIR}/pytest-integ-results.xml
-                WORKING_DIRECTORY ${INTEG_TEST_DATA_DIR}
+                --junitxml=${INTEG_TEST_DATA_DIR}/TEST-integration-tests.xml
+                "${CMAKE_CURRENT_BINARY_DIR}/tests"
+                WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         )
         set_tests_properties(pytest-integ PROPERTIES
                 TIMEOUT 600
-                DEPENDS "sample_enroll;integ-tests"
+                DEPENDS "sample_enroll;integ-tests;echo-server"
         )
     endif ()
 else ()
