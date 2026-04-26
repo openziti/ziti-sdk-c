@@ -42,9 +42,10 @@ typedef uint32_t in_addr_t;
 
 static uv_once_t info_once;
 static ziti_env_info s_info;
+static char s_hostname[UV_MAXHOSTNAMESIZE];
+static char *s_hostname_override;
 static void ziti_info_init() {
     static uv_utsname_t os_info;
-    static char s_hostname[UV_MAXHOSTNAMESIZE];
     static char s_domain[UV_MAXHOSTNAMESIZE];
 
     uv_os_uname(&os_info);
@@ -114,5 +115,19 @@ void ziti_set_device_id(const char *device_id) {
 
     if (device_id) {
         s_info.device_id = strdup(device_id);
+    }
+}
+
+void ziti_set_hostname(const char *hostname) {
+    uv_once(&info_once, ziti_info_init);
+
+    free(s_hostname_override);
+    s_hostname_override = NULL;
+
+    if (hostname && *hostname) {
+        s_hostname_override = strdup(hostname);
+        s_info.hostname = s_hostname_override;
+    } else {
+        s_info.hostname = s_hostname;
     }
 }

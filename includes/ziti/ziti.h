@@ -427,6 +427,18 @@ ZITI_FUNC
 extern void ziti_set_device_id(const char *device_id);
 
 /**
+ * Override the hostname reported to the Ziti Controller in envInfo.
+ *
+ * On platforms where uv_os_gethostname() returns an unhelpful value (e.g. iOS
+ * apps that always see "localhost"), the application can supply a more
+ * meaningful name (such as UIDevice.current.name on iOS).
+ *
+ * Pass NULL or an empty string to revert to the value detected by the SDK.
+ */
+ZITI_FUNC
+extern void ziti_set_hostname(const char *hostname);
+
+/**
  * Load ziti identity config from memory or file.
  * First it tries to parse [conf_str] as identity Json.
  * if that fails it tries to load it from file using [conf_str] as the path.
