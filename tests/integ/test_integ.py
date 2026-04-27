@@ -36,7 +36,6 @@ def run_catch_test(test_tag, env, tmp_path):
          "--reporter", f"JUnit::out={tmp_path}/TEST-{test_tag}.xml",
          "--reporter", "console::out=-",
          f"[{test_tag}]"],
-        shell=True,
         stdout=subprocess.PIPE,
         stderr=log,
         text=True,
