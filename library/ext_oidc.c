@@ -108,11 +108,21 @@ typedef struct auth_req {
     "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" \
     "background:#f9fafb;color:#111827;display:flex;align-items:center;justify-content:center}" \
     ".card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;" \
-    "padding:40px 56px;text-align:center;max-width:440px;" \
+    "padding:40px 56px;text-align:center;max-width:520px;" \
     "box-shadow:0 4px 6px rgba(17,24,39,0.05)}" \
     ".logo{display:block;margin:0 auto 20px}" \
     "h1{font-size:22px;font-weight:600;margin:0 0 12px;color:#111827}" \
-    "p{color:#6b7280;margin:0;line-height:1.5}"
+    "p{color:#6b7280;margin:0;line-height:1.5}" \
+    "details{margin-top:24px;text-align:left}" \
+    "summary{cursor:pointer;color:#6b7280;font-size:14px;user-select:none}" \
+    ".details-body{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;" \
+    "padding:16px;margin-top:12px;font-size:13px;color:#111827}" \
+    ".details-body dt{font-weight:600;margin-top:8px}" \
+    ".details-body dt:first-child{margin-top:0}" \
+    ".details-body dd{margin:4px 0 0 0}" \
+    ".details-body pre{background:#fff;border:1px solid #e5e7eb;border-radius:4px;" \
+    "padding:8px;margin:4px 0 0 0;font-size:12px;overflow-x:auto;" \
+    "white-space:pre-wrap;word-break:break-all}"
 
 #define ZITI_LOGO_SVG \
     "<svg class=\"logo\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 422.964 422.964\" " \
@@ -157,13 +167,13 @@ static const char HTTP_SUCCESS_BODY[] =
         "  <div class=\"card\">\n"
         "    " ZITI_LOGO_SVG "\n"
         "    <h1>Authentication successful</h1>\n"
-        "    <p>You may close this window. It will close automatically in a few seconds.</p>\n"
+        "    <p>You may close this window.</p>\n"
         "  </div>\n"
-        "  <script>setTimeout(function(){window.close();},3000);</script>\n"
+        "  <script>window.close();</script>\n"
         "</body>\n"
         "</html>\n";
 
-static const char HTTP_FAILURE_BODY[] =
+static const char HTTP_FAILURE_HEADER[] =
         "<!DOCTYPE html>\n"
         "<html lang=\"en\">\n"
         "<head><meta charset=\"utf-8\">\n"
@@ -174,10 +184,67 @@ static const char HTTP_FAILURE_BODY[] =
         "  <div class=\"card\">\n"
         "    " ZITI_LOGO_SVG "\n"
         "    <h1>Authentication failed</h1>\n"
-        "    <p>Please return to the application to try again. You may close this window.</p>\n"
+        "    <p>Please return to the application to try again. You may close this window.</p>\n";
+
+static const char HTTP_FAILURE_FOOTER[] =
         "  </div>\n"
         "</body>\n"
         "</html>\n";
+
+static void append_html_escaped(string_buf_t *buf, const char *s) {
+    if (s == NULL) return;
+    for (const char *p = s; *p; p++) {
+        switch (*p) {
+            case '&':  string_buf_append(buf, "&amp;");  break;
+            case '<':  string_buf_append(buf, "&lt;");   break;
+            case '>':  string_buf_append(buf, "&gt;");   break;
+            case '"':  string_buf_append(buf, "&quot;"); break;
+            case '\'': string_buf_append(buf, "&#39;");  break;
+            default:   string_buf_append_byte(buf, *p);  break;
+        }
+    }
+}
+
+static char *build_failure_body(const char *step, const char *error, const char *jwt) {
+    string_buf_t buf;
+    string_buf_init(&buf);
+
+    string_buf_append(&buf, HTTP_FAILURE_HEADER);
+
+    if (step || error || jwt) {
+        string_buf_append(&buf, "    <details><summary>Show details</summary>\n");
+        string_buf_append(&buf, "      <dl class=\"details-body\">\n");
+
+        if (step) {
+            string_buf_append(&buf, "        <dt>Step</dt><dd>");
+            append_html_escaped(&buf, step);
+            string_buf_append(&buf, "</dd>\n");
+        }
+        if (error) {
+            string_buf_append(&buf, "        <dt>Error</dt><dd>");
+            append_html_escaped(&buf, error);
+            string_buf_append(&buf, "</dd>\n");
+        }
+        if (jwt) {
+            const char *raw = jwt_payload(jwt);
+            json_object *parsed = json_tokener_parse(raw);
+            const char *pretty = parsed
+                ? json_object_to_json_string_ext(parsed, JSON_C_TO_STRING_PRETTY)
+                : raw;
+            string_buf_append(&buf, "        <dt>Token claims</dt><dd><pre>");
+            append_html_escaped(&buf, pretty);
+            string_buf_append(&buf, "</pre></dd>\n");
+            if (parsed) json_object_put(parsed);
+        }
+
+        string_buf_append(&buf, "      </dl>\n");
+        string_buf_append(&buf, "    </details>\n");
+    }
+
+    string_buf_append(&buf, HTTP_FAILURE_FOOTER);
+
+    return string_buf_to_string(&buf, NULL);
+}
 
 
 static void handle_unexpected_resp(ext_oidc_client_t *clt, tlsuv_http_resp_t *resp, json_object *body) {
@@ -237,6 +304,8 @@ int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
     uv_timer_init(loop, clt->timer);
     clt->timer->data = clt;
     uv_unref((uv_handle_t *) clt->timer);
+
+    clt->pending_sock = (uv_os_sock_t) -1;
 
     return 0;
 }
@@ -400,7 +469,9 @@ static void free_auth_req(auth_req *req) {
 
 static void failed_auth_req(auth_req *req, const char *error) {
     if (req->clt_sock != (uv_os_sock_t) -1) {
-        send_callback_response(req->clt_sock, HTTP_FAILURE_BODY);
+        char *body = build_failure_body("OIDC token exchange", error, NULL);
+        send_callback_response(req->clt_sock, body);
+        free(body);
         req->clt_sock = (uv_os_sock_t) -1;
     }
 
@@ -434,7 +505,12 @@ static void token_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
     OIDC_LOG(DEBUG, "%d %s err[%s]", http_resp->code, http_resp->status, err);
     if (http_resp->code == 200) {
         if (req->clt_sock != (uv_os_sock_t) -1) {
-            send_callback_response(req->clt_sock, HTTP_SUCCESS_BODY);
+            // hold the browser response until the controller verdict
+            // (ext_oidc_client_finalize will write success or failure page)
+            if (clt->pending_sock != (uv_os_sock_t) -1) {
+                close_socket(clt->pending_sock);
+            }
+            clt->pending_sock = req->clt_sock;
             req->clt_sock = (uv_os_sock_t) -1;
         }
         ext_oidc_client_set_tokens(clt, resp);
@@ -783,6 +859,27 @@ int ext_oidc_client_refresh(ext_oidc_client_t *clt) {
     return uv_timer_start(clt->timer, ext_refresh_time_cb, 0, 0);
 }
 
+void ext_oidc_client_finalize(ext_oidc_client_t *clt, bool ok, const char *error_msg) {
+    if (clt == NULL || clt->pending_sock == (uv_os_sock_t) -1) return;
+
+    if (ok) {
+        send_callback_response(clt->pending_sock, HTTP_SUCCESS_BODY);
+    } else {
+        const char *token = NULL;
+        if (clt->tokens) {
+            const char *token_type =
+                clt->signer_cfg.target_token == ziti_target_token_id_token
+                    ? "id_token" : "access_token";
+            json_object *jt = json_object_object_get(clt->tokens, token_type);
+            if (jt) token = json_object_get_string(jt);
+        }
+        char *body = build_failure_body("Controller authentication", error_msg, token);
+        send_callback_response(clt->pending_sock, body);
+        free(body);
+    }
+    clt->pending_sock = (uv_os_sock_t) -1;
+}
+
 int ext_oidc_client_close(ext_oidc_client_t *clt, ext_oidc_close_cb cb) {
     if (clt->close_cb) {
         return UV_EALREADY;
@@ -795,6 +892,14 @@ int ext_oidc_client_close(ext_oidc_client_t *clt, ext_oidc_close_cb cb) {
     uv_close((uv_handle_t *) clt->timer, (uv_close_cb) free);
     clt->timer = NULL;
     free_ziti_jwt_signer(&clt->signer_cfg);
+
+    if (clt->pending_sock != (uv_os_sock_t) -1) {
+        char *body = build_failure_body("Authentication interrupted",
+                                        "client closed before completion", NULL);
+        send_callback_response(clt->pending_sock, body);
+        free(body);
+        clt->pending_sock = (uv_os_sock_t) -1;
+    }
 
     if (clt->auth_params) {
         for (int i = 0; i < clt->auth_params_count; i++) {

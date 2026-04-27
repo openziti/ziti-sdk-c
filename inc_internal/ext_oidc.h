@@ -17,6 +17,7 @@
 #ifndef ZITI_EXT_OIDC_H
 #define ZITI_EXT_OIDC_H
 
+#include <stdbool.h>
 #include <uv.h>
 #include <ziti/ziti_model.h>
 #include "tlsuv/http.h"
@@ -68,6 +69,11 @@ struct ext_oidc_client_s {
     int auth_params_count;
 
     struct auth_req *request;
+
+    // browser callback held open until controller verdict (or watchdog fires)
+    uv_os_sock_t pending_sock;
+    char *pending_token;
+    uv_timer_t *pending_timer;
 };
 
 // init
@@ -85,6 +91,11 @@ int ext_oidc_client_refresh(ext_oidc_client_t *clt);
 
 // close
 int ext_oidc_client_close(ext_oidc_client_t *clt, ext_oidc_close_cb);
+
+// signal the result of the wider auth flow (controller acceptance/rejection of the JWT)
+// so the deferred browser callback page can be written and closed.
+// no-op if no callback is pending.
+void ext_oidc_client_finalize(ext_oidc_client_t *clt, bool ok, const char *error_msg);
 
 #ifdef __cplusplus
 };

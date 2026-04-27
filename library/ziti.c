@@ -2236,10 +2236,19 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
         }
         case ZitiAuthStateFullyAuthenticated:
             ziti_set_fully_authenticated(ztx, data);
+            if (ztx->ext_auth) {
+                ext_oidc_client_finalize(ztx->ext_auth, true, NULL);
+            }
             break;
-        case ZitiAuthImpossibleToAuthenticate:
-            ziti_set_impossible_to_authenticate(ztx, (const ziti_error*)data);
+        case ZitiAuthImpossibleToAuthenticate: {
+            const ziti_error *err = data;
+            ziti_set_impossible_to_authenticate(ztx, err);
+            if (ztx->ext_auth) {
+                ext_oidc_client_finalize(ztx->ext_auth, false,
+                                         err && err->message ? err->message : "controller rejected token");
+            }
             break;
+        }
     }
     ztx->auth_state = state;
 }
