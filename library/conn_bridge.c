@@ -359,14 +359,19 @@ static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t l
         }
         if (rc == UV_EAGAIN) { // EWOULDBLOCK
 #if _WIN32
-            // on Windows libuv return UV_EAGAIN on UV_NAMED_PIPES
+            // on Windows libuv return UV_EAGAIN on UV_NAMED_PIPE
             // without actually trying
             if (br->output->type == UV_NAMED_PIPE) {
-                char *d = malloc(len);
-                b = uv_buf_init(memcpy(d, data, len), len);
                 uv_write_t *w = calloc(1, sizeof(*w));
-                w->data = d;
-                uv_write(w, br->output, &b, 1, on_pipe_write);
+                w->data = malloc(len);
+                b = uv_buf_init(memcpy(w->data, data, len), len);
+                if ((rc = uv_write(w, br->output, &b, 1, on_pipe_write)) != 0) {
+                    BR_LOG(WARN, "write failed: %d(%s)", rc, uv_strerror(rc));
+                    free(w->data);
+                    free(w);
+                    close_bridge(br);
+                    return rc;
+                }
                 return len;
             }
 #endif
