@@ -365,7 +365,7 @@ static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t l
                 uv_write_t *w = calloc(1, sizeof(*w));
                 w->data = malloc(len);
                 b = uv_buf_init(memcpy(w->data, data, len), len);
-                if ((rc = uv_write(w, br->output, &b, 1, on_pipe_write)) != 0) {
+                if ((rc = uv_write(w, (uv_stream_t*)br->output, &b, 1, on_pipe_write)) != 0) {
                     BR_LOG(WARN, "write failed: %d(%s)", rc, uv_strerror(rc));
                     free(w->data);
                     free(w);
