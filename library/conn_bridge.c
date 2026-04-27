@@ -161,7 +161,7 @@ static uv_handle_t* create_uv_handle(uv_loop_t *l, uv_os_sock_t fd) {
     case UV_NAMED_PIPE:
         sock = calloc(1, sizeof(uv_pipe_t));
         uv_pipe_init(l, (uv_pipe_t *) sock, 0);
-        uv_pipe_open((uv_pipe_t *) sock, fd);
+        uv_pipe_open((uv_pipe_t *) sock, (uv_file)fd);
         break;
     default:
         return NULL;
@@ -326,6 +326,16 @@ static void on_shutdown(uv_shutdown_t *sr, int status) {
     free(sr);
 }
 
+static void on_pipe_write(uv_write_t *wr, int status) {
+    struct ziti_bridge_s *br = wr->handle->data;
+    if (status < 0) {
+        BR_LOG(WARN, "write failed: %d(%s)", status, uv_strerror(status));
+        close_bridge(br);
+    }
+    free(wr->data);
+    free(wr);
+}
+
 static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
     struct ziti_bridge_s *br = ziti_conn_data(conn);
 
@@ -347,14 +357,30 @@ static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t l
         if (rc >= 0) {
             return rc;
         }
-        else if (rc == UV_EAGAIN) { // EWOULDBLOCK
+        if (rc == UV_EAGAIN) { // EWOULDBLOCK
+#if _WIN32
+            // on Windows libuv return UV_EAGAIN on UV_NAMED_PIPE
+            // without actually trying
+            if (br->output->type == UV_NAMED_PIPE) {
+                uv_write_t *w = calloc(1, sizeof(*w));
+                w->data = malloc(len);
+                b = uv_buf_init(memcpy(w->data, data, len), len);
+                if ((rc = uv_write(w, (uv_stream_t*)br->output, &b, 1, on_pipe_write)) != 0) {
+                    BR_LOG(WARN, "write failed: %d(%s)", rc, uv_strerror(rc));
+                    free(w->data);
+                    free(w);
+                    close_bridge(br);
+                    return rc;
+                }
+                return len;
+            }
+#endif
             return 0;
         }
-        else {
-            BR_LOG(WARN, "write failed: %zd(%s)", rc, uv_strerror((int) rc));
-            close_bridge(br);
-            return rc;
-        }
+
+        BR_LOG(WARN, "write failed: %zd(%s)", rc, uv_strerror((int) rc));
+        close_bridge(br);
+        return rc;
 
     } else if (len == ZITI_EOF) {
         BR_LOG(VERBOSE, "received EOF from ziti");

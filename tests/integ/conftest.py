@@ -308,7 +308,6 @@ def echo_server(server_identity, tmp_path):
     with open(tmp_path / "echo-server.log", "w") as echo_server_log:
         proc = subprocess.Popen(
             [echo_exe, server_identity, "test-service"],
-            shell=True,
             stdout=subprocess.PIPE,
             stderr=echo_server_log,
             stdin=subprocess.PIPE,
