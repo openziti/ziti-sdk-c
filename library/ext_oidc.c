@@ -32,7 +32,11 @@
 #include "ziti/errors.h"
 #include "ziti/ziti_buffer.h"
 #include "ext_oidc.h"
+#include "ext_oidc_pages.h"
 #include "buffer.h"
+
+#define INVALID_SOCK ((uv_os_sock_t) -1)
+#define PENDING_WATCHDOG_MS (60 * 1000)
 
 #define state_len 30
 #define state_code_len sodium_base64_ENCODED_LEN(code_len, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
@@ -57,6 +61,8 @@
 #define HTTP_RESP_FMT "HTTP/1.0 %d %s\r\n"\
 "Connection: close\r\n"\
 "Content-Type: text/html\r\n"\
+"Cache-Control: no-store\r\n"\
+"X-Content-Type-Options: nosniff\r\n"\
 "Content-Length: %zd\r\n"\
 "\r\n%s"
 
@@ -103,93 +109,8 @@ typedef struct auth_req {
     uv_os_sock_t clt_sock;
 } auth_req;
 
-#define CALLBACK_PAGE_STYLE \
-    "html,body{height:100%;margin:0}" \
-    "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" \
-    "background:#f9fafb;color:#111827;display:flex;align-items:center;justify-content:center}" \
-    ".card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;" \
-    "padding:40px 56px;text-align:center;max-width:520px;" \
-    "box-shadow:0 4px 6px rgba(17,24,39,0.05)}" \
-    ".logo{display:block;margin:0 auto 20px}" \
-    "h1{font-size:22px;font-weight:600;margin:0 0 12px;color:#111827}" \
-    "p{color:#6b7280;margin:0;line-height:1.5}" \
-    "details{margin-top:24px;text-align:left}" \
-    "summary{cursor:pointer;color:#6b7280;font-size:14px;user-select:none}" \
-    ".details-body{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;" \
-    "padding:16px;margin-top:12px;font-size:13px;color:#111827}" \
-    ".details-body dt{font-weight:600;margin-top:8px}" \
-    ".details-body dt:first-child{margin-top:0}" \
-    ".details-body dd{margin:4px 0 0 0}" \
-    ".details-body pre{background:#fff;border:1px solid #e5e7eb;border-radius:4px;" \
-    "padding:8px;margin:4px 0 0 0;font-size:12px;overflow-x:auto;" \
-    "white-space:pre-wrap;word-break:break-all}"
-
-#define ZITI_LOGO_SVG \
-    "<svg class=\"logo\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 422.964 422.964\" " \
-    "width=\"56\" height=\"56\" aria-hidden=\"true\">" \
-    "<defs><linearGradient id=\"zlogo\" gradientTransform=\"rotate(45 0.5 0.5)\">" \
-    "<stop offset=\"0.005\" stop-color=\"#fc0147\"/>" \
-    "<stop offset=\"0.04\" stop-color=\"#f4044d\"/>" \
-    "<stop offset=\"0.9\" stop-color=\"#0068f9\"/></linearGradient></defs>" \
-    "<g transform=\"translate(6.06013,-5.80731)\">" \
-    "<ellipse cx=\"205.65\" cy=\"217.315\" rx=\"205.65\" ry=\"205.65\" " \
-    "fill=\"#fff\" fill-opacity=\"0.75\"/></g>" \
-    "<g transform=\"translate(109.062,-42.3661)\"><path d=\"" \
-    "M102.95 91.36 L0 252 L59.97 290.28 L69.63 275.11 L102.39 422.96 L203.73 261.41 " \
-    "L145.48 224.19 L135.77 239.51 L102.95 91.36 Z" \
-    "M151.8 250.79 L177.38 267.68 L110.79 372.45 L77.97 224.29 L53.09 263.23 " \
-    "L27.91 247.2 L94.91 142.17 L127.42 289.07 L151.8 250.79 Z" \
-    "\" fill=\"#010101\"/></g>" \
-    "<g transform=\"translate(0.14398,-0.14398)\"><path d=\"" \
-    "M211.36 422.96 C182.84 422.96 155.13 417.4 129.09 406.38 C103.91 395.76 81.36 380.49 " \
-    "61.89 361.12 C42.53 341.76 27.25 319.1 16.64 293.92 C5.56 267.88 0 240.17 0 211.65 " \
-    "C0 183.13 5.56 155.42 16.59 129.38 C27.2 104.2 42.47 81.65 61.84 62.18 " \
-    "C81.21 42.81 103.86 27.54 129.04 16.92 C155.13 5.85 182.79 0.29 211.36 0.29 " \
-    "C239.93 0.29 267.59 5.85 293.63 16.87 C318.81 27.49 341.37 42.76 360.83 62.13 " \
-    "C380.2 81.5 395.47 104.15 406.09 129.33 C417.11 155.37 422.68 183.08 422.68 211.6 " \
-    "C422.68 240.12 417.11 267.83 406.09 293.87 C395.47 319.05 380.2 341.6 360.83 361.07 " \
-    "C341.47 380.44 318.81 395.71 293.63 406.33 C267.59 417.4 239.88 422.96 211.36 422.96 Z" \
-    "M211.36 16.72 C159.28 16.72 110.33 37 73.57 73.81 C36.66 110.62 16.43 159.57 16.43 211.65 " \
-    "C16.43 263.73 36.71 312.68 73.52 349.44 C110.33 386.3 159.28 406.53 211.31 406.53 " \
-    "C263.34 406.53 312.34 386.25 349.1 349.44 C385.97 312.63 406.19 263.68 406.19 211.65 " \
-    "C406.19 159.62 385.92 110.62 349.1 73.86 C312.34 36.95 263.4 16.72 211.36 16.72 Z" \
-    "\" fill=\"url(#zlogo)\"/></g>" \
-    "</svg>"
-
-static const char HTTP_SUCCESS_BODY[] =
-        "<!DOCTYPE html>\n"
-        "<html lang=\"en\">\n"
-        "<head><meta charset=\"utf-8\">\n"
-        "<title>OpenZiti Authentication</title>\n"
-        "<style>" CALLBACK_PAGE_STYLE "</style>\n"
-        "</head>\n"
-        "<body>\n"
-        "  <div class=\"card\">\n"
-        "    " ZITI_LOGO_SVG "\n"
-        "    <h1>Authentication successful</h1>\n"
-        "    <p>You may close this window.</p>\n"
-        "  </div>\n"
-        "  <script>window.close();</script>\n"
-        "</body>\n"
-        "</html>\n";
-
-static const char HTTP_FAILURE_HEADER[] =
-        "<!DOCTYPE html>\n"
-        "<html lang=\"en\">\n"
-        "<head><meta charset=\"utf-8\">\n"
-        "<title>OpenZiti Authentication</title>\n"
-        "<style>" CALLBACK_PAGE_STYLE "</style>\n"
-        "</head>\n"
-        "<body>\n"
-        "  <div class=\"card\">\n"
-        "    " ZITI_LOGO_SVG "\n"
-        "    <h1>Authentication failed</h1>\n"
-        "    <p>Please return to the application to try again. You may close this window.</p>\n";
-
-static const char HTTP_FAILURE_FOOTER[] =
-        "  </div>\n"
-        "</body>\n"
-        "</html>\n";
+// claims with no debugging value that may also be sensitive (session/correlation IDs)
+static const char *OPAQUE_CLAIMS[] = { "jti", "sid", "nonce", NULL };
 
 static void append_html_escaped(string_buf_t *buf, const char *s) {
     if (s == NULL) return;
@@ -205,6 +126,10 @@ static void append_html_escaped(string_buf_t *buf, const char *s) {
     }
 }
 
+// Build the failure-page HTML, optionally including a details disclosure with
+// the failing step, the error message, and the decoded JWT claims. The JWT
+// claim block strips opaque session-correlation fields (see OPAQUE_CLAIMS).
+// Caller must free() the returned string.
 static char *build_failure_body(const char *step, const char *error, const char *jwt) {
     string_buf_t buf;
     string_buf_init(&buf);
@@ -226,8 +151,16 @@ static char *build_failure_body(const char *step, const char *error, const char 
             string_buf_append(&buf, "</dd>\n");
         }
         if (jwt) {
-            const char *raw = jwt_payload(jwt);
+            // jwt_payload returns a pointer to a static buffer that any
+            // future jwt_payload() call would clobber - copy it so the
+            // pretty-print fallback path remains valid.
+            char *raw = strdup(jwt_payload(jwt));
             json_object *parsed = json_tokener_parse(raw);
+            if (parsed) {
+                for (int i = 0; OPAQUE_CLAIMS[i]; i++) {
+                    json_object_object_del(parsed, OPAQUE_CLAIMS[i]);
+                }
+            }
             const char *pretty = parsed
                 ? json_object_to_json_string_ext(parsed, JSON_C_TO_STRING_PRETTY)
                 : raw;
@@ -235,6 +168,7 @@ static char *build_failure_body(const char *step, const char *error, const char 
             append_html_escaped(&buf, pretty);
             string_buf_append(&buf, "</pre></dd>\n");
             if (parsed) json_object_put(parsed);
+            free(raw);
         }
 
         string_buf_append(&buf, "      </dl>\n");
@@ -305,7 +239,11 @@ int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
     clt->timer->data = clt;
     uv_unref((uv_handle_t *) clt->timer);
 
-    clt->pending_sock = (uv_os_sock_t) -1;
+    clt->pending_sock = INVALID_SOCK;
+    clt->pending_timer = calloc(1, sizeof(*clt->pending_timer));
+    uv_timer_init(loop, clt->pending_timer);
+    clt->pending_timer->data = clt;
+    uv_unref((uv_handle_t *) clt->pending_timer);
 
     return 0;
 }
@@ -393,7 +331,7 @@ int ext_oidc_client_configure(ext_oidc_client_t *clt, oidc_config_cb cb) {
 }
 
 static void send_callback_response(uv_os_sock_t sock, const char *body) {
-    if (sock == (uv_os_sock_t) -1) return;
+    if (sock == INVALID_SOCK) return;
 
     string_buf_t resp_buf;
     string_buf_init(&resp_buf);
@@ -433,7 +371,7 @@ static void send_callback_response(uv_os_sock_t sock, const char *body) {
 static auth_req *new_auth_req(ext_oidc_client_t *clt) {
     auth_req *req = calloc(1, sizeof(*req));
     req->clt = clt;
-    req->clt_sock = (uv_os_sock_t) -1;
+    req->clt_sock = INVALID_SOCK;
 
     uint8_t code[code_len];
     uv_random(NULL, NULL, code, sizeof(code), 0, NULL);
@@ -459,20 +397,20 @@ static void free_auth_req(auth_req *req) {
         json_tokener_free(req->json_parser);
         req->json_parser = NULL;
     }
-    if (req->clt_sock != (uv_os_sock_t) -1) {
+    if (req->clt_sock != INVALID_SOCK) {
         close_socket(req->clt_sock);
-        req->clt_sock = (uv_os_sock_t) -1;
+        req->clt_sock = INVALID_SOCK;
     }
     FREE(req->id);
     free(req);
 }
 
 static void failed_auth_req(auth_req *req, const char *error) {
-    if (req->clt_sock != (uv_os_sock_t) -1) {
+    if (req->clt_sock != INVALID_SOCK) {
         char *body = build_failure_body("OIDC token exchange", error, NULL);
         send_callback_response(req->clt_sock, body);
         free(body);
-        req->clt_sock = (uv_os_sock_t) -1;
+        req->clt_sock = INVALID_SOCK;
     }
 
     ext_oidc_client_t *clt = req->clt;
@@ -499,19 +437,41 @@ static void failed_auth_req(auth_req *req, const char *error) {
     free_auth_req(req);
 }
 
+static void pending_watchdog_cb(uv_timer_t *t) {
+    ext_oidc_client_t *clt = t->data;
+    OIDC_LOG(WARN, "controller did not respond within %dms; closing browser callback",
+             PENDING_WATCHDOG_MS);
+    ext_oidc_client_finalize(clt, false, "controller did not respond in time");
+}
+
+static void start_pending_watchdog(ext_oidc_client_t *clt) {
+    if (clt->pending_timer == NULL) return;
+    uv_ref((uv_handle_t *) clt->pending_timer);
+    uv_timer_start(clt->pending_timer, pending_watchdog_cb, PENDING_WATCHDOG_MS, 0);
+}
+
+static void stop_pending_watchdog(ext_oidc_client_t *clt) {
+    if (clt->pending_timer == NULL) return;
+    uv_timer_stop(clt->pending_timer);
+    uv_unref((uv_handle_t *) clt->pending_timer);
+}
+
 static void token_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *resp, void *ctx) {
     auth_req *req = ctx;
     ext_oidc_client_t *clt = req->clt;
     OIDC_LOG(DEBUG, "%d %s err[%s]", http_resp->code, http_resp->status, err);
     if (http_resp->code == 200) {
-        if (req->clt_sock != (uv_os_sock_t) -1) {
+        if (req->clt_sock != INVALID_SOCK) {
             // hold the browser response until the controller verdict
             // (ext_oidc_client_finalize will write success or failure page)
-            if (clt->pending_sock != (uv_os_sock_t) -1) {
+            if (clt->pending_sock != INVALID_SOCK) {
+                OIDC_LOG(WARN, "previous browser callback still pending; closing it");
                 close_socket(clt->pending_sock);
+                stop_pending_watchdog(clt);
             }
             clt->pending_sock = req->clt_sock;
-            req->clt_sock = (uv_os_sock_t) -1;
+            req->clt_sock = INVALID_SOCK;
+            start_pending_watchdog(clt);
         }
         ext_oidc_client_set_tokens(clt, resp);
         clt->request = NULL;
@@ -704,14 +664,14 @@ static void ext_done(uv_work_t *wr, int status) {
         req->elr = NULL;
         if (elr->code) {
             req->clt_sock = elr->clt_sock;
-            elr->clt_sock = (uv_os_sock_t) -1;
+            elr->clt_sock = INVALID_SOCK;
             request_token(req, elr->code);
         } else {
             failed_auth_req(req, elr->err ? strerror(elr->err) : "code not received");
         }
     }
 
-    if (elr->clt_sock != (uv_os_sock_t) -1) {
+    if (elr->clt_sock != INVALID_SOCK) {
         close_socket(elr->clt_sock);
     }
     free(elr->code);
@@ -744,7 +704,7 @@ static void ext_start_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
 
     struct ext_link_req *elr = calloc(1, sizeof(*elr));
     elr->sock = sock;
-    elr->clt_sock = (uv_os_sock_t) -1;
+    elr->clt_sock = INVALID_SOCK;
     elr->req = req;
     int rc = uv_queue_work(loop, &elr->wr, ext_accept, ext_done);
     if (rc != 0) {
@@ -860,7 +820,9 @@ int ext_oidc_client_refresh(ext_oidc_client_t *clt) {
 }
 
 void ext_oidc_client_finalize(ext_oidc_client_t *clt, bool ok, const char *error_msg) {
-    if (clt == NULL || clt->pending_sock == (uv_os_sock_t) -1) return;
+    if (clt == NULL || clt->pending_sock == INVALID_SOCK) return;
+
+    stop_pending_watchdog(clt);
 
     if (ok) {
         send_callback_response(clt->pending_sock, HTTP_SUCCESS_BODY);
@@ -877,7 +839,7 @@ void ext_oidc_client_finalize(ext_oidc_client_t *clt, bool ok, const char *error
         send_callback_response(clt->pending_sock, body);
         free(body);
     }
-    clt->pending_sock = (uv_os_sock_t) -1;
+    clt->pending_sock = INVALID_SOCK;
 }
 
 int ext_oidc_client_close(ext_oidc_client_t *clt, ext_oidc_close_cb cb) {
@@ -893,12 +855,10 @@ int ext_oidc_client_close(ext_oidc_client_t *clt, ext_oidc_close_cb cb) {
     clt->timer = NULL;
     free_ziti_jwt_signer(&clt->signer_cfg);
 
-    if (clt->pending_sock != (uv_os_sock_t) -1) {
-        char *body = build_failure_body("Authentication interrupted",
-                                        "client closed before completion", NULL);
-        send_callback_response(clt->pending_sock, body);
-        free(body);
-        clt->pending_sock = (uv_os_sock_t) -1;
+    ext_oidc_client_finalize(clt, false, "client closed before completion");
+    if (clt->pending_timer) {
+        uv_close((uv_handle_t *) clt->pending_timer, (uv_close_cb) free);
+        clt->pending_timer = NULL;
     }
 
     if (clt->auth_params) {

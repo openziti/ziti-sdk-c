@@ -72,7 +72,6 @@ struct ext_oidc_client_s {
 
     // browser callback held open until controller verdict (or watchdog fires)
     uv_os_sock_t pending_sock;
-    char *pending_token;
     uv_timer_t *pending_timer;
 };
 
