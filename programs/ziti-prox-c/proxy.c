@@ -508,18 +508,18 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     struct proxy_app_ctx *app_ctx = ziti_app_ctx(ztx);
     switch (event->type) {
         case ZitiConfigEvent: {
-            char *cfg = ziti_config_to_json(event->cfg.config, 0, NULL);
-            if (cfg != NULL) {
-                if (cstr_size(&app_ctx->identity_path) > 0) {
-                    if (persist_identity_config(cstr_str(&app_ctx->identity_path), cfg) == 0) {
-                        ZITI_LOG(INFO, "persisted updated ziti config to %s",
-                                 cstr_str(&app_ctx->identity_path));
-                    }
-                } else {
-                    ZITI_LOG(DEBUG, "no identity_path set; skipping config persist");
-                }
-                free(cfg);
+            if (cstr_size(&app_ctx->identity_path) == 0) {
+                ZITI_LOG(DEBUG, "no identity_path set, skipping persist");
+                break;
             }
+
+            char *cfg = ziti_config_to_json(event->cfg.config, 0, NULL);
+            if (cfg != NULL && persist_identity_config(cstr_str(&app_ctx->identity_path), cfg) == 0) {
+                ZITI_LOG(INFO, "persisted updated ziti config to %s", cstr_str(&app_ctx->identity_path));
+            } else {
+                ZITI_LOG(WARN, "failed to persist updated ziti config to %s", cstr_str(&app_ctx->identity_path));
+            }
+            free(cfg);
             break;
         }
 
@@ -939,8 +939,20 @@ int run_proxy(struct run_opts *opts) {
         cstr_assign(&app_ctx.identity_path, opts->identity);
     }
 
+    int events = ZitiContextEvent | ZitiServiceEvent | ZitiRouterEvent | ZitiAuthEvent;
+    uv_fs_t stat = {};
+    uv_fs_t access = {};
+    if (uv_fs_stat(loop, &stat, cstr_str(&app_ctx.identity_path), NULL) == 0 ||
+        uv_fs_access(loop, &access, cstr_str(&app_ctx.identity_path), W_OK, NULL) == 0) {
+        events |= ZitiConfigEvent;
+    } else {
+        ZITI_LOG(WARN, "identity configuration is not writable, not subscribing to config events");
+    }
+    uv_fs_req_cleanup(&stat);
+    uv_fs_req_cleanup(&access);
+
     ziti_options zopts = {
-            .events = ZitiContextEvent | ZitiServiceEvent | ZitiRouterEvent | ZitiAuthEvent | ZitiConfigEvent,
+            .events = events,
             .api_page_size = 25,
             .event_cb = on_ziti_event,
             .refresh_interval = 60,
@@ -991,6 +1003,7 @@ int run_proxy(struct run_opts *opts) {
     }
 
     model_map_clear(&app_ctx.listeners, (_free_f) free_listener);
+    cstr_drop(&app_ctx.identity_path);
 
     int close_rc = uv_loop_close(loop);
 //    if (close_rc != 0) {
