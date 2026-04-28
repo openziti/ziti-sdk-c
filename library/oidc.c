@@ -536,9 +536,14 @@ int oidc_client_refresh(oidc_client_t *clt) {
         return UV_EINVAL;
     }
 
+    // Callers of oidc_client_refresh (ha_auth_refresh via ziti_force_api_session_refresh)
+    // are telling us the current session is no good. If a prior refresh request is stuck
+    // (e.g., its TCP connection was silently dropped during a network partition and is
+    // waiting on kernel retransmit timeout), cancel it so we can start a fresh one.
     if (clt->refresh_req) {
-        OIDC_LOG(DEBUG, "refresh is already in progress");
-        return UV_EALREADY;
+        OIDC_LOG(DEBUG, "cancelling stuck in-flight refresh request to start a new one");
+        tlsuv_http_req_cancel(&clt->http, clt->refresh_req);
+        clt->refresh_req = NULL;
     }
 
     if (clt->configuring) {
@@ -639,8 +644,15 @@ static void oidc_refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_
         OIDC_LOG(WARN, "OIDC token refresh failed (%d/%s), attempt %d",
                  http_resp->code, err, clt->refresh_failures);
 
-        OIDC_LOG(DEBUG, "scheduling token refresh retry in %" PRIu64 ".%03" PRIu64 " s", delay/1000, delay%1000);
-        uv_timer_start(clt->timer, refresh_time_cb, delay, 0);
+        // Delegate to the upper layer so it can rotate to a different
+        // controller's token endpoint rather than retrying the same one that
+        // just returned 5xx/timeout. oidc_client does NOT schedule its own
+        // retry: if the caller wants to retry the same URL, it can call
+        // oidc_client_refresh() again; if it wants to rotate, it reconfigures
+        // with a new provider URL.
+        if (clt->token_cb) {
+            clt->token_cb(clt, OIDC_REFRESH_TRANSIENT_FAIL, err);
+        }
         return;
     }
 

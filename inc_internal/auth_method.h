@@ -61,6 +61,18 @@ struct ziti_auth_method_s {
 ziti_auth_method_t *new_legacy_auth(uv_loop_t *l, const char *url, tls_context *tls, bool x509);
 ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context *tls, long auth_timeout);
 
+// oidc_auth_merge_ctrl_urls extends the OIDC auth method's URL rotation pool
+// with URLs derived from a set of controller edge URLs. Each entry in
+// ctrl_urls is parsed, normalized to scheme://host[:port] with the given
+// path appended, and appended to the pool (deduping by normalized form). For
+// non-OIDC auth methods this is a no-op.
+//
+// This exists so the SDK can seed the OIDC URL pool with the full HA
+// controller list known from the persisted identity (config.controllers)
+// before initial auth, even though /version only reports the single
+// controller's own OIDC URL.
+void oidc_auth_merge_ctrl_urls(ziti_auth_method_t *self, const model_list *ctrl_urls, const char *path);
+
 #ifdef __cplusplus
 }
 #endif

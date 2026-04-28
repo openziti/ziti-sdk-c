@@ -71,6 +71,15 @@ struct ha_auth_s {
     int retry_count;
     long auth_timeout;       // max seconds to retry initial auth, 0 = forever
     uint64_t auth_start_ms;  // uv_now() at first auth attempt
+
+    // Separate retry state for refresh failures so post-auth transient
+    // failures don't conflict with initial-auth backoff. refresh_rotation
+    // tracks how many consecutive controllers we've tried for the current
+    // refresh cycle; when it reaches the URL count, we've burned a full
+    // rotation and apply exponential backoff before starting again.
+    uv_timer_t *refresh_retry_timer;
+    int refresh_rotation;
+    int refresh_cycles;
 };
 
 ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context *tls, long auth_timeout) {
@@ -142,6 +151,74 @@ static int ha_set_endpoint(ziti_auth_method_t *self, const api_path *api) {
     return oidc_client_configure(&auth->oidc, config_cb);
 }
 
+// normalize_ctrl_url returns a cstr holding scheme://host[:port] derived from
+// the given URL. The returned cstr must be dropped by the caller. Returns an
+// empty cstr if the URL cannot be parsed.
+static cstr normalize_ctrl_url(const char *url) {
+    cstr result = {};
+    struct tlsuv_url_s parsed = {};
+    if (tlsuv_parse_url(&parsed, url) != 0 || parsed.hostname == NULL) {
+        return result;
+    }
+    if (parsed.scheme_len == 0) {
+        result = cstr_from_fmt("https://%.*s",
+                               (int)parsed.hostname_len, parsed.hostname);
+    } else {
+        result = cstr_from_fmt("%.*s://%.*s",
+                               (int)parsed.scheme_len, parsed.scheme,
+                               (int)parsed.hostname_len, parsed.hostname);
+    }
+    if (parsed.port) {
+        cstr_append_fmt(&result, ":%d", parsed.port);
+    }
+    return result;
+}
+
+// url_list_contains returns true if any entry in list normalizes to the same
+// scheme://host[:port] as needle.
+static bool url_list_contains(const model_list *list, const char *needle) {
+    const char *existing;
+    MODEL_LIST_FOREACH(existing, *list) {
+        cstr norm = normalize_ctrl_url(existing);
+        bool eq = cstr_size(&norm) > 0 && strcmp(cstr_str(&norm), needle) == 0;
+        cstr_drop(&norm);
+        if (eq) return true;
+    }
+    return false;
+}
+
+void oidc_auth_merge_ctrl_urls(ziti_auth_method_t *self, const model_list *ctrl_urls, const char *path) {
+    if (self == NULL || ctrl_urls == NULL) return;
+    if (self->kind != OIDC) return;
+
+    struct ha_auth_s *auth = HA_AUTH(self);
+    const char *u;
+    int added = 0;
+    MODEL_LIST_FOREACH(u, *ctrl_urls) {
+        cstr norm = normalize_ctrl_url(u);
+        if (cstr_size(&norm) == 0) {
+            cstr_drop(&norm);
+            continue;
+        }
+        if (!url_list_contains(&auth->urls, cstr_str(&norm))) {
+            ZITI_LOG(DEBUG, "adding OIDC URL[%s] derived from controller[%s]",
+                     cstr_str(&norm), u);
+            model_list_append(&auth->urls, strdup(cstr_str(&norm)));
+            added++;
+        }
+        cstr_drop(&norm);
+    }
+    if (added > 0) {
+        ZITI_LOG(INFO, "seeded OIDC URL pool with %d additional controller URL(s); pool size now %zu",
+                 added, model_list_size(&auth->urls));
+        // Re-anchor the iterator in case it was sitting at end.
+        if (auth->cur_url == NULL) {
+            auth->cur_url = model_list_iterator(&auth->urls);
+        }
+    }
+    (void)path;  // path is only needed when converting raw edge URLs; normalize_ctrl_url discards paths so the existing internal_oidc_path + api->path logic reattaches the correct OIDC path later.
+}
+
 
 static void close_cb(oidc_client_t *oidc) {
     struct ha_auth_s *auth = HA_AUTH_FROM_OIDC(oidc);
@@ -175,6 +252,80 @@ static void auth_retry_timer_cb(uv_timer_t *t) {
     oidc_client_start(&auth->oidc, token_cb);
 }
 
+// advance_cur_url rotates cur_url to the next URL in the list, wrapping
+// around when the end is reached. Returns the new cur_url value.
+static const char *advance_cur_url(struct ha_auth_s *auth) {
+    auth->cur_url = model_list_it_next(auth->cur_url);
+    if (auth->cur_url == NULL) {
+        auth->cur_url = model_list_iterator(&auth->urls);
+    }
+    return model_list_it_element(auth->cur_url);
+}
+
+// refresh_retry_timer_cb fires after the rotation backoff when all controllers
+// have rejected refresh in the current cycle. It kicks off a fresh configure
+// which will drive another token refresh on whichever URL cur_url now points
+// at.
+static void refresh_retry_timer_cb(uv_timer_t *t) {
+    struct ha_auth_s *auth = t->data;
+    ZITI_LOG(DEBUG, "retrying OIDC token refresh after backoff (cycle %d)",
+             auth->refresh_cycles);
+    oidc_client_configure(&auth->oidc, config_cb);
+}
+
+// rotate_and_refresh advances cur_url and reconfigures the OIDC client so that
+// the next token refresh hits a different controller. When we've gone through
+// all controllers without success (a full rotation), apply an exponential
+// backoff before starting a new cycle.
+static void rotate_and_refresh(struct ha_auth_s *auth) {
+    const size_t url_count = model_list_size(&auth->urls);
+    if (url_count <= 1) {
+        // Only one controller known; nothing to rotate. Fall back to a small
+        // backoff to avoid hammering.
+        uint64_t delay_ms = retry_delay_ms(auth->refresh_cycles);
+        if (auth->refresh_retry_timer == NULL) {
+            auth->refresh_retry_timer = calloc(1, sizeof(uv_timer_t));
+            uv_timer_init(auth->loop, auth->refresh_retry_timer);
+            auth->refresh_retry_timer->data = auth;
+        }
+        uv_timer_start(auth->refresh_retry_timer, refresh_retry_timer_cb, delay_ms, 0);
+        return;
+    }
+
+    const char *next = advance_cur_url(auth);
+    auth->refresh_rotation++;
+
+    bool exhausted = auth->refresh_rotation >= (int)url_count;
+    uint64_t delay_ms = 0;
+    if (exhausted) {
+        auth->refresh_cycles++;
+        auth->refresh_rotation = 0;
+        delay_ms = retry_delay_ms(auth->refresh_cycles - 1);
+        ZITI_LOG(WARN, "all %zu controllers rejected token refresh; backing off %llu ms (cycle %d)",
+                 url_count, (unsigned long long)delay_ms, auth->refresh_cycles);
+    } else {
+        ZITI_LOG(INFO, "rotating OIDC token refresh to next controller[%s] (%d/%zu in cycle)",
+                 next, auth->refresh_rotation, url_count);
+    }
+
+    cstr oidc_url = internal_oidc_path(next, "/oidc");
+    oidc_client_set_cfg(&auth->oidc, cstr_str(&oidc_url));
+    cstr_drop(&oidc_url);
+
+    if (delay_ms == 0) {
+        // Immediate retry on the next controller.
+        oidc_client_configure(&auth->oidc, config_cb);
+        return;
+    }
+
+    if (auth->refresh_retry_timer == NULL) {
+        auth->refresh_retry_timer = calloc(1, sizeof(uv_timer_t));
+        uv_timer_init(auth->loop, auth->refresh_retry_timer);
+        auth->refresh_retry_timer->data = auth;
+    }
+    uv_timer_start(auth->refresh_retry_timer, refresh_retry_timer_cb, delay_ms, 0);
+}
+
 static void config_retry_timer_cb(uv_timer_t *t) {
     struct ha_auth_s *auth = t->data;
     if (auth_timeout_exceeded(auth)) return;
@@ -188,6 +339,11 @@ static void ha_auth_free(ziti_auth_method_t *self) {
         uv_timer_stop(auth->retry_timer);
         uv_close((uv_handle_t *)auth->retry_timer, (uv_close_cb)free);
         auth->retry_timer = NULL;
+    }
+    if (auth->refresh_retry_timer) {
+        uv_timer_stop(auth->refresh_retry_timer);
+        uv_close((uv_handle_t *)auth->refresh_retry_timer, (uv_close_cb)free);
+        auth->refresh_retry_timer = NULL;
     }
     oidc_client_close(&auth->oidc, close_cb);
 }
@@ -214,6 +370,8 @@ static void token_cb(oidc_client_t *oidc, enum oidc_status status, const void *d
         switch (status) {
             case OIDC_TOKEN_OK:
                 auth->retry_count = 0;
+                auth->refresh_rotation = 0;
+                auth->refresh_cycles = 0;
                 set_expiration(auth, (const char*)data);
                 auth->cb(auth->cb_ctx, ZitiAuthStateFullyAuthenticated, data);
                 break;
@@ -249,6 +407,12 @@ static void token_cb(oidc_client_t *oidc, enum oidc_status status, const void *d
             case OIDC_RESTART:
                 ZITI_LOG(DEBUG, "restarting internal OIDC flow");
                 oidc_client_start(&auth->oidc, token_cb);
+                break;
+            case OIDC_REFRESH_TRANSIENT_FAIL:
+                ZITI_LOG(WARN, "OIDC token refresh transient failure on [%s]: %s",
+                         (const char *)model_list_it_element(auth->cur_url),
+                         data ? (const char *)data : "(no detail)");
+                rotate_and_refresh(auth);
                 break;
         }
     }
@@ -326,6 +490,9 @@ static int ha_auth_stop(ziti_auth_method_t *self) {
     struct ha_auth_s *auth = HA_AUTH(self);
     if (auth->retry_timer) {
         uv_timer_stop(auth->retry_timer);
+    }
+    if (auth->refresh_retry_timer) {
+        uv_timer_stop(auth->refresh_retry_timer);
     }
     auth->cb = NULL;
     auth->cb_ctx = NULL;

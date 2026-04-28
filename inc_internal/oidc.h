@@ -35,6 +35,14 @@ enum oidc_status {
     OIDC_TOKEN_FAILED = 4,
     OIDC_RESTART     = 5,
     OIDC_EXT_JWT_NEEDED = 6,
+
+    // OIDC_REFRESH_TRANSIENT_FAIL signals the upper layer that a token refresh
+    // failed with a transient error (5xx, timeout, connection reset). The
+    // oidc_client does NOT schedule an internal retry in this case; it is the
+    // caller's responsibility to decide whether to retry same URL, rotate to
+    // another controller's token endpoint, or give up. The data argument is
+    // a human-readable error string (may be NULL).
+    OIDC_REFRESH_TRANSIENT_FAIL = 7,
 };
 
 typedef struct oidc_client_s oidc_client_t;

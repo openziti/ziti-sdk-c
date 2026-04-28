@@ -377,6 +377,24 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
         ztx_config_update(ztx);
     }
 
+    // Push the authoritative OIDC URLs (each controller reports its own in
+    // apis.oidc) into the auth method so future token refreshes can rotate
+    // across them. This is the post-auth complement to the pre-auth seeding
+    // from config.controllers in version_pre_auth_cb.
+    if (ztx->auth_method && ztx->auth_method->kind == OIDC) {
+        model_list oidc_urls = {};
+        for (int i = 0; ctrls[i] != NULL; i++) {
+            const api_address *oidc_api = model_list_head(&ctrls[i]->apis.oidc);
+            if (oidc_api && oidc_api->url) {
+                model_list_append(&oidc_urls, (void *)oidc_api->url);
+            }
+        }
+        if (model_list_size(&oidc_urls) > 0) {
+            oidc_auth_merge_ctrl_urls(ztx->auth_method, &oidc_urls, "/oidc");
+        }
+        model_list_clear(&oidc_urls, NULL);  // entries alias ctrls; don't free
+    }
+
     model_map_clear(&diff, free);
     model_map_clear(&old_details, (void (*)(void *)) free_ziti_controller_detail_ptr);
     free(ctrls);
@@ -2211,6 +2229,12 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
     if (!ztx->auth_method) {
         if (use_oidc) {
             ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->tlsCtx, ztx->opts.auth_timeout);
+            // /version only reports this controller's own OIDC URL. Seed the
+            // rotation pool with the full HA controller list we have from the
+            // persisted identity so initial auth can spread load across all
+            // known controllers rather than hammering whichever one we
+            // happened to talk to first.
+            oidc_auth_merge_ctrl_urls(ztx->auth_method, &ztx->config.controllers, oidc_path->path);
         } else {
             ztx->auth_method = new_legacy_auth(ztx->loop, ziti_get_controller(ztx), ztx->tlsCtx,
                                                ztx->id_creds.key != NULL);
@@ -2229,6 +2253,9 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         // OIDC endpoint may have changed
         // force refresh with the new endpoint
         ztx->auth_method->set_endpoint(ztx->auth_method, oidc_path);
+        // set_endpoint replaces the URL pool; re-merge known controllers so
+        // the pool stays broad.
+        oidc_auth_merge_ctrl_urls(ztx->auth_method, &ztx->config.controllers, oidc_path->path);
         ztx->auth_method->force_refresh(ztx->auth_method);
     }
 
