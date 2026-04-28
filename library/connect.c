@@ -479,7 +479,16 @@ static void connect_get_net_session_cb(ziti_session *s, const ziti_error *err, v
         CONN_LOG(WARN, "failed to get '%s' session for service[%s]: %s(%s)",
                  ziti_session_types.name(req->session_type), conn->service, err->code, err->message);
 
-        if (err->err == ZITI_NOT_AUTHORIZED) {
+        // Both ZITI_NOT_AUTHORIZED and ZITI_AUTHENTICATION_FAILED can indicate
+        // that the api-session token on the in-flight request was rejected —
+        // most commonly because an OIDC token refresh completed while the
+        // session POST was in flight and the old token was invalidated. The
+        // controller's "UNAUTHORIZED" error code maps to
+        // ZITI_AUTHENTICATION_FAILED via code_to_error, so treating only
+        // ZITI_NOT_AUTHORIZED as retryable misses that race. restart_connect
+        // is bounded by MAX_CONNECT_RETRY so a genuinely dead token can't
+        // loop forever.
+        if (err->err == ZITI_NOT_AUTHORIZED || err->err == ZITI_AUTHENTICATION_FAILED) {
             ziti_force_api_session_refresh(ztx);
             restart_connect(conn);
         } else {
