@@ -327,7 +327,8 @@ static void update_listener(ziti_service *service, int status, struct listener *
         NEWP(addr, struct sockaddr_in);
         TRY(uv, uv_ip4_addr("0.0.0.0", l->port, addr));
         TRY(uv, uv_tcp_bind(&l->server, (const struct sockaddr *) addr, 0));
-        TRY(uv, uv_listen((uv_stream_t *) &l->server, 5, on_client));
+        // 128 backlog absorbs bursty client traffic without dropping SYNs under load.
+        TRY(uv, uv_listen((uv_stream_t *) &l->server, 128, on_client));
         free(addr);
     } else {
         if (uv_is_active((const uv_handle_t *) &l->server)) {
