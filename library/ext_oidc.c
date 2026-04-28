@@ -162,7 +162,8 @@ static char *build_failure_body(const char *step, const char *error, const char 
                 }
             }
             const char *pretty = parsed
-                ? json_object_to_json_string_ext(parsed, JSON_C_TO_STRING_PRETTY)
+                ? json_object_to_json_string_ext(parsed,
+                        JSON_C_TO_STRING_PRETTY | JSON_C_TO_STRING_NOSLASHESCAPE)
                 : raw;
             string_buf_append(&buf, "        <dt>Token claims</dt><dd><pre>");
             append_html_escaped(&buf, pretty);
