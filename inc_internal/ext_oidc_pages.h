@@ -87,7 +87,7 @@ static const char HTTP_SUCCESS_BODY[] =
         "    <h1>Authentication successful</h1>\n"
         "    <p>You may close this window.</p>\n"
         "  </div>\n"
-        "  <script>window.close();</script>\n"
+        "  <script>setTimeout(function(){window.close();},3000);</script>\n"
         "</body>\n"
         "</html>\n";
 
