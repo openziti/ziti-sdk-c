@@ -2224,9 +2224,18 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
 void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
     ziti_context ztx = ctx;
     switch (state) {
-        case ZitiAuthStateUnauthenticated:
-            ziti_set_unauthenticated(ztx, (const ziti_error *) data);
+        case ZitiAuthStateUnauthenticated: {
+            const ziti_error *err = data;
+            ziti_set_unauthenticated(ztx, err);
+            // HA/OIDC controllers surface a JWT rejection as Unauthenticated
+            // (legacy uses Impossible). finalize is a no-op when no callback
+            // is pending, so this is safe for normal session-expiry paths too.
+            if (ztx->ext_auth) {
+                ext_oidc_client_finalize(ztx->ext_auth, false,
+                                         err && err->message ? err->message : "controller rejected token");
+            }
             break;
+        }
         case ZitiAuthStateAuthStarted:
             ziti_set_auth_started(ztx);
             break;
