@@ -16,9 +16,12 @@
 #include <uv.h>
 #include <tlsuv/http.h>
 
+#include <errno.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <utils.h>
 #include <ziti/ziti.h>
@@ -71,6 +74,12 @@ struct proxy_app_ctx {
     ziti_context ziti;
     uv_loop_t *loop;
     cstr auth_provider;
+    // identity_path is the path to the identity JSON file that seeded this
+    // proxy. We rewrite it in-place when the SDK fires ZitiConfigEvent so that
+    // controller-list updates (and other config changes) persist across
+    // restarts — otherwise every restart goes back to whatever single
+    // controller URL was in the file originally.
+    cstr identity_path;
 };
 
 struct binding {
@@ -450,13 +459,67 @@ static void service_check_cb(ziti_context ztx, ziti_service *service, int status
     }
 }
 
+// persist_identity_config writes cfg_json to identity_path atomically: write
+// to <path>.tmp first, then rename. Returns 0 on success, -errno on failure.
+// Writing via rename avoids leaving a half-written identity file on disk if
+// the process is killed mid-write.
+static int persist_identity_config(const char *identity_path, const char *cfg_json) {
+    if (identity_path == NULL || cfg_json == NULL) {
+        return -EINVAL;
+    }
+    cstr tmp_path = cstr_from_fmt("%s.tmp", identity_path);
+    FILE *f = fopen(cstr_str(&tmp_path), "w");
+    if (f == NULL) {
+        int e = errno;
+        ZITI_LOG(WARN, "failed to open %s for writing: %s", cstr_str(&tmp_path), strerror(e));
+        cstr_drop(&tmp_path);
+        return -e;
+    }
+    size_t len = strlen(cfg_json);
+    size_t wrote = fwrite(cfg_json, 1, len, f);
+    int fsync_rc = fflush(f) == 0 ? 0 : errno;
+    fclose(f);
+    if (wrote != len) {
+        ZITI_LOG(WARN, "short write persisting %s: wrote %zu of %zu",
+                 cstr_str(&tmp_path), wrote, len);
+        unlink(cstr_str(&tmp_path));
+        cstr_drop(&tmp_path);
+        return -EIO;
+    }
+    if (fsync_rc != 0) {
+        ZITI_LOG(WARN, "flush failed for %s: %s", cstr_str(&tmp_path), strerror(fsync_rc));
+        unlink(cstr_str(&tmp_path));
+        cstr_drop(&tmp_path);
+        return -fsync_rc;
+    }
+    if (rename(cstr_str(&tmp_path), identity_path) != 0) {
+        int e = errno;
+        ZITI_LOG(WARN, "failed to rename %s -> %s: %s",
+                 cstr_str(&tmp_path), identity_path, strerror(e));
+        unlink(cstr_str(&tmp_path));
+        cstr_drop(&tmp_path);
+        return -e;
+    }
+    cstr_drop(&tmp_path);
+    return 0;
+}
+
 static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
     struct proxy_app_ctx *app_ctx = ziti_app_ctx(ztx);
     switch (event->type) {
         case ZitiConfigEvent: {
             char *cfg = ziti_config_to_json(event->cfg.config, 0, NULL);
-            printf("new config:\n%s\n\n", cfg);
-            free(cfg);
+            if (cfg != NULL) {
+                if (cstr_size(&app_ctx->identity_path) > 0) {
+                    if (persist_identity_config(cstr_str(&app_ctx->identity_path), cfg) == 0) {
+                        ZITI_LOG(INFO, "persisted updated ziti config to %s",
+                                 cstr_str(&app_ctx->identity_path));
+                    }
+                } else {
+                    ZITI_LOG(DEBUG, "no identity_path set; skipping config persist");
+                }
+                free(cfg);
+            }
             break;
         }
 
@@ -872,8 +935,12 @@ int run_proxy(struct run_opts *opts) {
     ziti_context_init(&app_ctx.ziti, &cfg);
     free_ziti_config(&cfg);
 
+    if (opts->identity) {
+        cstr_assign(&app_ctx.identity_path, opts->identity);
+    }
+
     ziti_options zopts = {
-            .events = ZitiContextEvent | ZitiServiceEvent | ZitiRouterEvent | ZitiAuthEvent,
+            .events = ZitiContextEvent | ZitiServiceEvent | ZitiRouterEvent | ZitiAuthEvent | ZitiConfigEvent,
             .api_page_size = 25,
             .event_cb = on_ziti_event,
             .refresh_interval = 60,
