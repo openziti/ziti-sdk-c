@@ -25,6 +25,14 @@
 #define DEFAULT_PAGE_SIZE 25
 #define ZITI_CTRL_KEEPALIVE 0
 #define ZITI_CTRL_TIMEOUT 15000
+// ZITI_CTRL_REQ_TIMEOUT caps how long a single controller request may hang
+// after the TCP connection is established. Without this cap a slow/overloaded
+// controller can leave a request outstanding for many minutes (until kernel
+// TCP keepalive fires, ~2h by default). When the timer fires we call
+// tlsuv_http_req_cancel which delivers UV_ECANCELED to the normal response
+// path, letting ctrl_resp_cb's existing error handling trigger endpoint
+// rotation via ctrl_next_ep.
+#define ZITI_CTRL_REQ_TIMEOUT 30000
 // one minute in millis
 #define ONE_MINUTE (1 * 60 * 1000)
 
@@ -125,6 +133,16 @@ struct ctrl_resp {
     ziti_controller *ctrl;
 
     ctrl_cb_t ctrl_cb;
+
+    // Per-request timeout plumbing: req is the in-flight request handle (used
+    // to cancel on timeout), req_timeout is the armed timer. Both are cleared
+    // when the response is delivered so stop_req_timeout is a no-op on the
+    // normal path. timed_out is set when the timer fires so ctrl_resp_cb can
+    // distinguish timer-induced cancel (treat as controller unavailable, want
+    // endpoint rotation) from shutdown-induced cancel (silent, no rotation).
+    tlsuv_http_req_t *req;
+    uv_timer_t *req_timeout;
+    bool timed_out;
 };
 
 static void internal_get_version(ziti_controller *ctrl);
@@ -139,13 +157,49 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len);
 
 static const char* ctrl_next_ep(ziti_controller *ctrl, const char *current);
 
+static void req_timeout_cb(uv_timer_t *t) {
+    struct ctrl_resp *resp = t->data;
+    ziti_controller *ctrl = resp->ctrl;
+    CTRL_LOG(WARN, "request timed out after %d ms, cancelling", ZITI_CTRL_REQ_TIMEOUT);
+    resp->timed_out = true;
+    if (resp->req != NULL) {
+        tlsuv_http_req_cancel(ctrl->client, resp->req);
+        // leave req_timeout set; stop_req_timeout will close it once the
+        // cancelled response reaches ctrl_default_cb
+    }
+}
+
+static void stop_req_timeout(struct ctrl_resp *resp) {
+    if (resp->req_timeout != NULL) {
+        uv_timer_stop(resp->req_timeout);
+        uv_close((uv_handle_t *)resp->req_timeout, (uv_close_cb)free);
+        resp->req_timeout = NULL;
+    }
+    resp->req = NULL;
+}
+
 static tlsuv_http_req_t *
 start_request(tlsuv_http_t *http, const char *method, const char *path, tlsuv_http_resp_cb cb, struct ctrl_resp *resp) {
     ziti_controller *ctrl = resp->ctrl;
     ctrl->active_reqs++;
     uv_gettimeofday(&resp->start);
     CTRL_LOG(DEBUG, "starting %s[%s]", method, path);
-    return tlsuv_http_req(http, method, path, cb, resp);
+    resp->req = tlsuv_http_req(http, method, path, cb, resp);
+
+    // Arm a per-request watchdog that cancels the underlying http request if
+    // the response is still outstanding after ZITI_CTRL_REQ_TIMEOUT. On
+    // cancel, tlsuv delivers UV_ECANCELED to ctrl_resp_cb (for headers) or
+    // ctrl_body_cb (for partial body), both of which already treat negative
+    // codes as controller failures.
+    resp->req_timeout = calloc(1, sizeof(uv_timer_t));
+    if (resp->req_timeout != NULL) {
+        uv_timer_init(ctrl->loop, resp->req_timeout);
+        resp->req_timeout->data = resp;
+        uv_unref((uv_handle_t *)resp->req_timeout);
+        uv_timer_start(resp->req_timeout, req_timeout_cb, ZITI_CTRL_REQ_TIMEOUT, 0);
+    }
+
+    return resp->req;
 }
 
 static const char *find_header(tlsuv_http_resp_t *r, const char *name) {
@@ -170,13 +224,21 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
         int e = ZITI_CONTROLLER_UNAVAILABLE;
         const char *code = "CONTROLLER_UNAVAILABLE";
 
-        // cancellation is cased by closing of ziti context
-        // do not log error
-        if (r->code == UV_ECANCELED) {
+        // UV_ECANCELED without a timeout flag means context shutdown:
+        // silently translate to ZITI_DISABLED and do not rotate endpoints.
+        // UV_ECANCELED with timed_out set means our per-request watchdog
+        // cancelled a hung request; treat it as a real controller failure so
+        // the endpoint rotation path fires.
+        if (r->code == UV_ECANCELED && !resp->timed_out) {
             e = ZITI_DISABLED;
             code = ziti_errorstr(ZITI_DISABLED);
         } else {
-            CTRL_LOG(WARN, "request[%s] failed: %d(%s)", r->req->path, r->code, uv_strerror(r->code));
+            if (resp->timed_out) {
+                CTRL_LOG(WARN, "request[%s] timed out after %d ms",
+                         r->req->path, ZITI_CTRL_REQ_TIMEOUT);
+            } else {
+                CTRL_LOG(WARN, "request[%s] failed: %d(%s)", r->req->path, r->code, uv_strerror(r->code));
+            }
 
             if (ctrl->active_reqs == 0) {
                 CTRL_LOG(INFO, "attempting to switch endpoint");
@@ -191,14 +253,37 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
             }
         }
 
+        const char *msg = uv_strerror(r->code);
+        if (resp->timed_out) {
+            msg = "controller request timeout";
+        }
         ziti_error err = {
                 .err = e,
                 .code = (char *) code,
-                .message = (char *) uv_strerror(r->code),
+                .message = (char *) msg,
         };
 
         (resp->ctrl_cb ? resp->ctrl_cb : ctrl_default_cb)(NULL, &err, resp);
     } else {
+        // 5xx indicates this controller is overloaded or otherwise unable to
+        // serve the request. Continue reading the body so the caller gets the
+        // response, but also mark this endpoint offline and switch to another
+        // so subsequent requests hit a different controller rather than
+        // hammering this one. Only one rotation per drained request queue
+        // avoids racing switches when many requests fail at once.
+        if (r->code >= 500 && r->code < 600 && ctrl->active_reqs == 0) {
+            CTRL_LOG(WARN, "request[%s] returned %d, switching endpoint",
+                     r->req->path, r->code);
+            const char *next_ep = ctrl_next_ep(ctrl, ctrl->url);
+            if (next_ep != NULL && strcmp(next_ep, ctrl->url) != 0) {
+                FREE(ctrl->url);
+                CTRL_LOG(INFO, "switching to endpoint[%s]", next_ep);
+                ctrl->url = strdup(next_ep);
+                tlsuv_http_set_url(ctrl->client, next_ep);
+                internal_get_version(ctrl);
+            }
+        }
+
         CTRL_LOG(VERBOSE, "received headers %s[%s]", r->req->method, r->req->path);
         r->body_cb = ctrl_body_cb;
 
@@ -232,6 +317,7 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
 }
 
 static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp) {
+    stop_req_timeout(resp);
     ziti_controller *ctrl = resp->ctrl;
     if (resp->new_address && strcmp(resp->new_address, ctrl->url) != 0) {
         CTRL_LOG(INFO, "controller supplied new address[%s]", resp->new_address);
@@ -511,6 +597,7 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
         }
         free_ziti_error(&error);
     } else {
+        stop_req_timeout(resp);
         CTRL_LOG(WARN, "failed to read response body: %zd[%s]", len, uv_strerror(len));
         if (resp->resp_content == ctrl_content_json) {
             json_tokener_free(resp->content_proc);
