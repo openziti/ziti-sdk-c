@@ -31,7 +31,8 @@
     ".details-body dd{margin:4px 0 0 0}" \
     ".details-body pre{background:#fff;border:1px solid #e5e7eb;border-radius:4px;" \
     "padding:8px;margin:4px 0 0 0;font-size:12px;overflow-x:auto;" \
-    "white-space:pre-wrap;word-break:break-all}"
+    "white-space:pre-wrap;word-break:break-all}" \
+    ".attrib{margin:-8px 0 20px;font-size:12px;color:#9ca3af;letter-spacing:0.03em}"
 
 #define ZITI_LOGO_SVG \
     "<svg class=\"logo\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 422.964 422.964\" " \
@@ -84,8 +85,10 @@ static const char HTTP_SUCCESS_BODY[] =
         "<body>\n"
         "  <div class=\"card\">\n"
         "    " ZITI_LOGO_SVG "\n"
+        "    <div class=\"attrib\">OpenZiti by NetFoundry</div>\n"
         "    <h1>Authentication successful</h1>\n"
         "    <p>You may close this window.</p>\n"
+        "    <p>It will try to close itself in a few seconds.</p>\n"
         "  </div>\n"
         "  <script>setTimeout(function(){window.close();},3000);</script>\n"
         "</body>\n"
@@ -102,6 +105,7 @@ static const char HTTP_FAILURE_HEADER[] =
         "<body>\n"
         "  <div class=\"card\">\n"
         "    " ZITI_LOGO_SVG "\n"
+        "    <div class=\"attrib\">OpenZiti by NetFoundry</div>\n"
         "    <h1>" ERROR_ICON_SVG "Authentication failed</h1>\n"
         "    <p>Please return to the application to try again.</p>\n"
         "    <p>You may close this window.</p>\n";
