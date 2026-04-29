@@ -343,13 +343,13 @@ static int write_all(uv_os_sock_t sock, const char *buf, size_t len) {
     return 0;
 }
 
-static void send_callback_response(uv_os_sock_t sock, const char *body) {
+static void send_callback_response(uv_os_sock_t sock, int status, const char *reason, const char *body) {
     if (sock == INVALID_SOCK) return;
 
     char header[256];
     size_t body_len = strlen(body);
     int header_len = snprintf(header, sizeof(header), HTTP_RESP_HEADER_FMT,
-                              200, "OK", body_len);
+                              status, reason, body_len);
     assert(header_len > 0 && header_len < (int) sizeof(header));
 
     if (write_all(sock, header, (size_t) header_len) == 0) {
@@ -404,7 +404,7 @@ static void free_auth_req(auth_req *req) {
 static void failed_auth_req(auth_req *req, const char *error) {
     if (req->clt_sock != INVALID_SOCK) {
         char *body = build_failure_body("OIDC token exchange", error, NULL);
-        send_callback_response(req->clt_sock, body);
+        send_callback_response(req->clt_sock, 401, "Unauthorized", body);
         free(body);
         req->clt_sock = INVALID_SOCK;
     }
@@ -821,7 +821,7 @@ void ext_oidc_client_finalize(ext_oidc_client_t *clt, bool ok, const char *error
     stop_pending_watchdog(clt);
 
     if (ok) {
-        send_callback_response(clt->pending_sock, HTTP_SUCCESS_BODY);
+        send_callback_response(clt->pending_sock, 200, "OK", HTTP_SUCCESS_BODY);
     } else {
         const char *token = NULL;
         if (clt->tokens) {
@@ -832,7 +832,7 @@ void ext_oidc_client_finalize(ext_oidc_client_t *clt, bool ok, const char *error
             if (jt) token = json_object_get_string(jt);
         }
         char *body = build_failure_body("Controller authentication", error_msg, token);
-        send_callback_response(clt->pending_sock, body);
+        send_callback_response(clt->pending_sock, 401, "Unauthorized", body);
         free(body);
     }
     clt->pending_sock = INVALID_SOCK;
@@ -851,7 +851,16 @@ int ext_oidc_client_close(ext_oidc_client_t *clt, ext_oidc_close_cb cb) {
     clt->timer = NULL;
     free_ziti_jwt_signer(&clt->signer_cfg);
 
-    ext_oidc_client_finalize(clt, false, "client closed before completion");
+    // distinct from a controller rejection: the SDK is being torn down
+    // mid-flight, so respond with 503 rather than 401
+    if (clt->pending_sock != INVALID_SOCK) {
+        stop_pending_watchdog(clt);
+        char *body = build_failure_body("Authentication interrupted",
+                                        "client closed before completion", NULL);
+        send_callback_response(clt->pending_sock, 503, "Service Unavailable", body);
+        free(body);
+        clt->pending_sock = INVALID_SOCK;
+    }
     if (clt->pending_timer) {
         uv_close((uv_handle_t *) clt->pending_timer, (uv_close_cb) free);
         clt->pending_timer = NULL;
