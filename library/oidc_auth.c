@@ -176,7 +176,7 @@ static void token_cb(oidc_client_t *oidc, enum oidc_status status, const void *d
                 const char *reason = data ? (const char *) data : "unknown";
                 snprintf(err, sizeof(err), "%s", reason);
                 auth->cb(auth->cb_ctx, ZitiAuthStateUnauthenticated, &(ziti_error){
-                        .err = status,
+                        .err = ZITI_AUTHENTICATION_FAILED,
                         .message = err});
                 break;
             }
