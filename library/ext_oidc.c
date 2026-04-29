@@ -58,13 +58,13 @@
 
 #define TOKEN_EXCHANGE_GRANT "urn:ietf:params:oauth:grant-type:token-exchange"
 
-#define HTTP_RESP_FMT "HTTP/1.0 %d %s\r\n"\
+#define HTTP_RESP_HEADER_FMT "HTTP/1.0 %d %s\r\n"\
 "Connection: close\r\n"\
 "Content-Type: text/html\r\n"\
 "Cache-Control: no-store\r\n"\
 "X-Content-Type-Options: nosniff\r\n"\
 "Content-Length: %zd\r\n"\
-"\r\n%s"
+"\r\n"
 
 
 #if _WIN32
@@ -331,35 +331,37 @@ int ext_oidc_client_configure(ext_oidc_client_t *clt, oidc_config_cb cb) {
     return 0;
 }
 
-static void send_callback_response(uv_os_sock_t sock, const char *body) {
-    if (sock == INVALID_SOCK) return;
-
-    string_buf_t resp_buf;
-    string_buf_init(&resp_buf);
-    string_buf_fmt(&resp_buf, HTTP_RESP_FMT, 200, "OK", strlen(body), body);
-
-    size_t resp_len;
-    char *resp = string_buf_to_string(&resp_buf, &resp_len);
-    const char *rp = resp;
-
-    while (resp_len > 0) {
+static int write_all(uv_os_sock_t sock, const char *buf, size_t len) {
+    while (len > 0) {
         ssize_t wc =
 #if _WIN32
-                send(sock, rp, resp_len, 0);
+                send(sock, buf, len, 0);
 #else
-                write(sock, rp, resp_len);
+                write(sock, buf, len);
 #endif
         if (wc < 0) {
             int err = sock_error;
             ZITI_LOG(WARN, "failed to write HTTP resp: %d/%s", err, strerror(err));
-            break;
+            return -1;
         }
-        resp_len -= wc;
-        rp += wc;
+        len -= wc;
+        buf += wc;
     }
+    return 0;
+}
 
-    free(resp);
-    string_buf_free(&resp_buf);
+static void send_callback_response(uv_os_sock_t sock, const char *body) {
+    if (sock == INVALID_SOCK) return;
+
+    char header[256];
+    size_t body_len = strlen(body);
+    int header_len = snprintf(header, sizeof(header), HTTP_RESP_HEADER_FMT,
+                              200, "OK", body_len);
+    assert(header_len > 0 && header_len < (int) sizeof(header));
+
+    if (write_all(sock, header, (size_t) header_len) == 0) {
+        write_all(sock, body, body_len);
+    }
 
 #if _WIN32
     shutdown(sock, SD_SEND);
