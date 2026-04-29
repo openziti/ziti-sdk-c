@@ -151,25 +151,18 @@ static char *build_failure_body(const char *step, const char *error, const char 
             string_buf_append(&buf, "</dd>\n");
         }
         if (jwt) {
-            // jwt_payload returns a pointer to a static buffer that any
-            // future jwt_payload() call would clobber - copy it so the
-            // pretty-print fallback path remains valid.
-            char *raw = strdup(jwt_payload(jwt));
-            json_object *parsed = json_tokener_parse(raw);
+            json_object *parsed = json_tokener_parse(jwt_payload(jwt));
             if (parsed) {
                 for (int i = 0; OPAQUE_CLAIMS[i]; i++) {
                     json_object_object_del(parsed, OPAQUE_CLAIMS[i]);
                 }
+                const char *pretty = json_object_to_json_string_ext(parsed,
+                        JSON_C_TO_STRING_PRETTY | JSON_C_TO_STRING_NOSLASHESCAPE);
+                string_buf_append(&buf, "        <dt>Token claims</dt><dd><pre>");
+                append_html_escaped(&buf, pretty);
+                string_buf_append(&buf, "</pre></dd>\n");
+                json_object_put(parsed);
             }
-            const char *pretty = parsed
-                ? json_object_to_json_string_ext(parsed,
-                        JSON_C_TO_STRING_PRETTY | JSON_C_TO_STRING_NOSLASHESCAPE)
-                : raw;
-            string_buf_append(&buf, "        <dt>Token claims</dt><dd><pre>");
-            append_html_escaped(&buf, pretty);
-            string_buf_append(&buf, "</pre></dd>\n");
-            if (parsed) json_object_put(parsed);
-            free(raw);
         }
 
         string_buf_append(&buf, "      </dl>\n");
