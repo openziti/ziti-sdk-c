@@ -256,7 +256,7 @@ int run_http_proxy(uv_loop_t *loop, int port, ziti_context ztx) {
     uv_unref((uv_handle_t *)&http_proxy_server);
 
     if ((rc = uv_tcp_bind(&http_proxy_server, (const struct sockaddr *) &http_proxy_addr, 0)) ||
-        (rc = uv_listen((uv_stream_t *) &http_proxy_server, 5, on_proxy_client))) {
+        (rc = uv_listen((uv_stream_t *) &http_proxy_server, 128, on_proxy_client))) {
         ZITI_LOG(WARN, "failed to start HTTP proxy listener: %d/%s", rc, uv_strerror(rc));
     } else {
         ZITI_LOG(INFO, "HTTP proxy listening on port %d", port);
