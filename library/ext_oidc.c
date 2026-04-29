@@ -32,7 +32,11 @@
 #include "ziti/errors.h"
 #include "ziti/ziti_buffer.h"
 #include "ext_oidc.h"
+#include "ext_oidc_pages.h"
 #include "buffer.h"
+
+#define INVALID_SOCK ((uv_os_sock_t) -1)
+#define PENDING_WATCHDOG_MS (60 * 1000)
 
 #define state_len 30
 #define state_code_len sodium_base64_ENCODED_LEN(code_len, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
@@ -54,11 +58,13 @@
 
 #define TOKEN_EXCHANGE_GRANT "urn:ietf:params:oauth:grant-type:token-exchange"
 
-#define HTTP_RESP_FMT "HTTP/1.0 %d %s\r\n"\
+#define HTTP_RESP_HEADER_FMT "HTTP/1.0 %d %s\r\n"\
 "Connection: close\r\n"\
 "Content-Type: text/html\r\n"\
+"Cache-Control: no-store\r\n"\
+"X-Content-Type-Options: nosniff\r\n"\
 "Content-Length: %zd\r\n"\
-"\r\n%s"
+"\r\n"
 
 
 #if _WIN32
@@ -86,6 +92,7 @@ static uint64_t ext_oidc_refresh_delay(ext_oidc_client_t *clt);
 struct ext_link_req {
     uv_work_t wr;
     uv_os_sock_t sock;
+    uv_os_sock_t clt_sock;
     struct auth_req *req;
     char *code;
     int err;
@@ -99,27 +106,73 @@ typedef struct auth_req {
     json_tokener *json_parser;
     char *id;
     struct ext_link_req *elr;
+    uv_os_sock_t clt_sock;
 } auth_req;
 
-static const char HTTP_SUCCESS_BODY[] =
-        "<!DOCTYPE html>\n"
-        "<html lang=\"en\">\n"
-        "<head>\n"
-        "    <title>OpenZiti: Successful Authentication with External Provider.</title>\n"
-        "    <script>\n"
-        "        function closeWindow() {\n"
-        "            setTimeout(function() {\n"
-        "                window.close(); // Close the current window\n"
-        "            }, 3000);\n"
-        "        }\n"
-        "    </script>\n"
-        "</head>\n"
-        "<script type=\"text/javascript\">closeWindow()</script>"
-        "<body onload=\"closeWindow()\">\n"
-        "    <img height=\"40px\" src=\"https://netfoundry.io/docs/img/openziti-logo-light.svg\"/>"
-        "    <h2>Successfully authenticated with external provider.</h2><p>You may close this page. It will attempt to close itself in 3 seconds.</p>\n"
-        "</body>\n"
-        "</html>\n";
+// claims with no debugging value that may also be sensitive (session/correlation IDs)
+static const char *OPAQUE_CLAIMS[] = { "jti", "sid", "nonce", NULL };
+
+static void append_html_escaped(string_buf_t *buf, const char *s) {
+    if (s == NULL) return;
+    for (const char *p = s; *p; p++) {
+        switch (*p) {
+            case '&':  string_buf_append(buf, "&amp;");  break;
+            case '<':  string_buf_append(buf, "&lt;");   break;
+            case '>':  string_buf_append(buf, "&gt;");   break;
+            case '"':  string_buf_append(buf, "&quot;"); break;
+            case '\'': string_buf_append(buf, "&#39;");  break;
+            default:   string_buf_append_byte(buf, *p);  break;
+        }
+    }
+}
+
+// Build the failure-page HTML, optionally including a details disclosure with
+// the failing step, the error message, and the decoded JWT claims. The JWT
+// claim block strips opaque session-correlation fields (see OPAQUE_CLAIMS).
+// Caller must free() the returned string.
+static char *build_failure_body(const char *step, const char *error, const char *jwt) {
+    string_buf_t buf;
+    string_buf_init(&buf);
+
+    string_buf_append(&buf, HTTP_FAILURE_HEADER);
+
+    if (step || error || jwt) {
+        string_buf_append(&buf, "    <details><summary>Show details</summary>\n");
+        string_buf_append(&buf, "      <dl class=\"details-body\">\n");
+
+        if (step) {
+            string_buf_append(&buf, "        <dt>Step</dt><dd>");
+            append_html_escaped(&buf, step);
+            string_buf_append(&buf, "</dd>\n");
+        }
+        if (error) {
+            string_buf_append(&buf, "        <dt>Error</dt><dd>");
+            append_html_escaped(&buf, error);
+            string_buf_append(&buf, "</dd>\n");
+        }
+        if (jwt) {
+            json_object *parsed = json_tokener_parse(jwt_payload(jwt));
+            if (parsed) {
+                for (int i = 0; OPAQUE_CLAIMS[i]; i++) {
+                    json_object_object_del(parsed, OPAQUE_CLAIMS[i]);
+                }
+                const char *pretty = json_object_to_json_string_ext(parsed,
+                        JSON_C_TO_STRING_PRETTY | JSON_C_TO_STRING_NOSLASHESCAPE);
+                string_buf_append(&buf, "        <dt>Token claims</dt><dd><pre>");
+                append_html_escaped(&buf, pretty);
+                string_buf_append(&buf, "</pre></dd>\n");
+                json_object_put(parsed);
+            }
+        }
+
+        string_buf_append(&buf, "      </dl>\n");
+        string_buf_append(&buf, "    </details>\n");
+    }
+
+    string_buf_append(&buf, HTTP_FAILURE_FOOTER);
+
+    return string_buf_to_string(&buf, NULL);
+}
 
 
 static void handle_unexpected_resp(ext_oidc_client_t *clt, tlsuv_http_resp_t *resp, json_object *body) {
@@ -179,6 +232,12 @@ int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
     uv_timer_init(loop, clt->timer);
     clt->timer->data = clt;
     uv_unref((uv_handle_t *) clt->timer);
+
+    clt->pending_sock = INVALID_SOCK;
+    clt->pending_timer = calloc(1, sizeof(*clt->pending_timer));
+    uv_timer_init(loop, clt->pending_timer);
+    clt->pending_timer->data = clt;
+    uv_unref((uv_handle_t *) clt->pending_timer);
 
     return 0;
 }
@@ -265,9 +324,50 @@ int ext_oidc_client_configure(ext_oidc_client_t *clt, oidc_config_cb cb) {
     return 0;
 }
 
+static int write_all(uv_os_sock_t sock, const char *buf, size_t len) {
+    while (len > 0) {
+        ssize_t wc =
+#if _WIN32
+                send(sock, buf, len, 0);
+#else
+                write(sock, buf, len);
+#endif
+        if (wc < 0) {
+            int err = sock_error;
+            ZITI_LOG(WARN, "failed to write HTTP resp: %d/%s", err, strerror(err));
+            return -1;
+        }
+        len -= wc;
+        buf += wc;
+    }
+    return 0;
+}
+
+static void send_callback_response(uv_os_sock_t sock, int status, const char *reason, const char *body) {
+    if (sock == INVALID_SOCK) return;
+
+    char header[256];
+    size_t body_len = strlen(body);
+    int header_len = snprintf(header, sizeof(header), HTTP_RESP_HEADER_FMT,
+                              status, reason, body_len);
+    assert(header_len > 0 && header_len < (int) sizeof(header));
+
+    if (write_all(sock, header, (size_t) header_len) == 0) {
+        write_all(sock, body, body_len);
+    }
+
+#if _WIN32
+    shutdown(sock, SD_SEND);
+#else
+    shutdown(sock, SHUT_WR);
+#endif
+    close_socket(sock);
+}
+
 static auth_req *new_auth_req(ext_oidc_client_t *clt) {
     auth_req *req = calloc(1, sizeof(*req));
     req->clt = clt;
+    req->clt_sock = INVALID_SOCK;
 
     uint8_t code[code_len];
     uv_random(NULL, NULL, code, sizeof(code), 0, NULL);
@@ -293,11 +393,22 @@ static void free_auth_req(auth_req *req) {
         json_tokener_free(req->json_parser);
         req->json_parser = NULL;
     }
+    if (req->clt_sock != INVALID_SOCK) {
+        close_socket(req->clt_sock);
+        req->clt_sock = INVALID_SOCK;
+    }
     FREE(req->id);
     free(req);
 }
 
 static void failed_auth_req(auth_req *req, const char *error) {
+    if (req->clt_sock != INVALID_SOCK) {
+        char *body = build_failure_body("OIDC token exchange", error, NULL);
+        send_callback_response(req->clt_sock, 401, "Unauthorized", body);
+        free(body);
+        req->clt_sock = INVALID_SOCK;
+    }
+
     ext_oidc_client_t *clt = req->clt;
     if (clt) {
         if (clt->request == req) {
@@ -322,11 +433,42 @@ static void failed_auth_req(auth_req *req, const char *error) {
     free_auth_req(req);
 }
 
+static void pending_watchdog_cb(uv_timer_t *t) {
+    ext_oidc_client_t *clt = t->data;
+    OIDC_LOG(WARN, "controller did not respond within %dms; closing browser callback",
+             PENDING_WATCHDOG_MS);
+    ext_oidc_client_finalize(clt, false, "controller did not respond in time");
+}
+
+static void start_pending_watchdog(ext_oidc_client_t *clt) {
+    if (clt->pending_timer == NULL) return;
+    uv_ref((uv_handle_t *) clt->pending_timer);
+    uv_timer_start(clt->pending_timer, pending_watchdog_cb, PENDING_WATCHDOG_MS, 0);
+}
+
+static void stop_pending_watchdog(ext_oidc_client_t *clt) {
+    if (clt->pending_timer == NULL) return;
+    uv_timer_stop(clt->pending_timer);
+    uv_unref((uv_handle_t *) clt->pending_timer);
+}
+
 static void token_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *resp, void *ctx) {
     auth_req *req = ctx;
     ext_oidc_client_t *clt = req->clt;
     OIDC_LOG(DEBUG, "%d %s err[%s]", http_resp->code, http_resp->status, err);
     if (http_resp->code == 200) {
+        if (req->clt_sock != INVALID_SOCK) {
+            // hold the browser response until the controller verdict
+            // (ext_oidc_client_finalize will write success or failure page)
+            if (clt->pending_sock != INVALID_SOCK) {
+                OIDC_LOG(WARN, "previous browser callback still pending; closing it");
+                close_socket(clt->pending_sock);
+                stop_pending_watchdog(clt);
+            }
+            clt->pending_sock = req->clt_sock;
+            req->clt_sock = INVALID_SOCK;
+            start_pending_watchdog(clt);
+        }
         ext_oidc_client_set_tokens(clt, resp);
         clt->request = NULL;
         free_auth_req(req);
@@ -500,40 +642,7 @@ static void ext_accept(uv_work_t *wr) {
     char* decoded_code = calloc(param_len + 1, sizeof(char));
     url_decode(cs, param_len, decoded_code);
     elr->code = decoded_code;
-
-    string_buf_t resp_buf;
-    string_buf_init(&resp_buf);
-
-    string_buf_fmt(&resp_buf, HTTP_RESP_FMT, 200, "OK", strlen(HTTP_SUCCESS_BODY), HTTP_SUCCESS_BODY);
-    size_t resp_len;
-    char *resp = string_buf_to_string(&resp_buf, &resp_len);
-    const char *rp = resp;
-
-    while (resp_len > 0) {
-        ssize_t wc =
-#if _WIN32
-                send(clt, rp, resp_len, 0);
-#else
-                write(clt, rp, resp_len);
-#endif
-        if (wc < 0) {
-            int err = sock_error;
-            ZITI_LOG(WARN, "failed to write HTTP resp: %d/%s", err, strerror(err));
-            break;
-        }
-        resp_len -= wc;
-        rp += wc;
-    }
-
-    free(resp);
-    string_buf_free(&resp_buf);
-
-#if _WIN32
-    shutdown(clt, SD_SEND);
-#else
-    shutdown(clt, SHUT_WR);
-#endif
-    close_socket(clt);
+    elr->clt_sock = clt;
 }
 
 static void ext_done(uv_work_t *wr, int status) {
@@ -550,12 +659,17 @@ static void ext_done(uv_work_t *wr, int status) {
         struct auth_req *req = elr->req;
         req->elr = NULL;
         if (elr->code) {
+            req->clt_sock = elr->clt_sock;
+            elr->clt_sock = INVALID_SOCK;
             request_token(req, elr->code);
         } else {
             failed_auth_req(req, elr->err ? strerror(elr->err) : "code not received");
         }
     }
 
+    if (elr->clt_sock != INVALID_SOCK) {
+        close_socket(elr->clt_sock);
+    }
     free(elr->code);
     free(elr);
 }
@@ -586,6 +700,7 @@ static void ext_start_auth(auth_req *req, const char *ep, int qc, tlsuv_http_pai
 
     struct ext_link_req *elr = calloc(1, sizeof(*elr));
     elr->sock = sock;
+    elr->clt_sock = INVALID_SOCK;
     elr->req = req;
     int rc = uv_queue_work(loop, &elr->wr, ext_accept, ext_done);
     if (rc != 0) {
@@ -700,6 +815,29 @@ int ext_oidc_client_refresh(ext_oidc_client_t *clt) {
     return uv_timer_start(clt->timer, ext_refresh_time_cb, 0, 0);
 }
 
+void ext_oidc_client_finalize(ext_oidc_client_t *clt, bool ok, const char *error_msg) {
+    if (clt == NULL || clt->pending_sock == INVALID_SOCK) return;
+
+    stop_pending_watchdog(clt);
+
+    if (ok) {
+        send_callback_response(clt->pending_sock, 200, "OK", HTTP_SUCCESS_BODY);
+    } else {
+        const char *token = NULL;
+        if (clt->tokens) {
+            const char *token_type =
+                clt->signer_cfg.target_token == ziti_target_token_id_token
+                    ? "id_token" : "access_token";
+            json_object *jt = json_object_object_get(clt->tokens, token_type);
+            if (jt) token = json_object_get_string(jt);
+        }
+        char *body = build_failure_body("Controller authentication", error_msg, token);
+        send_callback_response(clt->pending_sock, 401, "Unauthorized", body);
+        free(body);
+    }
+    clt->pending_sock = INVALID_SOCK;
+}
+
 int ext_oidc_client_close(ext_oidc_client_t *clt, ext_oidc_close_cb cb) {
     if (clt->close_cb) {
         return UV_EALREADY;
@@ -712,6 +850,21 @@ int ext_oidc_client_close(ext_oidc_client_t *clt, ext_oidc_close_cb cb) {
     uv_close((uv_handle_t *) clt->timer, (uv_close_cb) free);
     clt->timer = NULL;
     free_ziti_jwt_signer(&clt->signer_cfg);
+
+    // distinct from a controller rejection: the SDK is being torn down
+    // mid-flight, so respond with 503 rather than 401
+    if (clt->pending_sock != INVALID_SOCK) {
+        stop_pending_watchdog(clt);
+        char *body = build_failure_body("Authentication interrupted",
+                                        "client closed before completion", NULL);
+        send_callback_response(clt->pending_sock, 503, "Service Unavailable", body);
+        free(body);
+        clt->pending_sock = INVALID_SOCK;
+    }
+    if (clt->pending_timer) {
+        uv_close((uv_handle_t *) clt->pending_timer, (uv_close_cb) free);
+        clt->pending_timer = NULL;
+    }
 
     if (clt->auth_params) {
         for (int i = 0; i < clt->auth_params_count; i++) {

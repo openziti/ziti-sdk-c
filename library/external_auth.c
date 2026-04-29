@@ -180,6 +180,9 @@ static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti
 
     if (error) {
         ZTX_LOG(WARN, "enrollment failed: %s", error->message);
+        if (ztx->ext_auth) {
+            ext_oidc_client_finalize(ztx->ext_auth, false, error->message);
+        }
         ziti_send_event(ztx, &(ziti_event_t){
                 .type = ZitiAuthEvent,
                 .auth = {
