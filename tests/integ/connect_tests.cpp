@@ -21,14 +21,27 @@
 #include <ziti/ziti_log.h>
 
 #include "fixtures.h"
-#include "test-data.h"
 
-TEST_CASE_METHOD(LoopTestCase, "connect", "[connection]") {
-    auto config = TEST_CLIENT;
-    if(!config) {
-        SKIP("test_client environment variable must be set to run this test");
+struct capture {
+    bool loaded{};
+    int connect_error{};
+    bool connected{};
+
+    std::vector<std::vector<uint8_t>> received;
+    bool eof{};
+    int read_error{};
+
+    bool closed{};
+    uv_loop_t *loop{nullptr};
+};
+
+TEST_CASE_METHOD(ZitiTestCase, "connect", "[connection]") {
+    auto config = test_client();
+    auto service = test_service();
+    if(!config || !service) {
+        SKIP("test_client and test_service environment variables must be set to run this test");
     }
-    ziti_log_init(loop(), 5, nullptr);
+
     ziti_config cfg{};
     ziti_context ztx{};
     DEFER {
@@ -37,15 +50,9 @@ TEST_CASE_METHOD(LoopTestCase, "connect", "[connection]") {
     };
 
     INFO("config file: " << config);
-    REQUIRE(ziti_load_config(&cfg, TEST_CLIENT) == ZITI_OK);
+    REQUIRE(ziti_load_config(&cfg, config) == ZITI_OK);
     REQUIRE(ziti_context_init(&ztx, &cfg) == ZITI_OK);
-    struct capture {
-        bool loaded;
-        int connect_error;
-        bool connected;
-        bool closed;
-        uv_loop_t *loop;
-    } c{.loop = loop()};
+    capture c{.loop = loop()};
     const ziti_options opts {
         .app_ctx = &c,
         .events = ZitiContextEvent,
@@ -66,24 +73,40 @@ TEST_CASE_METHOD(LoopTestCase, "connect", "[connection]") {
 
     ziti_connection conn{};
     ziti_conn_init(ztx, &conn, &c);
-    ziti_dial(conn, "test-service",
-              [](ziti_connection conn, int status) {
-                auto capt = (capture*)ziti_conn_data(conn);
-                capt->connect_error = status;
-                if (status == ZITI_OK) {
-                    capt->connected = true;
-                    printf("ZITI_CONNECTION_READY\n");
-                    fflush(stdout);
-                }
-              },
-              [](ziti_connection conn, const uint8_t * data, ssize_t len) {
-                auto capt = (capture*)ziti_conn_data(conn);
-                return len;
-              });
+    INFO("dialing service: " << service);
 
-    run(UNTIL(c.connected || c.connect_error != 0));
+    CHECK(ZITI_OK == ziti_dial(conn, service,
+                               [](ziti_connection conn, int status) {
+                                 auto capt = (capture*)ziti_conn_data(conn);
+                                 capt->connect_error = status;
+                                 if (status == ZITI_OK) {
+                                     capt->connected = true;
+                                     ZITI_LOG(INFO, "connection ready");
+                                 }
+                               },
+                               [](ziti_connection conn, const uint8_t * data, ssize_t len) {
+                                 auto capt = (capture*)ziti_conn_data(conn);
+                                 if (len == ZITI_EOF) {
+                                     capt->eof = true;
+                                 } else if (len < 0) {
+                                     capt->read_error = len;
+                                 } else {
+                                     capt->received.emplace_back(data, data + len);
+                                 }
+                                 return len;
+              }));
+
+    CHECK(run(UNTIL(c.connected || c.connect_error != 0)));
     CHECK(c.connect_error == ZITI_OK);
     CHECK(c.connected);
+
+    CHECK(ziti_write(conn, (uint8_t*)"hello", 5, nullptr, nullptr) == ZITI_OK);
+    CHECK(run(UNTIL(!c.received.empty() || c.read_error != 0 || c.eof)));
+    CHECK(c.read_error == 0);
+    CHECK(!c.eof);
+    CHECK(c.received.size() == 1);
+    CHECK(c.received[0].size() == 5);
+    CHECK(memcmp(c.received[0].data(), "hello", 5) == 0);
 
     ziti_close(conn, [](ziti_connection conn){
       auto capt = (capture*)ziti_conn_data(conn);

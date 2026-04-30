@@ -13,22 +13,9 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-#
-#  SPDX-License-Identifier: Apache-2.0
-#
-#  Licensed under the Apache License, Version 2.0 (the "License");
-#  you may not use this file except in compliance with the License.
-#  You may obtain a copy of the License at
-#
-#  https://www.apache.org/licenses/LICENSE-2.0
-#
-#  Unless required by applicable law or agreed to in writing, software
-#  distributed under the License is distributed on an "AS IS" BASIS,
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#  See the License for the specific language governing permissions and
-#  limitations under the License.
 
 import hashlib
+import json
 import logging
 import os
 import subprocess
@@ -297,17 +284,32 @@ def server_identity(ziti_cli, quickstart_home, ziti_model, request) -> str:
     return json_path
 
 @pytest.fixture
-def echo_server(server_identity, tmp_path):
+def test_service(quickstart, ziti_cli, request):
+    name = f"service-{request.node.name}"
+    intercept_cfg = f"{name}-intercept"
+    intercept = {
+        "protocols": ["tcp", "udp"],
+        "portRanges": [ {"low": 80, "high": 80} ],
+        "addresses": [ f"{name}.test.ziti" ],
+    }
+    ziti_edge(ziti_cli, "create", "config", intercept_cfg, "intercept.v1", json.dumps(intercept))
+    ziti_edge(ziti_cli, "create", "service", name, "-c", intercept_cfg)
+    yield dict(name=name, intercept=json.dumps(intercept))
+    ziti_edge(ziti_cli, "delete", "service", name)
+    ziti_edge(ziti_cli, "delete", "config", intercept_cfg)
+
+@pytest.fixture
+def echo_server(server_identity, test_service, tmp_path):
     """Start the echo server and wait for it to be ready."""
     echo_exe = os.environ.get("ECHO_SERVER")
     if not echo_exe:
-        pytest.skip("ECHO_SERVER not set")
+        pytest.fail("ECHO_SERVER not set")
 
     env = os.environ.copy()
     env["ZITI_LOG"] = "5"
     with open(tmp_path / "echo-server.log", "w") as echo_server_log:
         proc = subprocess.Popen(
-            [echo_exe, server_identity, "test-service"],
+            [echo_exe, server_identity, test_service['name']],
             stdout=subprocess.PIPE,
             stderr=echo_server_log,
             stdin=subprocess.PIPE,

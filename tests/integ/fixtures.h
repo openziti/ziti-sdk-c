@@ -89,6 +89,30 @@ protected:
     }
 };
 
+class ZitiTestCase : public LoopTestCase {
+  protected:
+    ziti_intercept_cfg_v1 intercept_cfg{};
+    ZitiTestCase() {
+        auto cfg = getenv("test_service_intercept");
+        if (cfg) {
+            parse_ziti_intercept_cfg_v1(&intercept_cfg, cfg, strlen(cfg));
+        }
+        ziti_log_init(loop(), 5, nullptr);
+    }
+
+    ~ZitiTestCase() {
+        free_ziti_intercept_cfg_v1(&intercept_cfg);
+    }
+    
+    static const char* test_client() {
+        return getenv("test_client");
+    }
+
+    static const char* test_service() {
+        return getenv("test_service");
+    }
+};
+
 template <class T>
 class resp_capture {
 public:

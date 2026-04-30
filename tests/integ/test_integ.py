@@ -26,6 +26,9 @@ test_exe = os.environ.get("TEST_EXE")
 
 def run_catch_test(test_tag, env, tmp_path):
     """Run the C++ Catch2 integration test binary."""
+    if not test_exe:
+        pytest.fail("TEST_EXE environment variable is not set")
+
     log = open(tmp_path / f"{test_tag}-tests.log", "w")
 
     environment = os.environ.copy()
@@ -49,7 +52,12 @@ def run_catch_test(test_tag, env, tmp_path):
     t = threading.Thread(target=_reader, daemon=True)
     t.start()
 
-    rc = proc.wait(timeout=300)
+    try:
+        rc = proc.wait(timeout=300)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        pytest.fail(f"[{test_tag}] timed out after 5 minutes")
+
     t.join(timeout=5)
     assert rc == 0, f"[{test_tag}] exited with code {rc}"
 
@@ -58,7 +66,9 @@ def test_integ(enrolled_identities, tmp_path, request, tag):
     run_catch_test(tag, enrolled_identities, tmp_path)
 
 
-def test_client(client_identity, echo_server, tmp_path):
+def test_connect(client_identity, echo_server, test_service, tmp_path):
     env = dict()
     env['test_client']=client_identity
+    env['test_service']=test_service['name']
+    env['test_service_intercept']=test_service['intercept']
     run_catch_test("connection", env, tmp_path)
