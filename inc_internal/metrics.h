@@ -70,9 +70,7 @@ typedef struct rate_s rate_t;
 extern "C" {
 #endif
 
-// return millisecond precision time
-typedef uint64_t (*time_fn)(void *ctx);
-extern void metrics_init(long interval_secs, time_fn, void *time_ctx);
+extern void metrics_init(long interval_secs);
 
 extern int metrics_rate_init(rate_t *r, rate_type type);
 extern void metrics_rate_close(rate_t* r);

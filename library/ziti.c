@@ -627,7 +627,7 @@ static int ztx_init_controller(ziti_context ztx) {
 
 static void ziti_init_async(ziti_context ztx, void *data) {
     uv_loop_t *loop = ztx->prepper.loop;
-    metrics_init(5, (time_fn)uv_now, loop);
+    metrics_init(5);
 
     if (!ztx->opts.disabled) {
         ziti_start_internal(ztx, NULL);
