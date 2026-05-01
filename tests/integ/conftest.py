@@ -232,56 +232,56 @@ def enrolled_identities(ziti_model, quickstart_home) -> dict[str, str]:
     return ids
 
 
-def enrollment(ziti_cli, quickstart_home, name, attr) -> str:
+def enrollment(ziti_cli, path, name, attr) -> str:
     """Create test client identity."""
-    jwt_path = f"{quickstart_home}/{name}.jwt"
+    jwt_path = path / f"{name}.jwt"
     ziti_edge(ziti_cli,"create", "identity",
                                 name, "-a", attr,
-                                "-o", jwt_path)
+                                "-o", str(jwt_path))
     logger.info("[client enrollment] %s", jwt_path)
-    return jwt_path
+    return str(jwt_path)
 
 
 @pytest.fixture
-def client_identity(ziti_cli, quickstart_home, ziti_model, request) -> str:
+def client_identity(ziti_cli, ziti_model, tmp_path, request) -> str:
     """return new ziti identity config"""
     enroller = os.environ.get("ENROLLER")
     if not enroller:
         pytest.skip("ENROLLER not set")
 
     name = f"client-{request.node.name}"
-    jwt = enrollment(ziti_cli, quickstart_home, name, "client")
-    json_path = f"{quickstart_home}/{name}.json"
+    jwt = enrollment(ziti_cli, tmp_path, name, "client")
+    json_path = tmp_path / f"{name}.json"
     result = subprocess.run(
-        [enroller, jwt, json_path],
+        [enroller, jwt, str(json_path)],
         capture_output=True, text=True,
     )
     logger.info("[enroll %s] %s", name, result.stdout.rstrip())
     if "ziti identity is saved" not in result.stdout:
         pytest.fail(f"enrollment of {name} failed: {result.stderr}")
 
-    return json_path
+    return str(json_path)
 
 
 @pytest.fixture
-def server_identity(ziti_cli, quickstart_home, ziti_model, request) -> str:
+def server_identity(ziti_cli, ziti_model, tmp_path, request) -> str:
     """return new ziti identity config"""
     enroller = os.environ.get("ENROLLER")
     if not enroller:
         pytest.skip("ENROLLER not set")
 
     name = f"server-{request.node.name}"
-    jwt = enrollment(ziti_cli, quickstart_home, name, "server")
-    json_path = f"{quickstart_home}/{name}.json"
+    jwt = enrollment(ziti_cli, tmp_path, name, "server")
+    json_path = tmp_path / f"{name}.json"
     result = subprocess.run(
-        [enroller, jwt, json_path],
+        [enroller, jwt, str(json_path)],
         capture_output=True, text=True,
     )
     logger.info("[enroll %s] %s", name, result.stdout.rstrip())
     if "ziti identity is saved" not in result.stdout:
         pytest.fail(f"enrollment of {name} failed: {result.stderr}")
 
-    return json_path
+    return str(json_path)
 
 @pytest.fixture
 def test_service(quickstart, ziti_cli, request):
@@ -294,9 +294,7 @@ def test_service(quickstart, ziti_cli, request):
     }
     ziti_edge(ziti_cli, "create", "config", intercept_cfg, "intercept.v1", json.dumps(intercept))
     ziti_edge(ziti_cli, "create", "service", name, "-c", intercept_cfg)
-    yield dict(name=name, intercept=json.dumps(intercept))
-    ziti_edge(ziti_cli, "delete", "service", name)
-    ziti_edge(ziti_cli, "delete", "config", intercept_cfg)
+    return dict(name=name, intercept=json.dumps(intercept))
 
 @pytest.fixture
 def echo_server(server_identity, test_service, tmp_path):
