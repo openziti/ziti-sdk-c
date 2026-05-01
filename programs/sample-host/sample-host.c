@@ -38,7 +38,7 @@ static ssize_t on_client_data(ziti_connection clt, const uint8_t *data, ssize_t 
     if (len > 0) {
         printf("client sent:%.*s\n", (int) len, data);
         char *reply = malloc(128);
-        size_t l = sprintf(reply, "%zd", len);
+        size_t l = snprintf(reply, 128, "%zd", len);
         ziti_write(clt, (uint8_t *) reply, l, on_client_write, reply);
     }
     else if (len == ZITI_EOF) {
