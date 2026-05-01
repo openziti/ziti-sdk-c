@@ -774,8 +774,9 @@ ZITI_FUNC
 extern int ziti_dial(ziti_connection conn, const char *service, ziti_conn_cb cb, ziti_data_cb data_cb);
 
 ZITI_FUNC
-extern int ziti_dial_with_options(ziti_connection conn, const char *service, ziti_dial_opts *dial_opts, ziti_conn_cb cb,
-                                  ziti_data_cb data_cb);
+extern int ziti_dial_with_options(ziti_connection conn, const char *service,
+                                  const ziti_dial_opts *dial_opts,
+                                  ziti_conn_cb cb, ziti_data_cb data_cb);
 
 /**
  * @brief Start accepting ziti client connections.
