@@ -382,11 +382,7 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
         OIDC_LOG(DEBUG, "login with path[%s] ", path);
         tlsuv_http_set_path_prefix(&req->clt->http, NULL);
         tlsuv_http_req_t *login_req = ziti_json_request(&req->clt->http, "POST", path, login_cb, req);
-        tlsuv_http_req_query(login_req, 1,
-                             &(tlsuv_http_pair){
-                                 .name="id",
-                                 .value=cstr_str(&req->id)
-                             });
+        HTTP_REQ_QUERY(login_req, { "id", cstr_str(&req->id) });
         if (!cstr_is_empty(&clt->jwt_token_auth)) {
             tlsuv_http_req_header(login_req, HTTP_AUTHORIZATION, cstr_str(&clt->jwt_token_auth));
         }
@@ -436,21 +432,19 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     auth_req *req = new_auth_req(clt);
     clt->request = req;
 
-    tlsuv_http_pair query[] = {
-            {"client_id",             INTERNAL_CLIENT_ID},
-            {"scope",                 INTERNAL_SCOPES},
-            {"response_type",         "code"},
-            {"redirect_uri",          default_cb_url},
-            {"code_challenge",        req->code_challenge},
-            {"code_challenge_method", "S256"},
-            {"state",                 req->state},
-            {"audience",              "openziti"},
-    };
-
     int rc = tlsuv_http_set_url(&clt->http, auth_url);
     if (rc == 0) {
         tlsuv_http_req_t *http_req = ziti_json_request(&clt->http, "POST", NULL, auth_cb, req);
-        rc = tlsuv_http_req_query(http_req, sizeof(query) / sizeof(query[0]), query);
+        rc = HTTP_REQ_QUERY(http_req,
+                            {"client_id",             INTERNAL_CLIENT_ID},
+                            {"scope",                 INTERNAL_SCOPES},
+                            {"response_type",         "code"},
+                            {"redirect_uri",          default_cb_url},
+                            {"code_challenge",        req->code_challenge},
+                            {"code_challenge_method", "S256"},
+                            {"state",                 req->state},
+                            {"audience",              "openziti"},
+        );
     } else {
         OIDC_LOG(ERROR, AUTH_EP "[%s] is an invalid URL", auth_url);
     }

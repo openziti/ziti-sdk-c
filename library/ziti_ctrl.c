@@ -827,16 +827,17 @@ ziti_ctrl_get_service(ziti_controller *ctrl, const char *service_name, void (*cb
                       void *ctx) {
     if(!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    char name_clause[1024];
-    snprintf(name_clause, sizeof(name_clause), "name=\"%s\"", service_name);
+    cstr name_clause = cstr_from_fmt("name=\"%s\"", service_name);
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_service_array_from_json, ctx);
     resp->ctrl_cb = (ctrl_cb_t) ctrl_service_cb;
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", "/services", ctrl_resp_cb, resp);
-    tlsuv_http_req_query(req, 1, &(tlsuv_http_pair){
-        "filter", name_clause
-    });
+    HTTP_REQ_QUERY(req,
+              {"filter", cstr_str(&name_clause)},
+              {"configTypes", "all"},
+    );
+    cstr_drop(&name_clause);
 }
 
 void ziti_ctrl_list_service_routers(ziti_controller *ctrl, const ziti_service *srv, routers_cb cb, void *ctx) {
@@ -848,10 +849,11 @@ void ziti_ctrl_list_service_routers(ziti_controller *ctrl, const ziti_service *s
     char path[512];
     snprintf(path, sizeof(path), "/services/%s/edge-routers", srv->id);
     tlsuv_http_req_t *req = start_request(ctrl->client, "GET", path, ctrl_resp_cb, resp);
-    tlsuv_http_req_query(req, 2, (tlsuv_http_pair[]){
-            { "offset", "0" },
-            { "limit", "100" }
-    });
+
+    HTTP_REQ_QUERY(req,
+                   { "offset", "0" },
+                   { "limit", "100" },
+    );
 }
 
 void ziti_ctrl_get_session(

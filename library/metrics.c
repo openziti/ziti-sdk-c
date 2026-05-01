@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <math.h>
 #include <string.h>
+#include <uv.h>
 
 #if defined(__unix__) || defined(__APPLE__)
 # if __STDC_NO_ATOMICS__
@@ -30,7 +31,7 @@ limitations under the License.
 #   define InterlockedExchange(p, v) (*p) = (v)
 # else
 #include <stdatomic.h>
-# endif
+#endif
 #endif
 
 #if defined(_MSC_VER)
@@ -42,9 +43,6 @@ limitations under the License.
 
 static const double SECOND = NANOS(1); // one second in nanos
 
-static time_fn clock_fn;
-static void *clock_ctx;
-
 static double interval = 5; // 5 seconds is default
 static double intervalNanos = NANOS(5);
 
@@ -52,16 +50,13 @@ static void tick_ewma(rate_t *ewma);
 static void tick_cma(rate_t *cma);
 static void tick_instant(rate_t *inst);
 
-extern void metrics_init(long interval_secs, time_fn f, void *time_ctx) {
+static uint64_t metrics_now(void) {
+    return uv_hrtime() / 1000000;
+}
 
-    if (clock_fn == NULL) {
-        clock_fn = f;
-        clock_ctx = time_ctx;
-        
-        interval = (double)interval_secs;
-        intervalNanos = NANOS(interval);
-    }
-
+extern void metrics_init(long interval_secs) {
+    interval = (double)interval_secs;
+    intervalNanos = NANOS(interval);
 }
 
 extern void metrics_rate_close(rate_t* r) {
@@ -114,21 +109,16 @@ extern int metrics_rate_init(rate_t *r, rate_type type) {
         default:
             return -1;
     }
-    if (clock_fn) {
-        r->last_tick = clock_fn(clock_ctx);
-    }
-
+    r->last_tick = metrics_now();
     r->active = true;
     return 0;
 }
 
 static void rate_catchup(rate_t *r) {
-    if (clock_fn) {
-        uint64_t now = clock_fn(clock_ctx);
-        while (now > r->last_tick + (uint64_t) MILLIS(interval)) {
-            r->tick_fn(r);
-            r->last_tick = r->last_tick + (uint64_t) MILLIS(interval);
-        }
+    uint64_t now = metrics_now();
+    while (now > r->last_tick + (uint64_t) MILLIS(interval)) {
+        r->tick_fn(r);
+        r->last_tick = r->last_tick + (uint64_t) MILLIS(interval);
     }
 }
 
@@ -155,7 +145,7 @@ static double instant_rate(rate_t *r) {
 static void tick_cma(rate_t *cma) {
     double r = instant_rate(cma);
     double current_rate = *(double*)&cma->rate;
-    current_rate = (r + current_rate * cma->param) / ((double) cma->param + 1);
+    current_rate = (r + current_rate * (double)cma->param) / ((double) cma->param + 1);
 
     atomic_exchange(&cma->rate, *(int64_t *) (&current_rate));
     atomic_exchange(&cma->param, cma->param + 1);

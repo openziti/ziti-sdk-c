@@ -566,7 +566,7 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
     }
 }
 
-static int do_ziti_dial(ziti_connection conn, const char *service, ziti_dial_opts *dial_opts, ziti_conn_cb conn_cb, ziti_data_cb data_cb) {
+static int do_ziti_dial(ziti_connection conn, const char *service, const ziti_dial_opts *dial_opts, ziti_conn_cb conn_cb, ziti_data_cb data_cb) {
     if (!conn->ziti_ctx->enabled) { return ZITI_DISABLED; }
 
     assert(conn->type == None);
@@ -621,7 +621,7 @@ int ziti_dial(ziti_connection conn, const char *service, ziti_conn_cb conn_cb, z
     return ziti_dial_with_options(conn, service, NULL, conn_cb, data_cb);
 }
 
-int ziti_dial_with_options(ziti_connection conn, const char *service, ziti_dial_opts *dial_opts, ziti_conn_cb conn_cb,
+int ziti_dial_with_options(ziti_connection conn, const char *service, const ziti_dial_opts *dial_opts, ziti_conn_cb conn_cb,
                            ziti_data_cb data_cb) {
     return do_ziti_dial(conn, service, dial_opts, conn_cb, data_cb);
 }

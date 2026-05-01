@@ -22,23 +22,35 @@
 #include "ziti_ctrl.h"
 #include "auth_method.h"
 #include <ziti/ziti_log.h>
+#include <ziti/ziti.h>
+
+#ifndef line_var
+#define concat_1(a, b) a ## b
+#define concat_2(a, b) concat_1(a, b)
+#define line_var(name) concat_2(name, __LINE__)
+#endif
 
 #define UNTIL(c) [&](){ return !(c); }
 #define WHILE(c) [&](){ return (c); }
 
+#define t_ZITI_OK(op, expr) do { \
+    int line_var(rc) = (expr);             \
+    INFO("result[" << #expr << "]: " << ziti_errorstr(line_var(rc))); \
+    op(line_var(rc) == ZITI_OK); \
+} while(0)
+
+#define CHECK_ZITI_OK(expr) t_ZITI_OK(CHECK, expr)
+#define REQUIRE_ZITI_OK(expr) t_ZITI_OK(REQUIRE, expr)
+
 class LoopTestCase {
     uv_loop_t *m_loop;
-    uv_idle_t m_check;
 
 protected:
     LoopTestCase():
-        m_loop(uv_loop_new()), m_check() {
-        uv_idle_init(m_loop, &m_check);
-        uv_unref((uv_handle_t*)&m_check);
+        m_loop(uv_loop_new()) {
     }
 
     ~LoopTestCase() {
-        uv_close((uv_handle_t*)&m_check, nullptr);
         for (int i = 0; i < 10; i++) {
             ZITI_LOG(INFO, "loop close pass %d", i);
             if (uv_run(loop(), UV_RUN_ONCE) == 0) break;
@@ -52,40 +64,92 @@ protected:
     uv_loop_t *loop() { return m_loop; }
 
     bool run(std::function<bool()> cond, int timeout_ms = 10000) {
-        auto timer = new uv_timer_t;
-        uv_timer_init(loop(), timer);
+        auto deadline = uv_now(loop()) + timeout_ms;
 
-        struct checker_s {
-            bool timeout{false};
-            std::function<bool()>& condition;
-        } checker { .condition = cond };
-
-        timer->data = &checker;
-        if (timeout_ms > 0) {
-            uv_timer_start(timer, [](uv_timer_t *t){
-                auto c = (checker_s*)(t->data);
-                c->timeout = true;
-            }, timeout_ms, 0);
-        }
-        m_check.data = &checker;
-        uv_ref((uv_handle_t*)&m_check);
-        uv_idle_start(&m_check, [](uv_idle_t *ch){
-            auto c = (checker_s*)(ch->data);
-            bool b = c->condition();
-            if (!b) {
-                ch->data = nullptr;
-                uv_stop(ch->loop);
+        while(uv_now(loop()) < deadline) {
+            if (!cond()) {
+                return true;
             }
-        });
-
-        uv_run(loop(), UV_RUN_DEFAULT);
-        uv_idle_stop(&m_check);
-        uv_unref((uv_handle_t*)&m_check);
-        uv_close((uv_handle_t*)timer, [](uv_handle_t *t){
-            delete (uv_timer_t*)t;
-        });
+            uv_run(loop(), UV_RUN_NOWAIT);
+        }
         ZITI_LOG(INFO, "loop paused");
-        return !checker.timeout;
+        return false;
+    }
+};
+
+inline constexpr const char* ALL_CONFIGS[] = {
+    "all", nullptr,
+};
+
+class ZitiTestCase : public LoopTestCase {
+  protected:
+    ziti_config config{};
+    ziti_context ztx{};
+    bool loaded{};
+    int load_error{};
+
+    ZitiTestCase() {
+        ziti_log_init(loop(), 5, nullptr);
+        auto test_client = ZitiTestCase::test_client();
+        if (!test_client) {
+            FAIL("test_client environment variable must be set to run this test");
+        }
+        REQUIRE_ZITI_OK(ziti_load_config(&config, test_client));
+        REQUIRE_ZITI_OK(ziti_context_init(&ztx, &config));
+
+        const ziti_options opts {
+            .config_types = (const char**)ALL_CONFIGS,
+            .app_ctx = this,
+            .events = ZitiContextEvent,
+            .event_cb = [](ziti_context ztx, const ziti_event_t *ev) {
+                auto self = (ZitiTestCase*)ziti_app_ctx(ztx);
+                if (ev->type == ZitiContextEvent) {
+                    if (ev->ctx.ctrl_status == ZITI_OK) {
+                        self->loaded = true;
+                    } else {
+                        self->load_error = ev->ctx.ctrl_status;
+                    }
+                }
+            },
+        };
+        REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &opts));
+        REQUIRE_ZITI_OK(ziti_context_run(ztx, loop()));
+        REQUIRE(run(UNTIL(loaded || load_error != 0)));
+        REQUIRE_ZITI_OK(load_error);
+        REQUIRE(loaded);
+    }
+
+    ~ZitiTestCase() {
+        ziti_shutdown(ztx);
+        free_ziti_config(&config);
+    }
+
+    static const char* test_client() {
+        return getenv("test_client");
+    }
+
+    static const char* test_service() {
+        return getenv("test_service");
+    }
+
+    const ziti_service* ensureService(const char* name = test_service()) {
+        struct ctx_t {
+            const ziti_service* srv{};
+            int status{};
+        } c;
+        int rc = ziti_service_available(
+            ztx, name,
+            [](ziti_context ztx, const ziti_service *srv, int status, void *ctx) {
+              auto c = (struct ctx_t*)ctx;
+              c->srv = srv;
+              c->status = status;
+            },
+            &c);
+        REQUIRE_ZITI_OK(rc);
+        REQUIRE(run(UNTIL(c.srv != nullptr || c.status != 0)));
+        REQUIRE_ZITI_OK(c.status);
+        REQUIRE(c.srv);
+        return c.srv;
     }
 };
 
@@ -170,7 +234,7 @@ static inline std::string auth_login(ziti_auth_method_t *m, uv_loop_t *loop) {
 
 struct deferer {
     deferer() = default;
-    std::function<void()> cb{};
+    std::function<void()> cb{[](){}};
     ~deferer() { cb(); }
 };
 
