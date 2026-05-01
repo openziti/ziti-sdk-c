@@ -28,9 +28,6 @@
 
 #include "ziti/model_collections.h"
 #include "ziti/model_support.h"
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #if _WIN32
 
@@ -61,6 +58,14 @@ extern "C" {
 #define z_typeof(x) typeof(x)
 #endif
 #endif
+
+#define HTTP_REQ_QUERY(req, ...)\
+    tlsuv_http_req_query(req, sizeof((tlsuv_http_pair[]){__VA_ARGS__})/sizeof(tlsuv_http_pair), (tlsuv_http_pair[]){__VA_ARGS__})
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 extern const char *ziti_get_build_version(int verbose);
 
 extern const char *ziti_git_branch();
