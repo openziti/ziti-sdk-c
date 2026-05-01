@@ -23,7 +23,6 @@
 #include "fixtures.h"
 
 struct capture {
-    bool loaded{};
     int connect_error{};
     bool connected{};
 
@@ -32,87 +31,100 @@ struct capture {
     int read_error{};
 
     bool closed{};
-    uv_loop_t *loop{nullptr};
 };
 
-TEST_CASE_METHOD(ZitiTestCase, "connect", "[connection]") {
-    auto config = test_client();
-    auto service = test_service();
-    if(!config || !service) {
-        SKIP("test_client and test_service environment variables must be set to run this test");
-    }
+class ZitiConnectTestCase : public ZitiTestCase {
+  protected:
+    void run_connect_test(const char *service, const ziti_dial_opts *dialOpts);
+};
 
-    ziti_config cfg{};
-    ziti_context ztx{};
+TEST_CASE_METHOD(ZitiConnectTestCase, "connect with intercept", "[connection]") {
+
+    ziti_dial_opts dialOpts{};
+    ziti_intercept_cfg_v1 intercept_cfg{};
     DEFER {
-        ziti_shutdown(ztx);
-        free_ziti_config(&cfg);
+        ziti_dial_opts_free(&dialOpts);
+        free_ziti_intercept_cfg_v1(&intercept_cfg);
     };
 
-    INFO("config file: " << config);
-    REQUIRE(ziti_load_config(&cfg, config) == ZITI_OK);
-    REQUIRE(ziti_context_init(&ztx, &cfg) == ZITI_OK);
-    capture c{.loop = loop()};
-    const ziti_options opts {
-        .app_ctx = &c,
-        .events = ZitiContextEvent,
-        .event_cb = [](ziti_context ztx, const ziti_event_t *ev) {
-            auto capt = (capture*)ziti_app_ctx(ztx);
-            if (ev->type == ZitiContextEvent) {
-                if (ev->ctx.ctrl_status == ZITI_OK) {
-                    capt->loaded = true;
-                    printf("ZITI_CONTEXT_READY\n");
-                    fflush(stdout);
-                }
-            }
-        },
-    };
-    REQUIRE(ziti_context_set_options(ztx, &opts) == ZITI_OK);
-    REQUIRE(ziti_context_run(ztx, loop()) == ZITI_OK);
-    REQUIRE(run(UNTIL(c.loaded)));
+    auto srv = ensureService();
+    REQUIRE(ziti_service_get_config(srv, ZITI_INTERCEPT_CFG_V1,
+                                    (void*)&intercept_cfg, (parse_service_cfg_f)parse_ziti_intercept_cfg_v1) == ZITI_OK);
+    auto addr = (ziti_address*)model_list_head(&intercept_cfg.addresses);
+    auto ports = (ziti_port_range*)model_list_head(&intercept_cfg.port_ranges);
+    REQUIRE(addr);
+    REQUIRE(addr->type == ziti_address_hostname);
+    REQUIRE(ports);
 
+    INFO("hostname: " << addr->addr.hostname);
+    INFO("ports: " << ports->low << "-" << ports->high);
+
+    auto s = ziti_dial_opts_for_addr(&dialOpts, ztx,
+                                     ziti_protocols.tcp, addr->addr.hostname, (int)ports->low, nullptr, 0);
+
+    REQUIRE(s);
+    CHECK(s == srv);
+    run_connect_test(s->name, &dialOpts);
+}
+
+TEST_CASE_METHOD(ZitiConnectTestCase, "connect", "[connection]") {
+    auto service = ensureService();
+    run_connect_test(service->name, nullptr);
+}
+
+void ZitiConnectTestCase::run_connect_test(const char *service, const ziti_dial_opts *dialOpts) {
+    capture c{};
     ziti_connection conn{};
     ziti_conn_init(ztx, &conn, &c);
+    REQUIRE(conn);
+
     INFO("dialing service: " << service);
+    DEFER {
+            int r = ziti_close(conn, [](ziti_connection conn){
+              auto capt = (capture*)ziti_conn_data(conn);
+              capt->closed = true;
+            });
+            CHECK_ZITI_OK(r);
+            if (r == ZITI_OK) {
+                run(UNTIL(c.closed));
+            }
+    };
 
-    CHECK(ZITI_OK == ziti_dial(conn, service,
-                               [](ziti_connection conn, int status) {
-                                 auto capt = (capture*)ziti_conn_data(conn);
-                                 capt->connect_error = status;
-                                 if (status == ZITI_OK) {
-                                     capt->connected = true;
-                                     ZITI_LOG(INFO, "connection ready");
-                                 }
-                               },
-                               [](ziti_connection conn, const uint8_t * data, ssize_t len) {
-                                 auto capt = (capture*)ziti_conn_data(conn);
-                                 if (len == ZITI_EOF) {
-                                     capt->eof = true;
-                                 } else if (len < 0) {
-                                     capt->read_error = len;
-                                 } else {
-                                     capt->received.emplace_back(data, data + len);
-                                 }
-                                 return len;
-              }));
-
+    auto dial_rc = ziti_dial_with_options(conn, service, dialOpts,
+                                          [](ziti_connection conn, int status) {
+                                            auto capt = (capture*)ziti_conn_data(conn);
+                                            capt->connect_error = status;
+                                            if (status == ZITI_OK) {
+                                                capt->connected = true;
+                                                ZITI_LOG(INFO, "connection ready");
+                                            }
+                                          },
+                                          nullptr);
+    CHECK_ZITI_OK(dial_rc);
     CHECK(run(UNTIL(c.connected || c.connect_error != 0)));
-    CHECK(c.connect_error == ZITI_OK);
-    CHECK(c.connected);
 
-    CHECK(ziti_write(conn, (uint8_t*)"hello", 5, nullptr, nullptr) == ZITI_OK);
-    CHECK(run(UNTIL(!c.received.empty() || c.read_error != 0 || c.eof)));
-    CHECK(c.read_error == 0);
+    CHECK_ZITI_OK(c.connect_error);
+    REQUIRE(c.connected);
+
+    ziti_conn_set_data_cb(conn,
+                          [](ziti_connection conn, const uint8_t * data, ssize_t len) {
+                            auto capt = (capture*)ziti_conn_data(conn);
+                            ZITI_LOG(INFO, "received data: %ld bytes", (long)len);
+                            if (len == ZITI_EOF) {
+                                capt->eof = true;
+                            } else if (len < 0) {
+                                capt->read_error = (int)len;
+                            } else {
+                                capt->received.emplace_back(data, data + len);
+                            }
+                            return len;
+                          });
+
+    CHECK_ZITI_OK(ziti_write(conn, (uint8_t*)"hello", 5, nullptr, nullptr));
+    CHECK(run(WHILE(c.received.empty() && c.read_error == 0 && !c.eof)));
+    CHECK_ZITI_OK(c.read_error);
     CHECK(!c.eof);
-    CHECK(c.received.size() == 1);
+    REQUIRE(c.received.size() == 1);
     CHECK(c.received[0].size() == 5);
     CHECK(memcmp(c.received[0].data(), "hello", 5) == 0);
-
-    ziti_close(conn, [](ziti_connection conn){
-      auto capt = (capture*)ziti_conn_data(conn);
-      capt->closed = true;
-      printf("ZITI_CONNECTION_CLOSED\n");
-      fflush(stdout);
-    });
-    CHECK(run(UNTIL(c.closed)));
 }
