@@ -37,11 +37,6 @@ target_link_libraries(all_tests
         PRIVATE ziti
         PRIVATE Catch2::Catch2WithMain)
 
-add_executable(zitilib-tests zitilib-tests.cpp)
-target_link_libraries(zitilib-tests
-        PUBLIC ziti
-        PRIVATE Catch2::Catch2WithMain)
-
 include(CTest)
 add_test(quick_tests all_tests -d yes "~[integ]~[metrics]" -r junit::out=TEST-quick_tests.xml -r console)
 

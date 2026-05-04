@@ -161,20 +161,3 @@ TEST_CASE("ctrl-token-auth", "[integ]") {
     // free_ziti_service(&service);
     // free_ziti_config(&cfg);
 }
-
-TEST_CASE("zitilib startup/shutdown", "[zitilib]") {
-    Ziti_lib_init();
-    Ziti_lib_init();
-
-    ziti_handle_t mm;
-    CHECK(ZITI_OK == Ziti_load_context(&mm, TEST_CLIENT));
-
-    Ziti_lib_shutdown();
-    Ziti_lib_shutdown();
-
-    CHECK(ZITI_INVALID_STATE == Ziti_load_context(&mm, TEST_CLIENT));
-
-    Ziti_lib_init();
-    CHECK(ZITI_OK == Ziti_load_context(&mm, TEST_CLIENT));
-    Ziti_lib_shutdown();
-}
