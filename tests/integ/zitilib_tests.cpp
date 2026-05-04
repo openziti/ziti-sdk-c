@@ -32,8 +32,29 @@ class ZitilibTestCase {
     }
 };
 
-TEST_CASE_METHOD(ZitilibTestCase, "zitilib init", "[zitilib]") {
+TEST_CASE_METHOD(ZitilibTestCase, "zitilib: init", "[zitilib]") {
     auto error = Ziti_last_error();
     INFO("error: " << error << ": " << ziti_errorstr(error));
     REQUIRE(error == ZITI_OK);
+}
+
+TEST_CASE_METHOD(ZitilibTestCase, "zitilib: load context", "[zitilib]") {
+    auto params = GENERATE(
+        std::pair((const char*)nullptr, ZITI_INVALID_CONFIG),
+        std::pair("invalid", ZITI_CONFIG_NOT_FOUND),
+        std::pair(getenv("test_client"), ZITI_OK)
+        );
+
+    WHEN(std::format("context[{}]", params.first ? params.first : "(null)")) {
+        ziti_handle_t ztx{};
+        auto error = Ziti_load_context(&ztx, params.first);
+        INFO(std::format("error[{}]: {}/{}", params.first ? params.first : "(null)", error, ziti_errorstr(error)));
+        CHECK(error == params.second);
+        CHECK(Ziti_last_error() == params.second);
+        if (params.second == ZITI_OK) {
+            CHECK(ztx != ZITI_INVALID_HANDLE);
+        } else {
+            CHECK(ztx == ZITI_INVALID_HANDLE);
+        }
+    }
 }

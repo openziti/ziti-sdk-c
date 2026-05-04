@@ -296,8 +296,15 @@ error:
 }
 
 int Ziti_load_context(ziti_handle_t *h, const char *identity) {
-    if (h == NULL || identity == NULL || !zl_check_daemon()) {
-        return ZITI_INVALID_STATE;
+    if (h == NULL) {
+        zl_set_error(ZITI_INVALID_CONFIG);
+        return ZITI_INVALID_CONFIG;
+    }
+
+    if (identity == NULL || !zl_check_daemon()) {
+        *h = ZITI_INVALID_HANDLE;
+        zl_set_error(ZITI_INVALID_CONFIG);
+        return ZITI_INVALID_CONFIG;
     }
     future_t *f = schedule_on_loop(load_ziti_ctx, (void *) identity, true);
     void *res;
