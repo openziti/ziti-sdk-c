@@ -69,6 +69,7 @@ void Ziti_lib_init(void) {
             uv_cond_wait(&loop_cond, &loop_lock);
         }
     }
+    zl_set_error(ZITI_OK);
 }
 
 future_t *schedule_on_loop(loop_work_cb cb, void *arg, bool wait) {
