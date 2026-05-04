@@ -18,7 +18,6 @@
 //
 
 #include <catch2/catch_all.hpp>
-#include <format>
 
 #include "fixtures.h"
 #include <ziti/zitilib.h>
@@ -46,10 +45,10 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: load context", "[zitilib]") {
         std::pair(getenv("test_client"), ZITI_OK)
         );
 
-    WHEN(std::format("context[{}]", params.first ? params.first : "(null)")) {
+    WHEN("context: " << (params.first ? params.first : "(null)")) {
         ziti_handle_t ztx{};
         auto error = Ziti_load_context(&ztx, params.first);
-        INFO(std::format("error[{}]: {}/{}", params.first ? params.first : "(null)", error, ziti_errorstr(error)));
+        INFO("error[" << (params.first ? params.first : "(null)") << "]: " << error << "/" << ziti_errorstr(error));
         CHECK(error == params.second);
         CHECK(Ziti_last_error() == params.second);
         if (params.second == ZITI_OK) {
@@ -66,13 +65,13 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: load after shutdown", "[zitilib]") {
     auto cfg = getenv("test_client");
     WHEN("with timeout") {
         auto error = Ziti_load_context_with_timeout(&ztx, cfg, 1000);
-        INFO(std::format("error: {}/{}", error, ziti_errorstr(error)));
+        INFO("error: " << error << "/" << ziti_errorstr(error));
         CHECK(error == ZITI_INVALID_STATE);
         CHECK(Ziti_last_error() == ZITI_INVALID_STATE);
     }
     WHEN("without timeout") {
         auto error = Ziti_load_context(&ztx, cfg);
-        INFO(std::format("error: {}/{}", error, ziti_errorstr(error)));
+        INFO("error: " << error << "/" << ziti_errorstr(error));
         CHECK(error == ZITI_INVALID_STATE);
         CHECK(Ziti_last_error() == ZITI_INVALID_STATE);
     }
@@ -86,10 +85,11 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: load context with timeout", "[zitili
         std::tuple(getenv("test_client"), 1, ZITI_TIMEOUT)
         );
 
-    WHEN(std::format("context[{}] with timeout[{}]", std::get<0>(params) ? std::get<0>(params) : "(null)", std::get<1>(params))) {
+    WHEN("context[" << (std::get<0>(params) ? std::get<0>(params) : "(null)")
+                    << "] with timeout[" << std::get<1>(params) << "]") {
         ziti_handle_t ztx{};
         auto error = Ziti_load_context_with_timeout(&ztx, std::get<0>(params), std::get<1>(params));
-        INFO(std::format("error[{}]: {}/{}", std::get<0>(params) ? std::get<0>(params) : "(null)", error, ziti_errorstr(error)));
+        INFO("error: " << error << "/" << ziti_errorstr(error));
         CHECK(error == std::get<2>(params));
         CHECK(Ziti_last_error() == std::get<2>(params));
         if (std::get<2>(params) == ZITI_OK) {
