@@ -302,8 +302,8 @@ int Ziti_load_context(ziti_handle_t *h, const char *identity) {
     }
 
     if (h == NULL) {
-        zl_set_error(ZITI_INVALID_CONFIG);
-        return ZITI_INVALID_CONFIG;
+        zl_set_error(ZITI_INVALID_STATE);
+        return ZITI_INVALID_STATE;
     }
 
     if (identity == NULL) {
@@ -338,8 +338,8 @@ int Ziti_load_context_with_timeout(ziti_handle_t *h, const char *identity, int t
     }
 
     if (h == NULL) {
-        zl_set_error(ZITI_INVALID_CONFIG);
-        return ZITI_INVALID_CONFIG;
+        zl_set_error(ZITI_INVALID_STATE);
+        return ZITI_INVALID_STATE;
     }
 
     if (identity == NULL) {

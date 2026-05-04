@@ -120,7 +120,9 @@ int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mo
  *               and then call [Ziti_login_external] with the selected signer name.
  *   [ZITI_PARTIALLY_AUTHENTICATED] if the identity is partially authenticated and requires additional authentication (TOTP)
  *   [ZITI_MFA_NOT_ENROLLED] if the identity is not enrolled in MFA but is required for authentication
- *   [ZITI_INVALID_STATE] if [h] is NULL
+ *   [ZITI_INVALID_STATE] if [h] is NULL,
+ *       or Ziti library has not been initialized with [Ziti_lib_init]
+ *       or was shutdown with [Ziti_shutdown]
  *   [ZITI_INVALID_CONFIG] if [identity] is not a valid Ziti identity JSON
  */
 ZITI_FUNC
@@ -146,7 +148,9 @@ int Ziti_load_context(ziti_handle_t *h, const char *identity);
  *   [ZITI_PARTIALLY_AUTHENTICATED] if the identity is partially authenticated and requires additional authentication (TOTP)
  *   [ZITI_MFA_NOT_ENROLLED] if the identity is not enrolled in MFA but is required for authentication
  *   [ZITI_TIMEOUT] if context loading did not complete within the specified timeout
- *   [ZITI_INVALID_STATE] if [h] is NULL
+ *   [ZITI_INVALID_STATE] if [h] is NULL,
+ *        or Ziti library has not been initialized with [Ziti_lib_init]
+ *        or was shutdown with [Ziti_shutdown]
  *   [ZITI_INVALID_CONFIG] if [identity] is not a valid Ziti identity JSON
  */
 ZITI_FUNC
