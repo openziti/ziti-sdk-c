@@ -18,8 +18,9 @@
 //
 
 #include <catch2/catch_all.hpp>
-#include "fixtures.h"
+#include <format>
 
+#include "fixtures.h"
 #include <ziti/zitilib.h>
 
 class ZitilibTestCase {
