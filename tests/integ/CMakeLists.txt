@@ -44,7 +44,7 @@ target_link_libraries(integ-tests
         PRIVATE Catch2::Catch2WithMain
 )
 
-set_property(TARGET integ-tests PROPERTY CXX_STANDARD 20)
+set_property(TARGET integ-tests PROPERTY CXX_STANDARD 23)
 if (MINGW)
     target_link_options(integ-tests PRIVATE -static-libgcc)
 endif ()
