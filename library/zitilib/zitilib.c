@@ -296,8 +296,20 @@ error:
 }
 
 int Ziti_load_context(ziti_handle_t *h, const char *identity) {
-    if (h == NULL || identity == NULL || !zl_check_daemon()) {
+    if (!zl_check_daemon()) {
+        zl_set_error(ZITI_INVALID_STATE);
         return ZITI_INVALID_STATE;
+    }
+
+    if (h == NULL) {
+        zl_set_error(ZITI_INVALID_STATE);
+        return ZITI_INVALID_STATE;
+    }
+
+    if (identity == NULL) {
+        *h = ZITI_INVALID_HANDLE;
+        zl_set_error(ZITI_INVALID_CONFIG);
+        return ZITI_INVALID_CONFIG;
     }
     future_t *f = schedule_on_loop(load_ziti_ctx, (void *) identity, true);
     void *res;
@@ -320,8 +332,20 @@ int Ziti_load_context(ziti_handle_t *h, const char *identity) {
 }
 
 int Ziti_load_context_with_timeout(ziti_handle_t *h, const char *identity, int timeout_ms) {
-    if (h == NULL || identity == NULL || !zl_check_daemon()) {
+    if (!zl_check_daemon()) {
+        zl_set_error(ZITI_INVALID_STATE);
         return ZITI_INVALID_STATE;
+    }
+
+    if (h == NULL) {
+        zl_set_error(ZITI_INVALID_STATE);
+        return ZITI_INVALID_STATE;
+    }
+
+    if (identity == NULL) {
+        *h = ZITI_INVALID_HANDLE;
+        zl_set_error(ZITI_INVALID_CONFIG);
+        return ZITI_INVALID_CONFIG;
     }
 
     future_t *f = schedule_on_loop(load_ziti_ctx, (void *) identity, true);
@@ -790,6 +814,7 @@ void do_timeout_cleanup(void *args, future_t *f, uv_loop_t *l) {
         model_map_remove(&ziti_contexts, identity);
 
         // Shutdown the context properly - this will set closing=true and handle cleanup
+        ziti_context_set_options(wrap->ztx, NULL);
         ziti_shutdown(wrap->ztx);
 
         // Free the wrap
