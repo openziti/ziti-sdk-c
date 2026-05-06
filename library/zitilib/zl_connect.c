@@ -179,7 +179,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     const char *id;
     ztx_wrap_t *wrap;
     MODEL_MAP_FOREACH(id, wrap, &ziti_contexts) {
-        await_future(wrap->services_loaded, NULL);
+        await_future(wrap->services_loaded_f, NULL);
     }
 
     NEWP(req, struct conn_req_s);
@@ -289,6 +289,12 @@ static void zl_connect(struct conn_srv_s *req, future_t *f, uv_loop_t *l) {
     if (wrap == NULL) {
         ZITI_LOG(WARN, "ziti handle[%d] not found", req->ziti_handle);
         fail_future(f, EINVAL);
+        goto err_cleanup;
+    }
+
+    if (model_map_get(&wrap->intercepts, cstr_str(&req->service)) == NULL) {
+        ZITI_LOG(WARN, "no service[%s]", cstr_str(&req->service));
+        fail_future(f, ECONNREFUSED);
         goto err_cleanup;
     }
 
@@ -406,8 +412,9 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
         addr_len = sizeof(struct sockaddr_in6);
     }
 
+    // ignore bind error (EINVAL) in case the app already bound the socket
     NEWP(req, struct conn_srv_s);
-    if (bind(socket, (struct sockaddr*)&addr, addr_len) != 0 ||
+    if ((bind(socket, (struct sockaddr*)&addr, addr_len) != 0 && (errno != EINVAL)) ||
         getsockname(socket, (struct sockaddr *)&req->app_addr, &addr_len) != 0) {
         free(req);
         return -1;
@@ -426,7 +433,15 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
     destroy_future(f);
     if (rc != 0 || zl_addr.ss_family == 0) {
         errno = rc;
-        zl_set_error(ZITI_SERVICE_UNAVAILABLE);
+        switch (rc) {
+        case EADDRNOTAVAIL:
+        case ECONNREFUSED:
+            zl_set_error(ZITI_SERVICE_UNAVAILABLE);
+            break;
+        case EINVAL:
+        default:
+             zl_set_error(ZITI_INVALID_STATE);
+        }
         return -1;
     }
 
