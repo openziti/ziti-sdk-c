@@ -94,36 +94,35 @@ static void process_service_event(ztx_wrap_t *wrap, const struct ziti_service_ev
         FREE(intercept);
     }
 
-    for (int i = 0; ev->changed && ev->changed[i] != NULL; i++) {
-        ziti_service *s = ev->changed[i];
-        ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
+    ziti_service_array srv_arrays[] = {
+        ev->changed,
+        ev->added,
+    };
 
-        if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
-            intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+    for (size_t ai = 0; ai < sizeof(srv_arrays)/sizeof(srv_arrays[0]); ai++) {
+        ziti_service_array arr = srv_arrays[ai];
+        for (int i = 0; arr && arr[i] != NULL; i++) {
+            ziti_service *s = arr[i];
+            ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
+            ziti_client_cfg_v1 clt_cfg = {0};
+
+            if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f)parse_ziti_intercept_cfg_v1) == ZITI_OK) {
+                intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+            } else if (ziti_service_get_config(s, ZITI_CLIENT_CFG_V1, &clt_cfg, (parse_service_cfg_f)parse_ziti_client_cfg_v1) == ZITI_OK) {
+                ziti_intercept_from_client_cfg(intercept, &clt_cfg);
+                intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+                free_ziti_client_cfg_v1(&clt_cfg);
+            } else {
+                // use empty intercept to indicate service has no config
+                intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+            }
+
+            free_ziti_intercept_cfg_v1(intercept);
+            FREE(intercept);
         }
-
-        free_ziti_intercept_cfg_v1(intercept);
-        FREE(intercept);
     }
 
-    for (int i = 0; ev->added && ev->added[i] != NULL; i++) {
-        ziti_service *s = ev->added[i];
-        ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
-        ziti_client_cfg_v1 clt_cfg = {0};
-
-        if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
-            intercept = model_map_set(&wrap->intercepts, s->name, intercept);
-        } else if (ziti_service_get_config(s, ZITI_CLIENT_CFG_V1, &clt_cfg, (parse_service_cfg_f) parse_ziti_client_cfg_v1) == ZITI_OK) {
-            ziti_intercept_from_client_cfg(intercept, &clt_cfg);
-            intercept = model_map_set(&wrap->intercepts, s->name, intercept);
-            free_ziti_client_cfg_v1(&clt_cfg);
-        }
-
-        free_ziti_intercept_cfg_v1(intercept);
-        FREE(intercept);
-    }
-
-    complete_future(wrap->services_loaded, NULL, 0);
+    complete_future(wrap->services_loaded_f, NULL, 0);
 }
 
 static void process_auth_event(ztx_wrap_t *wrap, const struct ziti_auth_event *ev) {
@@ -158,18 +157,23 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
     if (ev->type == ZitiContextEvent) {
         int err = ev->ctx.ctrl_status;
         if (err == ZITI_OK) {
-            complete_future(wrap->auth_future, (void *) (uintptr_t) ztx->id, ZITI_OK);
-            wrap->auth_future = NULL;
+            // defer completing auth until services load, since some apps wait for that before proceeding
+            if (wrap->services_loaded) {
+                complete_future(wrap->auth_future, (void *)(uintptr_t)ztx->id, ZITI_OK);
+                wrap->auth_future = NULL;
+            }
 
-            if (!wrap->services_loaded) {
-                wrap->services_loaded = new_future();
+            if (!wrap->services_loaded_f) {
+                wrap->services_loaded_f = new_future();
             }
         } else if (err == ZITI_PARTIALLY_AUTHENTICATED) {
             complete_future(wrap->auth_future, (void *) (uintptr_t) ztx->id, ZITI_PARTIALLY_AUTHENTICATED);
             wrap->auth_future = NULL;
             return;
         } else if (err == ZITI_DISABLED) {
-            destroy_future(wrap->services_loaded);
+            wrap->services_loaded = false;
+            destroy_future(wrap->services_loaded_f);
+            wrap->services_loaded_f = NULL;
             ziti_set_app_ctx(ztx, NULL);
             free_wrap(wrap);
         }
@@ -234,6 +238,12 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         process_auth_event(wrap, &ev->auth);
     } else if (ev->type == ZitiServiceEvent) {
         process_service_event(wrap, &ev->service);
+        wrap->services_loaded = true;
+        if (wrap->auth_future) {
+            // if we were waiting for services to load before completing auth, do that now
+            complete_future(wrap->auth_future, (void *) (uintptr_t) ztx->id, ZITI_OK);
+            wrap->auth_future = NULL;
+        }
     } else if (ev->type == ZitiConfigEvent && wrap->enroll_future) {
         // cert mode: wait for cert; token/none mode: any config event
         if (wrap->enroll_mode != ziti_enroll_cert || ev->cfg.config->id.cert) {
@@ -1084,7 +1094,7 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
 
     MODEL_MAP_FOR(it, ziti_contexts) {
         ztx_wrap_t *ztx = model_map_it_value(it);
-        await_future(ztx->services_loaded, NULL);
+        await_future(ztx->services_loaded_f, NULL);
     }
 
     struct conn_req_s req = {
