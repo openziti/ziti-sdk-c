@@ -22,6 +22,7 @@
 #include "fixtures.h"
 #include <ziti/zitilib.h>
 
+#include <functional>
 #include <poll.h>
 
 static inline void checkPollErr(pollfd& fd) {
@@ -137,6 +138,92 @@ static void set_blocking (ziti_socket_t sock, bool blocking) {
 #endif
 }
 
+static void checkSocketSync(ziti_socket_t sock, const std::function<int(ziti_socket_t)> &connect_fn) {
+    auto conn_rc = connect_fn(sock);
+    auto err = errno;
+    auto ze = Ziti_last_error();
+    INFO("error: " << ze << "/" << ziti_errorstr(ze) << " errno: " << err << "/" << strerror(err));
+    REQUIRE(conn_rc == 0);
+    CHECK(ze == ZITI_OK);
+
+    auto send_rc = send(sock, "hello", 5, 0);
+    auto send_err = send_rc == -1 ?  errno : 0;
+    INFO("send error: " << send_err << "/" << strerror(send_err));
+    REQUIRE(send_rc == 5);
+
+    char buf[16];
+    auto read_rc = read(sock, buf, sizeof(buf));
+    auto read_err = read_rc == -1 ? errno : 0;
+    INFO("recv error: " << read_err << "/" << strerror(read_err));
+    REQUIRE(read_rc == 5);
+    CHECK(std::string(buf, buf + read_rc) == "hello");
+}
+
+static void checkSocketAsync(ziti_socket_t sock, const std::function<int(ziti_socket_t)> &connect_fn) {
+    int sock_type = 0;
+    socklen_t sock_type_len = sizeof(sock_type);
+    REQUIRE(getsockopt(sock, SOL_SOCKET, SO_TYPE, (void*)&sock_type, &sock_type_len) == 0);
+
+    auto conn_rc = connect_fn(sock);
+    if (conn_rc == -1) {
+        REQUIRE(sock_type == SOCK_STREAM); // UDP should connect immediately
+        auto err = errno;
+        auto ze = Ziti_last_error();
+        INFO("error: " << ze << "/" << ziti_errorstr(ze) << " errno: " << err << "/" << strerror(err));
+        CHECK(ze == ZITI_OK);
+        REQUIRE((err == EINPROGRESS || err == EWOULDBLOCK));
+        pollfd p = {
+            .fd = sock,
+            .events = POLLOUT,
+        };
+        REQUIRE(poll(&p, 1, 5000) == 1);
+        checkPollErr(p);
+        REQUIRE((p.revents & POLLOUT) > 0);
+    } else if (conn_rc == 0) {
+        INFO("connect completed immediately");
+        auto ze = Ziti_last_error();
+        INFO("error: " << ze << "/" << ziti_errorstr(ze));
+        CHECK(ze == ZITI_OK);
+    } else {
+        FAIL("unexpected return code: " << conn_rc);
+    }
+
+    auto send_rc = send(sock, "hello", 5, 0);
+    auto send_err = send_rc == -1 ?  errno : 0;
+    INFO("send error: " << send_err << "/" << strerror(send_err));
+    REQUIRE(send_rc == 5);
+
+    char buf[16];
+    auto read_rc = recv(sock, buf, sizeof(buf), 0);
+    if (read_rc == -1) { // this is expected in non-blocking mode
+        auto read_err = errno;
+        INFO("recv error: " << read_err << "/" << strerror(read_err));
+        REQUIRE((read_err == EWOULDBLOCK || read_err == EAGAIN));
+        INFO("data not available immediately, waiting for it...");
+
+        INFO("polling socket " << sock);
+        pollfd p = {
+            .fd = sock,
+            .events = POLLIN
+        };
+        REQUIRE(poll(&p, 1, 5000) == 1);
+        checkPollErr(p);
+        REQUIRE((p.revents & POLLIN) > 0);
+
+        read_rc = recv(sock, buf, sizeof(buf), 0);
+    }
+    REQUIRE(read_rc == 5);
+    CHECK(std::string(buf, buf + read_rc) == "hello");
+}
+
+static inline void checkSocket(ziti_socket_t sock, bool block, const std::function<int(ziti_socket_t)> &connect_fn) {
+    if (block) {
+        checkSocketSync(sock, connect_fn);
+    } else {
+        checkSocketAsync(sock, connect_fn);
+    }
+}
+
 TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect service", "[zitilib]") {
     auto srv = getenv("test_service");
     if (srv == nullptr) {
@@ -148,119 +235,24 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect service", "[zitilib]") {
     REQUIRE(error == ZITI_OK);
     REQUIRE(ztx != ZITI_INVALID_HANDLE);
     REQUIRE(Ziti_last_error() == ZITI_OK);
+    auto bl = GENERATE(true, false);
+    auto sock_type = GENERATE(SOCK_STREAM, SOCK_DGRAM);
+    auto sock_af = GENERATE(AF_INET, AF_INET6);
 
-    for (auto sock_af : {AF_INET, AF_INET6}) {
-        for (auto sock_type : {SOCK_DGRAM, SOCK_STREAM}) {
-            INFO("testing " << (sock_af == AF_INET ? "AF_INET" : "AF_INET6")
-                            << "/" << (sock_type == SOCK_STREAM ? "SOCK_STREAM" : "SOCK_DGRAM"));
-            auto sock = socket(sock_af, sock_type, 0);
+    WHEN((bl ? "blocking" : "async")
+         << "/" << (sock_type == SOCK_STREAM ? "SOCK_STREAM" : "SOCK_DGRAM")
+         << "/" << (sock_af == AF_INET ? "AF_INET" : "AF_INET6")) {
+        auto sock = socket(sock_af, sock_type, 0);
+        INFO("socket error: " << errno << "/" << strerror(errno));
+        REQUIRE(sock != -1);
+        DEFER {
+            close(sock);
+        };
 
-            INFO("socket error: " << errno << "/" << strerror(errno));
-            REQUIRE(sock != -1);
-            DEFER {
-                close(sock);
-            };
-
-            set_blocking(sock, true);
-
-            auto conn_rc = Ziti_connect(sock, ztx, srv, nullptr);
-            auto err = errno;
-            auto ze = Ziti_last_error();
-            INFO("error: " << ze << "/" << ziti_errorstr(ze) << " errno: " << err << "/" << strerror(err));
-            REQUIRE(conn_rc == 0);
-            CHECK(ze == ZITI_OK);
-
-            auto send_rc = send(sock, "hello", 5, 0);
-            auto send_err = send_rc == -1 ?  errno : 0;
-            INFO("send error: " << send_err << "/" << strerror(send_err));
-            REQUIRE(send_rc == 5);
-
-            char buf[16];
-            auto read_rc = read(sock, buf, sizeof(buf));
-            auto read_err = read_rc == -1 ? errno : 0;
-            INFO("recv error: " << read_err << "/" << strerror(read_err));
-            REQUIRE(read_rc == 5);
-            CHECK(std::string(buf, buf + read_rc) == "hello");
-        }
-    }
-}
-
-TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect service (async)", "[zitilib]") {
-    auto srv = getenv("test_service");
-    if (srv == nullptr) {
-        SKIP("'test_service' is not set");
-    }
-
-    ziti_handle_t ztx{};
-    auto error = Ziti_load_context(&ztx, getenv("test_client"));
-    REQUIRE(error == ZITI_OK);
-    REQUIRE(ztx != ZITI_INVALID_HANDLE);
-    REQUIRE(Ziti_last_error() == ZITI_OK);
-
-    for (auto sock_af : {AF_INET, AF_INET6}) {
-        for (auto sock_type : {SOCK_DGRAM, SOCK_STREAM}) {
-            INFO("testing " << (sock_af == AF_INET ? "AF_INET" : "AF_INET6")
-                            << "/" << (sock_type == SOCK_STREAM ? "SOCK_STREAM" : "SOCK_DGRAM"));
-            auto sock = socket(sock_af, sock_type, 0);
-            INFO("socket error: " << errno << "/" << strerror(errno));
-            REQUIRE(sock != -1);
-            DEFER {
-                close(sock);
-            };
-
-            set_blocking(sock, false);
-
-            auto conn_rc = Ziti_connect(sock, ztx, srv, nullptr);
-            if (conn_rc == -1) {
-                REQUIRE(sock_type == SOCK_STREAM); // UDP should connect immediately
-                auto err = errno;
-                auto ze = Ziti_last_error();
-                INFO("error: " << ze << "/" << ziti_errorstr(ze) << " errno: " << err << "/" << strerror(err));
-                CHECK(ze == ZITI_OK);
-                REQUIRE((err == EINPROGRESS || err == EWOULDBLOCK));
-                pollfd p = {
-                    .fd = sock,
-                    .events = POLLOUT,
-                };
-                REQUIRE(poll(&p, 1, 5000) == 1);
-                checkPollErr(p);
-                REQUIRE((p.revents & POLLOUT) > 0);
-            } else if (conn_rc == 0) {
-                INFO("connect completed immediately");
-                auto ze = Ziti_last_error();
-                INFO("error: " << ze << "/" << ziti_errorstr(ze));
-                CHECK(ze == ZITI_OK);
-            } else {
-                FAIL("unexpected return code: " << conn_rc);
-            }
-
-            auto send_rc = send(sock, "hello", 5, 0);
-            auto send_err = send_rc == -1 ?  errno : 0;
-            INFO("send error: " << send_err << "/" << strerror(send_err));
-            REQUIRE(send_rc == 5);
-
-            char buf[16];
-            auto read_rc = recv(sock, buf, sizeof(buf), 0);
-            if (read_rc == -1) { // this is expected in non-blocking mode
-                auto read_err = errno;
-                INFO("recv error: " << read_err << "/" << strerror(read_err));
-                REQUIRE((read_err == EWOULDBLOCK || read_err == EAGAIN));
-                INFO("data not available immediately, waiting for it...");
-
-                INFO("polling socket " << sock);
-                pollfd p = {
-                    .fd = sock,
-                    .events = POLLIN
-                };
-                REQUIRE(poll(&p, 1, 5000) == 1);
-                checkPollErr(p);
-                REQUIRE((p.revents & POLLIN) > 0);
-
-                read_rc = recv(sock, buf, sizeof(buf), 0);
-            }
-            REQUIRE(read_rc == 5);
-            CHECK(std::string(buf, buf + read_rc) == "hello");
-        }
+        set_blocking(sock, bl);
+        checkSocket(sock, bl, [&](ziti_socket_t s) {
+          return Ziti_connect(s, ztx, srv, nullptr);
+        });
     }
 }
 
