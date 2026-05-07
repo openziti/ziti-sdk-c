@@ -54,7 +54,7 @@ runs:
 
     - uses: openziti/ziti/setup-cli@main
 
-    - uses: lukka/get-cmake@v3.30.1
+    - uses: lukka/get-cmake@latest
 
     - uses: lukka/run-vcpkg@v11
       with:
