@@ -78,7 +78,7 @@ jobs:
           - { name: 'Linux ARM64', runner: 'ubuntu-latest', target: 'linux-arm64', builder: 'openziti/ziti-builder:v3' }
           - { name: 'MacOS x86_64', runner: 'macos-15-intel', target: 'macOS-x64' }
           - { name: 'MacOS arm64', runner: 'macos-15', target: 'macOS-arm64' }
-          - { name: 'Windows x86_64', runner: 'windows-2022', target: 'windows-x64' }
+          - { name: 'Windows x86_64', runner: 'windows-2025', target: 'windows-x64' }
           - { name: 'Windows x86', runner: 'windows-2025', target: 'windows-x86' }
           - { name: 'Windows ARM64', runner: 'windows-2025', target: 'windows-arm64' }
           - { name: 'Windows ming64', runner: 'windows-2025', target: 'windows-x64-mingw' }
