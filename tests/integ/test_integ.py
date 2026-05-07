@@ -84,4 +84,4 @@ def test_zitilib_connect(client_identity, test_service, echo_server, tmp_path):
     env['test_client']=client_identity
     env['test_service']=test_service['name']
     env['test_intercept']=test_service['intercept']
-    run_catch_test("zitilib:connect", env, tmp_path)
+    run_catch_test("zl-connect", env, tmp_path)

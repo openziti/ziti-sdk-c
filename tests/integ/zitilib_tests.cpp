@@ -51,7 +51,7 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: load context", "[zitilib]") {
 TEST_CASE_METHOD(ZitilibTestCase, "zitilib: load after shutdown", "[zitilib]") {
     Ziti_lib_shutdown();
     ziti_handle_t ztx{};
-    auto cfg = getenv("test_client");
+    auto cfg = checkENV("test_client");
     WHEN("with timeout") {
         auto error = Ziti_load_context_with_timeout(&ztx, cfg, 1000);
         INFO("error: " << error << "/" << ziti_errorstr(error));
