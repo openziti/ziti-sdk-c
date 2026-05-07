@@ -1071,11 +1071,11 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
 
     in_port_t portnum = port ? (in_port_t) strtol(port, NULL, 10) : 0;
     ZITI_LOG(DEBUG, "host[%s] port[%s]", host, port);
-    struct addrinfo *res = calloc(1, sizeof(struct addrinfo));
+    struct addrinfo *res = calloc(1, sizeof(struct addrinfo) + sizeof(struct sockaddr_in6));
     res->ai_socktype = socktype;
     res->ai_protocol = proto;
 
-    struct sockaddr_in *addr4 = calloc(1, sizeof(struct sockaddr_in6));
+    struct sockaddr_in *addr4 = (void*)(res + 1);
     int rc = 0;
     if ((rc = uv_ip4_addr(host, portnum, addr4)) == 0) {
         ZITI_LOG(DEBUG, "host[%s] port[%s] rc = %d", host, port, rc);
@@ -1087,7 +1087,7 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
         *addrlist = res;
         return 0;
     } else if (uv_ip6_addr(host, portnum, (struct sockaddr_in6 *) addr4) == 0) {
-        ZITI_LOG(INFO, "host[%s] port[%s] rc = %d", host, port, rc);
+        ZITI_LOG(DEBUG, "host[%s] port[%s] rc = %d", host, port, rc);
 
         res->ai_family = AF_INET6;
         res->ai_addr = (struct sockaddr *) addr4;
@@ -1125,7 +1125,6 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
         *addrlist = res;
     } else {
         free(res);
-        free(addr4);
     }
     destroy_future(f);
 
