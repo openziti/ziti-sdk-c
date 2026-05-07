@@ -1,0 +1,107 @@
+name: CI Test
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches-ignore:
+      - main
+      - release-*
+
+
+permissions:
+  contents: write
+  checks: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    permissions:
+      checks: write
+    name: ${{ matrix.spec.target }}-test-${{ matrix.ziti_version }}
+    runs-on: ${{ matrix.spec.runner }}
+    env:
+      BUILD_NUMBER: ${{ github.run_number }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ziti_version: [ 'stable', 'latest' ]
+        spec:
+          - { runner: 'ubuntu-latest', target: 'linux-x64' }
+#          - { runner: 'macos-15-intel', target: 'macOS-x64' }
+#          - { runner: 'macos-15', target: 'macOS-arm64' }
+#          - { runner: 'windows-2025', target: 'windows-x64' }
+#          - { runner: 'windows-2025', target: 'windows-x64-mingw' }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: setup build
+        shell: bash
+        run: |
+          CI_CACHE="${GITHUB_WORKSPACE}/.ci.cache"
+          VCPKG_BINARY_SOURCES="clear;files,${GITHUB_WORKSPACE}/.ci.cache,readwrite"
+          mkdir -p ${CI_CACHE}
+          echo "CI_CACHE=${CI_CACHE}" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=${VCPKG_BINARY_SOURCES}" >> $GITHUB_ENV
+
+      - uses: openziti/ziti/setup-cli@main
+        with:
+          version: ${{ matrix.ziti_version }}
+
+      - uses: lukka/get-cmake@latest
+
+      - uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: './vcpkg.json'
+
+      - uses: actions/cache/restore@v4
+        id: restore
+        with:
+          key: vbc-${{ inputs.target }}-${{ hashFiles('./vcpkg.json', './vcpkg-overlays/**/*') }}
+          restore-keys: vbc-${{ inputs.target }}-
+          path: ${{ env.CI_CACHE }}
+
+      - name: Configure CMake
+        id: configure
+        shell: bash
+        run: |
+          cmake --preset ci-${{ inputs.target }} -G Ninja -Dziti_ASAN=ON -B ./build
+
+      - uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.restore.outputs.cache-primary-key }}
+          path: ${{ env.CI_CACHE }}
+
+      - name: build CMake
+        run: |
+          cmake --build ./build
+        shell: bash
+
+      - name: test
+        working-directory: ./build
+        continue-on-error: true
+        shell: bash
+        run: |
+          ctest -VV --no-compress-output
+
+      - name: upload test summary
+        if: ${{ !cancelled() }}
+        uses: mikepenz/action-junit-report@v6
+        with:
+          detailed_summary: 'true'
+          include_skipped: 'true'
+          report_paths: ${{ github.workspace }}/build/tests/**/TEST-*.xml
+
+      - name: integration tests bundle
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.target }}-integ-testdata
+          path: |
+            ./build/tests/**/testdata/**/*
+
