@@ -261,7 +261,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
  * @return
  */
 ZITI_FUNC
-int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, socklen_t addrlen);
+int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, int addrlen);
 
 /**
  * @brief Bind socket to a Ziti service

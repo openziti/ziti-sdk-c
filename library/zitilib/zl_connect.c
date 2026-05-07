@@ -548,9 +548,9 @@ err_cleanup:
     free(req);
 }
 
-int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, socklen_t addrlen) {
+int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, int addrlen) {
     if (addr == NULL || (addr->sa_family != AF_INET && addr->sa_family != AF_INET6)) {
-        return connect(socket, addr, addrlen);
+        return connect(socket, addr, (socklen_t)addrlen);
     }
     
     int so_type = 0;
@@ -586,7 +586,7 @@ int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, soc
     }
 
     // ziti service not found for given address: try connecting to original
-    return connect(socket, addr, addrlen);
+    return connect(socket, addr, (socklen_t)addrlen);
 }
 
 static int zl_try_bind(ziti_socket_t socket, int af, struct sockaddr *addr, socklen_t *addrlen) {
