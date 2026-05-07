@@ -826,6 +826,10 @@ void do_timeout_cleanup(void *args, future_t *f, uv_loop_t *l) {
         // Shutdown the context properly - this will set closing=true and handle cleanup
         ziti_context_set_options(wrap->ztx, NULL);
         ziti_shutdown(wrap->ztx);
+        if (wrap->auth_future) {
+            fail_future(wrap->auth_future, ZITI_DISABLED);
+            wrap->auth_future = NULL;
+        }
 
         // Free the wrap
         free_wrap(wrap);
