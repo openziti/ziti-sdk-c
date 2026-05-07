@@ -62,15 +62,15 @@ jobs:
       - uses: actions/cache/restore@v4
         id: restore
         with:
-          key: vbc-${{ inputs.target }}-${{ hashFiles('./vcpkg.json', './vcpkg-overlays/**/*') }}
-          restore-keys: vbc-${{ inputs.target }}-
+          key: vbc-${{ matrix.spec.target }}-${{ hashFiles('./vcpkg.json', './vcpkg-overlays/**/*') }}
+          restore-keys: vbc-${{ matrix.spec.target }}-
           path: ${{ env.CI_CACHE }}
 
       - name: Configure CMake
         id: configure
         shell: bash
         run: |
-          cmake --preset ci-${{ inputs.target }} -G Ninja -Dziti_ASAN=ON -B ./build
+          cmake --preset ci-${{ matrix.spec.target }} -G Ninja -Dziti_ASAN=ON -B ./build
 
       - uses: actions/cache/save@v4
         with:
@@ -101,7 +101,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.target }}-integ-testdata
+          name: ${{ matrix.spec.target }}-${{ matrix.ziti_version }}-integ-testdata
           path: |
             ./build/tests/**/testdata/**/*
 
