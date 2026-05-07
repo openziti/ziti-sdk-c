@@ -23,7 +23,14 @@
 #include <ziti/zitilib.h>
 
 #include <functional>
+
+#ifdef _WIN32
+#include <WinSock2.h>
+#define close(s) closesocket(s)
+#define poll(f,d,t) WSAPoll(f,d,t)
+#else
 #include <poll.h>
+#endif
 
 static inline void checkPollErr(pollfd& fd) {
     INFO("poll events[" << std::hex << fd.revents << "]");
