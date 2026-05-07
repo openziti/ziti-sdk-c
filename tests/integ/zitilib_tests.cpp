@@ -285,3 +285,52 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect invalid service", "[zitilib]
         }
     }
 }
+
+TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect addr", "[zitilib]") {
+    auto intercept_json = getenv("test_intercept");
+    if (intercept_json == nullptr) {
+        SKIP("'test_intercept' is not set");
+    }
+
+    ziti_handle_t ztx{};
+    auto error = Ziti_load_context(&ztx, getenv("test_client"));
+    REQUIRE(error == ZITI_OK);
+    REQUIRE(ztx != ZITI_INVALID_HANDLE);
+    REQUIRE(Ziti_last_error() == ZITI_OK);
+    auto bl = GENERATE(true, false);
+    auto sock_type = GENERATE(SOCK_STREAM);
+    auto sock_af = GENERATE(AF_INET, AF_INET6);
+
+    ziti_intercept_cfg_v1 intercept = {};
+    if (parse_ziti_intercept_cfg_v1(&intercept, intercept_json, strlen(intercept_json)) < 0) {
+        FAIL("failed to parse intercept config: " << intercept_json);
+    }
+    DEFER {
+        free_ziti_intercept_cfg_v1(&intercept);
+    };
+    auto addr = (const ziti_address*)model_list_head(&intercept.addresses);
+    REQUIRE(addr != nullptr);
+    auto ports = (const ziti_port_range*)model_list_head(&intercept.port_ranges);
+    REQUIRE(ports != nullptr);
+
+    REQUIRE(addr->type == ziti_address_hostname);
+    auto hostname = addr->addr.hostname;
+    auto port = (int)ports->low;
+
+    WHEN((bl ? "blocking" : "async")
+         << "/" << (sock_type == SOCK_STREAM ? "SOCK_STREAM" : "SOCK_DGRAM")
+         << "/" << (sock_af == AF_INET ? "AF_INET" : "AF_INET6")) {
+        auto sock = socket(sock_af, sock_type, 0);
+        INFO("socket error: " << errno << "/" << strerror(errno));
+        REQUIRE(sock != -1);
+        DEFER {
+            close(sock);
+        };
+
+        set_blocking(sock, bl);
+        checkSocket(sock, bl, [&](ziti_socket_t s) {
+            return Ziti_connect_addr(s, hostname, port);
+        });
+    }
+
+}
