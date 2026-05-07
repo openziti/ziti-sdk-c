@@ -162,6 +162,7 @@ void ziti_dial_opts_free(ziti_dial_opts *opts) {
         free((void*)opts->identity);
         free((void*)opts->group);
         free(opts->app_data);
+        *opts = (ziti_dial_opts){};
     }
 }
 
