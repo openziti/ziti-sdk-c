@@ -159,7 +159,7 @@ static void checkSocketSync(ziti_socket_t sock, const std::function<int(ziti_soc
     REQUIRE(send_rc == 5);
 
     char buf[16];
-    auto read_rc = read(sock, buf, sizeof(buf));
+    auto read_rc = recv(sock, buf, sizeof(buf), 0);
     auto read_err = read_rc == -1 ? errno : 0;
     INFO("recv error: " << read_err << "/" << strerror(read_err));
     REQUIRE(read_rc == 5);
@@ -169,7 +169,7 @@ static void checkSocketSync(ziti_socket_t sock, const std::function<int(ziti_soc
 static void checkSocketAsync(ziti_socket_t sock, const std::function<int(ziti_socket_t)> &connect_fn) {
     int sock_type = 0;
     socklen_t sock_type_len = sizeof(sock_type);
-    REQUIRE(getsockopt(sock, SOL_SOCKET, SO_TYPE, (void*)&sock_type, &sock_type_len) == 0);
+    REQUIRE(getsockopt(sock, SOL_SOCKET, SO_TYPE, (char*)&sock_type, &sock_type_len) == 0);
 
     auto conn_rc = connect_fn(sock);
     if (conn_rc == -1) {
