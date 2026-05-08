@@ -235,13 +235,14 @@ static inline void checkSocket(ziti_socket_t sock, bool block, const std::functi
     INFO("socket error: " << sockerr() << "/" << strerror(sockerr()));
     if (sock == -1) {
         SKIP("failed to create socket: " << sockerr() << "/" << strerror(sockerr()));
+        return;
     }
     DEFER {
         close(sock);
     };
 
+    INFO("testing socket: " << sock);
     set_blocking(sock, block);
-
     if (block) {
         checkSocketSync(sock, connect_fn);
     } else {

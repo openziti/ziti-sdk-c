@@ -28,7 +28,19 @@
 #include <WinSock2.h>
 #define close(s) closesocket(s)
 #define poll(f,d,t) WSAPoll(f,d,t)
+static inline set_errno(int e) {
+
+    switch(e) {
+    case EINVAL: WSASetLastError(WSAEINVAL); break;
+    case EALREADY: WSASetLastError(WSAEALREADY); break;
+    case EWOULDBLOCK: WSASetLastError(WSAEWOULDBLOCK); break;
+    case EPROTOTYPE: WSASetLastError(WSAEPROTOTYPE); break;
+    default:
+        WSASetLastError(e);
+    }
+}
 #else
+#define set_errno(e) errno = (e)
 #include <poll.h>
 #endif
 
@@ -210,11 +222,11 @@ err_cleanup:
 
 int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port) {
     if (host == NULL) {
-        errno = EINVAL;
+        set_errno(EINVAL);
         return -1;
     }
     if (port == 0 || port > UINT16_MAX) {
-        errno = EINVAL;
+        set_errno(EINVAL);
         return -1;
     }
 
@@ -222,13 +234,13 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     socklen_t so_type_len = sizeof(so_type);
     getsockopt(socket, SOL_SOCKET, SO_TYPE, (void*)&so_type, &so_type_len);
     if (so_type != SOCK_STREAM && so_type != SOCK_DGRAM) {
-        errno = EPROTOTYPE;
+        set_errno(EPROTOTYPE);
         return -1;
     }
 
     int af = zl_socket_af(socket);
     if (af != AF_INET && af != AF_INET6) {
-        errno = EAFNOSUPPORT;
+        set_errno(EAFNOSUPPORT);
         return -1;
     }
 
@@ -237,7 +249,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     int bind_err = zl_try_bind(socket, af, (struct sockaddr *) &req->app_addr, &addr_len);
     if (bind_err != 0) {
         free(req);
-        errno = bind_err;
+        set_errno(bind_err);
         return -1;
     }
 
@@ -251,12 +263,19 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     int rc = await_future(f, NULL);
     destroy_future(f);
     if (rc != 0 || zl_addr.ss_family == 0) {
-        errno = rc;
+        set_errno(rc);
         switch (rc) {
+#if _WIN32
+        case WSAADDRESSNOTAVAIL:
+        case WSAECONNREFUSED:
+#endif
         case EADDRNOTAVAIL:
         case ECONNREFUSED:
             zl_set_error(ZITI_SERVICE_UNAVAILABLE);
             break;
+#if _WIN32
+        case WSAEINVAL:
+#endif
         case EINVAL:
         default:
             zl_set_error(ZITI_INVALID_STATE);
@@ -404,7 +423,7 @@ err_cleanup:
 
 int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, const char *terminator) {
     if (zh == ZITI_INVALID_HANDLE || service == NULL) {
-        errno = EINVAL;
+        set_errno(EINVAL);
         return -1;
     }
     int so_type = 0;
@@ -414,13 +433,13 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
     }
 
     if (so_type != SOCK_STREAM && so_type != SOCK_DGRAM) {
-        errno = EPROTOTYPE;
+        set_errno(EPROTOTYPE);
         return -1;
     }
 
     int af = zl_socket_af(socket);
     if (af != AF_INET && af != AF_INET6) {
-        errno = EAFNOSUPPORT;
+        set_errno(EAFNOSUPPORT);
         return -1;
     }
 
@@ -429,7 +448,7 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
     int bind_err = zl_try_bind(socket, af, (struct sockaddr *) &req->app_addr, &addr_len);
     if (bind_err != 0) {
         free(req);
-        errno = bind_err;
+        set_errno(bind_err);
         return -1;
     }
 
@@ -445,7 +464,7 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
     int rc = await_future(f, NULL);
     destroy_future(f);
     if (rc != 0 || zl_addr.ss_family == 0) {
-        errno = rc;
+        set_errno(rc);
         switch (rc) {
         case EADDRNOTAVAIL:
         case ECONNREFUSED:
@@ -564,7 +583,7 @@ int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, int
     }
     
     if (so_type != SOCK_STREAM && so_type != SOCK_DGRAM) {
-        errno = EPROTOTYPE;
+        set_errno(EPROTOTYPE);
         return -1;
     }
     NEWP(req, struct conn_srv_s);
@@ -572,7 +591,7 @@ int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, int
     int bind_err = zl_try_bind(socket, addr->sa_family, (struct sockaddr *) &req->app_addr, &al);
     if (bind_err != 0) {
         free(req);
-        errno = bind_err;
+        set_errno(bind_err);
         return -1;
     }
     
