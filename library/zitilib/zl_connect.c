@@ -112,14 +112,14 @@ static int setup_bridge_socket(struct conn_srv_s *req, uv_loop_t *l) {
         a6->sin6_addr = in6addr_loopback;
         addr_len = sizeof(struct sockaddr_in6);
     } else {
-        return EAFNOSUPPORT;
+        return err(EAFNOSUPPORT);
     }
 
     if (req->so_type == SOCK_DGRAM) {
         NEWP(udp, uv_udp_t);
         if (uv_udp_init(l, udp) != 0) {
             free(udp);
-            return EINVAL;
+            return err(EINVAL);
         }
 
         if (uv_udp_bind(udp, addr, 0) != 0 ||
@@ -127,7 +127,7 @@ static int setup_bridge_socket(struct conn_srv_s *req, uv_loop_t *l) {
             uv_udp_connect(udp, (struct sockaddr *) &req->app_addr) != 0) {
             ZITI_LOG(WARN, "failed to bind/udp connect bridge socket");
             uv_close((uv_handle_t *) udp, (uv_close_cb)free);
-            return EADDRNOTAVAIL;
+            return err(EADDRNOTAVAIL);
         }
 
         req->bridge_handle = (uv_handle_t *) udp;
@@ -159,7 +159,7 @@ static int setup_bridge_socket(struct conn_srv_s *req, uv_loop_t *l) {
         return 0;
     }
 
-    return EPROTOTYPE;
+    return err(EPROTOTYPE);
 }
 
 static void do_ziti_connect(struct conn_srv_s *req, future_t *f, uv_loop_t *l) {
