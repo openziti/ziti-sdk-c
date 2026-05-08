@@ -373,7 +373,7 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect sockaddr", "[zitilib]") {
     REQUIRE(ports != nullptr);
 
     REQUIRE(addr->type == ziti_address_hostname);
-
+    INFO("hostname: " << addr->addr.hostname << " port: " << ports->low);
     auto hostname = addr->addr.hostname;
     auto port = std::to_string((int)ports->low);
 

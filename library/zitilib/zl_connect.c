@@ -268,7 +268,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
         set_errno(rc);
         switch (rc) {
 #if _WIN32
-        case WSAEADDRESSNOTAVAIL:
+        case WSAEADDRNOTAVAIL:
         case WSAECONNREFUSED:
 #endif
         case EADDRNOTAVAIL:
@@ -469,7 +469,7 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
         set_errno(rc);
         switch (rc) {
 #if _WIN32
-        case WSAEADDRESSNOTAVAIL:
+        case WSAEADDRNOTAVAIL:
         case WSAECONNREFUSED:
 #endif
         case EADDRNOTAVAIL:
