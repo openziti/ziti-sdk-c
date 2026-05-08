@@ -646,9 +646,10 @@ static int zl_try_bind(ziti_socket_t socket, int af, struct sockaddr *addr, sock
     // ignore bind error (EINVAL) in case the app already bound the socket
     if ((bind(socket, (struct sockaddr*)&a, al) != 0 && (sock_error() != err(EINVAL)))
         || getsockname(socket, addr, addrlen) != 0) {
+        int e = sock_error();
         ZITI_LOG(ERROR, "failed to bind socket[%lu] to loopback address: %d/%s",
-                 (unsigned long)socket, sock_error(), strerror(sock_error()));
-        return errno;
+                 (unsigned long)socket, e, strerror(e));
+        return e;
     }
 
     return 0;
