@@ -1069,28 +1069,36 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
         return -1;
     }
 
+    struct addrinfo h = {
+        .ai_family = AF_INET6,
+        .ai_socktype = socktype,
+        .ai_protocol = proto,
+        .ai_flags = NI_NUMERICHOST | NI_NUMERICSERV,
+    };
+    // make sure res is allocated by the system getaddrinfo
+    // so it can be freed by freeaddrinfo/uv_freeaddrinfo
+    struct addrinfo *res;
+    assert(getaddrinfo("::1", port, &h, &res) == 0); // this should never fail
+
     in_port_t portnum = port ? (in_port_t) strtol(port, NULL, 10) : 0;
     ZITI_LOG(DEBUG, "host[%s] port[%s]", host, port);
-    struct addrinfo *res = calloc(1, sizeof(struct addrinfo) + sizeof(struct sockaddr_in6));
     res->ai_socktype = socktype;
     res->ai_protocol = proto;
 
-    struct sockaddr_in *addr4 = (void*)(res + 1);
+    struct sockaddr *addr = res->ai_addr;
     int rc = 0;
-    if ((rc = uv_ip4_addr(host, portnum, addr4)) == 0) {
+    if ((rc = uv_ip4_addr(host, portnum, (struct sockaddr_in *)addr)) == 0) {
         ZITI_LOG(DEBUG, "host[%s] port[%s] rc = %d", host, port, rc);
 
         res->ai_family = AF_INET;
-        res->ai_addr = (struct sockaddr *) addr4;
         res->ai_addrlen = sizeof(struct sockaddr_in);
 
         *addrlist = res;
         return 0;
-    } else if (uv_ip6_addr(host, portnum, (struct sockaddr_in6 *) addr4) == 0) {
+    } else if (uv_ip6_addr(host, portnum, (struct sockaddr_in6 *) addr) == 0) {
         ZITI_LOG(DEBUG, "host[%s] port[%s] rc = %d", host, port, rc);
 
         res->ai_family = AF_INET6;
-        res->ai_addr = (struct sockaddr *) addr4;
         res->ai_addrlen = sizeof(struct sockaddr_in6);
         *addrlist = res;
         return 0;
@@ -1113,18 +1121,17 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
     zl_set_error(err);
 
     if (err == 0) {
+        struct sockaddr_in *addr4 = (struct sockaddr_in *) res->ai_addr;
         addr4->sin_family = AF_INET;
         addr4->sin_port = htons(portnum);
         addr4->sin_addr.s_addr = (in_addr_t)result;
 
         res->ai_family = AF_INET;
-        res->ai_addr = (struct sockaddr *) addr4;
         res->ai_socktype = socktype;
-
         res->ai_addrlen = sizeof(*addr4);
         *addrlist = res;
     } else {
-        free(res);
+        freeaddrinfo(res);
     }
     destroy_future(f);
 
