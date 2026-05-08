@@ -280,6 +280,8 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     future_t *f = schedule_on_loop((loop_work_cb) do_ziti_connect, req, true);
     int rc = await_future(f, NULL);
     destroy_future(f);
+    ZITI_LOG(DEBUG, "connect sock[%lu], rc = %d, family = %d",
+             (unsigned long)socket, rc, zl_addr.ss_family);
     if (rc != 0 || zl_addr.ss_family == 0) {
         set_errno(rc);
         switch (rc) {
@@ -482,6 +484,8 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
     future_t *f = schedule_on_loop((loop_work_cb)zl_connect, req, true);
     int rc = await_future(f, NULL);
     destroy_future(f);
+    ZITI_LOG(DEBUG, "connect sock[%lu], rc = %d, family = %d",
+             (unsigned long)socket, rc, zl_addr.ss_family);
     if (rc != 0 || zl_addr.ss_family == 0) {
         set_errno(rc);
         switch (rc) {
@@ -498,7 +502,12 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
 
     addr_len = zl_addr.ss_family == AF_INET ?
                sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
-    return connect(socket, (struct sockaddr *)&zl_addr, addr_len);
+    int res = connect(socket, (struct sockaddr *)&zl_addr, addr_len);
+    if (res != 0) {
+        int e = sock_error();
+        ZITI_LOG(DEBUG, "connect to bridge socket: %d/%s", e, strerror(e));
+        return res;
+    }
 }
 
 static int zl_set_non_blocking(ziti_socket_t sock) {

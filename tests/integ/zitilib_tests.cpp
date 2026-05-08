@@ -190,6 +190,7 @@ static void checkSocketSync(ziti_socket_t sock, const std::function<int(ziti_soc
 static void checkSocketAsync(ziti_socket_t sock, const std::function<int(ziti_socket_t)> &connect_fn) {
     int sock_type = 0;
     socklen_t sock_type_len = sizeof(sock_type);
+    INFO("socket: " << sock);
     REQUIRE(getsockopt(sock, SOL_SOCKET, SO_TYPE, (char*)&sock_type, &sock_type_len) == 0);
 
     auto conn_rc = connect_fn(sock);
