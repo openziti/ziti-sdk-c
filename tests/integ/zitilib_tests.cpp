@@ -29,9 +29,23 @@
 #define close(s) closesocket(s)
 #define poll(f,d,t) WSAPoll(f,d,t)
 #define sockerr() WSAGetLastError()
+static char wsa_err_buf[256];
+static const char *wsa_error(int err) {
+    wsa_err_buf[0] = 0;
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                   NULL, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                   wsa_err_buf, sizeof(wsa_err_buf), NULL);
+    if (wsa_err_buf[0] == 0) {
+        snprintf(wsa_err_buf, sizeof(wsa_err_buf), "Unknown error %d", err);
+    }
+    return wsa_err_buf;
+}
+#define strerror(e) wsa_error(e)
+#define in_progress(e) ((e) == WSAEINPROGRESS || (e) == WSAEWOULDBLOCK)
 #else
 #include <poll.h>
 #define sockerr() errno
+#define in_progress(e) ((e) == EINPROGRESS || (e) == EWOULDBLOCK)
 #endif
 
 static inline void checkPollErr(pollfd& fd) {
@@ -186,7 +200,7 @@ static void checkSocketAsync(ziti_socket_t sock, const std::function<int(ziti_so
         INFO("error: " << ze << "/" << ziti_errorstr(ze) << " errno: " << err << "/" << strerror(err));
         CHECK(ze == ZITI_OK);
         INFO("connect in progress, waiting for completion...");
-        REQUIRE((err == EINPROGRESS || err == EWOULDBLOCK));
+        REQUIRE(in_progress(err));
         pollfd p = {
             .fd = sock,
             .events = POLLOUT,
@@ -213,7 +227,7 @@ static void checkSocketAsync(ziti_socket_t sock, const std::function<int(ziti_so
     if (read_rc == -1) { // this is expected in non-blocking mode
         auto read_err = sockerr();
         INFO("recv error: " << read_err << "/" << strerror(read_err));
-        REQUIRE((read_err == EWOULDBLOCK || read_err == EAGAIN));
+        REQUIRE(in_progress(read_err));
         INFO("data not available immediately, waiting for it...");
 
         INFO("polling socket " << sock);
