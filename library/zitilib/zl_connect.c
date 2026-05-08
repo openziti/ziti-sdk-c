@@ -41,8 +41,24 @@ static inline void set_errno(int e) {
         WSASetLastError(e);
     }
 }
+#define sock_error() WSAGetLastError()
+static char wsa_err_buf[256];
+static const char *wsa_error(int err) {
+    wsa_err_buf[0] = 0;
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                   NULL, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                   wsa_err_buf, sizeof(wsa_err_buf), NULL);
+    if (wsa_err_buf[0] == 0) {
+        snprintf(wsa_err_buf, sizeof(wsa_err_buf), "Unknown error %d", err);
+    }
+    return wsa_err_buf;
+}
+#define err(e) (WSA ## e)
+#define strerror(e) wsa_error(e)
 #else
 #define set_errno(e) errno = (e)
+#define sock_error() errno
+#define err(e) e
 #include <poll.h>
 #endif
 
@@ -123,14 +139,14 @@ static int setup_bridge_socket(struct conn_srv_s *req, uv_loop_t *l) {
     if (req->so_type == SOCK_STREAM) {
         uv_os_sock_t srv_fd = socket(req->app_addr.ss_family, SOCK_STREAM, 0);
         if (srv_fd == SOCKET_ERROR) {
-            int e = errno;
+            int e = sock_error();
             ZITI_LOG(WARN, "failed to create accept socket: %d/%s", e, strerror(e));
             return e;
         }
 
         if (bind(srv_fd, addr, addr_len) != 0 ||
             listen(srv_fd, 1) != 0) {
-            int e = errno;
+            int e = sock_error();
             ZITI_LOG(WARN, "failed to bind/listen TCP socket");
             close(srv_fd);
             return e;
@@ -188,7 +204,7 @@ static void do_ziti_connect(struct conn_srv_s *req, future_t *f, uv_loop_t *l) {
     if (svc == NULL) {
         ZITI_LOG(WARN, "no service for target address[%s:%s:%d]",
                  ziti_protocols.name(zproto), cstr_str(&req->host), req->port);
-        fail_future(f, ECONNREFUSED);
+        fail_future(f, err(ECONNREFUSED));
         goto err_cleanup;
     }
 
@@ -200,7 +216,7 @@ static void do_ziti_connect(struct conn_srv_s *req, future_t *f, uv_loop_t *l) {
     if (rc != ZITI_OK) {
         ZITI_LOG(WARN, "no service for target address[%s:%s:%d]: %s",
                  ziti_protocols.name(zproto), cstr_str(&req->host), req->port, ziti_errorstr(rc));
-        fail_future(f, ECONNREFUSED);
+        fail_future(f, err(ECONNREFUSED));
         goto err_cleanup;
     }
 
@@ -224,11 +240,11 @@ err_cleanup:
 
 int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port) {
     if (host == NULL) {
-        set_errno(EINVAL);
+        set_errno(err(EINVAL));
         return -1;
     }
     if (port == 0 || port > UINT16_MAX) {
-        set_errno(EINVAL);
+        set_errno(err(EINVAL));
         return -1;
     }
 
@@ -236,13 +252,13 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
     socklen_t so_type_len = sizeof(so_type);
     getsockopt(socket, SOL_SOCKET, SO_TYPE, (void*)&so_type, &so_type_len);
     if (so_type != SOCK_STREAM && so_type != SOCK_DGRAM) {
-        set_errno(EPROTOTYPE);
+        set_errno(err(EPROTOTYPE));
         return -1;
     }
 
     int af = zl_socket_af(socket);
     if (af != AF_INET && af != AF_INET6) {
-        set_errno(EAFNOSUPPORT);
+        set_errno(err(EAFNOSUPPORT));
         return -1;
     }
 
@@ -285,6 +301,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
         return -1;
     }
 
+    set_errno(0);
     addr_len = zl_addr.ss_family == AF_INET ?
                sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
     return connect(socket, (struct sockaddr *)&zl_addr, addr_len);
@@ -370,26 +387,26 @@ static void zl_on_ziti_connect(ziti_connection conn, int status) {
 static void zl_connect(struct conn_srv_s *req, future_t *f, uv_loop_t *l) {
     if (req->app_addr.ss_family != AF_INET && req->app_addr.ss_family != AF_INET6) {
         ZITI_LOG(WARN, "unsupported address family: %d", req->app_addr.ss_family);
-        fail_future(f, EAFNOSUPPORT);
+        fail_future(f, err(EAFNOSUPPORT));
         return;
     }
 
     if (req->so_type != SOCK_STREAM && req->so_type != SOCK_DGRAM) {
         ZITI_LOG(WARN, "unsupported socket type: %d", req->so_type);
-        fail_future(f, EPROTOTYPE);
+        fail_future(f, err(EPROTOTYPE));
         return;
     }
 
     ztx_wrap_t *wrap = zl_find_wrap(req->ziti_handle);
     if (wrap == NULL) {
         ZITI_LOG(WARN, "ziti handle[%d] not found", req->ziti_handle);
-        fail_future(f, EINVAL);
+        fail_future(f, err(EINVAL));
         goto err_cleanup;
     }
 
     if (model_map_get(&wrap->intercepts, cstr_str(&req->service)) == NULL) {
         ZITI_LOG(WARN, "no service[%s]", cstr_str(&req->service));
-        fail_future(f, ECONNREFUSED);
+        fail_future(f, err(ECONNREFUSED));
         goto err_cleanup;
     }
 
@@ -401,7 +418,7 @@ static void zl_connect(struct conn_srv_s *req, future_t *f, uv_loop_t *l) {
     if (ziti_conn_init(wrap->ztx, &req->conn, req) != ZITI_OK ||
         ziti_dial_with_options(req->conn, cstr_str(&req->service), &opts, zl_on_ziti_connect, NULL) != ZITI_OK) {
         ZITI_LOG(WARN, "failed to init/dial connection");
-        fail_future(f, ECONNREFUSED);
+        fail_future(f, err(ECONNREFUSED));
         goto err_cleanup;
     }
 
@@ -425,7 +442,7 @@ err_cleanup:
 
 int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, const char *terminator) {
     if (zh == ZITI_INVALID_HANDLE || service == NULL) {
-        set_errno(EINVAL);
+        set_errno(err(EINVAL));
         return -1;
     }
     int so_type = 0;
@@ -435,13 +452,13 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
     }
 
     if (so_type != SOCK_STREAM && so_type != SOCK_DGRAM) {
-        set_errno(EPROTOTYPE);
+        set_errno(err(EPROTOTYPE));
         return -1;
     }
 
     int af = zl_socket_af(socket);
     if (af != AF_INET && af != AF_INET6) {
-        set_errno(EAFNOSUPPORT);
+        set_errno(err(EAFNOSUPPORT));
         return -1;
     }
 
@@ -468,18 +485,11 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
     if (rc != 0 || zl_addr.ss_family == 0) {
         set_errno(rc);
         switch (rc) {
-#if _WIN32
-        case WSAEADDRNOTAVAIL:
-        case WSAECONNREFUSED:
-#endif
-        case EADDRNOTAVAIL:
-        case ECONNREFUSED:
+        case err(EADDRNOTAVAIL):
+        case err(ECONNREFUSED):
             zl_set_error(ZITI_SERVICE_UNAVAILABLE);
             break;
-#if _WIN32
-        case WSAEINVAL:
-#endif
-        case EINVAL:
+        case err(EINVAL):
         default:
              zl_set_error(ZITI_INVALID_STATE);
         }
@@ -611,6 +621,7 @@ int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, int
     future_t *f = schedule_on_loop((loop_work_cb)zl_connect_sockaddr, req, true);
     int rc = await_future(f, NULL);
     destroy_future(f);
+    set_errno(0);
     if (rc == 0) { // found ziti service for given address: connect to bridge socket
         socklen_t zl_addr_len = zl_addr.ss_family == AF_INET ?
                                 sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
@@ -633,9 +644,10 @@ static int zl_try_bind(ziti_socket_t socket, int af, struct sockaddr *addr, sock
     }
     
     // ignore bind error (EINVAL) in case the app already bound the socket
-    if ((bind(socket, (struct sockaddr*)&a, al) != 0 && (errno != EINVAL)) ||
-        getsockname(socket, addr, addrlen) != 0) {
-        ZITI_LOG(ERROR, "failed to bind socket to loopback address: %d/%s", errno, strerror(errno));
+    if ((bind(socket, (struct sockaddr*)&a, al) != 0 && (sock_error() != err(EINVAL)))
+        || getsockname(socket, addr, addrlen) != 0) {
+        ZITI_LOG(ERROR, "failed to bind socket[%lu] to loopback address: %d/%s",
+                 (unsigned long)socket, sock_error(), strerror(sock_error()));
         return errno;
     }
 
