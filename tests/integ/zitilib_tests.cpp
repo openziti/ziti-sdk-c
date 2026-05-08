@@ -54,6 +54,11 @@ static inline void checkPollErr(pollfd& fd) {
 class ZitilibTestCase {
   protected:
     ZitilibTestCase() {
+#if _WIN32
+        WSADATA wsaData;
+        int wsaErr = WSAStartup(MAKEWORD(2, 2), &wsaData);
+        REQUIRE(wsaErr == 0);
+#endif
         ZITI_LOG(INFO, "starting test case: %s", Catch::getResultCapture().getCurrentTestName().c_str());
         Ziti_lib_init();
     }
@@ -227,6 +232,16 @@ static void checkSocketAsync(ziti_socket_t sock, const std::function<int(ziti_so
 }
 
 static inline void checkSocket(ziti_socket_t sock, bool block, const std::function<int(ziti_socket_t)> &connect_fn) {
+    INFO("socket error: " << sockerr() << "/" << strerror(sockerr()));
+    if (sock == -1) {
+        SKIP("failed to create socket: " << sockerr() << "/" << strerror(sockerr()));
+    }
+    DEFER {
+        close(sock);
+    };
+
+    set_blocking(sock, block);
+
     if (block) {
         checkSocketSync(sock, connect_fn);
     } else {
@@ -253,13 +268,6 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect service", "[zitilib]") {
          << "/" << (sock_type == SOCK_STREAM ? "SOCK_STREAM" : "SOCK_DGRAM")
          << "/" << (sock_af == AF_INET ? "AF_INET" : "AF_INET6")) {
         auto sock = socket(sock_af, sock_type, 0);
-        INFO("socket error: " << sockerr() << "/" << strerror(sockerr()));
-        REQUIRE(sock != -1);
-        DEFER {
-            close(sock);
-        };
-
-        set_blocking(sock, bl);
         checkSocket(sock, bl, [&](ziti_socket_t s) {
           return Ziti_connect(s, ztx, srv, nullptr);
         });
@@ -331,13 +339,6 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect addr", "[zitilib]") {
          << "/" << (sock_type == SOCK_STREAM ? "SOCK_STREAM" : "SOCK_DGRAM")
          << "/" << (sock_af == AF_INET ? "AF_INET" : "AF_INET6")) {
         auto sock = socket(sock_af, sock_type, 0);
-        INFO("socket error: " << sockerr() << "/" << strerror(sockerr()));
-        REQUIRE(sock != -1);
-        DEFER {
-            close(sock);
-        };
-
-        set_blocking(sock, bl);
         checkSocket(sock, bl, [&](ziti_socket_t s) {
             return Ziti_connect_addr(s, hostname, port);
         });
@@ -388,16 +389,8 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect sockaddr", "[zitilib]") {
 
     WHEN((bl ? "blocking" : "async")) {
         auto sock = socket(resolved_addr->ai_family, resolved_addr->ai_socktype, 0);
-        INFO("socket error: " << sockerr() << "/" << strerror(sockerr()));
-        REQUIRE(sock != -1);
-        DEFER {
-            close(sock);
-        };
-
-        set_blocking(sock, bl);
         checkSocket(sock, bl, [&](ziti_socket_t s) {
-            return Ziti_connect_sockaddr(s, resolved_addr->ai_addr, resolved_addr->ai_addrlen);
+            return Ziti_connect_sockaddr(s, resolved_addr->ai_addr, (int)resolved_addr->ai_addrlen);
         });
     }
-
 }

@@ -549,7 +549,11 @@ err_cleanup:
 }
 
 int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, int addrlen) {
-    if (addr == NULL || (addr->sa_family != AF_INET && addr->sa_family != AF_INET6)) {
+    // let standard connect handle unexpected parameters
+    if (addr == NULL ||
+        (addr->sa_family == AF_INET && addrlen != sizeof(struct sockaddr_in) ) ||
+        (addr->sa_family == AF_INET6 && addrlen != sizeof(struct sockaddr_in6)) ||
+        (addr->sa_family != AF_INET && addr->sa_family != AF_INET6)) {
         return connect(socket, addr, (socklen_t)addrlen);
     }
     
