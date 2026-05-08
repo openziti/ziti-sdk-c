@@ -297,26 +297,28 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect invalid service", "[zitilib]
     REQUIRE(ztx != ZITI_INVALID_HANDLE);
     REQUIRE(Ziti_last_error() == ZITI_OK);
 
-    for (auto block: {true, false}) {
-        INFO("blocking: " << block);
-        for (auto sock_af : {AF_INET, AF_INET6}) {
-            INFO("AF: " << (sock_af == AF_INET ? "AF_INET" : "AF_INET6"));
-            for (auto sock_type : {SOCK_DGRAM, SOCK_STREAM}) {
-                INFO("socket type: " << (sock_type == SOCK_STREAM ? "SOCK_STREAM" : "SOCK_DGRAM"));
-                auto sock = socket(sock_af, sock_type, 0);
-                INFO("socket error: " << sockerr() << "/" << strerror(sockerr()));
-                REQUIRE(sock != -1);
-                DEFER {
-                    close(sock);
-                };
+    auto block = GENERATE(true, false);
+    auto sock_af = GENERATE(AF_INET, AF_INET6);
+    auto sock_type = GENERATE(SOCK_STREAM, SOCK_DGRAM);
+    WHEN("blocking: " << block
+                      << " AF: " << (sock_af == AF_INET ? "AF_INET" : "AF_INET6")
+                      << " type: " << (sock_type == SOCK_STREAM ? "SOCK_STREAM" : "SOCK_DGRAM")) {
+        auto sock = socket(sock_af, sock_type, 0);
+        INFO("socket error: " << sockerr() << "/" << strerror(sockerr()));
+        REQUIRE(sock != -1);
+        DEFER {
+            close(sock);
+        };
 
-                set_blocking(sock, block);
-                auto conn_rc = Ziti_connect(sock, ztx, "invalid_service", nullptr);
-                REQUIRE(conn_rc == -1);
-                REQUIRE(sockerr() == ECONNREFUSED);
-                CHECK(Ziti_last_error() == ZITI_SERVICE_UNAVAILABLE);
-            }
-        }
+        set_blocking(sock, block);
+        auto conn_rc = Ziti_connect(sock, ztx, "invalid_service", nullptr);
+        REQUIRE(conn_rc == -1);
+#if _WIN32
+        REQUIRE(sockerr() == WSAECONNREFUSED);
+#else
+        REQUIRE(sockerr() == ECONNREFUSED);
+#endif
+        CHECK(Ziti_last_error() == ZITI_SERVICE_UNAVAILABLE);
     }
 }
 

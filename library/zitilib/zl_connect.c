@@ -442,6 +442,17 @@ err_cleanup:
     free(req);
 }
 
+#define CHECK_SOCKET(s) do { \
+    int err = 0;             \
+    socklen_t el = sizeof(err); \
+    if (getsockopt(s, SOL_SOCKET, SO_ERROR, &err, &el) == 0) { \
+        if (err != 0)        \
+                ZITI_LOG(WARN, "socket[%d]: error[%d] %s", (int)socket, err, strerror(err)); \
+            else              \
+        ZITI_LOG(WARN, "failed to check socket[%d]: err[%d] %s", socket, sock_error(), strerror(sock_error()));                     \
+        }\
+} while(0)
+
 int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, const char *terminator) {
     if (zh == ZITI_INVALID_HANDLE || service == NULL) {
         set_errno(err(EINVAL));
@@ -464,14 +475,20 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
         return -1;
     }
 
+    CHECK_SOCKET(socket);
+
     NEWP(req, struct conn_srv_s);
     socklen_t addr_len = sizeof(req->app_addr);
     int bind_err = zl_try_bind(socket, af, (struct sockaddr *) &req->app_addr, &addr_len);
     if (bind_err != 0) {
+        ZITI_LOG(WARN, "failed to bind client socket[%lu]: %d/%s",
+                 (unsigned long)socket, bind_err, strerror(bind_err));
         free(req);
         set_errno(bind_err);
         return -1;
     }
+
+    CHECK_SOCKET(socket);
 
     struct sockaddr_storage zl_addr = {};
     req->zl_addr = (struct sockaddr *) &zl_addr;
@@ -480,12 +497,18 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
     req->service = cstr_from(service);
     req->terminator = terminator ? cstr_from(terminator) : cstr_init();
 
+    CHECK_SOCKET(socket);
+
     // connect could be blocking so start this
     future_t *f = schedule_on_loop((loop_work_cb)zl_connect, req, true);
+
+    CHECK_SOCKET(socket);
+
     int rc = await_future(f, NULL);
     destroy_future(f);
     ZITI_LOG(DEBUG, "connect sock[%lu], rc = %d, family = %d",
              (unsigned long)socket, rc, zl_addr.ss_family);
+
     if (rc != 0 || zl_addr.ss_family == 0) {
         set_errno(rc);
         switch (rc) {
@@ -500,14 +523,16 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
         return -1;
     }
 
+    CHECK_SOCKET(socket);
+
     addr_len = zl_addr.ss_family == AF_INET ?
                sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
     int res = connect(socket, (struct sockaddr *)&zl_addr, addr_len);
     if (res != 0) {
         int e = sock_error();
         ZITI_LOG(DEBUG, "connect to bridge socket: %d/%s", e, strerror(e));
-        return res;
     }
+    return res;
 }
 
 static int zl_set_non_blocking(ziti_socket_t sock) {
