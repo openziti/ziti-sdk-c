@@ -1077,8 +1077,9 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
     };
     // make sure res is allocated by the system getaddrinfo
     // so it can be freed by freeaddrinfo/uv_freeaddrinfo
-    struct addrinfo *res;
-    assert(getaddrinfo("::1", port, &h, &res) == 0); // this should never fail
+    struct addrinfo *res = NULL;
+    getaddrinfo("::1", port, &h, &res); // this should never fail
+    assert(res != NULL);
 
     in_port_t portnum = port ? (in_port_t) strtol(port, NULL, 10) : 0;
     ZITI_LOG(DEBUG, "host[%s] port[%s]", host, port);
