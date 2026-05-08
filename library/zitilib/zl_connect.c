@@ -35,6 +35,8 @@ static inline set_errno(int e) {
     case EALREADY: WSASetLastError(WSAEALREADY); break;
     case EWOULDBLOCK: WSASetLastError(WSAEWOULDBLOCK); break;
     case EPROTOTYPE: WSASetLastError(WSAEPROTOTYPE); break;
+    case EAFNOSUPPORT: WSASetLastError(WSAEAFNOSUPPORT); break;
+    case EADDRNOTAVAIL: WSASetLastError(WSAEADDRNOTAVAIL); break;
     default:
         WSASetLastError(e);
     }
@@ -266,7 +268,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
         set_errno(rc);
         switch (rc) {
 #if _WIN32
-        case WSAADDRESSNOTAVAIL:
+        case WSAEADDRESSNOTAVAIL:
         case WSAECONNREFUSED:
 #endif
         case EADDRNOTAVAIL:
@@ -466,10 +468,17 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
     if (rc != 0 || zl_addr.ss_family == 0) {
         set_errno(rc);
         switch (rc) {
+#if _WIN32
+        case WSAEADDRESSNOTAVAIL:
+        case WSAECONNREFUSED:
+#endif
         case EADDRNOTAVAIL:
         case ECONNREFUSED:
             zl_set_error(ZITI_SERVICE_UNAVAILABLE);
             break;
+#if _WIN32
+        case WSAEINVAL:
+#endif
         case EINVAL:
         default:
              zl_set_error(ZITI_INVALID_STATE);
