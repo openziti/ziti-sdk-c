@@ -28,7 +28,7 @@
 #include <WinSock2.h>
 #define close(s) closesocket(s)
 #define poll(f,d,t) WSAPoll(f,d,t)
-static inline set_errno(int e) {
+static inline void set_errno(int e) {
 
     switch(e) {
     case EINVAL: WSASetLastError(WSAEINVAL); break;
