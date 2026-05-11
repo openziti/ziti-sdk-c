@@ -94,36 +94,35 @@ static void process_service_event(ztx_wrap_t *wrap, const struct ziti_service_ev
         FREE(intercept);
     }
 
-    for (int i = 0; ev->changed && ev->changed[i] != NULL; i++) {
-        ziti_service *s = ev->changed[i];
-        ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
+    ziti_service_array srv_arrays[] = {
+        ev->changed,
+        ev->added,
+    };
 
-        if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
-            intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+    for (size_t ai = 0; ai < sizeof(srv_arrays)/sizeof(srv_arrays[0]); ai++) {
+        ziti_service_array arr = srv_arrays[ai];
+        for (int i = 0; arr && arr[i] != NULL; i++) {
+            ziti_service *s = arr[i];
+            ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
+            ziti_client_cfg_v1 clt_cfg = {0};
+
+            if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f)parse_ziti_intercept_cfg_v1) == ZITI_OK) {
+                intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+            } else if (ziti_service_get_config(s, ZITI_CLIENT_CFG_V1, &clt_cfg, (parse_service_cfg_f)parse_ziti_client_cfg_v1) == ZITI_OK) {
+                ziti_intercept_from_client_cfg(intercept, &clt_cfg);
+                intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+                free_ziti_client_cfg_v1(&clt_cfg);
+            } else {
+                // use empty intercept to indicate service has no config
+                intercept = model_map_set(&wrap->intercepts, s->name, intercept);
+            }
+
+            free_ziti_intercept_cfg_v1(intercept);
+            FREE(intercept);
         }
-
-        free_ziti_intercept_cfg_v1(intercept);
-        FREE(intercept);
     }
 
-    for (int i = 0; ev->added && ev->added[i] != NULL; i++) {
-        ziti_service *s = ev->added[i];
-        ziti_intercept_cfg_v1 *intercept = alloc_ziti_intercept_cfg_v1();
-        ziti_client_cfg_v1 clt_cfg = {0};
-
-        if (ziti_service_get_config(s, ZITI_INTERCEPT_CFG_V1, intercept, (parse_service_cfg_f) parse_ziti_intercept_cfg_v1) == ZITI_OK) {
-            intercept = model_map_set(&wrap->intercepts, s->name, intercept);
-        } else if (ziti_service_get_config(s, ZITI_CLIENT_CFG_V1, &clt_cfg, (parse_service_cfg_f) parse_ziti_client_cfg_v1) == ZITI_OK) {
-            ziti_intercept_from_client_cfg(intercept, &clt_cfg);
-            intercept = model_map_set(&wrap->intercepts, s->name, intercept);
-            free_ziti_client_cfg_v1(&clt_cfg);
-        }
-
-        free_ziti_intercept_cfg_v1(intercept);
-        FREE(intercept);
-    }
-
-    complete_future(wrap->services_loaded, NULL, 0);
+    complete_future(wrap->services_loaded_f, NULL, 0);
 }
 
 static void process_auth_event(ztx_wrap_t *wrap, const struct ziti_auth_event *ev) {
@@ -158,18 +157,23 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
     if (ev->type == ZitiContextEvent) {
         int err = ev->ctx.ctrl_status;
         if (err == ZITI_OK) {
-            complete_future(wrap->auth_future, (void *) (uintptr_t) ztx->id, ZITI_OK);
-            wrap->auth_future = NULL;
+            // defer completing auth until services load, since some apps wait for that before proceeding
+            if (wrap->services_loaded) {
+                complete_future(wrap->auth_future, (void *)(uintptr_t)ztx->id, ZITI_OK);
+                wrap->auth_future = NULL;
+            }
 
-            if (!wrap->services_loaded) {
-                wrap->services_loaded = new_future();
+            if (!wrap->services_loaded_f) {
+                wrap->services_loaded_f = new_future();
             }
         } else if (err == ZITI_PARTIALLY_AUTHENTICATED) {
             complete_future(wrap->auth_future, (void *) (uintptr_t) ztx->id, ZITI_PARTIALLY_AUTHENTICATED);
             wrap->auth_future = NULL;
             return;
         } else if (err == ZITI_DISABLED) {
-            destroy_future(wrap->services_loaded);
+            wrap->services_loaded = false;
+            destroy_future(wrap->services_loaded_f);
+            wrap->services_loaded_f = NULL;
             ziti_set_app_ctx(ztx, NULL);
             free_wrap(wrap);
         }
@@ -234,6 +238,12 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
         process_auth_event(wrap, &ev->auth);
     } else if (ev->type == ZitiServiceEvent) {
         process_service_event(wrap, &ev->service);
+        wrap->services_loaded = true;
+        if (wrap->auth_future) {
+            // if we were waiting for services to load before completing auth, do that now
+            complete_future(wrap->auth_future, (void *) (uintptr_t) ztx->id, ZITI_OK);
+            wrap->auth_future = NULL;
+        }
     } else if (ev->type == ZitiConfigEvent && wrap->enroll_future) {
         // cert mode: wait for cert; token/none mode: any config event
         if (wrap->enroll_mode != ziti_enroll_cert || ev->cfg.config->id.cert) {
@@ -816,6 +826,10 @@ void do_timeout_cleanup(void *args, future_t *f, uv_loop_t *l) {
         // Shutdown the context properly - this will set closing=true and handle cleanup
         ziti_context_set_options(wrap->ztx, NULL);
         ziti_shutdown(wrap->ztx);
+        if (wrap->auth_future) {
+            fail_future(wrap->auth_future, ZITI_DISABLED);
+            wrap->auth_future = NULL;
+        }
 
         // Free the wrap
         free_wrap(wrap);
@@ -1055,28 +1069,37 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
         return -1;
     }
 
+    struct addrinfo h = {
+        .ai_family = AF_INET6,
+        .ai_socktype = socktype,
+        .ai_protocol = proto,
+        .ai_flags = NI_NUMERICHOST | NI_NUMERICSERV,
+    };
+    // make sure res is allocated by the system getaddrinfo
+    // so it can be freed by freeaddrinfo/uv_freeaddrinfo
+    struct addrinfo *res = NULL;
+    getaddrinfo("::1", port, &h, &res); // this should never fail
+    assert(res != NULL);
+
     in_port_t portnum = port ? (in_port_t) strtol(port, NULL, 10) : 0;
     ZITI_LOG(DEBUG, "host[%s] port[%s]", host, port);
-    struct addrinfo *res = calloc(1, sizeof(struct addrinfo));
     res->ai_socktype = socktype;
     res->ai_protocol = proto;
 
-    struct sockaddr_in *addr4 = calloc(1, sizeof(struct sockaddr_in6));
+    struct sockaddr *addr = res->ai_addr;
     int rc = 0;
-    if ((rc = uv_ip4_addr(host, portnum, addr4)) == 0) {
+    if ((rc = uv_ip4_addr(host, portnum, (struct sockaddr_in *)addr)) == 0) {
         ZITI_LOG(DEBUG, "host[%s] port[%s] rc = %d", host, port, rc);
 
         res->ai_family = AF_INET;
-        res->ai_addr = (struct sockaddr *) addr4;
         res->ai_addrlen = sizeof(struct sockaddr_in);
 
         *addrlist = res;
         return 0;
-    } else if (uv_ip6_addr(host, portnum, (struct sockaddr_in6 *) addr4) == 0) {
-        ZITI_LOG(INFO, "host[%s] port[%s] rc = %d", host, port, rc);
+    } else if (uv_ip6_addr(host, portnum, (struct sockaddr_in6 *) addr) == 0) {
+        ZITI_LOG(DEBUG, "host[%s] port[%s] rc = %d", host, port, rc);
 
         res->ai_family = AF_INET6;
-        res->ai_addr = (struct sockaddr *) addr4;
         res->ai_addrlen = sizeof(struct sockaddr_in6);
         *addrlist = res;
         return 0;
@@ -1084,7 +1107,7 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
 
     MODEL_MAP_FOR(it, ziti_contexts) {
         ztx_wrap_t *ztx = model_map_it_value(it);
-        await_future(ztx->services_loaded, NULL);
+        await_future(ztx->services_loaded_f, NULL);
     }
 
     struct conn_req_s req = {
@@ -1099,19 +1122,17 @@ int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hint
     zl_set_error(err);
 
     if (err == 0) {
+        struct sockaddr_in *addr4 = (struct sockaddr_in *) res->ai_addr;
         addr4->sin_family = AF_INET;
         addr4->sin_port = htons(portnum);
         addr4->sin_addr.s_addr = (in_addr_t)result;
 
         res->ai_family = AF_INET;
-        res->ai_addr = (struct sockaddr *) addr4;
         res->ai_socktype = socktype;
-
         res->ai_addrlen = sizeof(*addr4);
         *addrlist = res;
     } else {
-        free(res);
-        free(addr4);
+        freeaddrinfo(res);
     }
     destroy_future(f);
 

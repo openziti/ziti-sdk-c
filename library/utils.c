@@ -130,21 +130,22 @@ static const char *get_elapsed_time();
 
 static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen);
 
-static uv_loop_t *ts_loop;
 static uint64_t starttime;
 static uint64_t last_update;
 static char log_timestamp[64];
 
 static log_writer logger = NULL;
 
-static void init_debug(uv_loop_t *loop);
+static void init_debug();
 
 static void init_uv_mbed_log();
 
 void ziti_log_init(uv_loop_t *loop, int level, log_writer log_func) {
+    (void)loop;
+
     init_uv_mbed_log();
 
-    init_debug(loop);
+    init_debug();
 
     if (level == ZITI_LOG_DEFAULT_LEVEL) {
         level = ziti_log_lvl;
@@ -256,7 +257,7 @@ static void child_init() {
     log_pid = uv_os_getpid();
 }
 
-static void init_debug(uv_loop_t *loop) {
+static void init_debug() {
     if (log_initialized) {
         return;
     }
@@ -269,7 +270,6 @@ static void init_debug(uv_loop_t *loop) {
     if (ts_format && strcasecmp("utc", ts_format) == 0) {
         get_elapsed = get_utc_time;
     }
-    ts_loop = loop;
     log_initialized = true;
 
     if (ziti_log_lvl == ZITI_LOG_DEFAULT_LEVEL) {
@@ -305,7 +305,7 @@ static void init_debug(uv_loop_t *loop) {
 
     ziti_debug_out = stderr;
 
-    starttime = uv_now(loop);
+    starttime = uv_hrtime() / 1000000;
 }
 
 #if _WIN32 && defined(_MSC_VER)
@@ -388,7 +388,7 @@ void tlsuv_logger(int level, const char *file, unsigned int line, const char *ms
 }
 
 static const char *get_elapsed_time() {
-    uint64_t now = uv_now(ts_loop);
+    uint64_t now = uv_hrtime() / 1000000;
     if (now > last_update) {
         last_update = now;
         unsigned long long elapsed = now - starttime;
@@ -398,7 +398,7 @@ static const char *get_elapsed_time() {
 }
 
 const char *get_utc_time() {
-    uint64_t now = uv_now(ts_loop);
+    uint64_t now = uv_hrtime() / 1000000;
     static uint64_t utc_last_update = 0;
     static char utc_timestamp[64];
     if (now > utc_last_update) {

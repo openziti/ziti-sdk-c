@@ -51,7 +51,8 @@ typedef struct ztx_wrap {
     ziti_enroll_mode enroll_mode;
     const char *signer_name;
 
-    future_t *services_loaded;
+    bool services_loaded;
+    future_t *services_loaded_f;
     model_map intercepts;
     char **signers;
 } ztx_wrap_t;

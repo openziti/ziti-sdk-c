@@ -253,6 +253,17 @@ ZITI_FUNC
 int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port);
 
 /**
+ * @brief Connect socket to a Ziti service with the given intercept sockaddr.
+ * This method will fallback to standard connect, if address does not resolve to a Ziti service
+ * @param socket socket handle
+ * @param addr target address
+ * @param addrlen length of the target address
+ * @return
+ */
+ZITI_FUNC
+int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, int addrlen);
+
+/**
  * @brief Bind socket to a Ziti service
  * @param socket socket handle created with [Ziti_socket()]
  * @param ztx Ziti context
@@ -288,6 +299,10 @@ int Ziti_listen(ziti_socket_t socket, int backlog);
  */
 ZITI_FUNC
 ziti_socket_t Ziti_accept(ziti_socket_t socket, char *caller, int caller_len);
+
+
+ZITI_FUNC
+int Ziti_resolve(const char *host, const char *port, const struct addrinfo *hints, struct addrinfo **addrlist);
 
 /**
  * @brief Shutdown Ziti library.
