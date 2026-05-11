@@ -6,6 +6,10 @@
   ],
   "builtin-baseline": "56bb2411609227288b70117ead2c47585ba07713",
   "overrides": [
+    "name": "libuv",
+    "version": "1.52.0",
+    "port-version": 0,
+    "$comment": "1.52.1 breaks on mingw so we're sticking with 1.52.0 until fix released and available in vcpkg"
   ],
   "dependencies": [
     "libuv",
