@@ -30,7 +30,7 @@ runs:
       run: |
         echo "now installing linux deps"
         apt update
-        apt install -y python3-venv
+        apt install -y python3-venv autoconf autoconf-archive automake libtool
 
     - name: macOS tools
       if: runner.os == 'macOS'
