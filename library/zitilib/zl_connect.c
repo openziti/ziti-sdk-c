@@ -445,7 +445,7 @@ err_cleanup:
 #define CHECK_SOCKET(s) do { \
     int err = 0;             \
     socklen_t el = sizeof(err); \
-    if (getsockopt(s, SOL_SOCKET, SO_ERROR, &err, &el) == 0) { \
+    if (getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&err, &el) == 0) { \
         if (err != 0)        \
                 ZITI_LOG(WARN, "socket[%d]: error[%d] %s", (int)socket, err, strerror(err)); \
             else              \
