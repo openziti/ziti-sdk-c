@@ -37,3 +37,17 @@ void free_key_exchange(struct key_exchange *key_ex) {
     FREE(key_ex->rx);
     FREE(key_ex->tx);
 }
+
+extern e2ee_t *new_libsodium_e2ee(void);
+extern e2ee_t *new_none_e2ee(void);
+
+e2ee_t* create_e2ee(e2ee_impl_t impl) {
+    switch (impl) {
+    case E2EE_NONE:
+        return new_none_e2ee();
+    case E2EE_LIBSODIUM:
+        return new_libsodium_e2ee();
+    default:
+        return NULL;
+    }
+}
