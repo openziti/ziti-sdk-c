@@ -30,16 +30,6 @@ typedef intptr_t ssize_t;
 #define E2EE_MAX_HEADER_LEN 64
 #define E2EE_MAX_MSG_OVERHEAD 32
 
-struct key_pair {
-    uint8_t sk[crypto_kx_SECRETKEYBYTES];
-    uint8_t pk[crypto_kx_PUBLICKEYBYTES];
-};
-
-struct key_exchange {
-    uint8_t *rx;
-    uint8_t *tx;
-};
-
 typedef struct e2ee_pub_s {
     const uint8_t *key;
     size_t key_len;
@@ -69,12 +59,6 @@ typedef enum {
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-int init_key_pair(struct key_pair *kp);
-
-int init_crypto(struct key_exchange *key_ex, struct key_pair *kp, const uint8_t *peer_key, bool server);
-
-void free_key_exchange(struct key_exchange *key_ex);
 
 e2ee_t *create_e2ee(e2ee_impl_t);
 
