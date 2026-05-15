@@ -693,7 +693,7 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
         string_buf_free(&buf);
     } else {
         total_len += req->len;
-        m = create_message(conn, ContentTypeData, flags, E2EE_MAX_MSG_OVERHEAD + req->len);
+        m = create_message(conn, ContentTypeData, flags, total_len);
         crypto_bytes = conn->e2ee->encrypt(conn->e2ee, (uint8_t *)req->buf, req->len, m->body, total_len);
         conn->sent += req->len;
     }
