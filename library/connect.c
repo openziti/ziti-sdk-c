@@ -27,6 +27,7 @@
 static const char *INVALID_SESSION = "Invalid Session";
 static const int MAX_CONNECT_RETRY = 3;
 
+#define MAX_CHAIN_LEN (31 * 1024)
 #define CONN_CAP_MASK (EDGE_MULTIPART | EDGE_TRACE_UUID | EDGE_STREAM)
 #define BOOL_STR(v) ((v) ? "Y" : "N")
 
@@ -214,8 +215,6 @@ static int close_conn_internal(struct ziti_conn *conn) {
             model_map_removel(&conn->parent->server.children, conn->conn_id);
         }
 
-        free_key_exchange(&conn->key_ex);
-
         clear_deadline(&conn->flusher);
         int count = 0;
         while (!TAILQ_EMPTY(&conn->in_q)) {
@@ -233,6 +232,9 @@ static int close_conn_internal(struct ziti_conn *conn) {
         }
         free_buffer(conn->inbound);
         CONN_LOG(TRACE, "is being free()'d");
+        if (conn->e2ee) {
+            conn->e2ee->free(conn->e2ee);
+        }
         FREE(conn->service);
         FREE(conn->source_identity);
         FREE(conn);
@@ -448,6 +450,7 @@ static void connect_get_service_cb(ziti_context ztx, const ziti_service *s, int 
 
         req->service_id = cstr_from(s->id);
         conn->encrypted = s->encryption;
+        conn->e2ee = create_e2ee(conn->encrypted ? E2EE_DEFAULT : E2EE_NONE);
         process_connect(conn, NULL);
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
         CONN_LOG(ERROR, "service[%s] is not available for ztx[%s]", conn->service, ziti_get_identity(ztx)->name);
@@ -628,67 +631,80 @@ int ziti_dial_with_options(ziti_connection conn, const char *service, const ziti
 }
 
 static void ziti_write_req(struct ziti_write_req_s *req) {
+    // only accessed on the event loop thread
+    static uint8_t msg_buf[MAX_CHAIN_LEN];
+
     struct ziti_conn *conn = req->conn;
 
     if (req->eof) {
         conn_set_state(conn, CloseWrite);
         send_fin_message(conn, req);
-    } else if (req->close) {
+        return;
+    }
+
+    if (req->close) {
         // conn->state will be set on_disconnect callback
         message *m = create_message(conn, ContentTypeStateClosed, 0, 0);
         send_message(conn, m, req);
-    } else {
-        message *m = req->message;
-        if (m == NULL) {
-            bool multipart = model_list_size(&req->chain) > 0;
-            bool stream = conn->flags & EDGE_STREAM;
-
-            uint32_t flags = multipart && !stream ? EDGE_MULTIPART_MSG : 0;
-            size_t total_len = conn->encrypted ? crypto_secretstream_xchacha20poly1305_abytes() : 0;
-            total_len += (multipart ? req->chain_len : req->len);
-            m = create_message(conn, ContentTypeData, flags, total_len);
-
-            if (multipart) {
-                uint8_t *p = m->body + conn->encrypted;
-                string_buf_t buf;
-                string_buf_init_fixed(&buf, (char*)p, total_len);
-                const struct ziti_write_req_s *r = req;
-                model_list_iter it = model_list_iterator(&req->chain);
-                int count = 0;
-                size_t tot = 0;
-                do {
-                    if (!stream) {
-                        uint16_t part_len = (uint16_t) r->len;
-                        part_len = htole16(part_len);
-                        string_buf_appendn(&buf, (char *) &part_len, sizeof(part_len));
-                    }
-                    string_buf_appendn(&buf, (char*)r->buf, r->len);
-                    count++;
-                    tot += r->len;
-
-                    r = model_list_it_element(it);
-                    it = model_list_it_next(it);
-                } while(r != NULL);
-                CONN_LOG(TRACE, "consolidated %d payloads total_len[%zd]", count, tot);
-                conn->sent += tot;
-
-                if (conn->encrypted) {
-                    crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL,
-                                                               p, req->chain_len, NULL, 0, 0);
-                }
-                string_buf_free(&buf);
-            } else {
-                if (conn->encrypted) {
-                    crypto_secretstream_xchacha20poly1305_push(&conn->crypt_o, m->body, NULL,
-                                                               req->buf, req->len, NULL, 0, 0);
-                } else {
-                    memcpy(m->body, req->buf, req->len);
-                }
-                conn->sent += req->len;
-            }
-        }
-        send_message(conn, m, req);
+        return;
     }
+
+    if (req->message) {
+        send_message(conn, req->message, req);
+        return;
+    }
+
+    bool multipart = model_list_size(&req->chain) > 0;
+    bool stream = conn->flags & EDGE_STREAM;
+    ssize_t crypto_bytes = 0;
+
+    uint32_t flags = multipart && !stream ? EDGE_MULTIPART_MSG : 0;
+    size_t total_len = E2EE_MAX_MSG_OVERHEAD;
+    message *m = NULL;
+
+    if (multipart) {
+        total_len += req->chain_len;
+        m = create_message(conn, ContentTypeData, flags, total_len);
+
+        string_buf_t buf;
+        string_buf_init_fixed(&buf, (char *)msg_buf, MAX_CHAIN_LEN);
+        const struct ziti_write_req_s *r = req;
+        model_list_iter it = model_list_iterator(&req->chain);
+        int count = 0;
+        size_t tot = 0;
+        do {
+            if (!stream) {
+                uint16_t part_len = (uint16_t)r->len;
+                part_len = htole16(part_len);
+                string_buf_appendn(&buf, (char *)&part_len, sizeof(part_len));
+            }
+            string_buf_appendn(&buf, (char *)r->buf, r->len);
+            count++;
+            tot += r->len;
+
+            r = model_list_it_element(it);
+            it = model_list_it_next(it);
+        } while (r != NULL);
+        CONN_LOG(TRACE, "consolidated %d payloads total_len[%zd]", count, tot);
+        conn->sent += tot;
+        size_t buf_len = string_buf_size(&buf);
+
+        crypto_bytes = conn->e2ee->encrypt(conn->e2ee, msg_buf, buf_len, m->body, total_len);
+        string_buf_free(&buf);
+    } else {
+        total_len += req->len;
+        m = create_message(conn, ContentTypeData, flags, E2EE_MAX_MSG_OVERHEAD + req->len);
+        crypto_bytes = conn->e2ee->encrypt(conn->e2ee, (uint8_t *)req->buf, req->len, m->body, total_len);
+        conn->sent += req->len;
+    }
+
+    if (crypto_bytes < 0) {
+        CONN_LOG(ERROR, "encryption failed: %zd", crypto_bytes);
+        complete_conn_req(conn, ZITI_CRYPTO_FAIL);
+        return;
+    }
+    m->header.body_len = crypto_bytes;
+    send_message(conn, m, req);
 }
 
 static void on_disconnect(ziti_connection conn, ssize_t status, void *ctx) {
@@ -750,38 +766,37 @@ static int ziti_disconnect(struct ziti_conn *conn) {
 }
 
 int establish_crypto(ziti_connection conn, message *msg) {
-    if (!conn->encrypted) {
-        return ZITI_OK;
-    }
-
     if (conn->state != Connecting && conn->state != Accepting) {
         CONN_LOG(ERROR, "cannot establish crypto in state[%s]", ziti_conn_state(conn));
         return ZITI_INVALID_STATE;
     }
 
-    size_t peer_key_len;
+    size_t peer_key_len = 0;
     const uint8_t *peer_key;
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
-    if (!peer_key_sent) {
-        CONN_LOG(ERROR, "failed to establish crypto for encrypted service: did not receive peer key");
-        return ZITI_CRYPTO_FAIL;
-    }
-
-    int rc = init_crypto(&conn->key_ex, &conn->key_pair, peer_key, conn->state == Accepting);
-
-    if (rc != 0) {
-        CONN_LOG(ERROR, "failed to establish encryption: crypto error");
-        free_key_exchange(&conn->key_ex);
+    if (peer_key_sent) {
+        if (conn->e2ee->init(conn->e2ee, peer_key, peer_key_len, conn->state == Accepting) != 0) {
+            CONN_LOG(ERROR, "failed to establish encryption: crypto error peer_key_len[%zu]", peer_key_len);
+            return ZITI_CRYPTO_FAIL;
+        }
+    } else if (conn->encrypted) {
+        CONN_LOG(ERROR, "failed to establish encryption: no peer key sent");
         return ZITI_CRYPTO_FAIL;
     }
     return ZITI_OK;
 }
 
 static int send_crypto_header(ziti_connection conn) {
-    if (conn->encrypted) {
-        size_t crypto_header_len = crypto_secretstream_xchacha20poly1305_headerbytes();
+    uint8_t crypto_header[E2EE_MAX_HEADER_LEN];
+    ssize_t crypto_header_len = conn->e2ee->get_header(conn->e2ee, crypto_header);
+    if (crypto_header_len < 0) {
+        CONN_LOG(ERROR, "failed to establish encryption: crypto error getting header");
+        return ZITI_CRYPTO_FAIL;
+    }
+
+    if (crypto_header_len > 0) {
         message *m = create_message(conn, ContentTypeData, 0, crypto_header_len);
-        crypto_secretstream_xchacha20poly1305_init_push(&conn->crypt_o, m->body, conn->key_ex.tx);
+        memcpy(m->body, crypto_header, crypto_header_len);
         NEWP(wr, struct ziti_write_req_s);
         wr->conn = conn;
         wr->message = m;
@@ -816,7 +831,6 @@ void chain_data_requests(ziti_connection conn, struct ziti_write_req_s *req) {
         return;
 
     int boundary_len = (conn->flags & EDGE_STREAM) ? 0 : 2;
-#define MAX_CHAIN_LEN (31 * 1024)
     size_t chain_len = 0;
     if (req->len + boundary_len >= MAX_CHAIN_LEN)
         return;
@@ -936,89 +950,81 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
         return;
     }
 
-    uint8_t *plain_text = NULL;
-    unsigned long long plain_len = 0;
     int32_t flags = 0;
     message_get_int32_header(msg, FlagsHeader, &flags);
-
-    if (conn->encrypted) {
-        PREP(crypto);
-        // first message is expected to be peer crypto header
-        if (conn->key_ex.rx != NULL) {
-            CONN_LOG(VERBOSE, "processing crypto header(%d bytes)", msg->header.body_len);
-            TRY(crypto, msg->header.body_len != crypto_secretstream_xchacha20poly1305_HEADERBYTES);
-            TRY(crypto, crypto_secretstream_xchacha20poly1305_init_pull(&conn->crypt_i, msg->body, conn->key_ex.rx));
-            CONN_LOG(VERBOSE, "processed crypto header");
-            FREE(conn->key_ex.rx);
-        } else {
-            unsigned char tag;
-            if (msg->header.body_len > 0) {
-                plain_text = malloc(msg->header.body_len - crypto_secretstream_xchacha20poly1305_ABYTES);
-                assert(plain_text != NULL);
-                CONN_LOG(VERBOSE, "decrypting %d bytes", msg->header.body_len);
-                int crypto_rc = crypto_secretstream_xchacha20poly1305_pull(&conn->crypt_i,
-                                                                           plain_text, &plain_len, &tag,
-                                                                           msg->body, msg->header.body_len, NULL, 0);
-                if (crypto_rc != 0 && (conn->flags & EDGE_TRACE_UUID)) {
-                    // try to figure out the cause of crypto error
-                    struct msg_uuid *uuid;
-                    size_t uuid_len;
-                    struct local_hash h;
-                    crypto_hash_sha256(h.hash, msg->body, msg->header.body_len);
-
-                    if (message_get_bytes_header(msg, UUIDHeader, (const uint8_t **) &uuid, &uuid_len)) {
-                        CONN_LOG(ERROR, "uuid[" UUID_FMT "] %s corruption hash[" HASH_FMT "]",
-                                 UUID_FMT_ARG(uuid),
-                                 uuid->slug != htole32(h.i32[0]) ? "payload" : "crypto state",
-                                 HASH_FMT_ARG(h));
-                    } else {
-                        CONN_LOG(ERROR, "message/state corruption hash[" HASH_FMT "]",
-                                 HASH_FMT_ARG(h));
-                    }
-                }
-
-                TRY(crypto, crypto_rc);
-                CONN_LOG(VERBOSE, "decrypted %lld bytes tag[%x]", plain_len, (int)tag);
-            }
-        }
-
-        CATCH(crypto) {
-            FREE(plain_text);
-            conn_set_state(conn, Disconnected);
-            conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
-            return;
-        }
-    } else if (msg->header.body_len > 0) {
-        plain_text = malloc(msg->header.body_len);
-        plain_len = msg->header.body_len;
-        memcpy(plain_text, msg->body, msg->header.body_len);
-    }
-
-    if (plain_text) {
-        if (flags & EDGE_MULTIPART_MSG) {
-            CONN_LOG(TRACE, "chunking multipart[%llu] message", plain_len);
-            uint8_t *end = plain_text + plain_len;
-            uint8_t *p = plain_text;
-
-            do {
-                uint16_t partlen;
-                memcpy(&partlen, p, sizeof(partlen));
-                p += sizeof(partlen);
-                partlen = le32toh(partlen);
-                buffer_append_copy(conn->inbound, p, partlen);
-                p += partlen;
-                CONN_LOG(TRACE, "chunk[%d]", partlen);
-            } while (p < end);
-            free(plain_text);
-        } else {
-            buffer_append(conn->inbound, plain_text, plain_len);
-            metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) plain_len);
-            conn->received += plain_len;
-        }
-    }
-
     if (flags & EDGE_FIN) {
         conn->fin_recv = true;
+    }
+
+    if (msg->header.body_len == 0) {
+        CONN_LOG(VERBOSE, "no payload to process");
+        return;
+    }
+
+    uint8_t *plain_text = malloc(msg->header.body_len);
+    if (plain_text == NULL) {
+        CONN_LOG(ERROR, "failed to allocate plaintext buffer");
+        conn_set_state(conn, Disconnected);
+        conn->data_cb(conn, NULL, ZITI_ALLOC_FAILED);
+        return;
+    }
+
+    CONN_LOG(VERBOSE, "decrypting %d bytes", msg->header.body_len);
+    ssize_t plain_len = conn->e2ee->decrypt(conn->e2ee,
+                                            msg->body, msg->header.body_len,
+                                            plain_text, msg->header.body_len);
+    if (plain_len < 0 && (conn->flags & EDGE_TRACE_UUID)) {
+        // try to figure out the cause of crypto error
+        struct msg_uuid *uuid;
+        size_t uuid_len;
+        struct local_hash h;
+        crypto_hash_sha256(h.hash, msg->body, msg->header.body_len);
+
+        if (message_get_bytes_header(msg, UUIDHeader, (const uint8_t **) &uuid, &uuid_len)) {
+            CONN_LOG(ERROR, "uuid[" UUID_FMT "] %s corruption hash[" HASH_FMT "]",
+                     UUID_FMT_ARG(uuid),
+                     uuid->slug != htole32(h.i32[0]) ? "payload" : "crypto state",
+                     HASH_FMT_ARG(h));
+        } else {
+            CONN_LOG(ERROR, "message/state corruption hash[" HASH_FMT "]",
+                     HASH_FMT_ARG(h));
+        }
+    } else {
+        CONN_LOG(VERBOSE, "decrypted %zd bytes", plain_len);
+    }
+
+    if (plain_len < 0) {
+        CONN_LOG(ERROR, "decryption failed: %zd", plain_len);
+        FREE(plain_text);
+        conn_set_state(conn, Disconnected);
+        conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
+        return;
+    }
+
+    if (plain_len == 0) {
+        FREE(plain_text);
+        return;
+    }
+
+    if (flags & EDGE_MULTIPART_MSG) {
+        CONN_LOG(TRACE, "chunking multipart[%zu] message", plain_len);
+        uint8_t *end = plain_text + plain_len;
+        uint8_t *p = plain_text;
+
+        do {
+            uint16_t partlen;
+            memcpy(&partlen, p, sizeof(partlen));
+            p += sizeof(partlen);
+            partlen = le32toh(partlen);
+            buffer_append_copy(conn->inbound, p, partlen);
+            p += partlen;
+            CONN_LOG(TRACE, "chunk[%d]", partlen);
+        } while (p < end);
+        free(plain_text);
+    } else {
+        buffer_append(conn->inbound, plain_text, plain_len);
+        metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) plain_len);
+        conn->received += plain_len;
     }
 }
 
@@ -1075,12 +1081,9 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
         case ContentTypeStateConnected:
             if (conn->state == Connecting) {
                 CONN_LOG(TRACE, "connected");
-                int rc = ZITI_OK;
-                if (conn->encrypted) {
-                    rc = establish_crypto(conn, msg);
-                    if (rc == ZITI_OK) {
-                        send_crypto_header(conn);
-                    }
+                int rc = establish_crypto(conn, msg);
+                if (rc == ZITI_OK) {
+                    send_crypto_header(conn);
                 }
                 const uint8_t *sticky_token = NULL;
                 size_t sticky_token_len = 0;
@@ -1140,6 +1143,7 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
     int32_t msg_seq = htole32(0);
 
     const ziti_identity *identity = ziti_get_identity(conn->ziti_ctx);
+    e2ee_pub_t pk = conn->e2ee->pub(conn->e2ee);
     hdr_t headers[] = {
             {
                     .header_id = ConnIdHeader,
@@ -1161,20 +1165,18 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
                     .length = strlen(identity->name),
                     .value = (uint8_t *) identity->name,
             },
-            {
-                    .header_id = PublicKeyHeader,
-                    .length = sizeof(conn->key_pair.pk),
-                    .value = conn->key_pair.pk,
-            },
-            // blank hdr_t's to be filled in if needed by options
+        // blank hdr_t's to be filled in if needed by options
+            { .header_id = -1, },
             { .header_id = -1, },
             { .header_id = -1, },
             { .header_id = -1, },
             { .header_id = -1, },
     };
     int nheaders = 4;
-    if (conn->encrypted) {
-        init_key_pair(&conn->key_pair);
+    if (pk.key_len > 0) {
+        headers[nheaders].header_id = PublicKeyHeader;
+        headers[nheaders].value = pk.key;
+        headers[nheaders].length = pk.key_len;
         nheaders++;
     }
 
@@ -1257,7 +1259,9 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     int32_t msg_seq = htole32(0);
     int32_t reply_id = htole32(conn->dial_req_seq);
     int32_t clt_conn_id = htole32(conn->rt_conn_id);
-    hdr_t headers[] = {
+    e2ee_pub_t pk = conn->e2ee->pub(conn->e2ee);
+
+    hdr_t headers[4] = {
             {
                     .header_id = ConnIdHeader,
                     .length = sizeof(conn_id),
@@ -1274,6 +1278,13 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
                     .value = (uint8_t *) &reply_id
             },
     };
+    int num_headers = 3;
+    if (pk.key_len > 0) {
+        headers[num_headers].header_id = PublicKeyHeader;
+        headers[num_headers].value = pk.key;
+        headers[num_headers].length = pk.key_len;
+        num_headers++;
+    }
 
     struct ziti_write_req_s *ar = calloc(1, sizeof(*ar));
     ar->conn = conn;
@@ -1281,7 +1292,7 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
     ar->ctx = cb;
 
     TAILQ_INSERT_TAIL(&conn->pending_wreqs, ar, _next);
-    int rc = ziti_channel_send(ch, content_type, headers, 3,
+    int rc = ziti_channel_send(ch, content_type, headers, num_headers,
                                (const uint8_t *) &clt_conn_id, sizeof(clt_conn_id),
                                ar);
     return rc;

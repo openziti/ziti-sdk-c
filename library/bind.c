@@ -42,9 +42,9 @@ enum bind_state {
 
 struct binding_s {
     struct ziti_conn *conn;
+    e2ee_t *e2ee;
     uint32_t conn_id;
     ziti_channel_t *ch;
-    struct key_pair key_pair;
     enum bind_state state;
     struct waiter_s *waiter;
 };
@@ -69,6 +69,9 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx);
 static void notify_status(struct ziti_conn *conn, int err);
 
 static void free_binding(struct binding_s *b) {
+    if (b->e2ee) {
+        b->e2ee->free(b->e2ee);
+    }
     free(b);
 }
 
@@ -122,7 +125,7 @@ static struct binding_s* new_binding(struct ziti_conn *conn) {
     b->conn_id = conn->conn_id;
     b->conn = conn;
     b->state = st_unbound;
-    init_key_pair(&b->key_pair);
+    b->e2ee = create_e2ee(conn->encrypted ? E2EE_DEFAULT : E2EE_NONE);
     return b;
 }
 
@@ -454,13 +457,12 @@ static void process_dial(struct binding_s *b, message *msg) {
     }
     client->start = uv_now(conn->ziti_ctx->loop);
 
-    if (conn->encrypted) {
-        client->encrypted = true;
-        if (init_crypto(&client->key_ex, &b->key_pair, peer_key, true) != 0) {
-            reject_dial_request(0, b->ch, msg->header.seq, "failed to establish crypto");
-            ziti_close(client, NULL);
-            return;
-        }
+    client->encrypted = conn->encrypted;
+    client->e2ee = b->e2ee->clone(b->e2ee);
+    if (client->e2ee->init(client->e2ee, peer_key, peer_key_len, true) != 0) {
+        reject_dial_request(0, b->ch, msg->header.seq, "failed to establish crypto");
+        ziti_close(client, NULL);
+        return;
     }
     client->state = Accepting;
     client->channel = b->ch;
@@ -587,8 +589,11 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
             // blank hdr_t's to be filled in if needed by options
     };
     int nheaders = 5;
-    if (conn->encrypted) {
-        headers[nheaders++] = header(PublicKeyHeader, sizeof(b->key_pair.pk), b->key_pair.pk);
+
+    // TODO: remove this when ER can accept per-accept key (ziti@2.1+)
+    e2ee_pub_t pub_key = b->e2ee->pub(b->e2ee);
+    if (pub_key.key_len > 0) {
+        headers[nheaders++] = header(PublicKeyHeader, pub_key.key_len, pub_key.key);
     }
 
     if (conn->server.identity != NULL) {
