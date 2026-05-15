@@ -44,11 +44,12 @@ TEST_CASE("e2ee", "[crypto]") {
     REQUIRE(alice_header_len >= 0);
     REQUIRE(bob_header_len >= 0);
 
+    uint8_t out[1024];
     if (alice_header_len > 0) {
-        REQUIRE(bob->process_header(bob.get(), alice_header, alice_header_len) == 0);
+        REQUIRE(bob->decrypt(bob.get(), alice_header, alice_header_len, out, sizeof(out)) == 0);
     }
     if (bob_header_len > 0) {
-        REQUIRE(alice->process_header(alice.get(), bob_header, bob_header_len) == 0);
+        REQUIRE(alice->decrypt(alice.get(), bob_header, bob_header_len, out, sizeof(out)) == 0);
     }
 
     for (auto test_case: { std::make_pair(alice.get(), bob.get()), std::make_pair(bob.get(), alice.get()) }) {
