@@ -90,15 +90,15 @@ static ssize_t libsodium_encrypt(e2ee_t *e2ee, const uint8_t *plaintext, size_t 
     if (ciphertext_len < plaintext_len + crypto_secretstream_xchacha20poly1305_abytes()) {
         return -1;
     }
-    unsigned long long clen = ciphertext_len;
-    int rc = crypto_secretstream_xchacha20poly1305_push(&e->encrypt_state, ciphertext, &clen,
+    unsigned long long c_len = ciphertext_len;
+    int rc = crypto_secretstream_xchacha20poly1305_push(&e->encrypt_state, ciphertext, &c_len,
                                                         plaintext, (unsigned long long)plaintext_len,
                                                         NULL, 0, 0);
     if (rc != 0) {
         return -1;
     }
 
-    return (ssize_t)clen;
+    return (ssize_t)c_len;
 }
 
 static ssize_t libsodium_decrypt(e2ee_t *e2ee, const uint8_t *ciphertext, size_t ciphertext_len, uint8_t *plaintext, size_t plaintext_len) {

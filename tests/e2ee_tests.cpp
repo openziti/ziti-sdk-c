@@ -69,3 +69,87 @@ TEST_CASE("e2ee", "[crypto]") {
         REQUIRE(memcmp(plaintext, plaintext_recv, sizeof(plaintext)) == 0);
     }
 }
+
+TEST_CASE("e2ee libsodium init rejects wrong peer key length", "[crypto]") {
+    auto e = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    uint8_t too_short[crypto_kx_PUBLICKEYBYTES - 1] = {0};
+    uint8_t too_long[crypto_kx_PUBLICKEYBYTES + 1] = {0};
+
+    REQUIRE(e->init(e.get(), too_short, sizeof(too_short), false) == -1);
+    REQUIRE(e->init(e.get(), too_long, sizeof(too_long), false) == -1);
+    REQUIRE(e->init(e.get(), nullptr, 0, false) == -1);
+}
+
+TEST_CASE("e2ee libsodium init is one-shot", "[crypto]") {
+    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto bob_pub = bob->pub(bob.get());
+
+    REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, false) == 0);
+    REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, false) == -1);
+}
+
+TEST_CASE("e2ee libsodium get_header is one-shot", "[crypto]") {
+    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto bob_pub = bob->pub(bob.get());
+    REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, false) == 0);
+
+    uint8_t header[E2EE_MAX_HEADER_LEN];
+    REQUIRE(alice->get_header(alice.get(), header) > 0);
+    REQUIRE(alice->get_header(alice.get(), header) == -1);
+}
+
+TEST_CASE("e2ee libsodium clone is independent of parent", "[crypto]") {
+    // Models the bind.c listener pattern: a parent keypair is cloned per
+    // accepted connection, and init() on the clone must not consume the
+    // parent's secret key.
+    auto listener = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto listener_pub = listener->pub(listener.get());
+    std::vector<uint8_t> pub_snapshot(listener_pub.key, listener_pub.key + listener_pub.key_len);
+
+    auto peer1 = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto peer1_pub = peer1->pub(peer1.get());
+
+    auto clone1 = std::unique_ptr<e2ee_t, e2ee_deleter>(listener->clone(listener.get()));
+    REQUIRE(clone1->init(clone1.get(), peer1_pub.key, peer1_pub.key_len, true) == 0);
+
+    auto listener_pub_after = listener->pub(listener.get());
+    REQUIRE(listener_pub_after.key_len == pub_snapshot.size());
+    REQUIRE(memcmp(listener_pub_after.key, pub_snapshot.data(), pub_snapshot.size()) == 0);
+
+    // listener still usable: second clone+init succeeds against a fresh peer
+    auto peer2 = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto peer2_pub = peer2->pub(peer2.get());
+    auto clone2 = std::unique_ptr<e2ee_t, e2ee_deleter>(listener->clone(listener.get()));
+    REQUIRE(clone2->init(clone2.get(), peer2_pub.key, peer2_pub.key_len, true) == 0);
+}
+
+TEST_CASE("e2ee libsodium decrypt retries after partial header", "[crypto]") {
+    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto alice_pub = alice->pub(alice.get());
+    auto bob_pub = bob->pub(bob.get());
+    REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, true) == 0);
+    REQUIRE(bob->init(bob.get(), alice_pub.key, alice_pub.key_len, false) == 0);
+
+    uint8_t header[E2EE_MAX_HEADER_LEN];
+    auto header_len = alice->get_header(alice.get(), header);
+    REQUIRE(header_len > 0);
+
+    uint8_t out[1024];
+    // truncated header must fail without consuming the receiver's header state
+    REQUIRE(bob->decrypt(bob.get(), header, (size_t)header_len - 1, out, sizeof(out)) == -1);
+    // full header on retry must succeed
+    REQUIRE(bob->decrypt(bob.get(), header, (size_t)header_len, out, sizeof(out)) == 0);
+
+    // and the subsequent ciphertext round-trip still works
+    uint8_t plaintext[64];
+    randombytes_buf(plaintext, sizeof(plaintext));
+    uint8_t ciphertext[sizeof(plaintext) + E2EE_MAX_MSG_OVERHEAD];
+    auto ct_len = alice->encrypt(alice.get(), plaintext, sizeof(plaintext), ciphertext, sizeof(ciphertext));
+    REQUIRE(ct_len > 0);
+    auto pt_len = bob->decrypt(bob.get(), ciphertext, ct_len, out, sizeof(out));
+    REQUIRE(pt_len == sizeof(plaintext));
+    REQUIRE(memcmp(out, plaintext, sizeof(plaintext)) == 0);
+}
