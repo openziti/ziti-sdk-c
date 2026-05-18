@@ -27,6 +27,8 @@ typedef intptr_t ssize_t;
 #include <unistd.h>
 #endif
 
+#include <ziti/enums.h>
+
 #define E2EE_MAX_HEADER_LEN 64
 #define E2EE_MAX_MSG_OVERHEAD 32
 
@@ -37,6 +39,7 @@ typedef struct e2ee_pub_s {
 
 // End-to-end encryption API
 typedef struct e2ee {
+    ziti_crypto_method method;
     // clone initial state: allows for multiple connections to be established
     // with the same key pair
     struct e2ee* (*clone)(struct e2ee *e2ee);
@@ -49,18 +52,16 @@ typedef struct e2ee {
     void (*free)(struct e2ee *e2ee);
 } e2ee_t;
 
-typedef enum {
-    E2EE_NONE,
-    E2EE_LIBSODIUM,
-    E2EE_AES_GCM,
-    E2EE_DEFAULT = E2EE_LIBSODIUM,
-} e2ee_impl_t;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-e2ee_t *create_e2ee(e2ee_impl_t);
+e2ee_t *create_e2ee(ziti_crypto_method);
+
+const char *e2ee_method_id(ziti_crypto_method mode);
+
+ziti_crypto_method e2ee_method_from_id(const char *id);
 
 #ifdef __cplusplus
 }

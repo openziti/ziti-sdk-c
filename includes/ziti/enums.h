@@ -37,6 +37,13 @@ typedef enum {
     ziti_enroll_token,
 } ziti_enroll_mode;
 
+typedef enum {
+    ziti_crypto_invalid = -1,
+    ziti_crypto_none = 0,
+    ziti_crypto_libsodium,
+    ziti_crypto_aes_gcm,
+} ziti_crypto_method;
+
 #ifdef __cplusplus
 }
 #endif

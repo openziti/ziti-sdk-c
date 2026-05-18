@@ -96,11 +96,12 @@ struct ztx_req_s {
 
 static const char *all_configs[] = { "all", NULL };
 
-static ziti_options default_options = {
-        .disabled = false,
-        .config_types = all_configs,
-        .refresh_interval = 0,
-        .api_page_size = 25,
+static ziti_options default_ziti_options = {
+    .disabled = false,
+    .config_types = all_configs,
+    .e2ee_mode = ziti_crypto_libsodium,
+    .refresh_interval = 0,
+    .api_page_size = 25,
 };
 
 static size_t parse_ref(const char *val, const char **res) {
@@ -2086,7 +2087,7 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
     if (config->id.key) ctx->config.id.key = strdup(config->id.key);
     if (config->id.cert) ctx->config.id.cert = strdup(config->id.cert);
 
-    ctx->opts = default_options;
+    ctx->opts = default_ziti_options;
 
     *ztx = ctx;
     return ZITI_OK;
@@ -2094,7 +2095,7 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
 
 int ziti_context_set_options(ziti_context ztx, const ziti_options *options) {
     if (options == NULL) {
-        ztx->opts = default_options;
+        ztx->opts = default_ziti_options;
     } else {
 #define copy_opt(f) if (options->f != 0) ztx->opts.f = options->f
 

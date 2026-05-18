@@ -125,7 +125,13 @@ static struct binding_s* new_binding(struct ziti_conn *conn) {
     b->conn_id = conn->conn_id;
     b->conn = conn;
     b->state = st_unbound;
-    b->e2ee = create_e2ee(conn->encrypted ? E2EE_DEFAULT : E2EE_NONE);
+    b->e2ee = create_e2ee(conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none);
+    if (b->e2ee == NULL) {
+        CONN_LOG(ERROR, "failed to initialize e2ee for mode[%s]",
+                 e2ee_method_id(conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none));
+        free(b);
+        return NULL;
+    }
     return b;
 }
 
@@ -153,6 +159,9 @@ int process_bindings(struct ziti_conn *conn) {
         struct binding_s *b = model_map_get(&conn->server.bindings, er->name);
         if (b == NULL) {
             b = new_binding(conn);
+            if (b == NULL) {
+                continue;
+            }
             model_map_set(&conn->server.bindings, er->name, b);
         }
         active += start_binding(b, ch);
@@ -429,17 +438,33 @@ static void process_dial(struct binding_s *b, message *msg) {
         return;
     }
 
-    size_t peer_key_len, marker_len;
+    size_t peer_key_len, marker_len, method_len;
     const uint8_t *peer_key;
     const uint8_t *marker;
     uint32_t rt_conn_id;
+    const uint8_t *method_id;
+
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
     bool marker_sent = message_get_bytes_header(msg, ConnectionMarkerHeader, &marker, &marker_len);
     bool rt_conn_id_sent = message_get_int32_header(msg, RouterProvidedConnId, (int32_t*)&rt_conn_id);
+    bool method_sent = message_get_bytes_header(msg, CryptoMethodHeader, &method_id, &method_len);
 
     if (!peer_key_sent && conn->encrypted) {
         CONN_LOG(ERROR, "failed to establish crypto for encrypted service: did not receive peer key");
         reject_dial_request(conn->conn_id, b->ch, msg->header.seq, "did not receive peer crypto key");
+        return;
+    }
+
+    ziti_crypto_method method = b->e2ee->method;
+    if (method_sent) {
+        cstr id = cstr_with_n((const char *)method_id, (int)method_len);
+        method = e2ee_method_from_id(cstr_str(&id));
+        cstr_drop(&id);
+    }
+    if (method != b->e2ee->method) {
+        CONN_LOG(ERROR, "failed to establish crypto: crypto method mismatch: peer[%s] != local[%s]",
+                 e2ee_method_id(method), e2ee_method_id(b->e2ee->method));
+        reject_dial_request(conn->conn_id, b->ch, msg->header.seq, "crypto method mismatch");
         return;
     }
 

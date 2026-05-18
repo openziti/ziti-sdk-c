@@ -450,7 +450,13 @@ static void connect_get_service_cb(ziti_context ztx, const ziti_service *s, int 
 
         req->service_id = cstr_from(s->id);
         conn->encrypted = s->encryption;
-        conn->e2ee = create_e2ee(conn->encrypted ? E2EE_DEFAULT : E2EE_NONE);
+        conn->e2ee = create_e2ee(conn->encrypted ? ztx->opts.e2ee_mode : ziti_crypto_none);
+        if (conn->e2ee == NULL) {
+            CONN_LOG(ERROR, "failed to initialize e2ee for mode[%s]",
+                     e2ee_method_id(conn->encrypted ? ztx->opts.e2ee_mode : ziti_crypto_none));
+            complete_conn_req(conn, ZITI_CRYPTO_FAIL);
+            return;
+        }
         process_connect(conn, NULL);
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
         CONN_LOG(ERROR, "service[%s] is not available for ztx[%s]", conn->service, ziti_get_identity(ztx)->name);
@@ -769,6 +775,21 @@ int establish_crypto(ziti_connection conn, message *msg) {
     if (conn->state != Connecting && conn->state != Accepting) {
         CONN_LOG(ERROR, "cannot establish crypto in state[%s]", ziti_conn_state(conn));
         return ZITI_INVALID_STATE;
+    }
+
+    ziti_crypto_method method = conn->e2ee->method;
+    const uint8_t *crypto_method;
+    size_t crypto_method_len = 0;
+    bool crypto_method_sent = message_get_bytes_header(msg, CryptoMethodHeader, &crypto_method, &crypto_method_len);
+    if (crypto_method_sent) {
+        CONN_LOG(INFO, "peer crypto method: %.*s", (int)crypto_method_len, crypto_method);
+        cstr id = cstr_with_n((const char *)crypto_method, (int)crypto_method_len);
+        method = e2ee_method_from_id(cstr_str(&id));
+    }
+    if (method != conn->e2ee->method) {
+        CONN_LOG(ERROR, "failed to establish encryption: crypto method mismatch: peer[%s] != local[%s]",
+                 e2ee_method_id(method), e2ee_method_id(conn->e2ee->method));
+        return ZITI_CRYPTO_FAIL;
     }
 
     size_t peer_key_len = 0;
@@ -1144,6 +1165,7 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
 
     const ziti_identity *identity = ziti_get_identity(conn->ziti_ctx);
     e2ee_pub_t pk = conn->e2ee->pub(conn->e2ee);
+    const char *crypto_method_id = e2ee_method_id(conn->e2ee->method);
     hdr_t headers[] = {
             {
                     .header_id = ConnIdHeader,
@@ -1171,12 +1193,18 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
             { .header_id = -1, },
             { .header_id = -1, },
             { .header_id = -1, },
+            { .header_id = -1, },
     };
     int nheaders = 4;
     if (pk.key_len > 0) {
         headers[nheaders].header_id = PublicKeyHeader;
         headers[nheaders].value = pk.key;
         headers[nheaders].length = pk.key_len;
+        nheaders++;
+
+        headers[nheaders].header_id = CryptoMethodHeader;
+        headers[nheaders].value = (uint8_t *) crypto_method_id;
+        headers[nheaders].length = strlen(crypto_method_id);
         nheaders++;
     }
 

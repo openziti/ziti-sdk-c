@@ -163,6 +163,7 @@ static void libsodium_free(e2ee_t *e2ee) {
 }
 
 static e2ee_t libsodium_e2ee_impl = {
+    .method = ziti_crypto_libsodium,
     .clone = libsodium_clone,
     .pub = libsodium_pub,
     .init = libsodium_init,

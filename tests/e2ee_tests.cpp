@@ -26,7 +26,7 @@ struct e2ee_deleter {
 };
 
 TEST_CASE("e2ee", "[crypto]") {
-    auto e2ee = GENERATE(E2EE_NONE, E2EE_DEFAULT);
+    auto e2ee = GENERATE(ziti_crypto_none, ziti_crypto_libsodium);
     INFO("Testing e2ee_impl_t: " << e2ee);
     auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee));
     auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee));
@@ -71,7 +71,7 @@ TEST_CASE("e2ee", "[crypto]") {
 }
 
 TEST_CASE("e2ee libsodium init rejects wrong peer key length", "[crypto]") {
-    auto e = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto e = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium));
     uint8_t too_short[crypto_kx_PUBLICKEYBYTES - 1] = {0};
     uint8_t too_long[crypto_kx_PUBLICKEYBYTES + 1] = {0};
 
@@ -81,8 +81,8 @@ TEST_CASE("e2ee libsodium init rejects wrong peer key length", "[crypto]") {
 }
 
 TEST_CASE("e2ee libsodium init is one-shot", "[crypto]") {
-    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
-    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium));
+    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium));
     auto bob_pub = bob->pub(bob.get());
 
     REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, false) == 0);
@@ -90,8 +90,8 @@ TEST_CASE("e2ee libsodium init is one-shot", "[crypto]") {
 }
 
 TEST_CASE("e2ee libsodium get_header is one-shot", "[crypto]") {
-    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
-    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium));
+    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium));
     auto bob_pub = bob->pub(bob.get());
     REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, false) == 0);
 
@@ -104,11 +104,11 @@ TEST_CASE("e2ee libsodium clone is independent of parent", "[crypto]") {
     // Models the bind.c listener pattern: a parent keypair is cloned per
     // accepted connection, and init() on the clone must not consume the
     // parent's secret key.
-    auto listener = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto listener = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium));
     auto listener_pub = listener->pub(listener.get());
     std::vector<uint8_t> pub_snapshot(listener_pub.key, listener_pub.key + listener_pub.key_len);
 
-    auto peer1 = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto peer1 = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium));
     auto peer1_pub = peer1->pub(peer1.get());
 
     auto clone1 = std::unique_ptr<e2ee_t, e2ee_deleter>(listener->clone(listener.get()));
@@ -119,15 +119,15 @@ TEST_CASE("e2ee libsodium clone is independent of parent", "[crypto]") {
     REQUIRE(memcmp(listener_pub_after.key, pub_snapshot.data(), pub_snapshot.size()) == 0);
 
     // listener still usable: second clone+init succeeds against a fresh peer
-    auto peer2 = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto peer2 = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium));
     auto peer2_pub = peer2->pub(peer2.get());
     auto clone2 = std::unique_ptr<e2ee_t, e2ee_deleter>(listener->clone(listener.get()));
     REQUIRE(clone2->init(clone2.get(), peer2_pub.key, peer2_pub.key_len, true) == 0);
 }
 
 TEST_CASE("e2ee libsodium decrypt retries after partial header", "[crypto]") {
-    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
-    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(E2EE_LIBSODIUM));
+    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium));
+    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium));
     auto alice_pub = alice->pub(alice.get());
     auto bob_pub = bob->pub(bob.get());
     REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, true) == 0);

@@ -19,13 +19,47 @@
 extern e2ee_t *new_libsodium_e2ee(void);
 extern e2ee_t *new_none_e2ee(void);
 
-e2ee_t* create_e2ee(e2ee_impl_t impl) {
+e2ee_t* create_e2ee(ziti_crypto_method impl) {
     switch (impl) {
-    case E2EE_NONE:
+    case ziti_crypto_none:
         return new_none_e2ee();
-    case E2EE_LIBSODIUM:
+    case ziti_crypto_libsodium:
+        return new_libsodium_e2ee();
+    case ziti_crypto_aes_gcm:
+        ZITI_LOG(WARN, "aes-gcm e2ee not implemented, falling back to libsodium");
         return new_libsodium_e2ee();
     default:
         return NULL;
     }
 }
+
+const char *e2ee_method_id(ziti_crypto_method mode) {
+    switch (mode) {
+    case ziti_crypto_none:
+        return "none";
+    case ziti_crypto_libsodium:
+        return "libsodium";
+    case ziti_crypto_aes_gcm:
+        return "aes-gcm";
+    default:
+        return "invalid";
+    }
+}
+
+ziti_crypto_method e2ee_method_from_id(const char *id) {
+    // this is the default
+    if (id == NULL) {
+        return ziti_crypto_libsodium;
+    }
+
+    if (strcmp(id, "none") == 0) {
+        return ziti_crypto_none;
+    } else if (strcmp(id, "libsodium") == 0) {
+        return ziti_crypto_libsodium;
+    } else if (strcmp(id, "aes-gcm") == 0) {
+        return ziti_crypto_aes_gcm;
+    } else {
+        return ziti_crypto_invalid;
+    }
+}
+

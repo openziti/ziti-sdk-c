@@ -57,6 +57,7 @@ static void none_free(e2ee_t *e2ee) {}
 
 // singleton instance of none e2ee implementation
 static e2ee_t none_e2ee_impl = {
+    .method = ziti_crypto_none,
     .clone = none_clone,
     .pub = none_pub,
     .init = none_init,
