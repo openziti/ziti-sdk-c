@@ -429,7 +429,7 @@ void on_channel_send(uv_write_t *w, int status) {
     ch->last_write = now;
     ch->last_write_delay = write_delay;
     ch->out_q--;
-    ch->out_q_bytes -= zwreq->message->msgbuflen;
+    ch->out_q_bytes -= message_len(zwreq->message);
 
     pool_return_obj(zwreq->message);
     zwreq->message = NULL;
@@ -451,7 +451,7 @@ void on_channel_send(uv_write_t *w, int status) {
 }
 
 int ziti_channel_send_message(ziti_channel_t *ch, message *msg, struct ziti_write_req_s *ziti_write) {
-    uv_buf_t buf = uv_buf_init((char *) msg->msgbufp, msg->msgbuflen);
+    uv_buf_t buf = uv_buf_init((char *) msg->msgbufp, message_len(msg));
     message_set_seq(msg, &ch->msg_seq);
     CH_LOG(TRACE, "=> ct[%s] seq[%d] len[%d]", content_type_id(msg->header.content),
            msg->header.seq, msg->header.body_len);

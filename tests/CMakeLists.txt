@@ -18,6 +18,7 @@ add_executable(all_tests
         catch2_includes.hpp
         ziti_src_tests.cpp
         message_tests.cpp
+        e2ee_tests.cpp
         util_tests.cpp)
 
 if (WIN32)

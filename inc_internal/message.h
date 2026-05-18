@@ -109,6 +109,10 @@ void message_set_seq(message *m, uint32_t *seq);
 
 message* new_inspect_result(uint32_t req_seq, uint32_t conn_id, uint8_t type, const char *msg, size_t msglen);
 
+static inline size_t message_len(message *m) {
+    return HEADER_SIZE + m->header.headers_len + m->header.body_len;
+}
+
 #ifdef __cplusplus
 };
 #endif

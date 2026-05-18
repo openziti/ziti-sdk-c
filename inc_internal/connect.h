@@ -90,7 +90,7 @@ struct ziti_conn {
         } server;
 
         struct {
-            struct key_pair key_pair;
+            e2ee_t *e2ee;
             struct ziti_conn_req *conn_req;
 
             char marker[MARKER_CHAR_LEN];
@@ -114,11 +114,6 @@ struct ziti_conn {
 
             struct ziti_conn *parent;
             uint32_t dial_req_seq;
-
-            struct key_exchange key_ex;
-
-            crypto_secretstream_xchacha20poly1305_state crypt_o;
-            crypto_secretstream_xchacha20poly1305_state crypt_i;
 
             // stats
             bool bridged;

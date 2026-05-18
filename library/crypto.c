@@ -16,24 +16,50 @@
 #include "crypto.h"
 #include "utils.h"
 
-int init_key_pair(struct key_pair *kp) {
-    return crypto_kx_keypair(kp->pk, kp->sk);
-}
+extern e2ee_t *new_libsodium_e2ee(void);
+extern e2ee_t *new_none_e2ee(void);
 
-int init_crypto(struct key_exchange *key_ex, struct key_pair *kp, const uint8_t *peer_key, bool server) {
-    free(key_ex->rx);
-    free(key_ex->tx);
-
-    key_ex->rx = calloc(1, crypto_secretstream_xchacha20poly1305_keybytes());
-    key_ex->tx = calloc(1, crypto_secretstream_xchacha20poly1305_keybytes());
-    if (server) {
-        return crypto_kx_server_session_keys(key_ex->rx, key_ex->tx, kp->pk, kp->sk, peer_key);
-    } else {
-        return crypto_kx_client_session_keys(key_ex->rx, key_ex->tx, kp->pk, kp->sk, peer_key);
+e2ee_t* create_e2ee(ziti_crypto_method impl) {
+    switch (impl) {
+    case ziti_crypto_none:
+        return new_none_e2ee();
+    case ziti_crypto_libsodium:
+        return new_libsodium_e2ee();
+    case ziti_crypto_aes_gcm:
+        ZITI_LOG(WARN, "aes-gcm e2ee not implemented, falling back to libsodium");
+        return new_libsodium_e2ee();
+    default:
+        return NULL;
     }
 }
 
-void free_key_exchange(struct key_exchange *key_ex) {
-    FREE(key_ex->rx);
-    FREE(key_ex->tx);
+const char *e2ee_method_id(ziti_crypto_method mode) {
+    switch (mode) {
+    case ziti_crypto_none:
+        return "none";
+    case ziti_crypto_libsodium:
+        return "libsodium";
+    case ziti_crypto_aes_gcm:
+        return "aes-gcm";
+    default:
+        return "invalid";
+    }
 }
+
+ziti_crypto_method e2ee_method_from_id(const char *id) {
+    // this is the default
+    if (id == NULL) {
+        return ziti_crypto_libsodium;
+    }
+
+    if (strcmp(id, "none") == 0) {
+        return ziti_crypto_none;
+    } else if (strcmp(id, "libsodium") == 0) {
+        return ziti_crypto_libsodium;
+    } else if (strcmp(id, "aes-gcm") == 0) {
+        return ziti_crypto_aes_gcm;
+    } else {
+        return ziti_crypto_invalid;
+    }
+}
+

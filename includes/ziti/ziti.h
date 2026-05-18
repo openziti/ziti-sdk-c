@@ -241,6 +241,7 @@ typedef void (*ziti_event_cb)(ziti_context ztx, const ziti_event_t *event);
 typedef struct ziti_options_s {
     bool disabled; // if true initial state will be disabled
     const char **config_types;
+    ziti_crypto_method e2ee_mode;
 
     unsigned int api_page_size;
     long refresh_interval; //the duration in seconds between checking for updates from the controller
