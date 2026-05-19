@@ -18,6 +18,7 @@
 
 extern e2ee_t *new_libsodium_e2ee(void);
 extern e2ee_t *new_none_e2ee(void);
+extern e2ee_t *new_aes_gcm_e2ee(void);
 
 e2ee_t* create_e2ee(ziti_crypto_method impl) {
     switch (impl) {
@@ -26,8 +27,7 @@ e2ee_t* create_e2ee(ziti_crypto_method impl) {
     case ziti_crypto_libsodium:
         return new_libsodium_e2ee();
     case ziti_crypto_aes_gcm:
-        ZITI_LOG(WARN, "aes-gcm e2ee not implemented, falling back to libsodium");
-        return new_libsodium_e2ee();
+        return new_aes_gcm_e2ee();
     default:
         return NULL;
     }

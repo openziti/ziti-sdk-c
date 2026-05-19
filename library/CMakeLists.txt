@@ -113,6 +113,7 @@ SET(ZITI_SRC_FILES
         session_certs.c
         e2ee/e2ee_libsodium.c
         e2ee/e2ee_none.c
+        e2ee/e2ee_aes_gcm.c
 )
 
 FILE(GLOB zitilib_FILES ${CMAKE_CURRENT_LIST_DIR}/zitilib/*.c)
@@ -133,6 +134,10 @@ set(ziti_compile_defs
         ZITI_COMMIT=${GIT_COMMIT_HASH}
         PRIVATE ZITI_LOG_MODULE="${PROJECT_NAME}"
 )
+
+if (NOT WIN32)
+    find_package(OpenSSL REQUIRED)
+endif ()
 
 function(define_file_basename_for_sources targetname)
     get_target_property(source_files "${targetname}" SOURCES)
@@ -177,6 +182,7 @@ function(config_ziti_library target)
 
     if (NOT WIN32)
         target_link_libraries(${target} PUBLIC m)
+        target_link_libraries(${target} PUBLIC OpenSSL::Crypto)
     endif ()
 
 
