@@ -113,8 +113,13 @@ SET(ZITI_SRC_FILES
         session_certs.c
         e2ee/e2ee_libsodium.c
         e2ee/e2ee_none.c
-        e2ee/e2ee_aes_gcm.c
 )
+
+if (WIN32)
+    list(APPEND ZITI_SRC_FILES e2ee/e2ee_aes_gcm_wincrypto.c)
+else ()
+    list(APPEND ZITI_SRC_FILES e2ee/e2ee_aes_gcm_ossl.c)
+endif (WIN32)
 
 FILE(GLOB zitilib_FILES ${CMAKE_CURRENT_LIST_DIR}/zitilib/*.c)
 LIST(APPEND ZITI_SRC_FILES ${zitilib_FILES})

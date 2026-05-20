@@ -14,7 +14,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef _WIN32
+#ifdef _WIN32
+#error "This file is only for non-Windows builds"
+#endif
 
 #include <string.h>
 
@@ -367,14 +369,3 @@ struct aes_gcm_e2ee *new_aes_gcm_e2ee(void) {
     return e;
 }
 
-#else // _WIN32
-
-#include "crypto.h"
-#include "ziti/ziti_log.h"
-
-struct aes_gcm_e2ee *new_aes_gcm_e2ee(void) {
-    ZITI_LOG(WARN, "aes-gcm e2ee not supported on Windows");
-    return NULL;
-}
-
-#endif // _WIN32

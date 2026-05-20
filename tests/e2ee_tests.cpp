@@ -31,6 +31,10 @@ TEST_CASE("e2ee", "[crypto]") {
         auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee));
         auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee));
 
+        if (alice == nullptr || bob == nullptr) {
+            SKIP("e2ee method " << e2ee_method_id(e2ee) << " not implemented, skipping");
+        }
+
         auto alice_pub = alice->pub(alice.get());
         auto bob_pub = bob->pub(bob.get());
 
