@@ -58,6 +58,11 @@ endif (ziti_TEST_COVERAGE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if (WIN32)
+    add_compile_definitions(
+            WINVER=0x0A00
+            _WIN32_WINNT=0x0A00
+            NTDDI_VERSION=NTDDI_WIN10_RS4
+    )
     if(MINGW)
         #on server 2016 msvcrt.dll does not process %z formatting
         #that can lead to a crash if the string format is something like: %zd(%s)

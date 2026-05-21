@@ -14,8 +14,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <catch2/catch_all.hpp>
 #include "crypto.h"
+#include "ziti/ziti_log.h"
+#include <catch2/catch_all.hpp>
 
 #include <sodium/randombytes.h>
 
@@ -26,6 +27,7 @@ struct e2ee_deleter {
 };
 
 TEST_CASE("e2ee", "[crypto]") {
+    ziti_log_init(nullptr, 5, nullptr);
     auto e2ee = GENERATE(ziti_crypto_none, ziti_crypto_libsodium, ziti_crypto_aes_gcm);
     WHEN("e2ee_impl_t: " << e2ee_method_id(e2ee)) {
         auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee));
