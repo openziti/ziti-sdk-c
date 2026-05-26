@@ -232,11 +232,19 @@ static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti
             ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->id_creds.key, ztx->id_creds.cert);
         }
 
+        // finalize the OIDC callback successfully before ztx_config_update,
+        // otherwise an error page may be displayed in the browser by mistake
+        if (ztx->ext_auth) {
+            ext_oidc_client_finalize(ztx->ext_auth, true, NULL);
+        }
         // notify app to persist the updated config
         ztx_config_update(ztx);
     } else if (cert_resp) {
         // enrollToToken: no cert returned, save bootstrap config
         ZTX_LOG(INFO, "enrollToToken complete, saving bootstrap config");
+        if (ztx->ext_auth) {
+            ext_oidc_client_finalize(ztx->ext_auth, true, NULL);
+        }
         ztx_config_update(ztx);
     }
 
