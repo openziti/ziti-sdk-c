@@ -21,10 +21,10 @@ add_executable(all_tests
         e2ee_tests.cpp
         util_tests.cpp)
 
+set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
 if (WIN32)
-    set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
-else ()
-    set_property(TARGET all_tests PROPERTY CXX_STANDARD 14)
+    find_package(OpenSSL REQUIRED)
+    target_link_libraries(all_tests PRIVATE OpenSSL::Crypto)
 endif ()
 
 target_compile_definitions(all_tests

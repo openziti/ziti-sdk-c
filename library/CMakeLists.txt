@@ -200,6 +200,7 @@ function(config_ziti_library target)
         )
 
         target_link_libraries(${target}
+                PUBLIC bcrypt
                 PUBLIC crypt32
                 PUBLIC netapi32
                 PUBLIC ws2_32

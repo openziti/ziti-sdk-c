@@ -14,9 +14,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifdef _WIN32
-#error "This file is only for non-Windows builds"
-#endif
 
 #include <string.h>
 
@@ -30,6 +27,10 @@
 #include "crypto.h"
 #include "ziti/ziti_log.h"
 
+
+#if !defined(EVP_MAX_AEAD_TAG_LENGTH)
+#define EVP_MAX_AEAD_TAG_LENGTH 16
+#endif
 
 #define AES_GCM_TAG_LEN EVP_MAX_AEAD_TAG_LENGTH
 #define AES_GCM_NONCE_LEN 12
@@ -77,6 +78,7 @@ static int derive_session_keys(struct aes_gcm_e2ee *e, const uint8_t *peer_key, 
     size_t shared_secret_len = sizeof(shared_secret);
     // HKDF output per direction: AES-256 key (32 bytes) || GCM IV fixed_field (4 bytes)
     uint8_t derived[sizeof(e->rx_key) + sizeof(e->rx_iv_prefix)] = {0};
+    size_t derived_len = sizeof(derived);
     int ret = -1;
 
     EVP_PKEY *peer_pub = EVP_PKEY_new();
@@ -104,7 +106,6 @@ static int derive_session_keys(struct aes_gcm_e2ee *e, const uint8_t *peer_key, 
     if (EVP_PKEY_CTX_set_hkdf_md(hkdf_ctx, EVP_sha256()) <= 0) goto cleanup;
     if (EVP_PKEY_CTX_set1_hkdf_key(hkdf_ctx, shared_secret, (int)shared_secret_len) <= 0) goto cleanup;
     if (EVP_PKEY_CTX_add1_hkdf_info(hkdf_ctx, info, (int)sizeof(info)) <= 0) goto cleanup;
-    size_t derived_len = sizeof(derived);
     if (EVP_PKEY_derive(hkdf_ctx, derived, &derived_len) <= 0) goto cleanup;
     memcpy(e->rx_key, derived, sizeof(e->rx_key));
     memcpy(e->rx_iv_prefix, derived + sizeof(e->rx_key), sizeof(e->rx_iv_prefix));
@@ -141,7 +142,10 @@ cleanup:
 
 static e2ee_pub_t aes_gcm_pub(struct e2ee *e2ee) {
     struct aes_gcm_e2ee *e = (struct aes_gcm_e2ee *)e2ee;
-    return (e2ee_pub_t){.key = e->pub_key, .key_len = e->pub_key_len};
+    e2ee_pub_t pub = {};
+    pub.key = e->pub_key;
+    pub.key_len = e->pub_key_len;
+    return pub;
 }
 
 static int aes_gcm_init(struct e2ee *e2ee, const uint8_t *peer_key, size_t peer_key_len, bool server) {
@@ -280,7 +284,7 @@ static struct e2ee *aes_gcm_clone(struct e2ee *e2ee) {
         abort();
     }
 
-    struct aes_gcm_e2ee *clone = calloc(1, sizeof(struct aes_gcm_e2ee));
+    struct aes_gcm_e2ee *clone = (struct aes_gcm_e2ee*)calloc(1, sizeof(struct aes_gcm_e2ee));
     if (clone == NULL) {
         ZITI_LOG(ERROR, "failed to allocate aes-gcm e2ee: out of memory");
         abort();
@@ -329,7 +333,7 @@ static e2ee_t aes_gcm_e2ee_impl = {
 };
 
 struct aes_gcm_e2ee *new_aes_gcm_e2ee(void) {
-    struct aes_gcm_e2ee *e = calloc(1, sizeof(struct aes_gcm_e2ee));
+    struct aes_gcm_e2ee *e = (struct aes_gcm_e2ee*)calloc(1, sizeof(struct aes_gcm_e2ee));
     if (e == NULL) {
         ZITI_LOG(ERROR, "failed to allocate aes-gcm e2ee: out of memory");
         abort();
