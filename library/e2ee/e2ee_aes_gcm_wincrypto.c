@@ -132,7 +132,7 @@ static int hkdf_sha256(const uint8_t *ikm, size_t ikm_len,
     BCryptBufferDesc desc = { BCRYPTBUFFER_VERSION, ARRAYSIZE(params), params };
     s = BCryptKeyDerivation(hKey, &desc, out, out_len, &written, 0);
     if (!BCRYPT_SUCCESS(s)) {
-        ZITI_LOG(ERROR, "BCryptKeyDerivation(HKDF IKM) failed: 0x%lx", s);
+        ZITI_LOG(ERROR, "BCryptKeyDerivation failed: 0x%lx", s);
         goto cleanup;
     }
 
@@ -367,6 +367,11 @@ static ssize_t aes_gcm_decrypt(e2ee_t *e2ee, const uint8_t *ciphertext, size_t c
 static struct e2ee *aes_gcm_clone(struct e2ee *e2ee) {
     struct aes_gcm_e2ee *e = (struct aes_gcm_e2ee*)e2ee;
     struct aes_gcm_e2ee *clone = calloc(1, sizeof(struct aes_gcm_e2ee));
+    if (clone == NULL) {
+        ZITI_LOG(ERROR, "failed to allocate aes-gcm e2ee: out of memory");
+        abort();
+    }
+
 
     clone->e2ee = e->e2ee;
     clone->clone = true;
