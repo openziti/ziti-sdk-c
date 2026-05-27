@@ -31,6 +31,7 @@ struct run_opts {
     model_list udp_bindings;
     const char *proxy;
     int http_proxy_port;
+    ziti_crypto_method e2ee_method;
 };
 
 #if __cplusplus

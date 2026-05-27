@@ -958,6 +958,7 @@ int run_proxy(struct run_opts *opts) {
             .app_ctx = &app_ctx,
             .config_types = my_configs,
             .metrics_type = INSTANT,
+            .e2ee_mode = opts->e2ee_method,
     };
     ziti_context_set_options(app_ctx.ziti, &zopts);
 
