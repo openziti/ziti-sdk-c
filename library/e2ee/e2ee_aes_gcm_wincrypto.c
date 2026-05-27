@@ -100,11 +100,6 @@ static void reverse_bytes(uint8_t *buf, size_t len) {
     }
 }
 
-// HKDF-SHA256 Extract-then-Expand. To match the OSSL backend exactly (which uses OpenSSL's
-// default EVP_KDF_HKDF_MODE_EXTRACT_AND_EXPAND with no salt → HashLen zero bytes per
-// RFC 5869), we supply an explicit 32-byte zero salt. BCrypt's docs are ambiguous about
-// whether an absent KDF_SALT buffer performs Extract or skips it; supplying the salt
-// explicitly removes that ambiguity.
 static int hkdf_sha256(const uint8_t *ikm, size_t ikm_len,
                        const uint8_t *info, size_t info_len,
                        uint8_t *out, size_t out_len) {
@@ -119,14 +114,14 @@ static int hkdf_sha256(const uint8_t *ikm, size_t ikm_len,
     }
     s = BCryptSetProperty(hKey, BCRYPT_HKDF_HASH_ALGORITHM, (void*)BCRYPT_SHA256_ALGORITHM, (ULONG)(sizeof(BCRYPT_SHA256_ALGORITHM)), 0);
     if (!BCRYPT_SUCCESS(s)) {
-        ZITI_LOG(ERROR, "BCryptSetPropterty(SHA-256) failed: 0x%lx", s);
+        ZITI_LOG(ERROR, "BCryptSetProperty(SHA-256) failed: 0x%lx", s);
         goto cleanup;
     }
 
-    // 3. Extract Stage: Provide salt and finalize
+    // 3. Extract Stage: finalize
     s = BCryptSetProperty(hKey, BCRYPT_HKDF_SALT_AND_FINALIZE, NULL, 0, 0);
     if (!BCRYPT_SUCCESS(s)) {
-        ZITI_LOG(ERROR, "BCryptSetPropterty(SALT_AND_FINALIZE) failed: 0x%lx", s);
+        ZITI_LOG(ERROR, "BCryptSetProperty(SALT_AND_FINALIZE) failed: 0x%lx", s);
         goto cleanup;
     }
     ULONG written = 0;
@@ -137,7 +132,7 @@ static int hkdf_sha256(const uint8_t *ikm, size_t ikm_len,
     BCryptBufferDesc desc = { BCRYPTBUFFER_VERSION, ARRAYSIZE(params), params };
     s = BCryptKeyDerivation(hKey, &desc, out, out_len, &written, 0);
     if (!BCRYPT_SUCCESS(s)) {
-        ZITI_LOG(ERROR, "BCryptGenerateSymmetricKey(HKDF IKM) failed: 0x%lx", s);
+        ZITI_LOG(ERROR, "BCryptKeyDerivation(HKDF IKM) failed: 0x%lx", s);
         goto cleanup;
     }
 
