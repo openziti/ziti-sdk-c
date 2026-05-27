@@ -110,16 +110,25 @@ static int hkdf_sha256(const uint8_t *ikm, size_t ikm_len,
                        uint8_t *out, size_t out_len) {
     BCRYPT_KEY_HANDLE hKey = NULL;
     int ret = -1;
-    uint8_t zero_salt[32] = {0};
-
-    NTSTATUS s;
 
     // Generate KDF Key from Input Keying Material (IKM)
-    s = BCryptGenerateSymmetricKey(BCRYPT_HKDF_ALG_HANDLE, &hKey, NULL, 0, (PUCHAR)ikm, (ULONG)ikm_len, 0);
+    NTSTATUS s = BCryptGenerateSymmetricKey(BCRYPT_HKDF_ALG_HANDLE, &hKey, NULL, 0, (PUCHAR)ikm, (ULONG)ikm_len, 0);
+    if (!BCRYPT_SUCCESS(s)) {
+        ZITI_LOG(ERROR, "BCryptGenerateSymmetricKey(HKDF IKM) failed: 0x%lx", s);
+        goto cleanup;
+    }
     s = BCryptSetProperty(hKey, BCRYPT_HKDF_HASH_ALGORITHM, (void*)BCRYPT_SHA256_ALGORITHM, (ULONG)(sizeof(BCRYPT_SHA256_ALGORITHM)), 0);
+    if (!BCRYPT_SUCCESS(s)) {
+        ZITI_LOG(ERROR, "BCryptSetPropterty(SHA-256) failed: 0x%lx", s);
+        goto cleanup;
+    }
 
     // 3. Extract Stage: Provide salt and finalize
     s = BCryptSetProperty(hKey, BCRYPT_HKDF_SALT_AND_FINALIZE, NULL, 0, 0);
+    if (!BCRYPT_SUCCESS(s)) {
+        ZITI_LOG(ERROR, "BCryptSetPropterty(SALT_AND_FINALIZE) failed: 0x%lx", s);
+        goto cleanup;
+    }
     ULONG written = 0;
 
     BCryptBuffer params[] = {
@@ -131,7 +140,6 @@ static int hkdf_sha256(const uint8_t *ikm, size_t ikm_len,
         ZITI_LOG(ERROR, "BCryptGenerateSymmetricKey(HKDF IKM) failed: 0x%lx", s);
         goto cleanup;
     }
-
 
     ret = 0;
 
