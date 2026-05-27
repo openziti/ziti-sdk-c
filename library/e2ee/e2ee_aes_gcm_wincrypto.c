@@ -64,6 +64,7 @@
 struct aes_gcm_e2ee {
     e2ee_t e2ee;
 
+    bool clone;
     BCRYPT_KEY_HANDLE ecdh_key;  // own keypair; destroyed after init() scrubs private material
 
     uint8_t pub_key[ECDH_P256_PUB_LEN];
@@ -245,7 +246,7 @@ static int aes_gcm_init(struct e2ee *e2ee, const uint8_t *peer_key, size_t peer_
     int ret = derive_session_keys(e, peer_key, peer_key_len, server);
 
     // Scrub ECDH private key material regardless of outcome
-    if (e->ecdh_key) {
+    if (e->ecdh_key && !e->clone) {
         BCryptDestroyKey(e->ecdh_key);
         e->ecdh_key = NULL;
     }
@@ -361,16 +362,23 @@ static ssize_t aes_gcm_decrypt(e2ee_t *e2ee, const uint8_t *ciphertext, size_t c
 }
 
 static struct e2ee *aes_gcm_clone(struct e2ee *e2ee) {
-    (void)e2ee;
-    ZITI_LOG(ERROR, "clone not implemented for wincrypto aes-gcm backend");
-    abort();
+    struct aes_gcm_e2ee *e = (struct aes_gcm_e2ee*)e2ee;
+    struct aes_gcm_e2ee *clone = calloc(1, sizeof(struct aes_gcm_e2ee));
+
+    clone->e2ee = e->e2ee;
+    clone->clone = true;
+    clone->ecdh_key = e->ecdh_key;
+    memcpy(clone->pub_key, e->pub_key, e->pub_key_len);
+    clone->pub_key_len = e->pub_key_len;
+
+    return (struct e2ee *)clone;
 }
 
 static void aes_gcm_free(e2ee_t *e2ee) {
     struct aes_gcm_e2ee *e = (struct aes_gcm_e2ee *)e2ee;
     if (e->tx_aes_key) BCryptDestroyKey(e->tx_aes_key);
     if (e->rx_aes_key) BCryptDestroyKey(e->rx_aes_key);
-    if (e->ecdh_key)   BCryptDestroyKey(e->ecdh_key);
+    if (!e->clone && e->ecdh_key)   BCryptDestroyKey(e->ecdh_key);
     SecureZeroMemory(e, sizeof(struct aes_gcm_e2ee));
     free(e);
 }
