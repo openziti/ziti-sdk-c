@@ -22,14 +22,16 @@
 extern "C" {
 #endif
 
-static inline const char* to_hex(const uint8_t *bin, size_t len) {
+static inline const char* to_hex(const uint8_t *bin, unsigned len) {
     static char buf[1024];
     const uint8_t *b = bin;
     char *p = buf;
     while (b - bin < len && p - buf < sizeof(buf) - 2) {
-        *p++ = (char)('0' + (*bin >> 4));
-        *p++ = (char)('0' + (*bin & 0x0F));
-        bin++;
+        uint8_t hi = *b >> 4;
+        uint8_t lo = *b & 0x0F;
+        *p++ = (char)( hi < 10 ? '0' + hi : 'a' + hi - 10 );
+        *p++ = (char)( lo < 10 ?  '0' + lo : 'a' + lo - 10 );
+        b++;
     }
     *p = '\0';
     return buf;
@@ -39,7 +41,7 @@ static inline const char* to_hex(const uint8_t *bin, size_t len) {
 
 #if ZITI_E2EE_DEBUG
 #define PRINT_BYTES(label, buf, len) do { \
-    ZITI_LOG(DEBUG, "%s: %s", label, to_hex(buf, len)); \
+    ZITI_LOG(DEBUG, "%s: %s", label, to_hex(buf, (unsigned)len)); \
 } while(0)
 #else
 #define PRINT_BYTES(label, buf, len) do {} while(0)

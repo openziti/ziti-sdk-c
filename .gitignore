@@ -28,3 +28,7 @@ local.cmake
 
 ## CI dirs
 .ci.cache/
+
+# AI agent files
+/CLAUDE.md
+/AGENTS.md
