@@ -15,7 +15,9 @@
 // limitations under the License.
 
 #include <catch2/catch_all.hpp>
+
 #include "crypto.h"
+#include "ziti/ziti_log.h"
 
 #include <sodium/randombytes.h>
 
@@ -25,48 +27,60 @@ struct e2ee_deleter {
     }
 };
 
-TEST_CASE("e2ee", "[crypto]") {
-    auto e2ee = GENERATE(ziti_crypto_none, ziti_crypto_libsodium);
-    INFO("Testing e2ee_impl_t: " << e2ee);
-    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee));
-    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee));
+static void test_e2ee(e2ee_t *alice, e2ee_t *bob) {
+    auto alice_pub = alice->pub(alice);
+    auto bob_pub = bob->pub(bob);
 
-    auto alice_pub = alice->pub(alice.get());
-    auto bob_pub = bob->pub(bob.get());
-
-    REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, true) == 0);
-    REQUIRE(bob->init(bob.get(), alice_pub.key, alice_pub.key_len, false) == 0);
+    REQUIRE(alice->init(alice, bob_pub.key, bob_pub.key_len, true) == 0);
+    REQUIRE(bob->init(bob, alice_pub.key, alice_pub.key_len, false) == 0);
 
     uint8_t alice_header[E2EE_MAX_HEADER_LEN];
     uint8_t bob_header[E2EE_MAX_HEADER_LEN];
-    auto alice_header_len = alice->get_header(alice.get(), alice_header);
-    auto bob_header_len = bob->get_header(bob.get(), bob_header);
+    auto alice_header_len = alice->get_header(alice, alice_header);
+    auto bob_header_len = bob->get_header(bob, bob_header);
     REQUIRE(alice_header_len >= 0);
     REQUIRE(bob_header_len >= 0);
 
     uint8_t out[1024];
     if (alice_header_len > 0) {
-        REQUIRE(bob->decrypt(bob.get(), alice_header, alice_header_len, out, sizeof(out)) == 0);
+        REQUIRE(bob->decrypt(bob, alice_header, alice_header_len, out, sizeof(out)) == 0);
     }
     if (bob_header_len > 0) {
-        REQUIRE(alice->decrypt(alice.get(), bob_header, bob_header_len, out, sizeof(out)) == 0);
+        REQUIRE(alice->decrypt(alice, bob_header, bob_header_len, out, sizeof(out)) == 0);
     }
 
-    for (auto test_case: { std::make_pair(alice.get(), bob.get()), std::make_pair(bob.get(), alice.get()) }) {
-        auto sender = test_case.first;
-        auto receiver = test_case.second;
-        INFO("Testing: " << ( bob.get() == sender ? "Bob" : "Alice") << " -> " << (bob.get() == receiver ? "Bob" : "Alice"));
+    for (int i = 0; i < 10; i++) {
+        for (auto test_case : {std::make_pair(alice, bob), std::make_pair(bob, alice)}) {
+            auto sender = test_case.first;
+            auto receiver = test_case.second;
+            INFO("Testing: " << (bob == sender ? "Bob" : "Alice") << " -> " << (bob == receiver ? "Bob" : "Alice") << "(Round " << i << ")");
 
-        char plaintext[1024];
-        randombytes_buf(plaintext, sizeof(plaintext));
+            char plaintext[1024];
+            randombytes_buf(plaintext, sizeof(plaintext));
 
-        uint8_t ciphertext[1024 + 256];
-        auto ciphertext_len = sender->encrypt(sender, (uint8_t*)plaintext, sizeof(plaintext), ciphertext, sizeof(ciphertext));
-        REQUIRE(ciphertext_len > 0);
-        char plaintext_recv[1024];
-        auto plaintext_recv_len = receiver->decrypt(receiver, ciphertext, ciphertext_len, (uint8_t*)plaintext_recv, sizeof(plaintext_recv));
-        REQUIRE(plaintext_recv_len == sizeof(plaintext));
-        REQUIRE(memcmp(plaintext, plaintext_recv, sizeof(plaintext)) == 0);
+            uint8_t ciphertext[1024 + 256];
+            auto ciphertext_len = sender->encrypt(sender, (uint8_t *)plaintext, sizeof(plaintext), ciphertext, sizeof(ciphertext));
+            REQUIRE(ciphertext_len > 0);
+            char plaintext_recv[1024];
+            auto plaintext_recv_len = receiver->decrypt(receiver, ciphertext, ciphertext_len, (uint8_t *)plaintext_recv, sizeof(plaintext_recv));
+            REQUIRE(plaintext_recv_len == sizeof(plaintext));
+            REQUIRE(memcmp(plaintext, plaintext_recv, sizeof(plaintext)) == 0);
+        }
+    }
+}
+
+TEST_CASE("e2ee", "[crypto]") {
+    ziti_log_init(nullptr, 5, nullptr);
+    auto e2ee = GENERATE(ziti_crypto_none, ziti_crypto_libsodium, ziti_crypto_aes_gcm);
+    WHEN("e2ee_impl_t: " << e2ee_method_id(e2ee)) {
+        auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee));
+        auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee));
+
+        if (alice == nullptr || bob == nullptr) {
+            SKIP("e2ee method " << e2ee_method_id(e2ee) << " not implemented, skipping");
+        }
+
+        test_e2ee(alice.get(), bob.get());
     }
 }
 
@@ -153,3 +167,14 @@ TEST_CASE("e2ee libsodium decrypt retries after partial header", "[crypto]") {
     REQUIRE(pt_len == sizeof(plaintext));
     REQUIRE(memcmp(out, plaintext, sizeof(plaintext)) == 0);
 }
+
+#if _WIN32
+namespace ossl {
+#include "../library/e2ee/e2ee_aes_gcm_ossl.c"
+}
+TEST_CASE("e2ee-ossl-wincrypto-interop", "[crypto]") {
+    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm));
+    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>((e2ee_t*)ossl::new_aes_gcm_e2ee());
+    test_e2ee(alice.get(), bob.get());
+}
+#endif
