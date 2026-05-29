@@ -23,6 +23,7 @@
 #include "auth_method.h"
 #include <ziti/ziti_log.h>
 #include <ziti/ziti.h>
+#include <ziti/zitilib.h>
 
 #ifndef line_var
 #define concat_1(a, b) a ## b
@@ -239,5 +240,23 @@ struct deferer {
 };
 
 #define DEFER deferer line_var(deferer); line_var(deferer).cb = [&]()
+
+class ZitilibTestCase {
+protected:
+    ZitilibTestCase() {
+#if _WIN32
+        WSADATA wsaData;
+        int wsaErr = WSAStartup(MAKEWORD(2, 2), &wsaData);
+        REQUIRE(wsaErr == 0);
+#endif
+        ZITI_LOG(INFO, "starting test case: %s", Catch::getResultCapture().getCurrentTestName().c_str());
+        Ziti_lib_init();
+    }
+    ~ZitilibTestCase() {
+        Ziti_lib_shutdown();
+        ZITI_LOG(INFO, "finished test case: %s", Catch::getResultCapture().getCurrentTestName().c_str());
+    }
+};
+
 
 #endif // ZITI_SDK_FIXTURES_H
