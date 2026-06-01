@@ -29,7 +29,7 @@
 #define close(s) closesocket(s)
 #define poll(f,d,t) WSAPoll(f,d,t)
 static inline void set_errno(int e) {
-    ZITI_LOG(DEBUG, "setting WSA error: %d/%s", e, strerror(e));
+    ZITI_LOG(VERBOSE, "setting WSA error: %d/%s", e, strerror(e));
     switch(e) {
     case EINVAL: WSASetLastError(WSAEINVAL); break;
     case EALREADY: WSASetLastError(WSAEALREADY); break;
@@ -537,16 +537,7 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
                sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
     set_errno(0);
 #if _WIN32
-    int res =  WSAConnect(socket, (struct sockaddr*)&zl_addr, addr_len, NULL, NULL, NULL, NULL);
-    if (res != 0) {
-        int e = WSAGetLastError();
-        ZITI_LOG(DEBUG, "connect to bridge socket: %d/%s", e, strerror(e));
-        e = WSAGetLastError();
-        ZITI_LOG(DEBUG, "connect to bridge socket: %d/%s", e, strerror(e));
-        e = WSAGetLastError();
-        ZITI_LOG(DEBUG, "connect to bridge socket: %d/%s", e, strerror(e));
-    }
-    return res;
+    return WSAConnect(socket, (struct sockaddr*)&zl_addr, addr_len, NULL, NULL, NULL, NULL);
 #else
     return connect(socket, (struct sockaddr *)&zl_addr, addr_len);
 #endif
