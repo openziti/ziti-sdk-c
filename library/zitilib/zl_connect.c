@@ -29,7 +29,7 @@
 #define close(s) closesocket(s)
 #define poll(f,d,t) WSAPoll(f,d,t)
 static inline void set_errno(int e) {
-
+    ZITI_LOG(VERBOSE, "setting WSA error: %d/%s", e, strerror(e));
     switch(e) {
     case EINVAL: WSASetLastError(WSAEINVAL); break;
     case EALREADY: WSASetLastError(WSAEALREADY); break;
@@ -132,12 +132,17 @@ static int setup_bridge_socket(struct conn_srv_s *req, uv_loop_t *l) {
 
         req->bridge_handle = (uv_handle_t *) udp;
         udp->data = req;
-        req->srv_fd = SOCKET_ERROR;
+        req->srv_fd = (uv_os_sock_t)SOCKET_ERROR;
         return 0;
     }
 
     if (req->so_type == SOCK_STREAM) {
-        uv_os_sock_t srv_fd = socket(req->app_addr.ss_family, SOCK_STREAM, 0);
+        uv_os_sock_t srv_fd =
+#if _WIN32
+            WSASocketW(req->app_addr.ss_family, req->so_type, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
+#else
+            socket(req->app_addr.ss_family, SOCK_STREAM, IPPROTO_TCP);
+#endif
         if (srv_fd == SOCKET_ERROR) {
             int e = sock_error();
             ZITI_LOG(WARN, "failed to create accept socket: %d/%s", e, strerror(e));
@@ -153,7 +158,12 @@ static int setup_bridge_socket(struct conn_srv_s *req, uv_loop_t *l) {
         }
         // these should be safe
         socklen_t alen = addr_len;
-        getsockname(srv_fd, addr, &alen);
+        if (getsockname(srv_fd, addr, &alen) == 0) {
+            uint16_t port = addr->sa_family == AF_INET ? ((struct sockaddr_in*)addr)->sin_port : ((struct sockaddr_in6 *) addr)->sin6_port;
+            ZITI_LOG(DEBUG, "srv_fd[%lld] listening on port[%d]", (long long)srv_fd, ntohs(port));
+        } else {
+            ZITI_LOG(ERROR, "failed to getsockname fd[%lld]", (long long)srv_fd);
+        }
         zl_set_non_blocking(srv_fd);
         req->srv_fd = srv_fd;
         return 0;
@@ -222,6 +232,7 @@ static void do_ziti_connect(struct conn_srv_s *req, future_t *f, uv_loop_t *l) {
 
     rc = setup_bridge_socket(req, l);
     if (rc != 0) {
+        ZITI_LOG(WARN, "failed to create bridge peer err[%d]", rc);
         fail_future(f, rc);
         goto err_cleanup;
     }
@@ -273,7 +284,7 @@ int Ziti_connect_addr(ziti_socket_t socket, const char *host, unsigned int port)
 
     req->so_type = so_type;
     req->host = cstr_from(host);
-    req->port = port;
+    req->port = (uint16_t)port;
 
     struct sockaddr_storage zl_addr = {};
     req->zl_addr = (struct sockaddr *) &zl_addr;
@@ -446,11 +457,8 @@ err_cleanup:
     int err = 0;             \
     socklen_t el = sizeof(err); \
     if (getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&err, &el) == 0) { \
-        if (err != 0)        \
-                ZITI_LOG(WARN, "socket[%d]: error[%d] %s", (int)socket, err, strerror(err)); \
-            else              \
-        ZITI_LOG(WARN, "failed to check socket[%d]: err[%d] %s", socket, sock_error(), strerror(sock_error()));                     \
-        }\
+        if (err != 0)  ZITI_LOG(WARN, "socket[%d]: error[%d] %s", (int)socket, err, strerror(err)); \
+    } else  ZITI_LOG(WARN, "failed to check socket[%d]: err[%d] %s", socket, sock_error(), strerror(sock_error())); \
 } while(0)
 
 int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, const char *terminator) {
@@ -527,12 +535,12 @@ int Ziti_connect(ziti_socket_t socket, ziti_handle_t zh, const char *service, co
 
     addr_len = zl_addr.ss_family == AF_INET ?
                sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
-    int res = connect(socket, (struct sockaddr *)&zl_addr, addr_len);
-    if (res != 0) {
-        int e = sock_error();
-        ZITI_LOG(DEBUG, "connect to bridge socket: %d/%s", e, strerror(e));
-    }
-    return res;
+    set_errno(0);
+#if _WIN32
+    return WSAConnect(socket, (struct sockaddr*)&zl_addr, addr_len, NULL, NULL, NULL, NULL);
+#else
+    return connect(socket, (struct sockaddr *)&zl_addr, addr_len);
+#endif
 }
 
 static int zl_set_non_blocking(ziti_socket_t sock) {
@@ -626,7 +634,7 @@ int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, int
         (addr->sa_family == AF_INET && addrlen != sizeof(struct sockaddr_in) ) ||
         (addr->sa_family == AF_INET6 && addrlen != sizeof(struct sockaddr_in6)) ||
         (addr->sa_family != AF_INET && addr->sa_family != AF_INET6)) {
-        return connect(socket, addr, (socklen_t)addrlen);
+        goto fallback;
     }
     
     int so_type = 0;
@@ -636,7 +644,7 @@ int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, int
     }
     
     if (so_type != SOCK_STREAM && so_type != SOCK_DGRAM) {
-        set_errno(EPROTOTYPE);
+        set_errno(err(EPROTOTYPE));
         return -1;
     }
     NEWP(req, struct conn_srv_s);
@@ -659,15 +667,24 @@ int Ziti_connect_sockaddr(ziti_socket_t socket, const struct sockaddr *addr, int
     if (rc == 0) { // found ziti service for given address: connect to bridge socket
         socklen_t zl_addr_len = zl_addr.ss_family == AF_INET ?
                                 sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6);
+#if _WIN32
+        return WSAConnect(socket, (struct sockaddr*)&zl_addr, (socklen_t)zl_addr_len, NULL, NULL, NULL, NULL);
+#else
         return connect(socket, (struct sockaddr *)&zl_addr, zl_addr_len);
+#endif
     }
 
+fallback:
     // ziti service not found for given address: try connecting to original
+#if _WIN32
+    return WSAConnect(socket, addr, (socklen_t)addrlen, NULL, NULL, NULL, NULL);
+#else
     return connect(socket, addr, (socklen_t)addrlen);
+#endif
 }
 
 static int zl_try_bind(ziti_socket_t socket, int af, struct sockaddr *addr, socklen_t *addrlen) {
-    struct sockaddr_storage a = { .ss_family = af, };
+    struct sockaddr_storage a = { .ss_family = (uint16_t)af, };
     socklen_t al = 0;
     if (af == AF_INET) {
         ((struct sockaddr_in *)&a)->sin_addr.s_addr = htonl(INADDR_LOOPBACK);

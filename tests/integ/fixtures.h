@@ -256,6 +256,22 @@ protected:
         Ziti_lib_shutdown();
         ZITI_LOG(INFO, "finished test case: %s", Catch::getResultCapture().getCurrentTestName().c_str());
     }
+
+    static ziti_handle_t loadContext(const char *path) {
+        ziti_handle_t ztx = ZITI_INVALID_HANDLE;
+        auto rc = Ziti_load_context_with_timeout(&ztx, path, 5000);
+        INFO("loadContext: " << ziti_errorstr(rc));
+        REQUIRE(rc == ZITI_OK);
+        return ztx;
+    }
+
+    static const char* checkENV(const char *name) {
+        auto v = getenv(name);
+        if (v == nullptr) {
+            SKIP("env[" << name << "] not set");
+        }
+        return v;
+    }
 };
 
 

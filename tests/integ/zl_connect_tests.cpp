@@ -66,10 +66,11 @@ static inline void checkPollErr(pollfd& fd) {
     }
 }
 
-static void set_blocking (ziti_socket_t sock, bool blocking) {
+static int set_blocking (ziti_socket_t sock, bool blocking) {
 #if _WIN32
     u_long opt = blocking ? 0 : 1;
-    REQUIRE(ioctlsocket(sock, FIONBIO, &opt) == 0);
+    if (ioctlsocket(sock, FIONBIO, &opt) != 0)
+        return sockerr();
 #else
     int opt = fcntl(sock, F_GETFL);
     REQUIRE(opt != -1);
@@ -78,7 +79,8 @@ static void set_blocking (ziti_socket_t sock, bool blocking) {
     } else {
         opt |= O_NONBLOCK;
     }
-    REQUIRE(fcntl(sock, F_SETFL, opt) == 0);
+    if (fcntl(sock, F_SETFL, opt) != 0)
+        return sockerr();
 #endif
 
     if (blocking) {
@@ -89,25 +91,40 @@ static void set_blocking (ziti_socket_t sock, bool blocking) {
             .tv_sec = RECV_TIMEOUT, .tv_usec = 0,
         };
 #endif
-        REQUIRE(setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) == 0);
+        if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout)) != 0) {
+            return sockerr();
+        }
     }
+    return 0;
 }
 
 static ziti_socket_t mk_socket(int af, int type, bool blocking) {
     ziti_socket_t s = SOCKET_ERROR;
     int proto;
+    int err = 0;
+    socklen_t err_len = sizeof(err);
+
     if (type == SOCK_STREAM) { proto = IPPROTO_TCP; }
     else if (type == SOCK_DGRAM) { proto = IPPROTO_UDP; }
-    else return SOCKET_ERROR;
+    else proto = 0;
 
 #if _WIN32
-    s = WSASocket(af, type, proto, nullptr, 0, WSA_FLAG_OVERLAPPED);
+    s = WSASocketW(af, type, proto, nullptr, 0, WSA_FLAG_OVERLAPPED);
 #else
     s = socket(af, type, proto);
 #endif
-    if (s == SOCKET_ERROR) return s;
 
-    set_blocking(s, blocking);
+    if (s == SOCKET_ERROR) {
+        err = sockerr();
+    } else if (getsockopt(s, SOL_SOCKET, SO_ERROR, (char*)&err, &err_len) != 0) {
+        err = sockerr();
+    }
+
+    if (err) SKIP("mk_socket failed: " << err << "/" << strerror(err));
+
+    err = set_blocking(s, blocking);
+    if (err) SKIP("set_blocking failed: " << err << "/" << strerror(err));
+
     return s;
 }
 
@@ -140,18 +157,20 @@ static void checkSocketAsync(ziti_socket_t sock, const std::function<int(ziti_so
     REQUIRE(getsockopt(sock, SOL_SOCKET, SO_TYPE, (char*)&sock_type, &sock_type_len) == 0);
 
     auto conn_rc = connect_fn(sock);
+    auto err = sockerr();
     if (conn_rc == -1) {
         REQUIRE(sock_type == SOCK_STREAM); // UDP should connect immediately
-        auto err = sockerr();
         auto ze = Ziti_last_error();
         INFO("error: " << ze << "/" << ziti_errorstr(ze) << " errno: " << err << "/" << strerror(err));
         CHECK(ze == ZITI_OK);
-        INFO("connect in progress, waiting for completion...");
-        REQUIRE(in_progress(err));
+        if (err != 0) {
+            CHECK(in_progress(err));
+        }
         pollfd p = {
             .fd = sock,
             .events = POLLOUT,
         };
+        INFO("connect in progress, waiting for completion...");
         REQUIRE(poll(&p, 1, RECV_TIMEOUT * 1000) == 1);
         checkPollErr(p);
         REQUIRE((p.revents & POLLOUT) > 0);
@@ -210,15 +229,11 @@ static inline void checkSocket(ziti_socket_t sock, bool block, const std::functi
     }
 }
 
-TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect service", "[zitilib:connect]") {
-    auto srv = getenv("test_service");
-    if (srv == nullptr) {
-        SKIP("'test_service' is not set");
-    }
+TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect service", "[zl-connect]") {
+    auto srv = checkENV("test_service");
+    auto cfg = checkENV("test_client");
 
-    ziti_handle_t ztx{};
-    auto error = Ziti_load_context(&ztx, getenv("test_client"));
-    REQUIRE(error == ZITI_OK);
+    auto ztx = loadContext(cfg);
     REQUIRE(ztx != ZITI_INVALID_HANDLE);
     REQUIRE(Ziti_last_error() == ZITI_OK);
     auto bl = GENERATE(true, false);
@@ -235,10 +250,9 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect service", "[zitilib:connect]
     }
 }
 
-TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect invalid service", "[zitilib:connect]") {
-    ziti_handle_t ztx{};
-    auto error = Ziti_load_context(&ztx, getenv("test_client"));
-    REQUIRE(error == ZITI_OK);
+TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect invalid service", "[zl-connect]") {
+    auto cfg = checkENV("test_client");
+    auto ztx = loadContext(cfg);
     REQUIRE(ztx != ZITI_INVALID_HANDLE);
     REQUIRE(Ziti_last_error() == ZITI_OK);
 
@@ -249,32 +263,28 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect invalid service", "[zitilib:
                       << " AF: " << (sock_af == AF_INET ? "AF_INET" : "AF_INET6")
                       << " type: " << (sock_type == SOCK_STREAM ? "SOCK_STREAM" : "SOCK_DGRAM")) {
         auto sock = mk_socket(sock_af, sock_type, block);
-        INFO("socket error: " << sockerr() << "/" << strerror(sockerr()));
-        REQUIRE(sock != SOCKET_ERROR);
+        INFO("socket: " << sock);
         DEFER {
             close(sock);
         };
 
         auto conn_rc = Ziti_connect(sock, ztx, "invalid_service", nullptr);
+        auto sock_err = sockerr();
         REQUIRE(conn_rc == -1);
 #if _WIN32
-        REQUIRE(sockerr() == WSAECONNREFUSED);
+        REQUIRE(sock_err == WSAECONNREFUSED);
 #else
-        REQUIRE(sockerr() == ECONNREFUSED);
+        REQUIRE(sock_err == ECONNREFUSED);
 #endif
         CHECK(Ziti_last_error() == ZITI_SERVICE_UNAVAILABLE);
     }
 }
 
-TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect addr", "[zitilib:connect]") {
-    auto intercept_json = getenv("test_intercept");
-    if (intercept_json == nullptr) {
-        SKIP("'test_intercept' is not set");
-    }
+TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect addr", "[zl-connect]") {
+    auto intercept_json = checkENV("test_intercept");
+    auto cfg = checkENV("test_client");
 
-    ziti_handle_t ztx{};
-    auto error = Ziti_load_context(&ztx, getenv("test_client"));
-    REQUIRE(error == ZITI_OK);
+    auto ztx = loadContext(cfg);
     REQUIRE(ztx != ZITI_INVALID_HANDLE);
     REQUIRE(Ziti_last_error() == ZITI_OK);
     auto bl = GENERATE(true, false);
@@ -308,15 +318,11 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect addr", "[zitilib:connect]") 
 
 }
 
-TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect sockaddr", "[zitilib:connect]") {
-    auto intercept_json = getenv("test_intercept");
-    if (intercept_json == nullptr) {
-        SKIP("'test_intercept' is not set");
-    }
 
-    ziti_handle_t ztx{};
-    auto error = Ziti_load_context(&ztx, getenv("test_client"));
-    REQUIRE(error == ZITI_OK);
+TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect sockaddr", "[zl-connect]") {
+    auto intercept_json = checkENV("test_intercept");
+    auto cfg = checkENV("test_client");
+    ziti_handle_t ztx = loadContext(cfg);
     REQUIRE(ztx != ZITI_INVALID_HANDLE);
     REQUIRE(Ziti_last_error() == ZITI_OK);
     auto bl = GENERATE(true, false);
@@ -346,7 +352,7 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: connect sockaddr", "[zitilib:connect
     REQUIRE(Ziti_resolve(hostname, port.c_str(), &hints, &resolved_addr) == 0);
     REQUIRE(resolved_addr != nullptr);
     DEFER {
-        uv_freeaddrinfo(resolved_addr);
+        freeaddrinfo(resolved_addr);
     };
 
     WHEN((bl ? "blocking" : "async")) {
