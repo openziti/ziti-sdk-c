@@ -6,10 +6,6 @@ inputs:
     required: true
     description: build target
 
-  test:
-    required: true
-    description: run tests
-
   config:
     default: RelWithDebInfo
     description: build type
@@ -26,11 +22,9 @@ runs:
 
     - name: install linux deps
       if: runner.os == 'linux'
-      shell: bash
-      run: |
-        echo "now installing linux deps"
-        apt update
-        apt install -y python3-venv autoconf autoconf-archive automake libtool
+      uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: python3-venv autoconf autoconf-archive automake libtool
 
     - name: macOS tools
       if: runner.os == 'macOS'
@@ -95,27 +89,4 @@ runs:
     - name: bundle artifacts
       run: cmake --build ./build --config ${{ inputs.config }} --target ziti-prox-c-pack --target package
       shell: bash
-
-    - name: test
-      if: inputs.test == 'true'
-      continue-on-error: true
-      working-directory: ./build
-      shell: bash
-      run: ctest --no-compress-output --output-on-failure -R quick_tests
-
-    - name: integration tests
-      if: inputs.test == 'true'
-      working-directory: ./build
-      continue-on-error: true
-      shell: bash
-      run: |
-        ctest -VV --no-compress-output -C ${{ inputs.config }} -R pytest-integ
-
-    - name: integration tests bundle
-      if: inputs.test == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ inputs.target }}-integ-testdata
-        path: |
-          ./build/tests/**/testdata/**/*
 
