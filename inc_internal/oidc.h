@@ -17,6 +17,7 @@
 #ifndef ZITI_SDK_OIDC_H
 #define ZITI_SDK_OIDC_H
 
+#include "auth_method.h"
 #include "jwt.h"
 #include "tlsuv/http.h"
 #include <stc/cstr.h>
@@ -63,6 +64,17 @@ struct oidc_client_s {
     struct auth_req *request;
     tlsuv_http_req_t *refresh_req;
     int refresh_failures;
+
+    // auth-method facade (populated only by new_oidc_auth)
+    ziti_auth_method_t api;
+    uv_loop_t *loop;
+    model_list urls;
+    model_list_iter cur_url;
+    auth_state_cb auth_cb;
+    void *auth_cb_ctx;
+    auth_mfa_cb mfa_cb;
+    struct timeval expiration;
+    bool started;
 };
 
 // init
