@@ -25,7 +25,7 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/test-data.h.in
 add_executable(echo-server echo-server.c)
 target_link_libraries(echo-server PRIVATE ziti)
 
-add_executable(integ-tests
+add_executable(IntegrationTests
         main.cpp
         legacy-auth.cpp
         oidc-tests.cpp
@@ -37,17 +37,17 @@ add_executable(integ-tests
         zitilib_tests.cpp
         zl_connect_tests.cpp
 )
-target_include_directories(integ-tests
+target_include_directories(IntegrationTests
         PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include
         PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
-target_link_libraries(integ-tests
+target_link_libraries(IntegrationTests
         PRIVATE ziti
         PRIVATE Catch2::Catch2WithMain
 )
 
-set_property(TARGET integ-tests PROPERTY CXX_STANDARD 23)
+set_property(TARGET IntegrationTests PROPERTY CXX_STANDARD 23)
 if (MINGW)
-    target_link_options(integ-tests PRIVATE -static-libgcc)
+    target_link_options(IntegrationTests PRIVATE -static-libgcc)
 endif ()
 
 find_program(Python3_EXECUTABLE NAMES python3 python)
@@ -109,7 +109,7 @@ if (Python3_EXECUTABLE)
         )
         set_tests_properties(pytest-integ PROPERTIES
                 TIMEOUT 600
-                DEPENDS "sample_enroll;integ-tests;echo-server"
+                DEPENDS "sample_enroll;IntegrationTests;echo-server"
         )
     endif ()
 else ()
