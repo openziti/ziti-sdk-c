@@ -122,7 +122,17 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
 
 int oidc_client_set_cfg(oidc_client_t *clt, const char *provider) {
     assert(provider != NULL);
+    struct tlsuv_url_s url = {0};
+    if (tlsuv_parse_url(&url, provider) != 0 || url.scheme_len == 0 || url.hostname_len == 0) {
+        OIDC_LOG(ERROR, "invalid provider URL[%s]", provider);
+        return ZITI_INVALID_CONFIG;
+    }
+
     cstr_assign(&clt->provider_url, provider);
+    if (!cstr_contains(&clt->provider_url, "/oidc")) {
+        cstr_append(&clt->provider_url, "/oidc");
+    }
+
     return 0;
 }
 
@@ -145,6 +155,7 @@ static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_obje
         } else if (json_object_object_get(resp, AUTH_EP) == NULL ||
                    json_object_object_get(resp, TOKEN_EP) == NULL) {
             OIDC_LOG(ERROR, "invalid OIDC config: %s and %s are required", AUTH_EP, TOKEN_EP);
+            OIDC_LOG(DEBUG, "response body: %s", json_object_get_string(resp));
             status = UV_EINVAL;
         }
     }
