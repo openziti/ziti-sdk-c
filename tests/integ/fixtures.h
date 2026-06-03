@@ -43,7 +43,23 @@
 #define CHECK_ZITI_OK(expr) t_ZITI_OK(CHECK, expr)
 #define REQUIRE_ZITI_OK(expr) t_ZITI_OK(REQUIRE, expr)
 
-class LoopTestCase {
+class BaseTestCase {
+  protected:
+    BaseTestCase() {
+        ziti_log_init(uv_default_loop(), 5, nullptr);
+    }
+
+  protected:
+    static const char* checkENV(const char *name) {
+        auto v = getenv(name);
+        if (v == nullptr) {
+            SKIP("env[" << name << "] not set");
+        }
+        return v;
+    }
+};
+
+class LoopTestCase: public BaseTestCase {
     uv_loop_t *m_loop;
 
 protected:
@@ -91,10 +107,7 @@ class ZitiTestCase : public LoopTestCase {
 
     ZitiTestCase() {
         ziti_log_init(loop(), 5, nullptr);
-        auto test_client = ZitiTestCase::test_client();
-        if (!test_client) {
-            FAIL("test_client environment variable must be set to run this test");
-        }
+        auto test_client = checkENV("test_client");
         REQUIRE_ZITI_OK(ziti_load_config(&config, test_client));
         REQUIRE_ZITI_OK(ziti_context_init(&ztx, &config));
 
@@ -126,11 +139,11 @@ class ZitiTestCase : public LoopTestCase {
     }
 
     static const char* test_client() {
-        return getenv("test_client");
+        return checkENV("test_client");
     }
 
     static const char* test_service() {
-        return getenv("test_service");
+        return checkENV("test_service");
     }
 
     const ziti_service* ensureService(const char* name = test_service()) {
@@ -241,7 +254,7 @@ struct deferer {
 
 #define DEFER deferer line_var(deferer); line_var(deferer).cb = [&]()
 
-class ZitilibTestCase {
+class ZitilibTestCase: public BaseTestCase {
 protected:
     ZitilibTestCase() {
 #if _WIN32
@@ -263,14 +276,6 @@ protected:
         INFO("loadContext: " << ziti_errorstr(rc));
         REQUIRE(rc == ZITI_OK);
         return ztx;
-    }
-
-    static const char* checkENV(const char *name) {
-        auto v = getenv(name);
-        if (v == nullptr) {
-            SKIP("env[" << name << "] not set");
-        }
-        return v;
     }
 };
 

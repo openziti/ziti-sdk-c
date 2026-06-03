@@ -61,8 +61,11 @@ def run_catch_test(test_tag, env, tmp_path):
     t.join(timeout=5)
     assert rc == 0, f"[{test_tag}] exited with code {rc}"
 
-@pytest.mark.parametrize("tag", ["basic","controller"])
-def test_integ(enrolled_identities, tmp_path, request, tag):
+def test_basic(tmp_path):
+    run_catch_test("basic", {}, tmp_path)
+
+@pytest.mark.parametrize("tag", ["auth","controller"])
+def test_identity(enrolled_identities, tmp_path, request, tag):
     run_catch_test(tag, enrolled_identities, tmp_path)
 
 

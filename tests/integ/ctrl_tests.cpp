@@ -28,7 +28,7 @@
 #include <test-data.h>
 #include <iostream>
 
-TEST_CASE("cltr-network-jwt", "[integ]") {
+TEST_CASE("cltr-network-jwt", "[controller]") {
     auto l = uv_default_loop();
 
     ziti_config cfg{};

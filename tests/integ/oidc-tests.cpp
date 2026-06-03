@@ -24,29 +24,40 @@
 #include "ziti/ziti_log.h"
 #include "test-data.h"
 
+class AuthTests: public LoopTestCase {};
 
-TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
+TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
     auto l = loop();
-    ziti_log_init(l, 4, nullptr);
-    ziti_config cfg;
-    REQUIRE(ziti_load_config(&cfg, TEST_CLIENT) == ZITI_OK);
+    ziti_config cfg{};
+    DEFER {
+            free_ziti_config(&cfg);
+    };
+    auto *cfg_str = checkENV("test_client");
+    REQUIRE(ziti_load_config(&cfg, cfg_str) == ZITI_OK);
     auto tls = default_tls_context(cfg.id.ca, strlen(cfg.id.ca));
-    tlsuv_certificate_t cert;
-    tlsuv_private_key_t key;
-    tls->load_cert(&cert, cfg.id.cert, strlen(cfg.id.cert));
-    tls->load_key(&key, cfg.id.key, strlen(cfg.id.key));
+    tlsuv_certificate_t cert{};
+    tlsuv_private_key_t key{};
+    DEFER {
+            if (key) key->free(key);
+            if (cert) cert->free(cert);
+            if (tls) tls->free_ctx(tls);
+    };
+    REQUIRE_ZITI_OK(tls->load_cert(&cert, cfg.id.cert, strlen(cfg.id.cert)));
+    REQUIRE_ZITI_OK(tls->load_key(&key, cfg.id.key, strlen(cfg.id.key)));
     tls->set_own_cert(tls, key, cert);
 
-    auto provider = (const char*) model_list_head(&cfg.controllers);
+    auto provider = (const char *)model_list_head(&cfg.controllers);
 
     oidc_client_t oidcClient{};
+    DEFER {
+            oidc_client_close(&oidcClient, [](oidc_client_t *clt) { });
+            uv_run(l, UV_RUN_DEFAULT);
+    };
     oidc_client_init(l, &oidcClient, provider, tls);
     struct oidc_cfg_result {
         bool called;
         int status;
     } cfg_result = {false, -1};
-    bool called = false;
-    int oidc_status = -1;
     oidcClient.data = &cfg_result;
 
     oidc_client_configure(&oidcClient, [](oidc_client_t *clt, int status, const char *err) {
@@ -59,9 +70,6 @@ TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
 
     CHECK(cfg_result.called);
     if (cfg_result.status == 404) {
-        oidc_client_close(&oidcClient, [](oidc_client_t* clt){
-        });
-        uv_run(l, UV_RUN_DEFAULT);
         SKIP("OIDC endpoint not found");
     }
     CHECK(oidcClient.config != nullptr);
@@ -70,7 +78,7 @@ TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
     oidcClient.data = &token;
     oidc_client_start(&oidcClient, [](oidc_client_t *clt, enum oidc_status status, const void *d) {
         auto out = static_cast<std::string *>(clt->data);
-        if(status == OIDC_TOKEN_OK) {
+        if (status == OIDC_TOKEN_OK) {
             *out = static_cast<const char *>(d);
         }
     });
@@ -87,19 +95,4 @@ TEST_CASE_METHOD(LoopTestCase, "ha-oidc", "[integ]") {
 
     REQUIRE(!token.empty());
     REQUIRE(token != old);
-
-    bool closed = false;
-    oidcClient.data = &closed;
-    oidc_client_close(&oidcClient, [](oidc_client_t *clt){
-        *(bool*)clt->data = true;
-    });
-
-    uv_run(l, UV_RUN_DEFAULT);
-    REQUIRE(closed);
-
-//    key->free(key);
-    cert->free(cert);
-    tls->free_ctx(tls);
-
-    free_ziti_config(&cfg);
 }

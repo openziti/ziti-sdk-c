@@ -91,7 +91,8 @@ XX(oidc, api_path, map, edge-oidc, __VA_ARGS__)
 
 #define ZITI_CTRL_CAP_ENUM(XX, ...) \
 XX(HA_CONTROLLER, __VA_ARGS__)      \
-XX(OIDC_AUTH, __VA_ARGS__)
+XX(OIDC_AUTH, __VA_ARGS__)          \
+XX(OIDC_AUTH_WITH_CSR, __VA_ARGS__)
 
 #define ZITI_VERSION_MODEL(XX, ...) \
 XX(version, model_string, none, version, __VA_ARGS__) \

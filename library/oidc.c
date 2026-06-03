@@ -25,11 +25,13 @@
 #include <unistd.h>
 #endif
 
+#include "auth_method.h"
 #include "buffer.h"
 #include "internal_model.h"
 #include "oidc.h"
 #include "utils.h"
 #include "zt_internal.h"
+#include "ziti/errors.h"
 
 #define state_len 30
 #define state_code_len sodium_base64_ENCODED_LEN(code_len, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
@@ -69,7 +71,6 @@ typedef struct auth_req {
     char code_verifier[code_verifier_len];
     char code_challenge[code_challenge_len];
     char state[state_code_len];
-    json_tokener *json_parser;
     cstr id;
     bool totp;
 } auth_req;
@@ -120,7 +121,17 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
 
 int oidc_client_set_cfg(oidc_client_t *clt, const char *provider) {
     assert(provider != NULL);
+    struct tlsuv_url_s url = {0};
+    if (tlsuv_parse_url(&url, provider) != 0 || url.scheme_len == 0 || url.hostname_len == 0) {
+        OIDC_LOG(ERROR, "invalid provider URL[%s]", provider);
+        return ZITI_INVALID_CONFIG;
+    }
+
     cstr_assign(&clt->provider_url, provider);
+    if (!cstr_contains(&clt->provider_url, "/oidc")) {
+        cstr_append(&clt->provider_url, "/oidc");
+    }
+
     return 0;
 }
 
@@ -143,6 +154,7 @@ static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_obje
         } else if (json_object_object_get(resp, AUTH_EP) == NULL ||
                    json_object_object_get(resp, TOKEN_EP) == NULL) {
             OIDC_LOG(ERROR, "invalid OIDC config: %s and %s are required", AUTH_EP, TOKEN_EP);
+            OIDC_LOG(DEBUG, "response body: %s", json_object_get_string(resp));
             status = UV_EINVAL;
         }
     }
@@ -219,10 +231,6 @@ static auth_req *new_auth_req(oidc_client_t *clt) {
 static void free_auth_req(auth_req *req) {
     if (req == NULL) return;
 
-    if (req->json_parser) {
-        json_tokener_free(req->json_parser);
-        req->json_parser = NULL;
-    }
     cstr_drop(&req->id);
     free(req);
 }
@@ -741,3 +749,238 @@ static uint64_t oidc_refresh_delay(oidc_client_t *clt) {
     return 0;
 }
 
+// =====================================================================
+// auth-method facade
+//
+// Wraps oidc_client_t in the ziti_auth_method_t interface used by ziti.c.
+// new_oidc_auth() returns &clt->api; callers use container_of to recover
+// the enclosing oidc_client_t.
+// =====================================================================
+
+#define OIDC_AUTH_FROM_API(s) container_of((s), oidc_client_t, api)
+
+static cstr internal_oidc_path(const char *base, const char *path);
+static void oidc_auth_config_cb(oidc_client_t *oidc, int status, const char *err);
+static void oidc_auth_token_cb(oidc_client_t *oidc, enum oidc_status status, const void *data);
+static int oidc_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
+static int oidc_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
+static int oidc_auth_stop(ziti_auth_method_t *self);
+static int oidc_auth_refresh(ziti_auth_method_t *self);
+static const struct timeval *oidc_auth_expiration(ziti_auth_method_t *self);
+static int oidc_auth_ext_jwt(ziti_auth_method_t *self, const char *token);
+static int oidc_auth_set_endpoint(ziti_auth_method_t *self, const api_path *api);
+static void oidc_auth_free(ziti_auth_method_t *self);
+static void oidc_auth_close_cb(oidc_client_t *clt);
+
+ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context *tls) {
+    oidc_client_t *clt = calloc(1, sizeof(*clt));
+
+    clt->api = (ziti_auth_method_t){
+        .kind = OIDC,
+        .start = oidc_auth_start,
+        .set_endpoint = oidc_auth_set_endpoint,
+        .stop = oidc_auth_stop,
+        .force_refresh = oidc_auth_refresh,
+        .expiration = oidc_auth_expiration,
+        .submit_mfa = oidc_auth_mfa,
+        .free = oidc_auth_free,
+        .set_ext_jwt = oidc_auth_ext_jwt,
+    };
+
+    const char *u;
+    FOR(u, api->base_urls) {
+        model_list_append(&clt->urls, strdup(u));
+    }
+    clt->cur_url = model_list_iterator(&clt->urls);
+    u = model_list_it_element(clt->cur_url);
+
+    clt->loop = l;
+    cstr oidc_url = internal_oidc_path(u, api->path);
+    oidc_client_init(l, clt, cstr_str(&oidc_url), tls);
+    cstr_drop(&oidc_url);
+    return &clt->api;
+}
+
+static cstr internal_oidc_path(const char *base, const char *path) {
+    struct tlsuv_url_s base_url = {};
+    tlsuv_parse_url(&base_url, base);
+
+    cstr result = cstr_from_fmt("%.*s://%.*s",
+        (int)base_url.scheme_len, base_url.scheme,
+        (int)base_url.hostname_len, base_url.hostname);
+    if (base_url.port) {
+        cstr_append_fmt(&result, ":%d", base_url.port);
+    }
+
+    // older controllers did not have path in the base URL
+    if (base_url.path) {
+        cstr_append_n(&result, base_url.path, (isize)base_url.path_len);
+    } else if (path) {
+        cstr_append(&result, path);
+    }
+
+    return result;
+}
+
+static int oidc_auth_set_endpoint(ziti_auth_method_t *self, const api_path *api) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+
+    model_list_clear(&clt->urls, free);
+    const char *u;
+    FOR(u, api->base_urls) {
+        model_list_append(&clt->urls, strdup(u));
+    }
+    clt->cur_url = model_list_iterator(&clt->urls);
+    u = model_list_it_element(clt->cur_url);
+
+    cstr oidc_url = internal_oidc_path(u, api->path);
+    oidc_client_set_cfg(clt, cstr_str(&oidc_url));
+    cstr_drop(&oidc_url);
+
+    return oidc_client_configure(clt, oidc_auth_config_cb);
+}
+
+static void oidc_auth_close_cb(oidc_client_t *clt) {
+    model_list_clear(&clt->urls, free);
+    free(clt);
+}
+
+static void oidc_auth_free(ziti_auth_method_t *self) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    oidc_client_close(clt, oidc_auth_close_cb);
+}
+
+static void set_expiration(oidc_client_t *clt, const char *token) {
+    json_object *payload = json_tokener_parse(jwt_payload(token));
+    json_object *exp = json_object_object_get(payload, "exp");
+    if (exp) {
+        int exp_time = json_object_get_int(exp);
+        clt->expiration.tv_sec = exp_time;
+        clt->expiration.tv_usec = 0;
+    } else {
+        clt->expiration = (struct timeval){};
+    }
+    json_object_put(payload);
+}
+
+static void oidc_auth_token_cb(oidc_client_t *clt, enum oidc_status status, const void *data) {
+    char err[128];
+
+    clt->expiration = (struct timeval){};
+    if (clt->auth_cb) {
+        switch (status) {
+            case OIDC_TOKEN_OK:
+                set_expiration(clt, (const char*)data);
+                clt->auth_cb(clt->auth_cb_ctx, ZitiAuthStateFullyAuthenticated, data);
+                break;
+            case OIDC_EXT_JWT_NEEDED:
+                clt->auth_cb(clt->auth_cb_ctx, ZitiAuthStatePartiallyAuthenticated, data);
+                break;
+            case OIDC_TOTP_NEEDED:
+                clt->auth_cb(clt->auth_cb_ctx, ZitiAuthStatePartiallyAuthenticated, (void *) &ZITI_MFA);
+                break;
+            case OIDC_TOTP_FAILED:
+                assert(clt->mfa_cb != NULL);
+                clt->mfa_cb(clt->auth_cb_ctx, ZITI_MFA_INVALID_TOKEN);
+                clt->mfa_cb = NULL;
+                break;
+            case OIDC_TOTP_SUCCESS:
+                assert(clt->mfa_cb != NULL);
+                clt->mfa_cb(clt->auth_cb_ctx, ZITI_OK);
+                clt->mfa_cb = NULL;
+                break;
+            case OIDC_TOKEN_FAILED: {
+                const char *reason = data ? (const char *) data : "unknown";
+                snprintf(err, sizeof(err), "%s", reason);
+                clt->auth_cb(clt->auth_cb_ctx, ZitiAuthStateUnauthenticated, &(ziti_error){
+                        .err = ZITI_AUTHENTICATION_FAILED,
+                        .message = err});
+                break;
+            }
+            case OIDC_RESTART:
+                ZITI_LOG(DEBUG, "restarting internal OIDC flow");
+                oidc_client_start(clt, oidc_auth_token_cb);
+                break;
+        }
+    }
+}
+
+static void oidc_auth_config_cb(oidc_client_t *clt, int status, const char *err) {
+    ZITI_LOG(DEBUG, "oidc config callback: %d/%s", status, err);
+    if (status == 0) {
+        if (clt->started) {
+            oidc_client_refresh(clt);
+        } else {
+            clt->started = true;
+            oidc_client_start(clt, oidc_auth_token_cb);
+        }
+    } else {
+        const char *prev_url = model_list_it_element(clt->cur_url);
+        clt->cur_url = model_list_it_next(clt->cur_url);
+        if (clt->cur_url == NULL) {
+            ZITI_LOG(ERROR, "failed to configure OIDC[%s] (no more URLs to try): %d/%s",
+                     prev_url, status, err);
+            if (clt->auth_cb) {
+                ziti_error error = {
+                    .err = status,
+                    .message = err,
+                };
+                clt->auth_cb(clt->auth_cb_ctx, ZitiAuthImpossibleToAuthenticate, &error);
+            }
+            return;
+        }
+
+        ZITI_LOG(DEBUG, "failed to configure OIDC[%s] client: %d/%s",
+                 prev_url, status, err);
+
+        const char *u = model_list_it_element(clt->cur_url);
+        cstr oidc_url = internal_oidc_path(u, "/oidc");
+        ZITI_LOG(DEBUG, "trying next url[%s]", cstr_str(&oidc_url));
+        oidc_client_set_cfg(clt, cstr_str(&oidc_url));
+        oidc_client_configure(clt, oidc_auth_config_cb);
+        cstr_drop(&oidc_url);
+    }
+}
+
+static int oidc_auth_ext_jwt(ziti_auth_method_t *self, const char *token) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    oidc_client_token(clt, token);
+    return 0;
+}
+
+static int oidc_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    clt->auth_cb = cb;
+    clt->auth_cb_ctx = ctx;
+
+    return oidc_client_configure(clt, oidc_auth_config_cb);
+}
+
+static int oidc_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    clt->mfa_cb = cb;
+    if (oidc_client_mfa(clt, code) != 0) {
+        ZITI_LOG(WARN, "failed to submit MFA code");
+        clt->mfa_cb = NULL;
+        return ZITI_MFA_EXISTS;
+    }
+    return ZITI_OK;
+}
+
+static int oidc_auth_stop(ziti_auth_method_t *self) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    clt->auth_cb = NULL;
+    clt->auth_cb_ctx = NULL;
+    return 0;
+}
+
+static int oidc_auth_refresh(ziti_auth_method_t *self) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    return oidc_client_refresh(clt);
+}
+
+static const struct timeval *oidc_auth_expiration(ziti_auth_method_t *self) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    if (clt->expiration.tv_sec > 0) return &clt->expiration;
+    return NULL;
+}
