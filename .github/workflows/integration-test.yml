@@ -124,4 +124,5 @@ jobs:
           name: ${{ matrix.spec.target }}-${{ steps.ziti.outputs.version }}-integ-testdata
           path: |
             ./build/tests/**/testdata/**/*
+            !./build/tests/**/testdata/**/*current/*
 
