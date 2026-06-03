@@ -71,7 +71,6 @@ typedef struct auth_req {
     char code_verifier[code_verifier_len];
     char code_challenge[code_challenge_len];
     char state[state_code_len];
-    json_tokener *json_parser;
     cstr id;
     bool totp;
 } auth_req;
@@ -232,10 +231,6 @@ static auth_req *new_auth_req(oidc_client_t *clt) {
 static void free_auth_req(auth_req *req) {
     if (req == NULL) return;
 
-    if (req->json_parser) {
-        json_tokener_free(req->json_parser);
-        req->json_parser = NULL;
-    }
     cstr_drop(&req->id);
     free(req);
 }
