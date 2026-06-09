@@ -1,3 +1,4 @@
+find_package(botan REQUIRED)
 
 find_program(ZITI_CLI NAMES ziti)
 if (NOT ZITI_CLI)
@@ -43,6 +44,7 @@ target_include_directories(IntegrationTests
 target_link_libraries(IntegrationTests
         PRIVATE ziti
         PRIVATE Catch2::Catch2WithMain
+        PRIVATE botan::botan-static
 )
 
 set_property(TARGET IntegrationTests PROPERTY CXX_STANDARD 23)
@@ -110,6 +112,11 @@ if (Python3_EXECUTABLE)
         set_tests_properties(pytest-integ PROPERTIES
                 TIMEOUT 600
                 DEPENDS "sample_enroll;IntegrationTests;echo-server"
+        )
+
+        add_custom_target(run-quickstart
+                COMMENT "start ziti quickstart for manual testing"
+                COMMAND ${ZITI_CLI} edge quickstart --home ${INTEG_TEST_DATA_DIR}/qs_rootcurrent
         )
     endif ()
 else ()

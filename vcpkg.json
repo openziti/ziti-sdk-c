@@ -2,9 +2,9 @@
   "name": "ziti",
   "version-semver": "1.0.0",
   "description": [
-    "using vcpkg baseline: 2026.04.27"
+    "using vcpkg baseline: 2026.06.01"
   ],
-  "builtin-baseline": "56bb2411609227288b70117ead2c47585ba07713",
+  "builtin-baseline": "f3e10653cc27d62a37a3763cd84b38bca07c6075",
   "overrides": [
     {
       "name": "libuv",
@@ -36,10 +36,18 @@
     "test": {
       "description": "Dependencies for testing",
       "dependencies": [
-        "openssl",
         {
-          "version>=": "3.3.1",
-          "name": "catch2"
+          "name": "catch2",
+          "$comment": "main testing framework"
+        },
+        {
+          "name": "openssl",
+          "platform": "windows | mingw",
+          "$comment": "for testing e2ee compat"
+        },
+        {
+          "name": "botan",
+          "$comment": "needed for TOTP testing"
         }
       ]
     },
