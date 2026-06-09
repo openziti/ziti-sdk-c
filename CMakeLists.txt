@@ -45,8 +45,11 @@ if (ziti_ASAN)
     elseif (MINGW)
         message(WARNING "ASAN is not supported on MinGW builds")
     else ()
-        add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
-        add_link_options(-fsanitize=address)
+        add_compile_options(
+                -fsanitize=address,alignment,undefined
+                -fno-sanitize-recover=alignment
+                -fno-omit-frame-pointer)
+        add_link_options(-fsanitize=address,alignment,undefined)
     endif ()
 endif (ziti_ASAN)
 

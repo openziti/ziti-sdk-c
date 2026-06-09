@@ -14,10 +14,51 @@
 
 #include "catch2_includes.hpp"
 
+#include <cstdlib>
 #include <cstring>
 #include "message.h"
 #include "edge_protocol.h"
 #include "ziti/errors.h"
+
+// Regression for SIGBUS on armeabi-v7a inside parse_hdrs (library/message.c).
+// Wire format per header: id(4 LE) || length(4 LE) || value(length bytes).
+// A header with length=1 advances the cursor by 9, leaving the next header's
+// id at a 4-byte-misaligned address. read_int32 used to do `*(uint32_t*)p`
+// from a uint8_t*, which is UB and faults on ARMv7 strict-alignment cores.
+// With -fsanitize=alignment this trips even on x86_64 / arm64-macOS.
+TEST_CASE("parse_hdrs handles misaligned subsequent headers", "[model][alignment]") {
+    alignas(uint32_t) uint8_t buf[] = {
+        // header[0]: id=1, length=1, value=[0x42]  -> consumes 9 bytes
+        0x01, 0x00, 0x00, 0x00,
+        0x01, 0x00, 0x00, 0x00,
+        0x42,
+        // header[1]: id=2, length=4, value=[0xDE,0xAD,0xBE,0xEF]
+        // starts at offset 9 - deliberately not 4-byte aligned.
+        0x02, 0x00, 0x00, 0x00,
+        0x04, 0x00, 0x00, 0x00,
+        0xDE, 0xAD, 0xBE, 0xEF,
+    };
+    constexpr uint32_t buf_len = sizeof(buf);
+
+    hdr_t *hdrs = nullptr;
+    int n = parse_hdrs(buf, buf_len, &hdrs);
+
+    REQUIRE(n == 2);
+    REQUIRE(hdrs != nullptr);
+
+    CHECK(hdrs[0].header_id == 1);
+    CHECK(hdrs[0].length == 1);
+    CHECK(hdrs[0].value[0] == 0x42);
+
+    CHECK(hdrs[1].header_id == 2);
+    CHECK(hdrs[1].length == 4);
+    CHECK(hdrs[1].value[0] == 0xDE);
+    CHECK(hdrs[1].value[1] == 0xAD);
+    CHECK(hdrs[1].value[2] == 0xBE);
+    CHECK(hdrs[1].value[3] == 0xEF);
+
+    free(hdrs);
+}
 
 TEST_CASE("simple", "[model]") {
     auto p = pool_new(sizeof(message) + 200, 3, (void (*)(void *)) message_free);
