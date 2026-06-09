@@ -22,7 +22,9 @@
 #include "endian_internal.h"
 
 static const uint8_t *read_int32(const uint8_t *p, uint32_t *val) {
-    *val = le32toh(*(uint32_t *) p);
+    uint32_t v;
+    memcpy(&v, p, sizeof(v));
+    *val = le32toh(v);
     return p + sizeof(uint32_t);
 }
 
