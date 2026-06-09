@@ -308,21 +308,24 @@ message *create_message(struct ziti_conn *conn, uint32_t content, uint32_t flags
 static int send_message(struct ziti_conn *conn, message *m, struct ziti_write_req_s *wr) {
     ziti_channel_t *ch = conn->channel;
     if (m->header.content == ContentTypeData) {
-        struct msg_uuid *uuid = NULL;
+        uint8_t *uuid_buf = NULL;
         size_t len;
-        message_get_bytes_header(m, UUIDHeader, (const uint8_t **) &uuid, &len);
+        message_get_bytes_header(m, UUIDHeader, (const uint8_t **)&uuid_buf, &len);
 
-        if (uuid) {
-            assert(len == sizeof(*uuid));
+        if (uuid_buf) {
+            struct msg_uuid uuid;
+            assert(len == sizeof(uuid.raw));
+            memcpy(uuid.raw, uuid_buf, sizeof(uuid.raw));
             struct local_hash h = {0};
             crypto_hash_sha256(h.hash, m->body, m->header.body_len);
             int32_t seq;
             message_get_int32_header(m, SeqHeader, &seq);
 
-            uuid->slug = htole32(h.i32[0]);
+            uuid.slug = htole32(h.i32[0]);
             CONN_LOG(TRACE, "=> ct[%s] uuid[" UUID_FMT "] edge_seq[%d] len[%d] hash[" HASH_FMT "]",
-                     content_type_id(m->header.content), UUID_FMT_ARG(uuid), seq,
+                     content_type_id(m->header.content), UUID_FMT_ARG(&uuid), seq,
                      m->header.body_len, HASH_FMT_ARG(h));
+            memcpy(uuid_buf, uuid.raw, sizeof(uuid.raw));
         }
     }
     return ziti_channel_send_message(ch, m, wr);
@@ -996,15 +999,18 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
                                             plain_text, msg->header.body_len);
     if (plain_len < 0 && (conn->flags & EDGE_TRACE_UUID)) {
         // try to figure out the cause of crypto error
-        struct msg_uuid *uuid;
+        const uint8_t *uuid_buf;
+        struct msg_uuid uuid;
         size_t uuid_len;
         struct local_hash h;
         crypto_hash_sha256(h.hash, msg->body, msg->header.body_len);
 
-        if (message_get_bytes_header(msg, UUIDHeader, (const uint8_t **) &uuid, &uuid_len)) {
+        if (message_get_bytes_header(msg, UUIDHeader, (const uint8_t **) &uuid_buf, &uuid_len)) {
+            assert(uuid_len == sizeof(uuid.raw));
+            memcpy(uuid.raw, uuid_buf, sizeof(uuid.raw));
             CONN_LOG(ERROR, "uuid[" UUID_FMT "] %s corruption hash[" HASH_FMT "]",
-                     UUID_FMT_ARG(uuid),
-                     uuid->slug != htole32(h.i32[0]) ? "payload" : "crypto state",
+                     UUID_FMT_ARG(&uuid),
+                     uuid.slug != htole32(h.i32[0]) ? "payload" : "crypto state",
                      HASH_FMT_ARG(h));
         } else {
             CONN_LOG(ERROR, "message/state corruption hash[" HASH_FMT "]",
@@ -1465,7 +1471,8 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
     int32_t seq = -1;
     int32_t conn_id = -1;
     uint32_t flags = 0;
-    struct msg_uuid *uuid;
+    const uint8_t *uuid_buf;
+    struct msg_uuid uuid;
     size_t uuid_len;
     bool has_seq = message_get_int32_header(msg, SeqHeader, &seq);
     bool has_conn_id = message_get_int32_header(msg, ConnIdHeader, &conn_id);
@@ -1481,16 +1488,18 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
     }
 
     if ((conn->flags & EDGE_TRACE_UUID) &&
-        message_get_bytes_header(msg, UUIDHeader, (const uint8_t **) &uuid, &uuid_len)) {
+        message_get_bytes_header(msg, UUIDHeader, (const uint8_t **) &uuid_buf, &uuid_len)) {
+        assert(uuid_len == sizeof(uuid.raw));
+        memcpy(uuid.raw, uuid_buf, sizeof(uuid.raw));
         struct local_hash h;
         crypto_hash_sha256(h.hash, msg->body, msg->header.body_len);
         CONN_LOG(TRACE, "<= ct[%s] uuid[" UUID_FMT "] edge_seq[%d] len[%d] ",
-                 content_type_id(msg->header.content), UUID_FMT_ARG(uuid), seq, msg->header.body_len);
+                 content_type_id(msg->header.content), UUID_FMT_ARG(&uuid), seq, msg->header.body_len);
 
-        if (uuid->seq != conn->in_msg_seq) {
-            CONN_LOG(WARN, "unexpected msg_seq[%d] previous[%d]", uuid->seq, conn->in_msg_seq);
+        if (uuid.seq != conn->in_msg_seq) {
+            CONN_LOG(WARN, "unexpected msg_seq[%d] previous[%d]", uuid.seq, conn->in_msg_seq);
         }
-        conn->in_msg_seq = uuid->seq + 1;
+        conn->in_msg_seq = uuid.seq + 1;
     } else {
         CONN_LOG(TRACE, "<= ct[%s] edge_seq[%d] len[%d]", content_type_id(msg->header.content), seq, msg->header.body_len);
     }
