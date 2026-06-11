@@ -65,7 +65,6 @@ static void failed_auth_req(struct auth_req *req, const char *error);
 static void refresh_time_cb(uv_timer_t *t);
 
 static uint64_t oidc_refresh_delay(oidc_client_t *clt);
-static void oidc_handle_totp_query(oidc_client_t *clt, ziti_auth_query_mfa *q);
 
 // =====================================================================
 // auth-method facade
