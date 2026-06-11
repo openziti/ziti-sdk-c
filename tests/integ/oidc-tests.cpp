@@ -14,15 +14,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <botan/base32.h>
+#include <botan/otp.h>
 #include <catch2/catch_all.hpp>
-#include <ziti/zitilib.h>
-#include <ziti/ziti.h>
 #include <tlsuv/tlsuv.h>
+#include <ziti/ziti.h>
+#include <ziti/zitilib.h>
 
 #include "fixtures.h"
 #include "oidc.h"
-#include "ziti/ziti_log.h"
 #include "test-data.h"
+#include "ziti/ziti_log.h"
 
 class AuthTests: public LoopTestCase {};
 
@@ -95,4 +97,54 @@ TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
 
     REQUIRE(!token.empty());
     REQUIRE(token != old);
+}
+
+TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
+    auto load_rc = load();
+
+    CHECK(load_rc == ZITI_PARTIALLY_AUTHENTICATED);
+    if (authState.action == 0) {
+        CHECK(run(WHILE(authState.action == 0)));
+    }
+
+    struct mfa {
+        std::string link{};
+        bool verified{false};
+    } mfa;
+
+    ziti_mfa_enroll(ztx, [](ziti_context ztx, int status, ziti_mfa_enrollment *mfa_enrollment, void *ctx){
+        auto m = (struct mfa *)ctx;
+        CHECK(status == ZITI_OK);
+        m->link = mfa_enrollment->provisioning_url;
+    }, &mfa);
+
+    CHECK(run(UNTIL(!mfa.link.empty())));
+
+    // try invalid token first
+    ziti_mfa_verify(ztx, "000000", [](ziti_context ztx, int status, void *ctx){
+        auto m = (struct mfa *)ctx;
+        CHECK(status == ZITI_MFA_INVALID_TOKEN);
+    }, &mfa);
+
+
+    INFO("provisioning url: " << mfa.link);
+    auto secret = mfa.link.substr(mfa.link.find("secret=") + 7);
+    auto key = Botan::base32_decode(secret);
+    Botan::TOTP totp(key.data(), key.size());
+    auto ts = std::chrono::system_clock::now();
+    auto code = totp.generate_totp(ts);
+
+    auto code_str = std::to_string(code);
+
+    ziti_mfa_verify(ztx, code_str.c_str(), [](ziti_context ztx, int status, void *ctx){
+        auto m = (struct mfa *)ctx;
+        m->verified = (status == ZITI_OK);
+        CHECK(status == ZITI_OK);
+    }, &mfa);
+
+    CHECK(run(UNTIL(mfa.verified)));
+
+    CHECK(run(UNTIL(this->loaded && this->load_error == ZITI_OK)));
+
+    INFO("TOTP enrollment and verification successful");
 }

@@ -170,7 +170,8 @@ bool message_get_uint64_header(message *m, int header_id, uint64_t *v) {
     uint64_t val = 0;
     if (h != NULL) {
         for (unsigned int i = 0; i < h->length && i < 8; i++) {
-            val += (h->value[i] << (i * 8));
+            uint64_t b = h->value[i];
+            val += (b << (i * 8));
         }
         *v = val;
         return true;
