@@ -911,6 +911,10 @@ static int oidc_totp_enroll(ziti_auth_method_t *self,
                             void (*cb)(ziti_mfa_enrollment *mfa_enrollment, const ziti_error *err, void *ctx), 
                             void *ctx) {
     oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    if (clt->request == NULL) {
+        OIDC_LOG(DEBUG, "no auth request in progress");
+        return ZITI_INVALID_STATE;
+    }
     
     tlsuv_http_pair form[] = {
         {"id", cstr_str(&clt->request->id)},
