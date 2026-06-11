@@ -1,0 +1,3 @@
+[pytest]
+markers = ["require_ziti: mark test as requiring version of ziti to run"]
+

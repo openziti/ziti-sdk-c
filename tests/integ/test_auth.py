@@ -13,10 +13,12 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+import pytest
 
 from test_integ import run_catch_test
 from conftest import ziti_edge
 
+@pytest.mark.require_ziti('>=2.0.0')
 def test_totp_auth(client_identity, tmp_path):
     policy = "cert-totp"
     ziti_edge("create", "auth-policy", policy,

@@ -64,9 +64,20 @@ def ziti_cli():
 def ziti_version():
     result = subprocess.run([ziti_executable, "version"], capture_output=True, text=True, check=True)
     ver_str = result.stdout.strip().lstrip("v")
+    ver_str = "+build.".join(ver_str.split("-")[:2])
     logger.info("Ziti CLI version string: '%s'", ver_str)
     return Version.parse(ver_str)
 
+
+@pytest.fixture(autouse=True)
+def require_ziti(ziti_version, request):
+    marker = request.node.get_closest_marker("require_ziti")
+    logger.warning("require_ziti marker: %s", marker)
+    if marker:
+        req_ver = marker.args[0]
+        logger.warning("require_ziti: required=%s, actual=%s", req_ver, ziti_version)
+        if ziti_version.match(req_ver):
+            pytest.skip(f"Skipped because ziti version is {ziti_version} does not match {req_ver}")
 
 @pytest.fixture(scope="session")
 def quickstart_home(tmp_path_factory):

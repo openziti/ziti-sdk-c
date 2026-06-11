@@ -91,7 +91,7 @@ if (Python3_EXECUTABLE)
         set(INTEG_TEST_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/testdata")
 
         file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests")
-        file(GLOB test_scripts RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "*.py")
+        file(GLOB test_scripts RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "*.py" "pytest.toml")
         foreach (f ${test_scripts})
             message(NOTICE "found test script: ${f}")
             configure_file(${f} "${CMAKE_CURRENT_BINARY_DIR}/tests/${f}" COPYONLY)
