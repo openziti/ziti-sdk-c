@@ -116,7 +116,8 @@ if (Python3_EXECUTABLE)
 
         add_custom_target(run-quickstart
                 COMMENT "start ziti quickstart for manual testing"
-                COMMAND ${ZITI_CLI} edge quickstart --home ${INTEG_TEST_DATA_DIR}/qs_rootcurrent
+                COMMAND ${ZITI_CLI} edge quickstart --home ${INTEG_TEST_DATA_DIR}/temp/qs_rootcurrent
+                USES_TERMINAL
         )
     endif ()
 else ()

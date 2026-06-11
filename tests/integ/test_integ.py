@@ -24,21 +24,30 @@ import pytest
 logger = logging.getLogger(__name__)
 test_exe = os.environ.get("TEST_EXE")
 
-def run_catch_test(test_tag, env, tmp_path):
+def run_catch_test(env, tmp_path, tag="", test="", ):
     """Run the C++ Catch2 integration test binary."""
     if not test_exe:
         pytest.fail("TEST_EXE environment variable is not set")
 
-    log = open(tmp_path / f"{test_tag}-tests.log", "w")
+    if test:
+        spec = test
+    elif tag:
+        spec = f"[{tag}]"
+    else:
+        pytest.skip("test spec is missing")
+
+    filename = spec.strip("[]").replace(" ", "_")
+
+    log = open(tmp_path / f"{filename}.log", "w")
 
     environment = os.environ.copy()
     environment.update(env)
     environment["ZITI_LOG"] = "5"
     proc = subprocess.Popen(
         [test_exe, "-s",
-         "--reporter", f"JUnit::out={tmp_path}/TEST-{test_tag}.xml",
+         "--reporter", f"JUnit::out={tmp_path}/TEST-{filename}.xml",
          "--reporter", "console::out=-",
-         f"[{test_tag}]"],
+         spec],
         stdout=subprocess.PIPE,
         stderr=log,
         text=True,
@@ -47,7 +56,7 @@ def run_catch_test(test_tag, env, tmp_path):
 
     def _reader():
         for line in proc.stdout:
-            logger.info("[integ-tests][%s] %s", test_tag, line.rstrip())
+            logger.info("[test](%s) %s", spec, line.rstrip())
 
     t = threading.Thread(target=_reader, daemon=True)
     t.start()
@@ -56,35 +65,35 @@ def run_catch_test(test_tag, env, tmp_path):
         rc = proc.wait(timeout=300)
     except subprocess.TimeoutExpired:
         proc.kill()
-        pytest.fail(f"[{test_tag}] timed out after 5 minutes")
+        pytest.fail(f"({spec}) timed out after 5 minutes")
 
     t.join(timeout=5)
-    assert rc == 0, f"[{test_tag}] exited with code {rc}"
+    assert rc == 0, f"({spec}) exited with code {rc}"
 
 def test_basic(tmp_path):
-    run_catch_test("basic", {}, tmp_path)
+    run_catch_test({}, tmp_path, "basic")
 
 @pytest.mark.parametrize("tag", ["auth","controller"])
-def test_identity(enrolled_identities, tmp_path, request, tag):
-    run_catch_test(tag, enrolled_identities, tmp_path)
+def test_identity(enrolled_identities, tmp_path, tag):
+    run_catch_test(enrolled_identities, tmp_path, tag)
 
 
 def test_connect(client_identity, echo_server, test_service, tmp_path):
     env = dict()
-    env['test_client']=client_identity
+    env['test_client']=client_identity['path']
     env['test_service']=test_service['name']
-    run_catch_test("connection", env, tmp_path)
+    run_catch_test(env, tmp_path, "connection")
 
 
 def test_zitilib(client_identity, tmp_path):
     env = dict()
-    env['test_client']=client_identity
-    run_catch_test("zitilib", env, tmp_path)
+    env['test_client']=client_identity['path']
+    run_catch_test(env, tmp_path, "zitilib")
 
 
 def test_zitilib_connect(client_identity, test_service, echo_server, tmp_path):
     env = dict()
-    env['test_client']=client_identity
+    env['test_client']=client_identity['path']
     env['test_service']=test_service['name']
     env['test_intercept']=test_service['intercept']
-    run_catch_test("zl-connect", env, tmp_path)
+    run_catch_test(env, tmp_path, "zl-connect")
