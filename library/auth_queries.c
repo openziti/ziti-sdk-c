@@ -147,6 +147,7 @@ void ziti_mfa_enroll_post_internal_cb(void *empty, const ziti_error *err, void *
 }
 
 void ziti_mfa_enroll_get_internal_cb(ziti_mfa_enrollment *mfa_enrollment, const ziti_error *err, void *ctx) {
+    assert(ctx != NULL);
     ziti_mfa_enroll_cb_ctx *mfa_enroll_cb_ctx = ctx;
     ziti_context ztx = mfa_enroll_cb_ctx->ztx;
 
@@ -174,11 +175,34 @@ void ziti_mfa_enroll(ziti_context ztx, ziti_mfa_enroll_cb enroll_cb, void *ctx) 
         return;
     }
 
+    if (!ztx->auth_method) {
+        ZTX_LOG(ERROR, "cannot enroll MFA without an authentication method");
+        enroll_cb(ztx, ZITI_INVALID_STATE, NULL, ctx);
+        return;
+    }
+
     NEWP(mfa_enroll_cb_ctx, ziti_mfa_enroll_cb_ctx);
 
     mfa_enroll_cb_ctx->ztx = ztx;
     mfa_enroll_cb_ctx->cb = enroll_cb;
     mfa_enroll_cb_ctx->cb_ctx = ctx;
+
+    // OIDC auth supports MFA enrollment only during the authentication flow
+    if (ztx->auth_method->enroll_mfa) {
+        int rc = ztx->auth_method->enroll_mfa(ztx->auth_method, ziti_mfa_enroll_get_internal_cb, mfa_enroll_cb_ctx);
+        if (rc == ZITI_OK) {
+            return;
+        }
+        if (rc != ZITI_INVALID_STATE) {
+            ZTX_LOG(ERROR, "error initiating MFA enroll");
+            enroll_cb(ztx, rc, NULL, ctx);
+            FREE(mfa_enroll_cb_ctx);
+            return;
+        }
+        // ZITI_INVALID_STATE means that OIDC auth is completed
+        // so fallback to default implementation
+    }
+
 
     ziti_ctrl_get_mfa(ztx_get_controller(ztx), ziti_mfa_enroll_get_internal_cb, mfa_enroll_cb_ctx);
 }
@@ -228,16 +252,39 @@ void ziti_mfa_verify_internal_cb(void *empty, const ziti_error *err, void *ctx) 
     FREE(ctx);
 }
 
-void ziti_mfa_verify(ziti_context ztx, char *code, ziti_mfa_cb verify_cb, void *ctx) {
+void ziti_mfa_verify(ziti_context ztx, const char *code, ziti_mfa_cb verify_cb, void *ctx) {
     if (!ztx->enabled) {
         verify_cb(ztx, ZITI_DISABLED, ctx);
         return;
     }
-
+    
+    if (!ztx->auth_method) {
+        ZTX_LOG(ERROR, "cannot verify MFA without an authentication method");
+        verify_cb(ztx, ZITI_INVALID_STATE, ctx);
+        return;
+    }
+    
     NEWP(mfa_cb_ctx, ziti_mfa_cb_ctx);
     mfa_cb_ctx->ztx = ztx;
     mfa_cb_ctx->cb = verify_cb;
     mfa_cb_ctx->cb_ctx = ctx;
+    if (ztx->auth_method->verify_mfa) {
+        int rc = ztx->auth_method->verify_mfa(ztx->auth_method, code, ziti_mfa_verify_internal_cb, mfa_cb_ctx);
+        if (rc == ZITI_OK) {
+            // verify request in progress
+            return;
+        }
+        
+        if (rc != ZITI_INVALID_STATE) {
+            ZTX_LOG(ERROR, "error initiating MFA verify");
+            verify_cb(ztx, rc, ctx);
+            free(mfa_cb_ctx);
+            return;
+        }
+        
+        // if rc == ZITI_INVALID_STATE then fallback to default
+    }
+
 
     char *body = ziti_mfa_code_body(code);
 

@@ -65,6 +65,40 @@ static void failed_auth_req(struct auth_req *req, const char *error);
 static void refresh_time_cb(uv_timer_t *t);
 
 static uint64_t oidc_refresh_delay(oidc_client_t *clt);
+static void oidc_handle_totp_query(oidc_client_t *clt, ziti_auth_query_mfa *q);
+
+// =====================================================================
+// auth-method facade
+//
+// Wraps oidc_client_t in the ziti_auth_method_t interface used by ziti.c.
+// new_oidc_auth() returns &clt->api; callers use container_of to recover
+// the enclosing oidc_client_t.
+// =====================================================================
+
+#define OIDC_AUTH_FROM_API(s) container_of((s), oidc_client_t, api)
+
+static cstr internal_oidc_path(const char *base, const char *path);
+static void oidc_auth_config_cb(oidc_client_t *clt, int status, const char *err);
+static void oidc_auth_token_cb(oidc_client_t *clt, enum oidc_status status, const void *data);
+static int oidc_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
+static int oidc_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
+static int oidc_auth_stop(ziti_auth_method_t *self);
+static int oidc_auth_refresh(ziti_auth_method_t *self);
+static const struct timeval *oidc_auth_expiration(ziti_auth_method_t *self);
+static int oidc_auth_ext_jwt(ziti_auth_method_t *self, const char *token);
+static int oidc_auth_set_endpoint(ziti_auth_method_t *self, const api_path *api);
+static void oidc_auth_free(ziti_auth_method_t *self);
+static void oidc_auth_close_cb(oidc_client_t *clt);
+static int oidc_totp_enroll(
+    ziti_auth_method_t *self,
+    void (*cb)(ziti_mfa_enrollment *mfa_enrollment, const ziti_error *err, void *ctx), 
+    void *ctx);
+
+static int oidc_totp_verify(
+    ziti_auth_method_t *self,
+    const char *code,
+    void (*cb)(void *, const ziti_error *, void *), void *ctx);
+
 
 typedef struct auth_req {
     oidc_client_t *clt;
@@ -106,6 +140,7 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
     if (rc != 0) {
         return rc;
     }
+    clt->http.data = clt;
     tlsuv_http_set_ssl(&clt->http, tls);
     tlsuv_http_connect_timeout(&clt->http, 10000);
     tlsuv_http_idle_keepalive(&clt->http, 0);
@@ -749,28 +784,6 @@ static uint64_t oidc_refresh_delay(oidc_client_t *clt) {
     return 0;
 }
 
-// =====================================================================
-// auth-method facade
-//
-// Wraps oidc_client_t in the ziti_auth_method_t interface used by ziti.c.
-// new_oidc_auth() returns &clt->api; callers use container_of to recover
-// the enclosing oidc_client_t.
-// =====================================================================
-
-#define OIDC_AUTH_FROM_API(s) container_of((s), oidc_client_t, api)
-
-static cstr internal_oidc_path(const char *base, const char *path);
-static void oidc_auth_config_cb(oidc_client_t *oidc, int status, const char *err);
-static void oidc_auth_token_cb(oidc_client_t *oidc, enum oidc_status status, const void *data);
-static int oidc_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
-static int oidc_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
-static int oidc_auth_stop(ziti_auth_method_t *self);
-static int oidc_auth_refresh(ziti_auth_method_t *self);
-static const struct timeval *oidc_auth_expiration(ziti_auth_method_t *self);
-static int oidc_auth_ext_jwt(ziti_auth_method_t *self, const char *token);
-static int oidc_auth_set_endpoint(ziti_auth_method_t *self, const api_path *api);
-static void oidc_auth_free(ziti_auth_method_t *self);
-static void oidc_auth_close_cb(oidc_client_t *clt);
 
 ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context *tls) {
     oidc_client_t *clt = calloc(1, sizeof(*clt));
@@ -785,6 +798,8 @@ ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context
         .submit_mfa = oidc_auth_mfa,
         .free = oidc_auth_free,
         .set_ext_jwt = oidc_auth_ext_jwt,
+        .enroll_mfa = oidc_totp_enroll,
+        .verify_mfa = oidc_totp_verify,
     };
 
     const char *u;
@@ -863,6 +878,102 @@ static void set_expiration(oidc_client_t *clt, const char *token) {
     json_object_put(payload);
 }
 
+struct  totp_enroll_s {
+    oidc_client_t *clt;
+    void (*cb)(ziti_mfa_enrollment *mfa_enrollment, const ziti_error *err, void *ctx);
+    void *ctx;
+};
+
+static void oidc_totp_enroll_cb(tlsuv_http_resp_t *resp, const char *err, json_object *body, void *ctx) {
+    struct totp_enroll_s *er = ctx;
+    oidc_client_t *clt = er->clt;
+
+    if (err) {
+        OIDC_LOG(ERROR, "TOTP enroll request failed: %s", err);
+        er->cb(NULL, &(ziti_error){
+            .err = ZITI_MFA_NOT_ENROLLED,
+            .message = err,
+        }, er->ctx);
+        free(er);
+        return;
+    }
+
+    ziti_mfa_enrollment *enrollment = NULL;
+    ziti_mfa_enrollment_ptr_from_json(&enrollment, body);
+    er->cb(enrollment, NULL, er->ctx);
+    free(er);
+}
+
+static void on_totp_delete(tlsuv_http_resp_t *resp, const char *err, json_object *body, void *ctx) {
+    OIDC_LOG(VERBOSE, "TOTP delete response: %d %s err(%s)", resp->code, resp->status, err);
+}
+
+static int oidc_totp_enroll(ziti_auth_method_t *self, 
+                            void (*cb)(ziti_mfa_enrollment *mfa_enrollment, const ziti_error *err, void *ctx), 
+                            void *ctx) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    
+    tlsuv_http_pair form[] = {
+        {"id", cstr_str(&clt->request->id)},
+    };
+
+    tlsuv_http_req_t *del = ziti_json_request(&clt->http, "DELETE", "/oidc/login/totp/enroll", on_totp_delete, NULL);
+    tlsuv_http_req_header(del, HTTP_CONTENT_TYPE, "application/x-www-form-urlencoded");
+    tlsuv_http_req_header(del, HTTP_CONTENT_LENGTH, "0");
+    tlsuv_http_req_query(del, 1, form);
+
+    NEWP(er, struct totp_enroll_s);
+    er->clt = clt;
+    er->cb = cb;
+    er->ctx = ctx;
+    
+    tlsuv_http_req_t *totp_enroll_req = ziti_json_request(&clt->http, "POST", "/oidc/login/totp/enroll", oidc_totp_enroll_cb, er);
+    tlsuv_http_req_form(totp_enroll_req, 1, form);
+    return 0;
+}
+
+static void oidc_totp_verify_cb(tlsuv_http_resp_t *resp, const char *err, json_object *body, void *ctx) {
+    struct totp_enroll_s *vr = ctx;
+    oidc_client_t *clt = vr->clt;
+
+    if (resp->code / 100 == 3) {
+        OIDC_LOG(DEBUG, "TOTP verify success");
+        vr->cb(NULL, NULL, vr->ctx);
+    } else {
+        OIDC_LOG(WARN, "TOTP verify failed: %d %s [%s] %s",
+                 resp->code, resp->status, err, json_object_get_string(body));
+        vr->cb(NULL, &(ziti_error){
+            .err = ZITI_MFA_INVALID_TOKEN,
+            .message = json_object_get_string(body),
+        }, vr->ctx);
+    }
+    free(vr);
+
+    on_totp(resp, clt->request);
+}
+
+static int oidc_totp_verify(ziti_auth_method_t *self, const char *code, void (*cb)(void *, const ziti_error *err, void *ctx), void *ctx) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    if (clt->request == NULL) {
+        OIDC_LOG(WARN, "no auth request in progress");
+        return ZITI_INVALID_STATE;
+    }
+
+    tlsuv_http_pair form[] = {
+        {"id", cstr_str(&clt->request->id)},
+        {"code", code},
+    };
+    NEWP(vr, struct totp_enroll_s);
+    vr->clt = clt;
+    vr->cb = (void (*)(ziti_mfa_enrollment *, const ziti_error *, void *))cb;
+    vr->ctx = ctx;
+
+    tlsuv_http_req_t *req = ziti_json_request(&clt->http, "POST", "/oidc/login/totp/enroll/verify", oidc_totp_verify_cb, vr);
+    tlsuv_http_req_form(req, 2, form);
+
+    return 0;
+}
+
 static void oidc_auth_token_cb(oidc_client_t *clt, enum oidc_status status, const void *data) {
     char err[128];
 
@@ -877,17 +988,19 @@ static void oidc_auth_token_cb(oidc_client_t *clt, enum oidc_status status, cons
                 clt->auth_cb(clt->auth_cb_ctx, ZitiAuthStatePartiallyAuthenticated, data);
                 break;
             case OIDC_TOTP_NEEDED:
-                clt->auth_cb(clt->auth_cb_ctx, ZitiAuthStatePartiallyAuthenticated, (void *) &ZITI_MFA);
+                clt->auth_cb(clt->auth_cb_ctx, ZitiAuthStatePartiallyAuthenticated, data ? data : (void *) &ZITI_MFA);
                 break;
             case OIDC_TOTP_FAILED:
-                assert(clt->mfa_cb != NULL);
-                clt->mfa_cb(clt->auth_cb_ctx, ZITI_MFA_INVALID_TOKEN);
-                clt->mfa_cb = NULL;
+                if (clt->mfa_cb != NULL) {
+                    clt->mfa_cb(clt->auth_cb_ctx, ZITI_MFA_INVALID_TOKEN);
+                    clt->mfa_cb = NULL;
+                }
                 break;
             case OIDC_TOTP_SUCCESS:
-                assert(clt->mfa_cb != NULL);
-                clt->mfa_cb(clt->auth_cb_ctx, ZITI_OK);
-                clt->mfa_cb = NULL;
+                if (clt->mfa_cb != NULL) {
+                    clt->mfa_cb(clt->auth_cb_ctx, ZITI_OK);
+                    clt->mfa_cb = NULL;
+                }
                 break;
             case OIDC_TOKEN_FAILED: {
                 const char *reason = data ? (const char *) data : "unknown";
@@ -976,6 +1089,10 @@ static int oidc_auth_stop(ziti_auth_method_t *self) {
 
 static int oidc_auth_refresh(ziti_auth_method_t *self) {
     oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    if (clt->request) {
+        OIDC_LOG(DEBUG, "skipping refresh while auth request is in progress");
+        return ZITI_OK;
+    }
     return oidc_client_refresh(clt);
 }
 
