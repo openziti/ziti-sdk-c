@@ -165,7 +165,7 @@ void ziti_mfa_enroll_get_internal_cb(ziti_mfa_enrollment *mfa_enrollment, const 
     } else {
         mfa_enroll_cb_ctx->cb(ztx, ZITI_OK, mfa_enrollment, mfa_enroll_cb_ctx->cb_ctx);
         FREE(ctx);
-        free_ziti_mfa_enrollment(mfa_enrollment);
+        free_ziti_mfa_enrollment_ptr(mfa_enrollment);
     }
 }
 

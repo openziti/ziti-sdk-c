@@ -898,8 +898,15 @@ static void oidc_totp_enroll_cb(tlsuv_http_resp_t *resp, const char *err, json_o
     }
 
     ziti_mfa_enrollment *enrollment = NULL;
-    ziti_mfa_enrollment_ptr_from_json(&enrollment, body);
-    er->cb(enrollment, NULL, er->ctx);
+    if (ziti_mfa_enrollment_ptr_from_json(&enrollment, body) == ZITI_OK) {
+        er->cb(enrollment, NULL, er->ctx);
+    } else {
+        OIDC_LOG(ERROR, "failed to parse TOTP enroll response: %s", json_object_get_string(body));
+        er->cb(NULL, &(ziti_error){
+            .err = ZITI_MFA_NOT_ENROLLED,
+            .message = "invalid response from server",
+        }, er->ctx);
+    }
     free(er);
 }
 
