@@ -153,6 +153,7 @@ if (!uv_is_closing((uv_handle_t*)(h))) uv_close((uv_handle_t*)(h), (uv_close_cb)
 // common HTTP constants
 #define HTTP_AUTHORIZATION "Authorization"
 #define HTTP_CONTENT_TYPE "Content-Type"
+#define HTTP_CONTENT_LENGTH "Content-Length"
 #define HTTP_ACCEPT "Accept"
 #define HTTP_LOCATION "Location"
 #define APPLICATION_JSON "application/json"
