@@ -361,7 +361,7 @@ static void login_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
                 case ziti_auth_query_type_TOTP:
                     req->totp = true;
                     clt->request = req;
-                    clt->token_cb(req->clt, OIDC_TOTP_NEEDED, NULL);
+                    clt->token_cb(req->clt, OIDC_TOTP_NEEDED, q);
                     break;
                 case ziti_auth_query_type_EXT_JWT:
                     clt->request = req;
