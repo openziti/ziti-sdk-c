@@ -877,14 +877,14 @@ static void set_expiration(oidc_client_t *clt, const char *token) {
     json_object_put(payload);
 }
 
-struct  totp_enroll_s {
+struct totp_ctx_s {
     oidc_client_t *clt;
     void (*cb)(ziti_mfa_enrollment *mfa_enrollment, const ziti_error *err, void *ctx);
     void *ctx;
 };
 
 static void oidc_totp_enroll_cb(tlsuv_http_resp_t *resp, const char *err, json_object *body, void *ctx) {
-    struct totp_enroll_s *er = ctx;
+    struct totp_ctx_s *er = ctx;
     oidc_client_t *clt = er->clt;
 
     if (err) {
@@ -925,7 +925,7 @@ static int oidc_totp_enroll(ziti_auth_method_t *self,
     tlsuv_http_req_header(del, HTTP_CONTENT_LENGTH, "0");
     tlsuv_http_req_query(del, 1, form);
 
-    NEWP(er, struct totp_enroll_s);
+    NEWP(er, struct totp_ctx_s);
     er->clt = clt;
     er->cb = cb;
     er->ctx = ctx;
@@ -936,7 +936,7 @@ static int oidc_totp_enroll(ziti_auth_method_t *self,
 }
 
 static void oidc_totp_verify_cb(tlsuv_http_resp_t *resp, const char *err, json_object *body, void *ctx) {
-    struct totp_enroll_s *vr = ctx;
+    struct totp_ctx_s *vr = ctx;
     oidc_client_t *clt = vr->clt;
 
     if (resp->code / 100 == 3) {
@@ -966,7 +966,7 @@ static int oidc_totp_verify(ziti_auth_method_t *self, const char *code, void (*c
         {"id", cstr_str(&clt->request->id)},
         {"code", code},
     };
-    NEWP(vr, struct totp_enroll_s);
+    NEWP(vr, struct totp_ctx_s);
     vr->clt = clt;
     vr->cb = (void (*)(ziti_mfa_enrollment *, const ziti_error *, void *))cb;
     vr->ctx = ctx;
