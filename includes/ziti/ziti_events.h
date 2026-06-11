@@ -107,10 +107,12 @@ struct ziti_service_event {
 
 enum ziti_auth_action {
     ziti_auth_cannot_continue,
+    ziti_auth_enroll_totp,
     ziti_auth_prompt_totp,
     ziti_auth_prompt_pin,
     ziti_auth_select_external,
-    ziti_auth_login_external
+    ziti_auth_login_external,
+    ziti_auth_success,
 };
 /**
  * \brief Event notifying the app that additional action is required to continue authentication or normal operation.
@@ -119,6 +121,9 @@ enum ziti_auth_action {
  * to ziti_context.
  *
  * the following authentication actions are supported:
+ *
+ * [ziti_auth_enroll_totp] - request for MFA enrollment,
+ * application must prompt user to start [ziti_mfa_enroll()/ziti_mfa_verify()] flow
  *
  * [ziti_auth_prompt_totp] - request for MFA code, application must call [ziti_mfa_auth()] when it acquires TOTP code
  *

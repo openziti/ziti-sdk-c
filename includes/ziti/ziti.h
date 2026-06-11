@@ -1037,7 +1037,7 @@ extern void ziti_mfa_remove(ziti_context ztx, const char *code, ziti_mfa_cb remo
  * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
 ZITI_FUNC
-extern void ziti_mfa_verify(ziti_context ztx, char *code, ziti_mfa_cb verify_cb, void *ctx);
+extern void ziti_mfa_verify(ziti_context ztx, const char *code, ziti_mfa_cb verify_cb, void *ctx);
 
 
 /**
