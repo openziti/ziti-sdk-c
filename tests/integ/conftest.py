@@ -76,7 +76,7 @@ def require_ziti(ziti_version, request):
     if marker:
         req_ver = marker.args[0]
         logger.warning("require_ziti: required=%s, actual=%s", req_ver, ziti_version)
-        if ziti_version.match(req_ver):
+        if not ziti_version.match(req_ver):
             pytest.skip(f"Skipped because ziti version is {ziti_version} does not match {req_ver}")
 
 @pytest.fixture(scope="session")
