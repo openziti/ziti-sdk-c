@@ -17,6 +17,8 @@
 #ifndef ZITI_SDK_FIXTURES_H
 #define ZITI_SDK_FIXTURES_H
 
+#include <catch2/catch_all.hpp>
+
 #include <uv.h>
 #include <cstdlib>
 #include "ziti_ctrl.h"
@@ -24,6 +26,7 @@
 #include <ziti/ziti_log.h>
 #include <ziti/ziti.h>
 #include <ziti/zitilib.h>
+
 
 #ifndef line_var
 #define concat_1(a, b) a ## b
@@ -100,50 +103,66 @@ inline constexpr const char* ALL_CONFIGS[] = {
 
 class ZitiTestCase : public LoopTestCase {
   protected:
+    ziti_options options{
+        .config_types = (const char**)ALL_CONFIGS,
+        .app_ctx = this,
+        .events = ZitiContextEvent | ZitiAuthEvent,
+        .event_cb = event_cb,
+    };
     ziti_config config{};
     ziti_context ztx{};
     bool loaded{};
     int load_error{};
+    struct {
+        ziti_auth_action action{};
+        std::string totpEnroll;
+    } authState;
 
     ZitiTestCase() {
         ziti_log_init(loop(), 5, nullptr);
-        auto test_client = checkENV("test_client");
-        REQUIRE_ZITI_OK(ziti_load_config(&config, test_client));
+        REQUIRE_ZITI_OK(ziti_load_config(&config, test_client()));
         REQUIRE_ZITI_OK(ziti_context_init(&ztx, &config));
+        REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+    }
 
-        const ziti_options opts {
-            .config_types = (const char**)ALL_CONFIGS,
-            .app_ctx = this,
-            .events = ZitiContextEvent,
-            .event_cb = [](ziti_context ztx, const ziti_event_t *ev) {
-                auto self = (ZitiTestCase*)ziti_app_ctx(ztx);
-                if (ev->type == ZitiContextEvent) {
-                    if (ev->ctx.ctrl_status == ZITI_OK) {
-                        self->loaded = true;
-                    } else {
-                        self->load_error = ev->ctx.ctrl_status;
-                    }
+    static void event_cb(ziti_context ztx, const ziti_event_t *ev) {
+        auto self = (ZitiTestCase*)ziti_app_ctx(ztx);
+        ZITI_LOG(INFO, "got event: %d", ev->type);
+        switch (ev->type) {
+        case ZitiContextEvent:
+            ZITI_LOG(INFO, "got context event: ctrl_status=%d", ev->ctx.ctrl_status);
+            self->load_error = ev->ctx.ctrl_status;
+            if (ev->ctx.ctrl_status == ZITI_OK) {
+                self->loaded = true;
+            }
+            break;
+        case ZitiAuthEvent:
+            ZITI_LOG(INFO, "got auth event: %d => %s", ev->auth.action, ev->auth.detail);
+            self->authState.action = ev->auth.action;
+            if (ev->auth.action == ziti_auth_enroll_totp) {
+                CHECK(ev->auth.detail);
+                if (ev->auth.detail) {
+                    self->authState.totpEnroll = ev->auth.detail;
                 }
-            },
-        };
-        REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &opts));
+            }
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    int load() {
         REQUIRE_ZITI_OK(ziti_context_run(ztx, loop()));
-        REQUIRE(run(UNTIL(loaded || load_error != 0)));
-        REQUIRE_ZITI_OK(load_error);
-        REQUIRE(loaded);
+        if(!run(UNTIL(loaded || load_error != 0))) {
+            return ZITI_TIMEOUT;
+        }
+        return load_error;
     }
 
     ~ZitiTestCase() {
         ziti_shutdown(ztx);
         free_ziti_config(&config);
-    }
-
-    static const char* test_client() {
-        return checkENV("test_client");
-    }
-
-    static const char* test_service() {
-        return checkENV("test_service");
     }
 
     const ziti_service* ensureService(const char* name = test_service()) {
@@ -165,6 +184,9 @@ class ZitiTestCase : public LoopTestCase {
         REQUIRE(c.srv);
         return c.srv;
     }
+
+    static const char* test_client() { return checkENV("test_client"); }
+    static const char* test_service() { return checkENV("test_service"); }
 };
 
 template <class T>
