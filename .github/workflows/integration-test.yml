@@ -96,7 +96,7 @@ jobs:
 
       - name: build CMake
         run: |
-          cmake --build ./build
+          cmake --build ./build --config RelWithDebInfo
         shell: bash
 
       - name: test
@@ -104,7 +104,7 @@ jobs:
         continue-on-error: false
         shell: bash
         run: |
-          ctest -C Debug -VV --no-compress-output --timeout 1200
+          ctest -C RelWithDebInfo -VV --no-compress-output --timeout 1200
 
       - name: upload test summary
         if: ${{ !cancelled() }}

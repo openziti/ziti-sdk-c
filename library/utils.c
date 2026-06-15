@@ -775,7 +775,7 @@ static void json_req_cb(tlsuv_http_resp_t *resp, void *ctx) {
         return;
     }
 
-    if (resp->code != 200) {
+    if (resp->code / 100  != 2) {
         cstr_assign(&jctx->error, resp->status ? resp->status : "unexpected response");
     }
 

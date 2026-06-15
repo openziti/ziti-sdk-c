@@ -175,7 +175,8 @@ XX(woken, model_bool, none, woken, __VA_ARGS__)
 #define ZITI_AUTH_QUERY_MFA_MODEL(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__) \
 XX(type_id, ziti_auth_query_type, none, typeId, __VA_ARGS__) \
-XX(provider, model_string, none, provider, __VA_ARGS__) \
+XX(provider, model_string, none, provider, __VA_ARGS__)      \
+XX(enrolled, model_bool, none, isTotpEnrolled, __VA_ARGS__)  \
 XX(http_method, model_string, none, httpMethod, __VA_ARGS__) \
 XX(http_url, model_string, none, httpUrl, __VA_ARGS__) \
 XX(min_length, model_number, none, minLength, __VA_ARGS__) \

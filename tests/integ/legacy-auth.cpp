@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "../catch2_includes.hpp"
+#include "fixtures.h"
 
 #include <iostream>
 #include <ziti/ziti.h>
@@ -23,7 +23,6 @@
 #include <utils.h>
 
 #include "test-data.h"
-#include "fixtures.h"
 
 static const char *const SERVICE_NAME = TEST_SERVICE;
 

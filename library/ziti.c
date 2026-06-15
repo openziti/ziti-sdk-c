@@ -294,7 +294,7 @@ void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mf
     switch (mfa_q->type_id) {
         case ziti_auth_query_type_MFA:
         case ziti_auth_query_type_TOTP:
-            ev.auth.action = ziti_auth_prompt_totp;
+            ev.auth.action = mfa_q->enrolled ? ziti_auth_prompt_totp : ziti_auth_enroll_totp;
             ev.auth.detail = mfa_q->provider;
             break;
         case ziti_auth_query_type_EXT_JWT: {
@@ -426,6 +426,14 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     ziti_ctrl_current_api_session(ctrl, api_session_cb, ztx);
 
     ziti_posture_init(ztx, 20);
+
+    ziti_event_t auth_ev = {
+        .type = ZitiAuthEvent,
+        .auth = {
+            .action = ziti_auth_success,
+        },
+    };
+    ziti_send_event(ztx, &auth_ev);
 }
 
 void ziti_force_api_session_refresh(ziti_context ztx) {
@@ -2088,6 +2096,8 @@ int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
     if (config->id.cert) ctx->config.id.cert = strdup(config->id.cert);
 
     ctx->opts = default_ziti_options;
+    STAILQ_INIT(&ctx->w_queue);
+
 
     *ztx = ctx;
     return ZITI_OK;
@@ -2131,7 +2141,6 @@ int ziti_context_run(ziti_context ztx, uv_loop_t *loop) {
     uv_timer_init(loop, &ztx->deadline_timer);
     ztx->deadline_timer.data = ztx;
 
-    STAILQ_INIT(&ztx->w_queue);
     uv_prepare_init(loop, &ztx->prepper);
     ztx->prepper.data = ztx;
     uv_prepare_start(&ztx->prepper, ztx_prepare);

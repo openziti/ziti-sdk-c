@@ -35,6 +35,9 @@ struct capture {
 
 class ZitiConnectTestCase : public ZitiTestCase {
   protected:
+    ZitiConnectTestCase() {
+        REQUIRE_ZITI_OK(load());
+    }
     void run_connect_test(const char *service, const ziti_dial_opts *dialOpts);
 };
 

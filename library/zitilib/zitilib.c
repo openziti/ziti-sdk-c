@@ -132,17 +132,23 @@ static void process_auth_event(ztx_wrap_t *wrap, const struct ziti_auth_event *e
     future_t *f = wrap->auth_future;
     wrap->auth_future = NULL;
     switch (ev->action) {
-        case ziti_auth_cannot_continue:
-            fail_future(f, ZITI_AUTHENTICATION_FAILED);
-            break;
-        case ziti_auth_prompt_totp:
-        case ziti_auth_prompt_pin:
-            complete_future(f, (void *) (uintptr_t)wrap->ztx->id, ZITI_PARTIALLY_AUTHENTICATED);
-            break;
-        case ziti_auth_select_external:
-        case ziti_auth_login_external:
-            complete_future(f, (void *) (uintptr_t)wrap->ztx->id, ZITI_EXTERNAL_LOGIN_REQUIRED);
-            break;
+    case ziti_auth_success:
+        wrap->auth_future = f; // wait for services to load
+        break;
+    case ziti_auth_cannot_continue:
+        fail_future(f, ZITI_AUTHENTICATION_FAILED);
+        break;
+    case ziti_auth_prompt_totp:
+    case ziti_auth_prompt_pin:
+        complete_future(f, (void *) (uintptr_t)wrap->ztx->id, ZITI_PARTIALLY_AUTHENTICATED);
+        break;
+    case ziti_auth_select_external:
+    case ziti_auth_login_external:
+        complete_future(f, (void *) (uintptr_t)wrap->ztx->id, ZITI_EXTERNAL_LOGIN_REQUIRED);
+        break;
+    case ziti_auth_enroll_totp:
+        complete_future(f, (void *) (uintptr_t)wrap->ztx->id, ZITI_MFA_NOT_ENROLLED);
+        break;
     }
 }
 

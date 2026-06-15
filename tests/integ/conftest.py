@@ -27,10 +27,10 @@ import pytest
 logger = logging.getLogger(__name__)
 
 
-def ziti_edge(ziti_cli, *args, check=True):
+def ziti_edge(*args, check=True):
     """Run a ``ziti edge`` subcommand."""
     result = subprocess.run(
-        [ziti_cli, "edge"] + list(args),
+        [ziti_executable, "edge"] + list(args),
         capture_output=True, text=True,
     )
     logger.info("ziti edge %s -> rc=%d", " ".join(args), result.returncode)
@@ -57,20 +57,27 @@ def compute_kid(cert_path):
 # ---------------------------------------------------------------------------
 
 ziti_executable = os.environ.get("ZITI_CLI", "ziti")
-@pytest.fixture(scope="session")
-def ziti_cli(tmp_path_factory):
-    result = subprocess.run([ziti_executable, "version"], capture_output=True, text=True, check=True)
-    logger.info("Using ziti CLI version: %s", result.stdout.strip())
-    logger.info("tmp_path = %s", tmp_path_factory.getbasetemp())
+def ziti_cli():
     return ziti_executable
 
 @pytest.fixture(scope="session")
-def ziti_version(ziti_cli):
+def ziti_version():
     result = subprocess.run([ziti_executable, "version"], capture_output=True, text=True, check=True)
     ver_str = result.stdout.strip().lstrip("v")
+    ver_str = "+build.".join(ver_str.split("-")[:2])
     logger.info("Ziti CLI version string: '%s'", ver_str)
     return Version.parse(ver_str)
 
+
+@pytest.fixture(autouse=True)
+def require_ziti(ziti_version, request):
+    marker = request.node.get_closest_marker("require_ziti")
+    logger.warning("require_ziti marker: %s", marker)
+    if marker:
+        req_ver = marker.args[0]
+        logger.warning("require_ziti: required=%s, actual=%s", req_ver, ziti_version)
+        if not ziti_version.match(req_ver):
+            pytest.skip(f"Skipped because ziti version is {ziti_version} does not match {req_ver}")
 
 @pytest.fixture(scope="session")
 def quickstart_home(tmp_path_factory):
@@ -80,11 +87,11 @@ def quickstart_home(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
-def quickstart(ziti_cli, tmp_path_factory, quickstart_home):
+def quickstart(tmp_path_factory, quickstart_home):
     """Start ``ziti edge quickstart`` and wait for it to become ready."""
 
     proc = subprocess.Popen(
-        [ziti_cli, "edge", "quickstart",
+        [ziti_executable, "edge", "quickstart",
          "--home", quickstart_home,
          "--ctrl-address=127.0.0.1",
          "--router-address=127.0.0.1"],
@@ -124,37 +131,32 @@ def quickstart(ziti_cli, tmp_path_factory, quickstart_home):
 
 
 @pytest.fixture(scope="session")
-def base_model(quickstart, ziti_cli):
-    ziti_edge(ziti_cli,
-              "create", "service-policy", "servers-bind", "Bind",
+def base_model(quickstart):
+    ziti_edge("create", "service-policy", "servers-bind", "Bind",
               "--identity-roles", "#server",
               "--service-roles", "#all")
 
-    ziti_edge(ziti_cli,
-              "create", "service-policy", "clients-dial", "Dial",
+    ziti_edge("create", "service-policy", "clients-dial", "Dial",
               "--identity-roles", "#client",
               "--service-roles", "#all")
 
-    ziti_edge(ziti_cli,
-              "create", "service", "test-service")
+    ziti_edge("create", "service", "test-service")
 
 
 @pytest.fixture(scope="session")
-def ziti_model(ziti_cli, base_model, quickstart_home):
+def ziti_model(base_model, quickstart_home):
     """Create identities, service, and service policies."""
-    ziti_edge(ziti_cli,
-              "create", "identity", "test-client",
+    ziti_edge("create", "identity", "test-client",
               "-a", "client",
               "-o", os.path.join(quickstart_home, "test_client.jwt"))
 
-    ziti_edge(ziti_cli,
-              "create", "identity", "test-server",
+    ziti_edge("create", "identity", "test-server",
               "-a", "server",
               "-o", os.path.join(quickstart_home, "test_server.jwt"))
 
 
 @pytest.fixture(scope="session")
-def jwt_signers(ziti_model, ziti_cli, quickstart_home, ziti_version):
+def jwt_signers(ziti_model, quickstart_home, ziti_version):
     """Generate JWT signing key/cert and create ext-jwt-signers."""
 
     if ziti_version < '2':
@@ -182,8 +184,7 @@ def jwt_signers(ziti_model, ziti_cli, quickstart_home, ziti_version):
     logger.info("JWT signer kid: %s", kid)
 
     # enroll-to-cert signer
-    ziti_edge(ziti_cli,
-              "create", "ext-jwt-signer", "test-ext-jwt-signer",
+    ziti_edge("create", "ext-jwt-signer", "test-ext-jwt-signer",
               "https://test-jwt-issuer.example.com",
               "--cert-file", cert_path,
               "--audience", "openziti",
@@ -192,8 +193,7 @@ def jwt_signers(ziti_model, ziti_cli, quickstart_home, ziti_version):
 
     # enroll-to-token signer (same cert/kid — may fail if controller enforces
     # unique fingerprints; the original expect scripts silently ignored this)
-    ziti_edge(ziti_cli,
-              "create", "ext-jwt-signer", "test-ext-jwt-signer-token",
+    ziti_edge("create", "ext-jwt-signer", "test-ext-jwt-signer-token",
               "https://test-jwt-issuer-token.example.com",
               "--cert-file", cert_path,
               "--audience", "openziti",
@@ -206,8 +206,7 @@ def jwt_signers(ziti_model, ziti_cli, quickstart_home, ziti_version):
         f.write("0\n")
 
     # pre-created identity for enroll-none tests
-    ziti_edge(ziti_cli,
-              "create", "identity", "test-precreated", "-a", "client")
+    ziti_edge("create", "identity", "test-precreated", "-a", "client")
 
 
 @pytest.fixture(scope="session")
@@ -232,26 +231,26 @@ def enrolled_identities(ziti_model, quickstart_home) -> dict[str, str]:
     return ids
 
 
-def enrollment(ziti_cli, path, name, attr) -> str:
+def enrollment(path, name, attr) -> str:
     """Create test client identity."""
     jwt_path = path / f"{name}.jwt"
-    ziti_edge(ziti_cli,"create", "identity",
-                                name, "-a", attr,
-                                "-o", str(jwt_path))
+    ziti_edge("create", "identity",
+              name, "-a", attr,
+              "-o", str(jwt_path))
     logger.info("[client enrollment] %s", jwt_path)
     return str(jwt_path)
 
 
 @pytest.fixture
-def client_identity(ziti_cli, ziti_model, tmp_path, request) -> str:
+def client_identity(ziti_model, tmp_path, request) -> dict[str, str]:
     """return new ziti identity config"""
     enroller = os.environ.get("ENROLLER")
     if not enroller:
         pytest.skip("ENROLLER not set")
 
     name = f"client-{request.node.name}"
-    jwt = enrollment(ziti_cli, tmp_path, name, "client")
-    json_path = tmp_path / f"{name}.json"
+    jwt = enrollment(tmp_path, name, "client")
+    json_path = tmp_path / "client.json"
     result = subprocess.run(
         [enroller, jwt, str(json_path)],
         capture_output=True, text=True,
@@ -260,18 +259,18 @@ def client_identity(ziti_cli, ziti_model, tmp_path, request) -> str:
     if "ziti identity is saved" not in result.stdout:
         pytest.fail(f"enrollment of {name} failed: {result.stderr}")
 
-    return str(json_path)
+    return { 'name': name,  'path': str(json_path) }
 
 
 @pytest.fixture
-def server_identity(ziti_cli, ziti_model, tmp_path, request) -> str:
+def server_identity(ziti_model, tmp_path, request) -> str:
     """return new ziti identity config"""
     enroller = os.environ.get("ENROLLER")
     if not enroller:
         pytest.skip("ENROLLER not set")
 
     name = f"server-{request.node.name}"
-    jwt = enrollment(ziti_cli, tmp_path, name, "server")
+    jwt = enrollment(tmp_path, name, "server")
     json_path = tmp_path / f"{name}.json"
     result = subprocess.run(
         [enroller, jwt, str(json_path)],
@@ -284,7 +283,7 @@ def server_identity(ziti_cli, ziti_model, tmp_path, request) -> str:
     return str(json_path)
 
 @pytest.fixture
-def test_service(quickstart, ziti_cli, request):
+def test_service(quickstart, request):
     name = f"service-{request.node.name}"
     intercept_cfg = f"{name}-intercept"
     intercept = {
@@ -292,8 +291,8 @@ def test_service(quickstart, ziti_cli, request):
         "portRanges": [ {"low": 80, "high": 80} ],
         "addresses": [ f"{name}.test.ziti" ],
     }
-    ziti_edge(ziti_cli, "create", "config", intercept_cfg, "intercept.v1", json.dumps(intercept))
-    ziti_edge(ziti_cli, "create", "service", name, "-c", intercept_cfg)
+    ziti_edge("create", "config", intercept_cfg, "intercept.v1", json.dumps(intercept))
+    ziti_edge("create", "service", name, "-c", intercept_cfg)
     return dict(name=name, intercept=json.dumps(intercept))
 
 @pytest.fixture
