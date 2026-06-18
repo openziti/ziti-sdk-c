@@ -777,7 +777,7 @@ static int timeval_from_json(timestamp *t, json_object *j, type_meta * UNUSED(me
         char sign = 0;
         int offset_hr = 0;
         int offset_min = 0;
-        sscanf(json_object_get_string(j), "%d-%d-%dT%d:%d:%d.%ld%c%d:%d",
+        sscanf(json_object_get_string(j), "%d-%d-%dT%d:%d:%d.%lu%c%d:%d",
                &t2.tm_year, &t2.tm_mon, &t2.tm_mday,
                &t2.tm_hour, &t2.tm_min, &t2.tm_sec, &usec, &sign, &offset_hr, &offset_min);
         t2.tm_year -= 1900;

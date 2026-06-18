@@ -126,14 +126,14 @@ ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
     ziti_socket_t clt = -1;
     struct sock_info_s *si;
     int err = await_future(f, (void **) &si);
-    ZITI_LOG(DEBUG, "fd[%d] future[%p] completed err = %d", server, f, err);
+    ZITI_LOG(DEBUG, "fd[%d] future[%p] completed err = %d", server, (void*)f, err);
 
     if (!err) {
         clt = si->fd;
         if (caller != NULL) {
             snprintf(caller, caller_len, "%s", cstr_str(&si->peer));
         }
-        ZITI_LOG(DEBUG, "fd[%d] future[%p] completed with caller %.*s", server, f, caller_len, caller);
+        ZITI_LOG(DEBUG, "fd[%d] future[%p] completed with caller %.*s", server, (void*)f, caller_len, caller);
 
         cstr_drop(&si->peer);
         free(si);
@@ -142,7 +142,7 @@ ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
         recv(server, &b, 1, 0);
     }
     destroy_future(f);
-    ZITI_LOG(DEBUG, "fd[%d] future[%p] returning clt[%d]", server, f, clt);
+    ZITI_LOG(DEBUG, "fd[%d] future[%p] returning clt[%d]", server, (void*)f, clt);
 
     zl_set_error(err);
     if (err != 0) {
