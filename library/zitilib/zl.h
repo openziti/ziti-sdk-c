@@ -50,12 +50,22 @@ static inline void set_errno(int e) {
     case EPROTOTYPE: WSASetLastError(WSAEPROTOTYPE); break;
     case EAFNOSUPPORT: WSASetLastError(WSAEAFNOSUPPORT); break;
     case EADDRNOTAVAIL: WSASetLastError(WSAEADDRNOTAVAIL); break;
+    case EBADF: WSASetLastError(WSAENOTSOCK); break;
     default:
         WSASetLastError(e);
     }
 }
 #define sock_error() WSAGetLastError()
-static char wsa_err_buf[256];
+#ifndef THREAD_LOCAL
+#if defined(_MSC_VER)
+#define THREAD_LOCAL __declspec(thread)
+#elif defined(__GNUC__)
+#define THREAD_LOCAL __thread
+#else
+#define THREAD_LOCAL
+#endif
+#endif
+static THREAD_LOCAL char wsa_err_buf[256];
 static const char *wsa_error(int err) {
     wsa_err_buf[0] = 0;
     FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,

@@ -24,14 +24,14 @@
 struct backlog_entry_s {
     struct ziti_sock_s *parent;
     ziti_connection conn;
-    char *caller_id;
+    cstr caller_id;
     future_t *accept_f;
     TAILQ_ENTRY(backlog_entry_s) _next;
 };
 
 struct sock_info_s {
     ziti_socket_t fd;
-    char *peer;
+    cstr peer;
 };
 
 struct bind_req_s {
@@ -49,9 +49,18 @@ static void bind_req_drop(struct bind_req_s *req);
 static void on_bridge_close(void *ctx);
 
 int Ziti_bind(ziti_socket_t socket, ziti_handle_t zh, const char *service, const char *terminator) {
-    if (!zl_check_daemon()) { return EINVAL; }
-    if (zh == ZITI_INVALID_HANDLE) { return EINVAL; }
-    if (service == NULL) { return EINVAL; }
+    if (!zl_check_daemon()) {
+        set_errno(err(EINVAL));
+        return -1;
+    }
+    if (zh == ZITI_INVALID_HANDLE) {
+        set_errno(err(EINVAL));
+        return -1;
+    }
+    if (service == NULL) {
+        set_errno(err(EINVAL));
+        return -1;
+    }
 
     struct bind_req_s req = {
         .fd = socket,
@@ -62,9 +71,11 @@ int Ziti_bind(ziti_socket_t socket, ziti_handle_t zh, const char *service, const
 
     future_t *f = schedule_on_loop((loop_work_cb) do_ziti_bind, &req, true);
     int err = await_future(f, NULL);
-    zl_set_error(err);
     destroy_future(f);
     bind_req_drop(&req);
+    if (err != 0) {
+        set_errno(err);
+    }
     return err ? -1 : 0;
 }
 
@@ -89,19 +100,23 @@ static void do_ziti_listen(void *arg, future_t *f, uv_loop_t *l) {
 
 int Ziti_listen(ziti_socket_t socket, int backlog) {
     if (!zl_check_daemon()) {
-        return ZITI_INVALID_STATE;
+        zl_set_error(ZITI_INVALID_STATE);
+        return -1;
     }
 
     if (backlog <= 0) {
-        return EINVAL;
+        set_errno(err(EINVAL));
+        return -1;
     }
 
     struct listen_req_s req = {.fd = socket, .backlog = backlog};
     future_t *f = schedule_on_loop(do_ziti_listen, &req, true);
 
     int err = await_future(f, NULL);
-    zl_set_error(err);
     destroy_future(f);
+    if (err != 0) {
+        set_errno(err);
+    }
     return err ? -1 : 0;
 }
 
@@ -116,11 +131,11 @@ ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
     if (!err) {
         clt = si->fd;
         if (caller != NULL) {
-            snprintf(caller, caller_len, "%s", si->peer);
+            snprintf(caller, caller_len, "%s", cstr_str(&si->peer));
         }
         ZITI_LOG(DEBUG, "fd[%d] future[%p] completed with caller %.*s", server, f, caller_len, caller);
 
-        free(si->peer);
+        cstr_drop(&si->peer);
         free(si);
         char b;
 
@@ -130,7 +145,9 @@ ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
     ZITI_LOG(DEBUG, "fd[%d] future[%p] returning clt[%d]", server, f, clt);
 
     zl_set_error(err);
-    set_errno(err);
+    if (err != 0) {
+        set_errno(err);
+    }
     return clt;
 }
 
@@ -142,7 +159,7 @@ static void on_ziti_accept(ziti_connection client, int status) {
         model_list_push(&pending->parent->accept_q, pending->accept_f);
 
         ziti_close(client, NULL);
-        free(pending->caller_id);
+        cstr_drop(&pending->caller_id);
         free(pending);
         return;
     }
@@ -154,7 +171,7 @@ static void on_ziti_accept(ziti_connection client, int status) {
         ZITI_LOG(WARN, "failed to connect client socket[%d]: %d", fd, rc);
         fail_future(pending->accept_f, rc);
         ziti_close(client, NULL);
-        free(pending->caller_id);
+        cstr_drop(&pending->caller_id);
         free(pending);
         return;
     }
@@ -194,7 +211,7 @@ static void do_ziti_accept(void *r, future_t *f, uv_loop_t *l) {
     while (model_list_size(&zs->backlog) > 0) {
         struct backlog_entry_s *pending = model_list_pop(&zs->backlog);
         ZITI_LOG(DEBUG, "server[%d]: pending connection[%s] for service[%s]",
-                 zs->fd, pending->caller_id, cstr_str(&zs->service));
+                 zs->fd, cstr_str(&pending->caller_id), cstr_str(&zs->service));
 
         ziti_connection conn = pending->conn;
         pending->accept_f = f;
@@ -207,7 +224,7 @@ static void do_ziti_accept(void *r, future_t *f, uv_loop_t *l) {
 
         ZITI_LOG(DEBUG, "failed to accept: client conn[%d] gone? [%d/%s]", conn->conn_id, rc, ziti_errorstr(rc));
         ziti_close(conn, NULL);
-        free(pending->caller_id);
+        cstr_drop(&pending->caller_id);
         free(pending);
     }
 
@@ -235,16 +252,16 @@ static void on_ziti_client(ziti_connection server, ziti_connection client, int s
         on_bridge_close(server_sock);
         return;
     }
-    ZITI_LOG(DEBUG, "incoming client[%s] for service[%s]/fd[%d]", clt_ctx->caller_id,
-             cstr_str(&server_sock->service), server_sock->fd);
 
-    char notify = 1;
 
     NEWP(pending, struct backlog_entry_s);
     pending->parent = server_sock;
     pending->conn = client;
-    pending->caller_id = strdup(clt_ctx->caller_id);
+    pending->caller_id = clt_ctx && clt_ctx->caller_id ? cstr_from(clt_ctx->caller_id) : cstr_init();
+    ZITI_LOG(DEBUG, "incoming client[%s] for service[%s]/fd[%d]", cstr_str(&pending->caller_id),
+             cstr_str(&server_sock->service), server_sock->fd);
 
+    char notify = 1;
     future_t *accept_f = model_list_pop(&server_sock->accept_q);
     if (accept_f) {
         ZITI_LOG(DEBUG, "found waiting accept for fd[%d]", server_sock->fd);
@@ -256,7 +273,7 @@ static void on_ziti_client(ziti_connection server, ziti_connection client, int s
         if (ziti_accept(client, on_ziti_accept, NULL) != ZITI_OK) {
             ZITI_LOG(WARN, "ziti_accept() failed unexpectedly");
             ziti_close(client, NULL);
-            free(pending->caller_id);
+            cstr_drop(&pending->caller_id);
             free(pending);
             model_list_push(&server_sock->accept_q, accept_f);
             return;
