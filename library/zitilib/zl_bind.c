@@ -122,7 +122,7 @@ int Ziti_listen(ziti_socket_t socket, int backlog) {
 
 ziti_socket_t Ziti_accept(ziti_socket_t server, char *caller, int caller_len) {
     future_t *f = schedule_on_loop(do_ziti_accept, (void *) (uintptr_t) server, true);
-    ZITI_LOG(DEBUG, "fd[%d] waiting for future[%p]", server, f);
+    ZITI_LOG(DEBUG, "fd[%d] waiting for future[%p]", server, (void*)f);
     ziti_socket_t clt = -1;
     struct sock_info_s *si;
     int err = await_future(f, (void **) &si);
@@ -188,7 +188,7 @@ static void on_ziti_accept(ziti_connection client, int status) {
     si->fd = zs->fd;
     si->peer = pending->caller_id;
 
-    ZITI_LOG(DEBUG, "completing accept future[%p] with fd[%d]", pending->accept_f, fd);
+    ZITI_LOG(DEBUG, "completing accept future[%p] with fd[%d]", (void*)pending->accept_f, fd);
     complete_future(pending->accept_f, si, 0);
     free(pending);
 }
