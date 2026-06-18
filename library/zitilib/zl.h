@@ -42,7 +42,6 @@ typedef uint16_t in_port_t;
 #define close(s) closesocket(s)
 #define poll(f,d,t) WSAPoll(f,d,t)
 static inline void set_errno(int e) {
-    ZITI_LOG(VERBOSE, "setting WSA error: %d/%s", e, strerror(e));
     switch(e) {
     case EINVAL: WSASetLastError(WSAEINVAL); break;
     case EALREADY: WSASetLastError(WSAEALREADY); break;
