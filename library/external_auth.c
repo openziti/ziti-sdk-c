@@ -197,7 +197,7 @@ static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti
     }
 
     ZTX_LOG(DEBUG, "enroll response: cert_resp=%p cert_pem=%s cas_pem=%s",
-            cert_resp,
+            (void*)cert_resp,
             cert_resp ? (cert_resp->client_cert_pem ? "present" : "NULL") : "N/A",
             cert_resp ? (cert_resp->cas_pem ? "present" : "NULL") : "N/A");
 

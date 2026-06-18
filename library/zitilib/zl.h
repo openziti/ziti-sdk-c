@@ -38,9 +38,52 @@ typedef uint16_t in_port_t;
 #pragma comment(lib, "ws2_32.lib")
 #include <afunix.h>
 #endif
+#include <WinSock2.h>
+#define close(s) closesocket(s)
+#define poll(f,d,t) WSAPoll(f,d,t)
+static inline void set_errno(int e) {
+    switch(e) {
+    case EINVAL: WSASetLastError(WSAEINVAL); break;
+    case EALREADY: WSASetLastError(WSAEALREADY); break;
+    case EWOULDBLOCK: WSASetLastError(WSAEWOULDBLOCK); break;
+    case EPROTOTYPE: WSASetLastError(WSAEPROTOTYPE); break;
+    case EAFNOSUPPORT: WSASetLastError(WSAEAFNOSUPPORT); break;
+    case EADDRNOTAVAIL: WSASetLastError(WSAEADDRNOTAVAIL); break;
+    case EBADF: WSASetLastError(WSAENOTSOCK); break;
+    default:
+        WSASetLastError(e);
+    }
+}
+#define sock_error() WSAGetLastError()
+#ifndef THREAD_LOCAL
+#if defined(_MSC_VER)
+#define THREAD_LOCAL __declspec(thread)
+#elif defined(__GNUC__)
+#define THREAD_LOCAL __thread
 #else
+#define THREAD_LOCAL
+#endif
+#endif
+static THREAD_LOCAL char wsa_err_buf[256];
+static const char *wsa_error(int err) {
+    wsa_err_buf[0] = 0;
+    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                   NULL, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                   wsa_err_buf, sizeof(wsa_err_buf), NULL);
+    if (wsa_err_buf[0] == 0) {
+        snprintf(wsa_err_buf, sizeof(wsa_err_buf), "Unknown error %d", err);
+    }
+    return wsa_err_buf;
+}
+#define err(e) (WSA ## e)
+#define strerror(e) wsa_error(e)
+#else
+#include <poll.h>
 #include <unistd.h>
 #define SOCKET_ERROR (-1)
+#define set_errno(e) errno = (e)
+#define sock_error() errno
+#define err(e) e
 #endif
 
 typedef struct ztx_wrap {

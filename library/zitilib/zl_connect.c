@@ -24,44 +24,6 @@
 #include <stc/cstr.h>
 #include <uv.h>
 
-#ifdef _WIN32
-#include <WinSock2.h>
-#define close(s) closesocket(s)
-#define poll(f,d,t) WSAPoll(f,d,t)
-static inline void set_errno(int e) {
-    ZITI_LOG(VERBOSE, "setting WSA error: %d/%s", e, strerror(e));
-    switch(e) {
-    case EINVAL: WSASetLastError(WSAEINVAL); break;
-    case EALREADY: WSASetLastError(WSAEALREADY); break;
-    case EWOULDBLOCK: WSASetLastError(WSAEWOULDBLOCK); break;
-    case EPROTOTYPE: WSASetLastError(WSAEPROTOTYPE); break;
-    case EAFNOSUPPORT: WSASetLastError(WSAEAFNOSUPPORT); break;
-    case EADDRNOTAVAIL: WSASetLastError(WSAEADDRNOTAVAIL); break;
-    default:
-        WSASetLastError(e);
-    }
-}
-#define sock_error() WSAGetLastError()
-static char wsa_err_buf[256];
-static const char *wsa_error(int err) {
-    wsa_err_buf[0] = 0;
-    FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                   NULL, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                   wsa_err_buf, sizeof(wsa_err_buf), NULL);
-    if (wsa_err_buf[0] == 0) {
-        snprintf(wsa_err_buf, sizeof(wsa_err_buf), "Unknown error %d", err);
-    }
-    return wsa_err_buf;
-}
-#define err(e) (WSA ## e)
-#define strerror(e) wsa_error(e)
-#else
-#define set_errno(e) errno = (e)
-#define sock_error() errno
-#define err(e) e
-#include <poll.h>
-#endif
-
 static int zl_set_non_blocking(ziti_socket_t sock);
 static int zl_try_bind(ziti_socket_t socket, int af, struct sockaddr *addr, socklen_t *addrlen);
 

@@ -92,7 +92,7 @@ static inline void close_connection(ziti_channel_t *ch) {
     ch->connection = NULL;
 
     if (tls) {
-        CH_LOG(DEBUG, "closing TLS[%p]", tls);
+        CH_LOG(DEBUG, "closing TLS[%p]", (void*)tls);
         tlsuv_stream_close(tls, on_tls_close);
     }
 }
@@ -978,7 +978,7 @@ static void on_tls_connect(uv_connect_t *req, int status) {
 
     if (tls != ch->connection) {
         // this should never happen but handle it anyway -- close connected tls stream
-        CH_LOG(ERROR, "invalid state, mismatch req->conn[%p] != ch->conn[%p]", tls, ch->connection);
+        CH_LOG(ERROR, "invalid state, mismatch tls[%p] != ch->connection[%p]", (void*)tls, (void*)ch->connection);
         tls->data = NULL;
         tlsuv_stream_close(tls, on_tls_close);
         goto done;
