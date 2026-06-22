@@ -50,7 +50,11 @@
 #define auth_url_path "/auth/callback"
 #define cb_url(host,port,path) "http://" host ":" _str(port) path
 #define default_cb_url cb_url("localhost",auth_cb_port,auth_url_path)
-#define default_scope "openid offline_access"
+
+// only "openid" belongs in the default scope: it is the one scope OIDC requires.
+// do NOT add other scopes here (e.g. offline_access) -- scope is an optional field and any
+// additional scopes should come from the external jwt signer config (clt->signer_cfg.scopes).
+#define default_scope "openid"
 
 #define AUTH_EP "authorization_endpoint"
 #define TOKEN_EP "token_endpoint"
