@@ -309,8 +309,8 @@ static void on_client(uv_stream_t *server, int status) {
     c->data = clt;
 
     CATCH(ziti) {
-        free(clt);
         ZITI_LOG(ERROR, "closing client [%s]", clt->addr_s);
+        free(clt);
         uv_close((uv_handle_t *) c, close_cb);
     }
 
