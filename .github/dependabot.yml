@@ -3,6 +3,7 @@ updates:
   - package-ecosystem: github-actions
     directories:
       - '.github/workflows'
+      - '.github/actions'
     schedule:
       interval: weekly
     groups:
