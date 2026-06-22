@@ -28,7 +28,7 @@ jobs:
     permissions:
       contents: read
       checks: write
-    name: ${{ matrix.spec.target }}-test-${{ matrix.ziti_version }}
+    name: ${{ matrix.spec.target }}-test-${{ inputs.ziti_version }}
     runs-on: ${{ matrix.spec.runner }}
     env:
       BUILD_NUMBER: ${{ github.run_number }}
@@ -71,7 +71,7 @@ jobs:
       - uses: openziti/ziti/setup-cli@main
         id: ziti
         with:
-          version: ${{ matrix.ziti_version }}
+          version: ${{ inputs.ziti_version }}
 
       - uses: lukka/get-cmake@latest
 
