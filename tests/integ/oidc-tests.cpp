@@ -110,6 +110,8 @@ TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
     struct mfa {
         std::string link{};
         bool verified{false};
+        bool cb_called{false};
+        int status{ZITI_OK};
     } mfa;
 
     ziti_mfa_enroll(ztx, [](ziti_context ztx, int status, ziti_mfa_enrollment *mfa_enrollment, void *ctx){
@@ -119,30 +121,38 @@ TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
     }, &mfa);
 
     CHECK(run(UNTIL(!mfa.link.empty())));
-
-    // try invalid token first
-    ziti_mfa_verify(ztx, "000000", [](ziti_context ztx, int status, void *ctx){
-        auto m = (struct mfa *)ctx;
-        CHECK(status == ZITI_MFA_INVALID_TOKEN);
-    }, &mfa);
-
-
     INFO("provisioning url: " << mfa.link);
     auto secret = mfa.link.substr(mfa.link.find("secret=") + 7);
     auto key = Botan::base32_decode(secret);
     Botan::TOTP totp(key.data(), key.size());
+
+    // try invalid token first
+    ziti_mfa_verify(ztx, "000000", [](ziti_context ztx, int status, void *ctx){
+        auto m = (struct mfa *)ctx;
+        m->cb_called = true;
+        m->status = status;
+    }, &mfa);
+
+    REQUIRE(run(UNTIL(mfa.cb_called)));
+    CHECK(mfa.status == ZITI_MFA_INVALID_TOKEN);
+
     auto ts = std::chrono::system_clock::now();
     auto code = totp.generate_totp(ts);
-
     auto code_str = std::to_string(code);
+
+    mfa.cb_called = false;
+    mfa.status = ZITI_OK;
 
     ziti_mfa_verify(ztx, code_str.c_str(), [](ziti_context ztx, int status, void *ctx){
         auto m = (struct mfa *)ctx;
+        m->cb_called = true;
+        m->status = status;
         m->verified = (status == ZITI_OK);
-        CHECK(status == ZITI_OK);
     }, &mfa);
 
-    CHECK(run(UNTIL(mfa.verified)));
+    CHECK(run(UNTIL(mfa.cb_called)));
+    CHECK(mfa.verified);
+    CHECK(mfa.status == ZITI_OK);
 
     CHECK(run(UNTIL(this->loaded && this->load_error == ZITI_OK)));
 
