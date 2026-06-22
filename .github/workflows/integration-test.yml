@@ -1,12 +1,20 @@
 name: CI Test
 on:
   workflow_call:
-  workflow_dispatch:
-  push:
-    branches-ignore:
-      - main
-      - release-*
+    inputs:
+        ziti_version:
+          type: string
+          required: true
+          default: 'stable'
+          description: ziti network version to test against
 
+  workflow_dispatch:
+    inputs:
+        ziti_version:
+            type: string
+            required: true
+            description: ziti network version to test against
+            default: 'stable'
 
 permissions:
   contents: read
@@ -28,7 +36,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ziti_version: [ 'v1.6', 'stable' ]
         spec:
           - { runner: 'ubuntu-latest', target: 'linux-x64' }
           - { runner: 'macos-15-intel', target: 'macOS-x64' }
