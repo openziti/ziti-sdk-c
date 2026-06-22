@@ -31,9 +31,9 @@ jobs:
     steps:
       - name: Add msbuild to PATH
         if: startsWith(matrix.spec.runner, 'windows')
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@v3
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -44,7 +44,7 @@ jobs:
           config: RelWithDebInfo
 
       - name: upload SDK release bundle
-        uses: softprops/action-gh-release@v0.1.13
+        uses: softprops/action-gh-release@v3.0.1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
@@ -52,13 +52,13 @@ jobs:
             ./build/programs/ziti-prox-c/ziti-prox-c-*.zip
 
       - name: "upload pre-release artifacts: ziti-prox-c"
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ziti-prox-c-${{ matrix.spec.target }}
           path: ./build/programs/ziti-prox-c/**/ziti-prox-c*.zip
 
       - name: upload SDK pre-release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ziti-sdk-${{ matrix.spec.target }}
           path: ./build/package/ziti-sdk-*
