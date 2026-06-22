@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        ziti_version: [ 'v1.6', 'latest' ]
+        ziti_version: [ 'v1.6', 'stable' ]
     uses: ./.github/workflows/integration-test.yml
     with:
       ziti_version: ${{ matrix.ziti_version }}
