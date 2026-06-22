@@ -22,7 +22,14 @@ concurrency:
 
 jobs:
   test:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        ziti_version: [ 'v1.6', 'stable' ]
     uses: ./.github/workflows/integration-test.yml
+    with:
+      ziti_version: ${{ matrix.ziti_version }}
     permissions:
       contents: read
       checks: write
