@@ -34,6 +34,7 @@ typedef uint32_t ziti_handle_t;
 #include <WinSock2.h>
 typedef SOCKET ziti_socket_t;
 #else
+#include <netdb.h>
 #include <netinet/in.h>
 
 typedef int ziti_socket_t;
