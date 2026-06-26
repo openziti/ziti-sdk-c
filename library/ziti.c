@@ -993,12 +993,12 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     ziti_channel_t *ch;
     const char *er_id;
     MODEL_MAP_FOREACH(er_id, ch, &ztx->channels) {
-        printer(ctx, "ch[%d] %s\n", ch->id, ch->name);
+        printer(ctx, "ch[%d] %s\n", zch_get_id(ch), zch_get_name(ch));
         printer(ctx, "\tconnected[%c] version[%s] address[%s]",
-                ziti_channel_is_connected(ch) ? 'Y' : 'N', ch->version, ch->url);
+                ziti_channel_is_connected(ch) ? 'Y' : 'N', zch_get_version(ch), zch_get_url(ch));
         if (ziti_channel_is_connected(ch)) {
             printer(ctx, " latency[%" PRIu64 "] connected[%" PRIu64 "s]\n",
-                    ziti_channel_latency(ch), (now - ch->connect_time) / 1000);
+                    zch_latency(ch), (now - zch_connect_time(ch)) / 1000);
         } else {
             printer(ctx, "\n");
         }
@@ -1014,8 +1014,8 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         if (conn->type == Transport && conn->parent == NULL) {
             printer(ctx, "conn[%d/%s]: state[%s] service[%s] using ch[%d/%s]\n",
                     conn->conn_id, conn->marker, ziti_conn_state(conn), conn->service,
-                    FIELD_OR_ELSE(conn->channel, id, -1),
-                    FIELD_OR_ELSE(conn->channel, name, "(none)")
+                    conn->channel ? zch_get_id(conn->channel) : -1,
+                    conn->channel ? zch_get_name(conn->channel) : "(none)"
             );
             printer(ctx, "\tconnect_time[%" PRIu64 "] idle_time[%" PRIu64 "] "
                          "sent[%" PRIu64 "] recv[%" PRIu64 "] recv_buff[%" PRIu64 "]\n",
@@ -1042,8 +1042,8 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
                 ziti_connection child = model_map_it_value(it);
                 printer(ctx, "\tchild[%d/%s]: state[%s] caller_id[%s] ch[%d/%s]\n",
                         child_id, child->marker, ziti_conn_state(child), ziti_conn_source_identity(child),
-                        FIELD_OR_ELSE(child->channel, id, -1),
-                        FIELD_OR_ELSE(child->channel, name, "(none)")
+                        child->channel ? zch_get_id(conn->channel) : -1,
+                        child->channel ? zch_get_name(conn->channel) : "(none)"
                 );
                 printer(ctx, "\t\taccept_time[%" PRIu64 "] idle_time[%" PRIu64 "] "
                              "sent[%" PRIu64 "] recv[%" PRIu64 "] recv_buff[%" PRIu64 "]\n",
@@ -1702,7 +1702,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
     while (it != NULL) {
         er_name = model_map_it_key(it);
         ch = model_map_remove(&ztx->channels, er_name);
-        ZTX_LOG(INFO, "removing channel[%s@%s]: no longer available", ch->name, ch->url);
+        ZTX_LOG(INFO, "removing channel[%s]: no longer available", zch_get_name(ch));
         ziti_channel_close(ch, ZITI_GATEWAY_UNAVAILABLE);
         it = model_map_it_remove(it);
         ers_changed = true;
@@ -1959,9 +1959,9 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, int er
     ziti_event_t ev = {
             .type = ZitiRouterEvent,
             .router = {
-                    .name = ch->name,
-                    .address = ch->host,
-                    .version = ch->version,
+                    .name = zch_get_name(ch),
+                    .address = zch_get_host(ch),
+                    .version = zch_get_version(ch),
                     .status = status,
             }
     };
@@ -1969,7 +1969,7 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, int er
     ziti_send_event(ztx, &ev);
 
     if (status == EdgeRouterRemoved) {
-        model_map_remove(&ztx->channels, ch->name);
+        model_map_remove(&ztx->channels, zch_get_name(ch));
     }
 
     if (status == EdgeRouterConnected) {

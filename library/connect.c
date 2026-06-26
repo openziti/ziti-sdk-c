@@ -380,7 +380,7 @@ static void connect_timeout(void *data) {
             CONN_LOG(WARN, "connect timeout: no suitable edge router for service[%s]", conn->service);
         } else {
             CONN_LOG(WARN, "failed to establish connection to service[%s] in %ds on ch[%d]",
-                     conn->service, conn->conn_req->connect_timeout_seconds, ch->id);
+                     conn->service, conn->conn_req->connect_timeout_seconds, zch_get_id(ch));
         }
         complete_conn_req(conn, ZITI_TIMEOUT);
         ziti_disconnect(conn);
@@ -406,21 +406,19 @@ static bool ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct zit
         ch = model_map_get(&ztx->channels, er->name);
         if (ch == NULL) continue;
 
-        if (ch->state == Connected) {
-            uint64_t latency = ziti_channel_latency(ch);
+        if (ziti_channel_is_connected(ch)) {
+            uint64_t latency = zch_latency(ch);
             if (latency < best_latency) {
                 best_ch = ch;
                 best_latency = latency;
             }
-        }
-
-        if (ch->state == Disconnected) {
+        } else {
                 model_list_append(&disconnected, ch);
         }
     }
 
     if (best_ch) {
-        CONN_LOG(DEBUG, "selected ch[%s@%s] for best latency(%llu ms)", best_ch->name, best_ch->url,
+        CONN_LOG(DEBUG, "selected ch[%s] for best latency(%llu ms)", zch_get_name(best_ch),
                  (unsigned long long) best_latency);
         ziti_channel_start_connection(conn, best_ch, session);
         result = true;
@@ -1161,7 +1159,7 @@ static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t 
             return ZITI_WTF;
     }
 
-    CONN_LOG(TRACE, "ch[%d] => Edge Connect request token[%s]", ch->id, session->token);
+    CONN_LOG(TRACE, "ch[%d] => Edge Connect request token[%s]", zch_get_id(ch), session->token);
     conn->channel = ch;
     ziti_channel_add_receiver(ch, conn->rt_conn_id, conn,
                               (void (*)(void *, message *, int)) queue_edge_message);
@@ -1285,7 +1283,7 @@ int ziti_accept(ziti_connection conn, ziti_conn_cb cb, ziti_data_cb data_cb) {
 
     ziti_channel_add_receiver(ch, conn->rt_conn_id, conn, (void (*)(void *, message *, int)) queue_edge_message);
 
-    CONN_LOG(TRACE, "ch[%d] => Edge Accept parent_conn_id[%d]", ch->id, conn->parent->conn_id);
+    CONN_LOG(TRACE, "ch[%d] => Edge Accept parent_conn_id[%d]", zch_get_id(ch), conn->parent->conn_id);
 
     uint32_t content_type = ContentTypeDialSuccess;
 
@@ -1399,7 +1397,7 @@ int ziti_close_write(ziti_connection conn) {
 
 void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, uint32_t req_id, const char *reason) {
 
-    ZITI_LOG(TRACE, "ch[%d] => rejecting Dial request: %s", ch->id, reason);
+    ZITI_LOG(TRACE, "ch[%d] => rejecting Dial request: %s", zch_get_id(ch), reason);
 
     conn_id = htole32(conn_id);
     int32_t msg_seq = htole32(0);
