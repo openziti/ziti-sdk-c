@@ -79,7 +79,7 @@ jobs:
         with:
           vcpkgJsonGlob: './vcpkg.json'
 
-      - uses: actions/cache/restore@v5
+      - uses: actions/cache/restore@v6
         id: restore
         with:
           key: vbc-${{ matrix.spec.target }}-${{ hashFiles('./vcpkg.json', './vcpkg-overlays/**/*') }}
@@ -96,7 +96,7 @@ jobs:
           fi
           cmake --preset ci-${{ matrix.spec.target }} ${ASAN_ARG} -B ./build
 
-      - uses: actions/cache/save@v5
+      - uses: actions/cache/save@v6
         with:
           key: ${{ steps.restore.outputs.cache-primary-key }}
           path: ${{ env.CI_CACHE }}
