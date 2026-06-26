@@ -312,3 +312,16 @@ message* new_inspect_result(uint32_t req_seq, uint32_t conn_id, uint8_t type, co
     }
     return reply;
 }
+
+bool message_get_error(message *m, edge_error *err) {
+    assert(err != NULL);
+
+    const uint8_t *e;
+    size_t len;
+    memset(err, 0, sizeof(edge_error));
+    if ( message_get_bytes_header((message *) m, StructuredErrorHeader, &e, &len) &&
+        parse_edge_error(err, (char*)e, len) > 0) {
+        return true;
+    }
+    return false;
+}

@@ -22,6 +22,8 @@
 #include <stdbool.h>
 #include <tlsuv/queue.h>
 
+#include "internal_model.h"
+
 #define HEADER_SIZE 20
 
 #define MAGIC_INIT {0x3, 0x6, 0x9, 0xC}
@@ -112,6 +114,8 @@ message* new_inspect_result(uint32_t req_seq, uint32_t conn_id, uint8_t type, co
 static inline size_t message_len(message *m) {
     return HEADER_SIZE + m->header.headers_len + m->header.body_len;
 }
+
+bool message_get_error(message *m, struct edge_error_s *err);
 
 #ifdef __cplusplus
 };

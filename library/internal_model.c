@@ -14,7 +14,6 @@
 
 
 #include <internal_model.h>
-#include <ziti/ziti_model.h>
 #include <ziti/errors.h>
 #include <json-c/json.h>
 
@@ -175,7 +174,9 @@ IMPL_MODEL(ctrl_apis, CTRL_APIS_MODEL)
 
 IMPL_MODEL(ziti_controller_detail, ZITI_CONTROLLER_DETAIL)
 
-IMPL_MODEL(ziti_pr_base, ZITI_PR_BASE);
+IMPL_MODEL(ziti_pr_base, ZITI_PR_BASE)
+
+IMPL_MODEL(edge_error, EDGE_ERROR_MODEL)
 
 bool ziti_service_has_permission(const ziti_service *service, ziti_session_type sessionType) {
     if (sessionType == ziti_session_types.Dial) {
@@ -318,10 +319,6 @@ static int ziti_address_write_json(const ziti_address *addr, string_buf_t *buf, 
     }
 
     return get_model_string_meta()->jsonifier(addr_str, buf, indent, flags);
-}
-
-static void free_ziti_address0(ziti_address *addr) {
-
 }
 
 int ziti_address_match(const ziti_address *addr, const ziti_address *range) {
