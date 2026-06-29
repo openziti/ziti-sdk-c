@@ -213,6 +213,7 @@ const char* zch_get_name(ziti_channel_t *ch);
 const char* zch_get_version(ziti_channel_t *ch);
 uint64_t zch_connect_time(ziti_channel_t *ch);
 uint64_t zch_latency(ziti_channel_t *ch);
+bool zch_can_accept_posture(ziti_channel_t *ch);
 
 void ziti_channel_set_url(ziti_channel_t *ch, const char *url);
 

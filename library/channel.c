@@ -62,6 +62,11 @@ struct ziti_channel {
     tlsuv_stream_t *connection;
     bool reconnect;
 
+    struct {
+        bool support_posture:1;
+        bool connect_v2:1;
+    } capabilities;
+
     // multipurpose timer:
     // - reconnect timeout if not connected
     // - connect timeout when connecting
@@ -315,6 +320,10 @@ bool ziti_channel_is_connected(ziti_channel_t *ch) {
 
 uint64_t zch_latency(ziti_channel_t *ch) {
     return ch->latency;
+}
+
+bool zch_can_accept_posture(ziti_channel_t *ch) {
+    return ch->capabilities.support_posture;
 }
 
 static ziti_channel_t *new_ziti_channel(ziti_context ztx, const ziti_edge_router *er) {
@@ -794,7 +803,6 @@ static void send_latency_probe(void *data) {
 }
 
 static void hello_reply_cb(void *ctx, message *msg, int err) {
-    int cb_code = ZITI_OK;
     ziti_channel_t *ch = ctx;
     bool success = false;
 
@@ -821,6 +829,18 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         ch->notify_cb(ch, EdgeRouterConnected, 0, ch->notify_ctx);
         ch->latency = uv_now(ch->loop) - ch->latency;
         ztx_set_deadline(ch->ztx, LATENCY_INTERVAL, &ch->deadline, send_latency_probe, ch);
+
+        memset(&ch->capabilities, 0, sizeof(ch->capabilities));
+        bool bval = false;
+        if (message_get_bool_header(msg, SupportsPostureChecksHeader, &bval) && bval) {
+            CH_LOG(DEBUG, "edge router supports posture: %s", ch->capabilities.support_posture ? "true" : "false");
+            ch->capabilities.support_posture = true;
+        }
+
+        uint32_t caps = 0;
+        if (message_get_int32_header(msg, RouterCapabilitiesHeader, (int32_t*)&caps)) {
+            ch->capabilities.connect_v2 = (caps & ROUTER_CAPABILITY_CONNECT_V2) != 0;
+        }
     } else {
         edge_error e = {};
         if (message_get_error(msg, &e)) {
@@ -837,9 +857,9 @@ static void send_hello(ziti_channel_t *ch, const char *token) {
     uint8_t true_val = 1;
     hdr_t headers[] = {
             {
-                    .header_id = SessionTokenHeader,
-                    .length = strlen(token),
-                    .value = (uint8_t *)token
+                .header_id = SessionTokenHeader,
+                .length = strlen(token),
+                .value = (uint8_t *)token
             },
             {
                 .header_id = SupportsInspectHeader,
@@ -1094,6 +1114,12 @@ static void on_posture_update_reply(void *ctx, message *m, int status) {
 
 int ziti_channel_update_posture(ziti_channel_t *ch, const uint8_t *data, size_t len) {
     if (ch->state == Connected) {
+
+        if (!ch->capabilities.support_posture) {
+            CH_LOG(WARN, "edge router does not support posture updates");
+            return ZITI_NOT_SUPPORTED;
+        }
+
         ziti_channel_send(ch, ContentTypePostureResponse, NULL, 0, data, len, NULL);
         return ZITI_OK;
     }
