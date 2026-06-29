@@ -121,6 +121,8 @@ is offline or did not respond to the request*/
 #define ZITI_ENROLLMENT_NOT_ALLOWED                             (-41)
 /** API session is no longer valid, likely due to expiration or invalidation by the controller */
 #define ZITI_API_SESSION_INVALID                                 (-42)
+/** Operation is not supported */
+#define ZITI_NOT_SUPPORTED                                      (-43)
 
 
 
