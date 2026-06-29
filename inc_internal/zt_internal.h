@@ -30,7 +30,6 @@
 #include "deadline.h"
 #include "metrics.h"
 #include "pool.h"
-#include "posture.h"
 #include "stickiness.h"
 #include "utils.h"
 #include "ziti_ctrl.h"

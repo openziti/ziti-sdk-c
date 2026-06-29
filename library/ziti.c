@@ -29,6 +29,7 @@
 #include "zt_internal.h"
 #include "auth_queries.h"
 #include "connect.h"
+#include "posture.h"
 
 
 #if _WIN32
@@ -1998,6 +1999,8 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, int er
                 update_bindings(conn);
             }
         }
+
+        ziti_send_posture_er(ztx, ch);
     }
 }
 

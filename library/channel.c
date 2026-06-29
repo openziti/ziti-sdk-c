@@ -833,7 +833,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         memset(&ch->capabilities, 0, sizeof(ch->capabilities));
         bool bval = false;
         if (message_get_bool_header(msg, SupportsPostureChecksHeader, &bval) && bval) {
-            CH_LOG(DEBUG, "edge router supports posture: %s", ch->capabilities.support_posture ? "true" : "false");
+            CH_LOG(DEBUG, "edge router supports posture: %s", bval ? "true" : "false");
             ch->capabilities.support_posture = true;
         }
 
