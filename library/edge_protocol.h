@@ -56,9 +56,21 @@ enum content_type {
 extern const char* content_type_id(enum content_type ct);
 
 enum header_id {
+
+    // channel headers: github.com/openziti/channel/v5/message.go
+    ConnectionIdHeader = 0,
     ReplyForHeader = 1,
     ResultSuccessHeader = 2,
+    HelloRouterAdvertisementsHeader = 3,
     HelloVersionHeader = 4,
+    HeartbeatHeader = 5,
+    HeartbeatResponseHeader = 6,
+    TypeHeader = 7,
+    IdHeader = 8,
+    IsGroupedHeader = 9,
+    GroupSecretHeader = 10,
+    IsFirstGroupConnection = 11,
+    UnderlayTypeHeader = 12,
 
     LatencyProbeTime = 128,
     UUIDHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__UUID,
