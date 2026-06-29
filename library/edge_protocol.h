@@ -83,7 +83,14 @@ enum header_id {
     SupportsBindSuccessHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsBindSuccess,
     ConnectionMarkerHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnectionMarker,
     StickyTokenHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__StickinessToken,
+    SupportsPostureChecksHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsPostureChecks,
     StructuredErrorHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__StructuredError,
+    DialerIdentityIdHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__DialerIdentityId,
+    DialerIdentityNameHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__DialerIdentityName,
+    ServiceIdHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ServiceId,
+    ServiceIdentifierTypeHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ServiceIdentifierType,
+    ConnectRequestIdHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnectRequestId,
+    RouterCapabilitiesHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__RouterCapabilities,
 };
 
 typedef uint8_t connection_type_t;
@@ -112,6 +119,10 @@ enum edge_flag {
     EDGE_STREAM = ZITI__EDGE_CLIENT__PB__FLAG__STREAM,
     // set on data message with multiple payloads
     EDGE_MULTIPART_MSG = ZITI__EDGE_CLIENT__PB__FLAG__MULTIPART_MSG,
+};
+
+enum router_capability {
+    ROUTER_CAPABILITY_CONNECT_V2 = ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__ConnectV2,
 };
 
 #ifdef __cplusplus
