@@ -281,7 +281,7 @@ int ziti_channel_disconnect(ziti_channel_t *ch, int err) {
 
 int ziti_channel_close(ziti_channel_t *ch, int err) {
     if (ch->state != Closed) {
-        CH_LOG(INFO, "closing[%s]", ch->name);
+        CH_LOG(INFO, "closing[%s]", zch_get_name(ch));
 
         on_channel_close(ch, err, 0);
         ch->state = Closed;
@@ -952,7 +952,7 @@ static void on_channel_close(ziti_channel_t *ch, int ziti_err, ssize_t uv_err) {
 
     if (ch->state == Connected) {
         CH_LOG(WARN, "disconnected from edge router[%s] %zd(%s)",
-               ch->name, uv_err, uv_err ? uv_strerror((int)uv_err) : "OK");
+              zch_get_name(ch), uv_err, uv_err ? uv_strerror((int)uv_err) : "OK");
         ch->notify_cb(ch, EdgeRouterDisconnected, ziti_err, ch->notify_ctx);
     }
     ch->state = Disconnected;
@@ -1079,7 +1079,7 @@ static void on_tls_connect(uv_connect_t *req, int status) {
         }
     } else {
         const char *tls_error = tlsuv_stream_get_error(ch->connection);
-        CH_LOG(ERROR, "failed to connect to ER[%s] [%d/%s]", ch->name, status,
+        CH_LOG(ERROR, "failed to connect to ER[%s] [%d/%s]", zch_get_name(ch), status,
                tls_error ? tls_error : uv_strerror(status));
         on_channel_close(ch, ZITI_CONNABORT, status);
     }
@@ -1101,15 +1101,6 @@ static const char *get_timeout_cb(ziti_channel_t *ch) {
     TIMEOUT_CALLBACKS(to_lbl)
 
     return "unknown";
-}
-
-static void on_posture_update_reply(void *ctx, message *m, int status) {
-    ziti_channel_t *ch = ctx;
-    if (status != ZITI_OK) {
-        CH_LOG(ERROR, "failed to update posture: %d[%s]", status, ziti_errorstr(status));
-    } else {
-        CH_LOG(INFO, "received ContentType[%04x]", m->header.content);
-    }
 }
 
 int ziti_channel_update_posture(ziti_channel_t *ch, const uint8_t *data, size_t len) {
