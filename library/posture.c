@@ -20,8 +20,8 @@
 #include <windows.h>
 
 #include <bcrypt.h>
-#include <lmapibuf.h>
 #include <lmcons.h>
+#include <lmapibuf.h>
 #include <lmjoin.h>
 #include <tlhelp32.h>
 #include <wincrypt.h>
