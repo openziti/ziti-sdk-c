@@ -43,6 +43,9 @@
 
 #define CH_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ch[%d] " fmt, ch->id, ##__VA_ARGS__)
 
+#define CHANNEL_TYPE_CTRL "edge.control"
+#define CHANNEL_TYPE_DEFAULT "edge.default"
+
 
 static const char *edge_alpn[] = {
         "ziti-edge",
@@ -860,6 +863,11 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         if (message_get_int32_header(msg, RouterCapabilitiesHeader, (int32_t*)&caps)) {
             ch->capabilities.connect_v2 = (caps & ROUTER_CAPABILITY_CONNECT_V2) != 0;
         }
+
+        if (message_get_bool_header(msg, IsGroupedHeader, &bval) && bval) {
+            CH_LOG(DEBUG, "edge router supports grouped connections: %s", bval ? "true" : "false");
+            ch->capabilities.multi_underlay = true;
+        }
     } else {
         edge_error e = {};
         if (message_get_error(msg, &e)) {
@@ -875,19 +883,35 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
 static void send_hello(ziti_channel_t *ch, const char *token) {
     uint8_t true_val = 1;
     hdr_t headers[] = {
-            {
-                .header_id = SessionTokenHeader,
-                .length = strlen(token),
-                .value = (uint8_t *)token
-            },
-            {
-                .header_id = SupportsInspectHeader,
-                .length = sizeof(true_val),
-                .value = &true_val,
-            },
+        {
+            .header_id = SessionTokenHeader,
+            .length = strlen(token),
+            .value = (uint8_t *)token
+        },
+        {
+            .header_id = SupportsInspectHeader,
+            .length = sizeof(true_val),
+            .value = &true_val,
+        },
+        {
+            .header_id = IsGroupedHeader,
+            .length = sizeof(true_val),
+            .value = &true_val,
+        },
+        {
+            .header_id = IsFirstGroupConnection,
+            .length = sizeof(true_val),
+            .value = &true_val,
+        },
+        {
+            .header_id = TypeHeader,
+            .length = sizeof(CHANNEL_TYPE_DEFAULT) - 1,
+            .value = (uint8_t *)CHANNEL_TYPE_DEFAULT,
+        },
     };
     ch->latency = uv_now(ch->loop);
-    ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, 2, (uint8_t *) ch->token, strlen(ch->token), hello_reply_cb, ch);
+    ziti_channel_send_for_reply(ch, ContentTypeHelloType, headers, c_arraylen(headers),
+                                (uint8_t *) ch->token, strlen(ch->token), hello_reply_cb, ch);
 }
 
 
