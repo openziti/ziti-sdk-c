@@ -17,6 +17,8 @@
 #include <utils.h>
 
 #if _WIN32
+#include <windows.h>
+
 #include <bcrypt.h>
 #include <lmapibuf.h>
 #include <lmcons.h>
@@ -28,7 +30,6 @@
 #pragma comment(lib, "netapi32.lib")
 #pragma comment(lib, "bcrypt.lib")
 #include <VersionHelpers.h>
-#include <windows.h>
 
 #elif __APPLE__ && __MACH__
 #include <TargetConditionals.h>
