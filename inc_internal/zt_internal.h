@@ -65,8 +65,7 @@ typedef void (*reply_cb)(void *ctx, message *m, int err);
 typedef void (*ch_notify_state)(
         ziti_channel_t *ch, ziti_router_status status, int err, void *ctx);
 
-typedef int ch_state;
-
+typedef int (*dump_fn)(void *arg, FORMAT_STRING(const char *fmt), ...) ziti_printf_args(2, 3);
 
 struct ziti_write_req_s {
     struct ziti_conn *conn;
@@ -213,6 +212,8 @@ const char* zch_get_version(ziti_channel_t *ch);
 uint64_t zch_connect_time(ziti_channel_t *ch);
 uint64_t zch_latency(ziti_channel_t *ch);
 bool zch_can_accept_posture(ziti_channel_t *ch);
+
+void zch_dump(ziti_channel_t *ch, dump_fn, void *print_ctx);
 
 void ziti_channel_set_url(ziti_channel_t *ch, const char *url);
 

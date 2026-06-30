@@ -65,6 +65,7 @@ struct ziti_channel {
     struct {
         bool support_posture:1;
         bool connect_v2:1;
+        bool multi_underlay:1;
     } capabilities;
 
     // multipurpose timer:
@@ -82,7 +83,7 @@ struct ziti_channel {
     size_t out_q;
     size_t out_q_bytes;
 
-    ch_state state;
+    int state;
     uint32_t reconnect_count;
 
     uint32_t msg_seq;
@@ -324,6 +325,24 @@ uint64_t zch_latency(ziti_channel_t *ch) {
 
 bool zch_can_accept_posture(ziti_channel_t *ch) {
     return ch->capabilities.support_posture;
+}
+
+void zch_dump(ziti_channel_t *ch, dump_fn printer, void *ctx) {
+    uint64_t now = uv_now(ch->ztx->loop);
+
+    printer(ctx, "ch[%d] %s\n", zch_get_id(ch), zch_get_name(ch));
+    printer(ctx, "\tconnected[%c] version[%s] address[%s]",
+            ziti_channel_is_connected(ch) ? 'Y' : 'N', zch_get_version(ch), zch_get_url(ch));
+    if (ziti_channel_is_connected(ch)) {
+        printer(ctx, " latency[%" PRIu64 "] connected[%" PRIu64 "s]\n",
+                zch_latency(ch), (now - zch_connect_time(ch)) / 1000);
+        printer(ctx, "\tcapabilities: posture[%c] connect.v2[%c] multi_underlay[%c]\n",
+                ch->capabilities.support_posture ? 'Y' : 'N',
+                ch->capabilities.connect_v2 ? 'Y' : 'N',
+                ch->capabilities.multi_underlay ? 'Y' : 'N');
+    } else {
+        printer(ctx, "\n");
+    }
 }
 
 static ziti_channel_t *new_ziti_channel(ziti_context ztx, const ziti_edge_router *er) {

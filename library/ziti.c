@@ -994,15 +994,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     ziti_channel_t *ch;
     const char *er_id;
     MODEL_MAP_FOREACH(er_id, ch, &ztx->channels) {
-        printer(ctx, "ch[%d] %s\n", zch_get_id(ch), zch_get_name(ch));
-        printer(ctx, "\tconnected[%c] version[%s] address[%s]",
-                ziti_channel_is_connected(ch) ? 'Y' : 'N', zch_get_version(ch), zch_get_url(ch));
-        if (ziti_channel_is_connected(ch)) {
-            printer(ctx, " latency[%" PRIu64 "] connected[%" PRIu64 "s]\n",
-                    zch_latency(ch), (now - zch_connect_time(ch)) / 1000);
-        } else {
-            printer(ctx, "\n");
-        }
+        zch_dump(ch, printer, ctx);
     }
 
     printer(ctx, "\n==================\n"
