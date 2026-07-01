@@ -2247,6 +2247,10 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
             break;
         case ZitiAuthStatePartiallyAuthenticated: {
             ziti_set_partially_authenticated(ztx, data);
+            if (ztx->ext_auth) {
+                // external token accepted but needs user needs to finish via app (TOTP, etc)
+                ext_oidc_client_finalize(ztx->ext_auth, true, "partially authenticated");
+            }
             break;
         }
         case ZitiAuthStateFullyAuthenticated:

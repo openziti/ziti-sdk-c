@@ -825,7 +825,11 @@ void ext_oidc_client_finalize(ext_oidc_client_t *clt, bool ok, const char *error
     stop_pending_watchdog(clt);
 
     if (ok) {
-        send_callback_response(clt->pending_sock, 200, "OK", HTTP_SUCCESS_BODY);
+        if (error_msg) {
+            send_callback_response(clt->pending_sock, 200, "OK", HTTP_PARTIAL_SUCCESS_BODY);
+        } else {
+            send_callback_response(clt->pending_sock, 200, "OK", HTTP_SUCCESS_BODY);
+        }
     } else {
         const char *token = NULL;
         if (clt->tokens) {
