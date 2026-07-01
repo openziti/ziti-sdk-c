@@ -523,10 +523,11 @@ static void on_message(struct binding_s *b, message *msg, int code) {
             schedule_rebind(conn);
         }
     } else {
-        ZITI_LOG(DEBUG, "received msg ct[%s] code[%d] from %s", content_type_id(msg->header.content), code, b->ch->name);
+        ZITI_LOG(DEBUG, "received msg ct[%s] code[%d] from %s",
+                 content_type_id(msg->header.content), code, zch_get_name(b->ch));
         switch (msg->header.content) {
             case ContentTypeStateClosed:
-                CONN_LOG(DEBUG, "binding[%s] was closed: %.*s", b->ch->url, msg->header.body_len, msg->body);
+                CONN_LOG(DEBUG, "binding[%s] was closed: %.*s", zch_get_url(b->ch), msg->header.body_len, msg->body);
                 FREE(conn->server.token);
                 stop_binding(b);
                 schedule_rebind(conn);
@@ -552,7 +553,7 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
 
     b->waiter = NULL;
     if (code != ZITI_OK) { // channel error
-        CONN_LOG(WARN, "bind request failed on router[%s]: %d/%s", b->ch->name, code, ziti_errorstr(code));
+        CONN_LOG(WARN, "bind request failed on router[%s]: %d/%s", zch_get_name(b->ch), code, ziti_errorstr(code));
         ziti_channel_rem_receiver(b->ch, b->conn_id);
         b->ch = NULL;
         b->state = st_unbound;
@@ -563,13 +564,13 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
 
     if (msg->header.content == ContentTypeStateConnected) {
         CONN_LOG(TRACE, "received msg ct[%s] code[%d]", content_type_id(msg->header.content), code);
-        CONN_LOG(DEBUG, "bound successfully on router[%s]", b->ch->name);
+        CONN_LOG(DEBUG, "bound successfully on router[%s]", zch_get_name(b->ch));
         ziti_channel_add_receiver(b->ch, b->conn_id, b,
                                   (void (*)(void *, message *, int)) on_message);
         b->state = st_bound;
     } else {
         CONN_LOG(WARN, "bind request rejected on router[%s]: ct[%s] %.*s",
-                 b->ch->name, content_type_id(msg->header.content), msg->header.body_len, msg->body);
+                 zch_get_name(b->ch), content_type_id(msg->header.content), msg->header.body_len, msg->body);
 
         FREE(conn->server.token);
         ziti_channel_rem_receiver(b->ch, b->conn_id);
@@ -594,8 +595,8 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
 
     struct ziti_conn *conn = b->conn;
     char *token = conn->server.token;
-    CONN_LOG(DEBUG, "requesting BIND on ch[%s]", ch->name);
-    CONN_LOG(TRACE, "ch[%d] => Edge Bind request token[%s]", ch->id, token);
+    CONN_LOG(DEBUG, "requesting BIND on ch[%s]", zch_get_name(ch));
+    CONN_LOG(TRACE, "ch[%d] => Edge Bind request token[%s]", zch_get_id(ch), token);
 
     b->ch = ch;
     b->state = st_binding;
@@ -651,7 +652,7 @@ void on_unbind(void *ctx, message *m, int code) {
 
     if (m) {
         ZITI_LOG(DEBUG, "binding[%d.%s] unbind resp: ct[%s] %.*s", b->conn_id,
-                 b->ch->name, content_type_id(m->header.content), m->header.body_len, m->body);
+                 zch_get_name(b->ch), content_type_id(m->header.content), m->header.body_len, m->body);
         int32_t conn_id = htole32(b->conn_id);
         hdr_t headers[] = {
                 var_header(ConnIdHeader, conn_id),
@@ -660,7 +661,7 @@ void on_unbind(void *ctx, message *m, int code) {
         ziti_channel_send_message(b->ch, close_msg, NULL);
     } else {
         ZITI_LOG(DEBUG, "binding[%d.%s] failed to receive unbind response because channel was disconnected: %d/%s",
-                 b->conn_id, b->ch->name, code, ziti_errorstr(code));
+                 b->conn_id, zch_get_name(b->ch), code, ziti_errorstr(code));
     }
     ziti_channel_rem_receiver(b->ch, b->conn_id);
     b->state = st_unbound;
@@ -682,7 +683,7 @@ static void stop_binding(struct binding_s *b) {
         return;
     }
 
-    CONN_LOG(DEBUG, "requesting UNBIND on ch[%s]", b->ch->name);
+    CONN_LOG(DEBUG, "requesting UNBIND on ch[%s]", zch_get_name(b->ch));
     b->state = st_unbinding;
     int32_t conn_id = htole32(b->conn_id);
     hdr_t headers[] = {

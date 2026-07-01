@@ -30,7 +30,6 @@
 #include "deadline.h"
 #include "metrics.h"
 #include "pool.h"
-#include "posture.h"
 #include "stickiness.h"
 #include "utils.h"
 #include "ziti_ctrl.h"
@@ -66,57 +65,7 @@ typedef void (*reply_cb)(void *ctx, message *m, int err);
 typedef void (*ch_notify_state)(
         ziti_channel_t *ch, ziti_router_status status, int err, void *ctx);
 
-typedef int ch_state;
-
-struct ziti_channel {
-    uv_loop_t *loop;
-    struct ziti_ctx *ztx;
-    char *name;
-    char *url;
-    char *version;
-    char *host;
-    int port;
-
-    uint32_t id;
-    char token[UUID_STR_LEN];
-    tlsuv_stream_t *connection;
-    bool reconnect;
-
-    // multipurpose timer:
-    // - reconnect timeout if not connected
-    // - connect timeout when connecting
-    // - latency interval/timeout if connected
-    deadline_t deadline;
-
-    uint64_t latency;
-    struct waiter_s *latency_waiter;
-    uint64_t connect_time;
-    uint64_t last_read;
-    uint64_t last_write;
-    uint64_t last_write_delay;
-    size_t out_q;
-    size_t out_q_bytes;
-
-    ch_state state;
-    uint32_t reconnect_count;
-
-    uint32_t msg_seq;
-
-    buffer *incoming;
-
-    pool_t *in_msg_pool;
-    message *in_next;
-    size_t in_body_offset;
-
-    // map[id->msg_receiver]
-    model_map receivers;
-
-    // map[msg_seq->waiter_s]
-    model_map waiters;
-
-    ch_notify_state notify_cb;
-    void *notify_ctx;
-};
+typedef int (*dump_fn)(void *arg, FORMAT_STRING(const char *fmt), ...) ziti_printf_args(2, 3);
 
 struct ziti_write_req_s {
     struct ziti_conn *conn;
@@ -255,7 +204,16 @@ int ziti_close_channels(ziti_context ztx, int err);
 
 bool ziti_channel_is_connected(ziti_channel_t *ch);
 
-uint64_t ziti_channel_latency(ziti_channel_t *ch);
+uint zch_get_id(ziti_channel_t *ch);
+const char* zch_get_host(ziti_channel_t *ch);
+const char* zch_get_url(ziti_channel_t *ch);
+const char* zch_get_name(ziti_channel_t *ch);
+const char* zch_get_version(ziti_channel_t *ch);
+uint64_t zch_connect_time(ziti_channel_t *ch);
+uint64_t zch_latency(ziti_channel_t *ch);
+bool zch_can_accept_posture(ziti_channel_t *ch);
+
+void zch_dump(ziti_channel_t *ch, dump_fn, void *print_ctx);
 
 void ziti_channel_set_url(ziti_channel_t *ch, const char *url);
 
