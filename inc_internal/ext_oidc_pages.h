@@ -94,6 +94,26 @@ static const char HTTP_SUCCESS_BODY[] =
         "</body>\n"
         "</html>\n";
 
+static const char HTTP_PARTIAL_SUCCESS_BODY[] =
+    "<!DOCTYPE html>\n"
+    "<html lang=\"en\">\n"
+    "<head><meta charset=\"utf-8\">\n"
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+    "<title>OpenZiti Authentication</title>\n"
+    "<style>" CALLBACK_PAGE_STYLE "</style>\n"
+    "</head>\n"
+    "<body>\n"
+    "  <div class=\"card\">\n"
+    "    " ZITI_LOGO_SVG "\n"
+    "    <div class=\"attrib\">OpenZiti by NetFoundry</div>\n"
+    "    <h1>External token accepted, continue in the app to complete authentication</h1>\n"
+    "    <p>You may close this window.</p>\n"
+    "    <p>It will try to close itself in a few seconds.</p>\n"
+    "  </div>\n"
+    "  <script>setTimeout(function(){window.close();},3000);</script>\n"
+    "</body>\n"
+    "</html>\n";
+
 static const char HTTP_FAILURE_HEADER[] =
         "<!DOCTYPE html>\n"
         "<html lang=\"en\">\n"
