@@ -1035,8 +1035,8 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
                 ziti_connection child = model_map_it_value(it);
                 printer(ctx, "\tchild[%d/%s]: state[%s] caller_id[%s] ch[%d/%s]\n",
                         child_id, child->marker, ziti_conn_state(child), ziti_conn_source_identity(child),
-                        child->channel ? zch_get_id(conn->channel) : -1,
-                        child->channel ? zch_get_name(conn->channel) : "(none)"
+                        child->channel ? zch_get_id(child->channel) : -1,
+                        child->channel ? zch_get_name(child->channel) : "(none)"
                 );
                 printer(ctx, "\t\taccept_time[%" PRIu64 "] idle_time[%" PRIu64 "] "
                              "sent[%" PRIu64 "] recv[%" PRIu64 "] recv_buff[%" PRIu64 "]\n",
