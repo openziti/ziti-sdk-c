@@ -874,7 +874,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         } else {
             CH_LOG(ERROR, "connect rejected: %d %*s", success, msg->header.body_len, msg->body);
         }
-
+        free_edge_error(&e);
         on_channel_close(ch, ZITI_CONNABORT, 0);
     }
 }
