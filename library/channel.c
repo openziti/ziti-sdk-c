@@ -403,13 +403,11 @@ static void token_update_cb(void *ctx, message *m, int status) {
     // disconnect and let the channel reconnect with the new token
     const uint8_t *err = NULL;
     size_t err_len = 0;
-    json_object *edge_error = NULL;
-    if (message_get_bytes_header(m, StructuredErrorHeader, &err, &err_len)){
-        struct json_tokener *parser = json_tokener_new();
-        edge_error = json_tokener_parse_ex(parser, (const char *)err, (int)err_len);
-    }
-
-    if (edge_error == NULL) {
+    edge_error edge_err = {};
+    if (message_get_error(m, &edge_err)) {
+        err = (const uint8_t *)edge_err.message;
+        err_len = strlen(edge_err.message);
+    } else {
         err = m->body;
         err_len = m->header.body_len;
     }
@@ -420,6 +418,7 @@ static void token_update_cb(void *ctx, message *m, int status) {
         CH_LOG(ERROR, "unexpected ContentType[%04x]", m->header.content);
     }
 
+    free_edge_error(&edge_err);
     ziti_channel_disconnect(ch, ZITI_API_SESSION_INVALID);
 }
 

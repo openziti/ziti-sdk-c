@@ -319,7 +319,7 @@ bool message_get_error(message *m, edge_error *err) {
     const uint8_t *e;
     size_t len;
     memset(err, 0, sizeof(edge_error));
-    if ( message_get_bytes_header((message *) m, StructuredErrorHeader, &e, &len) &&
+    if (message_get_bytes_header((message *) m, StructuredErrorHeader, &e, &len) &&
         parse_edge_error(err, (char*)e, len) > 0) {
         return true;
     }
