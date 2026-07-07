@@ -21,63 +21,161 @@
 #include <ziti/zitilib.h>
 #include <ziti/ziti_log.h>
 
+#include "credentials.h"
 #include "ziti_ctrl.h"
 #include <tlsuv/tlsuv.h>
 
 #include "fixtures.h"
-#include <test-data.h>
+
+#include <expected>
 #include <iostream>
+#include <test-data.h>
 
-TEST_CASE("cltr-network-jwt", "[controller]") {
-    auto l = uv_default_loop();
+#define MODEL(type) Model<type, free_ ## type>
+template<class T, void (*D)(T*)>
+class Model {
+    T data{};
+public:
+    ~Model() {
+        D(&data);
+    }
 
-    ziti_config cfg{};
+    operator T*() {
+        return &data;
+    }
+
+    T* operator->() {
+        return &data;
+    }
+};
+
+class CtrlTest: public LoopTestCase {
+protected:
+    MODEL(ziti_config) cfg;
+    tls_context *tls = nullptr;
+    tls_credentials creds{};
     ziti_controller ctrl{};
-    REQUIRE(ziti_load_config(&cfg, TEST_CLIENT) == ZITI_OK);
 
-    auto tls = default_tls_context(cfg.id.ca, strlen(cfg.id.ca));
-    ziti_ctrl_init(l, &ctrl, &cfg.controllers, tls);
+    CtrlTest() {
+        ziti_log_init(loop(), 5, nullptr);
+        auto c = test_client();
+        REQUIRE_ZITI_OK(ziti_load_config(cfg, c));
+        REQUIRE_ZITI_OK(load_tls(cfg, &tls, &creds));
+        REQUIRE_ZITI_OK(ziti_ctrl_init(loop(), &ctrl, &cfg->controllers, tls));
+    }
 
-    struct res {
-        std::string err;
-        ziti_network_jwt_array arr;
-    } result;
+    ~CtrlTest() {
+        ziti_ctrl_close(&ctrl);
+        creds.cert->free(creds.cert);
+        creds.key->free(creds.key);
+        tls->free_ctx(tls);
+    }
 
-    ziti_ctrl_get_network_jwt(&ctrl, [](ziti_network_jwt_array arr, const ziti_error *err, void *ctx) {
-        auto r = static_cast<res *>(ctx);
-        if (err) {
-            r->err += err->message;
-        } else {
-            r->arr = arr;
+    static const char *test_client() {
+        return checkENV("test_client");
+    }
+
+    template<class T>
+    std::expected<T*, std::string> GET(
+        void(*m)(ziti_controller *, void (*cb)(T*, const ziti_error *err, void *), void *)) {
+        using result_type = std::expected<T*, std::string>;
+        using result_type_opt = std::optional<result_type>;
+        result_type_opt ret;
+        m(&ctrl, [](T *val, const ziti_error *err, void *r) {
+            auto res = static_cast<result_type_opt *>(r);
+            if (err) *res = std::unexpected(err->message);
+            else if (val == nullptr) *res = std::unexpected("null result");
+            else *res = val;
+        }, &ret);
+        if (!run(UNTIL(ret.has_value()))) return std::unexpected("timeout");
+        return ret.value();
+    }
+
+    template<class T>
+    std::expected<T**, std::string> GET(
+        void (*m)(ziti_controller *, void (*cb)(T**, const ziti_error *err, void *), void *)) {
+        using result_type = std::expected<T**, std::string>;
+        using result_type_opt = std::optional<result_type>;
+
+        result_type_opt ret;
+        m(&ctrl, [](T **val, const ziti_error *err, void *r) {
+            auto res = static_cast<result_type_opt*>(r);
+            if (err)  *res = std::unexpected(err->message);
+            else if (val == nullptr) *res = std::unexpected("null result");
+            else {
+                *res = val;
+            }
+        }, &ret);
+        if (!run(UNTIL(ret.has_value()))) {
+            return std::unexpected("timeout");
         }
+        return ret.value();
+    }
 
-    }, &result);
+    void check_capability(ziti_ctrl_cap cap) {
+        auto result = GET(ziti_ctrl_get_version);
+        CHECK(result.has_value());
+        auto v = result.value();
+        CHECK(v != nullptr);
+        if (!ziti_ctrl_has_capability(&ctrl, cap)) {
+            SKIP("capability[" << ziti_ctrl_caps.name(cap) << "] not supported");
+        }
+    }
+};
 
-    uv_run(l, UV_RUN_DEFAULT);
+TEST_CASE_METHOD(CtrlTest, "get-version", "[controller]") {
+    auto result = GET(ziti_ctrl_get_version);
+    CHECK(result.has_value());
+    auto v = result.value();
+    CHECK(v != nullptr);
+}
+template<typename T>
+class ModelMapWrap {
+    model_map *_m;
+public:
+    ModelMapWrap(model_map *m) : _m(m) {}
+    ModelMapWrap(model_map &m) : _m(&m) {}
+    T operator[](const char* key) {
+        return static_cast<T>(model_map_get(_m, key));
+    }
+};
 
-    CHECK(result.err.empty());
-    CHECK(result.arr != nullptr);
-    CHECK(result.arr[0] != nullptr);
-    CHECK_THAT(result.arr[0]->name, Catch::Matchers::Equals("default"));
+template<typename R>
+R map_get(model_map &m, const char *key) {
+    return static_cast<R>(model_map_get(&m, key));
+}
+
+TEST_CASE_METHOD(CtrlTest, "cltr-network-jwt", "[controller]") {
+    auto result = GET(ziti_ctrl_get_network_jwt);
+    CHECK(result.has_value());
+    auto v = result.value();
+    CHECK(v != nullptr);
+    DEFER {
+        free_ziti_network_jwt_array(&v);
+    };
 
     ziti_enrollment_jwt_header header{};
     ziti_enrollment_jwt jwt{};
-
-    char * sig;
+    char * sig = nullptr;
+    DEFER {
+        free_ziti_enrollment_jwt_header(&header);
+        free_ziti_enrollment_jwt(&jwt);
+        free(sig);
+    };
     size_t siglen;
-    parse_enrollment_jwt((char*)result.arr[0]->token, &header, &jwt, &sig, &siglen);
+    REQUIRE_ZITI_OK(parse_enrollment_jwt(v[0]->token, &header, &jwt, &sig, &siglen));
 
     CHECK(header.alg == jwt_sig_method_RS256);
     CHECK(jwt.method == ziti_enrollment_method_network);
+}
 
-    free_ziti_enrollment_jwt_header(&header);
-    free_ziti_enrollment_jwt(&jwt);
-
-    ziti_ctrl_close(&ctrl);
-    tls->free_ctx(tls);
-    free_ziti_network_jwt_array(&result.arr);
-    free_ziti_config(&cfg);
-    free(sig);
+TEST_CASE_METHOD(CtrlTest, "authenticate", "[controller]") {
+    check_capability(ziti_ctrl_cap_OIDC_AUTH);
+    auto version = GET(ziti_ctrl_get_version);
+    REQUIRE(version);
+    auto p = map_get<api_path*>(version.value()->api_versions->oidc, "v1");
+    auto auth = new_oidc_auth(loop(), p, tls);
+    
 }
 
 

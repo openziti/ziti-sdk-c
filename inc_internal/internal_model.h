@@ -342,7 +342,6 @@ DECLARE_MODEL(edge_error, EDGE_ERROR_MODEL)
 
 DECLARE_MODEL(ziti_ctrl_version, ZITI_CTRL_VERSION_MODEL)
 
-bool ziti_has_capability(const ziti_version *v, ziti_ctrl_cap c);
 int parse_enrollment_jwt(const char *token, ziti_enrollment_jwt_header *zejh, ziti_enrollment_jwt *zej, char **sig, size_t *sig_len);
 
 #ifdef __cplusplus

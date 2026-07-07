@@ -97,3 +97,10 @@ def test_zitilib_connect(client_identity, test_service, echo_server, tmp_path):
     env['test_service']=test_service['name']
     env['test_intercept']=test_service['intercept']
     run_catch_test(env, tmp_path, "zl-connect")
+
+
+def test_controller(client_identity, test_service, tmp_path):
+    env = dict()
+    env['test_client']=client_identity['path']
+    env['test_service']=test_service['name']
+    run_catch_test(env, tmp_path, "controller")

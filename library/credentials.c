@@ -116,36 +116,51 @@ error:
     return result;
 }
 
-int ziti_credential_from_jwt(const char *jwt, ziti_credential_t **cred) {
+ziti_credential_t *ziti_credential_legacy(ziti_api_session *session) {
+    ziti_credential_t *cred = calloc(1, sizeof(ziti_credential_t));
+    if (cred) {
+        cred->type = ZITI_CRED_LEGACY_SESSION;
+        cred->expiration = session->expires.tv_sec;
+        cred->session.token = cstr_from(session->token);
+        cred->session.id = cstr_from(session->id);
+    }
+    return cred;
+}
+
+int zt_credential_from_jwt(const char *jwt, ziti_credential_t *cred) {
     assert(jwt);
+    assert(cred);
 
-    NEWP(c, ziti_credential_t);
-    if (!c) return ZITI_ALLOC_FAILED;
-
-    if (zt_jwt_parse(jwt, &c->jwt) != 0) {
-        free(c);
-        *cred = NULL;
+    memset(cred, 0, sizeof(ziti_credential_t));
+    if (zt_jwt_parse(jwt, &cred->jwt) != 0) {
         return ZITI_JWT_INVALID;
     }
-    c->type = ZITI_CRED_TYPE_JWT;
-    *cred = c;
+    cred->type = ZITI_CRED_TYPE_JWT;
     return 0;
 }
 
-void ziti_credential_drop(ziti_credential_t *cred) {
+void zt_credential_drop(ziti_credential_t *cred) {
     if (cred == NULL) {
         return;
     }
     switch (cred->type) {
     case ZITI_CRED_TYPE_X509:
-        cred->x509.key->free(cred->x509.key);
-        cred->x509.cert->free(cred->x509.cert);
+        zt_x509_drop(&cred->x509);
         break;
     case ZITI_CRED_TYPE_JWT:
         zt_jwt_drop(&cred->jwt);
         break;
+    case ZITI_CRED_LEGACY_SESSION:
+        cstr_drop(&cred->session.token);
+        cstr_drop(&cred->session.id);
+        break;
     default:
         break;
     }
-    free(cred);
+}
+
+void zt_x509_drop(zt_x509 *x509) {
+    x509->cert->free(x509->cert);
+    x509->key->free(x509->key);
+    memset(x509, 0, sizeof(*x509));
 }
