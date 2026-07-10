@@ -847,7 +847,6 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         ch->state = Connected;
         ch->connect_time = uv_now(ch->loop);
         cstr_assign_n(&ch->version, erVersion, (int)erVersionLen);
-        ch->notify_cb(ch, EdgeRouterConnected, 0, ch->notify_ctx);
         ch->latency = uv_now(ch->loop) - ch->latency;
         ztx_set_deadline(ch->ztx, LATENCY_INTERVAL, &ch->deadline, send_latency_probe, ch);
 
@@ -867,6 +866,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
             CH_LOG(DEBUG, "edge router supports grouped connections: %s", bval ? "true" : "false");
             ch->capabilities.multi_underlay = true;
         }
+        ch->notify_cb(ch, EdgeRouterConnected, 0, ch->notify_ctx);
     } else {
         edge_error e = {};
         if (message_get_error(msg, &e)) {
