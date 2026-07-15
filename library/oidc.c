@@ -87,6 +87,7 @@ static const struct timeval *oidc_auth_expiration(ziti_auth_method_t *self);
 static int oidc_auth_ext_jwt(ziti_auth_method_t *self, const char *token);
 static int oidc_auth_set_endpoint(ziti_auth_method_t *self, const api_path *api);
 static void oidc_auth_free(ziti_auth_method_t *self);
+static void oidc_auth_dump(ziti_auth_method_t *self, int (*printer)(void *arg, const char *fmt, ...), void *ctx);
 static void oidc_auth_close_cb(oidc_client_t *clt);
 static int oidc_totp_enroll(
     ziti_auth_method_t *self,
@@ -799,6 +800,7 @@ ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context
         .set_ext_jwt = oidc_auth_ext_jwt,
         .enroll_mfa = oidc_totp_enroll,
         .verify_mfa = oidc_totp_verify,
+        .dump = oidc_auth_dump,
     };
 
     const char *u;
@@ -862,6 +864,30 @@ static void oidc_auth_close_cb(oidc_client_t *clt) {
 static void oidc_auth_free(ziti_auth_method_t *self) {
     oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
     oidc_client_close(clt, oidc_auth_close_cb);
+}
+
+static void oidc_auth_dump(ziti_auth_method_t *self, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+
+    printer(ctx, "\tOIDC provider[%s]\n", cstr_str(&clt->provider_url));
+    if (!cstr_is_empty(&clt->current.issuer)) {
+        printer(ctx, "\taccess_token: issuer[%s] expiration[%" PRId64 "]\n",
+                cstr_str(&clt->current.issuer), clt->current.expiration);
+    }
+    if (!cstr_is_empty(&clt->refresh_token.issuer)) {
+        printer(ctx, "\trefresh_token: issuer[%s] expiration[%" PRId64 "]\n",
+                cstr_str(&clt->refresh_token.issuer), clt->refresh_token.expiration);
+    }
+
+    printer(ctx, "\tstarted[%s] configuring[%s] need_refresh[%s] refresh_failures[%d]\n",
+            clt->started ? "true" : "false",
+            clt->configuring ? "true" : "false",
+            clt->need_refresh ? "true" : "false",
+            clt->refresh_failures);
+
+    if (clt->timer && uv_is_active((uv_handle_t*)clt->timer)) {
+        printer(ctx, "\trefresh in %" PRIi64 "s\n", uv_timer_get_due_in(clt->timer) / 1000);
+    }
 }
 
 static void set_expiration(oidc_client_t *clt, const char *token) {

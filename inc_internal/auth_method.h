@@ -58,6 +58,7 @@ struct ziti_auth_method_s {
     int (*submit_mfa)(ziti_auth_method_t *self, const char *code, auth_mfa_cb);
     int (*stop)(ziti_auth_method_t *self);
     void (*free)(ziti_auth_method_t *self);
+    void (*dump)(struct ziti_auth_method_s *self, int (*printer)(void *arg, const char *fmt, ...), void *ctx);
 };
 
 ziti_auth_method_t *new_legacy_auth(uv_loop_t *l, const char *url, tls_context *tls, bool x509);

@@ -55,6 +55,7 @@ static int legacy_auth_totp(ziti_auth_method_t *self, const char *code, auth_mfa
 static const ziti_auth_query_mfa* get_mfa(ziti_api_session *session);
 static uint64_t refresh_delay(struct legacy_auth_s *auth, ziti_api_session *);
 static const struct timeval* legacy_auth_expiration(ziti_auth_method_t *self);
+static void legacy_auth_dump(ziti_auth_method_t *self, int (*printer)(void *arg, const char *fmt, ...), void *ctx);
 
 char *ziti_mfa_code_body(const char *code);
 
@@ -74,6 +75,7 @@ static void legacy_timer_cb(uv_timer_t *t);
         .stop = legacy_auth_stop,   \
         .free = legacy_auth_free,   \
         .submit_mfa = legacy_auth_totp, \
+        .dump = legacy_auth_dump,   \
     }
 
 ziti_auth_method_t *new_legacy_auth(uv_loop_t *loop, const char *url, tls_context *tls, bool x509) {
@@ -123,6 +125,30 @@ int legacy_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx) {
 const struct timeval* legacy_auth_expiration(ziti_auth_method_t *self) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
     return auth->session ? &auth->session->expires : NULL;
+}
+
+static void legacy_auth_dump(ziti_auth_method_t *self, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
+    struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
+
+    printer(ctx, "\tauth_method[Legacy]\n");
+    printer(ctx, "\ttype[%s]\n", auth->has_x509 ? "x509" : "ext-jwt");
+
+    if (auth->session) {
+        printer(ctx, "\tsession_id[%s]\n", auth->session->id ? auth->session->id : "");
+        printer(ctx, "\tauthenticator_id[%s]\n", auth->session->authenticator_id ? auth->session->authenticator_id : "");
+        printer(ctx, "\texpires[%ld.%06ld]\n",
+                (long)auth->session->expires.tv_sec,
+                (long)auth->session->expires.tv_usec);
+        printer(ctx, "\tmfa_required[%s] mfa_complete[%s]\n",
+                auth->session->is_mfa_required ? "true" : "false",
+                auth->session->is_mfa_complete ? "true" : "false");
+    }
+
+    printer(ctx, "\trefreshing[%s] fail_count[%d]\n",
+            auth->refreshing ? "true" : "false", auth->fail_count);
+    if (uv_is_active((uv_handle_t*)&auth->timer)) {
+        printer(ctx, "\trefresh in %" PRIi64 "s\n", uv_timer_get_due_in(&auth->timer) / 1000);
+    }
 }
 
 int legacy_auth_refresh(ziti_auth_method_t *self) {
