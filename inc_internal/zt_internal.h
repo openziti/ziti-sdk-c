@@ -270,6 +270,7 @@ static inline bool ctrl_version_supports_enroll_to(const char *ctrl_ver) {
 const ziti_env_info* get_env_info();
 
 int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer);
+void ztx_dump_external_auth(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx);
 extern void ztx_request_session_cert(ziti_context ztx);
 extern void ztx_clear_session_creds(ziti_context ztx);
 

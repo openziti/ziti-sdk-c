@@ -15,6 +15,7 @@
 #include "ext_oidc.h"
 #include "zt_internal.h"
 #include <assert.h>
+#include <inttypes.h>
 #include <ziti/ziti_events.h>
 
 static void ext_token_cb(ext_oidc_client_t *oidc, enum ext_oidc_status status, const void *data);
@@ -76,6 +77,32 @@ int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg) {
     }
 
     return ziti_get_ext_jwt_signers(ztx, ext_signers_cb, ztx);
+}
+
+void ztx_dump_external_auth(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
+    ext_oidc_client_t *ea = ztx->ext_auth;
+    if (ea == NULL) {
+        return;
+    }
+
+    printer(ctx, "ext auth client: name[%s]\n", ea->name);
+    printer(ctx, "\tclient_id[%s]\n", ea->signer_cfg.client_id ? ea->signer_cfg.client_id : "");
+    printer(ctx, "\tprovider[%s]\n", ea->signer_cfg.provider_url ? ea->signer_cfg.provider_url : "");
+    if (ea->signer_cfg.audience) {
+        printer(ctx, "\taudience[%s]\n", ea->signer_cfg.audience);
+    }
+    if (!cstr_is_empty(&ea->current.issuer)) {
+        printer(ctx, "\taccess_token: issuer[%s] expiration[%" PRId64 "]\n",
+                cstr_str(&ea->current.issuer), ea->current.expiration);
+    }
+    if (!cstr_is_empty(&ea->refresh_token.issuer)) {
+        printer(ctx, "\trefresh_token_issuer[%s] expiration[%" PRId64 "]\n",
+                cstr_str(&ea->refresh_token.issuer), ea->refresh_token.expiration);
+    }
+    printer(ctx, "\trefresh_failures[%d]\n", ea->refresh_failures);
+    if (ea->timer && uv_is_active((uv_handle_t*)ea->timer)) {
+        printer(ctx, "\trefresh in %" PRIi64 "s\n", uv_timer_get_due_in(ea->timer) / 1000);
+    }
 }
 
 static void internal_link_cb(ext_oidc_client_t *oidc, const char *url, void *ctx) {
