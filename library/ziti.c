@@ -906,12 +906,20 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     printer(ctx, "\n=================\nAPI Session:\n");
 
     if (ztx->auth_method) {
-        printer(ctx, "Session Info: \nauth_method[%s]\napi_session_state[%d]\n",
-                ztx->auth_method->kind == OIDC ? "OIDC" : "Legacy",
-                ztx->auth_state);
+        static const char *auth_state_str[] = {
+                "Unauthenticated",
+                "AuthStarted",
+                "PartiallyAuthenticated",
+                "FullyAuthenticated",
+                "ImpossibleToAuthenticate",
+        };
+
+        printer(ctx, "Session Info:\n");
+        printer(ctx, "\tauth_state[%s]\n", auth_state_str[ztx->auth_state]);
+        ztx->auth_method->dump(ztx->auth_method, printer, ctx);
 
         if (ztx->auth_method->kind == OIDC) {
-            printer(ctx, "Session Token: %s\n", jwt_payload(cstr_str(&ztx->session_token)));
+            printer(ctx, "\tSessionToken: %s\n", jwt_payload(cstr_str(&ztx->session_token)));
         }
     } else {
         printer(ctx, "No Session found\n");
