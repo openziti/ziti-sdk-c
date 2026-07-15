@@ -1533,7 +1533,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
 
                 case Connected:
                 case CloseWrite:
-                    conn_set_state(conn, Disconnected);
+                    conn_set_state(conn, conn->close ? Closed : Disconnected);
                     break;
 
                 case Disconnected:
