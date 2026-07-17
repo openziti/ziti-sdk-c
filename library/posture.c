@@ -137,8 +137,8 @@ void ziti_posture_init(ziti_context ztx, long interval_secs) {
     if (ztx->posture_checks == NULL) {
         NEWP(pc, struct posture_checks);
 
-        pc->previous_api_session_id = NULL;
-        pc->controller_instance_id = NULL;
+        pc->previous_api_session_id = cstr_init();
+        pc->controller_instance_id = cstr_init();
         pc->must_send_every_time = true;
         pc->must_send = false;
         pc->send_period = interval_secs * 1000;
@@ -160,8 +160,8 @@ void ziti_posture_checks_free(struct posture_checks *pcs) {
             pwk->canceled = true;
             it = model_map_it_remove(it);
         }
-        FREE(pcs->previous_api_session_id);
-        FREE(pcs->controller_instance_id);
+        cstr_drop(&pcs->previous_api_session_id);
+        cstr_drop(&pcs->controller_instance_id);
         FREE(pcs);
     }
 }
@@ -195,10 +195,10 @@ void ziti_send_posture_data(ziti_context ztx) {
     }
 
     ZTX_LOG(VERBOSE, "starting to send posture data");
-    bool new_session_id = checks->previous_api_session_id == NULL || strcmp(checks->previous_api_session_id, ztx->session->id) != 0;
+    bool new_session_id = !cstr_equals(&checks->previous_api_session_id, ztx->session->id);
 
     ziti_controller *ctrl = ztx_get_controller(ztx);
-    bool new_controller_instance = (checks->controller_instance_id == NULL && ctrl->instance_id != NULL) || strcmp(checks->controller_instance_id, ctrl->instance_id) != 0;
+    bool new_controller_instance = !cstr_eq(&checks->controller_instance_id, &ctrl->instance_id);
 
     if (new_controller_instance) {
         ZTX_LOG(INFO, "first run or potential controller restart detected");
@@ -211,10 +211,8 @@ void ziti_send_posture_data(ziti_context ztx) {
                 new_controller_instance ? "TRUE" : "FALSE");
 
         checks->must_send = true;
-        FREE(checks->previous_api_session_id);
-        FREE(checks->controller_instance_id);
-        checks->previous_api_session_id = strdup(ztx->session->id);
-        checks->controller_instance_id = strdup(ctrl->instance_id);
+        cstr_assign(&checks->previous_api_session_id, ztx->session->id);
+        cstr_copy(&checks->controller_instance_id, ctrl->instance_id);
     } else {
         ZTX_LOG(DEBUG, "posture checks must_send set to FALSE, new_session_id[%s], must_send_every_time[%s], new_controller_instance[%s]",
                 new_session_id ? "TRUE" : "FALSE",
