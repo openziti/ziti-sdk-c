@@ -154,12 +154,12 @@ bool message_get_bool_header(message *m, int header_id, bool *v) {
 
 bool message_get_int32_header(message *m, int header_id, int32_t *v) {
     hdr_t *h = find_header(m, header_id);
-    uint32_t val = 0;
     if (h != NULL) {
+        uint32_t val = 0;
         for (unsigned int i = 0; i < h->length && i < 4; i++) {
-            val += (h->value[i] << (i * 8));
+            val += (uint32_t)h->value[i] << (i * 8);
         }
-        *v = val;
+        *v = (int32_t)val;
         return true;
     }
     return false;
@@ -167,11 +167,11 @@ bool message_get_int32_header(message *m, int header_id, int32_t *v) {
 
 bool message_get_uint64_header(message *m, int header_id, uint64_t *v) {
     hdr_t *h = find_header(m, header_id);
-    uint64_t val = 0;
     if (h != NULL) {
+        uint64_t val = 0;
         for (unsigned int i = 0; i < h->length && i < 8; i++) {
             uint64_t b = h->value[i];
-            val += (b << (i * 8));
+            val += b << (i * 8);
         }
         *v = val;
         return true;
