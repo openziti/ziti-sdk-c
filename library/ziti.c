@@ -51,7 +51,7 @@
 #define ONE_DAY (60 * 60 * 24)
 
 #define ztx_controller(ztx) \
-(cstr_is_empty(&(ztx)->ctrl.url) ? cstr_str(&(ztx)->ctrl.url) : (ztx)->config.controller_url)
+(!cstr_is_empty(&(ztx)->ctrl.url) ? cstr_str(&(ztx)->ctrl.url) : (ztx)->config.controller_url)
 
 int code_to_error(const char *code);
 
@@ -223,6 +223,7 @@ extern void ziti_set_enabled(ziti_context ztx, bool enabled) {
 
 void ziti_set_auth_started(ziti_context ztx) {
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthStateAuthStarted);
+    ztx->auth_state = ZitiAuthStateAuthStarted;
     cstr_clear(&ztx->session_token);
 }
 

@@ -239,18 +239,18 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
         const char *k;
         ziti_controller_detail *detail;
         MODEL_MAP_FOREACH(k, detail, &ctrl->endpoints) {
-            if (cstr_iequals(&ctrl->url, k) == 0) {
+            if (cstr_iequals(&ctrl->url, k)) {
                 model_map_remove(&ctrl->endpoints, k);
                 break;
             }
         }
         cstr_assign(&ctrl->url, resp->new_address);
-        resp->new_address = NULL;
         if(detail == NULL) {
             detail = alloc_ziti_controller_detail();
         }
         FREE(detail->name);
-        detail->name = strdup(resp->new_address);
+        detail->name = resp->new_address;
+        resp->new_address = NULL;
         model_map_set(&ctrl->endpoints, detail->name, detail);
 
         tlsuv_http_set_url(ctrl->client, cstr_str(&ctrl->url));
