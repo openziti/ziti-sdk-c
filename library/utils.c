@@ -697,11 +697,12 @@ uint64_t next_backoff(int *count, int max, uint64_t base) {
     return random % ((1U << backoff) * base);
 }
 
-
+typedef void (*json_req_cb_t)(struct tlsuv_http_resp_s *, const char *, struct json_object *, void *);
 struct json_req_ctx {
-    void (*cb)(tlsuv_http_resp_t *resp, const char *err, json_object *content, void *ctx);
+    json_req_cb_t cb;
     void *ctx;
     json_tokener *json_parser;
+    json_object *resp;
     cstr error;
 };
 
@@ -720,42 +721,53 @@ static void json_body_cb(tlsuv_http_req_t *r, char *body, ssize_t len) {
     struct json_req_ctx *jctx = r->data;
     if (jctx == NULL) return;
 
-    if (len > 0) {
-        json_object *j = json_tokener_parse_ex(jctx->json_parser, body, (int) len);
-        if (j != NULL) {
-            const char *err = cstr_is_empty(&jctx->error) ? NULL : cstr_str(&jctx->error);
-            jctx->cb(&r->resp, err,  j, jctx->ctx);
-            r->data = NULL;
-            r->resp.body_cb = NULL;
-            json_object_put(j);
-            json_req_free(jctx);
-            return;
-        }
+    json_req_cb_t cb = jctx->cb;
+    void *cb_ctx = jctx->ctx;
 
-        int err = json_tokener_get_error(jctx->json_parser);
-        if (err != json_tokener_continue) {
-            r->data = NULL;
-            r->resp.body_cb = NULL;
-            jctx->cb(&r->resp, json_tokener_error_desc(err), NULL, jctx->ctx);
-            json_req_free(jctx);
+    if (len == UV_EOF) {
+        r->data = NULL;
+        r->resp.body_cb = NULL;
+        if (jctx->resp != NULL) {
+            json_object *j = jctx->resp;
+            if (cb) cb(&r->resp, NULL,  jctx->resp, cb_ctx);
+            json_object_put(j);
+        } else {
+            if (cb) cb(&r->resp, json_tokener_error_desc(json_tokener_get_error(jctx->json_parser)), NULL, cb_ctx);
         }
+        json_req_free(jctx);
         return;
     }
 
-    // error before req is complete
-    r->data = NULL;
-    r->resp.body_cb = NULL;
-    const char *err = (len == 0) ? NULL : uv_strerror((int)len);
-    jctx->cb(&r->resp, err, NULL, jctx->ctx);
-    json_req_free(jctx);
+    if (len > 0) {
+        jctx->resp = json_tokener_parse_ex(jctx->json_parser, body, (int) len);
+        int err = json_tokener_get_error(jctx->json_parser);
+        if (jctx->resp != NULL || err == json_tokener_continue) return;
+
+        r->data = NULL;
+        r->resp.body_cb = NULL;
+        if (cb) cb(&r->resp, json_tokener_error_desc(err), NULL, cb_ctx);
+        json_req_free(jctx);
+    } else {
+        // error before req is complete
+        r->data = NULL;
+        r->resp.body_cb = NULL;
+        const char *err = (len == 0) ? NULL : uv_strerror((int)len);
+        jctx->cb(&r->resp, err, NULL, jctx->ctx);
+        json_req_free(jctx);
+    }
 }
 
 static void json_req_cb(tlsuv_http_resp_t *resp, void *ctx) {
     struct json_req_ctx *jctx = ctx;
+    if (jctx == NULL) return;
 
     if (resp->code < 0) {
-        jctx->cb(resp, resp->status, NULL, jctx->ctx);
+        json_req_cb_t cb = jctx->cb;
+        void *cb_ctx = jctx->ctx;
         json_req_free(jctx);
+        resp->req->data = NULL;
+
+        if (cb) cb(resp, resp->status, NULL, cb_ctx);
         return;
     }
 
