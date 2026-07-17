@@ -51,11 +51,11 @@
 #define ONE_DAY (60 * 60 * 24)
 
 #define ztx_controller(ztx) \
-((ztx)->ctrl.url ? (ztx)->ctrl.url : (ztx)->config.controller_url)
+(cstr_is_empty(&(ztx)->ctrl.url) ? cstr_str(&(ztx)->ctrl.url) : (ztx)->config.controller_url)
 
 int code_to_error(const char *code);
 
-static void version_pre_auth_cb(const ziti_version *version, const ziti_error *err, void *ctx);
+static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_error *err, void *ctx);
 static void update_ctrl_status(ziti_context ztx, int code, const char *msg);
 
 static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, void *ctx);
@@ -80,8 +80,6 @@ static void shutdown_and_free(ziti_context ztx);
 static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx);
 
 static void update_identity_data(ziti_identity_data *data, const ziti_error *err, void *ctx);
-
-static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e, void *ctx);
 
 static int ztx_init_controller(ziti_context ztx);
 
@@ -259,6 +257,7 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
 
 void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err) {
     ziti_controller *ctrl = ztx_get_controller(ztx);
+    ztx->auth_state = ZitiAuthImpossibleToAuthenticate;
     if (err->err == UV_ECONNREFUSED || err->err == UV_EAI_NONAME) {
         ZTX_LOG(ERROR, "auth provider is not available: %s", uv_strerror(err->err));
         // current controller became unavailable
@@ -284,6 +283,7 @@ void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err
 
 void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mfa *mfa_q) {
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthStatePartiallyAuthenticated);
+    ztx->auth_state = ZitiAuthStatePartiallyAuthenticated;
     update_ctrl_status(ztx, ZITI_PARTIALLY_AUTHENTICATED, NULL);
 
     ziti_event_t ev = {
@@ -412,7 +412,7 @@ void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
         ziti_ctrl_set_ext_token(ctrl, cstr_str(&jwt->encoded));
     }
     if (ztx->auth_method->kind == OIDC) {
-        if (ctrl->is_ha) {
+        if (ziti_ctrl_has_capability(&ztx->ctrl, ziti_ctrl_cap_HA_CONTROLLER)) {
             ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
         }
 
@@ -733,11 +733,11 @@ void ziti_set_app_ctx(ziti_context ztx, void *app_ctx) {
 }
 
 const char *ziti_get_controller(ziti_context ztx) {
-    return ztx_get_controller(ztx)->url;
+    return cstr_str(&ztx_get_controller(ztx)->url);
 }
 
 const ziti_version *ziti_get_controller_version(ziti_context ztx) {
-    return &ztx_get_controller(ztx)->version;
+    return (ziti_version*)&ztx_get_controller(ztx)->version;
 }
 
 const ziti_identity *ziti_get_identity(ziti_context ztx) {
@@ -772,7 +772,6 @@ static void free_ztx(uv_handle_t *h) {
     free_ziti_api_session_ptr(ztx->session);
     ztx->session = NULL;
 
-    ziti_ctrl_close(ztx_get_controller(ztx));
     if (ztx->tlsCtx) ztx->tlsCtx->free_ctx(ztx->tlsCtx);
     if (ztx->id_creds.cert) {
         ztx->id_creds.cert->free(ztx->id_creds.cert);
@@ -884,8 +883,9 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
         printer(ctx, "====\n");
     }
 
-    printer(ctx, "Controller%s:\t[%s] %s\n", ztx->ctrl.is_ha ? "[HA]" : "", ztx->ctrl.version.version, ztx_controller(ztx));
-    if (ztx->ctrl.is_ha) {
+    bool is_ha = ziti_ctrl_has_capability(&ztx->ctrl, ziti_ctrl_cap_HA_CONTROLLER);
+    printer(ctx, "Controller%s:\t[%s] %s\n", is_ha ? "[HA]" : "", ztx->ctrl.version.version, ztx_controller(ztx));
+    if (is_ha) {
         const char *url;
         ziti_controller_detail *detail;
         MODEL_MAP_FOREACH(url, detail, &ztx->ctrl.endpoints) {
@@ -1920,6 +1920,11 @@ void ztx_prepare(uv_prepare_t *prep) {
     ziti_context ztx = prep->data;
     ZTX_LOG(TRACE, "preparing ztx for IO");
 
+    if (ztx->auth_method && ztx->auth_method->kind == LEGACY) {
+        if (ziti_ctrl_has_capability(&ztx->ctrl, ziti_ctrl_caps.OIDC_AUTH)) {
+            version_pre_auth_cb(&ztx->ctrl.version, NULL, ztx);
+        }
+    }
     if (!cstr_is_empty(&ztx->session_token)) {
         const struct timeval *exp = ztx->auth_method ? ztx->auth_method->expiration(ztx->auth_method) : NULL;
         // session token should be kept upto date by the auth_method,
@@ -2173,7 +2178,7 @@ static void pre_auth_retry(void *data) {
     }
 }
 
-static void version_pre_auth_cb(const ziti_version *version, const ziti_error *err, void *ctx) {
+static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err) {
         ZTX_LOG(WARN, "failed to get controller version: %s/%s", err->code, err->message);
@@ -2181,12 +2186,7 @@ static void version_pre_auth_cb(const ziti_version *version, const ziti_error *e
         return;
     }
 
-    bool use_oidc = ziti_has_capability(version, ziti_ctrl_caps.OIDC_AUTH);
-    const char *force_legacy = getenv("ZITI_FORCE_LEGACY_AUTH");
-    if (force_legacy) {
-        ZTX_LOG(WARN, "ZITI_FORCE_LEGACY_AUTH is set, forcing legacy authentication method");
-        use_oidc = false;
-    }
+    bool use_oidc = ziti_ctrl_has_capability(&ztx->ctrl, ziti_ctrl_caps.OIDC_AUTH);
 
     ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
             ztx_controller(ztx), version->version, version->revision, version->build_date);
@@ -2281,7 +2281,8 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
             break;
         }
     }
-    ztx->auth_state = state;
+
+    assert(ztx->auth_state == state);
 }
 
 ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er) {
