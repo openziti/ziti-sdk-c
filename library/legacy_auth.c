@@ -248,6 +248,9 @@ static void legacy_session_cb(tlsuv_http_resp_t *resp, const char *err, json_obj
     ziti_api_session *session = NULL;
 
     switch(resp->code) {
+    case UV_ECANCELED:
+        // shutting down
+        return;
     case HTTP_STATUS_UNAUTHORIZED:
         if (auth->session) {
             AUTH_LOG(DEBUG, "session is no longer valid: %s", resp->status);
