@@ -86,7 +86,7 @@ XX(INVALID_ENROLLMENT_NOT_ALLOWED, ZITI_ENROLLMENT_NOT_ALLOWED)
 }
 
 #define CTRL_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "ctrl[%s] " fmt, \
-ctrl->url ? ctrl->url : "<unset>", ##__VA_ARGS__)
+cstr_str(&ctrl->url), ##__VA_ARGS__)
 
 #define MAKE_RESP(ctrl, cb, parser, ctx) prepare_resp(ctrl, (ctrl_resp_cb_t)(cb), (body_parse_fn)(parser), ctx)
 
@@ -180,11 +180,10 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
 
             if (ctrl->active_reqs == 0) {
                 CTRL_LOG(INFO, "attempting to switch endpoint");
-                const char *next_ep = ctrl_next_ep(ctrl, ctrl->url);
+                const char *next_ep = ctrl_next_ep(ctrl, cstr_str(&ctrl->url));
                 if (next_ep != NULL) {
-                    FREE(ctrl->url);
                     CTRL_LOG(INFO, "switching to endpoint[%s]", next_ep);
-                    ctrl->url = strdup(next_ep);
+                    cstr_assign(&ctrl->url, next_ep);
                     tlsuv_http_set_url(ctrl->client, next_ep);
                     internal_get_version(ctrl);
                 }
@@ -222,42 +221,42 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
         }
 
         const char *instance_id = find_header(r, "ziti-instance-id");
-
-        if (instance_id &&
-            (resp->ctrl->instance_id == NULL || strcmp(instance_id, resp->ctrl->instance_id) != 0)) {
-            FREE(resp->ctrl->instance_id);
-            resp->ctrl->instance_id = strdup(instance_id);
+        if (instance_id) {
+            if (!cstr_equals(&ctrl->instance_id, instance_id) && strcmp(r->req->path, "/version") != 0) {
+                CTRL_LOG(DEBUG, "controller restart detected. requesting version information");
+                internal_get_version(ctrl);
+            }
+            cstr_assign(&ctrl->instance_id, instance_id);
         }
     }
 }
 
 static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp) {
     ziti_controller *ctrl = resp->ctrl;
-    if (resp->new_address && strcmp(resp->new_address, ctrl->url) != 0) {
+    if (resp->new_address && !cstr_equals(&ctrl->url, resp->new_address)) {
         CTRL_LOG(INFO, "controller supplied new address[%s]", resp->new_address);
 
         const char *k;
         ziti_controller_detail *detail;
         MODEL_MAP_FOREACH(k, detail, &ctrl->endpoints) {
-            if (strcasecmp(k, ctrl->url) == 0) {
+            if (cstr_iequals(&ctrl->url, k) == 0) {
                 model_map_remove(&ctrl->endpoints, k);
                 break;
             }
         }
-        FREE(ctrl->url);
-        ctrl->url = resp->new_address;
+        cstr_assign(&ctrl->url, resp->new_address);
         resp->new_address = NULL;
         if(detail == NULL) {
             detail = alloc_ziti_controller_detail();
         }
         FREE(detail->name);
-        detail->name = strdup(ctrl->url);
+        detail->name = strdup(resp->new_address);
         model_map_set(&ctrl->endpoints, detail->name, detail);
 
-        tlsuv_http_set_url(ctrl->client, ctrl->url);
+        tlsuv_http_set_url(ctrl->client, cstr_str(&ctrl->url));
 
         if (resp->ctrl->redirect_cb) {
-            ctrl->redirect_cb(ctrl->url, ctrl->cb_ctx);
+            ctrl->redirect_cb(cstr_str(&ctrl->url), ctrl->cb_ctx);
         }
     }
 
@@ -322,7 +321,7 @@ static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_e
         model_map old = ctrl->endpoints;
         ctrl->endpoints = new_eps;
         model_map_clear(&old, (void (*)(void *)) free_ziti_controller_detail_ptr);
-        if (ctrl->is_ha) {
+        if (ctrl->capabilities.ha) {
             ctrl->change_cb(ctrl->cb_ctx, &ctrl->endpoints);
         }
     } else {
@@ -332,7 +331,7 @@ static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_e
     free(arr);
 }
 
-static void internal_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp *resp) {
+static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl_resp *resp) {
     ziti_controller *ctrl = resp->ctrl;
     if (e) {
         CTRL_LOG(WARN, "%s(%s)", e->code, e->message);
@@ -344,7 +343,7 @@ static void internal_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp
             CTRL_LOG(INFO, "controller updated to %s(%s)[%s]",
                      v->version, v->revision, v->build_date);
         }
-        free_ziti_version(&ctrl->version);
+        free_ziti_ctrl_version(&ctrl->version);
         ctrl->version = *v;
 
         api_path *path = NULL;
@@ -357,8 +356,26 @@ static void internal_version_cb(ziti_version *v, ziti_error *e, struct ctrl_resp
         } else {
             CTRL_LOG(WARN, "controller did not provide expected(v1) API version path");
         }
-
-        ctrl->is_ha = ziti_has_capability(&ctrl->version, ziti_ctrl_caps.HA_CONTROLLER);
+        memset(&ctrl->capabilities, 0, sizeof(ctrl->capabilities));
+        for (int idx = 0; ctrl->version.capabilities[idx] != NULL; idx++) {
+            model_string name = ctrl->version.capabilities[idx];
+            ziti_ctrl_cap cap = ziti_ctrl_caps.value_of(name);
+            switch (cap) {
+            case ziti_ctrl_cap_OIDC_AUTH:
+                ctrl->capabilities.oidc_auth = true;
+                break;
+            case ziti_ctrl_cap_OIDC_AUTH_WITH_CSR:
+                ctrl->capabilities.oidc_auth_csr = true;
+                break;
+            case ziti_ctrl_cap_HA_CONTROLLER:
+                ctrl->capabilities.ha = true;
+                break;
+            case ziti_ctrl_cap_Unknown: 
+            default:
+                CTRL_LOG(WARN, "controller provided unknown capability: %s", name);
+                break;
+            }
+        }
 
         // data was moved to ctrl.version
         free(v);
@@ -604,10 +621,10 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
     }
 
     const char *initial_ep = ctrl_next_ep(ctrl, NULL);
-    ctrl->url = strdup(initial_ep);
+    cstr_assign(&ctrl->url, initial_ep);
 
     ctrl->client = calloc(1, sizeof(tlsuv_http_t));
-    if (tlsuv_http_init(loop, ctrl->client, ctrl->url) != 0) {
+    if (tlsuv_http_init(loop, ctrl->client, cstr_str(&ctrl->url)) != 0) {
         if (tlsuv_http_close(ctrl->client, (tlsuv_http_close_cb) free) != 0) {
             free(ctrl->client);
         }
@@ -623,7 +640,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
     tlsuv_http_connect_timeout(ctrl->client, ZITI_CTRL_TIMEOUT);
     tlsuv_http_header(ctrl->client, HTTP_ACCEPT, APPLICATION_JSON);
     ctrl->has_token = false;
-    ctrl->instance_id = NULL;
+    ctrl->instance_id = cstr_init();
 
     CTRL_LOG(DEBUG, "ziti controller client initialized");
     internal_get_version(ctrl);
@@ -655,7 +672,7 @@ int ziti_ctrl_set_token(ziti_controller *ctrl, const char *token) {
             tlsuv_http_header(ctrl->client, HTTP_AUTHORIZATION, cstr_str(&bearer));
         }
 
-        if (ctrl->is_ha) {
+        if (ctrl->capabilities.ha) {
             ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
         }
     }
@@ -686,10 +703,10 @@ int ziti_ctrl_cancel(ziti_controller *ctrl) {
 }
 
 int ziti_ctrl_close(ziti_controller *ctrl) {
-    free_ziti_version(&ctrl->version);
+    free_ziti_ctrl_version(&ctrl->version);
     model_map_clear(&ctrl->endpoints, (void (*)(void *)) free_ziti_controller_detail_ptr);
-    FREE(ctrl->url);
-    FREE(ctrl->instance_id);
+    cstr_drop(&ctrl->url);
+    cstr_drop(&ctrl->instance_id);
     if (ctrl->client) {
         tlsuv_http_close(ctrl->client, on_http_close);
     }
@@ -698,7 +715,7 @@ int ziti_ctrl_close(ziti_controller *ctrl) {
 }
 
 static void internal_get_version(ziti_controller *ctrl) {
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, NULL, ziti_version_ptr_from_json, NULL);
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, NULL, ziti_ctrl_version_ptr_from_json, NULL);
     resp->ctrl_cb = (ctrl_cb_t) internal_version_cb;
 
     ctrl->version_req = start_request(ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
@@ -713,8 +730,8 @@ void ziti_ctrl_get_version(ziti_controller *ctrl, ctrl_version_cb cb, void *ctx)
     ctrl->version_cb = cb;
     ctrl->version_cb_ctx = ctx;
 
-    // if no version present and no active request
-    // /version might have failed previously so try requesting it again
+    // if no version present and no active request,
+    // /version might have failed previously, so try requesting it again
     if (ctrl->version_req == NULL) {
         internal_get_version(ctrl);
     }
@@ -816,8 +833,8 @@ void ziti_ctrl_current_edge_routers(ziti_controller *ctrl, void (*cb)(ziti_edge_
     resp->base_path = "/current-identity/edge-routers";
     ctrl_paging_req(resp);
 
-    // piggy back controller list request
-    if (ctrl->is_ha) {
+    // piggyback controller list request
+    if (ctrl->capabilities.ha) {
         ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
     }
 }
@@ -1136,4 +1153,16 @@ void ziti_ctrl_enroll_token(ziti_controller *ctrl, const char *token, const char
 
     json_object_put(body);
     cstr_drop(&auth_header);
+}
+
+bool ziti_ctrl_has_capability(ziti_controller *ctrl, ziti_ctrl_cap cap) {
+    switch (cap) {
+    case ziti_ctrl_cap_HA_CONTROLLER: return ctrl->capabilities.ha;
+    case ziti_ctrl_cap_OIDC_AUTH: return ctrl->capabilities.oidc_auth;
+    case ziti_ctrl_cap_OIDC_AUTH_WITH_CSR: return ctrl->capabilities.oidc_auth_csr;
+    default:
+        CTRL_LOG(ERROR, "TODO: add capability %d", cap);
+        assert(false);
+    }
+    return false;
 }

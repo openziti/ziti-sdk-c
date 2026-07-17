@@ -16,6 +16,7 @@
 #ifndef ZITI_SDK_CONTROLLER_H
 #define ZITI_SDK_CONTROLLER_H
 
+#include <stc/cstr.h>
 #include <tlsuv/http.h>
 #include "internal_model.h"
 #include "ziti/ziti_model.h"
@@ -28,7 +29,7 @@ typedef void (*ziti_ctrl_redirect_cb)(const char *new_address, void *ctx);
 
 typedef void (*ziti_ctrl_change_cb)(void *ctx, const model_map *endpoints);
 
-typedef void (*ctrl_version_cb)(const ziti_version *, const ziti_error *, void *);
+typedef void (*ctrl_version_cb)(const ziti_ctrl_version *, const ziti_error *, void *);
 
 typedef void(*routers_cb)(ziti_service_routers *srv_routers, const ziti_error *, void *);
 
@@ -36,7 +37,7 @@ typedef struct ziti_controller_s {
     uv_loop_t *loop;
     tlsuv_http_t *client;
 
-    char *url;
+    cstr url;
     model_map endpoints;
 
     unsigned int active_reqs;
@@ -45,14 +46,18 @@ typedef struct ziti_controller_s {
     unsigned int page_size;
 
     bool legacy;
-    bool is_ha;
-    ziti_version version;
+    struct {
+        bool ha:1;
+        bool oidc_auth:1;
+        bool oidc_auth_csr:1;
+    } capabilities;
+    ziti_ctrl_version version;
     ctrl_version_cb version_cb;
     void *version_cb_ctx;
     void *version_req;
 
     bool has_token;
-    char *instance_id;
+    cstr instance_id;
 
     ziti_ctrl_change_cb change_cb;
     ziti_ctrl_redirect_cb redirect_cb;
@@ -79,6 +84,7 @@ int ziti_ctrl_close(ziti_controller *ctrl);
 void ziti_ctrl_clear_auth(ziti_controller *ctrl);
 
 void ziti_ctrl_get_version(ziti_controller *ctrl, ctrl_version_cb cb, void *ctx);
+bool ziti_ctrl_has_capability(ziti_controller *ctrl, ziti_ctrl_cap cap);
 
 void ziti_ctrl_list_ext_jwt_signers(ziti_controller *ctrl,
                                     void (*cb)(ziti_jwt_signer_array, const ziti_error*, void*),
@@ -155,6 +161,10 @@ void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t
 void ziti_ctrl_extend_cert_authenticator(ziti_controller *ctrl, const char *authenticatorId, const char *csr, void(*cb)(ziti_extend_cert_authenticator_resp*, const ziti_error *, void *), void *ctx);
 
 void ziti_ctrl_verify_extend_cert_authenticator(ziti_controller *ctrl, const char *authenticatorId, const char *client_cert, void(*cb)(void *, const ziti_error *, void *), void *ctx);
+
+static inline const char *ziti_ctrl_get_url(ziti_controller *ctrl) {
+    return cstr_str(&ctrl->url);
+}
 
 #ifdef __cplusplus
 }
