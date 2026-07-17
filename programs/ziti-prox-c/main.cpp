@@ -31,13 +31,14 @@
 class Run: public CLI::App {
 public:
 
-    Run(): App("run proxy", "run"),
-           debug(2) {
+    Run(): App("run proxy", "run") {
         add_option("--debug,-d", debug, "log level");
         add_option("--identity,-i", identity, "identity config")->required();
         add_option("listener", intercepts, "<name:port>");
-        add_option("--bind,-b", bindings, "bind service <name:host:port>");
-        add_option("--bind-udp,-B", udp_bindings, "bind udp service <name:host:port>");
+        add_option("--bind,-b", bindings, "bind service <name:host:port>")
+            ->allow_extra_args(false);
+        add_option("--bind-udp,-B", udp_bindings, "bind udp service <name:host:port>")
+            ->allow_extra_args(false);
         add_option("--proxy,-p", proxy, "upstream proxy url -- will be used to connect to ziti network");
         add_option("--http-proxy,-P", http_proxy_port, "enables http proxy behavior")
             ->expected(0,1)
@@ -51,8 +52,8 @@ public:
 
 
 private:
-    bool aes_crypto;
-    int debug;
+    bool aes_crypto{false};
+    int debug{3};
     std::string identity;
     std::vector<std::string> intercepts;
     std::vector<std::string> bindings;
