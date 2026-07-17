@@ -97,9 +97,7 @@ XX(OIDC_AUTH_WITH_CSR, __VA_ARGS__)
 #define ZITI_VERSION_MODEL(XX, ...) \
 XX(version, model_string, none, version, __VA_ARGS__) \
 XX(revision, model_string, none, revision, __VA_ARGS__) \
-XX(build_date, model_string, none, buildDate, __VA_ARGS__) \
-XX(capabilities, ziti_ctrl_cap, array, capabilities, __VA_ARGS__) \
-XX(api_versions, ziti_api_versions, ptr, apiVersions, __VA_ARGS__)
+XX(build_date, model_string, none, buildDate, __VA_ARGS__)
 
 #define ZITI_IDENTITY_MODEL(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__) \
