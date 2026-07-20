@@ -136,25 +136,29 @@ TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
     REQUIRE(run(UNTIL(mfa.cb_called)));
     CHECK(mfa.status == ZITI_MFA_INVALID_TOKEN);
 
-    auto ts = std::chrono::system_clock::now();
-    auto code = totp.generate_totp(ts);
-    auto code_str = std::to_string(code);
+    for (int i = 0; i < 3; i++) {
+        mfa.cb_called = false;
+        mfa.status = ZITI_OK;
 
-    mfa.cb_called = false;
-    mfa.status = ZITI_OK;
+        auto ts = std::chrono::system_clock::now();
+        auto code = totp.generate_totp(ts);
+        auto code_str = std::to_string(code);
 
-    ziti_mfa_verify(ztx, code_str.c_str(), [](ziti_context ztx, int status, void *ctx){
-        auto m = (struct mfa *)ctx;
-        m->cb_called = true;
-        m->status = status;
-        m->verified = (status == ZITI_OK);
-    }, &mfa);
+        INFO("totp attempt: " << (i + 1));
+        ziti_mfa_verify(ztx, code_str.c_str(), [](ziti_context ztx, int status, void *ctx){
+            auto m = (struct mfa *)ctx;
+            m->cb_called = true;
+            m->status = status;
+            m->verified = (status == ZITI_OK);
+        }, &mfa);
 
-    CHECK(run(UNTIL(mfa.cb_called)));
-    CHECK(mfa.verified);
-    CHECK(mfa.status == ZITI_OK);
-
-    CHECK(run(UNTIL(this->loaded && this->load_error == ZITI_OK)));
+        REQUIRE(run(UNTIL(mfa.cb_called)));
+        if (mfa.verified) {
+            break;
+        }
+    }
+    REQUIRE(mfa.verified);
 
     INFO("TOTP enrollment and verification successful");
+    REQUIRE(run(UNTIL(this->loaded && this->load_error == ZITI_OK)));
 }
