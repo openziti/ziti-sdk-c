@@ -443,12 +443,12 @@ static void enroll_cb(ziti_enrollment_resp *resp, const ziti_error *err, void *e
     struct ziti_enroll_req *er = enroll_ctx;
 
     if (err != NULL) {
-        ZITI_LOG_ERROR(ERROR, err, "failed to enroll with controller: %s", er->controller.url);
+        ZITI_LOG_ERROR(ERROR, err, "failed to enroll with controller: %s", ziti_ctrl_get_url(&er->controller));
         complete_request(er, (int)err->err);
         return;
     }
 
-    ZITI_LOG(DEBUG, "successfully enrolled with controller %s", er->controller.url);
+    ZITI_LOG(DEBUG, "successfully enrolled with controller %s", ziti_ctrl_get_url(&er->controller));
     er->cfg.id.cert = resp->cert ? strdup(resp->cert) : strdup(er->opts.cert);
 
     complete_request(er, ZITI_OK);

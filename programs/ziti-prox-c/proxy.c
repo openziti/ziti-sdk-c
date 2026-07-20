@@ -605,19 +605,26 @@ static void on_ziti_event(ziti_context ztx, const ziti_event_t *event) {
                     break;
             }
             break;
-        case ZitiAuthEvent:
-            if (event->auth.action == ziti_auth_prompt_totp) {
+        case ZitiAuthEvent: {
+            switch (event->auth.action) {
+            case ziti_auth_prompt_totp:
                 ZITI_LOG(INFO, "ziti requires MFA %s/%s", event->auth.type, event->auth.detail);
                 mfa_auth_event_handler(ztx);
-            } else if (event->auth.action == ziti_auth_login_external) {
+                break;
+            case ziti_auth_login_external:
                 ext_auth_event_handler(ztx, NULL);
-            } else if (event->auth.action == ziti_auth_select_external) {
+                break;
+            case ziti_auth_select_external:
                 ext_auth_select(ztx, (const ziti_jwt_signer **)event->auth.providers);
-            } else {
+                break;
+            case ziti_auth_success:
+                ZITI_LOG(INFO, "ziti auth completed");
+                break;
+            default:
                 ZITI_LOG(ERROR, "unhandled auth event %d/%s", event->auth.action, event->auth.type);
             }
             break;
-
+        }
         default:
             break;
     }

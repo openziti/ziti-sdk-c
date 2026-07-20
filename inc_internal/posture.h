@@ -33,8 +33,8 @@ struct posture_checks {
     // map<type/process_path, is errored
     model_map error_states;
 
-    char *previous_api_session_id;
-    char *controller_instance_id;
+    cstr previous_api_session_id;
+    cstr controller_instance_id;
     bool must_send;
     bool must_send_every_time;
 

@@ -694,22 +694,22 @@ TEST_CASE("parse-ctrl-version", "[model]") {
         "version": "v0.19.12"
     })";
 
-    ziti_version ver;
-    REQUIRE(parse_ziti_version(&ver, json, strlen(json)) > 0);
+    ziti_ctrl_version ver;
+    REQUIRE(parse_ziti_ctrl_version(&ver, json, strlen(json)) > 0);
     REQUIRE(ver.api_versions != nullptr);
     auto v1Path = (api_path *) model_map_get(&ver.api_versions->edge, "v1");
     REQUIRE(v1Path);
     REQUIRE_THAT(v1Path->path, Catch::Matchers::Equals("/edge/v1"));
 
-    CHECK(*ver.capabilities[0] == ziti_ctrl_cap_HA_CONTROLLER);
-    CHECK(*ver.capabilities[1] == ziti_ctrl_cap_OIDC_AUTH);
+    CHECK_THAT(ver.capabilities[0], Equals("HA_CONTROLLER"));
+    CHECK_THAT(ver.capabilities[1], Equals("OIDC_AUTH"));
     CHECK(ver.capabilities[2] == nullptr);
 
-    free_ziti_version(&ver);
+    free_ziti_ctrl_version(&ver);
     CHECK(ver.capabilities == nullptr);
     CHECK(ver.api_versions == nullptr);
     INFO("should be safe to free object again");
-    free_ziti_version(&ver);
+    free_ziti_ctrl_version(&ver);
 }
 
 TEST_CASE("parse-ziti-address", "[model]") {

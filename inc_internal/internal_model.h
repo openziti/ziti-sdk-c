@@ -253,6 +253,11 @@ XX(code, model_number, none, code, __VA_ARGS__) \
 XX(cause, model_string, none, cause, __VA_ARGS__)     \
 XX(retry, model_number, none, retryHint, __VA_ARGS__)
 
+#define ZITI_CTRL_VERSION_MODEL(XX, ...) \
+ZITI_VERSION_MODEL(XX, __VA_ARGS__) \
+XX(capabilities, model_string, array, capabilities, __VA_ARGS__) \
+XX(api_versions, ziti_api_versions, ptr, apiVersions, __VA_ARGS__)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -334,6 +339,8 @@ DECLARE_MODEL(ziti_controller_detail, ZITI_CONTROLLER_DETAIL)
 DECLARE_MODEL(ziti_pr_base, ZITI_PR_BASE)
 
 DECLARE_MODEL(edge_error, EDGE_ERROR_MODEL)
+
+DECLARE_MODEL(ziti_ctrl_version, ZITI_CTRL_VERSION_MODEL)
 
 bool ziti_has_capability(const ziti_version *v, ziti_ctrl_cap c);
 int parse_enrollment_jwt(const char *token, ziti_enrollment_jwt_header *zejh, ziti_enrollment_jwt *zej, char **sig, size_t *sig_len);

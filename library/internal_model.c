@@ -178,6 +178,8 @@ IMPL_MODEL(ziti_pr_base, ZITI_PR_BASE)
 
 IMPL_MODEL(edge_error, EDGE_ERROR_MODEL)
 
+IMPL_MODEL(ziti_ctrl_version, ZITI_CTRL_VERSION_MODEL)
+
 bool ziti_service_has_permission(const ziti_service *service, ziti_session_type sessionType) {
     if (sessionType == ziti_session_types.Dial) {
         return (service->perm_flags & ZITI_CAN_DIAL) != 0;
@@ -518,17 +520,6 @@ int ziti_intercept_from_client_cfg(ziti_intercept_cfg_v1 *intercept, const ziti_
     return 0;
 }
 
-bool ziti_has_capability(const ziti_version *v, ziti_ctrl_cap c) {
-    if (v != NULL && v->capabilities != NULL) {
-        ziti_ctrl_cap **cap;
-        for (int idx = 0; v->capabilities[idx] != NULL; idx++) {
-            if (*v->capabilities[idx] == c) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
 
 
 IMPL_MODEL_FUNCS(ziti_address)
