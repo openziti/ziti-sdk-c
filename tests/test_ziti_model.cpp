@@ -701,8 +701,8 @@ TEST_CASE("parse-ctrl-version", "[model]") {
     REQUIRE(v1Path);
     REQUIRE_THAT(v1Path->path, Catch::Matchers::Equals("/edge/v1"));
 
-    CHECK(*ver.capabilities[0] == ziti_ctrl_cap_HA_CONTROLLER);
-    CHECK(*ver.capabilities[1] == ziti_ctrl_cap_OIDC_AUTH);
+    CHECK_THAT(ver.capabilities[0], Equals("HA_CONTROLLER"));
+    CHECK_THAT(ver.capabilities[1], Equals("OIDC_AUTH"));
     CHECK(ver.capabilities[2] == nullptr);
 
     free_ziti_ctrl_version(&ver);
