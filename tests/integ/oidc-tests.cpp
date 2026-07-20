@@ -144,7 +144,7 @@ TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
         auto code = totp.generate_totp(ts);
         auto code_str = std::to_string(code);
 
-        INFO("totp attempt: " << (i + 1));
+        UNSCOPED_INFO("totp attempt: " << (i + 1));
         ziti_mfa_verify(ztx, code_str.c_str(), [](ziti_context ztx, int status, void *ctx){
             auto m = (struct mfa *)ctx;
             m->cb_called = true;
@@ -156,6 +156,7 @@ TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
         if (mfa.verified) {
             break;
         }
+        uv_sleep(1000);
     }
     REQUIRE(mfa.verified);
 
