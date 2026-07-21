@@ -19,7 +19,8 @@ add_executable(all_tests
         ziti_src_tests.cpp
         message_tests.cpp
         e2ee_tests.cpp
-        util_tests.cpp)
+        util_tests.cpp
+        zl_sockets_tests.cpp)
 
 set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
 if (WIN32)

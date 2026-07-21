@@ -131,6 +131,7 @@ int connect_socket(int af, ziti_socket_t clt_sock, ziti_socket_t *ziti_sock) {
 
     TRY(WSOCK, (ssock = accept(lsock, NULL, NULL)) == SOCKET_ERROR);
 
+    // restore the caller's blocking mode (forced non-blocking above only for the connect)
     nonblocking = 0;
     ioctlsocket(clt_sock, FIONBIO, &nonblocking);
 
@@ -178,6 +179,9 @@ int connect_socket(int af, ziti_socket_t clt_sock, ziti_socket_t *ziti_sock) {
     rc = 0;
 
     TRY(WSOCK, (ssock = accept(lsock, NULL, NULL)) == SOCKET_ERROR);
+
+    // restore the caller's blocking mode (forced non-blocking above only for the connect)
+    TRY(WSOCK, fcntl(clt_sock, F_SETFL, clt_flags));
 
     CATCH(WSOCK) {
         rc  = errno;
