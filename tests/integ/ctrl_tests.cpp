@@ -76,7 +76,7 @@ protected:
     }
 
     template<class T>
-    std::expected<T*, std::string> GET(
+    std::expected<T*, std::string> CALL(
         void(*m)(ziti_controller *, void (*cb)(T*, const ziti_error *err, void *), void *)) {
         using result_type = std::expected<T*, std::string>;
         using result_type_opt = std::optional<result_type>;
@@ -91,29 +91,40 @@ protected:
         return ret.value();
     }
 
-    template<class T>
-    std::expected<T**, std::string> GET(
-        void (*m)(ziti_controller *, void (*cb)(T**, const ziti_error *err, void *), void *)) {
-        using result_type = std::expected<T**, std::string>;
+    template<class T, typename A>
+    std::expected<T*, std::string> CALL(
+    void(*m)(ziti_controller *, A, void (*cb)(T*, const ziti_error *err, void *), void *), A a) {
+        using result_type = std::expected<T*, std::string>;
         using result_type_opt = std::optional<result_type>;
-
         result_type_opt ret;
-        m(&ctrl, [](T **val, const ziti_error *err, void *r) {
-            auto res = static_cast<result_type_opt*>(r);
-            if (err)  *res = std::unexpected(err->message);
+        m(&ctrl, a, [](T *val, const ziti_error *err, void *r) {
+            auto res = static_cast<result_type_opt *>(r);
+            if (err) *res = std::unexpected(err->message);
             else if (val == nullptr) *res = std::unexpected("null result");
-            else {
-                *res = val;
-            }
+            else *res = val;
         }, &ret);
-        if (!run(UNTIL(ret.has_value()))) {
-            return std::unexpected("timeout");
-        }
+        if (!run(UNTIL(ret.has_value()))) return std::unexpected("timeout");
+        return ret.value();
+    }
+
+    template<class T, typename A1, typename A2>
+    std::expected<T*, std::string> CALL(
+        void(*m)(ziti_controller *, A1, A2, void (*cb)(T*, const ziti_error *err, void *), void *), A1 a1, A2 a2) {
+        using result_type = std::expected<T*, std::string>;
+        using result_type_opt = std::optional<result_type>;
+        result_type_opt ret;
+        m(&ctrl, a1, a2, [](T *val, const ziti_error *err, void *r) {
+            auto res = static_cast<result_type_opt *>(r);
+            if (err) *res = std::unexpected(err->message);
+            else if (val == nullptr) *res = std::unexpected("null result");
+            else *res = val;
+        }, &ret);
+        if (!run(UNTIL(ret.has_value()))) return std::unexpected("timeout");
         return ret.value();
     }
 
     void check_capability(ziti_ctrl_cap cap) {
-        auto result = GET(ziti_ctrl_get_version);
+        auto result = CALL(ziti_ctrl_get_version);
         CHECK(result.has_value());
         auto v = result.value();
         CHECK(v != nullptr);
@@ -124,7 +135,7 @@ protected:
 };
 
 TEST_CASE_METHOD(CtrlTest, "get-version", "[controller]") {
-    auto result = GET(ziti_ctrl_get_version);
+    auto result = CALL(ziti_ctrl_get_version);
     CHECK(result.has_value());
     auto v = result.value();
     CHECK(v != nullptr);
@@ -146,7 +157,7 @@ R map_get(model_map &m, const char *key) {
 }
 
 TEST_CASE_METHOD(CtrlTest, "cltr-network-jwt", "[controller]") {
-    auto result = GET(ziti_ctrl_get_network_jwt);
+    auto result = CALL(ziti_ctrl_get_network_jwt);
     CHECK(result.has_value());
     auto v = result.value();
     CHECK(v != nullptr);
@@ -171,91 +182,52 @@ TEST_CASE_METHOD(CtrlTest, "cltr-network-jwt", "[controller]") {
 
 TEST_CASE_METHOD(CtrlTest, "authenticate", "[controller]") {
     check_capability(ziti_ctrl_cap_OIDC_AUTH);
-    auto version = GET(ziti_ctrl_get_version);
+    auto version = CALL(ziti_ctrl_get_version);
     REQUIRE(version);
     auto p = map_get<api_path*>(version.value()->api_versions->oidc, "v1");
     auto auth = new_oidc_auth(loop(), p, tls);
-    
-}
 
+    DEFER {
+        auth->free(auth);
+    };
 
-TEST_CASE("ctrl-token-auth", "[integ]") {
-    // auto l = uv_default_loop();
-    //
-    // ziti_config cfg;
-    // REQUIRE(ziti_load_config(&cfg, TEST_CLIENT) == ZITI_OK);
-    //
-    // auto ctrlTLS = default_tls_context(cfg.id.ca, strlen(cfg.id.ca));
-    //
-    // ziti_controller ctrl = {};
-    // REQUIRE(ziti_ctrl_init(l, &ctrl, cfg.controller_url, ctrlTLS) == ZITI_OK);
-    //
-    // ziti_version v = {0};
-    // std::string err;
-    // ziti_ctrl_get_version(&ctrl, [](const ziti_version *v, const ziti_error *err, void *ctx){
-    //     std::cout << "in version cb" << std::endl;
-    //     auto out = (ziti_version*)ctx;
-    //     REQUIRE(v != NULL);
-    //     *out = *v;
-    //     free(v);
-    //     }, &v);
-    //
-    // uv_run(l, UV_RUN_DEFAULT);
-    //
-    // bool HA = ziti_has_capability(&v, ziti_ctrl_caps.HA_CONTROLLER);
-    // bool OIDC = ziti_has_capability(&v, ziti_ctrl_caps.OIDC_AUTH);
-    // if (!(HA && OIDC)) {
-    //     SKIP("can not test without HA and OIDC");
-    // }
-    //
-    // oidc_client_t oidc;
-    // auto oidcTLS = default_tls_context(cfg.id.ca, strlen(cfg.id.ca));
-    // tlsuv_private_key_t key;
-    // tls_cert cert = nullptr;
-    // oidcTLS->load_key(&key, cfg.id.key, strlen(cfg.id.key));
-    // oidcTLS->load_cert(&cert, cfg.id.cert, strlen(cfg.id.cert));
-    // oidcTLS->set_own_cert(oidcTLS, key, cert);
-    // oidc_client_init(l, &oidc, cfg.controller_url, oidcTLS);
-    //
-    // oidc_client_configure(&oidc, nullptr);
-    // uv_run(l, UV_RUN_DEFAULT);
-    //
-    // std::string token;
-    // oidc.data = &token;
-    // oidc_client_start(&oidc, [](oidc_client_t *clt, int status, const char *token){
-    //     CAPTURE(status);
-    //     auto out = (std::string*)clt->data;
-    //     *out = token;
-    // });
-    // uv_run(l, UV_RUN_DEFAULT);
-    //
-    // REQUIRE(!token.empty());
-    //
-    // ziti_service service = {nullptr};
-    // ziti_ctrl_set_token(&ctrl, token.c_str());
-    // ziti_ctrl_get_service(&ctrl, TEST_SERVICE,
-    //                       [](ziti_service *s, const ziti_error *err, void *ctx){
-    //                           auto msg = err ? err->message : "";
-    //                           INFO(msg);
-    //                           REQUIRE(s != nullptr);
-    //                           *(ziti_service*)ctx = *s;
-    //                           free(s);
-    //                       },
-    //                       &service);
-    // uv_run(l, UV_RUN_DEFAULT);
-    //
-    // REQUIRE_THAT(service.name, Catch::Matchers::Equals(TEST_SERVICE));
-    // oidc_client_close(&oidc, nullptr);
-    // ziti_ctrl_close(&ctrl);
-    //
-    // uv_run(l, UV_RUN_DEFAULT);
-    //
-    // oidcTLS->free_cert(&cert);
-    //
-    // oidcTLS->free_ctx(oidcTLS);
-    // ctrlTLS->free_ctx(ctrlTLS);
-    //
-    // free_ziti_version(&v);
-    // free_ziti_service(&service);
-    // free_ziti_config(&cfg);
+    struct auth_result {
+        bool success{};
+        bool called{};
+        ziti_auth_state state{ZitiAuthStateAuthStarted};
+        std::string token{};
+    } auth_res;
+
+    auth->start(auth, [](void *m, ziti_auth_state state, const void *arg) {
+        auto res = static_cast<auth_result*>(m);
+        res->called = true;
+        res->state = state;
+        if (state == ZitiAuthStateFullyAuthenticated) {
+            res->token = (const char*)arg;
+        }
+    }, &auth_res);
+
+    REQUIRE(run(UNTIL(auth_res.called)));
+    REQUIRE(auth_res.state == ZitiAuthStateFullyAuthenticated);
+
+    ziti_ctrl_set_token(&ctrl, auth_res.token.c_str());
+
+    auto services = CALL(ziti_ctrl_get_services);
+    INFO("error: " << services.error());
+    REQUIRE(services);
+    REQUIRE(services.value()[0] != nullptr);
+    DEFER {
+        auto s_arr = services.value();
+        for (int i = 0; s_arr[i]; i++) {
+            free_ziti_service_ptr(s_arr[i]);
+        }
+        free(s_arr);
+    };
+
+    auto s = services.value()[0];
+    auto session = CALL(ziti_ctrl_create_session, s->id, *s->permissions[0]);
+    REQUIRE(session);
+    DEFER {
+        free_ziti_session_ptr(session.value());
+    };
 }

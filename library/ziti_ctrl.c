@@ -321,7 +321,7 @@ static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_e
         model_map old = ctrl->endpoints;
         ctrl->endpoints = new_eps;
         model_map_clear(&old, (void (*)(void *)) free_ziti_controller_detail_ptr);
-        if (ctrl->capabilities.ha) {
+        if (ctrl->capabilities.ha && ctrl->change_cb) {
             ctrl->change_cb(ctrl->cb_ctx, &ctrl->endpoints);
         }
     } else {

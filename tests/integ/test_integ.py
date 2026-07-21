@@ -43,6 +43,10 @@ def run_catch_test(env, tmp_path, tag="", test="", ):
     environment = os.environ.copy()
     environment.update(env)
     environment["ZITI_LOG"] = "5"
+    with open(tmp_path / f"{filename}.env", "w") as env_file:
+        for k,v in env.items():
+            env_file.write(f"{k}={v}\n")
+
     proc = subprocess.Popen(
         [test_exe, "-s",
          "--reporter", f"JUnit::out={tmp_path}/TEST-{filename}.xml",
