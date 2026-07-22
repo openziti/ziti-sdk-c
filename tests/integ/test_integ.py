@@ -43,6 +43,10 @@ def run_catch_test(env, tmp_path, tag="", test="", ):
     environment = os.environ.copy()
     environment.update(env)
     environment["ZITI_LOG"] = "5"
+    with open(tmp_path / f"{filename}.env", "w") as env_file:
+        for k,v in env.items():
+            env_file.write(f"{k}={v}\n")
+
     proc = subprocess.Popen(
         [test_exe, "-s",
          "--reporter", f"JUnit::out={tmp_path}/TEST-{filename}.xml",
@@ -97,3 +101,10 @@ def test_zitilib_connect(client_identity, test_service, echo_server, tmp_path):
     env['test_service']=test_service['name']
     env['test_intercept']=test_service['intercept']
     run_catch_test(env, tmp_path, "zl-connect")
+
+
+def test_controller(client_identity, test_service, tmp_path):
+    env = dict()
+    env['test_client']=client_identity['path']
+    env['test_service']=test_service['name']
+    run_catch_test(env, tmp_path, "controller")

@@ -142,8 +142,11 @@ if (PROJECT_IS_TOP_LEVEL)
 endif ()
 
 if (ziti_DEVELOPER_MODE AND NOT CMAKE_CROSSCOMPILING)
-    ENABLE_TESTING()
-    add_subdirectory(tests)
+    option(BUILD_TESTING "Build tests" ${ziti_DEVELOPER_MODE})
+    if (BUILD_TESTING)
+        ENABLE_TESTING()
+        add_subdirectory(tests)
+    endif ()
 endif ()
 
 if (ziti-sdk_IS_TOP_LEVEL AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/local.cmake")

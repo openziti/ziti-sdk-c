@@ -39,10 +39,10 @@ typedef enum {
     ZITI_CRED_LEGACY_SESSION = 3,
 } ziti_credential_type;
 
-struct tls_credentials {
+typedef struct tls_credentials {
     tlsuv_private_key_t key;
     tlsuv_certificate_t cert;
-};
+} zt_x509;
 
 typedef struct ziti_credential_s {
     ziti_credential_type type;
@@ -50,17 +50,23 @@ typedef struct ziti_credential_s {
     bool persistent;
     union {
         // identity key/cert
-        struct tls_credentials x509;
-        // external JWT
+        zt_x509 x509;
+        // JWT
         zt_jwt jwt;
         // legacy session
-        ziti_session session;
+        struct {
+            cstr id;
+            cstr token;
+        } session;
     };
 } ziti_credential_t;
 
-extern void ziti_credential_drop(ziti_credential_t *cred);
+extern void zt_x509_drop(zt_x509 *x509);
+extern void zt_credential_drop(ziti_credential_t *cred);
 
-extern int ziti_credential_from_jwt(const char *jwt, ziti_credential_t **cred);
+extern int zt_credential_from_jwt(const char *jwt, ziti_credential_t *cred);
+extern int zt_credential_from_legacy(ziti_api_session *session, ziti_credential_t *cred);
+extern int zt_credential_from_x509(tlsuv_private_key_t key, tlsuv_certificate_t cert, ziti_credential_t *cred);
 
 int load_tls(ziti_config *cfg, tls_context **tls, struct tls_credentials *creds);
 

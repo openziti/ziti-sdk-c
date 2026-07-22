@@ -162,11 +162,10 @@ TEST_CASE("zt_jwt_parse extra dots", "[model]") {
 }
 
 TEST_CASE("jwt cred", "[model]") {
-    ziti_credential_t *cred = nullptr;
-    int rc = ziti_credential_from_jwt(jwt, &cred);
+    ziti_credential_t cred{};
+    int rc = zt_credential_from_jwt(jwt, &cred);
     CHECK(rc == 0);
-    REQUIRE(cred != nullptr);
-    CHECK(cred->type == ZITI_CRED_TYPE_JWT);
-    CHECK(cstr_equals(&cred->jwt.issuer, "https://fd200fd3-a2d9-457f-bc0b-f9b8ee7d2898.production.netfoundry.io:443"));
-    ziti_credential_drop(cred);
+    CHECK(cred.type == ZITI_CRED_TYPE_JWT);
+    CHECK(cstr_equals(&cred.jwt.issuer, "https://fd200fd3-a2d9-457f-bc0b-f9b8ee7d2898.production.netfoundry.io:443"));
+    zt_credential_drop(&cred);
 }

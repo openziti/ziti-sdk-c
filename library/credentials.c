@@ -20,6 +20,10 @@
 
 #include <sodium/utils.h>
 
+#ifdef _WIN32
+#define timegm _mkgmtime
+#endif
+
 void zt_jwt_drop(zt_jwt *jwt) {
     if (jwt == NULL) {
         return;
@@ -116,36 +120,70 @@ error:
     return result;
 }
 
-int ziti_credential_from_jwt(const char *jwt, ziti_credential_t **cred) {
+int zt_credential_from_jwt(const char *jwt, ziti_credential_t *cred) {
     assert(jwt);
+    assert(cred);
 
-    NEWP(c, ziti_credential_t);
-    if (!c) return ZITI_ALLOC_FAILED;
-
-    if (zt_jwt_parse(jwt, &c->jwt) != 0) {
-        free(c);
-        *cred = NULL;
+    memset(cred, 0, sizeof(ziti_credential_t));
+    if (zt_jwt_parse(jwt, &cred->jwt) != 0) {
         return ZITI_JWT_INVALID;
     }
-    c->type = ZITI_CRED_TYPE_JWT;
-    *cred = c;
+    cred->type = ZITI_CRED_TYPE_JWT;
     return 0;
 }
 
-void ziti_credential_drop(ziti_credential_t *cred) {
+int zt_credential_from_legacy(ziti_api_session *session, ziti_credential_t *cred) {
+    assert(cred != NULL);
+    assert(session != NULL);
+    memset(cred, 0, sizeof(ziti_credential_t));
+    cred->type = ZITI_CRED_LEGACY_SESSION;
+    cred->expiration = session->expires.tv_sec;
+    cred->session.token = cstr_from(session->token);
+    cred->session.id = cstr_from(session->id);
+
+    return 0;
+}
+
+int zt_credential_from_x509(tlsuv_private_key_t key, tlsuv_certificate_t cert, ziti_credential_t *cred) {
+    assert(key != NULL);
+    assert(cert != NULL);
+    assert(cred != NULL);
+    memset(cred, 0, sizeof(ziti_credential_t));
+    cred->type = ZITI_CRED_TYPE_X509;
+
+    struct tm exp;
+    if (cert->get_expiration(cert, &exp) == 0) {
+        time_t e = timegm(&exp);
+        cred->expiration = e;
+    }
+    cred->x509.cert = cert;
+    cred->x509.key = key;
+
+    return 0;
+}
+
+void zt_credential_drop(ziti_credential_t *cred) {
     if (cred == NULL) {
         return;
     }
     switch (cred->type) {
     case ZITI_CRED_TYPE_X509:
-        cred->x509.key->free(cred->x509.key);
-        cred->x509.cert->free(cred->x509.cert);
+        zt_x509_drop(&cred->x509);
         break;
     case ZITI_CRED_TYPE_JWT:
         zt_jwt_drop(&cred->jwt);
         break;
+    case ZITI_CRED_LEGACY_SESSION:
+        cstr_drop(&cred->session.token);
+        cstr_drop(&cred->session.id);
+        break;
     default:
         break;
     }
-    free(cred);
+}
+
+void zt_x509_drop(zt_x509 *x509) {
+    if (x509->cert) x509->cert->free(x509->cert);
+    if (x509->key) x509->key->free(x509->key);
+    memset(x509, 0, sizeof(*x509));
 }
