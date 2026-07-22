@@ -133,7 +133,6 @@ SET(ZITI_INCLUDE_DIRS
 )
 
 set(ziti_compile_defs
-        _POSIX_C_SOURCE
         ZITI_VERSION=${PROJECT_VERSION}
         ZITI_BRANCH=${GIT_BRANCH}
         ZITI_COMMIT=${GIT_COMMIT_HASH}

@@ -20,6 +20,10 @@
 
 #include <sodium/utils.h>
 
+#ifdef _WIN32
+    #define timegm _mkgmtime
+#endif
+
 void zt_jwt_drop(zt_jwt *jwt) {
     if (jwt == NULL) {
         return;
