@@ -116,17 +116,6 @@ error:
     return result;
 }
 
-ziti_credential_t *ziti_credential_legacy(ziti_api_session *session) {
-    ziti_credential_t *cred = calloc(1, sizeof(ziti_credential_t));
-    if (cred) {
-        cred->type = ZITI_CRED_LEGACY_SESSION;
-        cred->expiration = session->expires.tv_sec;
-        cred->session.token = cstr_from(session->token);
-        cred->session.id = cstr_from(session->id);
-    }
-    return cred;
-}
-
 int zt_credential_from_jwt(const char *jwt, ziti_credential_t *cred) {
     assert(jwt);
     assert(cred);
@@ -136,6 +125,36 @@ int zt_credential_from_jwt(const char *jwt, ziti_credential_t *cred) {
         return ZITI_JWT_INVALID;
     }
     cred->type = ZITI_CRED_TYPE_JWT;
+    return 0;
+}
+
+int zt_credential_from_legacy(ziti_api_session *session, ziti_credential_t *cred) {
+    assert(cred != NULL);
+    assert(session != NULL);
+    memset(cred, 0, sizeof(ziti_credential_t));
+    cred->type = ZITI_CRED_LEGACY_SESSION;
+    cred->expiration = session->expires.tv_sec;
+    cred->session.token = cstr_from(session->token);
+    cred->session.id = cstr_from(session->id);
+
+    return 0;
+}
+
+int zt_credential_from_x509(tlsuv_private_key_t key, tlsuv_certificate_t cert, ziti_credential_t *cred) {
+    assert(key != NULL);
+    assert(cert != NULL);
+    assert(cred != NULL);
+    memset(cred, 0, sizeof(ziti_credential_t));
+    cred->type = ZITI_CRED_TYPE_X509;
+
+    struct tm exp;
+    if (cert->get_expiration(cert, &exp) == 0) {
+        time_t e = timegm(&exp);
+        cred->expiration = e;
+    }
+    cred->x509.cert = cert;
+    cred->x509.key = key;
+
     return 0;
 }
 
@@ -160,7 +179,7 @@ void zt_credential_drop(ziti_credential_t *cred) {
 }
 
 void zt_x509_drop(zt_x509 *x509) {
-    x509->cert->free(x509->cert);
-    x509->key->free(x509->key);
+    if (x509->cert) x509->cert->free(x509->cert);
+    if (x509->key) x509->key->free(x509->key);
     memset(x509, 0, sizeof(*x509));
 }
