@@ -213,7 +213,6 @@ TEST_CASE_METHOD(CtrlTest, "authenticate", "[controller]") {
     ziti_ctrl_set_token(&ctrl, auth_res.token.c_str());
 
     auto services = CALL(ziti_ctrl_get_services);
-    INFO("error: " << services.error());
     REQUIRE(services);
     REQUIRE(services.value()[0] != nullptr);
     DEFER {
