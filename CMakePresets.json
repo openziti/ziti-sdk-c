@@ -209,6 +209,7 @@
         "dev-mode"
       ],
       "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++",
         "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays/linux"
       }
     },
