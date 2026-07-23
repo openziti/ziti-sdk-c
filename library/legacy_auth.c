@@ -23,6 +23,15 @@
 #define API_SESSION_DELAY_WINDOW_SECONDS 60
 #define API_SESSION_EXPIRATION_TOO_SMALL_SECONDS 120
 
+// tlsuv_http only exposes a connect timeout -- once a request is past connect
+// it can be left dangling indefinitely (e.g. a peer that accepts the TCP
+// handshake and then never responds, as seen when a controller instance
+// disappears mid-request during a rolling restart). Without a bound here,
+// a single stuck refresh/auth request latches `refreshing` permanently and
+// the auth state machine never retries again. See fix for permanent
+// UNAUTHORIZED after API session expiry, cert-based auth path.
+#define AUTH_REQUEST_TIMEOUT_SECONDS 30
+
 #define AUTH_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "legacy_auth[%s]: " fmt, auth->http.host, ##__VA_ARGS__)
 
 struct legacy_auth_s {
@@ -33,6 +42,7 @@ struct legacy_auth_s {
 
     tlsuv_http_t http;
     uv_timer_t timer;
+    uv_timer_t req_timer; // watchdog: bounds how long an in-flight refresh/auth request can go unanswered
     ziti_api_session *session;
     
     bool has_x509;
@@ -64,6 +74,7 @@ static void free_body_cb(tlsuv_http_req_t *req, char *body, ssize_t len) {
 }
 
 static void legacy_timer_cb(uv_timer_t *t);
+static void legacy_req_timeout_cb(uv_timer_t *t);
 
 #define LEGACY_AUTH_INIT()          \
     (ziti_auth_method_t) {          \
@@ -87,6 +98,7 @@ ziti_auth_method_t *new_legacy_auth(uv_loop_t *loop, const char *url, tls_contex
     tlsuv_http_connect_timeout(&auth->http, 10 * 1000);
     tlsuv_http_set_ssl(&auth->http, tls);
     uv_timer_init(loop, &auth->timer);
+    uv_timer_init(loop, &auth->req_timer);
     AUTH_LOG(DEBUG, "method initialized");
     return &auth->api;
 }
@@ -168,12 +180,18 @@ int legacy_auth_refresh(ziti_auth_method_t *self) {
 int legacy_auth_stop(ziti_auth_method_t *self) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
     uv_timer_stop(&auth->timer);
+    uv_timer_stop(&auth->req_timer);
     return ZITI_OK;
 }
 
 static void close_cb(uv_timer_t *t) {
     struct legacy_auth_s *auth = container_of(t, struct legacy_auth_s, timer);
     free(auth);
+}
+
+static void req_timer_close_cb(uv_timer_t *t) {
+    struct legacy_auth_s *auth = container_of(t, struct legacy_auth_s, req_timer);
+    uv_close((uv_handle_t *)&auth->timer, (uv_close_cb)close_cb);
 }
 
 void legacy_auth_free(ziti_auth_method_t *self) {
@@ -183,7 +201,8 @@ void legacy_auth_free(ziti_auth_method_t *self) {
     cstr_drop(&auth->primary_jwt);
     cstr_drop(&auth->secondary_jwt);
 
-    uv_close((uv_handle_t *)&auth->timer, (uv_close_cb)close_cb);
+    // chain the closes: `auth` is freed once the last handle embedded in it closes
+    uv_close((uv_handle_t *)&auth->req_timer, (uv_close_cb)req_timer_close_cb);
     tlsuv_http_close(&auth->http, NULL);
 }
 
@@ -241,6 +260,7 @@ static int legacy_auth_totp(ziti_auth_method_t *self, const char *code, auth_mfa
 
 static void legacy_session_cb(tlsuv_http_resp_t *resp, const char *err, json_object *json, void *ctx) {
     struct legacy_auth_s *auth = ctx;
+    uv_timer_stop(&auth->req_timer);
     auth->refreshing = false;
     const char *delay_type = "refresh";
     uint64_t delay = 0;
@@ -335,6 +355,7 @@ void legacy_timer_cb(uv_timer_t *t) {
             AUTH_LOG(DEBUG, "refreshing session[%p]", auth->session->id);
             tlsuv_http_req_t *req = ziti_json_request(&auth->http, "GET", "/current-api-session", legacy_session_cb, auth);
             tlsuv_http_req_header(req, HTTP_ZT_SESSION, auth->session->token);
+            uv_timer_start(&auth->req_timer, legacy_req_timeout_cb, AUTH_REQUEST_TIMEOUT_SECONDS * 1000, 0);
             return;
         }
     }
@@ -378,6 +399,19 @@ void legacy_timer_cb(uv_timer_t *t) {
 
     tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
+    uv_timer_start(&auth->req_timer, legacy_req_timeout_cb, AUTH_REQUEST_TIMEOUT_SECONDS * 1000, 0);
+}
+
+// Watchdog for a refresh/auth request that connected but never got a response
+// (tlsuv_http has no idle/response timeout of its own -- only connect_timeout).
+// Canceling routes the outstanding request back through legacy_session_cb with
+// UV_ECANCELED, which clears `refreshing` and re-arms the normal retry/backoff
+// path below -- the same recovery legacy_session_cb already performs for any
+// other transport failure.
+static void legacy_req_timeout_cb(uv_timer_t *t) {
+    struct legacy_auth_s *auth = container_of(t, struct legacy_auth_s, req_timer);
+    AUTH_LOG(WARN, "no response after %ds, canceling and retrying", AUTH_REQUEST_TIMEOUT_SECONDS);
+    tlsuv_http_cancel_all(&auth->http);
 }
 
 static const ziti_auth_query_mfa* get_mfa(ziti_api_session *session) {
