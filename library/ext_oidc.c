@@ -201,11 +201,7 @@ int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
         return ZITI_INVALID_CONFIG;
     }
 
-    if (cfg->name != NULL) {
-        cstr_assign(&clt->name, cfg->name);
-    } else {
-        cstr_assign(&clt->name, cfg->provider_url);
-    }
+    cstr_assign(&clt->name, cfg->name);
     cstr_assign(&clt->issuer, cfg->provider_url);
 
     OIDC_LOG(INFO, "initializing with provider[%s]", cfg->provider_url);
@@ -258,6 +254,8 @@ int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
 int ext_oidc_client_set_cfg(ext_oidc_client_t *clt, const ziti_jwt_signer *cfg) {
     free_ziti_jwt_signer(&clt->signer_cfg);
 
+    clt->signer_cfg.id = strdup(cfg->id);
+    clt->signer_cfg.name = strdup(cfg->name);
     clt->signer_cfg.client_id = cfg->client_id ? strdup(cfg->client_id) : NULL;
     clt->signer_cfg.provider_url = strdup(cfg->provider_url);
     clt->signer_cfg.audience = cfg->audience ? strdup(cfg->audience) : NULL;
