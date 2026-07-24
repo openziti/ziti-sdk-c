@@ -20,26 +20,16 @@
 
 static void ext_token_cb(ext_oidc_client_t *oidc, enum ext_oidc_status status, const void *data);
 
-static void ext_oath_cfg_cb(ext_oidc_client_t *oidc, int status, const char *err) {
+static void ext_auth_send_event(ext_oidc_client_t *oidc) {
     ziti_context ztx = oidc->data;
     ziti_event_t ev = {
             .type = ZitiAuthEvent,
     };
-    if (status == 0) {
-        ev.auth = (struct ziti_auth_event){
-                .action = ziti_auth_login_external,
-                .type = "oidc",
-                .detail = oidc->http.host,
-        };
-    } else {
-        ZTX_LOG(ERROR, "OIDC provider configuration failed: %s", err);
-        ev.auth = (struct ziti_auth_event){
-                .action = ziti_auth_cannot_continue,
-                .type = "oidc",
-                .detail = err,
-        };
-    }
-
+    ev.auth = (struct ziti_auth_event){
+        .action = ziti_auth_login_external,
+        .type = "oidc",
+        .detail = oidc->http.host,
+    };
     ziti_send_event(ztx, &ev);
 }
 
@@ -61,18 +51,35 @@ static void ext_signers_cb(ziti_context ztx, int status, ziti_jwt_signer_array s
     ziti_send_event(ztx, &ev);
 }
 
-int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg) {
+int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg, bool secondary) {
+
     if (oidc_cfg != NULL) {
-        NEWP(oidc, ext_oidc_client_t);
-        int rc = ext_oidc_client_init(ztx->loop, oidc, oidc_cfg);
-        if (rc != ZITI_OK) {
-            free(oidc);
-            ZTX_LOG(ERROR, "failed to initialize OIDC client: %s", ziti_errorstr(rc));
-            return rc;
+        ext_oidc_client_t *oidc = secondary ? ztx->ext_auth2 : ztx->ext_auth;
+        if (oidc && strcmp(oidc->signer_cfg.id, oidc_cfg->id) != 0) {
+            ext_oidc_client_close(oidc, (ext_oidc_close_cb)free);
+            oidc = NULL;
+            if (secondary) ztx->ext_auth2 = NULL;
+            else ztx->ext_auth = NULL;
         }
-        oidc->data = ztx;
-        ztx->ext_auth = oidc;
-        ext_oath_cfg_cb(oidc, 0, NULL);
+
+        if (oidc == NULL) {
+            oidc = calloc(1, sizeof(*oidc));
+            int rc = ext_oidc_client_init(ztx->loop, oidc, oidc_cfg);
+            if (rc != ZITI_OK) {
+                free(oidc);
+                ZTX_LOG(ERROR, "failed to initialize OIDC client: %s", ziti_errorstr(rc));
+                return rc;
+            }
+            oidc->data = ztx;
+        }
+
+        if (secondary) {
+            ztx->ext_auth2 = oidc;
+        } else {
+            ztx->ext_auth = oidc;
+        }
+        ext_auth_send_event(oidc);
+
         return 0;
     }
 
@@ -80,28 +87,45 @@ int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg) {
 }
 
 void ztx_dump_external_auth(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx) {
-    ext_oidc_client_t *ea = ztx->ext_auth;
-    if (ea == NULL) {
-        return;
-    }
 
-    printer(ctx, "ext auth client: name[%s]\n", ea->name);
-    printer(ctx, "\tclient_id[%s]\n", ea->signer_cfg.client_id ? ea->signer_cfg.client_id : "");
-    printer(ctx, "\tprovider[%s]\n", ea->signer_cfg.provider_url ? ea->signer_cfg.provider_url : "");
-    if (ea->signer_cfg.audience) {
-        printer(ctx, "\taudience[%s]\n", ea->signer_cfg.audience);
-    }
-    if (!cstr_is_empty(&ea->current.issuer)) {
-        printer(ctx, "\taccess_token: issuer[%s] expiration[%" PRId64 "]\n",
-                cstr_str(&ea->current.issuer), ea->current.expiration);
-    }
-    if (!cstr_is_empty(&ea->refresh_token.issuer)) {
-        printer(ctx, "\trefresh_token_issuer[%s] expiration[%" PRId64 "]\n",
-                cstr_str(&ea->refresh_token.issuer), ea->refresh_token.expiration);
-    }
-    printer(ctx, "\trefresh_failures[%d]\n", ea->refresh_failures);
-    if (ea->timer && uv_is_active((uv_handle_t*)ea->timer)) {
-        printer(ctx, "\trefresh in %" PRIi64 "s\n", uv_timer_get_due_in(ea->timer) / 1000);
+    struct ex_auth_info {
+        const char *name;
+        ext_oidc_client_t *oidc;
+    } infos[] = {
+        {
+            .name = "primary",
+            .oidc = ztx->ext_auth,
+        },
+        {
+            .name = "secondary",
+            .oidc = ztx->ext_auth2,
+        }
+    };
+
+    for (int i = 0; i < sizeof(infos)/sizeof(infos[0]); i++) {
+        ext_oidc_client_t *ea = infos[i].oidc;
+        if (ea == NULL) {
+            continue;
+        }
+
+        printer(ctx, "ext auth client[%s]: name[%s]\n", infos[i].name, ea->name);
+        printer(ctx, "\tclient_id[%s]\n", ea->signer_cfg.client_id ? ea->signer_cfg.client_id : "");
+        printer(ctx, "\tprovider[%s]\n", ea->signer_cfg.provider_url ? ea->signer_cfg.provider_url : "");
+        if (ea->signer_cfg.audience) {
+            printer(ctx, "\taudience[%s]\n", ea->signer_cfg.audience);
+        }
+        if (!cstr_is_empty(&ea->current.issuer)) {
+            printer(ctx, "\taccess_token: issuer[%s] expiration[%" PRId64 "]\n",
+                    cstr_str(&ea->current.issuer), ea->current.expiration);
+        }
+        if (!cstr_is_empty(&ea->refresh_token.issuer)) {
+            printer(ctx, "\trefresh_token_issuer[%s] expiration[%" PRId64 "]\n",
+                    cstr_str(&ea->refresh_token.issuer), ea->refresh_token.expiration);
+        }
+        printer(ctx, "\trefresh_failures[%d]\n", ea->refresh_failures);
+        if (ea->timer && uv_is_active((uv_handle_t*)ea->timer)) {
+            printer(ctx, "\trefresh in %" PRIi64 "s\n", uv_timer_get_due_in(ea->timer) / 1000);
+        }
     }
 }
 
@@ -190,14 +214,39 @@ extern int ziti_ext_auth_set_params(ziti_context ztx, const ziti_auth_query_para
 
 extern int ziti_ext_auth(ziti_context ztx,
                          void (*ziti_ext_launch)(ziti_context, const char*, void *), void *ctx) {
-    if (ztx->ext_auth == NULL) {
+    if (ztx->ext_auth == NULL && ztx->ext_auth2 == NULL) {
+        return ZITI_INVALID_STATE;
+    }
+    if (ziti_ext_launch == NULL) {
         return ZITI_INVALID_STATE;
     }
 
     ztx->ext_launch_cb = ziti_ext_launch;
     ztx->ext_launch_ctx = ctx;
-    ext_oidc_client_set_link_cb(ztx->ext_auth, internal_link_cb, NULL);
-    ext_oidc_client_start(ztx->ext_auth, ext_token_cb);
+    // it is very unlikely that there are both primary and secondary external signers
+    if (ztx->ext_auth2 == NULL) {
+        ext_oidc_client_set_link_cb(ztx->ext_auth, internal_link_cb, NULL);
+        ext_oidc_client_start(ztx->ext_auth, ext_token_cb);
+        return ZITI_OK;
+    }
+
+    if (ztx->ext_auth == NULL) {
+        ext_oidc_client_set_link_cb(ztx->ext_auth2, internal_link_cb, NULL);
+        ext_oidc_client_start(ztx->ext_auth2, ext_token_cb);
+        return ZITI_OK;
+    }
+
+    // both present, call the one with lower expiration
+    int64_t exp1 = ztx->ext_auth->current.expiration;
+    int64_t exp2 = ztx->ext_auth2->current.expiration;
+    if (exp1 < exp2) {
+        ext_oidc_client_set_link_cb(ztx->ext_auth, internal_link_cb, NULL);
+        ext_oidc_client_start(ztx->ext_auth, ext_token_cb);
+    } else {
+        ext_oidc_client_set_link_cb(ztx->ext_auth2, internal_link_cb, NULL);
+        ext_oidc_client_start(ztx->ext_auth2, ext_token_cb);
+    }
+
     return ZITI_OK;
 }
 

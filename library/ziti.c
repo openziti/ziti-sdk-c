@@ -218,16 +218,20 @@ extern bool ziti_is_enabled(ziti_context ztx) {
 
 extern void ziti_set_enabled(ziti_context ztx, bool enabled) {
     uv_prepare_start(&ztx->prepper, ztx_prepare);
-    ziti_queue_work(ztx, enabled ? ziti_start_internal : ziti_stop_internal, NULL);
+    if (enabled) {
+        ziti_queue_work(ztx, ziti_start_internal, NULL);
+    } else {
+        ziti_queue_work(ztx, ziti_stop_internal, NULL);
+    }
 }
 
-void ziti_set_auth_started(ziti_context ztx) {
+static void ztx_set_auth_started(ziti_context ztx) {
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthStateAuthStarted);
     ztx->auth_state = ZitiAuthStateAuthStarted;
     cstr_clear(&ztx->session_token);
 }
 
-void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
+static void ztx_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
     if (err) {
         ZTX_LOG(WARN, "auth error: %s", err->message);
     }
@@ -256,7 +260,7 @@ void ziti_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
     }
 }
 
-void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err) {
+static void ztx_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err) {
     ziti_controller *ctrl = ztx_get_controller(ztx);
     ztx->auth_state = ZitiAuthImpossibleToAuthenticate;
     if (err->err == UV_ECONNREFUSED || err->err == UV_EAI_NONAME) {
@@ -282,7 +286,7 @@ void ziti_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err
     });
 }
 
-void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mfa *mfa_q) {
+static void ztx_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mfa *mfa_q) {
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthStatePartiallyAuthenticated);
     ztx->auth_state = ZitiAuthStatePartiallyAuthenticated;
     update_ctrl_status(ztx, ZITI_PARTIALLY_AUTHENTICATED, NULL);
@@ -296,6 +300,8 @@ void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mf
     switch (mfa_q->type_id) {
         case ziti_auth_query_type_MFA:
         case ziti_auth_query_type_TOTP:
+            ztx->auth_info.totp_enrolled = mfa_q->enrolled;
+            ztx->auth_info.totp_required = true;
             ev.auth.action = mfa_q->enrolled ? ziti_auth_prompt_totp : ziti_auth_enroll_totp;
             ev.auth.detail = mfa_q->provider;
             break;
@@ -312,7 +318,8 @@ void ziti_set_partially_authenticated(ziti_context ztx, const ziti_auth_query_mf
                 ev.auth.action = ziti_auth_cannot_continue;
                 ev.auth.detail = "signer not found";
             } else {
-                ztx_init_external_auth(ztx, signer);
+                cstr_assign(&ztx->auth_info.secondary_issuer, signer->provider_url);
+                ztx_init_external_auth(ztx, signer, true);
                 ev.auth.action = ziti_auth_login_external;
                 ev.auth.detail = signer->name;
             }
@@ -385,7 +392,7 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
     free(ctrls);
 }
 
-void ziti_set_fully_authenticated(ziti_context ztx, const char *session_token) {
+static void ztx_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     assert(session_token);
     ZTX_LOG(DEBUG, "setting auth_state[%d] to %d", ztx->auth_state, ZitiAuthStateFullyAuthenticated);
     ztx->auth_state = ZitiAuthStateFullyAuthenticated;
@@ -500,12 +507,16 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
             ext_oidc_client_close(ztx->ext_auth, (ext_oidc_close_cb) free);
             ztx->ext_auth = NULL;
         }
+        if (ztx->ext_auth2) {
+            ext_oidc_client_close(ztx->ext_auth2, (ext_oidc_close_cb) free);
+            ztx->ext_auth2 = NULL;
+        }
 
         ziti_send_event(ztx, &ev);
         free_ziti_service_array(&ev.service.removed);
 
         ziti_ctrl_cancel(ztx_get_controller(ztx));
-        ziti_set_unauthenticated(ztx, NULL);
+        ztx_set_unauthenticated(ztx, NULL);
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
         ztx->enabled = false;
         ziti_ctrl_close(ztx_get_controller(ztx));
@@ -564,7 +575,7 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
 
         uv_prepare_start(&ztx->prepper, ztx_prepare);
         ztx->start = uv_now(ztx->loop);
-        ziti_set_unauthenticated(ztx, NULL);
+        ztx_set_unauthenticated(ztx, NULL);
 
         ziti_re_auth(ztx);
     }
@@ -637,7 +648,6 @@ static int ztx_init_controller(ziti_context ztx) {
 }
 
 static void ziti_init_async(ziti_context ztx, void *data) {
-    uv_loop_t *loop = ztx->prepper.loop;
     metrics_init(5);
 
     if (!ztx->opts.disabled) {
@@ -722,7 +732,7 @@ int ziti_use_ext_jwt_signer(ziti_context ztx, const char *name) {
         ztx->ext_auth = NULL;
     }
 
-    return ztx_init_external_auth(ztx, signer);
+    return ztx_init_external_auth(ztx, signer, false);
 }
 
 void *ziti_app_ctx(ziti_context ztx) {
@@ -767,11 +777,12 @@ static void free_ztx(uv_handle_t *h) {
     ziti_posture_checks_free(ztx->posture_checks);
     model_map_clear(&ztx->services, (_free_f) free_ziti_service_ptr);
     model_map_clear(&ztx->sessions, (_free_f) free_ziti_session_ptr);
-    ziti_set_unauthenticated(ztx, NULL);
+    ztx_set_unauthenticated(ztx, NULL);
     FREE(ztx->last_update);
     cstr_drop(&ztx->session_token);
     free_ziti_api_session_ptr(ztx->session);
     ztx->session = NULL;
+    cstr_drop(&ztx->auth_info.secondary_issuer);
 
     if (ztx->tlsCtx) ztx->tlsCtx->free_ctx(ztx->tlsCtx);
     if (ztx->id_creds.cert) {
@@ -903,6 +914,10 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     } else {
         printer(ctx, "unknown - never logged in\n");
     }
+    printer(ctx, "TOTP: enrolled[%c] required[%c]\n",
+            ztx->auth_info.totp_enrolled ? 'Y' : 'N',
+            ztx->auth_info.totp_required ? 'Y' : 'N');
+    printer(ctx, "Secondary JWT: %s", cstr_str(&ztx->auth_info.secondary_issuer));
 
     printer(ctx, "\n=================\nAPI Session:\n");
 
@@ -1741,7 +1756,7 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
         ZTX_LOG(ERROR, "failed to get identity_data: %s[%s]", err->message, err->code);
         if (err->err == ZITI_AUTHENTICATION_FAILED) {
             ZTX_LOG(WARN, "api session is no longer valid. Trying to re-auth");
-            ziti_set_unauthenticated(ztx, err);
+            ztx_set_unauthenticated(ztx, err);
             ziti_force_api_session_refresh(ztx);
         }
         update_ctrl_status(ztx, (int)err->err, err->message);
@@ -1773,6 +1788,9 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
         if (ztx->config.id.ca == NULL || strcmp(new_pem, ztx->config.id.ca) != 0) {
             ztx->tlsCtx->set_ca_bundle(ztx->tlsCtx, new_pem, strlen(new_pem));
             ztx->channel_tls->set_ca_bundle(ztx->channel_tls, new_pem, strlen(new_pem));
+            if (ztx->auth_method && ztx->auth_method->set_ca) {
+                ztx->auth_method->set_ca(ztx->auth_method, new_pem);
+            }
             char *old_ca = (char*)ztx->config.id.ca;
             free(old_ca);
 
@@ -1938,7 +1956,7 @@ void ztx_prepare(uv_prepare_t *prep) {
                 .err = ZITI_NOT_AUTHORIZED,
                 .message = "session token has expired",
             };
-            ziti_set_unauthenticated(ztx, &error);
+            ztx_set_unauthenticated(ztx, &error);
             ziti_force_api_session_refresh(ztx);
         }
     }
@@ -2038,18 +2056,6 @@ void ziti_queue_work(ziti_context ztx, ztx_work_f w, void *data) {
     wrk->w_data = data;
 
     STAILQ_INSERT_TAIL(&ztx->w_queue, wrk, _next);
-}
-
-static void copy_oidc(ziti_context ztx, const ziti_jwt_signer *oidc) {
-    if (oidc == NULL) return;
-    if (oidc->provider_url == NULL) {
-        ZTX_LOG(ERROR, "invalid OIDC config `externalAuthUrl` is missing");
-        return;
-    }
-    if (oidc->client_id == NULL) {
-        ZTX_LOG(ERROR, "invalid OIDC config `clientId` is missing");
-        return;
-    }
 }
 
 int ziti_context_init(ziti_context *ztx, const ziti_config *config) {
@@ -2213,7 +2219,7 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
 
     if (!ztx->auth_method) {
         if (use_oidc) {
-            ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->tlsCtx);
+            ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->config.id.ca, &ztx->id_creds);
         } else {
             ztx->auth_method = new_legacy_auth(ztx->loop, ziti_get_controller(ztx), ztx->tlsCtx,
                                                ztx->id_creds.key != NULL);
@@ -2223,7 +2229,7 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
         // it will get started once we get external token
         if (ztx->ext_auth == NULL && ztx->id_creds.key == NULL) {
             ZTX_LOG(DEBUG, "no credentials available, starting external auth");
-            ztx_init_external_auth(ztx, NULL);
+            ztx_init_external_auth(ztx, NULL, false);
             return;
         }
         ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
@@ -2238,45 +2244,54 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
     if (ztx->ext_auth) {
         ext_oidc_client_refresh(ztx->ext_auth);
     }
+    if (ztx->ext_auth2) {
+        ext_oidc_client_refresh(ztx->ext_auth2);
+    }
 }
 
 void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
     ziti_context ztx = ctx;
+    struct ext_oidc_client_s *oidc = NULL;
+    if (ztx->ext_auth && ztx->ext_auth->pending_timer) {
+        oidc = ztx->ext_auth;
+    } else if (ztx->ext_auth2 && ztx->ext_auth2->pending_timer) {
+        oidc = ztx->ext_auth2;
+    }
     switch (state) {
         case ZitiAuthStateUnauthenticated: {
             const ziti_error *err = data;
-            ziti_set_unauthenticated(ztx, err);
+            ztx_set_unauthenticated(ztx, err);
             // HA/OIDC controllers surface a JWT rejection as Unauthenticated
             // (legacy uses Impossible). finalize is a no-op when no callback
             // is pending, so this is safe for normal session-expiry paths too.
-            if (ztx->ext_auth) {
-                ext_oidc_client_finalize(ztx->ext_auth, false,
+            if (oidc) {
+                ext_oidc_client_finalize(oidc, false,
                                          err && err->message ? err->message : "controller rejected token");
             }
             break;
         }
         case ZitiAuthStateAuthStarted:
-            ziti_set_auth_started(ztx);
+            ztx_set_auth_started(ztx);
             break;
         case ZitiAuthStatePartiallyAuthenticated: {
-            ziti_set_partially_authenticated(ztx, data);
-            if (ztx->ext_auth) {
+            ztx_set_partially_authenticated(ztx, data);
+            if (oidc) {
                 // external token accepted but needs user needs to finish via app (TOTP, etc)
-                ext_oidc_client_finalize(ztx->ext_auth, true, "partially authenticated");
+                ext_oidc_client_finalize(oidc, true, "partially authenticated");
             }
             break;
         }
         case ZitiAuthStateFullyAuthenticated:
-            ziti_set_fully_authenticated(ztx, data);
-            if (ztx->ext_auth) {
-                ext_oidc_client_finalize(ztx->ext_auth, true, NULL);
+            ztx_set_fully_authenticated(ztx, data);
+            if (oidc) {
+                ext_oidc_client_finalize(oidc, true, NULL);
             }
             break;
         case ZitiAuthImpossibleToAuthenticate: {
             const ziti_error *err = data;
-            ziti_set_impossible_to_authenticate(ztx, err);
-            if (ztx->ext_auth) {
-                ext_oidc_client_finalize(ztx->ext_auth, false,
+            ztx_set_impossible_to_authenticate(ztx, err);
+            if (oidc) {
+                ext_oidc_client_finalize(oidc, false,
                                          err && err->message ? err->message : "controller rejected token");
             }
             break;
