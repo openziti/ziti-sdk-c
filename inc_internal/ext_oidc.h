@@ -51,7 +51,8 @@ struct ext_oidc_client_s {
     ext_oidc_link_cb link_cb;
     void *link_ctx;
 
-    char name[32];
+    cstr name;
+    cstr issuer;
     void *config;
     void *tokens;
     const char *refresh_grant;
@@ -63,7 +64,6 @@ struct ext_oidc_client_s {
     tlsuv_http_req_t *refresh_req;
 
     uv_timer_t *timer;
-    char *jwt_token_auth;
 
     tlsuv_http_pair *auth_params;
     int auth_params_count;

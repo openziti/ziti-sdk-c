@@ -14,11 +14,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <oidc.h>
+#include "credentials.h"
+
 #include <assert.h>
-#include <json-c/json.h>
-#include <sodium.h>
 #include <ctype.h>
+#include <json-c/json.h>
+#include <oidc.h>
+#include <sodium.h>
 #ifdef _WIN32
 #include <winsock2.h>
 #define poll(fds,n,to) WSAPoll(fds, n, to)
@@ -81,7 +83,8 @@
 #define OIDC_ACCEPT_TIMEOUT 60
 #define OIDC_REQ_TIMEOUT 5
 
-#define OIDC_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "oidc[%s] " fmt, clt->name, ##__VA_ARGS__)
+#define OIDC_LOG(lvl, fmt, ...) \
+    ZITI_LOG(lvl, "oidc[%s] " fmt, cstr_str(&clt->name), ##__VA_ARGS__)
 
 static void ext_oidc_client_set_tokens(ext_oidc_client_t *clt, json_object *tok_json);
 
@@ -198,7 +201,13 @@ int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
         return ZITI_INVALID_CONFIG;
     }
 
-    snprintf(clt->name, sizeof(clt->name), "%s", cfg->name ? cfg->name : cfg->provider_url);
+    if (cfg->name != NULL) {
+        cstr_assign(&clt->name, cfg->name);
+    } else {
+        cstr_assign(&clt->name, cfg->provider_url);
+    }
+    cstr_assign(&clt->issuer, cfg->provider_url);
+
     OIDC_LOG(INFO, "initializing with provider[%s]", cfg->provider_url);
 
     // free previous auth params if re-initializing
@@ -296,11 +305,17 @@ static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_obje
         clt->refresh_grant = "refresh_token";
         // config has full URLs, so we can drop the prefix now
         tlsuv_http_set_path_prefix(&clt->http, "");
+        json_object *iss = json_object_object_get(clt->config, "issuer");
+        if (iss == NULL) {
+            OIDC_LOG(ERROR, "issuer is not provided!!!");
+        } else {
+            cstr_assign(&clt->issuer, json_object_get_string(iss));
+        }
 
-        struct json_object *grants = json_object_object_get(resp, "grant_types_supported");
+        json_object *grants = json_object_object_get(resp, "grant_types_supported");
         if (grants != NULL && json_object_is_type(grants, json_type_array)) {
             for (int i = 0; i < json_object_array_length(grants); i++) {
-                struct json_object *g = json_object_array_get_idx(grants, i);
+                json_object *g = json_object_array_get_idx(grants, i);
                 const char *name = json_object_get_string(g);
                 if (strcmp(name, TOKEN_EXCHANGE_GRANT) == 0) {
                     clt->refresh_grant = name;
@@ -319,7 +334,7 @@ static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_obje
     }
 }
 
-int ext_oidc_client_configure(ext_oidc_client_t *clt, oidc_config_cb cb) {
+static int ext_oidc_client_configure(ext_oidc_client_t *clt, oidc_config_cb cb) {
     if (clt->request) return UV_EALREADY;
 
     OIDC_LOG(DEBUG, "configuring provider[%s]", clt->signer_cfg.provider_url);
@@ -499,10 +514,6 @@ static void request_token(auth_req *req, const char *auth_code) {
             {"redirect_uri",  default_cb_url},
     };
     tlsuv_http_req_form(token_req, sizeof(form) / sizeof(form[0]), form);
-}
-
-static void free_body_cb(tlsuv_http_req_t * UNUSED(req), char *body, ssize_t UNUSED(len)) {
-    free(body);
 }
 
 static int set_blocking(uv_os_sock_t sock) {
@@ -890,6 +901,8 @@ int ext_oidc_client_close(ext_oidc_client_t *clt, ext_oidc_close_cb cb) {
 
     zt_jwt_drop(&clt->current);
     zt_jwt_drop(&clt->refresh_token);
+    cstr_drop(&clt->name);
+    cstr_drop(&clt->issuer);
 
     return 0;
 }
