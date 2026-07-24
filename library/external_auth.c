@@ -108,7 +108,7 @@ void ztx_dump_external_auth(ziti_context ztx, int (*printer)(void *arg, const ch
             continue;
         }
 
-        printer(ctx, "ext auth client[%s]: name[%s]\n", infos[i].name, ea->name);
+        printer(ctx, "ext auth client[%s]: name[%s]\n", infos[i].name, cstr_str(&ea->name));
         printer(ctx, "\tclient_id[%s]\n", ea->signer_cfg.client_id ? ea->signer_cfg.client_id : "");
         printer(ctx, "\tprovider[%s]\n", ea->signer_cfg.provider_url ? ea->signer_cfg.provider_url : "");
         if (ea->signer_cfg.audience) {
@@ -172,7 +172,7 @@ static void ext_token_cb(ext_oidc_client_t *oidc, enum ext_oidc_status status, c
                 .type = ziti_auth_query_types.name(ziti_auth_query_type_EXT_JWT),
                 .action = action,
                 .error = err,
-                .detail = ztx->ext_auth->signer_cfg.name,
+                .detail = oidc->signer_cfg.name,
             }};
         ziti_send_event(ztx, &ev);
     }

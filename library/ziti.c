@@ -917,7 +917,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     printer(ctx, "TOTP: enrolled[%c] required[%c]\n",
             ztx->auth_info.totp_enrolled ? 'Y' : 'N',
             ztx->auth_info.totp_required ? 'Y' : 'N');
-    printer(ctx, "Secondary JWT: %s", cstr_str(&ztx->auth_info.secondary_issuer));
+    printer(ctx, "Secondary JWT: %s\n", cstr_str(&ztx->auth_info.secondary_issuer));
 
     printer(ctx, "\n=================\nAPI Session:\n");
 
@@ -2251,12 +2251,9 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
 
 void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
     ziti_context ztx = ctx;
-    struct ext_oidc_client_s *oidc = NULL;
-    if (ztx->ext_auth && ztx->ext_auth->pending_timer) {
-        oidc = ztx->ext_auth;
-    } else if (ztx->ext_auth2 && ztx->ext_auth2->pending_timer) {
-        oidc = ztx->ext_auth2;
-    }
+
+    bool success = false;
+    const char *message = NULL;
     switch (state) {
         case ZitiAuthStateUnauthenticated: {
             const ziti_error *err = data;
@@ -2264,10 +2261,7 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
             // HA/OIDC controllers surface a JWT rejection as Unauthenticated
             // (legacy uses Impossible). finalize is a no-op when no callback
             // is pending, so this is safe for normal session-expiry paths too.
-            if (oidc) {
-                ext_oidc_client_finalize(oidc, false,
-                                         err && err->message ? err->message : "controller rejected token");
-            }
+            message = err && err->message ? err->message : "controller rejected token";
             break;
         }
         case ZitiAuthStateAuthStarted:
@@ -2275,27 +2269,28 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
             break;
         case ZitiAuthStatePartiallyAuthenticated: {
             ztx_set_partially_authenticated(ztx, data);
-            if (oidc) {
-                // external token accepted but needs user needs to finish via app (TOTP, etc)
-                ext_oidc_client_finalize(oidc, true, "partially authenticated");
-            }
+            // external token accepted but needs user needs to finish via app (TOTP, etc)
+            success = true;
+            message = "partially authenticated";
             break;
         }
         case ZitiAuthStateFullyAuthenticated:
             ztx_set_fully_authenticated(ztx, data);
-            if (oidc) {
-                ext_oidc_client_finalize(oidc, true, NULL);
-            }
+            success = true;
             break;
         case ZitiAuthImpossibleToAuthenticate: {
             const ziti_error *err = data;
             ztx_set_impossible_to_authenticate(ztx, err);
-            if (oidc) {
-                ext_oidc_client_finalize(oidc, false,
-                                         err && err->message ? err->message : "controller rejected token");
-            }
+            message = err && err->message ? err->message : "controller rejected token";
             break;
         }
+    }
+
+    // note: only one can be pending at the same time
+    // finalize is no-op for the one not pending
+    if (success || message != NULL) {
+        ext_oidc_client_finalize(ztx->ext_auth, success, message);
+        ext_oidc_client_finalize(ztx->ext_auth2, success, message);
     }
 
     assert(ztx->auth_state == state);
