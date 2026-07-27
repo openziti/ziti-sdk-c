@@ -120,6 +120,13 @@ struct ziti_ctx {
     bool enabled;
     int ctrl_status;
 
+    struct {
+        ziti_credential_type primary;
+        cstr secondary_issuer;
+        bool totp_enrolled;
+        bool totp_required;
+    } auth_info;
+
     ziti_auth_method_t *auth_method;
     ziti_auth_state auth_state;
     ziti_mfa_cb mfa_cb;
@@ -128,6 +135,7 @@ struct ziti_ctx {
 
     model_map ext_signers;
     struct ext_oidc_client_s *ext_auth;
+    struct ext_oidc_client_s *ext_auth2;
     void (*ext_launch_cb)(ziti_context, const char*, void*);
     void *ext_launch_ctx;
     ziti_enroll_key_cb enroll_key_cb;
@@ -269,7 +277,7 @@ static inline bool ctrl_version_supports_enroll_to(const char *ctrl_ver) {
 
 const ziti_env_info* get_env_info();
 
-int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer);
+int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer, bool secondary);
 void ztx_dump_external_auth(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx);
 extern void ztx_request_session_cert(ziti_context ztx);
 extern void ztx_clear_session_creds(ziti_context ztx);

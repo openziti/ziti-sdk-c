@@ -56,6 +56,9 @@ TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
             uv_run(l, UV_RUN_DEFAULT);
     };
     oidc_client_init(l, &oidcClient, provider, tls);
+    zt_x509 x509{key, cert};
+    oidcClient.tls = tls;
+    oidcClient.x509 = &x509;
     struct oidc_cfg_result {
         bool called;
         int status;

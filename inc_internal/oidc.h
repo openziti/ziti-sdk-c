@@ -47,6 +47,8 @@ struct oidc_client_s {
     void *data;
     cstr provider_url;
     tlsuv_http_t http;
+    tls_context *tls;
+    zt_x509 *x509;
 
     oidc_config_cb config_cb;
     oidc_token_cb token_cb;
@@ -57,7 +59,7 @@ struct oidc_client_s {
     zt_jwt refresh_token;
 
     uv_timer_t *timer;
-    cstr jwt_token_auth;
+    model_map ext_tokens; // map[issuer -> zt_jwt_t]
 
     bool configuring;
     bool need_refresh;
@@ -90,8 +92,6 @@ int oidc_client_configure(oidc_client_t *clt, oidc_config_cb);
 int oidc_client_start(oidc_client_t *clt, oidc_token_cb);
 
 int oidc_client_mfa(oidc_client_t *clt, const char *code);
-
-int oidc_client_token(oidc_client_t *clt, const char *token);
 
 // force token refresh ahead of normal cycle, error if called prior to oidc_client_start
 int oidc_client_refresh(oidc_client_t *clt);

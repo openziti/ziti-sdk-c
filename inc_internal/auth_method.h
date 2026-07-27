@@ -15,7 +15,7 @@
 #ifndef ZITI_SDK_AUTH_METHOD_H
 #define ZITI_SDK_AUTH_METHOD_H
 
-#include "ziti_ctrl.h"
+#include "credentials.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,6 +50,7 @@ struct ziti_auth_method_s {
     enum AuthenticationMethod kind;
     int (*set_ext_jwt)(ziti_auth_method_t *self, const char *token);
     int (*set_endpoint)(ziti_auth_method_t *self, const api_path *api);
+    int (*set_ca)(ziti_auth_method_t *self, const char *ca);
     int (*start)(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
     int (*force_refresh)(ziti_auth_method_t *self);
     const struct timeval* (*expiration)(ziti_auth_method_t *self);
@@ -62,7 +63,7 @@ struct ziti_auth_method_s {
 };
 
 ziti_auth_method_t *new_legacy_auth(uv_loop_t *l, const char *url, tls_context *tls, bool x509);
-ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, tls_context *tls);
+ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, const char* ca, zt_x509 *x509);
 
 #ifdef __cplusplus
 }
