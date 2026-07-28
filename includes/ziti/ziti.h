@@ -581,21 +581,28 @@ ZITI_FUNC
 extern int ziti_shutdown(ziti_context ztx);
 
 /**
- * @brief Output debugging information.
+ * @brief Write a human-readable snapshot of the identity context state.
  *
- * This function will output debugging information to the provided function. The output from this command may
- * be useful when submitting issues.
+ * Dumps SDK/dependency versions, environment info, controller and authentication state,
+ * known services with their posture queries, sessions, and edge router channels.
+ * The output is intended for troubleshooting and is useful to attach when submitting issues.
  *
- * [printer] function must be able to accept [printf]-like format and arguments.
- *
- * this method is designed to be suitable to use with `fprintf()` like this:
+ * The dump is produced by repeated calls to `printer`, which must accept a `printf()`-like
+ * format string and arguments, with @p ctx passed as its first argument. This makes it directly
+ * compatible with `fprintf()`:
  * \code
- *     ziti_dump(ztx, fprintf, stderr);
+ *     ziti_dump(ztx, (int (*)(void *, const char *, ...)) fprintf, stderr);
  * \endcode
+ *
+ * @note Must be called on the thread running the #ziti_context loop — e.g. from within an SDK
+ *       callback or a `uv_async_t` handler. It walks live context state without locking.
+ * @note The format is not stable and must not be parsed programmatically.
+ * @warning The output contains identity details, the identity certificate, and decoded token
+ *          claims. Review it before sharing publicly.
  *
  * @param ztx the Ziti Edge identity context to print debug information for
  * @param printer function to be called for output
- * @param ctx first argument passed into `printer` function
+ * @param ctx first argument passed into the `printer` function
 */
 ZITI_FUNC
 extern void ziti_dump(ziti_context ztx, int (*printer)(void *ctx, const char *fmt, ...), void *ctx);
