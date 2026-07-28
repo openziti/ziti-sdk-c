@@ -581,10 +581,12 @@ ZITI_FUNC
 extern int ziti_shutdown(ziti_context ztx);
 
 /**
- * @brief Shutdown Ziti Edge identity context and reclaim the memory from the provided #ziti_context.
+ * @brief Output debugging information.
  *
- * This function will output debugging information to standard out. The output from this command may
+ * This function will output debugging information to the provided function. The output from this command may
  * be useful when submitting issues.
+ *
+ * [printer] function must be able to accept [printf]-like format and arguments.
  *
  * this method is designed to be suitable to use with `fprintf()` like this:
  * \code
