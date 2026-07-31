@@ -258,6 +258,10 @@ ZITI_VERSION_MODEL(XX, __VA_ARGS__) \
 XX(capabilities, model_string, array, capabilities, __VA_ARGS__) \
 XX(api_versions, ziti_api_versions, ptr, apiVersions, __VA_ARGS__)
 
+#define TOTP_TOKEN_MODEL(XX, ...) \
+XX(issued_at, timestamp, none, issuedAt, __VA_ARGS__) \
+XX(token, model_string, none, token, __VA_ARGS__)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -341,6 +345,8 @@ DECLARE_MODEL(ziti_pr_base, ZITI_PR_BASE)
 DECLARE_MODEL(edge_error, EDGE_ERROR_MODEL)
 
 DECLARE_MODEL(ziti_ctrl_version, ZITI_CTRL_VERSION_MODEL)
+
+DECLARE_MODEL(totp_token, TOTP_TOKEN_MODEL)
 
 int parse_enrollment_jwt(const char *token, ziti_enrollment_jwt_header *zejh, ziti_enrollment_jwt *zej, char **sig, size_t *sig_len);
 

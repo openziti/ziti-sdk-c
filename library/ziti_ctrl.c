@@ -1025,7 +1025,7 @@ void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, c
     tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
 }
 
-void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char *code, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
+void ziti_ctrl_delete_mfa(ziti_controller *ctrl, const char *code, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, cb, ctx)) { return; }
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
@@ -1034,8 +1034,12 @@ void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char *code, void(*cb)(void *, c
     tlsuv_http_req_header(req, "mfa-validation-code", code);
 }
 
-void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
+void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, const char *code, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, cb, ctx)) { return; }
+
+    ziti_mfa_code_req code_req = {.code = code};
+    size_t body_len;
+    char *body = ziti_mfa_code_req_to_json(&code_req, MODEL_JSON_COMPACT, &body_len);
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/current-identity/mfa/verify", ctrl_resp_cb, resp);
@@ -1043,7 +1047,7 @@ void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char *body, size_t body_le
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }
 
-void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char *code, void(*cb)(ziti_mfa_recovery_codes *, const ziti_error *, void *), void *ctx) {
+void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, const char *code, void(*cb)(ziti_mfa_recovery_codes *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) { return; }
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_mfa_recovery_codes_ptr_from_json, ctx);
@@ -1054,13 +1058,31 @@ void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char *code, void(*c
     tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
 }
 
-void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
+void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, const char *code, void(*cb)(void *, const ziti_error *, void *), void *ctx) {
     if (!verify_api_session(ctrl, cb, ctx)) { return; }
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
+    ziti_mfa_code_req code_req = {.code = code};
+    size_t body_len;
+    char *body = ziti_mfa_code_req_to_json(&code_req, MODEL_JSON_COMPACT, &body_len);
 
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/current-identity/mfa/recovery-codes", ctrl_resp_cb,
                                           resp);
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
+    tlsuv_http_req_data(req, body, body_len, free_body_cb);
+}
+
+void ziti_ctrl_get_totp_token(ziti_controller *ctrl, const char *code,
+                              void (*cb)(totp_token *, const ziti_error *, void *), void *ctx) {
+    if (!verify_api_session(ctrl, (void (*)(void*, const ziti_error*, void*))cb, ctx)) { return; }
+
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, totp_token_ptr_from_json, ctx);
+    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/current-api-session/totp-token",
+                                          ctrl_resp_cb, resp);
+
+    ziti_mfa_code_req mfa = { .code = code, };
+    size_t body_len;
+    char *body = ziti_mfa_code_req_to_json(&mfa, MODEL_JSON_COMPACT, &body_len);
     tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }

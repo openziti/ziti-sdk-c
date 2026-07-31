@@ -180,6 +180,8 @@ IMPL_MODEL(edge_error, EDGE_ERROR_MODEL)
 
 IMPL_MODEL(ziti_ctrl_version, ZITI_CTRL_VERSION_MODEL)
 
+IMPL_MODEL(totp_token, TOTP_TOKEN_MODEL)
+
 bool ziti_service_has_permission(const ziti_service *service, ziti_session_type sessionType) {
     if (sessionType == ziti_session_types.Dial) {
         return (service->perm_flags & ZITI_CAN_DIAL) != 0;
