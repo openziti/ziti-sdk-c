@@ -57,8 +57,6 @@ static uint64_t refresh_delay(struct legacy_auth_s *auth, ziti_api_session *);
 static const struct timeval* legacy_auth_expiration(ziti_auth_method_t *self);
 static void legacy_auth_dump(ziti_auth_method_t *self, int (*printer)(void *arg, const char *fmt, ...), void *ctx);
 
-char *ziti_mfa_code_body(const char *code);
-
 static void free_body_cb(tlsuv_http_req_t *req, char *body, ssize_t len) {
     free(body);
 }
@@ -230,12 +228,15 @@ static int legacy_auth_totp(ziti_auth_method_t *self, const char *code, auth_mfa
     }
 
     auth->mfa_cb = cb;
-    char *code_json = ziti_mfa_code_body(code);
+
+    size_t body_len;
+    ziti_mfa_code_req code_req = {.code = code};
+    char *code_json = ziti_mfa_code_req_to_json(&code_req, MODEL_JSON_COMPACT, &body_len);
 
     tlsuv_http_req_t *req = ziti_json_request(&auth->http, "POST", "/authenticate/mfa", legacy_totp_cb, auth);
     tlsuv_http_req_header(req, HTTP_ZT_SESSION, auth->session ? auth->session->token : NULL);
     tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
-    tlsuv_http_req_data(req, code_json, strlen(code_json), free_body_cb);
+    tlsuv_http_req_data(req, code_json, body_len, free_body_cb);
     return 0;
 }
 

@@ -148,14 +148,16 @@ void ziti_ctrl_post_mfa(ziti_controller *ctrl, void(*cb)(void *, const ziti_erro
 
 void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_delete_mfa(ziti_controller *ctrl, char *code, void(*cb)(void *, const ziti_error *, void *), void *ctx);
+void ziti_ctrl_delete_mfa(ziti_controller *ctrl, const char *code, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx);
+void ziti_ctrl_post_mfa_verify(ziti_controller *ctrl, const char *code, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, char *code, void(*cb)(ziti_mfa_recovery_codes *, const ziti_error *, void *), void *ctx);
+void ziti_ctrl_get_mfa_recovery_codes(ziti_controller *ctrl, const char *code, void(*cb)(ziti_mfa_recovery_codes *, const ziti_error *, void *), void *ctx);
 
-void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t body_len, void(*cb)(void *, const ziti_error *, void *), void *ctx);
+void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, const char *code, void(*cb)(void *, const ziti_error *, void *), void *ctx);
 
+void ziti_ctrl_get_totp_token(ziti_controller *ctrl, const char *code,
+                              void (*cb)(totp_token *, const ziti_error *, void *), void *ctx);
 //Authenticators
 
 void ziti_ctrl_extend_cert_authenticator(ziti_controller *ctrl, const char *authenticatorId, const char *csr, void(*cb)(ziti_extend_cert_authenticator_resp*, const ziti_error *, void *), void *ctx);
