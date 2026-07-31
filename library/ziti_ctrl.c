@@ -1065,6 +1065,23 @@ void ziti_ctrl_post_mfa_recovery_codes(ziti_controller *ctrl, char *body, size_t
     tlsuv_http_req_data(req, body, body_len, free_body_cb);
 }
 
+void ziti_ctrl_get_totp_token(ziti_controller *ctrl, const char *totp_code,
+                              void (*cb)(totp_token *, const ziti_error *, void *), void *ctx) {
+    if (!verify_api_session(ctrl, (void (*)(void*, const ziti_error*, void*))cb, ctx)) { return; }
+
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, totp_token_ptr_from_json, ctx);
+    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/current-api-session/totp-token",
+                                          ctrl_resp_cb, resp);
+
+    ziti_mfa_code_req mfa = {
+        .code = totp_code,
+    };
+    size_t body_len;
+    char *body = ziti_mfa_code_req_to_json(&mfa, MODEL_JSON_COMPACT, &body_len);
+    tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
+    tlsuv_http_req_data(req, body, body_len, free_body_cb);
+}
+
 void ziti_ctrl_extend_cert_authenticator(ziti_controller *ctrl, const char *authenticatorId, const char *csr, void(*cb)(ziti_extend_cert_authenticator_resp*, const ziti_error *, void *), void *ctx) {
     if(!verify_api_session(ctrl, (ctrl_resp_cb_t) cb, ctx)) return;
 
