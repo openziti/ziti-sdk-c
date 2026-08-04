@@ -349,8 +349,10 @@ static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl
         ctrl->version = *v;
 
         api_path *path = NULL;
+        api_path *oidc_path = NULL;
         if (v->api_versions) {
             path = model_map_get(&v->api_versions->edge, "v1");
+            oidc_path = model_map_get(&ctrl->version.api_versions->oidc, "v1");
         }
 
         if (path) {
@@ -364,7 +366,11 @@ static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl
             ziti_ctrl_cap cap = ziti_ctrl_caps.value_of(name);
             switch (cap) {
             case ziti_ctrl_cap_OIDC_AUTH:
-                ctrl->capabilities.oidc_auth = true;
+                if (oidc_path) {
+                    ctrl->capabilities.oidc_auth = true;
+                } else {
+                    CTRL_LOG(WARN, "controller reported OIDC_AUTH capability without OIDC API version");
+                }
                 break;
             case ziti_ctrl_cap_OIDC_AUTH_WITH_CSR:
                 ctrl->capabilities.oidc_auth_csr = true;
@@ -1182,12 +1188,7 @@ void ziti_ctrl_enroll_token(ziti_controller *ctrl, const char *token, const char
 bool ziti_ctrl_has_capability(ziti_controller *ctrl, ziti_ctrl_cap cap) {
     switch (cap) {
     case ziti_ctrl_cap_HA_CONTROLLER: return ctrl->capabilities.ha;
-    case ziti_ctrl_cap_OIDC_AUTH: {
-        // avoid reporting old buggy controllers as OIDC capable
-        // if OIDC binding is missing
-        return ctrl->capabilities.oidc_auth
-               && model_map_get(&ctrl->version.api_versions->oidc, "v1") != NULL;
-    }
+    case ziti_ctrl_cap_OIDC_AUTH: return ctrl->capabilities.oidc_auth;
     case ziti_ctrl_cap_OIDC_AUTH_WITH_CSR: return ctrl->capabilities.oidc_auth_csr;
     default:
         CTRL_LOG(ERROR, "TODO: add capability %d", cap);
