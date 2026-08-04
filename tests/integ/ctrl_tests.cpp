@@ -184,7 +184,7 @@ TEST_CASE_METHOD(CtrlTest, "authenticate", "[controller]") {
     check_capability(ziti_ctrl_cap_OIDC_AUTH);
     auto version = CALL(ziti_ctrl_get_version);
     REQUIRE(version);
-    auto p = map_get<api_path*>(version.value()->api_versions->oidc, "v1");
+    auto p = map_get<api_path*>(version.value()->api_versions.oidc, "v1");
     auto auth = new_oidc_auth(loop(), p, cfg->id.ca, &creds);
 
     DEFER {

@@ -896,7 +896,8 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     }
 
     bool is_ha = ziti_ctrl_has_capability(&ztx->ctrl, ziti_ctrl_cap_HA_CONTROLLER);
-    printer(ctx, "Controller%s:\t[%s] %s\n", is_ha ? "[HA]" : "", ztx->ctrl.version.version, ztx_controller(ztx));
+    printer(ctx, "Controller%s:\t[%s] %s\n", is_ha ? "[HA]" : "",
+        ztx->ctrl.version ? ztx->ctrl.version->version : "", ztx_controller(ztx));
     if (is_ha) {
         const char *url;
         ziti_controller_detail *detail;

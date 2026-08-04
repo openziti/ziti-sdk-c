@@ -81,7 +81,7 @@ TEST_CASE("controller_test","[integ]") {
         auto v = ctrl_get(ctrl, ziti_ctrl_get_version);
         REQUIRE(v != nullptr);
 
-        auto v1 = (const char*)model_map_get(&v->api_versions->edge, "v1");
+        auto v1 = (const char*)model_map_get(&v->api_versions.edge, "v1");
         CHECK(v1 != nullptr);
 
         auto auth = new_legacy_auth(loop, config.controller_url, tls, true);

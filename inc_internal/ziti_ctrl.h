@@ -51,7 +51,7 @@ typedef struct ziti_controller_s {
         bool oidc_auth:1;
         bool oidc_auth_csr:1;
     } capabilities;
-    ziti_ctrl_version version;
+    ziti_ctrl_version *version;
 
     bool has_token;
     cstr instance_id;

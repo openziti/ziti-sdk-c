@@ -696,8 +696,7 @@ TEST_CASE("parse-ctrl-version", "[model]") {
 
     ziti_ctrl_version ver;
     REQUIRE(parse_ziti_ctrl_version(&ver, json, strlen(json)) > 0);
-    REQUIRE(ver.api_versions != nullptr);
-    auto v1Path = (api_path *) model_map_get(&ver.api_versions->edge, "v1");
+    auto v1Path = (api_path *) model_map_get(&ver.api_versions.edge, "v1");
     REQUIRE(v1Path);
     REQUIRE_THAT(v1Path->path, Catch::Matchers::Equals("/edge/v1"));
 
@@ -707,7 +706,6 @@ TEST_CASE("parse-ctrl-version", "[model]") {
 
     free_ziti_ctrl_version(&ver);
     CHECK(ver.capabilities == nullptr);
-    CHECK(ver.api_versions == nullptr);
     INFO("should be safe to free object again");
     free_ziti_ctrl_version(&ver);
 }

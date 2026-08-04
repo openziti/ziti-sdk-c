@@ -127,6 +127,7 @@ struct ctrl_resp {
     ctrl_cb_t ctrl_cb;
 };
 
+static void internal_version_cb(ziti_ctrl_version *v, const ziti_error *e, void *ctx);
 static void internal_get_version(ziti_controller *ctrl);
 
 static struct ctrl_resp *prepare_resp(ziti_controller *ctrl, ctrl_resp_cb_t cb, body_parse_fn parser, void *ctx);
@@ -222,7 +223,8 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
 
         const char *instance_id = find_header(r, "ziti-instance-id");
         if (instance_id) {
-            if (!cstr_equals(&ctrl->instance_id, instance_id) && strcmp(r->req->path, "/version") != 0) {
+            if (!cstr_equals(&ctrl->instance_id, instance_id) &&
+                resp->resp_cb != (ctrl_resp_cb_t)internal_version_cb) {
                 CTRL_LOG(DEBUG, "controller restart detected. requesting version information");
                 internal_get_version(ctrl);
             }
@@ -339,13 +341,13 @@ static void internal_version_cb(ziti_ctrl_version *v, const ziti_error *e, void 
     }
 
     if (v) {
-        if (ctrl->version.version != NULL &&
-            strcmp(ctrl->version.version, v->version) != 0) {
+        if (ctrl->version != NULL && ctrl->version->version != NULL &&
+            strcmp(ctrl->version->version, v->version) != 0) {
             CTRL_LOG(INFO, "controller updated to %s(%s)[%s]",
                      v->version, v->revision, v->build_date);
         }
-        free_ziti_ctrl_version(&ctrl->version);
-        ctrl->version = *v;
+        free_ziti_ctrl_version_ptr(ctrl->version);
+        ctrl->version = v;
 
         api_path *path = model_map_get(&v->api_versions.edge, "v1");
 
@@ -355,8 +357,8 @@ static void internal_version_cb(ziti_ctrl_version *v, const ziti_error *e, void 
             CTRL_LOG(WARN, "controller did not provide expected(v1) API version path");
         }
         memset(&ctrl->capabilities, 0, sizeof(ctrl->capabilities));
-        for (int idx = 0; ctrl->version.capabilities[idx] != NULL; idx++) {
-            model_string name = ctrl->version.capabilities[idx];
+        for (int idx = 0; ctrl->version->capabilities[idx] != NULL; idx++) {
+            model_string name = ctrl->version->capabilities[idx];
             ziti_ctrl_cap cap = ziti_ctrl_caps.value_of(name);
             switch (cap) {
             case ziti_ctrl_cap_OIDC_AUTH:
@@ -374,9 +376,6 @@ static void internal_version_cb(ziti_ctrl_version *v, const ziti_error *e, void 
                 break;
             }
         }
-
-        // data was moved to ctrl.version
-        free(v);
     }
 }
 
@@ -690,7 +689,8 @@ int ziti_ctrl_cancel(ziti_controller *ctrl) {
 }
 
 int ziti_ctrl_close(ziti_controller *ctrl) {
-    free_ziti_ctrl_version(&ctrl->version);
+    free_ziti_ctrl_version_ptr(ctrl->version);
+    ctrl->version = NULL;
     model_map_clear(&ctrl->endpoints, (void (*)(void *)) free_ziti_controller_detail_ptr);
     cstr_drop(&ctrl->url);
     cstr_drop(&ctrl->instance_id);
@@ -1157,7 +1157,8 @@ bool ziti_ctrl_has_capability(ziti_controller *ctrl, ziti_ctrl_cap cap) {
         // avoid reporting old buggy controllers as OIDC capable
         // if OIDC binding is missing
         return ctrl->capabilities.oidc_auth
-               && model_map_get(&ctrl->version.api_versions.oidc, "v1") != NULL;
+               && ctrl->version != NULL
+               && model_map_get(&ctrl->version->api_versions.oidc, "v1") != NULL;
     }
     case ziti_ctrl_cap_OIDC_AUTH_WITH_CSR: return ctrl->capabilities.oidc_auth_csr;
     default:
