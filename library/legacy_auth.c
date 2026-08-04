@@ -166,6 +166,7 @@ int legacy_auth_refresh(ziti_auth_method_t *self) {
 int legacy_auth_stop(ziti_auth_method_t *self) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
     uv_timer_stop(&auth->timer);
+    tlsuv_http_cancel_all(&auth->http);
     return ZITI_OK;
 }
 

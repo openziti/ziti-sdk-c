@@ -127,6 +127,7 @@ struct ctrl_resp {
     ctrl_cb_t ctrl_cb;
 };
 
+static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl_resp *resp);
 static void internal_get_version(ziti_controller *ctrl);
 
 static struct ctrl_resp *prepare_resp(ziti_controller *ctrl, ctrl_resp_cb_t cb, body_parse_fn parser, void *ctx);
@@ -222,7 +223,8 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
 
         const char *instance_id = find_header(r, "ziti-instance-id");
         if (instance_id) {
-            if (!cstr_equals(&ctrl->instance_id, instance_id) && strcmp(r->req->path, "/version") != 0) {
+            if (!cstr_equals(&ctrl->instance_id, instance_id) &&
+                resp->ctrl_cb != (ctrl_cb_t)internal_version_cb) {
                 CTRL_LOG(DEBUG, "controller restart detected. requesting version information");
                 internal_get_version(ctrl);
             }
@@ -347,8 +349,10 @@ static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl
         ctrl->version = *v;
 
         api_path *path = NULL;
+        api_path *oidc_path = NULL;
         if (v->api_versions) {
             path = model_map_get(&v->api_versions->edge, "v1");
+            oidc_path = model_map_get(&ctrl->version.api_versions->oidc, "v1");
         }
 
         if (path) {
@@ -362,7 +366,11 @@ static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl
             ziti_ctrl_cap cap = ziti_ctrl_caps.value_of(name);
             switch (cap) {
             case ziti_ctrl_cap_OIDC_AUTH:
-                ctrl->capabilities.oidc_auth = true;
+                if (oidc_path) {
+                    ctrl->capabilities.oidc_auth = true;
+                } else {
+                    CTRL_LOG(WARN, "controller reported OIDC_AUTH capability without OIDC API version");
+                }
                 break;
             case ziti_ctrl_cap_OIDC_AUTH_WITH_CSR:
                 ctrl->capabilities.oidc_auth_csr = true;
