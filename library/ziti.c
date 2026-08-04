@@ -2192,26 +2192,24 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
         ztx_set_deadline(ztx, 5000, &ztx->refresh_deadline, pre_auth_retry, ztx);
         return;
     }
-
-    bool use_oidc = ziti_ctrl_has_capability(&ztx->ctrl, ziti_ctrl_caps.OIDC_AUTH);
-
     ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
             ztx_controller(ztx), version->version, version->revision, version->build_date);
+
+    bool use_oidc = ziti_ctrl_has_capability(&ztx->ctrl, ziti_ctrl_caps.OIDC_AUTH);
+    api_path *oidc_path = model_map_get(&version->api_versions->oidc, "v1");
+    if (use_oidc && oidc_path == NULL) {
+        ZTX_LOG(WARN, "controller reported OIDC_AUTH capability without OIDC API version");
+        use_oidc = false;
+    }
+
     ZTX_LOG(INFO, "using %s authentication method", use_oidc ? "OIDC" : "Legacy");
     enum AuthenticationMethod m = use_oidc ? OIDC : LEGACY;
-
     if (ztx->auth_method && ztx->auth_method->kind != m) {
         ZTX_LOG(INFO, "current auth method does not match controller, switching to %s method",
                 use_oidc ? "OIDC" : "LEGACY");
         ztx->auth_method->stop(ztx->auth_method);
         ztx->auth_method->free(ztx->auth_method);
         ztx->auth_method = NULL;
-    }
-
-    api_path *oidc_path = model_map_get(&version->api_versions->oidc, "v1");
-    if (use_oidc && oidc_path == NULL) {
-        ZTX_LOG(ERROR, "controller reported OIDC_AUTH capability without OIDC API version");
-        use_oidc = false;
     }
 
     // make sure ziti_ctrl client is configured for correct auth
