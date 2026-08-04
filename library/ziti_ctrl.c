@@ -331,8 +331,9 @@ static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_e
     free(arr);
 }
 
-static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl_resp *resp) {
-    ziti_controller *ctrl = resp->ctrl;
+static void internal_version_cb(ziti_ctrl_version *v, const ziti_error *e, void *ctx) {
+    ziti_controller *ctrl = ctx;
+
     if (e) {
         CTRL_LOG(WARN, "%s(%s)", e->code, e->message);
     }
@@ -346,13 +347,10 @@ static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl
         free_ziti_ctrl_version(&ctrl->version);
         ctrl->version = *v;
 
-        api_path *path = NULL;
-        if (v->api_versions) {
-            path = model_map_get(&v->api_versions->edge, "v1");
-        }
+        api_path *path = model_map_get(&v->api_versions.edge, "v1");
 
         if (path) {
-            tlsuv_http_set_path_prefix(resp->ctrl->client, path->path);
+            tlsuv_http_set_path_prefix(ctrl->client, path->path);
         } else {
             CTRL_LOG(WARN, "controller did not provide expected(v1) API version path");
         }
@@ -379,18 +377,7 @@ static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl
 
         // data was moved to ctrl.version
         free(v);
-        v = &ctrl->version;
     }
-
-    if (ctrl->version_cb) {
-        ctrl->version_cb(v, e, ctrl->version_cb_ctx);
-    }
-
-    ctrl->version_req = NULL;
-    ctrl->version_cb = NULL;
-    ctrl->version_cb_ctx = NULL;
-
-    ctrl_default_cb(NULL, e, resp);
 }
 
 void ziti_ctrl_set_legacy(ziti_controller *ctrl, bool legacy) {
@@ -715,26 +702,12 @@ int ziti_ctrl_close(ziti_controller *ctrl) {
 }
 
 static void internal_get_version(ziti_controller *ctrl) {
-    struct ctrl_resp *resp = MAKE_RESP(ctrl, NULL, ziti_ctrl_version_ptr_from_json, NULL);
-    resp->ctrl_cb = (ctrl_cb_t) internal_version_cb;
-
-    ctrl->version_req = start_request(ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
+    ziti_ctrl_get_version(ctrl, internal_version_cb, ctrl);
 }
 
 void ziti_ctrl_get_version(ziti_controller *ctrl, ctrl_version_cb cb, void *ctx) {
-    // already received version just callback with it
-    if (ctrl->version.version != NULL) {
-        cb(&ctrl->version, NULL, ctx);
-        return;
-    }
-    ctrl->version_cb = cb;
-    ctrl->version_cb_ctx = ctx;
-
-    // if no version present and no active request,
-    // /version might have failed previously, so try requesting it again
-    if (ctrl->version_req == NULL) {
-        internal_get_version(ctrl);
-    }
+    struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_ctrl_version_ptr_from_json, ctx);
+    start_request(ctrl->client, "GET", "/version", ctrl_resp_cb, resp);
 }
 
 static bool verify_api_session(ziti_controller *ctrl, ctrl_resp_cb_t cb, void *ctx) {
@@ -1180,7 +1153,12 @@ void ziti_ctrl_enroll_token(ziti_controller *ctrl, const char *token, const char
 bool ziti_ctrl_has_capability(ziti_controller *ctrl, ziti_ctrl_cap cap) {
     switch (cap) {
     case ziti_ctrl_cap_HA_CONTROLLER: return ctrl->capabilities.ha;
-    case ziti_ctrl_cap_OIDC_AUTH: return ctrl->capabilities.oidc_auth;
+    case ziti_ctrl_cap_OIDC_AUTH: {
+        // avoid reporting old buggy controllers as OIDC capable
+        // if OIDC binding is missing
+        return ctrl->capabilities.oidc_auth
+               && model_map_get(&ctrl->version.api_versions.oidc, "v1") != NULL;
+    }
     case ziti_ctrl_cap_OIDC_AUTH_WITH_CSR: return ctrl->capabilities.oidc_auth_csr;
     default:
         CTRL_LOG(ERROR, "TODO: add capability %d", cap);

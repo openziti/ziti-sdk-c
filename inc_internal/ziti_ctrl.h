@@ -29,7 +29,7 @@ typedef void (*ziti_ctrl_redirect_cb)(const char *new_address, void *ctx);
 
 typedef void (*ziti_ctrl_change_cb)(void *ctx, const model_map *endpoints);
 
-typedef void (*ctrl_version_cb)(const ziti_ctrl_version *, const ziti_error *, void *);
+typedef void (*ctrl_version_cb)(ziti_ctrl_version *, const ziti_error *, void *);
 
 typedef void(*routers_cb)(ziti_service_routers *srv_routers, const ziti_error *, void *);
 
@@ -52,9 +52,6 @@ typedef struct ziti_controller_s {
         bool oidc_auth_csr:1;
     } capabilities;
     ziti_ctrl_version version;
-    ctrl_version_cb version_cb;
-    void *version_cb_ctx;
-    void *version_req;
 
     bool has_token;
     cstr instance_id;

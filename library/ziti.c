@@ -55,7 +55,7 @@
 
 int code_to_error(const char *code);
 
-static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_error *err, void *ctx);
+static void version_pre_auth_cb(ziti_ctrl_version *version, const ziti_error *err, void *ctx);
 static void update_ctrl_status(ziti_context ztx, int code, const char *msg);
 
 static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, void *ctx);
@@ -1941,7 +1941,7 @@ void ztx_prepare(uv_prepare_t *prep) {
 
     if (ztx->auth_method && ztx->auth_method->kind == LEGACY) {
         if (ziti_ctrl_has_capability(&ztx->ctrl, ziti_ctrl_caps.OIDC_AUTH)) {
-            version_pre_auth_cb(&ztx->ctrl.version, NULL, ztx);
+            ziti_re_auth(ztx);
         }
     }
     if (!cstr_is_empty(&ztx->session_token)) {
@@ -2185,7 +2185,7 @@ static void pre_auth_retry(void *data) {
     }
 }
 
-static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_error *err, void *ctx) {
+static void version_pre_auth_cb(ziti_ctrl_version *version, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err) {
         ZTX_LOG(WARN, "failed to get controller version: %s/%s", err->code, err->message);
@@ -2196,7 +2196,7 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
             ztx_controller(ztx), version->version, version->revision, version->build_date);
 
     bool use_oidc = ziti_ctrl_has_capability(&ztx->ctrl, ziti_ctrl_caps.OIDC_AUTH);
-    api_path *oidc_path = model_map_get(&version->api_versions->oidc, "v1");
+    api_path *oidc_path = model_map_get(&version->api_versions.oidc, "v1");
     if (use_oidc && oidc_path == NULL) {
         ZTX_LOG(WARN, "controller reported OIDC_AUTH capability without OIDC API version");
         use_oidc = false;
@@ -2228,9 +2228,9 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
         if (ztx->ext_auth == NULL && ztx->id_creds.key == NULL) {
             ZTX_LOG(DEBUG, "no credentials available, starting external auth");
             ztx_init_external_auth(ztx, NULL, false);
-            return;
+        } else {
+            ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
         }
-        ztx->auth_method->start(ztx->auth_method, ztx_auth_state_cb, ztx);
 
     } else if (ztx->auth_method->set_endpoint) {
         // OIDC endpoint may have changed
@@ -2238,6 +2238,7 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
         ztx->auth_method->set_endpoint(ztx->auth_method, oidc_path);
         ztx->auth_method->force_refresh(ztx->auth_method);
     }
+    free_ziti_ctrl_version_ptr(version);
 
     if (ztx->ext_auth) {
         ext_oidc_client_refresh(ztx->ext_auth);
