@@ -127,6 +127,7 @@ struct ctrl_resp {
     ctrl_cb_t ctrl_cb;
 };
 
+static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl_resp *resp);
 static void internal_get_version(ziti_controller *ctrl);
 
 static struct ctrl_resp *prepare_resp(ziti_controller *ctrl, ctrl_resp_cb_t cb, body_parse_fn parser, void *ctx);
@@ -222,7 +223,8 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
 
         const char *instance_id = find_header(r, "ziti-instance-id");
         if (instance_id) {
-            if (!cstr_equals(&ctrl->instance_id, instance_id) && strcmp(r->req->path, "/version") != 0) {
+            if (!cstr_equals(&ctrl->instance_id, instance_id) &&
+                resp->ctrl_cb != (ctrl_cb_t)internal_version_cb) {
                 CTRL_LOG(DEBUG, "controller restart detected. requesting version information");
                 internal_get_version(ctrl);
             }
@@ -1180,7 +1182,12 @@ void ziti_ctrl_enroll_token(ziti_controller *ctrl, const char *token, const char
 bool ziti_ctrl_has_capability(ziti_controller *ctrl, ziti_ctrl_cap cap) {
     switch (cap) {
     case ziti_ctrl_cap_HA_CONTROLLER: return ctrl->capabilities.ha;
-    case ziti_ctrl_cap_OIDC_AUTH: return ctrl->capabilities.oidc_auth;
+    case ziti_ctrl_cap_OIDC_AUTH: {
+        // avoid reporting old buggy controllers as OIDC capable
+        // if OIDC binding is missing
+        return ctrl->capabilities.oidc_auth
+               && model_map_get(&ctrl->version.api_versions->oidc, "v1") != NULL;
+    }
     case ziti_ctrl_cap_OIDC_AUTH_WITH_CSR: return ctrl->capabilities.oidc_auth_csr;
     default:
         CTRL_LOG(ERROR, "TODO: add capability %d", cap);
