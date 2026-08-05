@@ -2306,7 +2306,7 @@ ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er) {
 }
 
 struct cert_ext_req {
-    ziti_api_session *session;
+    cstr auth_id;
     ziti_context ztx;
     ziti_extend_cert_authenticator_resp *cert_resp;
     tlsuv_certificate_t new_cert;
@@ -2351,7 +2351,7 @@ static void cert_verify_cb(void *r, const ziti_error *err, void *ctx) {
 
     done:
     if (req->new_cert) req->new_cert->free(req->new_cert);
-    free_ziti_api_session_ptr(req->session);
+    cstr_drop(&req->auth_id);
     free_ziti_extend_cert_authenticator_resp_ptr(req->cert_resp);
     free(req);
 }
@@ -2361,7 +2361,7 @@ static void cert_extend_cb(ziti_extend_cert_authenticator_resp *resp, const ziti
     ziti_context ztx = req->ztx;
     if (err) {
         ZTX_LOG(ERROR, "failed to extend identity certificate: %s", err->message);
-        free_ziti_api_session_ptr(req->session);
+        cstr_drop(&req->auth_id);
         free(req);
         return;
     }
@@ -2370,7 +2370,7 @@ static void cert_extend_cb(ziti_extend_cert_authenticator_resp *resp, const ziti
     if (ztx->tlsCtx->load_cert(&req->new_cert, resp->client_cert_pem, strlen(resp->client_cert_pem)) != 0) {
         ZTX_LOG(ERROR, "failed to parse new certificate");
         free_ziti_extend_cert_authenticator_resp_ptr(resp);
-        free_ziti_api_session_ptr(req->session);
+        cstr_drop(&req->auth_id);
         free(req);
         return;
     }
@@ -2378,7 +2378,7 @@ static void cert_extend_cb(ziti_extend_cert_authenticator_resp *resp, const ziti
     ZTX_LOG(INFO, "successfully generated extended cert");
     req->cert_resp = resp;
     ziti_ctrl_verify_extend_cert_authenticator(
-            ztx_get_controller(ztx), req->session->authenticator_id,
+            ztx_get_controller(ztx), cstr_str(&req->auth_id),
             resp->client_cert_pem, cert_verify_cb, req);
 
 }
@@ -2447,12 +2447,12 @@ extend:
     }
 
     NEWP(ext_req, struct cert_ext_req);
-    ext_req->session = api_sess;
+    ext_req->auth_id = cstr_from(api_sess->authenticator_id);
     ext_req->ztx = ztx;
 
     api_sess = NULL;
     ziti_ctrl_extend_cert_authenticator(ztx_get_controller(ztx),
-                                        ext_req->session->authenticator_id, csr,
+                                        cstr_str(&ext_req->auth_id), csr,
                                         cert_extend_cb, ext_req);
 
 done:
