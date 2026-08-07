@@ -1000,6 +1000,16 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
     if (ziti_http_error_is_temporary(http_resp, resp) && delay > 0) {
         OIDC_LOG(WARN, "OIDC token refresh failed (%d/%s), attempt %d",
                  http_resp->code, err, clt->refresh_failures);
+
+        // a transport-level failure can leave the http client's connection wedged, where every
+        // subsequent attempt fails immediately without ever reaching the server. force a fresh
+        // connection periodically so retries actually get a chance to succeed.
+        if (http_resp->code < 0 && clt->refresh_failures % 3 == 0) {
+            OIDC_LOG(WARN, "resetting OIDC connection after 3 more consecutive transport failures (%d total)",
+                     clt->refresh_failures);
+            tlsuv_http_cancel_all(&clt->http);
+        }
+
         OIDC_LOG(DEBUG, "scheduling token refresh retry in %" PRIu64 ".%03" PRIu64 " s",
                  delay / 1000, delay % 1000);
         uv_timer_start(clt->timer, ext_refresh_time_cb, delay, 0);
