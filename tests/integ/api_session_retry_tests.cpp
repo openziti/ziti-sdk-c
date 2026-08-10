@@ -38,10 +38,29 @@
 // produce one.
 
 #include "fixtures.h"
+
+// utils.h #includes <stc/cstr.h> *before* its own extern "C" block starts,
+// so a C++ TU that reaches it declares STC's out-of-line functions (e.g.
+// _cstr_init) with C++ linkage, while the actual symbols are compiled as
+// plain C (into libziti/libstc) - undefined reference at link time, on
+// toolchains that don't tolerate the mismatch. zt_internal.h pulls in
+// utils.h this same unwrapped way, but *also* pulls in metrics.h, which
+// needs real C++ linkage for <atomic> templates - so zt_internal.h itself
+// can't just be wrapped wholesale. Pre-including utils.h here under
+// extern "C" fixes the STC linkage for this translation unit; the
+// subsequent normal #include "zt_internal.h" then finds utils.h already
+// guarded (no-op re-include) and processes metrics.h unwrapped as usual.
+// This is the first C++ TU in the test suite to include zt_internal.h
+// directly, which is why this hadn't surfaced before.
+extern "C" {
+#include "utils.h"
+}
 #include "zt_internal.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <thread>
@@ -278,14 +297,20 @@ TEST_CASE_METHOD(ApiSessionRetryTestCase, "api-session-recovers-after-transient-
     TogglableRelay relay(realCtrl.host, realCtrl.port);
     std::string redirected = rewrite_hostport(original, realCtrl.str(), "127.0.0.1:" + std::to_string(relay.port));
 
-    char tmpPath[] = "/tmp/api_session_retry_identity.XXXXXX";
-    int fd = mkstemp(tmpPath);
-    REQUIRE(fd >= 0);
-    REQUIRE(write(fd, redirected.data(), redirected.size()) == (ssize_t) redirected.size());
-    close(fd);
-    DEFER { unlink(tmpPath); };
+    // mkstemp/write/unlink are POSIX-only; std::filesystem + <fstream> keeps
+    // this portable to Windows without a platform shim.
+    auto tmpPath = (std::filesystem::temp_directory_path() /
+                     ("api_session_retry_identity_" +
+                      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
+                      ".json")).string();
+    {
+        std::ofstream out(tmpPath, std::ios::binary);
+        REQUIRE(out.good());
+        out << redirected;
+    }
+    DEFER { std::filesystem::remove(tmpPath); };
 
-    REQUIRE_ZITI_OK(ziti_load_config(&config, tmpPath));
+    REQUIRE_ZITI_OK(ziti_load_config(&config, tmpPath.c_str()));
     REQUIRE_ZITI_OK(ziti_context_init(&ztx, &config));
 
     ziti_options options{
