@@ -46,16 +46,37 @@
 #include <sstream>
 #include <thread>
 
-#include <sys/socket.h>
-#include <netinet/in.h>
+// Platform socket shims. ziti_socket_t itself (ziti/zitilib.h, already
+// pulled in via fixtures.h) is this SDK's existing cross-platform socket
+// type (SOCKET on Windows, int elsewhere). What's missing here is
+// everything zitilib's own call sites just inline #if _WIN32 for at each
+// use instead (zl_sockets.c): closesocket vs close, INVALID_SOCKET vs -1,
+// and the socket() include set, since Windows/mingw has neither
+// <sys/socket.h> nor a negative-int failure convention for socket()/accept().
+#if _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+static constexpr ziti_socket_t INVALID_SOCK = INVALID_SOCKET;
+#define CLOSESOCK closesocket
+#define SHUT_BOTH SD_BOTH
+#define SHUT_SEND SD_SEND
+#else
 #include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <unistd.h>
+static constexpr ziti_socket_t INVALID_SOCK = -1;
+#define CLOSESOCK close
+#define SHUT_BOTH SHUT_RDWR
+#define SHUT_SEND SHUT_WR
+#endif
 
 namespace {
 
 // A dumb byte-splicing TCP relay that can be told to refuse new connections
 // on demand, without touching connections already established. Runs on raw
-// blocking POSIX sockets on background threads, independent of the test's
+// blocking sockets on background threads, independent of the test's
 // uv_loop, so it can't be starved by (or interfere with) the ziti_context
 // under test.
 class TogglableRelay {
@@ -65,9 +86,13 @@ public:
 
     TogglableRelay(std::string upstream_host, uint16_t upstream_port)
         : upstream_host_(std::move(upstream_host)), upstream_port_(upstream_port) {
-        listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+#if _WIN32
+        WSADATA wsaData;
+        WSAStartup(MAKEWORD(2, 2), &wsaData);
+#endif
+        listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
         int one = 1;
-        setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+        setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, (const char *) &one, sizeof(one));
 
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
@@ -89,16 +114,19 @@ public:
 
     ~TogglableRelay() {
         stop_ = true;
-        shutdown(listen_fd_, SHUT_RDWR);
-        close(listen_fd_);
+        shutdown(listen_fd_, SHUT_BOTH);
+        CLOSESOCK(listen_fd_);
         if (accept_thread_.joinable()) accept_thread_.join();
+#if _WIN32
+        WSACleanup();
+#endif
     }
 
 private:
     void acceptLoop() {
         while (!stop_) {
-            int client = accept(listen_fd_, nullptr, nullptr);
-            if (client < 0) {
+            ziti_socket_t client = accept(listen_fd_, nullptr, nullptr);
+            if (client == INVALID_SOCK) {
                 if (stop_) return;
                 continue;
             }
@@ -107,43 +135,54 @@ private:
                 // FIN, so the client's TLS handshake fails immediately
                 // instead of sitting on a read timeout.
                 linger lin{1, 0};
-                setsockopt(client, SOL_SOCKET, SO_LINGER, &lin, sizeof(lin));
-                close(client);
+                setsockopt(client, SOL_SOCKET, SO_LINGER, (const char *) &lin, sizeof(lin));
+                CLOSESOCK(client);
                 continue;
             }
             std::thread(&TogglableRelay::serveConnection, this, client).detach();
         }
     }
 
-    void serveConnection(int client) {
-        int upstream = socket(AF_INET, SOCK_STREAM, 0);
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(upstream_port_);
-        inet_pton(AF_INET, upstream_host_.c_str(), &addr.sin_addr);
-        if (connect(upstream, (sockaddr *) &addr, sizeof(addr)) != 0) {
-            close(client);
+    void serveConnection(ziti_socket_t client) {
+        addrinfo hints{};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        addrinfo *resolved = nullptr;
+        auto portStr = std::to_string(upstream_port_);
+        // getaddrinfo (not inet_pton) because upstream_host_ is whatever the
+        // identity file's ztAPI says - usually a hostname, not a literal IP.
+        if (getaddrinfo(upstream_host_.c_str(), portStr.c_str(), &hints, &resolved) != 0 || resolved == nullptr) {
+            CLOSESOCK(client);
+            return;
+        }
+        ziti_socket_t upstream = ::socket(resolved->ai_family, resolved->ai_socktype, resolved->ai_protocol);
+        bool connected = upstream != INVALID_SOCK &&
+                          connect(upstream, resolved->ai_addr, (int) resolved->ai_addrlen) == 0;
+        freeaddrinfo(resolved);
+        if (!connected) {
+            CLOSESOCK(client);
+            if (upstream != INVALID_SOCK) CLOSESOCK(upstream);
             return;
         }
         std::thread c2u(&TogglableRelay::pump, this, client, upstream);
         pump(upstream, client);
         c2u.join();
-        close(client);
-        close(upstream);
+        CLOSESOCK(client);
+        CLOSESOCK(upstream);
     }
 
-    void pump(int from, int to) {
+    void pump(ziti_socket_t from, ziti_socket_t to) {
         char buf[8192];
-        ssize_t n;
+        int n;
         while ((n = recv(from, buf, sizeof(buf), 0)) > 0) {
             if (send(to, buf, n, 0) <= 0) break;
         }
-        shutdown(to, SHUT_WR);
+        shutdown(to, SHUT_SEND);
     }
 
     std::string upstream_host_;
     uint16_t upstream_port_;
-    int listen_fd_{};
+    ziti_socket_t listen_fd_{};
     std::atomic<bool> stop_{false};
     std::thread accept_thread_;
 };

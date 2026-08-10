@@ -1815,8 +1815,16 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
         ZTX_LOG(ERROR, "failed to get CA bundle from controller: %s", err->message);
         // one-shot post-auth fetch with no periodic counterpart - without a
         // retry here, a single transient failure permanently skips picking
-        // up a rotated CA bundle for the life of the context.
-        ztx_set_deadline(ztx, 5000, &ztx->ca_bundle_deadline, ca_bundle_retry, ztx);
+        // up a rotated CA bundle for the life of the context. Guarded on
+        // ztx->enabled: a failure delivered while the context is shutting
+        // down (e.g. a request that errors out for a reason other than
+        // ziti_ctrl_cancel()'s own ZITI_DISABLED, on the same tick as
+        // ziti_stop_internal) must not re-arm a deadline after
+        // ziti_stop_internal has already cleared it - nothing would ever
+        // clear it again, and it would fire into a freed context.
+        if (ztx->enabled) {
+            ztx_set_deadline(ztx, 5000, &ztx->ca_bundle_deadline, ca_bundle_retry, ztx);
+        }
     }
 
     error:
@@ -2495,7 +2503,12 @@ static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, vo
             // retried by the recurring services-refresh timer): without an
             // explicit retry here, a single transient failure leaves
             // ztx->session permanently NULL for the life of the context.
-            ztx_set_deadline(ztx, 5000, &ztx->api_session_deadline, api_session_retry, ztx);
+            // Guarded on ztx->enabled - see the matching comment in
+            // ca_bundle_cb for why: a failure delivered mid-teardown must
+            // not re-arm a deadline nothing will ever clear again.
+            if (ztx->enabled) {
+                ztx_set_deadline(ztx, 5000, &ztx->api_session_deadline, api_session_retry, ztx);
+            }
         }
         return;
     }
