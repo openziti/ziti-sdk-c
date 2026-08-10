@@ -31,6 +31,7 @@ add_executable(IntegrationTests
         legacy-auth.cpp
         oidc-tests.cpp
         ctrl_tests.cpp
+        api_session_retry_tests.cpp
         enroll_tests.cpp
         enroll_token_tests.cpp
         enroll_mode_tests.cpp

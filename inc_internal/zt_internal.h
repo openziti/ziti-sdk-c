@@ -185,6 +185,8 @@ struct ziti_ctx {
     struct auth_queries *auth_queries;
 
     deadline_t refresh_deadline;
+    deadline_t api_session_deadline;
+    deadline_t ca_bundle_deadline;
     deadline_list_t deadlines;
 
     uv_loop_t *loop;
