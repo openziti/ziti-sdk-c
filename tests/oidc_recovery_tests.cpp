@@ -43,6 +43,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -54,6 +55,8 @@
 #include <ws2tcpip.h>
 static constexpr int INVALID_SOCK = (int) INVALID_SOCKET;
 #define CLOSESOCK closesocket
+#define SHUT_SEND SD_SEND
+#define SHUT_BOTH SD_BOTH
 #else
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -61,6 +64,8 @@ static constexpr int INVALID_SOCK = (int) INVALID_SOCKET;
 #include <unistd.h>
 static constexpr int INVALID_SOCK = -1;
 #define CLOSESOCK close
+#define SHUT_BOTH SHUT_RDWR
+#define SHUT_SEND SHUT_WR
 #endif
 
 namespace {
@@ -111,7 +116,7 @@ public:
 
     ~FakeTokenEndpoint() {
         stop_ = true;
-        shutdown(listen_fd_, 2 /*SHUT_RDWR*/);
+        shutdown(listen_fd_, SHUT_BOTH);
         CLOSESOCK(listen_fd_);
         if (accept_thread_.joinable()) accept_thread_.join();
 
@@ -142,16 +147,32 @@ private:
     }
 
     static void serveAlive(int client) {
-        // Don't bother parsing the request - read until we see the
-        // end-of-headers marker and just respond; the client (tlsuv_http)
-        // is the only thing that ever talks to this socket and it always
-        // sends a well-formed HTTP/1.1 request.
+        // Read headers, then drain exactly Content-Length bytes of body -
+        // the refresh POST always carries a form-encoded body. Leaving any
+        // of it unread in the socket's receive buffer and then closing is
+        // a well-known way to get an abortive close (RST) on Windows
+        // instead of a graceful FIN, which can discard the response we
+        // already handed to send() - POSIX stacks are far more forgiving
+        // of this shortcut, which is why skipping this only broke Windows.
         char buf[4096];
         std::string received;
-        while (received.find("\r\n\r\n") == std::string::npos) {
+        size_t headerEnd;
+        while ((headerEnd = received.find("\r\n\r\n")) == std::string::npos) {
             ssize_t n = recv(client, buf, sizeof(buf), 0);
             if (n <= 0) { CLOSESOCK(client); return; }
             received.append(buf, n);
+        }
+
+        size_t contentLength = 0;
+        size_t clPos = received.find("Content-Length:");
+        if (clPos != std::string::npos && clPos < headerEnd) {
+            contentLength = (size_t) std::strtoul(received.c_str() + clPos + strlen("Content-Length:"), nullptr, 10);
+        }
+        size_t bodySoFar = received.size() - (headerEnd + 4);
+        while (bodySoFar < contentLength) {
+            ssize_t n = recv(client, buf, sizeof(buf), 0);
+            if (n <= 0) { CLOSESOCK(client); return; }
+            bodySoFar += (size_t) n;
         }
 
         std::string body = std::string("{\"access_token\":\"") + FAKE_ACCESS_TOKEN_2 +
@@ -161,6 +182,11 @@ private:
                             "Content-Length: " + std::to_string(body.size()) + "\r\n"
                             "Connection: close\r\n\r\n" + body;
         send(client, resp.data(), resp.size(), 0);
+        // Closing right after send() risks the OS discarding the just-sent
+        // bytes with an abortive close instead of flushing them - shutdown()
+        // the write side first so the client is guaranteed to see the
+        // response before the FIN.
+        shutdown(client, SHUT_SEND);
         CLOSESOCK(client);
     }
 
@@ -244,6 +270,10 @@ TEST_CASE("oidc-refresh-recovers-after-silent-connection-death", "[oidc]") {
 
     oidc_client_close(&clt, [](oidc_client_t *) {});
     for (int i = 0; i < 10 && uv_run(loop, UV_RUN_ONCE) != 0; i++) {}
-    uv_loop_close(loop);
+    // uv_loop_close() only tears down the loop's internal resources - the
+    // uv_loop_t itself was heap-allocated by uv_loop_new() and needs
+    // uv_loop_delete() (close + free) or it leaks, which LeakSanitizer
+    // catches even on an otherwise fully-passing run.
+    uv_loop_delete(loop);
     tls->free_ctx(tls);
 }
