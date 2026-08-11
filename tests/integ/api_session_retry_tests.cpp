@@ -39,23 +39,18 @@
 
 #include "fixtures.h"
 
-// utils.h #includes <stc/cstr.h> *before* its own extern "C" block starts,
-// so a C++ TU that reaches it declares STC's out-of-line functions (e.g.
-// _cstr_init) with C++ linkage, while the actual symbols are compiled as
-// plain C (into libziti/libstc) - undefined reference at link time, on
-// toolchains that don't tolerate the mismatch. zt_internal.h pulls in
-// utils.h this same unwrapped way, but *also* pulls in metrics.h, which
-// needs real C++ linkage for <atomic> templates - so zt_internal.h itself
-// can't just be wrapped wholesale. Pre-including utils.h here under
-// extern "C" fixes the STC linkage for this translation unit; the
-// subsequent normal #include "zt_internal.h" then finds utils.h already
-// guarded (no-op re-include) and processes metrics.h unwrapped as usual.
-// This is the first C++ TU in the test suite to include zt_internal.h
-// directly, which is why this hadn't surfaced before.
-extern "C" {
-#include "utils.h"
-}
-#include "zt_internal.h"
+// Deliberately not #include "zt_internal.h" here. That header pulls in
+// <stc/cstr.h>, whose _cstr_init/_cstr_internal_move are unconditionally
+// `extern` (not gated by STC's own i_header/i_static linkage macros) while
+// the same header also pulls in C++-only machinery (<new>, type-trait
+// templates) for its C++-aware paths - one #include can't get C linkage
+// for the former and real C++ linkage for the latter at the same time, so
+// wrapping it in extern "C" (tried first) just trades an undefined
+// _cstr_init reference for template-linkage errors. ztx_has_api_session
+// is a tiny shim, compiled as plain C in api_session_retry_test_helper.c,
+// so zt_internal.h is only ever seen by a C compiler - exactly like
+// everywhere else in this codebase.
+extern "C" bool ztx_has_api_session(ziti_context ztx);
 
 #include <atomic>
 #include <chrono>
@@ -335,7 +330,7 @@ TEST_CASE_METHOD(ApiSessionRetryTestCase, "api-session-recovers-after-transient-
     // forever - this is the exact "partially authenticated" symptom from
     // ziti_send_posture_data()'s ztx->session == NULL check. After the fix,
     // api_session_retry() re-issues the request ~5s later and it succeeds.
-    bool recovered = run(UNTIL(ztx->session != nullptr), 15000);
+    bool recovered = run(UNTIL(ztx_has_api_session(ztx)), 15000);
     CHECK(recovered);
-    CHECK(ztx->session != nullptr);
+    CHECK(ztx_has_api_session(ztx));
 }
