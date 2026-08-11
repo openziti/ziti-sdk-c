@@ -1032,8 +1032,14 @@ static void ext_refresh_time_cb(uv_timer_t *t) {
     assert(clt->config);
 
     if (clt->refresh_req) {
-        OIDC_LOG(DEBUG, "refresh is already in progress");
-        return;
+        // as in oidc.c's oidc_client_refresh: a refresh_req still set when
+        // this timer fires belongs to a connection that may have died
+        // silently and will never call back, which would otherwise leave
+        // every subsequent refresh (forced or scheduled) no-op'ing on this
+        // same check forever. Cancel it so this attempt actually proceeds.
+        OIDC_LOG(WARN, "canceling stale in-flight token refresh to force a new attempt");
+        tlsuv_http_req_cancel(&clt->http, clt->refresh_req);
+        clt->refresh_req = NULL;
     }
 
     json_object *tok = json_object_object_get(clt->tokens, "refresh_token");

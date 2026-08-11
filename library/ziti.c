@@ -448,7 +448,10 @@ static void ztx_set_fully_authenticated(ziti_context ztx, const char *session_to
 void ziti_force_api_session_refresh(ziti_context ztx) {
     if (ztx->auth_method) {
         ZTX_LOG(DEBUG, "forcing session refresh");
-        ztx->auth_method->force_refresh(ztx->auth_method);
+        int rc = ztx->auth_method->force_refresh(ztx->auth_method);
+        if (rc != 0) {
+            ZTX_LOG(WARN, "forced session refresh did not start: %d/%s", rc, uv_strerror(rc));
+        }
     } else {
         ZTX_LOG(WARN, "cannot refresh: auth_method was never set up");
     }
@@ -2236,7 +2239,10 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
         // OIDC endpoint may have changed
         // force refresh with the new endpoint
         ztx->auth_method->set_endpoint(ztx->auth_method, oidc_path);
-        ztx->auth_method->force_refresh(ztx->auth_method);
+        int rc = ztx->auth_method->force_refresh(ztx->auth_method);
+        if (rc != 0) {
+            ZTX_LOG(WARN, "forced session refresh did not start: %d/%s", rc, uv_strerror(rc));
+        }
     }
 
     if (ztx->ext_auth) {
