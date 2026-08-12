@@ -31,6 +31,8 @@ add_executable(IntegrationTests
         legacy-auth.cpp
         oidc-tests.cpp
         ctrl_tests.cpp
+        api_session_retry_tests.cpp
+        api_session_retry_test_helper.c
         enroll_tests.cpp
         enroll_token_tests.cpp
         enroll_mode_tests.cpp
@@ -47,7 +49,10 @@ target_link_libraries(IntegrationTests
         PRIVATE botan::botan-static
 )
 
-set_property(TARGET IntegrationTests PROPERTY CXX_STANDARD 23)
+set_target_properties(IntegrationTests PROPERTIES
+        CXX_STANDARD 23
+        C_STANDARD 11
+)
 if (MINGW)
     target_link_options(IntegrationTests PRIVATE -static-libgcc)
 endif ()
