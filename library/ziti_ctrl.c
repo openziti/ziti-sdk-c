@@ -582,7 +582,7 @@ static const char* ctrl_next_ep(ziti_controller *ctrl, const char *current) {
     MODEL_MAP_FOREACH(url, d, &ctrl->endpoints) {
         if (d == NULL || d->is_online) {
             model_list_append(&online, (void*)url);
-        } else if ((uint64_t)d->offline_time < (now - ONE_MINUTE)) {
+        } else if (d->offline_time + ONE_MINUTE < now) {
             model_list_append(&check, (void*)url);
         }
     }
