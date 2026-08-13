@@ -962,7 +962,23 @@ static void oidc_auth_dump(ziti_auth_method_t *self, int (*printer)(void *arg, c
 
     if (clt->timer && uv_is_active((uv_handle_t*)clt->timer)) {
         printer(ctx, "\trefresh in %" PRIi64 "s\n", uv_timer_get_due_in(clt->timer) / 1000);
+    } else {
+        printer(ctx, "\trefresh timer not active\n");
     }
+
+    // these two are the ones that matter for diagnosing a permanently stuck
+    // client: non-NULL here means a refresh or full-auth request is
+    // outstanding. If either stays non-NULL across repeated dumps taken
+    // minutes apart with no change, that request's underlying connection
+    // is wedged - it's not going to complete on its own.
+    printer(ctx, "\trefresh_req[%s] auth_request[%s]\n",
+            clt->refresh_req ? "in-flight" : "none",
+            clt->request ? "in-flight" : "none");
+
+    printer(ctx, "\thttp: connected[%d] connect_req[%s] active_req[%s]\n",
+            clt->http.connected,
+            clt->http.connect_req ? "pending" : "none",
+            clt->http.active ? "yes" : "none");
 }
 
 static void set_expiration(oidc_client_t *clt, const char *token) {
