@@ -714,11 +714,13 @@ int ziti_ctrl_cancel(ziti_controller *ctrl) {
 int ziti_ctrl_close(ziti_controller *ctrl) {
     free_ziti_ctrl_version(&ctrl->version);
     model_map_clear(&ctrl->endpoints, (void (*)(void *)) free_ziti_controller_detail_ptr);
-    cstr_drop(&ctrl->url);
-    cstr_drop(&ctrl->instance_id);
     if (ctrl->client) {
         tlsuv_http_close(ctrl->client, on_http_close);
     }
+    cstr_drop(&ctrl->url);
+    ctrl->url = cstr_init();
+    cstr_drop(&ctrl->instance_id);
+    ctrl->instance_id = cstr_init();
     ctrl->client = NULL;
     return ZITI_OK;
 }
