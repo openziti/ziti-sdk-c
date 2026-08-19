@@ -66,6 +66,11 @@ typedef struct ziti_controller_s {
 
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls_context *tls);
 
+// Selects the endpoint to use, marking `current` offline first when it is not NULL. Returns NULL when
+// no endpoint qualifies, which callers have to handle. Declared here so the selection, including its
+// one-minute backoff, can be tested without driving a failing request through the loop.
+const char *ziti_ctrl_next_ep(ziti_controller *ctrl, const char *current);
+
 int ziti_ctrl_set_token(ziti_controller *ctrl, const char *access_token);
 int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const char *jwt);
 
