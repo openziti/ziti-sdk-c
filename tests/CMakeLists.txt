@@ -20,7 +20,8 @@ add_executable(all_tests
         message_tests.cpp
         e2ee_tests.cpp
         util_tests.cpp
-        oidc_recovery_tests.cpp)
+        oidc_recovery_tests.cpp
+        ctrl_endpoint_tests.cpp)
 
 set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
 if (WIN32)
