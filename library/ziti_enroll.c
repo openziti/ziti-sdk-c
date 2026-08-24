@@ -450,6 +450,18 @@ static void enroll_cb(ziti_enrollment_resp *resp, const ziti_error *err, void *e
 
     ZITI_LOG(DEBUG, "successfully enrolled with controller %s", ziti_ctrl_get_url(&er->controller));
     er->cfg.id.cert = resp->cert ? strdup(resp->cert) : strdup(er->opts.cert);
+    if (model_list_size(&resp->controllers) > 0) {
+        model_list_clear(&er->cfg.controllers, free);
+        ziti_controller_detail *ctrl;
+        api_address *addr;
+        MODEL_LIST_FOREACH(ctrl, resp->controllers) {
+            MODEL_LIST_FOREACH(addr, ctrl->apis.edge) {
+                if (addr->url != NULL) {
+                    model_list_append(&er->cfg.controllers, strdup(addr->url));
+                }
+            }
+        }
+    }
 
     complete_request(er, ZITI_OK);
     free_ziti_enrollment_resp_ptr(resp);
