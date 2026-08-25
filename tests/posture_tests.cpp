@@ -83,7 +83,7 @@ namespace {
 
         size_t collect_all() {
             model_list send_prs = {};
-            ziti_collect_posture(&ztx, &send_prs, true);
+            ztx_collect_posture(&ztx, &send_prs, true);
             const size_t n = model_list_size(&send_prs);
             model_list_clear(&send_prs, nullptr);
             return n;

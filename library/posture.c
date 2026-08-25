@@ -576,7 +576,7 @@ static char *ziti_pr_to_json(const ziti_pr_base *pr) {
 
 int model_list_fmt_to_json(string_buf_t *buf, model_list *l, const type_meta *meta, int flags, int indent);
 
-void ziti_collect_posture(ziti_context ztx, model_list *send_prs, bool collect_all) {
+void ztx_collect_posture(ziti_context ztx, model_list *send_prs, bool collect_all) {
     struct posture_checks *checks = ztx->posture_checks;
     if (!checks) {
         ZTX_LOG(DEBUG, "endpoint is disabled");
@@ -599,7 +599,7 @@ void ziti_collect_posture(ziti_context ztx, model_list *send_prs, bool collect_a
 
 static void ziti_pr_send_bulk(ziti_context ztx) {
     model_list send_prs = {};
-    ziti_collect_posture(ztx, &send_prs, false);
+    ztx_collect_posture(ztx, &send_prs, false);
 
     if (model_list_size(&send_prs) > 0) {
         ZTX_LOG(DEBUG, "sending posture responses [%zd]", model_list_size(&send_prs));
@@ -1293,7 +1293,7 @@ void ziti_send_posture_er(ziti_context ztx, ziti_channel_t *ch) {
     }
 
     model_list send_prs = {};
-    ziti_collect_posture(ztx, &send_prs, true);
+    ztx_collect_posture(ztx, &send_prs, true);
 
     uint8_t pad[128];
     Ziti__EdgeClient__Pb__PostureResponses *resp = create_posture_resp(ztx, &send_prs);
