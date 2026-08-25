@@ -576,7 +576,7 @@ static char *ziti_pr_to_json(const ziti_pr_base *pr) {
 
 int model_list_fmt_to_json(string_buf_t *buf, model_list *l, const type_meta *meta, int flags, int indent);
 
-static void collect_posture(ziti_context ztx, model_list *send_prs, bool collect_all) {
+void ziti_collect_posture(ziti_context ztx, model_list *send_prs, bool collect_all) {
     struct posture_checks *checks = ztx->posture_checks;
     if (!checks) {
         ZTX_LOG(DEBUG, "endpoint is disabled");
@@ -590,7 +590,8 @@ static void collect_posture(ziti_context ztx, model_list *send_prs, bool collect
                 info->should_send ? "sending" : "not sending",
                 info->id,
                 info->pending ? "true" : "false");
-        if (collect_all || info->should_send) {
+        // collect_all bypasses the should_send filter, not the question of whether an answer exists yet
+        if ((collect_all && info->obj != NULL) || info->should_send) {
             model_list_append(send_prs, info);
         }
     }
@@ -598,7 +599,7 @@ static void collect_posture(ziti_context ztx, model_list *send_prs, bool collect
 
 static void ziti_pr_send_bulk(ziti_context ztx) {
     model_list send_prs = {};
-    collect_posture(ztx, &send_prs, false);
+    ziti_collect_posture(ztx, &send_prs, false);
 
     if (model_list_size(&send_prs) > 0) {
         ZTX_LOG(DEBUG, "sending posture responses [%zd]", model_list_size(&send_prs));
@@ -1292,7 +1293,7 @@ void ziti_send_posture_er(ziti_context ztx, ziti_channel_t *ch) {
     }
 
     model_list send_prs = {};
-    collect_posture(ztx, &send_prs, true);
+    ziti_collect_posture(ztx, &send_prs, true);
 
     uint8_t pad[128];
     Ziti__EdgeClient__Pb__PostureResponses *resp = create_posture_resp(ztx, &send_prs);

@@ -49,6 +49,9 @@ void ziti_send_posture_data(ziti_context ztx);
 
 void ziti_send_posture_er(ziti_context ztx, ziti_channel_t *ch);
 
+// collect_all also gathers responses that have not changed since the last send
+void ziti_collect_posture(ziti_context ztx, model_list *send_prs, bool collect_all);
+
 bool ziti_service_has_query_with_timeout(ziti_service *service);
 
 #ifdef __cplusplus
