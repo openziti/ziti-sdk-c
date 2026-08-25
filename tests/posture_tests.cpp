@@ -30,20 +30,27 @@ extern "C" {
 #include "posture.h"
 #include "zt_internal.h"
 
+#include <string>
+
 namespace {
 
     const char *SERVICE_JSON = R"({"id":"svc-1","name":"test-service","posturePolicies":{"p1":{"policyId":"p1",
       "isPassing":true,"policyType":"Dial","postureQueries":[{"id":"q1","isPassing":true,"queryType":"PROCESS",
       "timeout":-1,"process":{"path":"/does/not/matter"}}]}}})";
 
-    bool answer_process_query = false;
+    // capturing the callback leaves the entry pending, and keeps the answer out of ziti_send_posture_data,
+    // whose trailing ziti_pr_send would drive a real controller send
+    struct captured_query {
+        ziti_pr_process_cb cb = nullptr;
+        std::string id;
+        std::string path;
+    };
 
-    // stands in for the threadpool collection: withholding the callback leaves the entry pending with no obj
-    extern "C" void stub_pq_process(ziti_context ztx, const char *id, const char *path,
+    captured_query captured;
+
+    extern "C" void stub_pq_process(ziti_context, const char *id, const char *path,
                                     ziti_pr_process_cb response_cb) {
-        if (answer_process_query) {
-            response_cb(ztx, id, path, true, "deadbeef", nullptr, 0);
-        }
+        captured = {response_cb, id, path};
     }
 
     struct posture_fixture {
@@ -52,8 +59,8 @@ namespace {
         ziti_api_session session{};
         ziti_service *service = nullptr;
 
-        explicit posture_fixture(bool answer) {
-            answer_process_query = answer;
+        posture_fixture() {
+            captured = {};
 
             uv_loop_init(&loop);
             ztx.loop = &loop;
@@ -76,7 +83,12 @@ namespace {
             ztx.posture_checks = nullptr;
             model_map_clear(&ztx.services, (_free_f) free_ziti_service_ptr);
             uv_loop_close(&loop);
-            answer_process_query = false;
+            captured = {};
+        }
+
+        void answer() {
+            REQUIRE(captured.cb != nullptr);
+            captured.cb(&ztx, captured.id.c_str(), captured.path.c_str(), true, "deadbeef", nullptr, 0);
         }
 
         size_t registered() const { return model_map_size(&ztx.posture_checks->responses); }
@@ -92,14 +104,15 @@ namespace {
 }
 
 TEST_CASE("posture response still pending is not collected", "[posture]") {
-    posture_fixture f(false);
+    posture_fixture f;
 
     REQUIRE(f.registered() == 1);
     CHECK(f.collect_all() == 0);
 }
 
 TEST_CASE("posture response with an answer is collected", "[posture]") {
-    posture_fixture f(true);
+    posture_fixture f;
+    f.answer();
 
     REQUIRE(f.registered() == 1);
     CHECK(f.collect_all() == 1);
