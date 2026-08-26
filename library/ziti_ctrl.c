@@ -343,6 +343,9 @@ static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl
             CTRL_LOG(INFO, "controller updated to %s(%s)[%s]",
                      v->version, v->revision, v->build_date);
         }
+        for (int idx = 0; v->build_flags != NULL && v->build_flags[idx] != NULL; idx++) {
+            CTRL_LOG(DEBUG, "controller build flag: %s", v->build_flags[idx]);
+        }
         free_ziti_ctrl_version(&ctrl->version);
         ctrl->version = *v;
 
