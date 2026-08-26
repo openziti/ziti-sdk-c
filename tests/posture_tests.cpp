@@ -53,15 +53,9 @@ namespace {
         captured = {response_cb, id, path};
     }
 
-    // One loop for every case here, never run and never closed - the same reason ctrl_endpoint_tests.cpp
-    // shares one: creating and closing a loop per case aborts intermittently on libuv's
-    // `fd > STDERR_FILENO` assertion once the whole suite runs in one process.
-    uv_loop_t *test_loop() {
-        static uv_loop_t *loop = uv_loop_new();
-        return loop;
-    }
-
     struct posture_fixture {
+        // needed only so uv_now() has a loop->time when ziti_posture_init arms its deadline, never inited
+        uv_loop_t loop{};
         ziti_ctx ztx{};
         ziti_api_session session{};
         ziti_service *service = nullptr;
@@ -69,7 +63,7 @@ namespace {
         posture_fixture() {
             captured = {};
 
-            ztx.loop = test_loop();
+            ztx.loop = &loop;
 
             // ziti_send_posture_data collects nothing unless the context is fully authenticated
             ztx.auth_state = ZitiAuthStateFullyAuthenticated;
