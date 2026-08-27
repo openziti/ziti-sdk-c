@@ -257,6 +257,7 @@ XX(retry, model_number, none, retryHint, __VA_ARGS__)
 #define ZITI_CTRL_VERSION_MODEL(XX, ...) \
 ZITI_VERSION_MODEL(XX, __VA_ARGS__) \
 XX(capabilities, model_string, array, capabilities, __VA_ARGS__) \
+XX(build_flags, model_string, array, buildFlags, __VA_ARGS__) \
 XX(api_versions, ziti_api_versions, ptr, apiVersions, __VA_ARGS__)
 
 #define TOTP_TOKEN_MODEL(XX, ...) \
