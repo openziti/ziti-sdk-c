@@ -624,8 +624,16 @@ int oidc_client_refresh(oidc_client_t *clt) {
     }
 
     if (clt->refresh_req) {
-        OIDC_LOG(DEBUG, "refresh is already in progress");
-        return UV_EALREADY;
+        // a forced refresh means the caller suspects the client is wedged
+        // (e.g. connectivity just came back after an outage) - a refresh_req
+        // that is still outstanding at this point may belong to a connection
+        // that died silently (no FIN/RST) and will never call back on its
+        // own, which would otherwise leave every future refresh attempt
+        // (including this one) permanently no-op'ing on this same check.
+        // Cancel it so the fresh attempt below is guaranteed to start.
+        OIDC_LOG(WARN, "canceling stale in-flight token refresh to force a new attempt");
+        tlsuv_http_req_cancel(&clt->http, clt->refresh_req);
+        clt->refresh_req = NULL;
     }
 
     if (clt->configuring) {

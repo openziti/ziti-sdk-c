@@ -182,7 +182,6 @@
         "vcpkg"
       ],
       "cacheVariables": {
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays/macos"
       }
     },
     {
@@ -196,8 +195,7 @@
       "cacheVariables": {
         "VCPKG_TARGET_ARCHITECTURE": "arm64",
         "VCPKG_TARGET_TRIPLET": "arm64-osx",
-        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/macOS-arm64.cmake",
-        "VCPKG_OVERLAY_PORTS": "${sourceDir}/vcpkg-overlays/macos"
+        "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/toolchains/macOS-arm64.cmake"
       }
     },
     {

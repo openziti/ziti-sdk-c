@@ -135,7 +135,8 @@ XX(env_info, ziti_env_info, ptr, envInfo, __VA_ARGS__) \
 XX(config_types, model_string, list, configTypes, __VA_ARGS__)
 
 #define ZITI_ENROLLMENT_RESP(XX, ...) \
-XX(cert, model_string, none, cert, __VA_ARGS__)
+XX(cert, model_string, none, cert, __VA_ARGS__) \
+XX(controllers, ziti_controller_detail, list, controllers, __VA_ARGS__)
 
 #define ZITI_PR_BASE(XX, ...) \
 XX(id, model_string, none, id, __VA_ARGS__) \
@@ -256,6 +257,7 @@ XX(retry, model_number, none, retryHint, __VA_ARGS__)
 #define ZITI_CTRL_VERSION_MODEL(XX, ...) \
 ZITI_VERSION_MODEL(XX, __VA_ARGS__) \
 XX(capabilities, model_string, array, capabilities, __VA_ARGS__) \
+XX(build_flags, model_string, array, buildFlags, __VA_ARGS__) \
 XX(api_versions, ziti_api_versions, ptr, apiVersions, __VA_ARGS__)
 
 #define TOTP_TOKEN_MODEL(XX, ...) \

@@ -448,7 +448,10 @@ static void ztx_set_fully_authenticated(ziti_context ztx, const char *session_to
 void ziti_force_api_session_refresh(ziti_context ztx) {
     if (ztx->auth_method) {
         ZTX_LOG(DEBUG, "forcing session refresh");
-        ztx->auth_method->force_refresh(ztx->auth_method);
+        int rc = ztx->auth_method->force_refresh(ztx->auth_method);
+        if (rc != 0) {
+            ZTX_LOG(WARN, "forced session refresh did not start: %d/%s", rc, uv_strerror(rc));
+        }
     } else {
         ZTX_LOG(WARN, "cannot refresh: auth_method was never set up");
     }
@@ -476,6 +479,8 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
 
         // stop updates
         clear_deadline(&ztx->refresh_deadline);
+        clear_deadline(&ztx->api_session_deadline);
+        clear_deadline(&ztx->ca_bundle_deadline);
 
         if (ztx->posture_checks) {
             ziti_posture_checks_free(ztx->posture_checks);
@@ -1769,6 +1774,13 @@ static void update_identity_data(ziti_identity_data *data, const ziti_error *err
     }
 }
 
+static void ca_bundle_retry(void *data) {
+    ziti_context ztx = data;
+    if (ztx->enabled) {
+        ziti_ctrl_get_well_known_certs(ztx_get_controller(ztx), ca_bundle_cb, ztx);
+    }
+}
+
 static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     tlsuv_certificate_t new_bundle = NULL;
@@ -1801,6 +1813,18 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
         }
     } else if (err->err != ZITI_DISABLED) {
         ZTX_LOG(ERROR, "failed to get CA bundle from controller: %s", err->message);
+        // one-shot post-auth fetch with no periodic counterpart - without a
+        // retry here, a single transient failure permanently skips picking
+        // up a rotated CA bundle for the life of the context. Guarded on
+        // ztx->enabled: a failure delivered while the context is shutting
+        // down (e.g. a request that errors out for a reason other than
+        // ziti_ctrl_cancel()'s own ZITI_DISABLED, on the same tick as
+        // ziti_stop_internal) must not re-arm a deadline after
+        // ziti_stop_internal has already cleared it - nothing would ever
+        // clear it again, and it would fire into a freed context.
+        if (ztx->enabled) {
+            ztx_set_deadline(ztx, 5000, &ztx->ca_bundle_deadline, ca_bundle_retry, ztx);
+        }
     }
 
     error:
@@ -2236,7 +2260,10 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
         // OIDC endpoint may have changed
         // force refresh with the new endpoint
         ztx->auth_method->set_endpoint(ztx->auth_method, oidc_path);
-        ztx->auth_method->force_refresh(ztx->auth_method);
+        int rc = ztx->auth_method->force_refresh(ztx->auth_method);
+        if (rc != 0) {
+            ZTX_LOG(WARN, "forced session refresh did not start: %d/%s", rc, uv_strerror(rc));
+        }
     }
 
     if (ztx->ext_auth) {
@@ -2459,11 +2486,29 @@ done:
     free(csr);
 }
 
+static void api_session_retry(void *data) {
+    ziti_context ztx = data;
+    if (ztx->enabled) {
+        ziti_ctrl_current_api_session(ztx_get_controller(ztx), api_session_cb, ztx);
+    }
+}
+
 static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err) {
         if (err->err != ZITI_DISABLED) {
             ZTX_LOG(ERROR, "failed to get api session: %s/%s", err->code, err->message);
+            // this is a one-shot post-auth fetch with no periodic counterpart
+            // (unlike update_identity_data/edge_routers_cb/services, which get
+            // retried by the recurring services-refresh timer): without an
+            // explicit retry here, a single transient failure leaves
+            // ztx->session permanently NULL for the life of the context.
+            // Guarded on ztx->enabled - see the matching comment in
+            // ca_bundle_cb for why: a failure delivered mid-teardown must
+            // not re-arm a deadline nothing will ever clear again.
+            if (ztx->enabled) {
+                ztx_set_deadline(ztx, 5000, &ztx->api_session_deadline, api_session_retry, ztx);
+            }
         }
         return;
     }

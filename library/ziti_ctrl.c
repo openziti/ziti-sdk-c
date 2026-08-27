@@ -138,8 +138,6 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
 
 static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len);
 
-static const char* ctrl_next_ep(ziti_controller *ctrl, const char *current);
-
 static tlsuv_http_req_t *
 start_request(tlsuv_http_t *http, const char *method, const char *path, tlsuv_http_resp_cb cb, struct ctrl_resp *resp) {
     ziti_controller *ctrl = resp->ctrl;
@@ -181,7 +179,7 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
 
             if (ctrl->active_reqs == 0) {
                 CTRL_LOG(INFO, "attempting to switch endpoint");
-                const char *next_ep = ctrl_next_ep(ctrl, cstr_str(&ctrl->url));
+                const char *next_ep = ziti_ctrl_next_ep(ctrl, cstr_str(&ctrl->url));
                 if (next_ep != NULL) {
                     CTRL_LOG(INFO, "switching to endpoint[%s]", next_ep);
                     cstr_assign(&ctrl->url, next_ep);
@@ -344,6 +342,9 @@ static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl
             strcmp(ctrl->version.version, v->version) != 0) {
             CTRL_LOG(INFO, "controller updated to %s(%s)[%s]",
                      v->version, v->revision, v->build_date);
+        }
+        for (int idx = 0; v->build_flags != NULL && v->build_flags[idx] != NULL; idx++) {
+            CTRL_LOG(DEBUG, "controller build flag: %s", v->build_flags[idx]);
         }
         free_ziti_ctrl_version(&ctrl->version);
         ctrl->version = *v;
@@ -561,7 +562,7 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
 }
 
 // pick next random endpoint
-static const char* ctrl_next_ep(ziti_controller *ctrl, const char *current) {
+const char* ziti_ctrl_next_ep(ziti_controller *ctrl, const char *current) {
     if(model_map_size(&ctrl->endpoints) == 0) {
         CTRL_LOG(WARN, "empty endpoints map");
         return NULL;
@@ -582,7 +583,7 @@ static const char* ctrl_next_ep(ziti_controller *ctrl, const char *current) {
     MODEL_MAP_FOREACH(url, d, &ctrl->endpoints) {
         if (d == NULL || d->is_online) {
             model_list_append(&online, (void*)url);
-        } else if ((uint64_t)d->offline_time < (now - ONE_MINUTE)) {
+        } else if (d->offline_time == 0 || d->offline_time + ONE_MINUTE < now) {
             model_list_append(&check, (void*)url);
         }
     }
@@ -598,7 +599,7 @@ static const char* ctrl_next_ep(ziti_controller *ctrl, const char *current) {
         model_list_iter it = model_list_iterator(&check);
 
         // no controller is online just try random one from the list
-        int rand = (int) (uv_now(ctrl->loop) % model_map_size(&ctrl->endpoints));
+        int rand = (int) (uv_now(ctrl->loop) % model_list_size(&check));
         for (int i = 0; i < rand; i++) {
             it = model_list_it_next(it);
         }
@@ -628,7 +629,10 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
         model_map_set(&ctrl->endpoints, ep, detail);
     }
 
-    const char *initial_ep = ctrl_next_ep(ctrl, NULL);
+    const char *initial_ep = ziti_ctrl_next_ep(ctrl, NULL);
+    if (initial_ep == NULL) {
+        return ZITI_INVALID_CONFIG;
+    }
     cstr_assign(&ctrl->url, initial_ep);
 
     ctrl->client = calloc(1, sizeof(tlsuv_http_t));
@@ -713,11 +717,13 @@ int ziti_ctrl_cancel(ziti_controller *ctrl) {
 int ziti_ctrl_close(ziti_controller *ctrl) {
     free_ziti_ctrl_version(&ctrl->version);
     model_map_clear(&ctrl->endpoints, (void (*)(void *)) free_ziti_controller_detail_ptr);
-    cstr_drop(&ctrl->url);
-    cstr_drop(&ctrl->instance_id);
     if (ctrl->client) {
         tlsuv_http_close(ctrl->client, on_http_close);
     }
+    cstr_drop(&ctrl->url);
+    ctrl->url = cstr_init();
+    cstr_drop(&ctrl->instance_id);
+    ctrl->instance_id = cstr_init();
     ctrl->client = NULL;
     return ZITI_OK;
 }

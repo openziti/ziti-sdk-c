@@ -688,6 +688,7 @@ TEST_CASE("parse-ctrl-version", "[model]") {
             }
         },
         "buildDate": "2021-04-23 18:09:47",
+        "buildFlags": [ "static", "fips" ],
         "capabilities": [ "HA_CONTROLLER", "OIDC_AUTH" ],
         "revision": "fe826ed2ec0c",
         "runtimeVersion": "go1.16.3",
@@ -705,8 +706,13 @@ TEST_CASE("parse-ctrl-version", "[model]") {
     CHECK_THAT(ver.capabilities[1], Equals("OIDC_AUTH"));
     CHECK(ver.capabilities[2] == nullptr);
 
+    CHECK_THAT(ver.build_flags[0], Equals("static"));
+    CHECK_THAT(ver.build_flags[1], Equals("fips"));
+    CHECK(ver.build_flags[2] == nullptr);
+
     free_ziti_ctrl_version(&ver);
     CHECK(ver.capabilities == nullptr);
+    CHECK(ver.build_flags == nullptr);
     CHECK(ver.api_versions == nullptr);
     INFO("should be safe to free object again");
     free_ziti_ctrl_version(&ver);
