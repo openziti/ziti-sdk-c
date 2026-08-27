@@ -116,9 +116,11 @@ SET(ZITI_SRC_FILES
 
 if (WIN32)
     list(APPEND ZITI_SRC_FILES e2ee/e2ee_aes_gcm_wincrypto.c)
+elseif (APPLE)
+    list(APPEND ZITI_SRC_FILES e2ee/e2ee_aes_gcm_apple.c)
 else ()
     list(APPEND ZITI_SRC_FILES e2ee/e2ee_aes_gcm_ossl.c)
-endif (WIN32)
+endif ()
 
 FILE(GLOB zitilib_FILES ${CMAKE_CURRENT_LIST_DIR}/zitilib/*.c)
 LIST(APPEND ZITI_SRC_FILES ${zitilib_FILES})
@@ -182,6 +184,14 @@ function(config_ziti_library target)
 
     if (CMAKE_SYSTEM_NAME MATCHES "Linux")
         target_link_libraries(${target} PUBLIC atomic)
+    endif ()
+
+    if (APPLE)
+        # e2ee_aes_gcm_apple.c: P-256/ECDH via Security.framework, AES-GCM/HKDF via CommonCrypto (libSystem)
+        target_link_libraries(${target}
+                PUBLIC "-framework Security"
+                PUBLIC "-framework CoreFoundation"
+        )
     endif ()
 
     if (NOT WIN32)

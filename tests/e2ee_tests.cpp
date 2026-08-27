@@ -178,3 +178,27 @@ TEST_CASE("e2ee-ossl-wincrypto-interop", "[crypto]") {
     test_e2ee(alice.get(), bob.get());
 }
 #endif
+
+#if defined(__APPLE__)
+namespace ossl {
+#include "../library/e2ee/e2ee_aes_gcm_ossl.c"
+}
+// the Apple backend derives keys with Security.framework + CommonCrypto, so this is what
+// proves it stays wire-compatible with the OpenSSL/BCrypt peers. Both orderings, because
+// the two directions use different HKDF info.
+TEST_CASE("e2ee-ossl-apple-interop", "[crypto]") {
+    ziti_log_init(nullptr, 5, nullptr);
+
+    WHEN("apple is the server") {
+        auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm));
+        auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>((e2ee_t *)ossl::new_aes_gcm_e2ee());
+        test_e2ee(alice.get(), bob.get());
+    }
+
+    WHEN("openssl is the server") {
+        auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>((e2ee_t *)ossl::new_aes_gcm_e2ee());
+        auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm));
+        test_e2ee(alice.get(), bob.get());
+    }
+}
+#endif
