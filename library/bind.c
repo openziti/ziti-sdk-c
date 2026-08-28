@@ -125,18 +125,11 @@ static struct binding_s* new_binding(struct ziti_conn *conn) {
     b->conn_id = conn->conn_id;
     b->conn = conn;
     b->state = st_unbound;
-    b->e2ee = create_e2ee(conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none);
-    if (b->e2ee == NULL) {
-        CONN_LOG(ERROR, "failed to initialize e2ee for mode[%s]",
-                 e2ee_method_id(conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none));
-        free(b);
-        return NULL;
-    }
     return b;
 }
 
 // return number of active(bound or binding) bindings
-int process_bindings(struct ziti_conn *conn) {
+static int process_bindings(struct ziti_conn *conn) {
     if (conn->server.token == NULL) {
         return 0;
     }
@@ -170,16 +163,24 @@ int process_bindings(struct ziti_conn *conn) {
     return active;
 }
 
-void update_bindings(ziti_connection conn) {
+void conn_update_bindings(ziti_connection conn, bool force_rebind) {
     if (conn->type != Server) return;
     if (conn->close) return;
+
+    const char *n;
+    struct binding_s *b;
+    if (force_rebind) {
+        MODEL_MAP_FOREACH(n, b, &conn->server.bindings) {
+            stop_binding(b);
+        }
+        conn->server.attempt = 0;
+        clear_deadline(&conn->server.rebinder);
+    }
 
     int target = MIN(conn->server.max_bindings,
                      model_list_size(&conn->server.routers));
 
     int active = 0;
-    const char *n;
-    struct binding_s *b;
     MODEL_MAP_FOREACH(n, b, &conn->server.bindings) {
         if (b->state == st_bound || b->state == st_binding) active++;
     }
@@ -594,6 +595,17 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
     }
 
     struct ziti_conn *conn = b->conn;
+    if (b->e2ee) {
+        b->e2ee->free(b->e2ee);
+        b->e2ee = NULL;
+    }
+    b->e2ee = create_e2ee(conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none);
+    if (b->e2ee == NULL) {
+        CONN_LOG(ERROR, "failed to initialize e2ee for mode[%s]",
+                 e2ee_method_id(conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none));
+        return 0;
+    }
+
     char *token = conn->server.token;
     CONN_LOG(DEBUG, "requesting BIND on ch[%s]", zch_get_name(ch));
     CONN_LOG(TRACE, "ch[%d] => Edge Bind request token[%s]", zch_get_id(ch), token);
@@ -671,6 +683,10 @@ void on_unbind(void *ctx, message *m, int code) {
 static void stop_binding(struct binding_s *b) {
     struct ziti_conn *conn = b->conn;
 
+    if (b->state == st_unbound || b->state == st_unbinding) {
+        return;
+    }
+
     // stop accepting incoming requests
     ziti_channel_rem_receiver(b->ch, b->conn_id);
     ziti_channel_remove_waiter(b->ch, b->waiter);
@@ -680,20 +696,23 @@ static void stop_binding(struct binding_s *b) {
     if (b->ch == NULL || !ziti_channel_is_connected(b->ch) || token == NULL) {
         b->ch = NULL;
         b->state = st_unbound;
-        return;
-    }
-
-    CONN_LOG(DEBUG, "requesting UNBIND on ch[%s]", zch_get_name(b->ch));
-    b->state = st_unbinding;
-    int32_t conn_id = htole32(b->conn_id);
-    hdr_t headers[] = {
+    } else {
+        CONN_LOG(DEBUG, "requesting UNBIND on ch[%s]", zch_get_name(b->ch));
+        b->state = st_unbinding;
+        int32_t conn_id = htole32(b->conn_id);
+        hdr_t headers[] = {
             var_header(ConnIdHeader, conn_id),
             header(ListenerId, sizeof(conn->server.listener_id), conn->server.listener_id),
-    };
-    b->waiter = ziti_channel_send_for_reply(b->ch, ContentTypeUnbind,
-                                            headers, 2,
-                                            (uint8_t *) token, strlen(token),
-                                            on_unbind, b);
+        };
+        b->waiter = ziti_channel_send_for_reply(b->ch, ContentTypeUnbind,
+                                                headers, 2,
+                                                (uint8_t *) token, strlen(token),
+                                                on_unbind, b);
+    }
+    if (b->e2ee) {
+        b->e2ee->free(b->e2ee);
+        b->e2ee = NULL;
+    }
 }
 
 int ziti_close_server(struct ziti_conn *conn) {
