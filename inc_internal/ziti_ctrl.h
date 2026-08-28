@@ -51,6 +51,7 @@ typedef struct ziti_controller_s {
         bool oidc_auth:1;
         bool oidc_auth_csr:1;
     } capabilities;
+    model_map build_flags;
     ziti_ctrl_version version;
     ctrl_version_cb version_cb;
     void *version_cb_ctx;
@@ -90,6 +91,7 @@ void ziti_ctrl_clear_auth(ziti_controller *ctrl);
 
 void ziti_ctrl_get_version(ziti_controller *ctrl, ctrl_version_cb cb, void *ctx);
 bool ziti_ctrl_has_capability(ziti_controller *ctrl, ziti_ctrl_cap cap);
+bool ziti_ctrl_has_build_flag(ziti_controller *ctrl, const char *flag);
 
 void ziti_ctrl_list_ext_jwt_signers(ziti_controller *ctrl,
                                     void (*cb)(ziti_jwt_signer_array, const ziti_error*, void*),

@@ -139,7 +139,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg);
 
 void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, int status);
 
-void update_bindings(struct ziti_conn *conn);
+void conn_update_bindings(struct ziti_conn *conn, bool force_rebind);
 const char *ziti_conn_state(ziti_connection conn);
 
 int establish_crypto(ziti_connection conn, message *msg);

@@ -451,13 +451,14 @@ static void connect_get_service_cb(ziti_context ztx, const ziti_service *s, int 
 
         req->service_id = cstr_from(s->id);
         conn->encrypted = s->encryption;
-        conn->e2ee = create_e2ee(conn->encrypted ? ztx->opts.e2ee_mode : ziti_crypto_none);
+        ziti_crypto_method zcm = conn->encrypted ? ztx->opts.e2ee_mode : ziti_crypto_none;
+        conn->e2ee = create_e2ee(zcm);
         if (conn->e2ee == NULL) {
-            CONN_LOG(ERROR, "failed to initialize e2ee for mode[%s]",
-                     e2ee_method_id(conn->encrypted ? ztx->opts.e2ee_mode : ziti_crypto_none));
+            CONN_LOG(ERROR, "failed to initialize crypto method[%s]", e2ee_method_id(zcm));
             complete_conn_req(conn, ZITI_CRYPTO_FAIL);
             return;
         }
+        CONN_LOG(DEBUG, "using crypto method[%s]", e2ee_method_id(zcm));
         process_connect(conn, NULL);
     } else if (status == ZITI_SERVICE_UNAVAILABLE) {
         CONN_LOG(ERROR, "service[%s] is not available for ztx[%s]", conn->service, ziti_get_identity(ztx)->name);
@@ -1146,10 +1147,9 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
 static int ziti_channel_start_connection(struct ziti_conn *conn, ziti_channel_t *ch, ziti_session *session) {
     struct ziti_conn_req *req = conn->conn_req;
 
-    uint32_t content_type;
+    uint32_t content_type = ContentTypeConnect;
     switch (conn->state) {
         case Connecting:
-            content_type = ContentTypeConnect;
             break;
         case Disconnected:
             CONN_LOG(WARN, "channel did not connect in time");

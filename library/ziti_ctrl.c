@@ -385,6 +385,11 @@ static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl
                 break;
             }
         }
+        model_map_clear(&ctrl->build_flags, NULL);
+        const char *bf;
+        FOR(bf, ctrl->version.build_flags) {
+            model_map_set(&ctrl->build_flags, bf, (void*)1);
+        }
 
         // data was moved to ctrl.version
         free(v);
@@ -716,6 +721,7 @@ int ziti_ctrl_cancel(ziti_controller *ctrl) {
 
 int ziti_ctrl_close(ziti_controller *ctrl) {
     free_ziti_ctrl_version(&ctrl->version);
+    model_map_clear(&ctrl->build_flags, NULL);
     model_map_clear(&ctrl->endpoints, (void (*)(void *)) free_ziti_controller_detail_ptr);
     if (ctrl->client) {
         tlsuv_http_close(ctrl->client, on_http_close);
@@ -1201,4 +1207,8 @@ bool ziti_ctrl_has_capability(ziti_controller *ctrl, ziti_ctrl_cap cap) {
         assert(false);
     }
     return false;
+}
+
+bool ziti_ctrl_has_build_flag(ziti_controller *ctrl, const char *flag) {
+    return model_map_get(&ctrl->build_flags, flag) != NULL;
 }
