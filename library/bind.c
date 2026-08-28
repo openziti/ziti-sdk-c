@@ -599,12 +599,14 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
         b->e2ee->free(b->e2ee);
         b->e2ee = NULL;
     }
-    b->e2ee = create_e2ee(conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none);
+
+    ziti_crypto_method cm = conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none;
+    b->e2ee = create_e2ee(cm);
     if (b->e2ee == NULL) {
-        CONN_LOG(ERROR, "failed to initialize e2ee for mode[%s]",
-                 e2ee_method_id(conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none));
+        CONN_LOG(ERROR, "failed to initialize crypto method[%s]", e2ee_method_id(cm));
         return 0;
     }
+    CONN_LOG(DEBUG, "using crypto method[%s]", e2ee_method_id(cm));
 
     char *token = conn->server.token;
     CONN_LOG(DEBUG, "requesting BIND on ch[%s]", zch_get_name(ch));

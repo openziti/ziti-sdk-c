@@ -1972,6 +1972,8 @@ void ztx_prepare(uv_prepare_t *prep) {
     // switch to FIPS compliant e2ee crypto if requested
     if (ztx->opts.e2ee_mode != ziti_crypto_aes_gcm) {
         if (ziti_ctrl_has_build_flag(&ztx->ctrl, "FIPS_MODE")) {
+            ZTX_LOG(INFO, "controller requested FIPS_MODE: using crypto method[%s]",
+                    e2ee_method_id(ziti_crypto_aes_gcm));
             ztx->opts.e2ee_mode = ziti_crypto_aes_gcm;
             uint32_t conn_id;
             ziti_connection conn;
