@@ -37,7 +37,6 @@ enum bind_state {
     st_unbound,
     st_binding,
     st_bound,
-    st_unbinding,
 };
 
 struct binding_s {
@@ -589,9 +588,6 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
         case st_binding: // already active
         case st_bound:
             return 1;
-
-        case st_unbinding: // let it complete unbind
-            return 0;
     }
 
     struct ziti_conn *conn = b->conn;
@@ -660,57 +656,35 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
     return 1;
 }
 
-void on_unbind(void *ctx, message *m, int code) {
-    struct binding_s *b = ctx;
-    b->waiter = NULL;
-
-    if (m) {
-        ZITI_LOG(DEBUG, "binding[%d.%s] unbind resp: ct[%s] %.*s", b->conn_id,
-                 zch_get_name(b->ch), content_type_id(m->header.content), m->header.body_len, m->body);
-        int32_t conn_id = htole32(b->conn_id);
-        hdr_t headers[] = {
-                var_header(ConnIdHeader, conn_id),
-        };
-        message *close_msg = message_new(NULL, ContentTypeStateClosed, headers, 1, 0);
-        ziti_channel_send_message(b->ch, close_msg, NULL);
-    } else {
-        ZITI_LOG(DEBUG, "binding[%d.%s] failed to receive unbind response because channel was disconnected: %d/%s",
-                 b->conn_id, zch_get_name(b->ch), code, ziti_errorstr(code));
-    }
-    ziti_channel_rem_receiver(b->ch, b->conn_id);
-    b->state = st_unbound;
-    b->ch = NULL;
-}
-
 static void stop_binding(struct binding_s *b) {
     struct ziti_conn *conn = b->conn;
 
-    if (b->state == st_unbound || b->state == st_unbinding) {
+    if (b->state == st_unbound) {
         return;
     }
 
     // stop accepting incoming requests
     ziti_channel_rem_receiver(b->ch, b->conn_id);
     ziti_channel_remove_waiter(b->ch, b->waiter);
+    b->waiter = NULL;
+    b->state = st_unbound;
 
     char *token = conn->server.token;
     // no need to send unbind message
     if (b->ch == NULL || !ziti_channel_is_connected(b->ch) || token == NULL) {
-        b->ch = NULL;
-        b->state = st_unbound;
+        CONN_LOG(DEBUG, "no channel: skipping UNBIND");
     } else {
         CONN_LOG(DEBUG, "requesting UNBIND on ch[%s]", zch_get_name(b->ch));
-        b->state = st_unbinding;
         int32_t conn_id = htole32(b->conn_id);
         hdr_t headers[] = {
             var_header(ConnIdHeader, conn_id),
             header(ListenerId, sizeof(conn->server.listener_id), conn->server.listener_id),
         };
-        b->waiter = ziti_channel_send_for_reply(b->ch, ContentTypeUnbind,
-                                                headers, 2,
-                                                (uint8_t *) token, strlen(token),
-                                                on_unbind, b);
+        ziti_channel_send(b->ch, ContentTypeUnbind, headers, 2,
+                          (uint8_t *) token, strlen(token),
+                          NULL);
     }
+    b->ch = NULL;
     if (b->e2ee) {
         b->e2ee->free(b->e2ee);
         b->e2ee = NULL;
