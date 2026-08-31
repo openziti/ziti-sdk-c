@@ -65,9 +65,11 @@
 
 // how long an auth-flow failure keeps being treated as temporary, and the
 // full-jitter backoff between attempts inside that window (max ~32s/attempt)
-#define OIDC_AUTH_RETRY_WINDOW_MS (120 * 1000)
+// match external auth timing
+#define OIDC_AUTH_RETRY_WINDOW_MS (60 * 1000)
 #define AUTH_BACKOFF_MAX  5
 #define AUTH_BACKOFF_BASE 1000
+#define AUTH_MIN_BACKOFF 10
 
 typedef struct auth_req auth_req;
 
@@ -171,6 +173,7 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
     clt->auth_failures = 0;
     clt->auth_retry_until = 0;
     clt->auth_retry_window = OIDC_AUTH_RETRY_WINDOW_MS;
+    clt->primary_ok = false;
 
     return 0;
 }
@@ -335,6 +338,9 @@ static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, jso
     if (clt->token_cb == NULL) return false;
     if (!auth_error_is_temporary(resp, body)) return false;
 
+    // controller knows about this identity
+    if (clt->primary_ok) return false;
+
     // same guard as oidc_client_refresh(): nothing to arm during/after teardown
     if (clt->timer == NULL || uv_is_closing((const uv_handle_t *) clt->timer)) {
         OIDC_LOG(DEBUG, "not retrying auth: timer is %s", clt->timer ? "closing" : "null");
@@ -359,6 +365,7 @@ static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, jso
     uint64_t remaining = clt->auth_retry_until - now;
     uint64_t delay = next_backoff(&clt->auth_failures, AUTH_BACKOFF_MAX, AUTH_BACKOFF_BASE);
     if (delay > remaining) delay = remaining; // don't sleep past the window
+    if (delay < AUTH_MIN_BACKOFF) delay = AUTH_MIN_BACKOFF;
 
     OIDC_LOG(WARN, "OIDC auth failed (%d %s), attempt %d; retrying in %" PRIu64 ".%03" PRIu64
                    " s (%" PRIu64 " s left in window)",
@@ -458,6 +465,7 @@ static void login_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
     }
 
     if (model_list_size(&queries) > 0) {
+        clt->primary_ok = true;
         ziti_auth_query_mfa *q;
         MODEL_LIST_FOREACH(q, queries) {
             switch (q->type_id) {
@@ -480,6 +488,7 @@ static void login_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
     }
 
     if (http_resp->code / 100 == 2) {
+        clt->primary_ok = true;
         const char *totp = tlsuv_http_resp_header(http_resp, "totp-required");
         if (totp && tolower(totp[0]) == 't') {
             req->totp = true;
@@ -487,6 +496,7 @@ static void login_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
             req->clt->token_cb(req->clt, OIDC_TOTP_NEEDED, NULL);
         }
     } else if (http_resp->code / 100 == 3) {
+        clt->primary_ok = true;
         const char *redirect = tlsuv_http_resp_header(http_resp, HTTP_LOCATION);
         struct tlsuv_url_s uri;
         tlsuv_parse_url(&uri, redirect);
@@ -571,6 +581,13 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     }
 
     OIDC_LOG(DEBUG, "starting auth flow");
+    // a new flow has its own credentials to prove: clear here rather than in
+    // reset_auth_retry() so every restart is covered, including oidc_refresh_cb's
+    // give-up path, which restarts the flow without going through it. placed
+    // after the guards above so a flow already past login (TOTP pending) keeps
+    // its primary_ok.
+    clt->primary_ok = false;
+
     json_object *cfg = (json_object *) clt->config;
     json_object *auth_ep = json_object_object_get(cfg, AUTH_EP);
     if (auth_ep  == NULL) {

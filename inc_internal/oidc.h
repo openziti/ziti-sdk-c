@@ -73,6 +73,8 @@ struct oidc_client_s {
     int auth_failures;            // consecutive auth-flow failures, feeds next_backoff()
     uint64_t auth_retry_until;    // uv_now() ms past which a failure is reported; 0 = no window open
     uint64_t auth_retry_window;   // ms; defaults to OIDC_AUTH_RETRY_WINDOW_MS (tests shorten it)
+    bool primary_ok;              // indicates that primary auth succeeded,
+                                  // secondary auth failures do not trigger retry
 
     // auth-method facade (populated only by new_oidc_auth)
     ziti_auth_method_t api;
