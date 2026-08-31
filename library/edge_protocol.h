@@ -90,6 +90,7 @@ enum header_id {
     RouterProvidedConnId = ZITI__EDGE_CLIENT__PB__HEADER_ID__RouterProvidedConnId,
     ErrorCodeHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ErrorCode,
     ListenerId = ZITI__EDGE_CLIENT__PB__HEADER_ID__ListenerId,
+    CircuitIdHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__CircuitId,
     ConnTypeHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnType,
     SupportsInspectHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsInspect,
     SupportsBindSuccessHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsBindSuccess,

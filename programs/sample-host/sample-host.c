@@ -62,7 +62,7 @@ static void on_client_connect(ziti_connection clt, int status) {
 static void on_client(ziti_connection serv, ziti_connection client, int status, const ziti_client_ctx *clt_ctx) {
     if (status == ZITI_OK) {
         const char *source_identity = clt_ctx->caller_id;
-        if (source_identity != NULL) {
+        if (source_identity != NULL && source_identity[0] != '\0') {
             fprintf(stderr, "incoming connection from '%s'\n", source_identity);
         }
         else {
