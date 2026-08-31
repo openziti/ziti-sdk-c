@@ -126,6 +126,7 @@ struct auth_req {
     char state[state_code_len];
     cstr id;
     bool totp;
+    bool cert_login; // login leg presented a client cert (not an ext JWT)
 };
 
 
@@ -160,6 +161,11 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
         return rc;
     }
     clt->http.data = clt;
+    // keep the context: auth_cb() and refresh_time_cb() both call
+    // clt->tls->set_own_cert() whenever clt->x509 is set. new_oidc_auth()
+    // assigns the same pointer before calling us; ownership is unchanged - only
+    // the facade's close callback frees it.
+    clt->tls = tls;
     tlsuv_http_set_ssl(&clt->http, tls);
     tlsuv_http_connect_timeout(&clt->http, 10000);
     tlsuv_http_idle_keepalive(&clt->http, 0);
@@ -294,21 +300,35 @@ static void free_auth_req(auth_req *req) {
     free(req);
 }
 
-// Right after enrollment the identity may not have replicated to the controller
-// node (or OIDC issuer) we happen to be talking to, so the authorize/login leg
-// rejects perfectly good credentials as 401/403/404. Treat those as temporary,
-// but only inside the bounded window enforced by schedule_auth_retry().
-// ziti_http_error_is_temporary() covers the always-transient shapes: transport
-// errors, 5xx, and zitadel's generic 400/server_error.
-static bool auth_error_is_temporary(tlsuv_http_resp_t *resp, json_object *body) {
+// ziti_http_error_is_temporary() covers the shapes that are transient wherever
+// they turn up: transport errors, 5xx, and zitadel's generic 400/server_error.
+// This adds the auth-flow-specific cases on top.
+//
+// cert_login says the failed request was the client-cert login leg. That
+// distinction matters for 401/403/404, which all mean "we do not know this
+// identity":
+//   - on the cert login, right after enrollment, that is the controller node we
+//     reached not having the new identity yet - worth waiting out, and the whole
+//     reason this retry exists;
+//   - on the ext-jwt login it means the token maps to no identity, which no
+//     amount of waiting changes (openziti/ziti-tunnel-sdk-c
+//     TestExternalAuthSingleSigner/enrollToNoneRejectsUnknownControllerIdentity
+//     depends on that being reported promptly);
+//   - on the authorize leg no credentials have been presented yet, so it is not
+//     a replication symptom either.
+//
+// 429 is deliberately not here: rate limiting is transient for every caller, so
+// it lives in ziti_http_error_is_temporary() and needs no leg-specific gate.
+static bool auth_error_is_temporary(tlsuv_http_resp_t *resp, json_object *body, bool cert_login) {
     if (resp == NULL) return false; // not an HTTP status: bad redirect, no credentials, cancel
     if (ziti_http_error_is_temporary(resp, body)) return true;
+
+    if (!cert_login) return false;
 
     switch (resp->code) {
         case HTTP_STATUS_UNAUTHORIZED:
         case HTTP_STATUS_FORBIDDEN:
         case HTTP_STATUS_NOT_FOUND:
-        case HTTP_STATUS_TOO_MANY_REQUESTS:
             return true;
         default:
             return false;
@@ -365,9 +385,10 @@ static void auth_retry_cb(uv_timer_t *t) {
 // retry window has not run out. Returns true when a retry is pending, in which
 // case the caller must stay silent: the app keeps whatever auth state it has and
 // is not told about an intermediate failure.
-static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, json_object *body) {
+static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, json_object *body,
+                                bool cert_login) {
     if (clt->token_cb == NULL) return false;
-    if (!auth_error_is_temporary(resp, body)) return false;
+    if (!auth_error_is_temporary(resp, body, cert_login)) return false;
 
     // controller knows about this identity
     if (clt->primary_ok) return false;
@@ -430,6 +451,8 @@ static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, jso
 
 static void failed_auth_req(auth_req *req, tlsuv_http_resp_t *resp, json_object *body, const char *error) {
     oidc_client_t *clt = req->clt;
+    // read off the request before it is freed below
+    const bool cert_login = req->cert_login;
 
     // clear and free before arming a retry: the retry re-enters
     // oidc_client_start(), which allocates a fresh auth_req
@@ -439,7 +462,7 @@ static void failed_auth_req(auth_req *req, tlsuv_http_resp_t *resp, json_object 
     free_auth_req(req);
     if (clt == NULL) return;
 
-    if (schedule_auth_retry(clt, resp, body)) return; // stay silent, retry pending
+    if (schedule_auth_retry(clt, resp, body, cert_login)) return; // stay silent, retry pending
 
     if (clt->token_cb) {
         OIDC_LOG(WARN, "OIDC authorization failed: %s", error);
@@ -587,6 +610,7 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
         if (clt->x509 && clt->x509->cert != NULL) {
             clt->tls->set_own_cert(clt->tls, clt->x509->key, clt->x509->cert);
             path = LOGIN_CERT;
+            req->cert_login = true;
         } else if (model_map_size(&clt->ext_tokens) > 0) {
             path = LOGIN_JWT;
         } else {

@@ -820,6 +820,13 @@ bool ziti_http_error_is_temporary(tlsuv_http_resp_t *resp, json_object *body) {
         return true;
     }
 
+    // rate limiting says "not now", not "never" - the server is pacing us
+    // rather than rejecting the request. see HTTP_RETRY_AFTER handling in
+    // callers that want to honour the server's own timing.
+    if (resp->code == HTTP_STATUS_TOO_MANY_REQUESTS) {
+        return true;
+    }
+
     // zitadel returns generic(400) error check error body for transient conditions
     if (resp->code == 400) {
         json_object *err = json_object_object_get(body, "error");

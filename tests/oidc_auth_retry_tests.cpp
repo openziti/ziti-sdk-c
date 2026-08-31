@@ -74,6 +74,31 @@ namespace {
 // the payload to be valid base64url JSON carrying a string "iss" (and an integer
 // "exp" if present). The signature segment is never decoded or verified.
 // exp = 4000000000 is the year 2096, so these never look expired.
+// A self-signed throwaway, only ever handed to tls->load_cert() so that
+// auth_cb() picks the /oidc/login/cert leg. tlsuv's set_own_cert does not check
+// that the key matches, and the fake endpoint is plain HTTP, so no handshake
+// ever uses either one.
+constexpr const char *FAKE_CERT_PEM =
+    "-----BEGIN CERTIFICATE-----\n"
+    "MIIDITCCAgmgAwIBAgIUJw0OAtVUYQKY4TxnlYH1sFAYvFQwDQYJKoZIhvcNAQEL\n"
+    "BQAwHzEdMBsGA1UEAwwUb2lkYy1hdXRoLXJldHJ5LXRlc3QwIBcNMjYwODMxMTgx\n"
+    "NjUxWhgPMjEyNjA4MDcxODE2NTFaMB8xHTAbBgNVBAMMFG9pZGMtYXV0aC1yZXRy\n"
+    "eS10ZXN0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArnqNzs1mOV1N\n"
+    "MWA5WJKr/oEi4IBACmVICKyMuvQ0Zd/80A7q7dzg8P57iVc2FNUGKqcwFwnTe8yW\n"
+    "Hd7Ojs60voGi7TQZ09Ss0FJSEIJF+TP2C3Mjpol1lmChq52aIoMAg1kNPYHAChSq\n"
+    "48A33yiBjqHgux/7cqrC30EJuzsEEBxH0AEbtuPaQEmvPQyA/ptwmvjHYOWRh3gC\n"
+    "J9MbjG8CUJ3c1erJOW7RCHoO+SQzcn8JKWsr27nPE5DqIvsGXG71+o4AskNghW8u\n"
+    "65A56UaEL7t2KxNZVuB1M5QiUUxMtlej+8Bt8bUZwJnhBXqn+iNO2nzz8VFuKCKW\n"
+    "FKSUP6FjDQIDAQABo1MwUTAdBgNVHQ4EFgQU+5IiErKluU8fFwavCC7xjN6VJMgw\n"
+    "HwYDVR0jBBgwFoAU+5IiErKluU8fFwavCC7xjN6VJMgwDwYDVR0TAQH/BAUwAwEB\n"
+    "/zANBgkqhkiG9w0BAQsFAAOCAQEAixyiJVX+gyoOOsownVmlo9Th5vhMPZ1Sq2Ge\n"
+    "0pnlTpNpk8ou9PhpXyl46W5xFZBfRH0HoNsyw27BGv6Ps0m1CvL6pQoJHRlSpAPm\n"
+    "DcqzmKH4VvDO47r7JMDrBsiB+YEntLoWgon7W01smIhJKn5ZB8coV0ulscXhnzJc\n"
+    "5wlnsCfZAQmtp8BuJ3aJUgu2QSPWT4uv81ZFBbcVjH2l3AwYyvsu4/oa7KcSnBeG\n"
+    "DVX4mtO9t3Q8Kcjn5x4TmIUTMNIKRhuZZZobZmovjZrhUpLFYjiB4YV27RJoTJYk\n"
+    "VlqVlwrkug/0QtSR4Z0oVjjslpjlpjCjYzTa94qY6sBawZqNGw==\n"
+    "-----END CERTIFICATE-----\n";
+
 constexpr const char *FAKE_JWT =
     "eyJhbGciOiJub25lIn0.eyJpc3MiOiJ0ZXN0IiwiZXhwIjo0MDAwMDAwMDAwfQ.sig";
 
@@ -83,7 +108,8 @@ constexpr const char *FAKE_JWT =
 //   GET  <that path>             -> 302 Location: ...?code=..           (code_cb)
 //   POST token_endpoint          -> 200 {access_token, refresh_token}   (token_cb)
 constexpr const char *AUTHORIZE_PATH = "/authorize";
-constexpr const char *LOGIN_PATH = "/oidc/login/ext-jwt";
+constexpr const char *LOGIN_JWT_PATH = "/oidc/login/ext-jwt";
+constexpr const char *LOGIN_CERT_PATH = "/oidc/login/cert";
 constexpr const char *CODE_PATH = "/oidc/redirect";
 constexpr const char *TOKEN_PATH = "/token";
 
@@ -97,6 +123,7 @@ public:
 
     uint16_t port{};
     std::atomic<int> authorize_count{0};
+    std::atomic<int> login_count{0};
     std::atomic<int> token_count{0};
 
     // each entry is a full status line + optional extra headers + optional JSON
@@ -108,6 +135,12 @@ public:
                                 const Headers &headers = {}) {
         std::lock_guard<std::mutex> lock(mu_);
         authorize_script_.push_back({statusLine, body, headers});
+    }
+
+    // as scriptAuthorizeFailure, but for the login leg (cert or ext-jwt)
+    void scriptLoginFailure(const std::string &statusLine, const std::string &body = "") {
+        std::lock_guard<std::mutex> lock(mu_);
+        login_script_.push_back({statusLine, body, {}});
     }
 
     // milliseconds between the Nth and (N+1)th authorize request
@@ -236,10 +269,27 @@ private:
             if (haveScripted) {
                 return response(scripted.statusLine, scripted.headers, scripted.body);
             }
-            return response("302 Found", {{"Location", url(LOGIN_PATH) + "?authRequestID=test-req-1&x=1"}});
+            // auth_cb only reads authRequestID out of this query - it picks the
+            // login path itself (LOGIN_CERT vs LOGIN_JWT), so the path here is
+            // never followed
+            return response("302 Found", {{"Location", url(LOGIN_JWT_PATH) + "?authRequestID=test-req-1&x=1"}});
         }
 
-        if (path == LOGIN_PATH) {
+        if (path == LOGIN_JWT_PATH || path == LOGIN_CERT_PATH) {
+            login_count++;
+            ScriptedResp scripted;
+            bool haveScripted = false;
+            {
+                std::lock_guard<std::mutex> lock(mu_);
+                if (!login_script_.empty()) {
+                    scripted = login_script_.front();
+                    login_script_.pop_front();
+                    haveScripted = true;
+                }
+            }
+            if (haveScripted) {
+                return response(scripted.statusLine, {}, scripted.body);
+            }
             return response("302 Found", {{"Location", url(CODE_PATH) + "?state=test-state"}});
         }
 
@@ -276,6 +326,7 @@ private:
     std::vector<std::thread> workers_;
     mutable std::mutex mu_;
     std::deque<ScriptedResp> authorize_script_;
+    std::deque<ScriptedResp> login_script_;
     std::vector<std::chrono::steady_clock::time_point> authorize_at_;
 };
 
@@ -290,13 +341,19 @@ struct AuthResult {
 // one non-expired ext token so auth_cb picks the ext-jwt login path (a cert
 // would send it to /oidc/login/cert instead, and with neither it bails out with
 // "no credentials provided").
+// Which credential the client presents. It decides which login leg auth_cb()
+// picks, and therefore whether a 401/403/404 there is treated as replication lag
+// (cert) or as a settled rejection (ext JWT).
+enum class Creds { ExtJwt, Cert };
+
 struct TestClient {
     uv_loop_t *loop{};
     tls_context *tls{};
     oidc_client_t clt{};
     AuthResult result{};
+    zt_x509 x509{};
 
-    TestClient(const FakeOidcEndpoint &server, uint64_t retry_window_ms) {
+    TestClient(const FakeOidcEndpoint &server, uint64_t retry_window_ms, Creds creds = Creds::ExtJwt) {
         loop = uv_loop_new();
         tls = default_tls_context(nullptr, 0);
         REQUIRE(oidc_client_init(loop, &clt, server.url("/oidc").c_str(), tls) == 0);
@@ -311,14 +368,23 @@ struct TestClient {
                                json_object_new_string(server.url(TOKEN_PATH).c_str()));
         clt.config = cfg;
 
-        auto *jwt = (zt_jwt *) calloc(1, sizeof(zt_jwt));
-        REQUIRE(zt_jwt_parse(FAKE_JWT, jwt) == 0);
-        model_map_set(&clt.ext_tokens, cstr_str(&jwt->issuer), jwt);
+        if (creds == Creds::Cert) {
+            REQUIRE(tls->generate_key(&x509.key) == 0);
+            REQUIRE(tls->load_cert(&x509.cert, FAKE_CERT_PEM, strlen(FAKE_CERT_PEM)) == 0);
+            clt.x509 = &x509;
+        } else {
+            auto *jwt = (zt_jwt *) calloc(1, sizeof(zt_jwt));
+            REQUIRE(zt_jwt_parse(FAKE_JWT, jwt) == 0);
+            model_map_set(&clt.ext_tokens, cstr_str(&jwt->issuer), jwt);
+        }
     }
 
     ~TestClient() {
         oidc_client_close(&clt, [](oidc_client_t *) {});
         for (int i = 0; i < 10 && uv_run(loop, UV_RUN_ONCE) != 0; i++) {}
+        // clt.x509 points at our own member, so oidc_client_close does not free
+        // it - drop the key/cert here
+        zt_x509_drop(&x509);
         // uv_loop_new() heap-allocates the loop, so uv_loop_close() alone leaks it
         // and LeakSanitizer flags it even on an otherwise passing run.
         uv_loop_delete(loop);
@@ -351,13 +417,13 @@ struct TestClient {
 
 } // namespace
 
-// A 401 on the authorize leg - what an unreplicated identity looks like - is
-// retried without ever telling the app, and only becomes OIDC_TOKEN_FAILED once
-// the window closes. The 3s window guarantees at least one retry: the first
-// backoff is next_backoff(0, 5, 1000) == random % 2000, clamped to the window.
-TEST_CASE("oidc-auth-retries-transient-401-then-reports-once", "[oidc]") {
+// A 5xx is transient on any leg, so it is retried without ever telling the app,
+// and only becomes OIDC_TOKEN_FAILED once the window closes. The 3s window
+// guarantees at least one retry: the first backoff is
+// next_backoff(0, 5, 1000) == random % 2000, clamped to the window.
+TEST_CASE("oidc-auth-retries-transient-5xx-then-reports-once", "[oidc]") {
     FakeOidcEndpoint server;
-    for (int i = 0; i < 20; i++) server.scriptAuthorizeFailure("401 Unauthorized");
+    for (int i = 0; i < 20; i++) server.scriptAuthorizeFailure("503 Service Unavailable");
 
     TestClient c(server, 3000);
     REQUIRE(c.start() == 0);
@@ -385,7 +451,7 @@ TEST_CASE("oidc-auth-retries-transient-401-then-reports-once", "[oidc]") {
 // entirely, and an exhausted window reports once and stops.
 TEST_CASE("oidc-auth-smallest-window-retries-once-then-reports", "[oidc]") {
     FakeOidcEndpoint server;
-    for (int i = 0; i < 5; i++) server.scriptAuthorizeFailure("401 Unauthorized");
+    for (int i = 0; i < 5; i++) server.scriptAuthorizeFailure("503 Service Unavailable");
 
     TestClient c(server, 1);
     REQUIRE(c.start() == 0);
@@ -420,16 +486,17 @@ TEST_CASE("oidc-auth-does-not-retry-permanent-failure", "[oidc]") {
     CHECK(server.authorize_count.load() == 1);
 }
 
-// The bug this whole change exists for: the identity finishes replicating partway
-// through the window, the retried flow completes, and the app sees a single
-// successful auth rather than a permanent failure.
+// The bug this whole change exists for: a just-enrolled identity has not reached
+// the controller node we landed on, so the *cert* login leg rejects it, then the
+// identity replicates partway through the window and the retried flow completes.
+// The app sees a single successful auth rather than a permanent failure.
 TEST_CASE("oidc-auth-recovers-once-identity-replicates", "[oidc]") {
     FakeOidcEndpoint server;
-    server.scriptAuthorizeFailure("401 Unauthorized");
-    server.scriptAuthorizeFailure("404 Not Found");
-    // script exhausted: subsequent authorize requests complete the flow
+    server.scriptLoginFailure("401 Unauthorized");
+    server.scriptLoginFailure("404 Not Found");
+    // script exhausted: the next login completes the flow
 
-    TestClient c(server, 20000);
+    TestClient c(server, 20000, Creds::Cert);
     REQUIRE(c.start() == 0);
 
     c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(15));
@@ -437,12 +504,55 @@ TEST_CASE("oidc-auth-recovers-once-identity-replicates", "[oidc]") {
     REQUIRE(c.result.calls == 1);
     CHECK(c.result.status == OIDC_TOKEN_OK);
     CHECK(c.result.token == FAKE_JWT);
-    CHECK(server.authorize_count.load() == 3);
+    CHECK(server.login_count.load() == 3);
     CHECK(server.token_count.load() == 1);
 
     // the window is closed out on success, so a later failure gets a fresh one
     CHECK(c.clt.auth_failures == 0);
     CHECK(c.clt.auth_retry_until == 0);
+}
+
+// Regression guard for openziti/ziti-tunnel-sdk-c
+// TestExternalAuthSingleSigner/enrollToNoneRejectsUnknownControllerIdentity: a
+// 401 on the *ext-jwt* login means the token maps to no identity on this
+// controller, which waiting cannot fix. Retrying it silently left the tunneler
+// with no "controller disconnected" event at all, so the test timed out. It must
+// be reported on the first attempt.
+TEST_CASE("oidc-auth-does-not-retry-rejected-ext-jwt-login", "[oidc]") {
+    FakeOidcEndpoint server;
+    for (int i = 0; i < 5; i++) {
+        server.scriptLoginFailure("401 Unauthorized",
+                                  R"({"code":"UNAUTHORIZED","message":"The request could not be completed."})");
+    }
+
+    TestClient c(server, 60000, Creds::ExtJwt);
+    REQUIRE(c.start() == 0);
+
+    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(5));
+
+    REQUIRE(c.result.calls == 1);
+    CHECK(c.result.status == OIDC_TOKEN_FAILED);
+    CHECK(server.login_count.load() == 1);
+
+    c.pumpFor(std::chrono::milliseconds(500));
+    CHECK(server.login_count.load() == 1);
+    CHECK(c.result.calls == 1);
+}
+
+// The authorize leg runs before any credential is presented, so a 401 there is
+// not a replication symptom either and must not open the window.
+TEST_CASE("oidc-auth-does-not-retry-401-on-authorize-leg", "[oidc]") {
+    FakeOidcEndpoint server;
+    for (int i = 0; i < 5; i++) server.scriptAuthorizeFailure("401 Unauthorized");
+
+    TestClient c(server, 60000, Creds::Cert);
+    REQUIRE(c.start() == 0);
+
+    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(5));
+
+    REQUIRE(c.result.calls == 1);
+    CHECK(c.result.status == OIDC_TOKEN_FAILED);
+    CHECK(server.authorize_count.load() == 1);
 }
 
 // A 429 carrying Retry-After paces the retry by what the server asked for

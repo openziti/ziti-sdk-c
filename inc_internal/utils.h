@@ -190,8 +190,8 @@ tlsuv_http_req_t* ziti_json_request(
     void *ctx);
 
 // Returns true if an HTTP error response represents a transient/temporary
-// condition that may succeed on retry (network errors, 5xx, or zitadel-style
-// "server_error" returned with a 400 body).
+// condition that may succeed on retry (network errors, 5xx, 429, or
+// zitadel-style "server_error" returned with a 400 body).
 bool ziti_http_error_is_temporary(tlsuv_http_resp_t *resp, json_object *body);
 
 #ifdef __cplusplus
