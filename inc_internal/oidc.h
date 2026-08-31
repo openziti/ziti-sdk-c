@@ -67,6 +67,13 @@ struct oidc_client_s {
     tlsuv_http_req_t *refresh_req;
     int refresh_failures;
 
+    // initial/full auth flow retry state: a freshly enrolled identity may not
+    // have replicated to the controller node we reached yet, so the login leg
+    // rejects good credentials for a short while. see schedule_auth_retry().
+    int auth_failures;            // consecutive auth-flow failures, feeds next_backoff()
+    uint64_t auth_retry_until;    // uv_now() ms past which a failure is reported; 0 = no window open
+    uint64_t auth_retry_window;   // ms; defaults to OIDC_AUTH_RETRY_WINDOW_MS (tests shorten it)
+
     // auth-method facade (populated only by new_oidc_auth)
     ziti_auth_method_t api;
     uv_loop_t *loop;
