@@ -80,3 +80,53 @@ TEST_CASE("read_file_stdin", "[util]") {
     free(content);
     uv_fs_req_cleanup(&req);
 }
+
+// The shared retry predicate. Three call sites depend on it: the OIDC auth-flow
+// classifier (library/oidc.c auth_error_is_temporary) and the internal and
+// external token-refresh paths (oidc.c / ext_oidc.c). Only resp->code and the
+// body are read, so a zeroed response with a code set is a faithful input.
+TEST_CASE("http_error_is_temporary", "[util]") {
+    auto classify = [](int code, const char *body_json = nullptr) {
+        tlsuv_http_resp_t resp{};
+        resp.code = code;
+        json_object *body = body_json ? json_tokener_parse(body_json) : nullptr;
+        bool result = ziti_http_error_is_temporary(&resp, body);
+        if (body) json_object_put(body);
+        return result;
+    };
+
+    SECTION("transport errors are temporary") {
+        CHECK(classify(UV_ECONNRESET));
+        CHECK(classify(UV_ETIMEDOUT));
+    }
+
+    SECTION("5xx is temporary") {
+        CHECK(classify(500));
+        CHECK(classify(502));
+        CHECK(classify(503));
+    }
+
+    SECTION("429 is temporary: the server is pacing us, not rejecting us") {
+        CHECK(classify(429));
+    }
+
+    SECTION("400 is temporary only for zitadel's generic server_error") {
+        CHECK(classify(400, R"({"error":"server_error"})"));
+        CHECK_FALSE(classify(400, R"({"error":"invalid_request"})"));
+        CHECK_FALSE(classify(400, R"({})"));
+        CHECK_FALSE(classify(400));
+    }
+
+    SECTION("credential rejections are not temporary on their own") {
+        // oidc.c widens 401/403/404 for the cert-login leg only; the shared
+        // predicate must not do it for everyone
+        CHECK_FALSE(classify(401));
+        CHECK_FALSE(classify(403));
+        CHECK_FALSE(classify(404));
+    }
+
+    SECTION("success and other 4xx are not temporary") {
+        CHECK_FALSE(classify(200));
+        CHECK_FALSE(classify(409));
+    }
+}

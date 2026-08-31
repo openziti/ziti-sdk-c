@@ -63,11 +63,21 @@
 
 #define OIDC_LOG(lvl, fmt, ...) ZITI_LOG(lvl, "oidc[internal] " fmt, ##__VA_ARGS__)
 
+// how long an auth-flow failure keeps being treated as temporary, and the
+// full-jitter backoff between attempts inside that window (max ~32s/attempt)
+// match external auth timing
+#define OIDC_AUTH_RETRY_WINDOW_MS (60 * 1000)
+#define AUTH_BACKOFF_MAX  5
+#define AUTH_BACKOFF_BASE 1000
+#define AUTH_MIN_BACKOFF 10
+
 typedef struct auth_req auth_req;
 
 static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json);
 
-static void failed_auth_req(struct auth_req *req, const char *error);
+// resp/body are NULL for failures that are not an HTTP status:
+// malformed redirect, missing credentials, cancellation
+static void failed_auth_req(struct auth_req *req, tlsuv_http_resp_t *resp, json_object *body, const char *error);
 
 static void refresh_time_cb(uv_timer_t *t);
 
@@ -116,6 +126,7 @@ struct auth_req {
     char state[state_code_len];
     cstr id;
     bool totp;
+    bool cert_login; // login leg presented a client cert (not an ext JWT)
 };
 
 
@@ -150,6 +161,11 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
         return rc;
     }
     clt->http.data = clt;
+    // keep the context: auth_cb() and refresh_time_cb() both call
+    // clt->tls->set_own_cert() whenever clt->x509 is set. new_oidc_auth()
+    // assigns the same pointer before calling us; ownership is unchanged - only
+    // the facade's close callback frees it.
+    clt->tls = tls;
     tlsuv_http_set_ssl(&clt->http, tls);
     tlsuv_http_connect_timeout(&clt->http, 10000);
     tlsuv_http_idle_keepalive(&clt->http, 0);
@@ -159,6 +175,11 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
     uv_timer_init(loop, clt->timer);
     clt->timer->data = clt;
     uv_unref((uv_handle_t *) clt->timer);
+
+    clt->auth_failures = 0;
+    clt->auth_retry_until = 0;
+    clt->auth_retry_window = OIDC_AUTH_RETRY_WINDOW_MS;
+    clt->primary_ok = false;
 
     return 0;
 }
@@ -279,22 +300,174 @@ static void free_auth_req(auth_req *req) {
     free(req);
 }
 
-static void failed_auth_req(auth_req *req, const char *error) {
-    oidc_client_t *clt = req->clt;
-    if (clt) {
-        if (clt->request == req) {
-            clt->request = NULL;
-        }
+// ziti_http_error_is_temporary() covers the shapes that are transient wherever
+// they turn up: transport errors, 5xx, and zitadel's generic 400/server_error.
+// This adds the auth-flow-specific cases on top.
+//
+// cert_login says the failed request was the client-cert login leg. That
+// distinction matters for 401/403/404, which all mean "we do not know this
+// identity":
+//   - on the cert login, right after enrollment, that is the controller node we
+//     reached not having the new identity yet - worth waiting out, and the whole
+//     reason this retry exists;
+//   - on the ext-jwt login it means the token maps to no identity, which no
+//     amount of waiting changes (openziti/ziti-tunnel-sdk-c
+//     TestExternalAuthSingleSigner/enrollToNoneRejectsUnknownControllerIdentity
+//     depends on that being reported promptly);
+//   - on the authorize leg no credentials have been presented yet, so it is not
+//     a replication symptom either.
+//
+// 429 is deliberately not here: rate limiting is transient for every caller, so
+// it lives in ziti_http_error_is_temporary() and needs no leg-specific gate.
+static bool auth_error_is_temporary(tlsuv_http_resp_t *resp, json_object *body, bool cert_login) {
+    if (resp == NULL) return false; // not an HTTP status: bad redirect, no credentials, cancel
+    if (ziti_http_error_is_temporary(resp, body)) return true;
 
-        if (clt->token_cb) {
-            OIDC_LOG(WARN, "OIDC authorization failed: %s", error);
-            clt->token_cb(clt, OIDC_TOKEN_FAILED, error);
-            clt->request = NULL;
-            clt = NULL;
-        }
+    if (!cert_login) return false;
+
+    switch (resp->code) {
+        case HTTP_STATUS_UNAUTHORIZED:
+        case HTTP_STATUS_FORBIDDEN:
+        case HTTP_STATUS_NOT_FOUND:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// A 429 may carry Retry-After (RFC 9110 10.2.3) telling us how long to stay
+// away; honour it instead of our own jitter, since the server knows better when
+// it is rate limiting. Only the delay-seconds form is parsed - the HTTP-date
+// form would need strptime(), which MSVC does not have, and the controller and
+// zitadel both send seconds. Returns 0 when the header is absent or unusable,
+// meaning "fall back to normal backoff".
+static uint64_t auth_retry_after_ms(tlsuv_http_resp_t *resp) {
+    if (resp == NULL || resp->code != HTTP_STATUS_TOO_MANY_REQUESTS) return 0;
+
+    const char *val = tlsuv_http_resp_header(resp, HTTP_RETRY_AFTER);
+    if (val == NULL) return 0;
+
+    char *end = NULL;
+    unsigned long long secs = strtoull(val, &end, 10);
+    if (end == val) {
+        // no leading digits at all: an HTTP-date, or garbage
+        OIDC_LOG(DEBUG, "ignoring un-parsable " HTTP_RETRY_AFTER "[%s], using backoff", val);
+        return 0;
+    }
+    while (*end == ' ' || *end == '\t') end++;
+    if (*end != '\0') {
+        OIDC_LOG(DEBUG, "ignoring malformed " HTTP_RETRY_AFTER "[%s], using backoff", val);
+        return 0;
     }
 
+    // cap well above the retry window so the multiply below cannot overflow;
+    // schedule_auth_retry() decides what to do with a delay this long
+    if (secs > 24 * 60 * 60) secs = 24 * 60 * 60;
+    return (uint64_t) secs * 1000;
+}
+
+// forget the retry window: called on a successful auth and whenever the app
+// deliberately restarts the flow, so the next failure gets a fresh window
+// rather than an already-exhausted one
+static void reset_auth_retry(oidc_client_t *clt) {
+    clt->auth_failures = 0;
+    clt->auth_retry_until = 0;
+}
+
+static void auth_retry_cb(uv_timer_t *t) {
+    uv_unref((uv_handle_t *) t);
+    oidc_client_t *clt = t->data;
+    OIDC_LOG(DEBUG, "retrying auth flow, attempt %d", clt->auth_failures + 1);
+    oidc_client_start(clt, clt->token_cb);
+}
+
+// Arms a retry of the whole auth flow if this failure looks temporary and the
+// retry window has not run out. Returns true when a retry is pending, in which
+// case the caller must stay silent: the app keeps whatever auth state it has and
+// is not told about an intermediate failure.
+static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, json_object *body,
+                                bool cert_login) {
+    if (clt->token_cb == NULL) return false;
+    if (!auth_error_is_temporary(resp, body, cert_login)) return false;
+
+    // controller knows about this identity
+    if (clt->primary_ok) return false;
+
+    // same guard as oidc_client_refresh(): nothing to arm during/after teardown
+    if (clt->timer == NULL || uv_is_closing((const uv_handle_t *) clt->timer)) {
+        OIDC_LOG(DEBUG, "not retrying auth: timer is %s", clt->timer ? "closing" : "null");
+        return false;
+    }
+
+    uint64_t now = uv_now(clt->timer->loop);
+    if (clt->auth_retry_until == 0) {
+        uint64_t window = clt->auth_retry_window ? clt->auth_retry_window : OIDC_AUTH_RETRY_WINDOW_MS;
+        clt->auth_retry_until = now + window;
+        OIDC_LOG(DEBUG, "treating auth failures as temporary for the next %" PRIu64 " ms", window);
+    }
+
+    if (now >= clt->auth_retry_until) {
+        OIDC_LOG(WARN, "OIDC auth kept failing for the whole retry window, giving up after %d attempts",
+                 clt->auth_failures);
+        clt->auth_failures = 0;
+        clt->auth_retry_until = 0;
+        return false;
+    }
+
+    uint64_t remaining = clt->auth_retry_until - now;
+    // always advance the attempt counter, even when the delay comes from the
+    // server, so the log and the eventual give-up still count attempts
+    uint64_t delay = next_backoff(&clt->auth_failures, AUTH_BACKOFF_MAX, AUTH_BACKOFF_BASE);
+
+    uint64_t retry_after = auth_retry_after_ms(resp);
+    if (retry_after > 0) {
+        // Coming back before the server said to would defeat the point of
+        // handling the header, so if the requested wait does not fit in what is
+        // left of the window, give up now instead of clamping it down.
+        if (retry_after > remaining) {
+            OIDC_LOG(WARN, "OIDC auth rate limited for %" PRIu64 " s, longer than the %" PRIu64
+                           " s left in the retry window; giving up after %d attempts",
+                     retry_after / 1000, remaining / 1000, clt->auth_failures);
+            clt->auth_failures = 0;
+            clt->auth_retry_until = 0;
+            return false;
+        }
+        OIDC_LOG(DEBUG, "honouring " HTTP_RETRY_AFTER " of %" PRIu64 " s over computed backoff of %"
+                        PRIu64 " ms", retry_after / 1000, delay);
+        delay = retry_after;
+    } else if (delay > remaining) {
+        delay = remaining; // don't sleep past the window
+    }
+    if (delay < AUTH_MIN_BACKOFF) delay = AUTH_MIN_BACKOFF;
+
+    OIDC_LOG(WARN, "OIDC auth failed (%d %s), attempt %d; retrying in %" PRIu64 ".%03" PRIu64
+                   " s (%" PRIu64 " s left in window)",
+             resp->code, resp->status, clt->auth_failures, delay / 1000, delay % 1000, remaining / 1000);
+
+    uv_ref((uv_handle_t *) clt->timer);
+    uv_timer_start(clt->timer, auth_retry_cb, delay, 0);
+    return true;
+}
+
+static void failed_auth_req(auth_req *req, tlsuv_http_resp_t *resp, json_object *body, const char *error) {
+    oidc_client_t *clt = req->clt;
+    // read off the request before it is freed below
+    const bool cert_login = req->cert_login;
+
+    // clear and free before arming a retry: the retry re-enters
+    // oidc_client_start(), which allocates a fresh auth_req
+    if (clt != NULL && clt->request == req) {
+        clt->request = NULL;
+    }
     free_auth_req(req);
+    if (clt == NULL) return;
+
+    if (schedule_auth_retry(clt, resp, body, cert_login)) return; // stay silent, retry pending
+
+    if (clt->token_cb) {
+        OIDC_LOG(WARN, "OIDC authorization failed: %s", error);
+        clt->token_cb(clt, OIDC_TOKEN_FAILED, error);
+    }
 }
 
 static void token_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *resp, void *ctx) {
@@ -306,9 +479,11 @@ static void token_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
         clt->request = NULL;
         free_auth_req(req);
     } else {
-        failed_auth_req(req, http_resp->status);
-        http_resp->req->data = NULL;
+        // log before failing the request: failed_auth_req may arm a retry that
+        // re-enters the auth flow and retargets clt->http
         handle_unexpected_resp(clt, http_resp, resp);
+        http_resp->req->data = NULL;
+        failed_auth_req(req, http_resp, resp, http_resp->status);
     }
 }
 
@@ -336,19 +511,20 @@ static void code_cb(tlsuv_http_resp_t *http_resp, void *ctx) {
         const char *redirect = tlsuv_http_resp_header(http_resp, HTTP_LOCATION);
         struct tlsuv_url_s uri;
         if (redirect == NULL || tlsuv_parse_url(&uri, redirect) != 0) { // guard against missing/invalid Location header
-            failed_auth_req(req, "missing or invalid redirect");
+            failed_auth_req(req, NULL, NULL, "missing or invalid redirect");
             return;
         }
         char *code = uri.query ? strstr(uri.query, "code=") : NULL; // guard against missing query string
         if (code == NULL) { // guard against missing code= parameter
-            failed_auth_req(req, "missing auth code in redirect");
+            failed_auth_req(req, NULL, NULL, "missing auth code in redirect");
             return;
         }
         code += strlen("code=");
 
         request_token(req, code);
     } else {
-        failed_auth_req(req, http_resp->status);
+        // raw resp_cb: no parsed JSON body to classify against
+        failed_auth_req(req, http_resp, NULL, http_resp->status);
     }
 }
 
@@ -364,6 +540,7 @@ static void login_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
     }
 
     if (model_list_size(&queries) > 0) {
+        clt->primary_ok = true;
         ziti_auth_query_mfa *q;
         MODEL_LIST_FOREACH(q, queries) {
             switch (q->type_id) {
@@ -386,6 +563,7 @@ static void login_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
     }
 
     if (http_resp->code / 100 == 2) {
+        clt->primary_ok = true;
         const char *totp = tlsuv_http_resp_header(http_resp, "totp-required");
         if (totp && tolower(totp[0]) == 't') {
             req->totp = true;
@@ -393,13 +571,14 @@ static void login_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object 
             req->clt->token_cb(req->clt, OIDC_TOTP_NEEDED, NULL);
         }
     } else if (http_resp->code / 100 == 3) {
+        clt->primary_ok = true;
         const char *redirect = tlsuv_http_resp_header(http_resp, HTTP_LOCATION);
         struct tlsuv_url_s uri;
         tlsuv_parse_url(&uri, redirect);
         tlsuv_http_set_path_prefix(&req->clt->http, NULL);
         tlsuv_http_req(&req->clt->http, "GET", uri.path, code_cb, req);
     } else {
-        failed_auth_req(req, http_resp->status);
+        failed_auth_req(req, http_resp, body, http_resp->status);
     }
 }
 
@@ -415,12 +594,12 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
         const char *redirect = tlsuv_http_resp_header(http_resp, HTTP_LOCATION);
         struct tlsuv_url_s uri;
         if (redirect == NULL || tlsuv_parse_url(&uri, redirect) != 0) { // guard against missing/invalid Location header
-            failed_auth_req(req, "missing or invalid redirect");
+            failed_auth_req(req, NULL, NULL, "missing or invalid redirect");
             return;
         }
         char *p = uri.query ? strstr(uri.query, "authRequestID=") : NULL; // guard against missing query string
         if (p == NULL) { // guard against missing authRequestID parameter
-            failed_auth_req(req, "missing authRequestID in redirect");
+            failed_auth_req(req, NULL, NULL, "missing authRequestID in redirect");
             return;
         }
         p += strlen("authRequestID=");
@@ -431,10 +610,11 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
         if (clt->x509 && clt->x509->cert != NULL) {
             clt->tls->set_own_cert(clt->tls, clt->x509->key, clt->x509->cert);
             path = LOGIN_CERT;
+            req->cert_login = true;
         } else if (model_map_size(&clt->ext_tokens) > 0) {
             path = LOGIN_JWT;
         } else {
-            failed_auth_req(req, "no credentials provided");
+            failed_auth_req(req, NULL, NULL, "no credentials provided");
             return;
         }
 
@@ -460,7 +640,7 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
         const char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
         tlsuv_http_req_data(login_req, body, body_len, free_body_cb);
     } else {
-        failed_auth_req(req, http_resp->status);
+        failed_auth_req(req, http_resp, resp, http_resp->status);
     }
 }
 
@@ -477,6 +657,13 @@ int oidc_client_start(oidc_client_t *clt, oidc_token_cb cb) {
     }
 
     OIDC_LOG(DEBUG, "starting auth flow");
+    // a new flow has its own credentials to prove: clear here rather than in
+    // reset_auth_retry() so every restart is covered, including oidc_refresh_cb's
+    // give-up path, which restarts the flow without going through it. placed
+    // after the guards above so a flow already past login (TOTP pending) keeps
+    // its primary_ok.
+    clt->primary_ok = false;
+
     json_object *cfg = (json_object *) clt->config;
     json_object *auth_ep = json_object_object_get(cfg, AUTH_EP);
     if (auth_ep  == NULL) {
@@ -663,7 +850,7 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
     zt_jwt_drop(&clt->refresh_token);
 
     if (clt->request) {
-        failed_auth_req(clt->request, strerror(ECANCELED));
+        failed_auth_req(clt->request, NULL, NULL, strerror(ECANCELED));
     }
 
     return 0;
@@ -692,6 +879,7 @@ static void oidc_client_set_tokens(oidc_client_t *clt, json_object *tok_json) {
     OIDC_LOG(DEBUG, "using " INTERNAL_TOKEN_TYPE "=%s", json_object_get_string(clt->current.claims));
     OIDC_LOG(DEBUG, "token expires in %" PRIi64 " seconds", clt->current.expiration - now.tv_sec);
 
+    reset_auth_retry(clt);
     if (clt->token_cb) {
         clt->token_cb(clt, OIDC_TOKEN_OK, cstr_str(&clt->current.encoded));
     }
@@ -912,6 +1100,7 @@ static int oidc_auth_set_ca(ziti_auth_method_t *self, const char *ca) {
 
 static int oidc_auth_set_endpoint(ziti_auth_method_t *self, const api_path *api) {
     oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    reset_auth_retry(clt);
 
     model_list_clear(&clt->urls, free);
     const char *u;
@@ -959,6 +1148,13 @@ static void oidc_auth_dump(ziti_auth_method_t *self, int (*printer)(void *arg, c
             clt->configuring ? "true" : "false",
             clt->need_refresh ? "true" : "false",
             clt->refresh_failures);
+
+    if (clt->auth_retry_until != 0 && clt->timer) {
+        uint64_t now = uv_now(clt->timer->loop);
+        printer(ctx, "\tauth_failures[%d] retry window %" PRIi64 "s remaining\n",
+                clt->auth_failures,
+                now < clt->auth_retry_until ? (int64_t) ((clt->auth_retry_until - now) / 1000) : (int64_t) 0);
+    }
 
     if (clt->timer && uv_is_active((uv_handle_t*)clt->timer)) {
         printer(ctx, "\trefresh in %" PRIi64 "s\n", uv_timer_get_due_in(clt->timer) / 1000);
@@ -1189,11 +1385,18 @@ static int oidc_auth_stop(ziti_auth_method_t *self) {
     oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
     clt->auth_cb = NULL;
     clt->auth_cb_ctx = NULL;
+
+    // don't keep dialing the controller for a method nobody is listening to
+    if (clt->timer && !uv_is_closing((const uv_handle_t *) clt->timer)) {
+        uv_timer_stop(clt->timer);
+    }
+    reset_auth_retry(clt);
     return 0;
 }
 
 static int oidc_auth_refresh(ziti_auth_method_t *self) {
     oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    reset_auth_retry(clt);
     if (clt->request) {
         OIDC_LOG(DEBUG, "skipping refresh while auth request is in progress");
         return ZITI_OK;

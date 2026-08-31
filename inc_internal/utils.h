@@ -156,6 +156,7 @@ if (!uv_is_closing((uv_handle_t*)(h))) uv_close((uv_handle_t*)(h), (uv_close_cb)
 #define HTTP_CONTENT_LENGTH "Content-Length"
 #define HTTP_ACCEPT "Accept"
 #define HTTP_LOCATION "Location"
+#define HTTP_RETRY_AFTER "Retry-After"
 #define APPLICATION_JSON "application/json"
 #define TEXT_PLAIN "text/plain"
 #define HTTP_BEARER_FMT "Bearer %s"
@@ -189,8 +190,8 @@ tlsuv_http_req_t* ziti_json_request(
     void *ctx);
 
 // Returns true if an HTTP error response represents a transient/temporary
-// condition that may succeed on retry (network errors, 5xx, or zitadel-style
-// "server_error" returned with a 400 body).
+// condition that may succeed on retry (network errors, 5xx, 429, or
+// zitadel-style "server_error" returned with a 400 body).
 bool ziti_http_error_is_temporary(tlsuv_http_resp_t *resp, json_object *body);
 
 #ifdef __cplusplus
