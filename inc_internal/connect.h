@@ -27,6 +27,8 @@ extern "C" {
 #include "internal_model.h"
 #include "message.h"
 
+#include <stc/cstr.h>
+
 #define MARKER_BIN_LEN 6
 #define MARKER_CHAR_LEN sodium_base64_ENCODED_LEN(MARKER_BIN_LEN, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
 
@@ -56,8 +58,8 @@ enum ziti_conn_type {
 struct ziti_conn {
     struct ziti_ctx *ziti_ctx;
     enum ziti_conn_type type;
-    char *service;
-    char *source_identity;
+    cstr service;
+    cstr source_identity;
     uint32_t conn_id;
     uint32_t rt_conn_id;
     void *data;
@@ -92,8 +94,7 @@ struct ziti_conn {
         struct {
             e2ee_t *e2ee;
             struct ziti_conn_req *conn_req;
-
-            char marker[MARKER_CHAR_LEN];
+            cstr circuit_id;
 
             uint32_t edge_msg_seq;
             uint32_t in_msg_seq;
