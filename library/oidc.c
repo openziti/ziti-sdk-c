@@ -315,6 +315,37 @@ static bool auth_error_is_temporary(tlsuv_http_resp_t *resp, json_object *body) 
     }
 }
 
+// A 429 may carry Retry-After (RFC 9110 10.2.3) telling us how long to stay
+// away; honour it instead of our own jitter, since the server knows better when
+// it is rate limiting. Only the delay-seconds form is parsed - the HTTP-date
+// form would need strptime(), which MSVC does not have, and the controller and
+// zitadel both send seconds. Returns 0 when the header is absent or unusable,
+// meaning "fall back to normal backoff".
+static uint64_t auth_retry_after_ms(tlsuv_http_resp_t *resp) {
+    if (resp == NULL || resp->code != HTTP_STATUS_TOO_MANY_REQUESTS) return 0;
+
+    const char *val = tlsuv_http_resp_header(resp, HTTP_RETRY_AFTER);
+    if (val == NULL) return 0;
+
+    char *end = NULL;
+    unsigned long long secs = strtoull(val, &end, 10);
+    if (end == val) {
+        // no leading digits at all: an HTTP-date, or garbage
+        OIDC_LOG(DEBUG, "ignoring un-parsable " HTTP_RETRY_AFTER "[%s], using backoff", val);
+        return 0;
+    }
+    while (*end == ' ' || *end == '\t') end++;
+    if (*end != '\0') {
+        OIDC_LOG(DEBUG, "ignoring malformed " HTTP_RETRY_AFTER "[%s], using backoff", val);
+        return 0;
+    }
+
+    // cap well above the retry window so the multiply below cannot overflow;
+    // schedule_auth_retry() decides what to do with a delay this long
+    if (secs > 24 * 60 * 60) secs = 24 * 60 * 60;
+    return (uint64_t) secs * 1000;
+}
+
 // forget the retry window: called on a successful auth and whenever the app
 // deliberately restarts the flow, so the next failure gets a fresh window
 // rather than an already-exhausted one
@@ -363,8 +394,29 @@ static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, jso
     }
 
     uint64_t remaining = clt->auth_retry_until - now;
+    // always advance the attempt counter, even when the delay comes from the
+    // server, so the log and the eventual give-up still count attempts
     uint64_t delay = next_backoff(&clt->auth_failures, AUTH_BACKOFF_MAX, AUTH_BACKOFF_BASE);
-    if (delay > remaining) delay = remaining; // don't sleep past the window
+
+    uint64_t retry_after = auth_retry_after_ms(resp);
+    if (retry_after > 0) {
+        // Coming back before the server said to would defeat the point of
+        // handling the header, so if the requested wait does not fit in what is
+        // left of the window, give up now instead of clamping it down.
+        if (retry_after > remaining) {
+            OIDC_LOG(WARN, "OIDC auth rate limited for %" PRIu64 " s, longer than the %" PRIu64
+                           " s left in the retry window; giving up after %d attempts",
+                     retry_after / 1000, remaining / 1000, clt->auth_failures);
+            clt->auth_failures = 0;
+            clt->auth_retry_until = 0;
+            return false;
+        }
+        OIDC_LOG(DEBUG, "honouring " HTTP_RETRY_AFTER " of %" PRIu64 " s over computed backoff of %"
+                        PRIu64 " ms", retry_after / 1000, delay);
+        delay = retry_after;
+    } else if (delay > remaining) {
+        delay = remaining; // don't sleep past the window
+    }
     if (delay < AUTH_MIN_BACKOFF) delay = AUTH_MIN_BACKOFF;
 
     OIDC_LOG(WARN, "OIDC auth failed (%d %s), attempt %d; retrying in %" PRIu64 ".%03" PRIu64

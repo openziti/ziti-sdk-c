@@ -156,6 +156,7 @@ if (!uv_is_closing((uv_handle_t*)(h))) uv_close((uv_handle_t*)(h), (uv_close_cb)
 #define HTTP_CONTENT_LENGTH "Content-Length"
 #define HTTP_ACCEPT "Accept"
 #define HTTP_LOCATION "Location"
+#define HTTP_RETRY_AFTER "Retry-After"
 #define APPLICATION_JSON "application/json"
 #define TEXT_PLAIN "text/plain"
 #define HTTP_BEARER_FMT "Bearer %s"

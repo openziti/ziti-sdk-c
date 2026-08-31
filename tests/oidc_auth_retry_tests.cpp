@@ -93,15 +93,29 @@ constexpr const char *TOKEN_PATH = "/token";
 // One thread per connection, independent of the test's uv_loop.
 class FakeOidcEndpoint {
 public:
+    using Headers = std::vector<std::pair<std::string, std::string>>;
+
     uint16_t port{};
     std::atomic<int> authorize_count{0};
     std::atomic<int> token_count{0};
 
-    // each entry is a full status line + optional JSON body served to one
-    // authorize request; empty queue == serve the success redirect
-    void scriptAuthorizeFailure(const std::string &statusLine, const std::string &body = "") {
+    // each entry is a full status line + optional extra headers + optional JSON
+    // body served to one authorize request; empty queue == serve the success
+    // redirect. authorize_at records uv-independent arrival times so a test can
+    // assert on the gap the retry actually waited.
+    void scriptAuthorizeFailure(const std::string &statusLine,
+                                const std::string &body = "",
+                                const Headers &headers = {}) {
         std::lock_guard<std::mutex> lock(mu_);
-        authorize_script_.push_back({statusLine, body});
+        authorize_script_.push_back({statusLine, body, headers});
+    }
+
+    // milliseconds between the Nth and (N+1)th authorize request
+    int64_t authorizeGapMs(size_t n) const {
+        std::lock_guard<std::mutex> lock(mu_);
+        if (authorize_at_.size() <= n + 1) return -1;
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+                   authorize_at_[n + 1] - authorize_at_[n]).count();
     }
 
     FakeOidcEndpoint() {
@@ -148,6 +162,7 @@ private:
     struct ScriptedResp {
         std::string statusLine;
         std::string body;
+        Headers headers;
     };
 
     void acceptLoop() {
@@ -211,6 +226,7 @@ private:
             bool haveScripted = false;
             {
                 std::lock_guard<std::mutex> lock(mu_);
+                authorize_at_.push_back(std::chrono::steady_clock::now());
                 if (!authorize_script_.empty()) {
                     scripted = authorize_script_.front();
                     authorize_script_.pop_front();
@@ -218,7 +234,7 @@ private:
                 }
             }
             if (haveScripted) {
-                return response(scripted.statusLine, {}, scripted.body);
+                return response(scripted.statusLine, scripted.headers, scripted.body);
             }
             return response("302 Found", {{"Location", url(LOGIN_PATH) + "?authRequestID=test-req-1&x=1"}});
         }
@@ -242,7 +258,7 @@ private:
     }
 
     static std::string response(const std::string &statusLine,
-                                const std::vector<std::pair<std::string, std::string>> &headers = {},
+                                const Headers &headers = {},
                                 const std::string &body = "") {
         std::string out = "HTTP/1.1 " + statusLine + "\r\n";
         for (const auto &h: headers) {
@@ -258,8 +274,9 @@ private:
     std::atomic<bool> stop_{false};
     std::thread accept_thread_;
     std::vector<std::thread> workers_;
-    std::mutex mu_;
+    mutable std::mutex mu_;
     std::deque<ScriptedResp> authorize_script_;
+    std::vector<std::chrono::steady_clock::time_point> authorize_at_;
 };
 
 struct AuthResult {
@@ -426,4 +443,64 @@ TEST_CASE("oidc-auth-recovers-once-identity-replicates", "[oidc]") {
     // the window is closed out on success, so a later failure gets a fresh one
     CHECK(c.clt.auth_failures == 0);
     CHECK(c.clt.auth_retry_until == 0);
+}
+
+// A 429 carrying Retry-After paces the retry by what the server asked for
+// rather than by our own jitter, provided the wait still fits in the window.
+TEST_CASE("oidc-auth-honours-retry-after-on-429", "[oidc]") {
+    FakeOidcEndpoint server;
+    // 3s is deliberately outside the range next_backoff() can produce on the
+    // first attempt (random % 2000 ms), so the gap assertion below can only pass
+    // if the header was actually honoured
+    server.scriptAuthorizeFailure("429 Too Many Requests", "", {{"Retry-After", "3"}});
+    // script exhausted: the next authorize completes the flow
+
+    TestClient c(server, 20000);
+    REQUIRE(c.start() == 0);
+
+    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(10));
+
+    REQUIRE(c.result.calls == 1);
+    CHECK(c.result.status == OIDC_TOKEN_OK);
+    REQUIRE(server.authorize_count.load() == 2);
+
+    // the retry waited ~3s because the server said so; the first-attempt backoff
+    // tops out at 2000 ms, so this gap is unreachable without the header
+    int64_t gap = server.authorizeGapMs(0);
+    CHECK(gap >= 2900);
+    CHECK(gap < 6000);
+}
+
+// Retry-After longer than the remaining window: coming back sooner than the
+// server asked would defeat the header, so stop retrying and report instead.
+TEST_CASE("oidc-auth-gives-up-when-retry-after-exceeds-window", "[oidc]") {
+    FakeOidcEndpoint server;
+    server.scriptAuthorizeFailure("429 Too Many Requests", "", {{"Retry-After", "600"}});
+
+    TestClient c(server, 5000);
+    REQUIRE(c.start() == 0);
+
+    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(5));
+
+    REQUIRE(c.result.calls == 1);
+    CHECK(c.result.status == OIDC_TOKEN_FAILED);
+    CHECK(server.authorize_count.load() == 1);
+}
+
+// The HTTP-date form of Retry-After is not parsed (it would need strptime, which
+// MSVC lacks); an unusable value must fall back to normal backoff rather than
+// being read as "retry immediately" or aborting the retry.
+TEST_CASE("oidc-auth-falls-back-to-backoff-on-unparsable-retry-after", "[oidc]") {
+    FakeOidcEndpoint server;
+    server.scriptAuthorizeFailure("429 Too Many Requests", "",
+                                  {{"Retry-After", "Wed, 21 Oct 2099 07:28:00 GMT"}});
+
+    TestClient c(server, 20000);
+    REQUIRE(c.start() == 0);
+
+    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(10));
+
+    REQUIRE(c.result.calls == 1);
+    CHECK(c.result.status == OIDC_TOKEN_OK);
+    CHECK(server.authorize_count.load() == 2);
 }
