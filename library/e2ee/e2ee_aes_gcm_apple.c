@@ -29,7 +29,7 @@
 // of any Apple SDK, and Security.framework offers only whole-scheme ECIES, which picks its own
 // key and nonce -- so the Swift hop is what keeps this backend free of undocumented SPI.
 #ifdef __cplusplus
-// the unit tests #include this file inside a namespace to reach its statics
+// the unit tests #include this file inside a namespace to find its static functions
 extern "C" {
 #endif
 
