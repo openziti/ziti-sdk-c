@@ -334,7 +334,7 @@ typedef struct ziti_listen_opts_s {
  *
  * @param conn The Ziti connection which received the data
  * @param data incoming data buffer
- * @param length size of data or error code as defined in #ZITI_ERRORS (will receive #ZITI_EOF
+ * @param length size of data or an error code as defined in @ref ZITI_ERRORS "Ziti Error Codes" (will receive #ZITI_EOF
  *               when connection is closed)
  *
  * @return indicate how much data was consumed
@@ -350,7 +350,7 @@ typedef ssize_t (*ziti_data_cb)(ziti_connection conn, const uint8_t *data, ssize
  * If successful the status will be set to #ZITI_OK.
  *
  * @param conn the Ziti connection struct
- * @param status the result of the function. #ZITI_OK if successful otherwise see #ZITI_ERRORS
+ * @param status the result of the function. #ZITI_OK if successful, otherwise see @ref ZITI_ERRORS "Ziti Error Codes"
  *
  * @see ziti_dial(), ziti_accept(), ZITI_ERRORS
  */
@@ -361,7 +361,7 @@ typedef void (*ziti_conn_cb)(ziti_connection conn, int status);
  *
  * This callback is invoked after ziti_listen() is completed. The result of the function may be an
  * error condition so it is important to verify the status code in this callback. If successful
- * the status will be set to #ZITI_OK otherwise the value will be a value defined in #ZITI_ERRORS
+ * the status will be set to #ZITI_OK, otherwise the value will be one defined in @ref ZITI_ERRORS "Ziti Error Codes"
  *
  * Generally this callback is used for any preparations necessary before accepting incoming data
  * from the Ziti network.
@@ -575,7 +575,7 @@ extern int ziti_get_transfer_rates(ziti_context ztx, double *up, double *down);
  * 
  * @param ztx the Ziti Edge identity context to be shut down. this reference is not safe to use after this call
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or a corresponding @ref ZITI_ERRORS "error code"
  */
 ZITI_FUNC
 extern int ziti_shutdown(ziti_context ztx);
@@ -624,7 +624,7 @@ int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
  * @param conn an uninitialized #ziti_connection to be initialized
  * @param data additional context to carry forward in ziti_dial() and ziti_listen() related callbacks
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or a corresponding @ref ZITI_ERRORS "error code"
  *
  * @see ziti_dial(), ziti_listen(), ZITI_ERRORS
  */
@@ -695,10 +695,10 @@ extern const char *ziti_conn_source_identity(ziti_connection conn);
  *
  * @param ztx the Ziti Edge identity context to use to check for the service's availability on
  * @param service the name of the service to check
- * @param cb callback called with #ZITI_OK or #ZITI_SERVICE_NOT_AVAILABLE
+ * @param cb callback called with #ZITI_OK or #ZITI_SERVICE_UNAVAILABLE
  * @param ctx additional context to be passed to the #ziti_service_cb
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or a corresponding @ref ZITI_ERRORS "error code"
  */
 ZITI_FUNC
 extern int ziti_service_available(ziti_context ztx, const char *service, ziti_service_cb cb, void *ctx);
@@ -769,14 +769,14 @@ extern void ziti_dial_opts_free(ziti_dial_opts *opts);
  * called back using the provided #ziti_conn_cb.
  *
  * If the dial succeeds the provided #ziti_data_cb is used to handle bytes returned from the service. If the
- * dial fails only the #ziti_conn_cb will be invoked with the corresponding #ZITI_ERRORS code.
+ * dial fails only the #ziti_conn_cb will be invoked with the corresponding @ref ZITI_ERRORS "error code".
  *
  * @param conn the #ziti_connection to use in the dial operation
  * @param service the name of the service to dial
  * @param cb invoked after the dial operation completes
  * @param data_cb invoked if the dial operation succeeds with data received over the connection
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or a corresponding @ref ZITI_ERRORS "error code"
  *
  * @see ziti_dial(), ziti_write()
  */
@@ -806,7 +806,7 @@ extern int ziti_dial_with_options(ziti_connection conn, const char *service,
  * @param lcb invoked after the function completes
  * @param cb a callback invoked when when client is attempting to connect to advertised service
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or a corresponding @ref ZITI_ERRORS "error code"
  *
  * @see ziti_accept()
  */
@@ -835,7 +835,7 @@ extern int ziti_listen_with_options(ziti_connection serv_conn, const char *servi
  * @param cb a callback invoked when the function completes
  * @param data_cb a callback invoked each time the client sends data
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or a corresponding @ref ZITI_ERRORS "error code"
  *
  * @see ziti_listen()
  */
@@ -856,7 +856,7 @@ extern int ziti_accept(ziti_connection clt, ziti_conn_cb cb, ziti_data_cb data_c
  *
  * @return #ZITI_OK
  *         #ZITI_CONN_CLOSED if connection was already ziti_close() was already called on the given connection
- *         other #ZITI_ERRORS
+ *         any other @ref ZITI_ERRORS "error code"
  */
 ZITI_FUNC
 extern int ziti_close(ziti_connection conn, ziti_close_cb close_cb);
@@ -876,7 +876,7 @@ extern int ziti_close(ziti_connection conn, ziti_close_cb close_cb);
  *
  * @param conn the #ziti_connection to be closed
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or a corresponding @ref ZITI_ERRORS "error code"
  */
 ZITI_FUNC
 extern int ziti_close_write(ziti_connection conn);
@@ -895,7 +895,7 @@ extern int ziti_close_write(ziti_connection conn);
  * @param write_cb a callback invoked after the function completes indicating the buffer can now be reclaimed
  * @param write_ctx additional context to be passed to the #ziti_write_cb callback
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or a corresponding @ref ZITI_ERRORS "error code"
  */
 ZITI_FUNC
 extern int ziti_write(ziti_connection conn, const uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx);
@@ -1006,7 +1006,7 @@ typedef void (*ziti_mfa_recovery_codes_cb)(ziti_context ztx, int status, const c
  * An error status will be returned if the request fails, #ZITI_OK is expected on success.
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
- * @param ziti_mfa_enroll_cb callback to receive MFA enrollment initialization status
+ * @param enroll_cb callback to receive MFA enrollment initialization status
  * @param ctx additional context to be passed into the enroll_cb callback
  */
 ZITI_FUNC
@@ -1040,10 +1040,8 @@ extern void ziti_mfa_remove(ziti_context ztx, const char *code, ziti_mfa_cb remo
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
  * @param code a valid TOTP code, must not be a recovery code
- * @param remove_cb callback to receive MFA verify status
+ * @param verify_cb callback to receive MFA verify status
  * @param ctx additional context to be passed into the verify_cb callback
- *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
 ZITI_FUNC
 extern void ziti_mfa_verify(ziti_context ztx, const char *code, ziti_mfa_cb verify_cb, void *ctx);
@@ -1059,7 +1057,7 @@ extern void ziti_mfa_verify(ziti_context ztx, const char *code, ziti_mfa_cb veri
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
  * @param code a TOTP code, may be empty string for MFA enrollments that have not completed vi ziti_mfa_verify
- * @param remove_cb callback to receive the result status
+ * @param get_cb callback to receive the result status
  * @param ctx additional context to be passed into the get_cb callback
  */
 ZITI_FUNC
@@ -1217,7 +1215,7 @@ typedef void (*ziti_extend_cert_authenticator_cb)(ziti_context ztx, const char* 
  * `ziti_verify_extend_cert_authenticator` to enable use of the new client certificate.
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
- * @param csr a CSR representing the request for a new client certificate
+ * @param csr_pem a PEM-encoded CSR representing the request for a new client certificate
  * @param ctx additional context to be passed back to the call via cb
  * @param cb a callback for the result of the certificate extension request
  * @return returns #ZITI_OK on success, otherwise error
@@ -1251,6 +1249,7 @@ typedef void (*ziti_verify_extend_cert_authenticator_cb)(ziti_context ztx, int s
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
  * @param new_cert the new client certificate that will become active on successful verification, provided in the extension event
+ * @param cb a callback for the result of the certificate verification request
  * @param ctx additional context to be passed back in raised events
  * @return returns #ZITI_OK on success, otherwise error
  */

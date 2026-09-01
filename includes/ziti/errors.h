@@ -29,6 +29,16 @@
 extern "C" {
 #endif
 
+/**
+ * @defgroup ZITI_ERRORS Ziti Error Codes
+ * @brief Status codes reported by the Ziti C SDK.
+ *
+ * Every SDK function and callback that reports a status uses one of these codes.
+ * #ZITI_OK signals success; every other code is negative. Pass any of them to
+ * ziti_errorstr() for a human-readable description.
+ * @{
+ */
+
 /** The expected outcome of a successful operation */
 #define ZITI_OK                                                 (0)
 /** The provided configuration was not found */
@@ -75,7 +85,7 @@ is offline or did not respond to the request*/
 #define ZITI_SERVICE_UNAVAILABLE                                (-18)
 /** The connection has been closed gracefully */
 #define ZITI_EOF                                                (-19)
-/** A connect or write operation did not complete in the allocated timeout. #DEFAULT_TIMEOUT */
+/** A connect or write operation did not complete in the allocated timeout. #ZITI_DEFAULT_TIMEOUT */
 #define ZITI_TIMEOUT                                            (-20)
 /** The connection has been closed abnormally. */
 #define ZITI_CONNABORT                                          (-21)
@@ -130,6 +140,8 @@ is offline or did not respond to the request*/
 
 /** Inspired by the Android SDK: What a Terrible Failure. A condition that should never happen. */
 #define ZITI_WTF (-111)
+
+/** @} */
 
 /**
 * Returns a human-readable description for the provided code.

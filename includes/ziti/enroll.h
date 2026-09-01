@@ -64,7 +64,7 @@ typedef void (*ziti_enroll_cb)(const ziti_config *cfg, int status, const char *e
  * @param enroll_cb callback to be called when enrollment is complete
  * @param enroll_ctx additional context to be passed into #ziti_enroll_cb callback
 
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or a corresponding @ref ZITI_ERRORS "error code"
  */
 ZITI_FUNC extern int ziti_enroll(const ziti_enroll_opts *opts, uv_loop_t *loop,
                                  ziti_enroll_cb enroll_cb, void *enroll_ctx);
@@ -85,7 +85,7 @@ ZITI_FUNC extern int ziti_enroll(const ziti_enroll_opts *opts, uv_loop_t *loop,
  * @param loop event loop
  * @param enroll_cb callback invoked with the bootstrapped config
  * @param enroll_ctx additional context passed to the callback
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or a corresponding @ref ZITI_ERRORS "error code"
  */
 ZITI_FUNC extern int ziti_enroll_url(const char *url, uv_loop_t *loop,
                                      ziti_enroll_cb enroll_cb, void *enroll_ctx);

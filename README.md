@@ -16,7 +16,7 @@ This SDK does the following:
 - enable network endpoint clients allow a device to [dial (access)](#dialing-a-service)
   or [bind (host)](#binding-to-a-service) OpenZiti Services
 - provides [authentication](https://openziti.io/docs/learn/core-concepts/security/authentication/auth) interfaces for
-  [x509 certificates](#example-code-configuration) flows
+  x509 certificate flows
 - collects and submits security posture collection/submission
   for [Posture Checks](https://openziti.io/docs/learn/core-concepts/security/authorization/posture-checks)
 - allows applications to bind or dial services via standard [`socket`](#high-level-zitilib-api) interfaces

@@ -111,11 +111,11 @@ ZITI_FUNC int string_buf_fmt(string_buf_t *wb, FORMAT_STRING(const char *fmt), .
 ZITI_FUNC size_t string_buf_size(string_buf_t *wb);
 
 /**
- * Allocate string big enough to hold the contents of the buffer with '\0` at the end
+ * Allocate string big enough to hold the contents of the buffer with `\0` at the end
  * and copy contents into the result.
  * String buffer is cleared after operation is complete.
  * @param wb string buffer
- * @param outlen size of the output not including final `\0' terminator
+ * @param outlen size of the output not including final `\0` terminator
  * @return allocated string filled with buffer content
  */
 ZITI_FUNC char *string_buf_to_string(string_buf_t *wb, size_t *outlen);
