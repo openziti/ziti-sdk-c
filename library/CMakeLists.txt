@@ -125,6 +125,74 @@ endif ()
 FILE(GLOB zitilib_FILES ${CMAKE_CURRENT_LIST_DIR}/zitilib/*.c)
 LIST(APPEND ZITI_SRC_FILES ${zitilib_FILES})
 
+# AES-GCM for the Apple e2ee backend lives in CryptoKit, which is Swift-only, so
+# e2ee_aes_gcm_cryptokit.swift is compiled here and its object is archived into libziti
+# like any other. Deliberately NOT enable_language(Swift): that makes CMake pick swiftc as
+# the linker driver for every target that links ziti -- including downstream consumers --
+# and swiftc rejects flags like -pthread. Handing CMake a finished object keeps the build,
+# and every consumer's link line, plain C. The Swift runtime is part of the OS and is
+# autolinked from the object, so `clang prog.c libziti.a` needs no extra flags.
+if (APPLE)
+    find_program(SWIFTC swiftc REQUIRED)
+
+    if (CMAKE_OSX_ARCHITECTURES)
+        set(cryptokit_arch ${CMAKE_OSX_ARCHITECTURES})
+    else ()
+        set(cryptokit_arch ${CMAKE_SYSTEM_PROCESSOR})
+    endif ()
+    list(LENGTH cryptokit_arch cryptokit_arch_count)
+    if (cryptokit_arch_count GREATER 1)
+        message(FATAL_ERROR "e2ee CryptoKit shim: one architecture at a time, got '${cryptokit_arch}'")
+    endif ()
+
+    # CryptoKit floors: macOS 10.15, iOS 13. arm64 macOS itself does not exist before 11.0.
+    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        set(cryptokit_target ${cryptokit_arch}-apple-ios13.0)
+        set(cryptokit_sdk iphoneos)
+    elseif (cryptokit_arch STREQUAL "arm64")
+        set(cryptokit_target ${cryptokit_arch}-apple-macosx11.0)
+        set(cryptokit_sdk macosx)
+    else ()
+        set(cryptokit_target ${cryptokit_arch}-apple-macosx10.15)
+        set(cryptokit_sdk macosx)
+    endif ()
+
+    # CMAKE_OSX_SYSROOT is empty unless a toolchain set it
+    if (CMAKE_OSX_SYSROOT)
+        set(cryptokit_sysroot ${CMAKE_OSX_SYSROOT})
+    else ()
+        execute_process(COMMAND xcrun --sdk ${cryptokit_sdk} --show-sdk-path
+                OUTPUT_VARIABLE cryptokit_sysroot OUTPUT_STRIP_TRAILING_WHITESPACE)
+    endif ()
+
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+        set(cryptokit_opt -Onone)
+    else ()
+        set(cryptokit_opt -O)
+    endif ()
+
+    set(ZITI_CRYPTOKIT_OBJECT ${CMAKE_CURRENT_BINARY_DIR}/e2ee_aes_gcm_cryptokit.o)
+    add_custom_command(
+            OUTPUT ${ZITI_CRYPTOKIT_OBJECT}
+            COMMAND ${SWIFTC} -c ${CMAKE_CURRENT_LIST_DIR}/e2ee/e2ee_aes_gcm_cryptokit.swift
+                    -o ${ZITI_CRYPTOKIT_OBJECT}
+                    -module-name ziti_cryptokit
+                    -parse-as-library
+                    -target ${cryptokit_target}
+                    # back-deploying below macOS 12.3 makes swiftc emit force-load references
+                    # to libswiftCompatibility*.a, which only exist in the Xcode toolchain and
+                    # would have to be added to every consumer's link line. This shim uses no
+                    # concurrency and no generics over Obj-C, so it needs none of those fixups.
+                    -runtime-compatibility-version none
+                    -sdk ${cryptokit_sysroot}
+                    ${cryptokit_opt}
+            DEPENDS ${CMAKE_CURRENT_LIST_DIR}/e2ee/e2ee_aes_gcm_cryptokit.swift
+            COMMENT "Building Swift object e2ee_aes_gcm_cryptokit.o"
+            VERBATIM)
+    set_source_files_properties(${ZITI_CRYPTOKIT_OBJECT}
+            PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
+endif ()
+
 SET(ZITI_INCLUDE_DIRS
         PUBLIC ../includes
         PRIVATE ../inc_internal
@@ -187,11 +255,15 @@ function(config_ziti_library target)
     endif ()
 
     if (APPLE)
-        # e2ee_aes_gcm_apple.c: P-256/ECDH via Security.framework, AES-GCM/HKDF via CommonCrypto (libSystem)
+        # e2ee_aes_gcm_apple.c: P-256/ECDH via Security.framework, HKDF via CommonCrypto (libSystem)
+        # e2ee_aes_gcm_cryptokit.swift: AES-GCM via CryptoKit
         target_link_libraries(${target}
                 PUBLIC "-framework Security"
                 PUBLIC "-framework CoreFoundation"
+                PUBLIC "-framework CryptoKit"
+                PUBLIC "-framework Foundation"
         )
+        target_sources(${target} PRIVATE ${ZITI_CRYPTOKIT_OBJECT})
     endif ()
 
     if (NOT WIN32)

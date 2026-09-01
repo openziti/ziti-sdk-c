@@ -24,37 +24,30 @@
 #include "crypto.h"
 #include "ziti/ziti_log.h"
 
-// Apple ships no public C API for raw AES-GCM or for HKDF: CryptoKit is Swift-only and
-// Security.framework exposes only whole-scheme ECIES. The functions below live in libSystem
-// but have no SDK headers (CommonCryptorSPI.h / CommonKeyDerivationSPI.h are not shipped),
-// so their prototypes are declared here. Verified byte-identical to the OpenSSL backend.
-typedef struct CCKDFParameters *CCKDFParametersRef;
+// AES-256-GCM comes from CryptoKit via the @_cdecl wrappers in e2ee_aes_gcm_cryptokit.swift.
+// Apple exposes no raw AES-GCM to C -- `GCM` appears nowhere in the public CommonCrypto headers
+// of any Apple SDK, and Security.framework offers only whole-scheme ECIES, which picks its own
+// key and nonce -- so the Swift hop is what keeps this backend free of undocumented SPI.
+#ifdef __cplusplus
+// the unit tests #include this file inside a namespace to reach its statics
+extern "C" {
+#endif
 
-extern CCStatus CCKDFParametersCreateHkdf(CCKDFParametersRef *params,
-                                          const void *salt, size_t salt_len,
-                                          const void *context, size_t context_len);
+extern int ziti_cryptokit_aes_gcm_seal(const uint8_t *key, size_t key_len,
+                                       const uint8_t *nonce, size_t nonce_len,
+                                       const uint8_t *plaintext, size_t pt_len,
+                                       uint8_t *ciphertext,
+                                       uint8_t *tag, size_t tag_len);
 
-extern CCStatus CCDeriveKey(const CCKDFParametersRef params, uint32_t digest,
-                            const void *key, size_t key_len,
-                            void *derived_key, size_t derived_len);
+extern int ziti_cryptokit_aes_gcm_open(const uint8_t *key, size_t key_len,
+                                       const uint8_t *nonce, size_t nonce_len,
+                                       const uint8_t *ciphertext, size_t ct_len,
+                                       const uint8_t *tag, size_t tag_len,
+                                       uint8_t *plaintext);
 
-extern void CCKDFParametersDestroy(CCKDFParametersRef params);
-
-extern CCCryptorStatus CCCryptorGCMOneshotEncrypt(CCAlgorithm alg, const void *key, size_t key_len,
-                                                  const void *iv, size_t iv_len,
-                                                  const void *aad, size_t aad_len,
-                                                  const void *in, size_t in_len,
-                                                  void *out, void *tag_out, size_t tag_len);
-
-extern CCCryptorStatus CCCryptorGCMOneshotDecrypt(CCAlgorithm alg, const void *key, size_t key_len,
-                                                  const void *iv, size_t iv_len,
-                                                  const void *aad, size_t aad_len,
-                                                  const void *in, size_t in_len,
-                                                  void *out, const void *tag_in, size_t tag_len);
-
-// kCCDigestSHA256 from CommonDigestSPI.h. Passing the wrong value here still succeeds,
-// it just derives non-interoperable keys, so the ossl interop test guards this constant.
-#define CC_DIGEST_SHA256 10
+#ifdef __cplusplus
+}
+#endif
 
 #define AES_GCM_TAG_LEN 16
 #define AES_GCM_NONCE_LEN 12
@@ -111,18 +104,43 @@ static void build_nonce(uint8_t out[AES_GCM_NONCE_LEN], const uint8_t *initial, 
     }
 }
 
-// HKDF-SHA256 with an empty salt, matching EVP_PKEY_HKDF with no salt set.
+// RFC 5869 HKDF-SHA256 with an empty salt, matching EVP_PKEY_HKDF with no salt set.
+// An absent salt is defined as HashLen zero bytes; HMAC zero-pads its key to the block size,
+// so that is identical to the zero-length key the extract step would otherwise use.
 static int hkdf_sha256(const uint8_t *ikm, size_t ikm_len,
                        const uint8_t *info, size_t info_len,
                        uint8_t *out, size_t out_len) {
-    CCKDFParametersRef params = NULL;
-    if (CCKDFParametersCreateHkdf(&params, NULL, 0, info, info_len) != kCCSuccess) {
+    const uint8_t salt[CC_SHA256_DIGEST_LENGTH] = {0};
+    uint8_t prk[CC_SHA256_DIGEST_LENGTH];
+    uint8_t t[CC_SHA256_DIGEST_LENGTH];
+    size_t t_len = 0;
+    size_t done = 0;
+
+    if (out_len > 255 * CC_SHA256_DIGEST_LENGTH) {
         return -1;
     }
 
-    CCStatus rc = CCDeriveKey(params, CC_DIGEST_SHA256, ikm, ikm_len, out, out_len);
-    CCKDFParametersDestroy(params);
-    return rc == kCCSuccess ? 0 : -1;
+    // extract
+    CCHmac(kCCHmacAlgSHA256, salt, sizeof(salt), ikm, ikm_len, prk);
+
+    // expand: T(n) = HMAC(PRK, T(n-1) || info || n)
+    for (uint8_t counter = 1; done < out_len; counter++) {
+        CCHmacContext ctx;
+        CCHmacInit(&ctx, kCCHmacAlgSHA256, prk, sizeof(prk));
+        CCHmacUpdate(&ctx, t, t_len);
+        CCHmacUpdate(&ctx, info, info_len);
+        CCHmacUpdate(&ctx, &counter, sizeof(counter));
+        CCHmacFinal(&ctx, t);
+        t_len = sizeof(t);
+
+        size_t chunk = out_len - done < t_len ? out_len - done : t_len;
+        memcpy(out + done, t, chunk);
+        done += chunk;
+    }
+
+    sodium_memzero(prk, sizeof(prk));
+    sodium_memzero(t, sizeof(t));
+    return 0;
 }
 
 static SecKeyRef import_peer_key(const uint8_t *peer_key, size_t peer_key_len) {
@@ -282,13 +300,12 @@ static ssize_t aes_gcm_encrypt(e2ee_t *e2ee, const uint8_t *plaintext, size_t pl
     uint8_t iv[AES_GCM_NONCE_LEN];
     build_nonce(iv, e->tx_iv_prefix, e->tx_counter);
 
-    CCCryptorStatus rc = CCCryptorGCMOneshotEncrypt(kCCAlgorithmAES, e->tx_key, sizeof(e->tx_key),
-                                                    iv, sizeof(iv), NULL, 0,
-                                                    plaintext, plaintext_len,
-                                                    ciphertext, ciphertext + plaintext_len,
-                                                    AES_GCM_TAG_LEN);
-    if (rc != kCCSuccess) {
-        ZITI_LOG(ERROR, "aes-gcm encryption failed: %d", rc);
+    if (ziti_cryptokit_aes_gcm_seal(e->tx_key, sizeof(e->tx_key),
+                                    iv, sizeof(iv),
+                                    plaintext, plaintext_len,
+                                    ciphertext, ciphertext + plaintext_len,
+                                    AES_GCM_TAG_LEN) != 0) {
+        ZITI_LOG(ERROR, "aes-gcm encryption failed");
         return -1;
     }
 
@@ -316,13 +333,12 @@ static ssize_t aes_gcm_decrypt(e2ee_t *e2ee, const uint8_t *ciphertext, size_t c
     uint8_t iv[AES_GCM_NONCE_LEN];
     build_nonce(iv, e->rx_iv_prefix, e->rx_counter);
 
-    CCCryptorStatus rc = CCCryptorGCMOneshotDecrypt(kCCAlgorithmAES, e->rx_key, sizeof(e->rx_key),
-                                                    iv, sizeof(iv), NULL, 0,
-                                                    ciphertext, ct_data_len,
-                                                    plaintext, ciphertext + ct_data_len,
-                                                    AES_GCM_TAG_LEN);
-    if (rc != kCCSuccess) {
-        ZITI_LOG(WARN, "aes-gcm decryption failed: %d", rc);
+    if (ziti_cryptokit_aes_gcm_open(e->rx_key, sizeof(e->rx_key),
+                                    iv, sizeof(iv),
+                                    ciphertext, ct_data_len,
+                                    ciphertext + ct_data_len, AES_GCM_TAG_LEN,
+                                    plaintext) != 0) {
+        ZITI_LOG(WARN, "aes-gcm decryption failed");
         return -1;
     }
 
