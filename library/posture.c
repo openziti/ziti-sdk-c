@@ -637,7 +637,7 @@ static void send_posture_legacy(ziti_context ztx, model_list *send_prs) {
     string_buf_free(&buf);
 }
 
-static Ziti__EdgeClient__Pb__PostureResponses *create_posture_resp(ziti_context z, model_list *send_prs) {
+Ziti__EdgeClient__Pb__PostureResponses *ztx_posture_resp_pb(ziti_context z, model_list *send_prs) {
     pr_info *info;
     Ziti__EdgeClient__Pb__PostureResponse *pr_resp;
     model_list process_list = {};
@@ -681,6 +681,15 @@ static Ziti__EdgeClient__Pb__PostureResponses *create_posture_resp(ziti_context 
             proc->path = s_strdup(req->path);
             proc->hash = s_strdup(req->hash);
             proc->isrunning = req->is_running;
+            proc->n_signerfingerprints = model_list_size(&req->signers);
+            if (proc->n_signerfingerprints > 0) {
+                proc->signerfingerprints = calloc(proc->n_signerfingerprints, sizeof(proc->signerfingerprints[0]));
+                int si = 0;
+                const char *fp;
+                MODEL_LIST_FOREACH(fp, req->signers) {
+                    proc->signerfingerprints[si++] = s_strdup(fp);
+                }
+            }
             model_list_append(&process_list, proc);
             break;
         }
@@ -782,7 +791,7 @@ static Ziti__EdgeClient__Pb__PostureResponses *create_posture_resp(ziti_context 
 
 static int send_posture_ha(ziti_context ztx, model_list *send_prs) {
     uint8_t pad[128];
-    Ziti__EdgeClient__Pb__PostureResponses *resp = create_posture_resp(ztx, send_prs);
+    Ziti__EdgeClient__Pb__PostureResponses *resp = ztx_posture_resp_pb(ztx, send_prs);
     if (resp == NULL) {
         ZTX_LOG(DEBUG, "no posture responses to send");
         return ZITI_OK;
@@ -1296,7 +1305,7 @@ void ziti_send_posture_er(ziti_context ztx, ziti_channel_t *ch) {
     ztx_collect_posture(ztx, &send_prs, true);
 
     uint8_t pad[128];
-    Ziti__EdgeClient__Pb__PostureResponses *resp = create_posture_resp(ztx, &send_prs);
+    Ziti__EdgeClient__Pb__PostureResponses *resp = ztx_posture_resp_pb(ztx, &send_prs);
     if (resp == NULL) {
         ZTX_LOG(DEBUG, "no posture responses to send");
         return;
