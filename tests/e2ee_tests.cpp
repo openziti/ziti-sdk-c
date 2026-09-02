@@ -199,6 +199,12 @@ TEST_CASE("e2ee-ossl-apple-interop", "[crypto]") {
         auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>((e2ee_t *)ossl::new_aes_gcm_e2ee());
         auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm));
         test_e2ee(alice.get(), bob.get());
+
+        // the ossl backend's own double-init guard -- the [crypto] "init is one-shot"
+        // case above covers whichever backend create_e2ee() returns, which is the
+        // Apple one here.
+        auto bob_pub = bob->pub(bob.get());
+        REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, true) == -1);
     }
 }
 // the ossl backend above defines the same tuning macros with different values
