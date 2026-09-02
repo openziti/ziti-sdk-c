@@ -54,6 +54,14 @@ jobs:
         uses: gerlero/brew-install@v1
         with:
           packages: autoconf autoconf-archive automake pkg-config libtool
+          
+      - name: windows tools
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+           echo "adding msys2 to PATH"
+           echo "C:\msys64\usr\bin" >> $env:GITHUB_PATH
+           echo "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
 
       - uses: actions/checkout@v7
         with:
