@@ -34,8 +34,11 @@ runs:
 
     - name: windows tools
       if: runner.os == 'Windows'
-      shell: bash
-      run: echo "windows tools placeholder"
+      shell: pwsh
+      run: |
+         echo "adding msys2 to PATH"
+         echo "C:\msys64\usr\bin" >> $env:GITHUB_PATH
+         echo "C:\msys64\mingw64\bin" >> $env:GITHUB_PATH
 
     - name: setup build
       shell: bash
