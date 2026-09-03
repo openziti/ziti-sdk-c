@@ -1039,7 +1039,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
 
         if (conn->type == Transport && conn->parent == NULL) {
             printer(ctx, "conn[%d/%s]: state[%s] service[%s] using ch[%d/%s]\n",
-                    conn->conn_id, conn->marker, ziti_conn_state(conn), conn->service,
+                    conn->conn_id, ziti_conn_circuit_id(conn), ziti_conn_state(conn), cstr_str(&conn->service),
                     conn->channel ? zch_get_id(conn->channel) : -1,
                     conn->channel ? zch_get_name(conn->channel) : "(none)"
             );
@@ -1055,7 +1055,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
 
         if (conn->type == Server) {
             printer(ctx, "conn[%d]: server service[%s] terminators[%ld]\n",
-                    conn->conn_id, conn->service, model_map_size(&conn->server.bindings));
+                    conn->conn_id, cstr_str(&conn->service), model_map_size(&conn->server.bindings));
             const char *n;
             void *b;
             MODEL_MAP_FOREACH(n, b, &conn->server.bindings) {
@@ -1067,7 +1067,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
                 uint32_t child_id = model_map_it_lkey(it);
                 ziti_connection child = model_map_it_value(it);
                 printer(ctx, "\tchild[%d/%s]: state[%s] caller_id[%s] ch[%d/%s]\n",
-                        child_id, child->marker, ziti_conn_state(child), ziti_conn_source_identity(child),
+                        child_id, ziti_conn_circuit_id(child), ziti_conn_state(child), ziti_conn_source_identity(child),
                         child->channel ? zch_get_id(child->channel) : -1,
                         child->channel ? zch_get_name(child->channel) : "(none)"
                 );
@@ -1109,9 +1109,8 @@ void ziti_conn_set_data(ziti_connection conn, void *data) {
 }
 
 const char *ziti_conn_source_identity(ziti_connection conn) {
-    return conn != NULL ? conn->source_identity : NULL;
+    return conn ? cstr_str(&conn->source_identity) : NULL;
 }
-
 
 void ziti_send_event(ziti_context ztx, const ziti_event_t *e) {
     if (ztx->opts.events & e->type) {

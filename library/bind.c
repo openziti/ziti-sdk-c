@@ -31,7 +31,7 @@
 
 #define CONN_LOG(lvl, fmt, ...) \
 ZITI_LOG(lvl, "server[%u.%u](%s) " fmt, \
-conn->ziti_ctx->id, conn->conn_id, conn->service, ##__VA_ARGS__)
+conn->ziti_ctx->id, conn->conn_id, cstr_str(&conn->service), ##__VA_ARGS__)
 
 enum bind_state {
     st_unbound,
@@ -87,7 +87,7 @@ int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts 
 
     conn->type = Server;
     conn->disposer = dispose;
-    conn->service = strdup(service);
+    cstr_assign(&conn->service, service);
     randombytes_buf(conn->server.listener_id, sizeof(conn->server.listener_id));
     for (int i = 0; i < sizeof(conn->server.listener_id); i++) {
         make_printable(conn->server.listener_id[i]);
@@ -107,7 +107,7 @@ int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts 
     conn->server.listen_cb = listen_cb;
     conn->server.client_cb = on_clt_cb;
 
-    ziti_service_available(conn->ziti_ctx, conn->service, get_service_cb, conn);
+    ziti_service_available(conn->ziti_ctx, cstr_str(&conn->service), get_service_cb, conn);
 
     return 0;
 }
@@ -116,7 +116,7 @@ static void rebind_delay_cb(void *data) {
     ziti_connection conn = data;
     CONN_LOG(DEBUG, "staring re-bind");
 
-    ziti_service_available(conn->ziti_ctx, conn->service, get_service_cb, conn);
+    ziti_service_available(conn->ziti_ctx, cstr_str(&conn->service), get_service_cb, conn);
 }
 
 static struct binding_s* new_binding(struct ziti_conn *conn) {
@@ -247,8 +247,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
         }
         case ZITI_NOT_FOUND:
         case ZITI_NOT_AUTHORIZED:
-            CONN_LOG(WARN, "failed to get session for service[%s]: %d/%s",
-                     conn->service, (int)err->err, err->code);
+            CONN_LOG(WARN, "failed to get session: %d/%s", (int)err->err, err->code);
             const char *id;
             struct binding_s *b;
             MODEL_MAP_FOREACH(id, b, &conn->server.bindings) {
@@ -269,7 +268,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
             break;
 
         default:
-            CONN_LOG(WARN, "failed to get session for service[%s]: %d/%s", conn->service, (int)err->err, err->code);
+            CONN_LOG(WARN, "failed to get session: %d/%s", (int)err->err, err->code);
             schedule_rebind(conn);
     }
 }
@@ -306,13 +305,13 @@ static void get_service_cb(ziti_context ztx, const ziti_service *service, int st
     struct ziti_conn *conn = ctx;
 
     if (status == ZITI_SERVICE_UNAVAILABLE) {
-        CONN_LOG(WARN, "service[%s] is not available", conn->service);
+        CONN_LOG(WARN, "service is not available");
         notify_status(conn, ZITI_SERVICE_UNAVAILABLE);
         return;
     }
 
     if (status != ZITI_OK) {
-        CONN_LOG(WARN, "failed to get service[%s] details, scheduling re-try", conn->service);
+        CONN_LOG(WARN, "failed to get service details, scheduling re-try");
         schedule_rebind(conn);
         return;
     }
@@ -399,7 +398,7 @@ static int dispose(ziti_connection server) {
     FREE(server->server.token);
     free_ziti_session_ptr(server->server.session);
     model_list_clear(&server->server.routers, (void (*)(void *)) free_ziti_edge_router_ptr);
-    free(server->service);
+    cstr_drop(&server->service);
     free(server);
     return 1;
 }
@@ -422,7 +421,7 @@ static void process_inspect(struct binding_s *b, message *msg) {
     size_t ci_len = snprintf(conn_info, sizeof(conn_info),
                              "id[%d] serviceName[%s] listenerId[%s] "
                              "closed[%s] encrypted[%s]",
-                             conn->conn_id, conn->service, listener_id,
+                             conn->conn_id, cstr_str(&conn->service), listener_id,
                              BOOL_STR(conn->close), BOOL_STR(conn->encrypted));
     CONN_LOG(DEBUG, "processing inspect: %.*s", (int)ci_len, conn_info);
     message *reply = new_inspect_result(msg->header.seq, conn->conn_id, ConnTypeBind, conn_info, ci_len);
@@ -438,14 +437,12 @@ static void process_dial(struct binding_s *b, message *msg) {
         return;
     }
 
-    size_t peer_key_len, marker_len, method_len;
+    size_t peer_key_len, method_len;
     const uint8_t *peer_key;
-    const uint8_t *marker;
     uint32_t rt_conn_id;
     const uint8_t *method_id;
 
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
-    bool marker_sent = message_get_bytes_header(msg, ConnectionMarkerHeader, &marker, &marker_len);
     bool rt_conn_id_sent = message_get_int32_header(msg, RouterProvidedConnId, (int32_t*)&rt_conn_id);
     bool method_sent = message_get_bytes_header(msg, CryptoMethodHeader, &method_id, &method_len);
 
@@ -475,11 +472,13 @@ static void process_dial(struct binding_s *b, message *msg) {
         client->rt_conn_id = rt_conn_id;
     }
     init_transport_conn(client);
-    if (marker_sent) {
-        snprintf(client->marker, sizeof(client->marker), "%.*s", (int) marker_len, marker);
-    } else {
-        snprintf(client->marker, sizeof(client->marker), "-");
+    const char *circuit_id = "";
+    size_t circuit_id_len = 0;
+    if (message_get_bytes_header(msg, CircuitIdHeader, (const uint8_t**)&circuit_id, &circuit_id_len)) {
+        cstr_assign_n(&client->circuit_id, circuit_id, (isize)circuit_id_len);
     }
+    cstr_copy(&client->service, conn->service);
+
     client->start = uv_now(conn->ziti_ctx->loop);
 
     client->encrypted = conn->encrypted;
@@ -502,9 +501,8 @@ static void process_dial(struct binding_s *b, message *msg) {
     ziti_client_ctx clt_ctx = {0};
     message_get_bytes_header(msg, AppDataHeader, (const uint8_t **) &clt_ctx.app_data, &clt_ctx.app_data_sz);
     if (caller_id_sent) {
-        client->source_identity = calloc(1, source_identity_sz + 1);
-        memcpy(client->source_identity, source_identity, source_identity_sz);
-        clt_ctx.caller_id = client->source_identity;
+        cstr_assign_n(&client->source_identity, (const char*)source_identity, (isize)source_identity_sz);
+        clt_ctx.caller_id = cstr_str(&client->source_identity);
     }
     conn->server.client_cb(conn, client, ZITI_OK, &clt_ctx);
 
