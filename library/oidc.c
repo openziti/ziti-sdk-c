@@ -407,6 +407,37 @@ static void free_body_cb(tlsuv_http_req_t * UNUSED(req), char *body, ssize_t UNU
     free(body);
 }
 
+// builds the POST to /oidc/login/{cert,ext-jwt}: auth request id in the query
+// string, bearer credentials from clt->ext_tokens, and the ziti_auth_req body
+// that carries sdkInfo/envInfo to the controller. both legs of the login flow
+// (auth_cb, and oidc_auth_ext_jwt for a token that arrives while a request is
+// already pending) go through here - the controller only learns the SDK and
+// environment info from this body.
+static tlsuv_http_req_t *start_login_req(oidc_client_t *clt, auth_req *req, const char *path) {
+    tlsuv_http_set_path_prefix(&clt->http, NULL);
+    tlsuv_http_req_t *login_req = ziti_json_request(&clt->http, "POST", path, login_cb, req);
+    HTTP_REQ_QUERY(login_req, { "id", cstr_str(&req->id) });
+    oidc_apply_auth(clt, login_req);
+    tlsuv_http_req_header(login_req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
+
+    ziti_auth_req authreq = {
+            .sdk_info = {
+                    .type = "ziti-sdk-c",
+                    .version = ziti_get_build_version(0),
+                    .revision = ziti_git_commit(),
+                    .branch = ziti_git_branch(),
+                    .app_id = APP_ID,
+                    .app_version = APP_VERSION,
+            },
+            .env_info = (ziti_env_info *)get_env_info(),
+    };
+
+    size_t body_len;
+    char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
+    tlsuv_http_req_data(login_req, body, body_len, free_body_cb);
+    return login_req;
+}
+
 static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *resp, void *ctx) {
     auth_req *req = ctx;
     oidc_client_t *clt = req->clt;
@@ -439,26 +470,7 @@ static void auth_cb(tlsuv_http_resp_t *http_resp, const char *err, json_object *
         }
 
         OIDC_LOG(DEBUG, "login with path[%s] ", path);
-        tlsuv_http_set_path_prefix(&req->clt->http, NULL);
-        tlsuv_http_req_t *login_req = ziti_json_request(&req->clt->http, "POST", path, login_cb, req);
-        HTTP_REQ_QUERY(login_req, { "id", cstr_str(&req->id) });
-        oidc_apply_auth(clt, login_req);
-        tlsuv_http_req_header(login_req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
-        ziti_auth_req authreq = {
-            .sdk_info = {
-                .type = "ziti-sdk-c",
-                .version = ziti_get_build_version(0),
-                .revision = ziti_git_commit(),
-                .branch = ziti_git_branch(),
-                .app_id = APP_ID,
-                .app_version = APP_VERSION,
-            },
-            .env_info = (ziti_env_info *)get_env_info(),
-        };
-
-        size_t body_len;
-        const char *body = ziti_auth_req_to_json(&authreq, 0, &body_len);
-        tlsuv_http_req_data(login_req, body, body_len, free_body_cb);
+        start_login_req(clt, req, path);
     } else {
         failed_auth_req(req, http_resp->status);
     }
@@ -582,11 +594,7 @@ static int oidc_auth_ext_jwt(ziti_auth_method_t *self, const char *token) {
         if (clt->x509 && clt->x509->cert) {
             path = LOGIN_CERT;
         }
-        auth_req *req = clt->request;
-        tlsuv_http_set_path_prefix(&clt->http, NULL);
-        tlsuv_http_req_t *r = ziti_json_request(&clt->http, "POST", path, login_cb, req);
-        oidc_apply_auth(clt, r);
-        tlsuv_http_req_form(r, 1, &(tlsuv_http_pair) {"id", cstr_str(&req->id)});
+        start_login_req(clt, clt->request, path);
     }
     return 0;
 }
