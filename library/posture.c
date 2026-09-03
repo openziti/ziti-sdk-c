@@ -1266,28 +1266,37 @@ char **get_signers(const char *path, int *signers_count) {
                            &hStore,
                            &hMsg,
                            NULL);
-
-    if (!res)
-        return NULL;
-    result = calloc(MAX_CERTS, sizeof(char *));
     int idx = 0;
-    pCertContext = CertEnumCertificatesInStore(hStore, NULL);
-    while (pCertContext != NULL && idx < MAX_CERTS) {
-        BYTE sha1[20];
-        DWORD size = sizeof(sha1);
-        BOOL rc = CertGetCertificateContextProperty(pCertContext, CERT_SHA1_HASH_PROP_ID, sha1, &size);
-        if (!rc) {
-            ZITI_LOG(WARN, "failed to get cert[%d] sig: %lu", idx, GetLastError());
-        } else {
-            char *hex = NULL;
-            hexify(sha1, sizeof(sha1), 0, &hex);
-            ZITI_LOG(VERBOSE, "%s cert[%d] sig = %s", path, idx, hex);
-            result[idx++] = hex;
+
+    if (res) {
+        result = calloc(MAX_CERTS, sizeof(char *));
+        pCertContext = CertEnumCertificatesInStore(hStore, NULL);
+        while (pCertContext != NULL) {
+            BYTE sha1[20];
+            DWORD size = sizeof(sha1);
+            BOOL rc = CertGetCertificateContextProperty(pCertContext, CERT_SHA1_HASH_PROP_ID, sha1, &size);
+            if (!rc) {
+                ZITI_LOG(WARN, "%s: failed to get cert sig: %lu", path, GetLastError());
+            } else {
+                char *hex = NULL;
+                hexify(sha1, sizeof(sha1), 0, &hex);
+                ZITI_LOG(VERBOSE, "%s cert sig = %s", path, hex);
+                result[idx++] = hex;
+            }
+            // returns NULL after freeing the last context, so only an early exit needs to free
+            pCertContext = CertEnumCertificatesInStore(hStore, pCertContext);
+            if (idx >= MAX_CERTS && pCertContext != NULL) {
+                ZITI_LOG(WARN, "%s has more than %d signers, ignoring the rest", path, MAX_CERTS);
+                CertFreeCertificateContext(pCertContext);
+                break;
+            }
         }
-        pCertContext = CertEnumCertificatesInStore(hStore, pCertContext);
     }
     *signers_count = idx;
 
+    if (hMsg) CryptMsgClose(hMsg);
+    if (hStore) CertCloseStore(hStore, 0);
+#undef MAX_CERTS
 #else
     *signers_count = 0;
 #endif
