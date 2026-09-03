@@ -1244,6 +1244,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
 char **get_signers(const char *path, int *signers_count) {
     char **result = NULL;
 #if _WIN32
+#define MAX_CERTS 16
     WCHAR filename[MAX_PATH];
     HCERTSTORE hStore = NULL;
     HCRYPTMSG hMsg = NULL;
@@ -1268,24 +1269,22 @@ char **get_signers(const char *path, int *signers_count) {
 
     if (!res)
         return NULL;
-
-    result = calloc(16, sizeof(char *));
+    result = calloc(MAX_CERTS, sizeof(char *));
     int idx = 0;
     pCertContext = CertEnumCertificatesInStore(hStore, NULL);
-    while (pCertContext != NULL) {
+    while (pCertContext != NULL && idx < MAX_CERTS) {
         BYTE sha1[20];
-        char *hex;
         DWORD size = sizeof(sha1);
         BOOL rc = CertGetCertificateContextProperty(pCertContext, CERT_SHA1_HASH_PROP_ID, sha1, &size);
         if (!rc) {
             ZITI_LOG(WARN, "failed to get cert[%d] sig: %lu", idx, GetLastError());
-            continue;
         } else {
+            char *hex = NULL;
             hexify(sha1, sizeof(sha1), 0, &hex);
             ZITI_LOG(VERBOSE, "%s cert[%d] sig = %s", path, idx, hex);
+            result[idx++] = hex;
         }
         pCertContext = CertEnumCertificatesInStore(hStore, pCertContext);
-        result[idx++] = hex;
     }
     *signers_count = idx;
 
