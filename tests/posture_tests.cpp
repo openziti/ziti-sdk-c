@@ -31,6 +31,7 @@ extern "C" {
 #include "zt_internal.h"
 
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -47,6 +48,13 @@ namespace {
     };
 
     captured_query captured;
+
+    struct pb_holder {
+        Ziti__EdgeClient__Pb__PostureResponses *resp = nullptr;
+        ~pb_holder() {
+            if (resp) ziti__edge_client__pb__posture_responses__free_unpacked(resp, nullptr);
+        }
+    };
 
     extern "C" void stub_pq_process(ziti_context, const char *id, const char *path,
                                     ziti_pr_process_cb response_cb) {
@@ -90,6 +98,13 @@ namespace {
             captured.cb(&ztx, captured.id.c_str(), captured.path.c_str(), true, "deadbeef", nullptr, 0);
         }
 
+        // get_signers() only reports fingerprints on Windows, so the answer is handed back directly
+        void answer_with_signers(std::vector<const char *> signers) {
+            REQUIRE(captured.cb != nullptr);
+            captured.cb(&ztx, captured.id.c_str(), captured.path.c_str(), true, "deadbeef",
+                        (char **) signers.data(), (int) signers.size());
+        }
+
         size_t registered() const { return model_map_size(&ztx.posture_checks->responses); }
 
         size_t collect_all() {
@@ -98,6 +113,21 @@ namespace {
             const size_t n = model_list_size(&send_prs);
             model_list_clear(&send_prs, nullptr);
             return n;
+        }
+
+        // the single process response of the protobuf message the ER would receive
+        const Ziti__EdgeClient__Pb__PostureResponse__Process *collect_pb(pb_holder &holder) {
+            model_list send_prs = {};
+            ztx_collect_posture(&ztx, &send_prs, true);
+            holder.resp = ztx_posture_resp_pb(&ztx, &send_prs);
+            model_list_clear(&send_prs, nullptr);
+
+            REQUIRE(holder.resp != nullptr);
+            REQUIRE(holder.resp->n_responses == 1);
+            const Ziti__EdgeClient__Pb__PostureResponse *r = holder.resp->responses[0];
+            REQUIRE(r->type_case == ZITI__EDGE_CLIENT__PB__POSTURE_RESPONSE__TYPE_PROCESS_LIST);
+            REQUIRE(r->processlist->n_processes == 1);
+            return r->processlist->processes[0];
         }
     };
 }
@@ -115,4 +145,29 @@ TEST_CASE("posture response with an answer is collected", "[posture]") {
 
     REQUIRE(f.registered() == 1);
     CHECK(f.collect_all() == 1);
+}
+
+// signer fingerprints were collected and then dropped on the protobuf path, so a process check
+// declaring fingerprints failed against an ER while the same identity passed against the controller
+TEST_CASE("process posture response carries signer fingerprints", "[posture]") {
+    posture_fixture f;
+    f.answer_with_signers({"aabbcc", "ddeeff"});
+
+    pb_holder holder;
+    const Ziti__EdgeClient__Pb__PostureResponse__Process *proc = f.collect_pb(holder);
+
+    REQUIRE(proc->n_signerfingerprints == 2);
+    CHECK(std::string(proc->signerfingerprints[0]) == "aabbcc");
+    CHECK(std::string(proc->signerfingerprints[1]) == "ddeeff");
+}
+
+TEST_CASE("process posture response without signers reports none", "[posture]") {
+    posture_fixture f;
+    f.answer();
+
+    pb_holder holder;
+    const Ziti__EdgeClient__Pb__PostureResponse__Process *proc = f.collect_pb(holder);
+
+    CHECK(proc->n_signerfingerprints == 0);
+    CHECK(proc->signerfingerprints == nullptr);
 }

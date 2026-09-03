@@ -637,7 +637,7 @@ static void send_posture_legacy(ziti_context ztx, model_list *send_prs) {
     string_buf_free(&buf);
 }
 
-static Ziti__EdgeClient__Pb__PostureResponses *create_posture_resp(ziti_context z, model_list *send_prs) {
+Ziti__EdgeClient__Pb__PostureResponses *ztx_posture_resp_pb(ziti_context z, model_list *send_prs) {
     pr_info *info;
     Ziti__EdgeClient__Pb__PostureResponse *pr_resp;
     model_list process_list = {};
@@ -681,6 +681,15 @@ static Ziti__EdgeClient__Pb__PostureResponses *create_posture_resp(ziti_context 
             proc->path = s_strdup(req->path);
             proc->hash = s_strdup(req->hash);
             proc->isrunning = req->is_running;
+            proc->n_signerfingerprints = model_list_size(&req->signers);
+            if (proc->n_signerfingerprints > 0) {
+                proc->signerfingerprints = calloc(proc->n_signerfingerprints, sizeof(proc->signerfingerprints[0]));
+                int si = 0;
+                const char *fp;
+                MODEL_LIST_FOREACH(fp, req->signers) {
+                    proc->signerfingerprints[si++] = s_strdup(fp);
+                }
+            }
             model_list_append(&process_list, proc);
             break;
         }
@@ -782,7 +791,7 @@ static Ziti__EdgeClient__Pb__PostureResponses *create_posture_resp(ziti_context 
 
 static int send_posture_ha(ziti_context ztx, model_list *send_prs) {
     uint8_t pad[128];
-    Ziti__EdgeClient__Pb__PostureResponses *resp = create_posture_resp(ztx, send_prs);
+    Ziti__EdgeClient__Pb__PostureResponses *resp = ztx_posture_resp_pb(ztx, send_prs);
     if (resp == NULL) {
         ZTX_LOG(DEBUG, "no posture responses to send");
         return ZITI_OK;
@@ -1235,6 +1244,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
 char **get_signers(const char *path, int *signers_count) {
     char **result = NULL;
 #if _WIN32
+#define MAX_CERTS 16
     WCHAR filename[MAX_PATH];
     HCERTSTORE hStore = NULL;
     HCRYPTMSG hMsg = NULL;
@@ -1256,30 +1266,37 @@ char **get_signers(const char *path, int *signers_count) {
                            &hStore,
                            &hMsg,
                            NULL);
-
-    if (!res)
-        return NULL;
-
-    result = calloc(16, sizeof(char *));
     int idx = 0;
-    pCertContext = CertEnumCertificatesInStore(hStore, NULL);
-    while (pCertContext != NULL) {
-        BYTE sha1[20];
-        char *hex;
-        DWORD size = sizeof(sha1);
-        BOOL rc = CertGetCertificateContextProperty(pCertContext, CERT_SHA1_HASH_PROP_ID, sha1, &size);
-        if (!rc) {
-            ZITI_LOG(WARN, "failed to get cert[%d] sig: %lu", idx, GetLastError());
-            continue;
-        } else {
-            hexify(sha1, sizeof(sha1), 0, &hex);
-            ZITI_LOG(VERBOSE, "%s cert[%d] sig = %s", path, idx, hex);
+
+    if (res) {
+        result = calloc(MAX_CERTS, sizeof(char *));
+        pCertContext = CertEnumCertificatesInStore(hStore, NULL);
+        while (pCertContext != NULL) {
+            BYTE sha1[20];
+            DWORD size = sizeof(sha1);
+            BOOL rc = CertGetCertificateContextProperty(pCertContext, CERT_SHA1_HASH_PROP_ID, sha1, &size);
+            if (!rc) {
+                ZITI_LOG(WARN, "%s: failed to get cert sig: %lu", path, GetLastError());
+            } else {
+                char *hex = NULL;
+                hexify(sha1, sizeof(sha1), 0, &hex);
+                ZITI_LOG(VERBOSE, "%s cert sig = %s", path, hex);
+                result[idx++] = hex;
+            }
+            // returns NULL after freeing the last context, so only an early exit needs to free
+            pCertContext = CertEnumCertificatesInStore(hStore, pCertContext);
+            if (idx >= MAX_CERTS && pCertContext != NULL) {
+                ZITI_LOG(WARN, "%s has more than %d signers, ignoring the rest", path, MAX_CERTS);
+                CertFreeCertificateContext(pCertContext);
+                break;
+            }
         }
-        pCertContext = CertEnumCertificatesInStore(hStore, pCertContext);
-        result[idx++] = hex;
     }
     *signers_count = idx;
 
+    if (hMsg) CryptMsgClose(hMsg);
+    if (hStore) CertCloseStore(hStore, 0);
+#undef MAX_CERTS
 #else
     *signers_count = 0;
 #endif
@@ -1296,7 +1313,7 @@ void ziti_send_posture_er(ziti_context ztx, ziti_channel_t *ch) {
     ztx_collect_posture(ztx, &send_prs, true);
 
     uint8_t pad[128];
-    Ziti__EdgeClient__Pb__PostureResponses *resp = create_posture_resp(ztx, &send_prs);
+    Ziti__EdgeClient__Pb__PostureResponses *resp = ztx_posture_resp_pb(ztx, &send_prs);
     if (resp == NULL) {
         ZTX_LOG(DEBUG, "no posture responses to send");
         return;

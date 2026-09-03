@@ -18,6 +18,7 @@
 #include <uv.h>
 #include "zt_internal.h"
 #include "deadline.h"
+#include "proto/edge_client.pb-c.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,6 +52,9 @@ void ziti_send_posture_er(ziti_context ztx, ziti_channel_t *ch);
 
 // collect_all also gathers responses that have not changed since the last send
 void ztx_collect_posture(ziti_context ztx, model_list *send_prs, bool collect_all);
+
+// exposed for tests: NULL when send_prs holds nothing the ER protocol can carry
+Ziti__EdgeClient__Pb__PostureResponses *ztx_posture_resp_pb(ziti_context ztx, model_list *send_prs);
 
 bool ziti_service_has_query_with_timeout(ziti_service *service);
 
