@@ -105,9 +105,9 @@ namespace {
             captured_by_path.clear();
         }
 
-        void answer() {
+        void answer(bool running = true) {
             REQUIRE(captured.cb != nullptr);
-            captured.cb(&ztx, captured.id.c_str(), captured.path.c_str(), true, "deadbeef", nullptr, 0);
+            captured.cb(&ztx, captured.id.c_str(), captured.path.c_str(), running, "deadbeef", nullptr, 0);
         }
 
         // get_signers() only reports fingerprints on Windows, so the answer is handed back directly
@@ -161,7 +161,6 @@ namespace {
         int count = 0;
         bool captured = false;
         ziti_posture_query_type query_type{};
-        bool passing = false;
         std::vector<std::string> paths;
         std::vector<std::string> failing_paths;
         std::vector<std::string> service_names;
@@ -174,7 +173,6 @@ namespace {
         captured_event.count++;
         captured_event.captured = true;
         captured_event.query_type = ev->posture_check.query_type;
-        captured_event.passing = ev->posture_check.passing;
         captured_event.paths.clear();
         captured_event.failing_paths.clear();
         captured_event.service_names.clear();
@@ -196,26 +194,6 @@ namespace {
         return false;
     }
 
-    // bare enough to run notify_process_posture_check_changes() -- it only needs
-    // posture_checks initialized, never a registered service or a pq_process_cb
-    struct diff_fixture {
-        uv_loop_t loop{};
-        ziti_ctx ztx{};
-
-        diff_fixture() {
-            ztx.loop = &loop;
-            ziti_posture_init(&ztx, 60);
-            ztx.opts.events = ZitiPostureCheckEvent;
-            ztx.opts.event_cb = stub_event_cb;
-            captured_event = {};
-        }
-
-        ~diff_fixture() {
-            ziti_posture_checks_free(ztx.posture_checks);
-            ztx.posture_checks = nullptr;
-        }
-    };
-
     ziti_service *parse_service(const char *json) {
         ziti_service *svc = nullptr;
         REQUIRE(parse_ziti_service_ptr(&svc, json, strlen(json)) > 0);
@@ -229,11 +207,10 @@ TEST_CASE("process posture check event reports a failing path with no local answ
     f.ztx.opts.events = ZitiPostureCheckEvent;
     f.ztx.opts.event_cb = stub_event_cb;
 
-    ziti_pr_notify_process_check(&f.ztx, f.query(), false);
+    ziti_pr_notify_process_check(&f.ztx, f.query());
 
     REQUIRE(captured_event.captured);
     CHECK(captured_event.query_type == ziti_posture_query_type_PC_Process);
-    CHECK_FALSE(captured_event.passing);
     REQUIRE(captured_event.paths.size() == 1);
     CHECK(captured_event.paths[0] == "/does/not/matter");
     REQUIRE(captured_event.failing_paths.size() == 1);
@@ -249,23 +226,11 @@ TEST_CASE("process posture check event omits a path once it's confirmed running"
     f.ztx.opts.events = ZitiPostureCheckEvent;
     f.ztx.opts.event_cb = stub_event_cb;
 
-    ziti_pr_notify_process_check(&f.ztx, f.query(), true);
+    ziti_pr_notify_process_check(&f.ztx, f.query());
 
     REQUIRE(captured_event.captured);
-    CHECK(captured_event.passing);
     REQUIRE(captured_event.paths.size() == 1);
     CHECK(captured_event.failing_paths.empty());
-}
-
-TEST_CASE("process posture check event is not sent when not subscribed", "[posture]") {
-    posture_fixture f;
-    captured_event = {};
-    // f.ztx.opts.events left at 0 -- ziti_send_event must not invoke the callback
-    f.ztx.opts.event_cb = stub_event_cb;
-
-    ziti_pr_notify_process_check(&f.ztx, f.query(), false);
-
-    CHECK_FALSE(captured_event.captured);
 }
 
 TEST_CASE("process posture check event reports only the still-failing path in a multi-process rule", "[posture]") {
@@ -276,7 +241,7 @@ TEST_CASE("process posture check event reports only the still-failing path in a 
     f.ztx.opts.events = ZitiPostureCheckEvent;
     f.ztx.opts.event_cb = stub_event_cb;
 
-    ziti_pr_notify_process_check(&f.ztx, f.query(), false);
+    ziti_pr_notify_process_check(&f.ztx, f.query());
 
     REQUIRE(captured_event.captured);
     CHECK(captured_event.query_type == ziti_posture_query_type_PC_Process_Multi);
@@ -285,69 +250,63 @@ TEST_CASE("process posture check event reports only the still-failing path in a 
     CHECK(captured_event.failing_paths[0] == "/b");
 }
 
-// notify_process_posture_check_changes() is the ziti.c-side half of this feature: it's what
-// update_services() calls to decide *whether* to notify at all, by diffing is_passing per query.
-TEST_CASE("a service seen for the first time reports its process check's current state", "[posture]") {
-    diff_fixture f;
-    ziti_service *svc = parse_service(SERVICE_JSON_MULTI); // isPassing:false in both queries
-    model_map_set(&f.ztx.services, svc->name, svc);
+// ziti_pr_handle_process() is the real trigger: it's the response_cb every pq_process_cb
+// implementation (built-in or the app's own) calls with a path's freshly checked is_running.
+// It fires only when that local fact changes -- not on every periodic re-check -- and never
+// looks at is_passing, which the controller can no longer be relied on to keep current.
+TEST_CASE("a path's first answer fires the event, regardless of which way it answers", "[posture]") {
+    posture_fixture f;
+    captured_event = {};
+    f.ztx.opts.events = ZitiPostureCheckEvent;
+    f.ztx.opts.event_cb = stub_event_cb;
 
-    model_map notified = {0};
-    notify_process_posture_check_changes(&f.ztx, svc, nullptr, &notified);
-    model_map_clear(&notified, nullptr);
-
-    REQUIRE(captured_event.captured);
-    CHECK_FALSE(captured_event.passing);
-
-    model_map_clear(&f.ztx.services, (_free_f) free_ziti_service_ptr);
-}
-
-TEST_CASE("a process check that flips from failing to passing fires the event", "[posture]") {
-    diff_fixture f;
-
-    const char *old_json = R"({"id":"svc-1","name":"test-service","posturePolicies":{"p1":{"policyId":"p1",
-      "isPassing":false,"policyType":"Dial","postureQueries":[{"id":"q1","isPassing":false,"queryType":"PROCESS",
-      "timeout":-1,"process":{"path":"/does/not/matter"}}]}}})";
-
-    ziti_service *old_svc = parse_service(old_json);
-    ziti_service *new_svc = parse_service(SERVICE_JSON); // isPassing:true
-    model_map_set(&f.ztx.services, new_svc->name, new_svc);
-
-    model_map notified = {0};
-    notify_process_posture_check_changes(&f.ztx, new_svc, old_svc, &notified);
-    model_map_clear(&notified, nullptr);
+    f.answer(false); // nothing to diff against yet -- still worth telling the app
 
     REQUIRE(captured_event.captured);
-    CHECK(captured_event.passing);
-
-    free_ziti_service_ptr(old_svc);
-    model_map_clear(&f.ztx.services, (_free_f) free_ziti_service_ptr);
+    REQUIRE(captured_event.failing_paths.size() == 1);
 }
 
-TEST_CASE("a process check with no is_passing change does not fire the event", "[posture]") {
-    diff_fixture f;
+TEST_CASE("answering with the same running state again does not re-fire", "[posture]") {
+    posture_fixture f;
+    f.answer(true); // establishes the prior state
+    captured_event = {};
+    f.ztx.opts.events = ZitiPostureCheckEvent;
+    f.ztx.opts.event_cb = stub_event_cb;
 
-    ziti_service *old_svc = parse_service(SERVICE_JSON);
-    ziti_service *new_svc = parse_service(SERVICE_JSON); // identical is_passing on both sides
-    model_map_set(&f.ztx.services, new_svc->name, new_svc);
-
-    model_map notified = {0};
-    notify_process_posture_check_changes(&f.ztx, new_svc, old_svc, &notified);
-    model_map_clear(&notified, nullptr);
+    f.answer(true); // same fact reported again on the next check cycle
 
     CHECK_FALSE(captured_event.captured);
-
-    free_ziti_service_ptr(old_svc);
-    model_map_clear(&f.ztx.services, (_free_f) free_ziti_service_ptr);
 }
 
-// the fix this test exists for: a posture check is defined on a policy, and a policy can
-// govern more than one service. Before this, notify_process_posture_check_changes() fired
-// once per service in update_services()'s loop, so a check shared by two services fired
-// two ZitiPostureCheckEvents for what is really one transition.
-TEST_CASE("a check shared by two services fires one event, listing both services", "[posture]") {
-    diff_fixture f;
+TEST_CASE("a path flipping from running to not running fires again", "[posture]") {
+    posture_fixture f;
+    f.answer(true);
+    captured_event = {};
+    f.ztx.opts.events = ZitiPostureCheckEvent;
+    f.ztx.opts.event_cb = stub_event_cb;
 
+    f.answer(false);
+
+    REQUIRE(captured_event.captured);
+    CHECK(captured_event.failing_paths.size() == 1);
+}
+
+TEST_CASE("process posture check event is not sent when not subscribed", "[posture]") {
+    posture_fixture f;
+    captured_event = {};
+    // f.ztx.opts.events left at 0 -- ziti_send_event must not invoke the callback
+    f.ztx.opts.event_cb = stub_event_cb;
+
+    f.answer(false);
+
+    CHECK_FALSE(captured_event.captured);
+}
+
+// a posture check is defined on a policy, and a policy can govern more than one service.
+// ztx_posture_checks() already dedups the pq_process_cb dispatch by path, so a shared check
+// only ever gets one is_running answer to react to -- this confirms that answer still fans
+// the event's `services` out to every service the check applies to.
+TEST_CASE("a check shared by two services lists both services when the process is not running", "[posture]") {
     const char *svc_a_json = R"({"id":"svc-a","name":"service-a","posturePolicies":{"p1":{"policyId":"p1",
       "isPassing":false,"policyType":"Dial","postureQueries":[{"id":"q1","isPassing":false,"queryType":"PROCESS",
       "timeout":-1,"process":{"path":"/does/not/matter"}}]}}})";
@@ -355,24 +314,39 @@ TEST_CASE("a check shared by two services fires one event, listing both services
       "isPassing":false,"policyType":"Dial","postureQueries":[{"id":"q1","isPassing":false,"queryType":"PROCESS",
       "timeout":-1,"process":{"path":"/does/not/matter"}}]}}})";
 
+    uv_loop_t loop{};
+    ziti_ctx ztx{};
+    ziti_api_session session{};
+    ztx.loop = &loop;
+    ztx.auth_state = ZitiAuthStateFullyAuthenticated;
+    session.id = "session-1";
+    ztx.session = &session;
+    ztx.opts.pq_process_cb = stub_pq_process;
+
     ziti_service *svc_a = parse_service(svc_a_json);
     ziti_service *svc_b = parse_service(svc_b_json);
-    model_map_set(&f.ztx.services, svc_a->name, svc_a);
-    model_map_set(&f.ztx.services, svc_b->name, svc_b);
+    model_map_set(&ztx.services, svc_a->name, svc_a);
+    model_map_set(&ztx.services, svc_b->name, svc_b);
 
-    // one update_services() cycle processing both services -- same policy_id/query_id, same
-    // is_passing, on a single shared dedup set, exactly as update_services() itself does
-    model_map notified = {0};
-    notify_process_posture_check_changes(&f.ztx, svc_a, nullptr, &notified);
-    notify_process_posture_check_changes(&f.ztx, svc_b, nullptr, &notified);
-    model_map_clear(&notified, nullptr);
+    captured = {};
+    captured_by_path.clear();
+    ziti_posture_init(&ztx, 60);
+    ziti_send_posture_data(&ztx); // one pq_process_cb dispatch for the shared path
+
+    captured_event = {};
+    ztx.opts.events = ZitiPostureCheckEvent;
+    ztx.opts.event_cb = stub_event_cb;
+
+    REQUIRE(captured.cb != nullptr);
+    captured.cb(&ztx, captured.id.c_str(), captured.path.c_str(), false, "deadbeef", nullptr, 0);
 
     REQUIRE(captured_event.count == 1);
     REQUIRE(captured_event.service_names.size() == 2);
     CHECK(contains(captured_event.service_names, "service-a"));
     CHECK(contains(captured_event.service_names, "service-b"));
 
-    model_map_clear(&f.ztx.services, (_free_f) free_ziti_service_ptr);
+    ziti_posture_checks_free(ztx.posture_checks);
+    model_map_clear(&ztx.services, (_free_f) free_ziti_service_ptr);
 }
 
 TEST_CASE("posture response still pending is not collected", "[posture]") {

@@ -88,8 +88,12 @@ struct ziti_posture_check_process_info {
 /**
  * \brief Posture Check event.
  *
- * Notifies the app when a single posture check transitions between passing and failing.
- * Fired only on transition -- not on every re-check of an already-steady-state result.
+ * Notifies the app of the SDK's own local observation of a posture check's requirements --
+ * e.g. whether a required process is currently running. This is distinct from whether the
+ * check *passes*: passing is a policy judgement the controller/router makes (matching
+ * submitted evidence like a process hash or signer against requirements the SDK is never
+ * given), and isn't something the SDK can determine on its own. Fired only when the locally
+ * observed state changes -- not on every re-check of an already-steady-state result.
  *
  * A posture check is defined on a policy, and a policy can govern more than one service --
  * `services` lists every service this check currently applies to. One event is sent per
@@ -102,7 +106,6 @@ struct ziti_posture_check_event {
     /** every service this check currently governs; NULL-terminated */
     ziti_service_array services;
     ziti_posture_query_type query_type;
-    bool passing;
 
     union {
         struct ziti_posture_check_process_info process;

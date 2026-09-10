@@ -850,9 +850,18 @@ static void ziti_pr_handle_os(ziti_context ztx, const char *id, const char *os_t
     ziti_collect_pr(ztx, os_req);
 }
 
+static ziti_posture_query *find_process_query(ziti_context ztx, const char *query_id);
+
 static void ziti_pr_handle_process(ziti_context ztx, const char *id, const char *path,
                                    bool is_running, const char *sha_512_hash, char **signers,
                                    int num_signers) {
+
+    // captured before ziti_collect_pr() replaces (or frees, if unchanged) whatever was
+    // previously stored for this path -- this is the only local, always-available signal
+    // for "did the running state of this path actually change".
+    pr_info *prev = model_map_get(&ztx->posture_checks->responses, path);
+    bool had_prev = prev != NULL && prev->obj != NULL;
+    bool was_running = had_prev && ((ziti_pr_process_req *) prev->obj)->is_running;
 
     ziti_pr_process_req *process_req = alloc_ziti_pr_process_req();
     *process_req = (ziti_pr_process_req){
@@ -867,6 +876,15 @@ static void ziti_pr_handle_process(ziti_context ztx, const char *id, const char 
     }
 
     ziti_collect_pr(ztx, process_req);
+
+    // fire on any change, including the first-ever answer for this path -- an app that
+    // just started watching has nothing else to tell it the current state
+    if (!had_prev || was_running != is_running) {
+        ziti_posture_query *query = find_process_query(ztx, id);
+        if (query != NULL) {
+            ziti_pr_notify_process_check(ztx, query);
+        }
+    }
 }
 
 #if _WIN32
@@ -1090,7 +1108,27 @@ static ziti_service **collect_services_for_query(ziti_context ztx, const char *q
     return services;
 }
 
-void ziti_pr_notify_process_check(ziti_context ztx, const ziti_posture_query *query, bool passing) {
+// finds one posture query anywhere in ztx->services matching this id -- used to recover
+// the query object a process check response belongs to, since ziti_pr_handle_process only
+// gets handed the id string.
+static ziti_posture_query *find_process_query(ziti_context ztx, const char *query_id) {
+    const char *name;
+    ziti_service *svc;
+    MODEL_MAP_FOREACH(name, svc, &ztx->services) {
+        const char *policy_id;
+        ziti_posture_query_set *set;
+        MODEL_MAP_FOREACH(policy_id, set, &svc->posture_query_map) {
+            for (int i = 0; set->posture_queries[i] != NULL; i++) {
+                if (strcmp(set->posture_queries[i]->id, query_id) == 0) {
+                    return set->posture_queries[i];
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
+void ziti_pr_notify_process_check(ziti_context ztx, const ziti_posture_query *query) {
     if (ztx->posture_checks == NULL) {
         return;
     }
@@ -1118,7 +1156,6 @@ void ziti_pr_notify_process_check(ziti_context ztx, const ziti_posture_query *qu
             .posture_check = {
                     .services = services,
                     .query_type = query->query_type,
-                    .passing = passing,
                     .process = {
                             .paths = paths,
                             .failing_paths = failing,

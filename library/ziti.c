@@ -1408,52 +1408,6 @@ static bool service_posture_check_timeouts_changed(ziti_context ztx, const ziti_
     return false;
 }
 
-static const ziti_posture_query *find_posture_query(const ziti_posture_query_set *set, const char *id) {
-    if (set == NULL) {
-        return NULL;
-    }
-    for (int i = 0; set->posture_queries[i] != NULL; i++) {
-        if (strcmp(set->posture_queries[i]->id, id) == 0) {
-            return set->posture_queries[i];
-        }
-    }
-    return NULL;
-}
-
-// notifies the app of any PC_Process/PC_Process_Multi query that just started or
-// stopped passing. `old_svc` is NULL for a newly added service -- in that case every
-// process query's current state is reported, since there's nothing to diff against.
-// A query shared by more than one service must still fire once per transition, not once
-// per service that references it -- `notified` tracks query ids already reported this cycle.
-void notify_process_posture_check_changes(ziti_context ztx, const ziti_service *new_svc,
-                                           const ziti_service *old_svc, model_map *notified) {
-    const char *policy_id;
-    const ziti_posture_query_set *new_set;
-    MODEL_MAP_FOREACH(policy_id, new_set, &new_svc->posture_query_map) {
-        const ziti_posture_query_set *old_set = old_svc ? model_map_get(&old_svc->posture_query_map, policy_id) : NULL;
-
-        for (int i = 0; new_set->posture_queries[i] != NULL; i++) {
-            ziti_posture_query *q = new_set->posture_queries[i];
-            if (q->query_type != ziti_posture_query_type_PC_Process &&
-                q->query_type != ziti_posture_query_type_PC_Process_Multi) {
-                continue;
-            }
-
-            if (model_map_get(notified, q->id) != NULL) {
-                continue;
-            }
-
-            const ziti_posture_query *old_q = find_posture_query(old_set, q->id);
-            if (old_q != NULL && old_q->is_passing == q->is_passing) {
-                continue;
-            }
-
-            model_map_set(notified, q->id, (void *) (uintptr_t) true);
-            ziti_pr_notify_process_check(ztx, q, q->is_passing);
-        }
-    }
-}
-
 void ziti_force_service_update(ziti_context ztx, const char* service_id) {
     ZTX_LOG(DEBUG, "forcing service[%s] to be reported as updated", service_id);
     model_map_set(&ztx->service_forced_updates, service_id, (void *) (uintptr_t) true);
@@ -1606,11 +1560,9 @@ static void update_services(ziti_service_array services, const ziti_error *error
     }
 
     // process updates
-    model_map notified_process_checks = {0};
     for (idx = 0; ev.service.changed[idx] != NULL; idx++) {
         s = ev.service.changed[idx];
         ziti_service *old = model_map_set(&ztx->services, s->name, s);
-        notify_process_posture_check_changes(ztx, s, old, &notified_process_checks);
         ziti_invalidate_session(ztx, old ? old->id : NULL, ziti_session_types.Dial);
         free_ziti_service_ptr(old);
 
@@ -1623,9 +1575,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
     for (idx = 0; ev.service.added[idx] != NULL; idx++) {
         s = ev.service.added[idx];
         model_map_set(&ztx->services, s->name, s);
-        notify_process_posture_check_changes(ztx, s, NULL, &notified_process_checks);
     }
-    model_map_clear(&notified_process_checks, NULL);
 
     if (!ztx->services_loaded || (addIdx + remIdx + chIdx) > 0) {
         ZTX_LOG(DEBUG, "sending service event initial[%s] %zd added, %zd removed, %zd changed",
