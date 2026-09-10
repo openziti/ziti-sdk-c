@@ -158,28 +158,42 @@ namespace {
     };
 
     struct captured_posture_event {
+        int count = 0;
         bool captured = false;
         ziti_posture_query_type query_type{};
         bool passing = false;
         std::vector<std::string> paths;
         std::vector<std::string> failing_paths;
+        std::vector<std::string> service_names;
     };
 
     captured_posture_event captured_event;
 
     extern "C" void stub_event_cb(ziti_context, const ziti_event_t *ev) {
         REQUIRE(ev->type == ZitiPostureCheckEvent);
+        captured_event.count++;
         captured_event.captured = true;
         captured_event.query_type = ev->posture_check.query_type;
         captured_event.passing = ev->posture_check.passing;
         captured_event.paths.clear();
         captured_event.failing_paths.clear();
+        captured_event.service_names.clear();
         for (const char **p = ev->posture_check.process.paths; p && *p; p++) {
             captured_event.paths.emplace_back(*p);
         }
         for (const char **p = ev->posture_check.process.failing_paths; p && *p; p++) {
             captured_event.failing_paths.emplace_back(*p);
         }
+        for (ziti_service **s = ev->posture_check.services; s && *s; s++) {
+            captured_event.service_names.emplace_back((*s)->name);
+        }
+    }
+
+    bool contains(const std::vector<std::string> &v, const std::string &s) {
+        for (auto &e: v) {
+            if (e == s) return true;
+        }
+        return false;
     }
 
     // bare enough to run notify_process_posture_check_changes() -- it only needs
@@ -215,7 +229,7 @@ TEST_CASE("process posture check event reports a failing path with no local answ
     f.ztx.opts.events = ZitiPostureCheckEvent;
     f.ztx.opts.event_cb = stub_event_cb;
 
-    ziti_pr_notify_process_check(&f.ztx, f.service, f.query(), false);
+    ziti_pr_notify_process_check(&f.ztx, f.query(), false);
 
     REQUIRE(captured_event.captured);
     CHECK(captured_event.query_type == ziti_posture_query_type_PC_Process);
@@ -224,6 +238,8 @@ TEST_CASE("process posture check event reports a failing path with no local answ
     CHECK(captured_event.paths[0] == "/does/not/matter");
     REQUIRE(captured_event.failing_paths.size() == 1);
     CHECK(captured_event.failing_paths[0] == "/does/not/matter");
+    REQUIRE(captured_event.service_names.size() == 1);
+    CHECK(captured_event.service_names[0] == "test-service");
 }
 
 TEST_CASE("process posture check event omits a path once it's confirmed running", "[posture]") {
@@ -233,7 +249,7 @@ TEST_CASE("process posture check event omits a path once it's confirmed running"
     f.ztx.opts.events = ZitiPostureCheckEvent;
     f.ztx.opts.event_cb = stub_event_cb;
 
-    ziti_pr_notify_process_check(&f.ztx, f.service, f.query(), true);
+    ziti_pr_notify_process_check(&f.ztx, f.query(), true);
 
     REQUIRE(captured_event.captured);
     CHECK(captured_event.passing);
@@ -247,7 +263,7 @@ TEST_CASE("process posture check event is not sent when not subscribed", "[postu
     // f.ztx.opts.events left at 0 -- ziti_send_event must not invoke the callback
     f.ztx.opts.event_cb = stub_event_cb;
 
-    ziti_pr_notify_process_check(&f.ztx, f.service, f.query(), false);
+    ziti_pr_notify_process_check(&f.ztx, f.query(), false);
 
     CHECK_FALSE(captured_event.captured);
 }
@@ -260,7 +276,7 @@ TEST_CASE("process posture check event reports only the still-failing path in a 
     f.ztx.opts.events = ZitiPostureCheckEvent;
     f.ztx.opts.event_cb = stub_event_cb;
 
-    ziti_pr_notify_process_check(&f.ztx, f.service, f.query(), false);
+    ziti_pr_notify_process_check(&f.ztx, f.query(), false);
 
     REQUIRE(captured_event.captured);
     CHECK(captured_event.query_type == ziti_posture_query_type_PC_Process_Multi);
@@ -274,13 +290,16 @@ TEST_CASE("process posture check event reports only the still-failing path in a 
 TEST_CASE("a service seen for the first time reports its process check's current state", "[posture]") {
     diff_fixture f;
     ziti_service *svc = parse_service(SERVICE_JSON_MULTI); // isPassing:false in both queries
+    model_map_set(&f.ztx.services, svc->name, svc);
 
-    notify_process_posture_check_changes(&f.ztx, svc, nullptr);
+    model_map notified = {0};
+    notify_process_posture_check_changes(&f.ztx, svc, nullptr, &notified);
+    model_map_clear(&notified, nullptr);
 
     REQUIRE(captured_event.captured);
     CHECK_FALSE(captured_event.passing);
 
-    free_ziti_service_ptr(svc);
+    model_map_clear(&f.ztx.services, (_free_f) free_ziti_service_ptr);
 }
 
 TEST_CASE("a process check that flips from failing to passing fires the event", "[posture]") {
@@ -292,14 +311,17 @@ TEST_CASE("a process check that flips from failing to passing fires the event", 
 
     ziti_service *old_svc = parse_service(old_json);
     ziti_service *new_svc = parse_service(SERVICE_JSON); // isPassing:true
+    model_map_set(&f.ztx.services, new_svc->name, new_svc);
 
-    notify_process_posture_check_changes(&f.ztx, new_svc, old_svc);
+    model_map notified = {0};
+    notify_process_posture_check_changes(&f.ztx, new_svc, old_svc, &notified);
+    model_map_clear(&notified, nullptr);
 
     REQUIRE(captured_event.captured);
     CHECK(captured_event.passing);
 
     free_ziti_service_ptr(old_svc);
-    free_ziti_service_ptr(new_svc);
+    model_map_clear(&f.ztx.services, (_free_f) free_ziti_service_ptr);
 }
 
 TEST_CASE("a process check with no is_passing change does not fire the event", "[posture]") {
@@ -307,13 +329,50 @@ TEST_CASE("a process check with no is_passing change does not fire the event", "
 
     ziti_service *old_svc = parse_service(SERVICE_JSON);
     ziti_service *new_svc = parse_service(SERVICE_JSON); // identical is_passing on both sides
+    model_map_set(&f.ztx.services, new_svc->name, new_svc);
 
-    notify_process_posture_check_changes(&f.ztx, new_svc, old_svc);
+    model_map notified = {0};
+    notify_process_posture_check_changes(&f.ztx, new_svc, old_svc, &notified);
+    model_map_clear(&notified, nullptr);
 
     CHECK_FALSE(captured_event.captured);
 
     free_ziti_service_ptr(old_svc);
-    free_ziti_service_ptr(new_svc);
+    model_map_clear(&f.ztx.services, (_free_f) free_ziti_service_ptr);
+}
+
+// the fix this test exists for: a posture check is defined on a policy, and a policy can
+// govern more than one service. Before this, notify_process_posture_check_changes() fired
+// once per service in update_services()'s loop, so a check shared by two services fired
+// two ZitiPostureCheckEvents for what is really one transition.
+TEST_CASE("a check shared by two services fires one event, listing both services", "[posture]") {
+    diff_fixture f;
+
+    const char *svc_a_json = R"({"id":"svc-a","name":"service-a","posturePolicies":{"p1":{"policyId":"p1",
+      "isPassing":false,"policyType":"Dial","postureQueries":[{"id":"q1","isPassing":false,"queryType":"PROCESS",
+      "timeout":-1,"process":{"path":"/does/not/matter"}}]}}})";
+    const char *svc_b_json = R"({"id":"svc-b","name":"service-b","posturePolicies":{"p1":{"policyId":"p1",
+      "isPassing":false,"policyType":"Dial","postureQueries":[{"id":"q1","isPassing":false,"queryType":"PROCESS",
+      "timeout":-1,"process":{"path":"/does/not/matter"}}]}}})";
+
+    ziti_service *svc_a = parse_service(svc_a_json);
+    ziti_service *svc_b = parse_service(svc_b_json);
+    model_map_set(&f.ztx.services, svc_a->name, svc_a);
+    model_map_set(&f.ztx.services, svc_b->name, svc_b);
+
+    // one update_services() cycle processing both services -- same policy_id/query_id, same
+    // is_passing, on a single shared dedup set, exactly as update_services() itself does
+    model_map notified = {0};
+    notify_process_posture_check_changes(&f.ztx, svc_a, nullptr, &notified);
+    notify_process_posture_check_changes(&f.ztx, svc_b, nullptr, &notified);
+    model_map_clear(&notified, nullptr);
+
+    REQUIRE(captured_event.count == 1);
+    REQUIRE(captured_event.service_names.size() == 2);
+    CHECK(contains(captured_event.service_names, "service-a"));
+    CHECK(contains(captured_event.service_names, "service-b"));
+
+    model_map_clear(&f.ztx.services, (_free_f) free_ziti_service_ptr);
 }
 
 TEST_CASE("posture response still pending is not collected", "[posture]") {

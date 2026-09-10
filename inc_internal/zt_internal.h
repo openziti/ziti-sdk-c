@@ -269,8 +269,11 @@ void ztx_config_update(ziti_context ztx);
 
 // exposed for tests: fires ZitiPostureCheckEvent for any PC_Process/PC_Process_Multi
 // query on new_svc whose is_passing differs from its counterpart on old_svc (or, when
-// old_svc is NULL, for every such query on a newly seen service).
-void notify_process_posture_check_changes(ziti_context ztx, const ziti_service *new_svc, const ziti_service *old_svc);
+// old_svc is NULL, for every such query on a newly seen service). `notified` is a
+// caller-owned set of query ids already reported this update_services() cycle -- a query
+// shared by several services must fire once, not once per service that references it.
+void notify_process_posture_check_changes(ziti_context ztx, const ziti_service *new_svc,
+                                           const ziti_service *old_svc, model_map *notified);
 
 void reject_dial_request(uint32_t conn_id, ziti_channel_t *ch, uint32_t req_id, const char *reason);
 

@@ -1054,8 +1054,43 @@ static const char **posture_check_process_paths(const ziti_posture_query *query,
     return paths;
 }
 
-void ziti_pr_notify_process_check(ziti_context ztx, const ziti_service *service,
-                                   const ziti_posture_query *query, bool passing) {
+// true if `svc` has a posture query -- under any policy -- with this id. A policy (and so a
+// query) can be bound to more than one service, which is why the caller can't just be handed
+// the one service it happened to notice the transition on.
+static bool service_has_query(const ziti_service *svc, const char *query_id) {
+    const char *policy_id;
+    ziti_posture_query_set *set;
+    MODEL_MAP_FOREACH(policy_id, set, &svc->posture_query_map) {
+        for (int i = 0; set->posture_queries[i] != NULL; i++) {
+            if (strcmp(set->posture_queries[i]->id, query_id) == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static ziti_service **collect_services_for_query(ziti_context ztx, const char *query_id) {
+    int count = 0;
+    const char *name;
+    ziti_service *svc;
+    MODEL_MAP_FOREACH(name, svc, &ztx->services) {
+        if (service_has_query(svc, query_id)) {
+            count++;
+        }
+    }
+
+    ziti_service **services = calloc((size_t) count + 1, sizeof(ziti_service *));
+    int idx = 0;
+    MODEL_MAP_FOREACH(name, svc, &ztx->services) {
+        if (service_has_query(svc, query_id)) {
+            services[idx++] = svc;
+        }
+    }
+    return services;
+}
+
+void ziti_pr_notify_process_check(ziti_context ztx, const ziti_posture_query *query, bool passing) {
     if (ztx->posture_checks == NULL) {
         return;
     }
@@ -1076,10 +1111,12 @@ void ziti_pr_notify_process_check(ziti_context ztx, const ziti_service *service,
         }
     }
 
+    ziti_service **services = collect_services_for_query(ztx, query->id);
+
     ziti_event_t ev = {
             .type = ZitiPostureCheckEvent,
             .posture_check = {
-                    .service = service,
+                    .services = services,
                     .query_type = query->query_type,
                     .passing = passing,
                     .process = {
@@ -1093,6 +1130,7 @@ void ziti_pr_notify_process_check(ziti_context ztx, const ziti_service *service,
 
     free(paths);
     free(failing);
+    free(services);
 }
 
 static void default_pq_process(ziti_context ztx, const char *id, const char *path, ziti_pr_process_cb cb) {
