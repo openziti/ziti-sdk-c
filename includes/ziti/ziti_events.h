@@ -35,6 +35,7 @@ typedef enum {
     ZitiServiceEvent = 1 << 2,
     ZitiAuthEvent = 1 << 3,
     ZitiConfigEvent = 1 << 4,
+    ZitiPostureCheckEvent = 1 << 5,
 } ziti_event_type;
 
 /**
@@ -72,6 +73,35 @@ struct ctrl_detail_s {
 struct ziti_config_event {
     const char *identity_name;
     const ziti_config *config;
+};
+
+/**
+ * \brief Payload for a PC_Process/PC_Process_Multi posture check transition.
+ */
+struct ziti_posture_check_process_info {
+    /** every path configured on the check; NULL-terminated */
+    const char **paths;
+    /** subset of `paths` not currently satisfied; NULL-terminated, empty when passing == true */
+    const char **failing_paths;
+};
+
+/**
+ * \brief Posture Check event.
+ *
+ * Notifies the app when a single posture check transitions between passing and failing.
+ * Fired only on transition -- not on every re-check of an already-steady-state result.
+ *
+ * `query_type` discriminates the union below; only PC_Process/PC_Process_Multi are
+ * currently implemented.
+ */
+struct ziti_posture_check_event {
+    const ziti_service *service;
+    ziti_posture_query_type query_type;
+    bool passing;
+
+    union {
+        struct ziti_posture_check_process_info process;
+    };
 };
 /**
  * \brief Edge Router Event.
@@ -158,6 +188,7 @@ typedef struct ziti_event_s {
         struct ziti_service_event service;
         struct ziti_auth_event auth;
         struct ziti_config_event cfg;
+        struct ziti_posture_check_event posture_check;
     };
 } ziti_event_t;
 

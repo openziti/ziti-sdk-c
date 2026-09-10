@@ -1025,6 +1025,76 @@ bool ziti_service_has_query_with_timeout(ziti_service *service) {
     return false;
 }
 
+// collects the paths configured on a PC_Process/PC_Process_Multi query into one
+// NULL-terminated array, regardless of which of the two shapes it came from.
+static const char **posture_check_process_paths(const ziti_posture_query *query, int *count_out) {
+    int count = 0;
+    if (query->query_type == ziti_posture_query_type_PC_Process) {
+        count = query->process != NULL ? 1 : 0;
+    } else if (query->query_type == ziti_posture_query_type_PC_Process_Multi) {
+        while (query->processes[count] != NULL) {
+            count++;
+        }
+    }
+
+    const char **paths = calloc((size_t) count + 1, sizeof(char *));
+    if (query->query_type == ziti_posture_query_type_PC_Process) {
+        if (query->process != NULL) {
+            paths[0] = query->process->path;
+        }
+    } else {
+        for (int i = 0; i < count; i++) {
+            paths[i] = query->processes[i]->path;
+        }
+    }
+
+    if (count_out != NULL) {
+        *count_out = count;
+    }
+    return paths;
+}
+
+void ziti_pr_notify_process_check(ziti_context ztx, const ziti_service *service,
+                                   const ziti_posture_query *query, bool passing) {
+    if (ztx->posture_checks == NULL) {
+        return;
+    }
+
+    int path_count = 0;
+    const char **paths = posture_check_process_paths(query, &path_count);
+
+    const char **failing = calloc((size_t) path_count + 1, sizeof(char *));
+    int failing_count = 0;
+    for (int i = 0; i < path_count; i++) {
+        pr_info *resp = model_map_get(&ztx->posture_checks->responses, paths[i]);
+        bool running = false;
+        if (resp != NULL && resp->obj != NULL && resp->obj->typeId == ziti_posture_query_type_PC_Process) {
+            running = ((ziti_pr_process_req *) resp->obj)->is_running;
+        }
+        if (!running) {
+            failing[failing_count++] = paths[i];
+        }
+    }
+
+    ziti_event_t ev = {
+            .type = ZitiPostureCheckEvent,
+            .posture_check = {
+                    .service = service,
+                    .query_type = query->query_type,
+                    .passing = passing,
+                    .process = {
+                            .paths = paths,
+                            .failing_paths = failing,
+                    },
+            },
+    };
+
+    ziti_send_event(ztx, &ev);
+
+    free(paths);
+    free(failing);
+}
+
 static void default_pq_process(ziti_context ztx, const char *id, const char *path, ziti_pr_process_cb cb) {
     NEWP(wr, struct process_work);
     wr->id = strdup(id);
