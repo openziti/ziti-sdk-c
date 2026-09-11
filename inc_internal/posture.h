@@ -58,6 +58,13 @@ Ziti__EdgeClient__Pb__PostureResponses *ztx_posture_resp_pb(ziti_context ztx, mo
 
 bool ziti_service_has_query_with_timeout(ziti_service *service);
 
+// builds and sends a ZitiPostureStatusEvent reporting the SDK's current, locally observed
+// state for a PC_Process/PC_Process_Multi query (which of its configured paths are running).
+// Scans ztx->services itself to find every service currently governed by this query
+// (matched by query->id), since one policy -- and so one query -- can apply to more than
+// one service.
+void ziti_pr_notify_process_status(ziti_context ztx, const ziti_posture_query *query);
+
 #ifdef __cplusplus
 }
 #endif

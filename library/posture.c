@@ -850,9 +850,18 @@ static void ziti_pr_handle_os(ziti_context ztx, const char *id, const char *os_t
     ziti_collect_pr(ztx, os_req);
 }
 
+static ziti_posture_query *find_process_query(ziti_context ztx, const char *query_id);
+
 static void ziti_pr_handle_process(ziti_context ztx, const char *id, const char *path,
                                    bool is_running, const char *sha_512_hash, char **signers,
                                    int num_signers) {
+
+    // captured before ziti_collect_pr() replaces (or frees, if unchanged) whatever was
+    // previously stored for this path -- this is the only local, always-available signal
+    // for "did the running state of this path actually change".
+    pr_info *prev = model_map_get(&ztx->posture_checks->responses, path);
+    bool had_prev = prev != NULL && prev->obj != NULL;
+    bool was_running = had_prev && ((ziti_pr_process_req *) prev->obj)->is_running;
 
     ziti_pr_process_req *process_req = alloc_ziti_pr_process_req();
     *process_req = (ziti_pr_process_req){
@@ -867,6 +876,15 @@ static void ziti_pr_handle_process(ziti_context ztx, const char *id, const char 
     }
 
     ziti_collect_pr(ztx, process_req);
+
+    // fire on any change, including the first-ever answer for this path -- an app that
+    // just started watching has nothing else to tell it the current state
+    if (!had_prev || was_running != is_running) {
+        ziti_posture_query *query = find_process_query(ztx, id);
+        if (query != NULL) {
+            ziti_pr_notify_process_status(ztx, query);
+        }
+    }
 }
 
 #if _WIN32
@@ -1023,6 +1041,133 @@ bool ziti_service_has_query_with_timeout(ziti_service *service) {
     }
 
     return false;
+}
+
+// collects the paths configured on a PC_Process/PC_Process_Multi query into one
+// NULL-terminated array, regardless of which of the two shapes it came from.
+static const char **posture_check_process_paths(const ziti_posture_query *query, int *count_out) {
+    int count = 0;
+    if (query->query_type == ziti_posture_query_type_PC_Process) {
+        count = query->process != NULL ? 1 : 0;
+    } else if (query->query_type == ziti_posture_query_type_PC_Process_Multi) {
+        while (query->processes[count] != NULL) {
+            count++;
+        }
+    }
+
+    const char **paths = calloc((size_t) count + 1, sizeof(char *));
+    if (query->query_type == ziti_posture_query_type_PC_Process) {
+        if (query->process != NULL) {
+            paths[0] = query->process->path;
+        }
+    } else {
+        for (int i = 0; i < count; i++) {
+            paths[i] = query->processes[i]->path;
+        }
+    }
+
+    if (count_out != NULL) {
+        *count_out = count;
+    }
+    return paths;
+}
+
+// true if `svc` has a posture query -- under any policy -- with this id. A policy (and so a
+// query) can be bound to more than one service, which is why the caller can't just be handed
+// the one service it happened to notice the transition on.
+static bool service_has_query(const ziti_service *svc, const char *query_id) {
+    const char *policy_id;
+    ziti_posture_query_set *set;
+    MODEL_MAP_FOREACH(policy_id, set, &svc->posture_query_map) {
+        for (int i = 0; set->posture_queries[i] != NULL; i++) {
+            if (strcmp(set->posture_queries[i]->id, query_id) == 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static ziti_service **collect_services_for_query(ziti_context ztx, const char *query_id) {
+    int count = 0;
+    const char *name;
+    ziti_service *svc;
+    MODEL_MAP_FOREACH(name, svc, &ztx->services) {
+        if (service_has_query(svc, query_id)) {
+            count++;
+        }
+    }
+
+    ziti_service **services = calloc((size_t) count + 1, sizeof(ziti_service *));
+    int idx = 0;
+    MODEL_MAP_FOREACH(name, svc, &ztx->services) {
+        if (service_has_query(svc, query_id)) {
+            services[idx++] = svc;
+        }
+    }
+    return services;
+}
+
+// finds one posture query anywhere in ztx->services matching this id -- used to recover
+// the query object a process check response belongs to, since ziti_pr_handle_process only
+// gets handed the id string.
+static ziti_posture_query *find_process_query(ziti_context ztx, const char *query_id) {
+    const char *name;
+    ziti_service *svc;
+    MODEL_MAP_FOREACH(name, svc, &ztx->services) {
+        const char *policy_id;
+        ziti_posture_query_set *set;
+        MODEL_MAP_FOREACH(policy_id, set, &svc->posture_query_map) {
+            for (int i = 0; set->posture_queries[i] != NULL; i++) {
+                if (strcmp(set->posture_queries[i]->id, query_id) == 0) {
+                    return set->posture_queries[i];
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
+void ziti_pr_notify_process_status(ziti_context ztx, const ziti_posture_query *query) {
+    if (ztx->posture_checks == NULL) {
+        return;
+    }
+
+    int path_count = 0;
+    const char **paths = posture_check_process_paths(query, &path_count);
+
+    const char **missing = calloc((size_t) path_count + 1, sizeof(char *));
+    int missing_count = 0;
+    for (int i = 0; i < path_count; i++) {
+        pr_info *resp = model_map_get(&ztx->posture_checks->responses, paths[i]);
+        bool running = false;
+        if (resp != NULL && resp->obj != NULL && resp->obj->typeId == ziti_posture_query_type_PC_Process) {
+            running = ((ziti_pr_process_req *) resp->obj)->is_running;
+        }
+        if (!running) {
+            missing[missing_count++] = paths[i];
+        }
+    }
+
+    ziti_service **services = collect_services_for_query(ztx, query->id);
+
+    ziti_event_t ev = {
+            .type = ZitiPostureStatusEvent,
+            .posture_status = {
+                    .services = services,
+                    .query_type = query->query_type,
+                    .process = {
+                            .paths = paths,
+                            .missing_paths = missing,
+                    },
+            },
+    };
+
+    ziti_send_event(ztx, &ev);
+
+    free(paths);
+    free(missing);
+    free(services);
 }
 
 static void default_pq_process(ziti_context ztx, const char *id, const char *path, ziti_pr_process_cb cb) {

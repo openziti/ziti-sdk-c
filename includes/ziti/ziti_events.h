@@ -35,6 +35,7 @@ typedef enum {
     ZitiServiceEvent = 1 << 2,
     ZitiAuthEvent = 1 << 3,
     ZitiConfigEvent = 1 << 4,
+    ZitiPostureStatusEvent = 1 << 5,
 } ziti_event_type;
 
 /**
@@ -72,6 +73,47 @@ struct ctrl_detail_s {
 struct ziti_config_event {
     const char *identity_name;
     const ziti_config *config;
+};
+
+/**
+ * \brief Payload for a PC_Process/PC_Process_Multi posture check: which of the check's
+ * configured paths are currently running, per the SDK's own local detection (see
+ * ziti_pr_process_cb). Not a compliance verdict -- the SDK is never given the hash or
+ * signer policy actually requires, only what it observes on the running binary.
+ */
+struct ziti_posture_status_process_info {
+    /** every path configured on the check; NULL-terminated */
+    const char **paths;
+    /** subset of `paths` not currently running; NULL-terminated, empty when all are */
+    const char **missing_paths;
+};
+
+/**
+ * \brief Posture Status event.
+ *
+ * Notifies the app of the SDK's own local observation of a posture check's requirements --
+ * not of whether the check *passes*. Passing is a policy judgement the controller/router
+ * makes, by matching submitted evidence against requirements the SDK is never given, and
+ * isn't something the SDK can determine on its own; what's reported here is always a plain,
+ * locally observed fact instead (see the union below for what that fact is, per check
+ * type). Fired only when that local observation changes -- not on every re-check of an
+ * already-steady-state result.
+ *
+ * A posture check is defined on a policy, and a policy can govern more than one service --
+ * `services` lists every service this check currently applies to. One event is sent per
+ * status change, never one per service.
+ *
+ * `query_type` discriminates the union below; only PC_Process/PC_Process_Multi are
+ * currently implemented.
+ */
+struct ziti_posture_status_event {
+    /** every service this check currently governs; NULL-terminated */
+    ziti_service_array services;
+    ziti_posture_query_type query_type;
+
+    union {
+        struct ziti_posture_status_process_info process;
+    };
 };
 /**
  * \brief Edge Router Event.
@@ -158,6 +200,7 @@ typedef struct ziti_event_s {
         struct ziti_service_event service;
         struct ziti_auth_event auth;
         struct ziti_config_event cfg;
+        struct ziti_posture_status_event posture_status;
     };
 } ziti_event_t;
 
