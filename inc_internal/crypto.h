@@ -18,6 +18,8 @@
 #ifndef ZITI_SDK_CRYPTO_H
 #define ZITI_SDK_CRYPTO_H
 
+#include "credentials.h"
+
 #include <sodium.h>
 #include <stdbool.h>
 #if _MSC_VER
@@ -29,7 +31,7 @@ typedef intptr_t ssize_t;
 
 #include <ziti/enums.h>
 
-#define E2EE_MAX_HEADER_LEN 64
+#define E2EE_MAX_HEADER_LEN (16 * 1024)
 #define E2EE_MAX_MSG_OVERHEAD 32
 
 typedef struct e2ee_pub_s {
@@ -57,7 +59,7 @@ typedef struct e2ee {
 extern "C" {
 #endif
 
-e2ee_t *create_e2ee(ziti_crypto_method);
+e2ee_t *create_e2ee(ziti_crypto_method, bool server, zt_x509 *creds, const char *ca);
 
 const char *e2ee_method_id(ziti_crypto_method mode);
 

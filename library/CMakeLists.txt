@@ -110,6 +110,7 @@ SET(ZITI_SRC_FILES
         edge_protocol.c
         ext_oidc.c
         session_certs.c
+        e2ee/e2ee_tls.c
         e2ee/e2ee_libsodium.c
         e2ee/e2ee_none.c
 )
