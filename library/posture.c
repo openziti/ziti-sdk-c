@@ -882,7 +882,7 @@ static void ziti_pr_handle_process(ziti_context ztx, const char *id, const char 
     if (!had_prev || was_running != is_running) {
         ziti_posture_query *query = find_process_query(ztx, id);
         if (query != NULL) {
-            ziti_pr_notify_process_check(ztx, query);
+            ziti_pr_notify_process_status(ztx, query);
         }
     }
 }
@@ -1128,7 +1128,7 @@ static ziti_posture_query *find_process_query(ziti_context ztx, const char *quer
     return NULL;
 }
 
-void ziti_pr_notify_process_check(ziti_context ztx, const ziti_posture_query *query) {
+void ziti_pr_notify_process_status(ziti_context ztx, const ziti_posture_query *query) {
     if (ztx->posture_checks == NULL) {
         return;
     }
@@ -1136,8 +1136,8 @@ void ziti_pr_notify_process_check(ziti_context ztx, const ziti_posture_query *qu
     int path_count = 0;
     const char **paths = posture_check_process_paths(query, &path_count);
 
-    const char **failing = calloc((size_t) path_count + 1, sizeof(char *));
-    int failing_count = 0;
+    const char **missing = calloc((size_t) path_count + 1, sizeof(char *));
+    int missing_count = 0;
     for (int i = 0; i < path_count; i++) {
         pr_info *resp = model_map_get(&ztx->posture_checks->responses, paths[i]);
         bool running = false;
@@ -1145,20 +1145,20 @@ void ziti_pr_notify_process_check(ziti_context ztx, const ziti_posture_query *qu
             running = ((ziti_pr_process_req *) resp->obj)->is_running;
         }
         if (!running) {
-            failing[failing_count++] = paths[i];
+            missing[missing_count++] = paths[i];
         }
     }
 
     ziti_service **services = collect_services_for_query(ztx, query->id);
 
     ziti_event_t ev = {
-            .type = ZitiPostureCheckEvent,
-            .posture_check = {
+            .type = ZitiPostureStatusEvent,
+            .posture_status = {
                     .services = services,
                     .query_type = query->query_type,
                     .process = {
                             .paths = paths,
-                            .failing_paths = failing,
+                            .missing_paths = missing,
                     },
             },
     };
@@ -1166,7 +1166,7 @@ void ziti_pr_notify_process_check(ziti_context ztx, const ziti_posture_query *qu
     ziti_send_event(ztx, &ev);
 
     free(paths);
-    free(failing);
+    free(missing);
     free(services);
 }
 

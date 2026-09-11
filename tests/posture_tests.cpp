@@ -162,27 +162,27 @@ namespace {
         bool captured = false;
         ziti_posture_query_type query_type{};
         std::vector<std::string> paths;
-        std::vector<std::string> failing_paths;
+        std::vector<std::string> missing_paths;
         std::vector<std::string> service_names;
     };
 
     captured_posture_event captured_event;
 
     extern "C" void stub_event_cb(ziti_context, const ziti_event_t *ev) {
-        REQUIRE(ev->type == ZitiPostureCheckEvent);
+        REQUIRE(ev->type == ZitiPostureStatusEvent);
         captured_event.count++;
         captured_event.captured = true;
-        captured_event.query_type = ev->posture_check.query_type;
+        captured_event.query_type = ev->posture_status.query_type;
         captured_event.paths.clear();
-        captured_event.failing_paths.clear();
+        captured_event.missing_paths.clear();
         captured_event.service_names.clear();
-        for (const char **p = ev->posture_check.process.paths; p && *p; p++) {
+        for (const char **p = ev->posture_status.process.paths; p && *p; p++) {
             captured_event.paths.emplace_back(*p);
         }
-        for (const char **p = ev->posture_check.process.failing_paths; p && *p; p++) {
-            captured_event.failing_paths.emplace_back(*p);
+        for (const char **p = ev->posture_status.process.missing_paths; p && *p; p++) {
+            captured_event.missing_paths.emplace_back(*p);
         }
-        for (ziti_service **s = ev->posture_check.services; s && *s; s++) {
+        for (ziti_service **s = ev->posture_status.services; s && *s; s++) {
             captured_event.service_names.emplace_back((*s)->name);
         }
     }
@@ -204,17 +204,17 @@ namespace {
 TEST_CASE("process posture check event reports a failing path with no local answer", "[posture]") {
     posture_fixture f;
     captured_event = {};
-    f.ztx.opts.events = ZitiPostureCheckEvent;
+    f.ztx.opts.events = ZitiPostureStatusEvent;
     f.ztx.opts.event_cb = stub_event_cb;
 
-    ziti_pr_notify_process_check(&f.ztx, f.query());
+    ziti_pr_notify_process_status(&f.ztx, f.query());
 
     REQUIRE(captured_event.captured);
     CHECK(captured_event.query_type == ziti_posture_query_type_PC_Process);
     REQUIRE(captured_event.paths.size() == 1);
     CHECK(captured_event.paths[0] == "/does/not/matter");
-    REQUIRE(captured_event.failing_paths.size() == 1);
-    CHECK(captured_event.failing_paths[0] == "/does/not/matter");
+    REQUIRE(captured_event.missing_paths.size() == 1);
+    CHECK(captured_event.missing_paths[0] == "/does/not/matter");
     REQUIRE(captured_event.service_names.size() == 1);
     CHECK(captured_event.service_names[0] == "test-service");
 }
@@ -223,31 +223,31 @@ TEST_CASE("process posture check event omits a path once it's confirmed running"
     posture_fixture f;
     f.answer();
     captured_event = {};
-    f.ztx.opts.events = ZitiPostureCheckEvent;
+    f.ztx.opts.events = ZitiPostureStatusEvent;
     f.ztx.opts.event_cb = stub_event_cb;
 
-    ziti_pr_notify_process_check(&f.ztx, f.query());
+    ziti_pr_notify_process_status(&f.ztx, f.query());
 
     REQUIRE(captured_event.captured);
     REQUIRE(captured_event.paths.size() == 1);
-    CHECK(captured_event.failing_paths.empty());
+    CHECK(captured_event.missing_paths.empty());
 }
 
-TEST_CASE("process posture check event reports only the still-failing path in a multi-process rule", "[posture]") {
+TEST_CASE("process posture check event reports only the still-missing path in a multi-process rule", "[posture]") {
     posture_fixture f(SERVICE_JSON_MULTI);
     f.answer_path("/a", true);
     f.answer_path("/b", false);
     captured_event = {};
-    f.ztx.opts.events = ZitiPostureCheckEvent;
+    f.ztx.opts.events = ZitiPostureStatusEvent;
     f.ztx.opts.event_cb = stub_event_cb;
 
-    ziti_pr_notify_process_check(&f.ztx, f.query());
+    ziti_pr_notify_process_status(&f.ztx, f.query());
 
     REQUIRE(captured_event.captured);
     CHECK(captured_event.query_type == ziti_posture_query_type_PC_Process_Multi);
     REQUIRE(captured_event.paths.size() == 2);
-    REQUIRE(captured_event.failing_paths.size() == 1);
-    CHECK(captured_event.failing_paths[0] == "/b");
+    REQUIRE(captured_event.missing_paths.size() == 1);
+    CHECK(captured_event.missing_paths[0] == "/b");
 }
 
 // ziti_pr_handle_process() is the real trigger: it's the response_cb every pq_process_cb
@@ -257,20 +257,20 @@ TEST_CASE("process posture check event reports only the still-failing path in a 
 TEST_CASE("a path's first answer fires the event, regardless of which way it answers", "[posture]") {
     posture_fixture f;
     captured_event = {};
-    f.ztx.opts.events = ZitiPostureCheckEvent;
+    f.ztx.opts.events = ZitiPostureStatusEvent;
     f.ztx.opts.event_cb = stub_event_cb;
 
     f.answer(false); // nothing to diff against yet -- still worth telling the app
 
     REQUIRE(captured_event.captured);
-    REQUIRE(captured_event.failing_paths.size() == 1);
+    REQUIRE(captured_event.missing_paths.size() == 1);
 }
 
 TEST_CASE("answering with the same running state again does not re-fire", "[posture]") {
     posture_fixture f;
     f.answer(true); // establishes the prior state
     captured_event = {};
-    f.ztx.opts.events = ZitiPostureCheckEvent;
+    f.ztx.opts.events = ZitiPostureStatusEvent;
     f.ztx.opts.event_cb = stub_event_cb;
 
     f.answer(true); // same fact reported again on the next check cycle
@@ -282,13 +282,13 @@ TEST_CASE("a path flipping from running to not running fires again", "[posture]"
     posture_fixture f;
     f.answer(true);
     captured_event = {};
-    f.ztx.opts.events = ZitiPostureCheckEvent;
+    f.ztx.opts.events = ZitiPostureStatusEvent;
     f.ztx.opts.event_cb = stub_event_cb;
 
     f.answer(false);
 
     REQUIRE(captured_event.captured);
-    CHECK(captured_event.failing_paths.size() == 1);
+    CHECK(captured_event.missing_paths.size() == 1);
 }
 
 TEST_CASE("process posture check event is not sent when not subscribed", "[posture]") {
@@ -334,13 +334,14 @@ TEST_CASE("a check shared by two services lists both services when the process i
     ziti_send_posture_data(&ztx); // one pq_process_cb dispatch for the shared path
 
     captured_event = {};
-    ztx.opts.events = ZitiPostureCheckEvent;
+    ztx.opts.events = ZitiPostureStatusEvent;
     ztx.opts.event_cb = stub_event_cb;
 
     REQUIRE(captured.cb != nullptr);
     captured.cb(&ztx, captured.id.c_str(), captured.path.c_str(), false, "deadbeef", nullptr, 0);
 
     REQUIRE(captured_event.count == 1);
+    REQUIRE(captured_event.missing_paths.size() == 1);
     REQUIRE(captured_event.service_names.size() == 2);
     CHECK(contains(captured_event.service_names, "service-a"));
     CHECK(contains(captured_event.service_names, "service-b"));
