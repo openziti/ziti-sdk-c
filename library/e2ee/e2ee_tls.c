@@ -156,7 +156,7 @@ static ssize_t e2ee_tls_decrypt(e2ee_t *e2ee, const uint8_t * ciphertext, size_t
 }
 
 static e2ee_t e2ee_tls_impl = {
-    .method = ziti_crypto_aes_gcm,
+    .method = ziti_crypto_tls,
     .clone = NULL,
     .pub = e2ee_tls_pub,
     .init = e2ee_tls_init,
