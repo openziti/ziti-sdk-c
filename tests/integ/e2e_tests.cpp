@@ -212,111 +212,124 @@ TEST_CASE_METHOD(E2EBase, "e2ee test", "[e2ee]") {
 }
 
 TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
-    ensureService(server);
-    struct srv_ctx_s {
-        bool bound = false;
-        int bound_res{0};
-        ziti_connection srv_conn{};
-        std::vector<uint8_t> received;
-        int received_error{};
-        bool srv_closed{false};
-    } srv_ctx;
-    ziti_connection srv{};
-    ziti_conn_init(server, &srv, &srv_ctx);
+    auto method = GENERATE(ziti_crypto_libsodium, ziti_crypto_tls);
+    WHEN("crypto: " << e2ee_method_id(method)) {
+        client->opts.e2ee_mode = method;
+        server->opts.e2ee_mode = method;
 
-    REQUIRE_ZITI_OK(ziti_listen(
-        srv, test_service(),
-        [](ziti_connection s, int status) {
-            auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(s));
-            if (status == ZITI_OK) {
-                s_ctx->bound = true;
-            } else {
-                s_ctx->bound_res = status;
-            }
-        },
-        [](ziti_connection s, ziti_connection c, int status, const ziti_client_ctx* clt_ctx) {
-            auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(s));
-            s_ctx->srv_conn = c;
-            ziti_conn_set_data(c, s_ctx);
-            ziti_accept(c, [](ziti_connection c, int status){}, [](ziti_connection c, const uint8_t* data, ssize_t len) {
-                auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(c));
+        int major{}, minor{}, patch{};
+        sscanf(server->ctrl.version.version, "v%d.%d.%d", &major, &minor, &patch);
+        if (method == ziti_crypto_tls &&
+            major < 2 || (major == 2 && minor == 0 && patch < 5)) {
+            SKIP("TLS crypto exchange won't work before 2.0.5");
+        }
 
-                if (len < 0) {
-                    s_ctx->received_error = (int)len;
-                    ziti_close(c, nullptr);
+        ensureService(server);
+        struct srv_ctx_s {
+            bool bound = false;
+            int bound_res{0};
+            ziti_connection srv_conn{};
+            std::vector<uint8_t> received;
+            int received_error{};
+            bool srv_closed{false};
+        } srv_ctx;
+        ziti_connection srv{};
+        ziti_conn_init(server, &srv, &srv_ctx);
+
+        REQUIRE_ZITI_OK(ziti_listen(
+            srv, test_service(),
+            [](ziti_connection s, int status) {
+                auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(s));
+                if (status == ZITI_OK) {
+                    s_ctx->bound = true;
                 } else {
-                    s_ctx->received.insert(s_ctx->received.end(), data, data + len);
+                    s_ctx->bound_res = status;
                 }
+            },
+            [](ziti_connection s, ziti_connection c, int status, const ziti_client_ctx* clt_ctx) {
+                auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(s));
+                s_ctx->srv_conn = c;
+                ziti_conn_set_data(c, s_ctx);
+                ziti_accept(c, [](ziti_connection c, int status){}, [](ziti_connection c, const uint8_t* data, ssize_t len) {
+                    auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(c));
 
-                return len;
-            });
-        }));
+                    if (len < 0) {
+                        s_ctx->received_error = (int)len;
+                        ziti_close(c, nullptr);
+                    } else {
+                        s_ctx->received.insert(s_ctx->received.end(), data, data + len);
+                    }
 
-    run(UNTIL(srv_ctx.bound || srv_ctx.bound_res != ZITI_OK));
-    INFO("bound result: " << ziti_errorstr(srv_ctx.bound_res));
-    REQUIRE(srv_ctx.bound);
+                    return len;
+                });
+            }));
 
-    ziti_connection clt_conn{};
-    struct clt_ctx_s {
-        bool connected{false};
-        int connect_res{0};
+        run(UNTIL(srv_ctx.bound || srv_ctx.bound_res != ZITI_OK));
+        INFO("bound result: " << ziti_errorstr(srv_ctx.bound_res));
+        REQUIRE(srv_ctx.bound);
 
-        size_t write_len{0};
-        int write_res{0};
+        ziti_connection clt_conn{};
+        struct clt_ctx_s {
+            bool connected{false};
+            int connect_res{0};
 
-        bool closed{false};
-    } clt_ctx;
-    REQUIRE_ZITI_OK(ziti_conn_init(client, &clt_conn, &clt_ctx));
-    REQUIRE_ZITI_OK(ziti_dial(
-        clt_conn, test_service(),
-        [](ziti_connection c, int status) {
+            size_t write_len{0};
+            int write_res{0};
+
+            bool closed{false};
+        } clt_ctx;
+        REQUIRE_ZITI_OK(ziti_conn_init(client, &clt_conn, &clt_ctx));
+        REQUIRE_ZITI_OK(ziti_dial(
+            clt_conn, test_service(),
+            [](ziti_connection c, int status) {
+                auto c_ctx = static_cast<struct clt_ctx_s*>(ziti_conn_data(c));
+                c_ctx->connect_res = status;
+                if (status == ZITI_OK) {
+                    c_ctx->connected = true;
+                }
+            },
+            nullptr));
+
+        // race condition
+        // bound returned success but terminator is established async
+        uv_sleep(1000);
+
+        run(UNTIL(clt_ctx.connected || clt_ctx.connect_res != ZITI_OK ));
+        INFO("connected result: " << ziti_errorstr(clt_ctx.connect_res));
+        REQUIRE(clt_ctx.connect_res == ZITI_OK);
+
+        uint8_t data[] = "some data";
+        ziti_write(clt_conn, data, sizeof(data), [](ziti_connection c, ssize_t res, void* wr_ctx) {
             auto c_ctx = static_cast<struct clt_ctx_s*>(ziti_conn_data(c));
-            c_ctx->connect_res = status;
-            if (status == ZITI_OK) {
-                c_ctx->connected = true;
-            }
-        },
-        nullptr));
+            if (res < 0) c_ctx->write_res = res;
+            else c_ctx->write_len += res;
+        }, &clt_ctx);
 
-    // race condition
-    // bound returned success but terminator is established async
-    uv_sleep(1000);
+        run(UNTIL(clt_ctx.write_len > 0 || clt_ctx.write_res != ZITI_OK ));
+        INFO("write_result: " << ziti_errorstr(clt_ctx.write_res));
+        REQUIRE(clt_ctx.write_res == ZITI_OK);
 
-    run(UNTIL(clt_ctx.connected || clt_ctx.connect_res != ZITI_OK ));
-    INFO("connected result: " << ziti_errorstr(clt_ctx.connect_res));
-    REQUIRE(clt_ctx.connect_res == ZITI_OK);
+        run(UNTIL(!srv_ctx.received.empty() || srv_ctx.received_error != ZITI_OK ));
+        INFO("received result: " << ziti_errorstr(srv_ctx.received_error));
+        REQUIRE(srv_ctx.received_error == ZITI_OK);
 
-    uint8_t data[] = "some data";
-    ziti_write(clt_conn, data, sizeof(data), [](ziti_connection c, ssize_t res, void* wr_ctx) {
-        auto c_ctx = static_cast<struct clt_ctx_s*>(ziti_conn_data(c));
-        if (res < 0) c_ctx->write_res = res;
-        else c_ctx->write_len += res;
-    }, &clt_ctx);
+        REQUIRE_THAT(srv_ctx.received, Catch::Matchers::Equals(std::vector(data, data + sizeof(data))));
+        ziti_close(clt_conn, [](ziti_connection c) {
+            auto c_ctx = static_cast<struct clt_ctx_s*>(ziti_conn_data(c));
+            c_ctx->closed = true;
+        });
 
-    run(UNTIL(clt_ctx.write_len > 0 || clt_ctx.write_res != ZITI_OK ));
-    INFO("write_result: " << ziti_errorstr(clt_ctx.write_res));
-    REQUIRE(clt_ctx.write_res == ZITI_OK);
+        ziti_close(srv_ctx.srv_conn, [](ziti_connection c) {
+            auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(c));
+            s_ctx->srv_closed = true;
+        });
 
-    run(UNTIL(!srv_ctx.received.empty() || srv_ctx.received_error != ZITI_OK ));
-    INFO("received result: " << ziti_errorstr(srv_ctx.received_error));
-    REQUIRE(srv_ctx.received_error == ZITI_OK);
+        ziti_close(srv, [](ziti_connection c) {
+            auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(c));
+            s_ctx->bound = false;
+        });
 
-    REQUIRE_THAT(srv_ctx.received, Catch::Matchers::Equals(std::vector(data, data + sizeof(data))));
-    ziti_close(clt_conn, [](ziti_connection c) {
-        auto c_ctx = static_cast<struct clt_ctx_s*>(ziti_conn_data(c));
-        c_ctx->closed = true;
-    });
-
-    ziti_close(srv_ctx.srv_conn, [](ziti_connection c) {
-        auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(c));
-        s_ctx->srv_closed = true;
-    });
-
-    ziti_close(srv, [](ziti_connection c) {
-        auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(c));
-        s_ctx->bound = false;
-    });
-
-    run(UNTIL(srv_ctx.srv_closed && clt_ctx.closed && !srv_ctx.bound));
-    ZITI_LOG(INFO, "test is done");
+        run(UNTIL(srv_ctx.srv_closed && clt_ctx.closed && !srv_ctx.bound));
+        ZITI_LOG(INFO, "test is done");
+    }
 }
