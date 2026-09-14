@@ -399,6 +399,9 @@ static int dispose(ziti_connection server) {
     FREE(server->server.token);
     free_ziti_session_ptr(server->server.session);
     model_list_clear(&server->server.routers, (void (*)(void *)) free_ziti_edge_router_ptr);
+    if (server->close_cb) {
+        server->close_cb(server);
+    }
     free(server->service);
     free(server);
     return 1;
