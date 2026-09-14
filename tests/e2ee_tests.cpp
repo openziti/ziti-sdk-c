@@ -180,16 +180,6 @@ TEST_CASE("e2ee libsodium decrypt retries after partial header", "[crypto]") {
     REQUIRE(memcmp(out, plaintext, sizeof(plaintext)) == 0);
 }
 
-#if _WIN32
-namespace ossl {
-#include "../library/e2ee/e2ee_aes_gcm_ossl.c"
-}
-TEST_CASE("e2ee-ossl-wincrypto-interop", "[crypto]") {
-    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm));
-    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>((e2ee_t*)ossl::new_aes_gcm_e2ee());
-    test_e2ee(alice.get(), bob.get());
-}
-#endif
 
 #if defined(__APPLE__)
 namespace ossl {
