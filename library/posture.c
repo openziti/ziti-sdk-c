@@ -1186,41 +1186,42 @@ static void process_check_work(uv_work_t *w) {
     ziti_context ztx = pcw->ztx;
     const char *pattern = pcw->path;
 
-    // a wildcard pattern doesn't name one file, so there's nothing to uv_fs_stat() up front --
-    // resolve it against the running process list first. Per design, a wildcard with nothing
-    // currently running reports not-running with no hash/signers, skipping filesystem globbing.
+    // resolves `pattern` to the concrete file whose hash/signers should be reported: for a
+    // literal path that's just the path itself once uv_fs_stat() confirms it exists; a wildcard
+    // pattern doesn't name one file, so there's nothing to stat up front -- it's resolved
+    // against the running process list instead. Per design, a wildcard with nothing currently
+    // running reports not-running with no hash/signers, skipping filesystem globbing.
+    char *matched_path = NULL;
+    const char *hash_path;
     if (ziti_glob_has_wildcard(pattern)) {
-        char *matched_path = NULL;
         pcw->is_running = find_running_match(w->loop, pattern, &matched_path);
-        if (matched_path != NULL) {
-            unsigned char *digest;
-            size_t digest_len;
-            if (hash_sha512(ztx, w->loop, matched_path, &digest, &digest_len) == 0) {
-                hexify(digest, digest_len, 0, &pcw->sha512);
-                ZITI_LOG(VERBOSE, "file(%s) matched pattern(%s), hash = %s", matched_path, pattern, pcw->sha512);
-                free(digest);
-            }
-            pcw->signers = get_signers(matched_path, &pcw->num_signers);
-            free(matched_path);
+        if (matched_path == NULL) {
+            return;
         }
-        return;
+        hash_path = matched_path;
+    } else {
+        uv_fs_t file;
+        if (uv_fs_stat(w->loop, &file, pattern, NULL) != 0) {
+            return;
+        }
+        pcw->is_running = find_running_match(w->loop, pattern, NULL);
+        hash_path = pattern;
     }
 
     unsigned char *digest;
     size_t digest_len;
-    uv_fs_t file;
-    int rc = uv_fs_stat(w->loop, &file, pattern, NULL);
-    if (rc != 0) {
-        return;
-    }
-
-    pcw->is_running = find_running_match(w->loop, pattern, NULL);
-    if (hash_sha512(ztx, w->loop, pattern, &digest, &digest_len) == 0) {
+    if (hash_sha512(ztx, w->loop, hash_path, &digest, &digest_len) == 0) {
         hexify(digest, digest_len, 0, &pcw->sha512);
-        ZITI_LOG(VERBOSE, "file(%s) hash = %s", pattern, pcw->sha512);
+        if (matched_path != NULL) {
+            ZITI_LOG(VERBOSE, "file(%s) matched pattern(%s), hash = %s", hash_path, pattern, pcw->sha512);
+        } else {
+            ZITI_LOG(VERBOSE, "file(%s) hash = %s", hash_path, pcw->sha512);
+        }
         free(digest);
     }
-    pcw->signers = get_signers(pattern, &pcw->num_signers);
+    pcw->signers = get_signers(hash_path, &pcw->num_signers);
+
+    free(matched_path);
 }
 
 void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err, void *ctx) {
