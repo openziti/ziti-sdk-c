@@ -338,8 +338,10 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
             INFO("clt received result: " << ziti_errorstr(clt_ctx.receive_error));
             REQUIRE(clt_ctx.receive_error == ZITI_OK);
 
-            REQUIRE_THAT(clt_ctx.received, Catch::Matchers::Equals(std::vector(data, data + sizeof(data))));
-            REQUIRE_THAT(srv_ctx.received, Catch::Matchers::Equals(std::vector(data, data + sizeof(data))));
+            REQUIRE(clt_ctx.received.size() == sizeof(data));
+            REQUIRE(srv_ctx.received.size() == sizeof(data));
+            REQUIRE(memcmp(clt_ctx.received.data(), data, clt_ctx.received.size()) == 0);
+            REQUIRE(memcmp(srv_ctx.received.data(), data, srv_ctx.received.size()) == 0);
         }
         ziti_close(clt_conn, [](ziti_connection c) {
             auto c_ctx = static_cast<struct clt_ctx_s*>(ziti_conn_data(c));
