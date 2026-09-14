@@ -200,6 +200,12 @@ static long engine_in(void *ctx, char *buf, size_t buf_len) {
     return (long)len;
 }
 
+// e2ee uses identity certs on the bind side
+// those certs do not have appropriate XKU
+static int e2ee_tls_verify(struct tlsuv_certificate_s const *certificate, void *ctx) {
+    return 0;
+}
+
 e2ee_t *new_tls_e2ee(bool server, zt_x509 *creds, const char *ca) {
     struct e2ee_tls *e2ee = calloc(1, sizeof(*e2ee));
     e2ee->api = e2ee_tls_impl;
@@ -213,6 +219,7 @@ e2ee_t *new_tls_e2ee(bool server, zt_x509 *creds, const char *ca) {
 
     size_t ca_len = ca ? strlen(ca) : 0;
     e2ee->tls = default_tls_context(ca, ca_len);
+    e2ee->tls->set_cert_verify(e2ee->tls, e2ee_tls_verify, e2ee);
     e2ee->server = server;
     if (server) {
         e2ee->tls->set_own_cert(e2ee->tls, creds->key, creds->cert);
