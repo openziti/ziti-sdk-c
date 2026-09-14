@@ -180,10 +180,16 @@ int load_tls(ziti_config *cfg, tls_context **ctx, struct tls_credentials *creds)
     }
 
     if (rc == ZITI_OK) {
-        *ctx = tls;
+        if (ctx != NULL) {
+            *ctx = tls;
+        } else {
+            tls->free_ctx(tls);
+        }
     } else {
         tls->free_ctx(tls);
-        *ctx = NULL;
+        if (ctx) {
+            *ctx = NULL;
+        }
     }
     return rc;
 }

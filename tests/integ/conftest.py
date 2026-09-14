@@ -263,7 +263,7 @@ def client_identity(ziti_model, tmp_path, request) -> dict[str, str]:
 
 
 @pytest.fixture
-def server_identity(ziti_model, tmp_path, request) -> str:
+def server_identity(ziti_model, tmp_path, request) -> dict[str,str]:
     """return new ziti identity config"""
     enroller = os.environ.get("ENROLLER")
     if not enroller:
@@ -280,7 +280,7 @@ def server_identity(ziti_model, tmp_path, request) -> str:
     if "ziti identity is saved" not in result.stdout:
         pytest.fail(f"enrollment of {name} failed: {result.stderr}")
 
-    return str(json_path)
+    return {'name': name,  'path': str(json_path) }
 
 @pytest.fixture
 def test_service(quickstart, request):
@@ -302,11 +302,12 @@ def echo_server(server_identity, test_service, tmp_path):
     if not echo_exe:
         pytest.fail("ECHO_SERVER not set")
 
+    cfg = server_identity['path']
     env = os.environ.copy()
     env["ZITI_LOG"] = "5"
     with open(tmp_path / "echo-server.log", "w") as echo_server_log:
         proc = subprocess.Popen(
-            [echo_exe, server_identity, test_service['name']],
+            [echo_exe, cfg, test_service['name']],
             stdout=subprocess.PIPE,
             stderr=echo_server_log,
             stdin=subprocess.PIPE,

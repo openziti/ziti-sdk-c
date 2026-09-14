@@ -490,4 +490,16 @@ jrEaRTDiko6e0ifkFw==
     l = clt->decrypt(clt, ciphertext, l, plaintext, sizeof(plaintext));
     CHECK(std::string((char*)plaintext, l) == msg);
 
+    // largest payload the SDK hands to encrypt() (MAX_CHAIN_LEN): spans multiple TLS
+    // records, so it exceeds both the initial 16k buffers and a single record's framing
+    std::vector<uint8_t> big(31 * 1024);
+    randombytes_buf(big.data(), big.size());
+    std::vector<uint8_t> big_ct(big.size() + E2EE_MAX_MSG_OVERHEAD);
+    std::vector<uint8_t> big_pt(big.size());
+
+    l = clt->encrypt(clt, big.data(), big.size(), big_ct.data(), big_ct.size());
+    REQUIRE(l > 0);
+    l = srv->decrypt(srv, big_ct.data(), l, big_pt.data(), big_pt.size());
+    REQUIRE(l == (ssize_t)big.size());
+    CHECK(memcmp(big.data(), big_pt.data(), big.size()) == 0);
 }

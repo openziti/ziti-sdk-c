@@ -1098,7 +1098,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
             } else {
                 CONN_LOG(ERROR, "failed to %s, reason=%*.*s",
                          "connect",
-                         msg->header.body_len, msg->header.body_len, msg->body);
+                         (int)msg->header.body_len, (int)msg->header.body_len, (char*)msg->body);
                 conn_set_state(conn, Disconnected);
                 complete_conn_req(conn, ZITI_CONN_CLOSED);
             }
