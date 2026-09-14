@@ -95,7 +95,7 @@ static int e2ee_tls_init(e2ee_t *e2ee, const uint8_t * hello, size_t hello_len, 
 
 static ssize_t e2ee_tls_get_header(e2ee_t *e2ee, uint8_t header[E2EE_MAX_HEADER_LEN]) {
     struct e2ee_tls *e = (struct e2ee_tls*)e2ee;
-    ee_log(INFO, "getting header");
+    ee_log(VERBOSE, "getting header");
     if (e->server)
         return 0;
 
@@ -103,7 +103,7 @@ static ssize_t e2ee_tls_get_header(e2ee_t *e2ee, uint8_t header[E2EE_MAX_HEADER_
         ssize_t len = e->out_p - e->out_buffer;
         memcpy(header, e->out_buffer, len);
         e->out_p = e->out_buffer;
-        ee_log(INFO, "header %zd bytes", len);
+        ee_log(VERBOSE, "header %zd bytes", len);
         return len;
     }
     return 0;

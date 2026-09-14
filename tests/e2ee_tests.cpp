@@ -490,7 +490,9 @@ jrEaRTDiko6e0ifkFw==
 
     std::string msg("this is an important message");
     l = clt->encrypt(clt, (uint8_t*)msg.c_str(), msg.length(), ciphertext, sizeof(ciphertext));
+    REQUIRE(l > 0);
     l = srv->decrypt(srv, ciphertext, l, plaintext, sizeof(plaintext));
+    REQUIRE(l > 0);
 
     CHECK(std::string((char*)plaintext, l) == msg);
 
