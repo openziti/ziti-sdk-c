@@ -511,6 +511,15 @@ namespace {
                R"("isPassing":true,"policyType":"Dial","postureQueries":[{"id":"q1","isPassing":true,"queryType":"PROCESS",)"
                R"("timeout":-1,"process":{"path":")" + json_escape(pattern) + R"("}}]}}})";
     }
+
+    // one loop shared by every production-path case below, run per-case but never closed --
+    // same fix as ctrl_endpoint_tests.cpp's test_loop(): creating and closing a uv_loop_t per
+    // case hit libuv's `fd > STDERR_FILENO` assertion intermittently once the whole suite ran
+    // in the same process, while the cases on their own always passed.
+    uv_loop_t *process_check_loop() {
+        static uv_loop_t *loop = uv_loop_new();
+        return loop;
+    }
 }
 
 // These two drive the real production path -- ziti_send_posture_data() -> default_pq_process()
@@ -521,12 +530,11 @@ namespace {
 // a real, currently-running, readable file, and a nonsense path is guaranteed to match nothing
 // on any machine.
 TEST_CASE("a wildcard resolving to this process's own executable reports running with a hash", "[posture]") {
-    uv_loop_t loop;
-    REQUIRE(uv_loop_init(&loop) == 0);
+    uv_loop_t *loop = process_check_loop();
 
     ziti_ctx ztx{};
     ziti_api_session session{};
-    ztx.loop = &loop;
+    ztx.loop = loop;
     ztx.auth_state = ZitiAuthStateFullyAuthenticated;
     session.id = "session-1";
     ztx.session = &session;
@@ -541,7 +549,7 @@ TEST_CASE("a wildcard resolving to this process's own executable reports running
 
     ziti_posture_init(&ztx, 60);
     ziti_send_posture_data(&ztx);
-    REQUIRE(uv_run(&loop, UV_RUN_DEFAULT) == 0);
+    REQUIRE(uv_run(loop, UV_RUN_DEFAULT) == 0);
 
     model_list send_prs = {};
     ztx_collect_posture(&ztx, &send_prs, true);
@@ -561,16 +569,14 @@ TEST_CASE("a wildcard resolving to this process's own executable reports running
 
     ziti_posture_checks_free(ztx.posture_checks);
     model_map_clear(&ztx.services, (_free_f) free_ziti_service_ptr);
-    uv_loop_close(&loop);
 }
 
 TEST_CASE("a wildcard matching no running process reports not-running with no hash or signers", "[posture]") {
-    uv_loop_t loop;
-    REQUIRE(uv_loop_init(&loop) == 0);
+    uv_loop_t *loop = process_check_loop();
 
     ziti_ctx ztx{};
     ziti_api_session session{};
-    ztx.loop = &loop;
+    ztx.loop = loop;
     ztx.auth_state = ZitiAuthStateFullyAuthenticated;
     session.id = "session-1";
     ztx.session = &session;
@@ -583,7 +589,7 @@ TEST_CASE("a wildcard matching no running process reports not-running with no ha
 
     ziti_posture_init(&ztx, 60);
     ziti_send_posture_data(&ztx);
-    REQUIRE(uv_run(&loop, UV_RUN_DEFAULT) == 0);
+    REQUIRE(uv_run(loop, UV_RUN_DEFAULT) == 0);
 
     model_list send_prs = {};
     ztx_collect_posture(&ztx, &send_prs, true);
@@ -604,5 +610,4 @@ TEST_CASE("a wildcard matching no running process reports not-running with no ha
 
     ziti_posture_checks_free(ztx.posture_checks);
     model_map_clear(&ztx.services, (_free_f) free_ziti_service_ptr);
-    uv_loop_close(&loop);
 }
