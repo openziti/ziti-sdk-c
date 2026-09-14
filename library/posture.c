@@ -1355,7 +1355,11 @@ static bool find_running_match(uv_loop_t *loop, const char *pattern, char **matc
             continue;
         }
         fullPathSize = sizeof(fullPath);
-        QueryFullProcessImageNameA(ph, 0, fullPath, &fullPathSize);
+        if (!QueryFullProcessImageNameA(ph, 0, fullPath, &fullPathSize)) {
+            ZITI_LOG(DEBUG, "process %s is running, however not able to query image name. GetLastError(): %lu", pe32.szExeFile, GetLastError());
+            CloseHandle(ph);
+            continue;
+        }
         CloseHandle(ph);
 
         ZITI_LOG(VERBOSE, "comparing process: %s to: %.*s", pe32.szExeFile, fullPathSize, fullPath);
@@ -1402,7 +1406,9 @@ static bool find_running_match(uv_loop_t *loop, const char *pattern, char **matc
     for (int i = 0; i < n_pids; i++) {
         if (pids[i] == 0)
             continue;
-        proc_pidpath(pids[i], proc_path, sizeof(proc_path)); // returns strlen(proc_path)
+        if (proc_pidpath(pids[i], proc_path, sizeof(proc_path)) <= 0) { // returns strlen(proc_path) or -1
+            continue;
+        }
         if (ziti_glob_match(pattern, proc_path, true)) {
             result = true;
             if (matched_path) *matched_path = strdup(proc_path);
