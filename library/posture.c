@@ -14,6 +14,7 @@
 
 #include "posture.h"
 #include "edge_protocol.h"
+#include "glob_match.h"
 #include <utils.h>
 
 #if _WIN32
@@ -121,7 +122,7 @@ static char **get_signers(const char *path, int *signers_count);
 
 static int hash_sha512(ziti_context ztx, uv_loop_t *loop, const char *path, unsigned char **out_buf, size_t *out_len);
 
-static bool check_running(uv_loop_t *loop, const char *path);
+static bool find_running_match(uv_loop_t *loop, const char *pattern, char **matched_path);
 
 static void send_posture_legacy(ziti_context ztx, model_list *send_prs);
 
@@ -1183,23 +1184,43 @@ static void default_pq_process(ziti_context ztx, const char *id, const char *pat
 static void process_check_work(uv_work_t *w) {
     struct process_work *pcw = container_of(w, struct process_work, w);
     ziti_context ztx = pcw->ztx;
-    const char *path = pcw->path;
+    const char *pattern = pcw->path;
+
+    // a wildcard pattern doesn't name one file, so there's nothing to uv_fs_stat() up front --
+    // resolve it against the running process list first. Per design, a wildcard with nothing
+    // currently running reports not-running with no hash/signers, skipping filesystem globbing.
+    if (ziti_glob_has_wildcard(pattern)) {
+        char *matched_path = NULL;
+        pcw->is_running = find_running_match(w->loop, pattern, &matched_path);
+        if (matched_path != NULL) {
+            unsigned char *digest;
+            size_t digest_len;
+            if (hash_sha512(ztx, w->loop, matched_path, &digest, &digest_len) == 0) {
+                hexify(digest, digest_len, 0, &pcw->sha512);
+                ZITI_LOG(VERBOSE, "file(%s) matched pattern(%s), hash = %s", matched_path, pattern, pcw->sha512);
+                free(digest);
+            }
+            pcw->signers = get_signers(matched_path, &pcw->num_signers);
+            free(matched_path);
+        }
+        return;
+    }
 
     unsigned char *digest;
     size_t digest_len;
     uv_fs_t file;
-    int rc = uv_fs_stat(w->loop, &file, path, NULL);
+    int rc = uv_fs_stat(w->loop, &file, pattern, NULL);
     if (rc != 0) {
         return;
     }
 
-    pcw->is_running = check_running(w->loop, path);
-    if (hash_sha512(ztx, w->loop, path, &digest, &digest_len) == 0) {
+    pcw->is_running = find_running_match(w->loop, pattern, NULL);
+    if (hash_sha512(ztx, w->loop, pattern, &digest, &digest_len) == 0) {
         hexify(digest, digest_len, 0, &pcw->sha512);
-        ZITI_LOG(VERBOSE, "file(%s) hash = %s", path, pcw->sha512);
+        ZITI_LOG(VERBOSE, "file(%s) hash = %s", pattern, pcw->sha512);
         free(digest);
     }
-    pcw->signers = get_signers(path, &pcw->num_signers);
+    pcw->signers = get_signers(pattern, &pcw->num_signers);
 }
 
 void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err, void *ctx) {
@@ -1295,7 +1316,12 @@ cleanup:
     return rc;
 }
 
-static bool check_running(uv_loop_t *loop, const char *path) {
+// finds a running process whose full path matches `pattern`. A literal pattern (no wildcard
+// characters) matches only its exact path, same as the old check_running(). When a match is
+// found and `matched_path` is non-NULL, it receives a strdup'd copy of the concrete process
+// path the caller must free -- for a literal pattern that's just the pattern itself, for a
+// wildcard pattern it's the concrete file that was actually found running.
+static bool find_running_match(uv_loop_t *loop, const char *pattern, char **matched_path) {
     bool result = false;
 #if _WIN32
     HANDLE sh = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -1317,7 +1343,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
     DWORD fullPathSize;
 
     // Now walk the snapshot of processes, and display information about each process in turn
-    ZITI_LOG(VERBOSE, "checking to see if process is running: %s", path);
+    ZITI_LOG(VERBOSE, "checking to see if process is running: %s", pattern);
     do {
         ZITI_LOG(VERBOSE, "process is running: %s", pe32.szExeFile);
 
@@ -1333,8 +1359,9 @@ static bool check_running(uv_loop_t *loop, const char *path) {
         CloseHandle(ph);
 
         ZITI_LOG(VERBOSE, "comparing process: %s to: %.*s", pe32.szExeFile, fullPathSize, fullPath);
-        if (strnicmp(path, fullPath, fullPathSize) == 0) {
+        if (ziti_glob_match(pattern, fullPath, true)) {
             result = true;
+            if (matched_path) *matched_path = strdup(fullPath);
             break;
         }
     } while (Process32Next(sh, &pe32));
@@ -1352,8 +1379,9 @@ static bool check_running(uv_loop_t *loop, const char *path) {
         if (de.type == UV_DIRENT_DIR) {
             snprintf(proc_path, sizeof(proc_path), "/proc/%s/exe", de.name);
             if (uv_fs_readlink(loop, &ex, proc_path, NULL) == 0) {
-                if (strcmp((const char *)ex.ptr, path) == 0) {
+                if (ziti_glob_match(pattern, (const char *)ex.ptr, false)) {
                     result = true;
+                    if (matched_path) *matched_path = strdup((const char *)ex.ptr);
                 }
                 free(ex.ptr);
             }
@@ -1371,8 +1399,9 @@ static bool check_running(uv_loop_t *loop, const char *path) {
         if (pids[i] == 0)
             continue;
         proc_pidpath(pids[i], proc_path, sizeof(proc_path)); // returns strlen(proc_path)
-        if (strncasecmp(proc_path, path, sizeof(proc_path)) == 0) {
+        if (ziti_glob_match(pattern, proc_path, true)) {
             result = true;
+            if (matched_path) *matched_path = strdup(proc_path);
             break;
         }
     }
@@ -1382,7 +1411,7 @@ static bool check_running(uv_loop_t *loop, const char *path) {
     uv_os_uname(&uname);
     ZITI_LOG(WARN, "not implemented on %s", uname.sysname);
 #endif
-    ZITI_LOG(DEBUG, "is running result: %s for %s", (result ? "true" : "false"), path);
+    ZITI_LOG(DEBUG, "is running result: %s for %s", (result ? "true" : "false"), pattern);
     return result;
 }
 

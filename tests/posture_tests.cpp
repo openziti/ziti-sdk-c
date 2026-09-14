@@ -36,6 +36,14 @@ extern "C" {
 #include "posture.h"
 #include "zt_internal.h"
 
+// glob_match.c is pure, dependency-free logic with no linkage this test needs from the
+// library -- pulling it in under its own namespace (same technique as e2ee_tests.cpp's
+// backend-specific includes) reaches its static-in-spirit helpers without the library
+// exporting them just for tests.
+namespace glob {
+#include "../library/glob_match.c"
+}
+
 namespace {
 
     const char *SERVICE_JSON = R"({"id":"svc-1","name":"test-service","posturePolicies":{"p1":{"policyId":"p1",
@@ -388,4 +396,42 @@ TEST_CASE("process posture response without signers reports none", "[posture]") 
 
     CHECK(proc->n_signerfingerprints == 0);
     CHECK(proc->signerfingerprints == nullptr);
+}
+
+TEST_CASE("wildcard detection only fires on glob characters", "[posture]") {
+    CHECK_FALSE(glob::ziti_glob_has_wildcard("/opt/app/bin/app"));
+    CHECK_FALSE(glob::ziti_glob_has_wildcard("C:\\Program Files\\App\\app.exe"));
+    CHECK(glob::ziti_glob_has_wildcard("/opt/app/*/bin/app"));
+    CHECK(glob::ziti_glob_has_wildcard("/opt/app/bin/app?"));
+}
+
+TEST_CASE("a literal pattern only matches its exact path", "[posture]") {
+    CHECK(glob::ziti_glob_match("/opt/app/bin/app", "/opt/app/bin/app", false));
+    CHECK_FALSE(glob::ziti_glob_match("/opt/app/bin/app", "/opt/app/bin/app2", false));
+    CHECK_FALSE(glob::ziti_glob_match("/opt/app/bin/app", "/opt/app/bin/ap", false));
+}
+
+TEST_CASE("case sensitivity of a literal match is controlled by the flag", "[posture]") {
+    CHECK_FALSE(glob::ziti_glob_match("/Opt/App", "/opt/app", false));
+    CHECK(glob::ziti_glob_match("/Opt/App", "/opt/app", true));
+}
+
+TEST_CASE("'*' matches any run of characters, including none and path separators", "[posture]") {
+    CHECK(glob::ziti_glob_match("C:\\Program Files\\App\\*\\app.exe",
+                                     "C:\\Program Files\\App\\2.1.0\\app.exe", true));
+    CHECK(glob::ziti_glob_match("/opt/app/*bin/app", "/opt/app/bin/app", false));
+    CHECK(glob::ziti_glob_match("/opt/app/*", "/opt/app/1.2.3/bin/app", false));
+    CHECK(glob::ziti_glob_match("*app.exe", "C:\\Program Files\\App\\app.exe", true));
+    CHECK_FALSE(glob::ziti_glob_match("/opt/app/*/bin/app", "/opt/other/1.0/bin/app", false));
+}
+
+TEST_CASE("'?' matches exactly one character", "[posture]") {
+    CHECK(glob::ziti_glob_match("/opt/app-?/bin/app", "/opt/app-1/bin/app", false));
+    CHECK_FALSE(glob::ziti_glob_match("/opt/app-?/bin/app", "/opt/app-10/bin/app", false));
+    CHECK_FALSE(glob::ziti_glob_match("/opt/app-?/bin/app", "/opt/app-/bin/app", false));
+}
+
+TEST_CASE("combined '*' and '?' wildcards match a versioned install path", "[posture]") {
+    CHECK(glob::ziti_glob_match("/opt/app/*/v?.exe", "/opt/app/1.2.3/v2.exe", false));
+    CHECK_FALSE(glob::ziti_glob_match("/opt/app/*/v?.exe", "/opt/app/1.2.3/v22.exe", false));
 }
