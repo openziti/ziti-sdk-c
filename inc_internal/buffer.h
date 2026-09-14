@@ -17,6 +17,7 @@ limitations under the License.
 #ifndef ZITI_SDK_BUFFER_H
 #define ZITI_SDK_BUFFER_H
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <ziti/ziti_buffer.h>
 
