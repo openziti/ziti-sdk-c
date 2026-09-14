@@ -188,7 +188,7 @@ static e2ee_t e2ee_tls_impl = {
     .free = e2ee_tls_free,
 };
 
-static long engine_out(void *ctx, const char* data, size_t len) {
+static ssize_t engine_out(void *ctx, const char* data, size_t len) {
     struct e2ee_tls *e = (struct e2ee_tls*)ctx;
     ee_log(TRACE, "output %zd bytes", len);
     if (!ensure_capacity(&e->out_buffer, &e->out_p, &e->out_buffer_len, len)) {
@@ -200,7 +200,7 @@ static long engine_out(void *ctx, const char* data, size_t len) {
     return (long)len;
 }
 
-static long engine_in(void *ctx, char *buf, size_t buf_len) {
+static ssize_t engine_in(void *ctx, char *buf, size_t buf_len) {
     struct e2ee_tls *e = (struct e2ee_tls*)ctx;
     ee_log(TRACE, "reading %zd bytes", buf_len);
     size_t len = MIN(buf_len, e->in_p - e->in_buffer);
