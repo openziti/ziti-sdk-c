@@ -55,3 +55,10 @@ bool ziti_glob_match(const char *pattern, const char *candidate, bool case_insen
 
     return *p == '\0';
 }
+
+bool ziti_path_has_deleted_suffix(const char *path) {
+    static const char suffix[] = " (deleted)";
+    size_t suffix_len = sizeof(suffix) - 1;
+    size_t path_len = strlen(path);
+    return path_len >= suffix_len && strcmp(path + (path_len - suffix_len), suffix) == 0;
+}

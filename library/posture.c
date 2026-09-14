@@ -1379,7 +1379,11 @@ static bool find_running_match(uv_loop_t *loop, const char *pattern, char **matc
         if (de.type == UV_DIRENT_DIR) {
             snprintf(proc_path, sizeof(proc_path), "/proc/%s/exe", de.name);
             if (uv_fs_readlink(loop, &ex, proc_path, NULL) == 0) {
-                if (ziti_glob_match(pattern, (const char *)ex.ptr, false)) {
+                // a running binary whose file was replaced/deleted on disk reads back as
+                // "<path> (deleted)" -- that names no real file, so it's never a valid match,
+                // wildcard or not (a trailing '*' would otherwise happily absorb the suffix).
+                if (!ziti_path_has_deleted_suffix((const char *)ex.ptr) &&
+                    ziti_glob_match(pattern, (const char *)ex.ptr, false)) {
                     result = true;
                     if (matched_path) *matched_path = strdup((const char *)ex.ptr);
                 }

@@ -32,6 +32,12 @@ bool ziti_glob_has_wildcard(const char *pattern);
 // case-insensitively while Linux compares case-sensitively).
 bool ziti_glob_match(const char *pattern, const char *candidate, bool case_insensitive);
 
+// true if `path` ends with the literal " (deleted)" suffix the Linux kernel appends to a
+// /proc/<pid>/exe readlink target whose underlying inode has been unlinked (the running
+// binary was replaced or removed on disk). That target names no real file -- a wildcard
+// pattern ending in '*' would otherwise happily absorb the suffix and match it.
+bool ziti_path_has_deleted_suffix(const char *path);
+
 #ifdef __cplusplus
 }
 #endif

@@ -435,3 +435,23 @@ TEST_CASE("combined '*' and '?' wildcards match a versioned install path", "[pos
     CHECK(glob::ziti_glob_match("/opt/app/*/v?.exe", "/opt/app/1.2.3/v2.exe", false));
     CHECK_FALSE(glob::ziti_glob_match("/opt/app/*/v?.exe", "/opt/app/1.2.3/v22.exe", false));
 }
+
+TEST_CASE("deleted-suffix detection only fires on the exact kernel-appended marker", "[posture]") {
+    CHECK(glob::ziti_path_has_deleted_suffix("/opt/app/bin/app (deleted)"));
+    CHECK_FALSE(glob::ziti_path_has_deleted_suffix("/opt/app/bin/app"));
+    CHECK_FALSE(glob::ziti_path_has_deleted_suffix("/opt/app/bin/app (deleted"));
+    CHECK_FALSE(glob::ziti_path_has_deleted_suffix("(deleted)"));
+    CHECK(glob::ziti_path_has_deleted_suffix(" (deleted)"));
+}
+
+// a /proc/<pid>/exe readlink for a running-but-unlinked binary reads back with this literal
+// suffix appended -- a trailing '*' would otherwise happily absorb it and treat the phantom
+// path as a match. This is exactly the guard find_running_match()'s Linux branch applies
+// (ziti_path_has_deleted_suffix() checked before ziti_glob_match()); the pre-wildcard code's
+// exact strcmp() could never produce this false match, since a literal configured path is
+// never equal to path + " (deleted)".
+TEST_CASE("a wildcard would otherwise match a deleted binary's readlink target", "[posture]") {
+    const char *deleted_target = "/opt/app/bin/app (deleted)";
+    CHECK(glob::ziti_glob_match("/opt/app/*", deleted_target, false));
+    CHECK(glob::ziti_path_has_deleted_suffix(deleted_target));
+}
