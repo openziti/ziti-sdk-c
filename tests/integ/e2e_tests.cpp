@@ -220,7 +220,7 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
         int major{}, minor{}, patch{};
         sscanf(server->ctrl.version.version, "v%d.%d.%d", &major, &minor, &patch);
         if (method == ziti_crypto_tls &&
-            major < 2 || (major == 2 && minor == 0 && patch < 5)) {
+            (major < 2 || (major == 2 && minor == 0 && patch < 5))) {
             SKIP("TLS crypto exchange won't work before 2.0.5");
         }
 

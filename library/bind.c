@@ -488,8 +488,10 @@ static void process_dial(struct binding_s *b, message *msg) {
     client->encrypted = conn->encrypted;
     if (b->e2ee && b->e2ee->clone)
         client->e2ee = b->e2ee->clone(b->e2ee);
-    else
-        client->e2ee = create_e2ee(conn->ziti_ctx->opts.e2ee_mode, true, &conn->ziti_ctx->id_creds, conn->ziti_ctx->config.id.ca);
+    else {
+        zt_x509 *creds = conn->ziti_ctx->session_creds.key ? &conn->ziti_ctx->session_creds : &conn->ziti_ctx->id_creds;
+        client->e2ee = create_e2ee(conn->ziti_ctx->opts.e2ee_mode, true, creds, conn->ziti_ctx->config.id.ca);
+    }
 
     if (client->e2ee->init(client->e2ee, peer_key, peer_key_len, true) != 0) {
         reject_dial_request(0, b->ch, msg->header.seq, "failed to establish crypto");
@@ -605,7 +607,8 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
 
     ziti_crypto_method cm = conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none;
 
-    b->e2ee = create_e2ee(cm, true, &conn->ziti_ctx->id_creds, NULL);
+    zt_x509 *creds = conn->ziti_ctx->session_creds.key ? &conn->ziti_ctx->session_creds : &conn->ziti_ctx->id_creds;
+    b->e2ee = create_e2ee(cm, true, creds, NULL);
     if (b->e2ee == NULL) {
         CONN_LOG(ERROR, "failed to initialize crypto method[%s]", e2ee_method_id(cm));
         return 0;
