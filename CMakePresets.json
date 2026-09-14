@@ -96,6 +96,7 @@
       "name": "flags-windows-mingw",
       "hidden": true,
       "cacheVariables": {
+        "TLSUV_TLSLIB": "openssl",
         "CMAKE_C_COMPILER": "gcc",
         "CMAKE_CXX_COMPILER": "g++",
         "CMAKE_EXE_LINKER_FLAGS": "-Wl,-Bstatic -lpthread"
