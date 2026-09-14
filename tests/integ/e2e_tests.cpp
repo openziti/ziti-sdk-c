@@ -250,16 +250,17 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
                 auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(s));
                 s_ctx->srv_conn = c;
                 ziti_conn_set_data(c, s_ctx);
-                ziti_accept(c, [](ziti_connection c, int status){}, [](ziti_connection c, const uint8_t* data, ssize_t len) {
-                    auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(c));
-
-                    if (len < 0) {
-                        s_ctx->received_error = (int)len;
-                        ziti_close(c, nullptr);
-                    } else {
-                        s_ctx->received.insert(s_ctx->received.end(), data, data + len);
-                    }
-
+                ziti_accept(
+                    c, [](ziti_connection c, int status){},
+                    [](ziti_connection c, const uint8_t* data, ssize_t len) {
+                        auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(c));
+                        if (len < 0) {
+                            s_ctx->received_error = (int)len;
+                            ziti_close(c, nullptr);
+                        } else {
+                            s_ctx->received.insert(s_ctx->received.end(), data, data + len);
+                            ziti_write(c, s_ctx->received.data(), s_ctx->received.size(), nullptr, nullptr);
+                        }
                     return len;
                 });
             }));
@@ -276,6 +277,8 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
             size_t write_len{0};
             int write_res{0};
 
+            int receive_error{0};
+            std::vector<uint8_t> received;
             bool closed{false};
         } clt_ctx;
         REQUIRE_ZITI_OK(ziti_conn_init(client, &clt_conn, &clt_ctx));
@@ -288,7 +291,16 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
                     c_ctx->connected = true;
                 }
             },
-            nullptr));
+            [](ziti_connection c, const uint8_t *data, ssize_t len) {
+                auto c_ctx = static_cast<struct clt_ctx_s*>(ziti_conn_data(c));
+                if (len < 0) {
+                    c_ctx->receive_error = (int)len;
+                    ziti_close(c, nullptr);
+                    return (ssize_t)0;
+                }
+                c_ctx->received.insert(c_ctx->received.end(), data, data + len);
+                return len;
+            }));
 
         // race condition
         // bound returned success but terminator is established async
@@ -298,22 +310,37 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
         INFO("connected result: " << ziti_errorstr(clt_ctx.connect_res));
         REQUIRE(clt_ctx.connect_res == ZITI_OK);
 
-        uint8_t data[] = "some data";
-        ziti_write(clt_conn, data, sizeof(data), [](ziti_connection c, ssize_t res, void* wr_ctx) {
-            auto c_ctx = static_cast<struct clt_ctx_s*>(ziti_conn_data(c));
-            if (res < 0) c_ctx->write_res = res;
-            else c_ctx->write_len += res;
-        }, &clt_ctx);
+        for (int i = 0; i < 100; i++) {
+            clt_ctx.write_len = 0;
+            clt_ctx.write_res = 0;
+            clt_ctx.received.clear();
+            srv_ctx.received_error = 0;
+            srv_ctx.received.clear();
 
-        run(UNTIL(clt_ctx.write_len > 0 || clt_ctx.write_res != ZITI_OK ));
-        INFO("write_result: " << ziti_errorstr(clt_ctx.write_res));
-        REQUIRE(clt_ctx.write_res == ZITI_OK);
+            INFO("iteration " << i);
+            uint8_t data[1024];
+            randombytes_buf(data, sizeof(data));
+            ziti_write(clt_conn, data, sizeof(data), [](ziti_connection c, ssize_t res, void* wr_ctx) {
+                auto c_ctx = static_cast<struct clt_ctx_s*>(ziti_conn_data(c));
+                if (res < 0) c_ctx->write_res = res;
+                else c_ctx->write_len += res;
+            }, &clt_ctx);
 
-        run(UNTIL(!srv_ctx.received.empty() || srv_ctx.received_error != ZITI_OK ));
-        INFO("received result: " << ziti_errorstr(srv_ctx.received_error));
-        REQUIRE(srv_ctx.received_error == ZITI_OK);
+            run(UNTIL(clt_ctx.write_len > 0 || clt_ctx.write_res != ZITI_OK ));
+            INFO("write_result: " << ziti_errorstr(clt_ctx.write_res));
+            REQUIRE(clt_ctx.write_res == ZITI_OK);
 
-        REQUIRE_THAT(srv_ctx.received, Catch::Matchers::Equals(std::vector(data, data + sizeof(data))));
+            run(UNTIL(!srv_ctx.received.empty() || srv_ctx.received_error != ZITI_OK ));
+            INFO("srv received result: " << ziti_errorstr(srv_ctx.received_error));
+            REQUIRE(srv_ctx.received_error == ZITI_OK);
+
+            run(UNTIL(!clt_ctx.received.empty() || clt_ctx.receive_error != ZITI_OK ));
+            INFO("clt received result: " << ziti_errorstr(clt_ctx.receive_error));
+            REQUIRE(clt_ctx.receive_error == ZITI_OK);
+
+            REQUIRE_THAT(clt_ctx.received, Catch::Matchers::Equals(std::vector(data, data + sizeof(data))));
+            REQUIRE_THAT(srv_ctx.received, Catch::Matchers::Equals(std::vector(data, data + sizeof(data))));
+        }
         ziti_close(clt_conn, [](ziti_connection c) {
             auto c_ctx = static_cast<struct clt_ctx_s*>(ziti_conn_data(c));
             c_ctx->closed = true;

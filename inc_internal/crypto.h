@@ -35,7 +35,8 @@ typedef intptr_t ssize_t;
 // must cover the worst-case expansion of any supported method:
 // TLS fragments at 16k and adds ~22 bytes of framing per record, so a
 // MAX_CHAIN_LEN (31k) write costs 2 records worth of overhead
-#define E2EE_MAX_MSG_OVERHEAD 256
+// also there could be some handshake data sitting in the output buffer
+#define E2EE_MAX_MSG_OVERHEAD 1024
 
 typedef struct e2ee_pub_s {
     const uint8_t *key;
