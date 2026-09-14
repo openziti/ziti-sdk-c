@@ -24,6 +24,13 @@
 #include <ziti/ziti.h>
 #include <ziti/ziti_log.h>
 
+// stc/cstr.h declares _cstr_init as plain `extern`, which mangles under C++; common.h first, then cstr.h
+// under C linkage, satisfies both without wrapping zt_internal.h (that breaks stc's C++ templates).
+#include <stc/common.h>
+extern "C" {
+#include <stc/cstr.h>
+}
+
 #include "crypto.h"
 #include "fixtures.h"
 #include "zt_internal.h"
