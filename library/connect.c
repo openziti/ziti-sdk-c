@@ -709,8 +709,11 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
     if (crypto_bytes < 0) {
         CONN_LOG(ERROR, "encryption failed: %zd", crypto_bytes);
         complete_conn_req(conn, ZITI_CRYPTO_FAIL);
+        pool_return_obj(m);
+        on_write_completed(conn, req, ZITI_CRYPTO_FAIL);
         return;
     }
+
     m->header.body_len = crypto_bytes;
     send_message(conn, m, req);
 }

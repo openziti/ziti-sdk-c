@@ -1,10 +1,10 @@
 //
 //
 
-#include <tlsuv/tls_engine.h>
 #include "buffer.h"
 #include "crypto.h"
 #include "e2ee_common.h"
+#include <tlsuv/tls_engine.h>
 
 struct e2ee_tls {
     e2ee_t api;
@@ -113,7 +113,29 @@ static ssize_t e2ee_tls_encrypt(e2ee_t * e2ee, const uint8_t *plaintext, size_t 
     struct e2ee_tls *e = (struct e2ee_tls*)e2ee;
     ee_log(TRACE, "encrypt");
     enum tls_handshake_st hs = e->engine->handshake(e->engine);
+    if (hs == TLS_HS_ERROR) {
+        ee_log(ERROR, "handshake failed");
+        return -1;
+    }
+
     int wrc = e->engine->write(e->engine, (char*)plaintext, plaintext_len);
+    if (wrc == TLS_ERR) {
+        ee_log(ERROR, "encrypt failed");
+        return -1;
+    }
+
+    if (wrc == TLS_AGAIN) {
+        ee_log(ERROR, "output buffer overflow");
+        return -1;
+    }
+
+    // a short write means the engine stopped partway through the payload;
+    // sending what made it into the buffer would silently drop the tail
+    if (wrc < 0 || (size_t)wrc < plaintext_len) {
+        ee_log(ERROR, "partial write: %d of %zd bytes", wrc, plaintext_len);
+        return -1;
+    }
+
     size_t out_len = e->out_p - e->out_buffer;
     // the caller sizes `ciphertext` as plaintext_len + E2EE_MAX_MSG_OVERHEAD; TLS record
     // framing (plus any pending handshake output) could still exceed it, so fail rather
