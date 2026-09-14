@@ -27,6 +27,18 @@ struct e2ee_deleter {
     }
 };
 
+struct tls_ctx_deleter {
+    void operator()(tls_context *t) const {
+        t->free_ctx(t);
+    }
+};
+
+// releases the key/cert pair even if an assertion unwinds out of the test
+struct x509_guard {
+    zt_x509 *x509;
+    ~x509_guard() { zt_x509_drop(x509); }
+};
+
 static void test_e2ee(e2ee_t *alice, e2ee_t *bob) {
     auto alice_pub = alice->pub(alice);
     auto bob_pub = bob->pub(bob);
@@ -458,6 +470,13 @@ jrEaRTDiko6e0ifkFw==
 
     auto srv = create_e2ee(ziti_crypto_tls, true, &srv_cred, ca);
     auto clt = create_e2ee(ziti_crypto_tls, false, nullptr, ca);
+
+    // each e2ee owns a tls_context (and its parsed CA bundle); release them,
+    // along with the context and credentials used to load the server cert
+    auto srv_guard = std::unique_ptr<e2ee_t, e2ee_deleter>(srv);
+    auto clt_guard = std::unique_ptr<e2ee_t, e2ee_deleter>(clt);
+    auto tls_guard = std::unique_ptr<tls_context, tls_ctx_deleter>(tls);
+    x509_guard cred_guard{&srv_cred};
 
     auto clt_hello = clt->pub(clt);
 
