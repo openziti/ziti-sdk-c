@@ -584,6 +584,7 @@ static int do_ziti_dial(ziti_connection conn, const char *service, const ziti_di
 
     assert(conn->type == None);
     init_transport_conn(conn);
+    cstr_assign(&conn->circuit_id, "-");
 
     if (conn->state != Initial) {
         CONN_LOG(ERROR, "can not dial in state[%s]", ziti_conn_state(conn));
@@ -1106,16 +1107,17 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
 
         case ContentTypeStateConnected:
             if (conn->state == Connecting) {
-                CONN_LOG(TRACE, "connected");
-                int rc = establish_crypto(conn, msg);
-                if (rc == ZITI_OK) {
-                    send_crypto_header(conn);
-                }
                 const char *circuit_id;
                 size_t circuit_id_len;
                 if (message_get_bytes_header(msg, CircuitIdHeader, (const uint8_t**)&circuit_id, &circuit_id_len)) {
                     cstr_assign_n(&conn->circuit_id, circuit_id, (isize)circuit_id_len);
                     CONN_LOG(DEBUG, "received circuit id: %s", cstr_str(&conn->circuit_id));
+                }
+
+                CONN_LOG(TRACE, "connected");
+                int rc = establish_crypto(conn, msg);
+                if (rc == ZITI_OK) {
+                    send_crypto_header(conn);
                 }
                 const uint8_t *sticky_token = NULL;
                 size_t sticky_token_len = 0;

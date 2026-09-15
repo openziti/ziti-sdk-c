@@ -29,9 +29,6 @@ extern "C" {
 
 #include <stc/cstr.h>
 
-#define MARKER_BIN_LEN 6
-#define MARKER_CHAR_LEN sodium_base64_ENCODED_LEN(MARKER_BIN_LEN, sodium_base64_VARIANT_URLSAFE_NO_PADDING)
-
 #define conn_states(XX) \
     XX(Initial)\
     XX(Connecting)\

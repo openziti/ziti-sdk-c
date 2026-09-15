@@ -398,10 +398,10 @@ static int dispose(ziti_connection server) {
     FREE(server->server.token);
     free_ziti_session_ptr(server->server.session);
     model_list_clear(&server->server.routers, (void (*)(void *)) free_ziti_edge_router_ptr);
-    cstr_drop(&server->service);
     if (server->close_cb) {
         server->close_cb(server);
     }
+    cstr_drop(&server->service);
     free(server);
     return 1;
 }
@@ -475,10 +475,12 @@ static void process_dial(struct binding_s *b, message *msg) {
         client->rt_conn_id = rt_conn_id;
     }
     init_transport_conn(client);
-    const char *circuit_id = "";
-    size_t circuit_id_len = 0;
+    const char *circuit_id;
+    size_t circuit_id_len;
     if (message_get_bytes_header(msg, CircuitIdHeader, (const uint8_t**)&circuit_id, &circuit_id_len)) {
         cstr_assign_n(&client->circuit_id, circuit_id, (isize)circuit_id_len);
+    } else {
+        cstr_assign(&client->circuit_id, "-");
     }
     cstr_copy(&client->service, conn->service);
 
