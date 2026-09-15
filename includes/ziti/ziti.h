@@ -308,7 +308,7 @@ typedef struct ziti_dial_opts_s {
 } ziti_dial_opts;
 
 typedef struct ziti_client_ctx_s {
-    char *caller_id;
+    const char *caller_id;
     const uint8_t *app_data;
     size_t app_data_sz;
 } ziti_client_ctx;
@@ -685,6 +685,17 @@ extern int ziti_conn_set_data_cb(ziti_connection conn, ziti_data_cb cb);
  */
 ZITI_FUNC
 extern const char *ziti_conn_source_identity(ziti_connection conn);
+
+/**
+ * @brief Get network circuit ID.
+ *
+ * @param conn
+ * @return overlay circuit ID for a given connection,
+ *         blank for unconnected or server connection
+ *         NULL if conn is NULL
+ */
+ZITI_FUNC
+extern const char *ziti_conn_circuit_id(ziti_connection conn);
 
 /**
  * @brief Checks availability of the service for the given edge context.
