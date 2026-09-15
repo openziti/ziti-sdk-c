@@ -229,7 +229,7 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
         INFO("controller version: " << (ctrl_version ? ctrl_version : "<null>"));
         REQUIRE(ctrl_version != nullptr);
 
-        // reported as "v2.0.5"; tolerate a missing 'v'. an unparseable version must fail
+        // reported as "v2.0.5"; tolerate a missing 'v'. an unparsable version must fail
         // the test rather than silently skip and hide a regression
         int major{}, minor{}, patch{};
         int parsed = sscanf(ctrl_version, "v%d.%d.%d", &major, &minor, &patch);
