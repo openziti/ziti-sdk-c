@@ -36,6 +36,14 @@ extern "C" {
 #include "posture.h"
 #include "zt_internal.h"
 
+// glob_match.c is pure, dependency-free logic with no linkage this test needs from the
+// library -- pulling it in under its own namespace (same technique as e2ee_tests.cpp's
+// backend-specific includes) reaches its static-in-spirit helpers without the library
+// exporting them just for tests.
+namespace glob {
+#include "../library/glob_match.c"
+}
+
 namespace {
 
     const char *SERVICE_JSON = R"({"id":"svc-1","name":"test-service","posturePolicies":{"p1":{"policyId":"p1",
@@ -388,4 +396,218 @@ TEST_CASE("process posture response without signers reports none", "[posture]") 
 
     CHECK(proc->n_signerfingerprints == 0);
     CHECK(proc->signerfingerprints == nullptr);
+}
+
+TEST_CASE("wildcard detection only fires on glob characters", "[posture]") {
+    CHECK_FALSE(glob::ziti_glob_has_wildcard("/opt/app/bin/app"));
+    CHECK_FALSE(glob::ziti_glob_has_wildcard("C:\\Program Files\\App\\app.exe"));
+    CHECK(glob::ziti_glob_has_wildcard("/opt/app/*/bin/app"));
+    CHECK(glob::ziti_glob_has_wildcard("/opt/app/bin/app?"));
+}
+
+TEST_CASE("a literal pattern only matches its exact path", "[posture]") {
+    CHECK(glob::ziti_glob_match("/opt/app/bin/app", "/opt/app/bin/app", false));
+    CHECK_FALSE(glob::ziti_glob_match("/opt/app/bin/app", "/opt/app/bin/app2", false));
+    CHECK_FALSE(glob::ziti_glob_match("/opt/app/bin/app", "/opt/app/bin/ap", false));
+}
+
+TEST_CASE("case sensitivity of a literal match is controlled by the flag", "[posture]") {
+    CHECK_FALSE(glob::ziti_glob_match("/Opt/App", "/opt/app", false));
+    CHECK(glob::ziti_glob_match("/Opt/App", "/opt/app", true));
+}
+
+TEST_CASE("'*' matches any run of characters, including none and path separators", "[posture]") {
+    CHECK(glob::ziti_glob_match("C:\\Program Files\\App\\*\\app.exe",
+                                     "C:\\Program Files\\App\\2.1.0\\app.exe", true));
+    CHECK(glob::ziti_glob_match("/opt/app/*bin/app", "/opt/app/bin/app", false));
+    CHECK(glob::ziti_glob_match("/opt/app/*", "/opt/app/1.2.3/bin/app", false));
+    CHECK(glob::ziti_glob_match("*app.exe", "C:\\Program Files\\App\\app.exe", true));
+    CHECK_FALSE(glob::ziti_glob_match("/opt/app/*/bin/app", "/opt/other/1.0/bin/app", false));
+}
+
+TEST_CASE("'?' matches exactly one character", "[posture]") {
+    CHECK(glob::ziti_glob_match("/opt/app-?/bin/app", "/opt/app-1/bin/app", false));
+    CHECK_FALSE(glob::ziti_glob_match("/opt/app-?/bin/app", "/opt/app-10/bin/app", false));
+    CHECK_FALSE(glob::ziti_glob_match("/opt/app-?/bin/app", "/opt/app-/bin/app", false));
+}
+
+TEST_CASE("combined '*' and '?' wildcards match a versioned install path", "[posture]") {
+    CHECK(glob::ziti_glob_match("/opt/app/*/v?.exe", "/opt/app/1.2.3/v2.exe", false));
+    CHECK_FALSE(glob::ziti_glob_match("/opt/app/*/v?.exe", "/opt/app/1.2.3/v22.exe", false));
+}
+
+TEST_CASE("deleted-suffix detection only fires on the exact kernel-appended marker", "[posture]") {
+    CHECK(glob::ziti_path_has_deleted_suffix("/opt/app/bin/app (deleted)"));
+    CHECK_FALSE(glob::ziti_path_has_deleted_suffix("/opt/app/bin/app"));
+    CHECK_FALSE(glob::ziti_path_has_deleted_suffix("/opt/app/bin/app (deleted"));
+    CHECK_FALSE(glob::ziti_path_has_deleted_suffix("(deleted)"));
+    CHECK(glob::ziti_path_has_deleted_suffix(" (deleted)"));
+}
+
+// a /proc/<pid>/exe readlink for a running-but-unlinked binary reads back with this literal
+// suffix appended -- a trailing '*' would otherwise happily absorb it and treat the phantom
+// path as a match. This is exactly the guard find_running_match()'s Linux branch applies
+// (ziti_path_has_deleted_suffix() checked before ziti_glob_match()); the pre-wildcard code's
+// exact strcmp() could never produce this false match, since a literal configured path is
+// never equal to path + " (deleted)".
+TEST_CASE("a wildcard would otherwise match a deleted binary's readlink target", "[posture]") {
+    const char *deleted_target = "/opt/app/bin/app (deleted)";
+    CHECK(glob::ziti_glob_match("/opt/app/*", deleted_target, false));
+    CHECK(glob::ziti_path_has_deleted_suffix(deleted_target));
+}
+
+TEST_CASE("an empty pattern only matches an empty candidate", "[posture]") {
+    CHECK(glob::ziti_glob_match("", "", false));
+    CHECK_FALSE(glob::ziti_glob_match("", "x", false));
+    CHECK_FALSE(glob::ziti_glob_has_wildcard(""));
+}
+
+TEST_CASE("consecutive stars behave the same as one", "[posture]") {
+    CHECK(glob::ziti_glob_match("**", "anything/at/all", false));
+    CHECK(glob::ziti_glob_match("**", "", false));
+    CHECK(glob::ziti_glob_match("/opt/**/app", "/opt/1/2/3/app", false));
+    CHECK(glob::ziti_glob_match("opt**app", "optapp", false));
+    CHECK(glob::ziti_glob_match("opt**app", "optXYZapp", false));
+}
+
+TEST_CASE("'*' against an empty candidate matches only when nothing else is required", "[posture]") {
+    CHECK(glob::ziti_glob_match("*", "", false));
+    CHECK_FALSE(glob::ziti_glob_match("a*", "", false));
+    CHECK_FALSE(glob::ziti_glob_match("*a", "", false));
+}
+
+// the matcher treats '*' as a run of raw characters with no separator awareness (a deliberate
+// choice -- see ziti_glob_match's doc comment), so a pattern spelled with one separator style
+// still matches a candidate using the other.
+TEST_CASE("'*' crosses separator styles because the matcher has no separator awareness", "[posture]") {
+    CHECK(glob::ziti_glob_match("/opt/app*", "/opt/app\\1.2.3\\bin\\app", false));
+    CHECK(glob::ziti_glob_match("C:\\Program Files*", "C:\\Program Files/App/app.exe", true));
+}
+
+namespace {
+    // JSON-escapes a filesystem path for embedding in the test service JSON below --
+    // matters on Windows, where uv_exepath() returns backslash-separated paths.
+    std::string json_escape(const std::string &s) {
+        std::string out;
+        for (char c: s) {
+            if (c == '\\' || c == '"') out += '\\';
+            out += c;
+        }
+        return out;
+    }
+
+    std::string current_exe_path() {
+        char buf[1024];
+        size_t len = sizeof(buf) - 1;
+        REQUIRE(uv_exepath(buf, &len) == 0);
+        buf[len] = '\0';
+        return {buf};
+    }
+
+    // builds a one-service, one-PROCESS-query service JSON with the given (already-escaped
+    // for JSON, not yet wildcarded) path pattern.
+    std::string process_service_json(const std::string &pattern) {
+        return R"({"id":"svc-1","name":"test-service","posturePolicies":{"p1":{"policyId":"p1",)"
+               R"("isPassing":true,"policyType":"Dial","postureQueries":[{"id":"q1","isPassing":true,"queryType":"PROCESS",)"
+               R"("timeout":-1,"process":{"path":")" + json_escape(pattern) + R"("}}]}}})";
+    }
+
+    // one loop shared by every production-path case below, run per-case but never closed --
+    // same fix as ctrl_endpoint_tests.cpp's test_loop(): creating and closing a uv_loop_t per
+    // case hit libuv's `fd > STDERR_FILENO` assertion intermittently once the whole suite ran
+    // in the same process, while the cases on their own always passed.
+    uv_loop_t *process_check_loop() {
+        static uv_loop_t *loop = uv_loop_new();
+        return loop;
+    }
+}
+
+// These two drive the real production path -- ziti_send_posture_data() -> default_pq_process()
+// (opts.pq_process_cb left unset, unlike posture_fixture's stub) -> uv_queue_work() ->
+// process_check_work() -> find_running_match() -- through a genuinely running uv_loop, rather
+// than through the stubbed callback every other test in this file uses. No OS state needs
+// faking: appending '*' to this test binary's own executable path is guaranteed to resolve to
+// a real, currently-running, readable file, and a nonsense path is guaranteed to match nothing
+// on any machine.
+TEST_CASE("a wildcard resolving to this process's own executable reports running with a hash", "[posture]") {
+    uv_loop_t *loop = process_check_loop();
+
+    ziti_ctx ztx{};
+    ziti_api_session session{};
+    ztx.loop = loop;
+    ztx.auth_state = ZitiAuthStateFullyAuthenticated;
+    session.id = "session-1";
+    ztx.session = &session;
+    // opts.pq_process_cb intentionally left null -- ziti_send_posture_data() falls back to
+    // the real default_pq_process()/process_check_work() implementation.
+
+    std::string pattern = current_exe_path() + "*";
+    std::string json = process_service_json(pattern);
+    ziti_service *service = nullptr;
+    REQUIRE(parse_ziti_service_ptr(&service, json.c_str(), json.size()) > 0);
+    model_map_set(&ztx.services, service->name, service);
+
+    ziti_posture_init(&ztx, 60);
+    ziti_send_posture_data(&ztx);
+    REQUIRE(uv_run(loop, UV_RUN_DEFAULT) == 0);
+
+    model_list send_prs = {};
+    ztx_collect_posture(&ztx, &send_prs, true);
+    pb_holder holder;
+    holder.resp = ztx_posture_resp_pb(&ztx, &send_prs);
+    model_list_clear(&send_prs, nullptr);
+
+    REQUIRE(holder.resp != nullptr);
+    REQUIRE(holder.resp->n_responses == 1);
+    const Ziti__EdgeClient__Pb__PostureResponse *r = holder.resp->responses[0];
+    REQUIRE(r->type_case == ZITI__EDGE_CLIENT__PB__POSTURE_RESPONSE__TYPE_PROCESS_LIST);
+    REQUIRE(r->processlist->n_processes == 1);
+    const Ziti__EdgeClient__Pb__PostureResponse__Process *proc = r->processlist->processes[0];
+    CHECK(std::string(proc->path) == pattern);
+    CHECK(proc->isrunning);
+    CHECK(proc->hash != nullptr);
+
+    ziti_posture_checks_free(ztx.posture_checks);
+    model_map_clear(&ztx.services, (_free_f) free_ziti_service_ptr);
+}
+
+TEST_CASE("a wildcard matching no running process reports not-running with no hash or signers", "[posture]") {
+    uv_loop_t *loop = process_check_loop();
+
+    ziti_ctx ztx{};
+    ziti_api_session session{};
+    ztx.loop = loop;
+    ztx.auth_state = ZitiAuthStateFullyAuthenticated;
+    session.id = "session-1";
+    ztx.session = &session;
+
+    const std::string pattern = "/definitely/not/a/real/path/xyz-nonexistent-123/*";
+    std::string json = process_service_json(pattern);
+    ziti_service *service = nullptr;
+    REQUIRE(parse_ziti_service_ptr(&service, json.c_str(), json.size()) > 0);
+    model_map_set(&ztx.services, service->name, service);
+
+    ziti_posture_init(&ztx, 60);
+    ziti_send_posture_data(&ztx);
+    REQUIRE(uv_run(loop, UV_RUN_DEFAULT) == 0);
+
+    model_list send_prs = {};
+    ztx_collect_posture(&ztx, &send_prs, true);
+    pb_holder holder;
+    holder.resp = ztx_posture_resp_pb(&ztx, &send_prs);
+    model_list_clear(&send_prs, nullptr);
+
+    REQUIRE(holder.resp != nullptr);
+    REQUIRE(holder.resp->n_responses == 1);
+    const Ziti__EdgeClient__Pb__PostureResponse *r = holder.resp->responses[0];
+    REQUIRE(r->type_case == ZITI__EDGE_CLIENT__PB__POSTURE_RESPONSE__TYPE_PROCESS_LIST);
+    REQUIRE(r->processlist->n_processes == 1);
+    const Ziti__EdgeClient__Pb__PostureResponse__Process *proc = r->processlist->processes[0];
+    CHECK(std::string(proc->path) == pattern);
+    CHECK_FALSE(proc->isrunning);
+    CHECK(proc->hash == nullptr);
+    CHECK(proc->n_signerfingerprints == 0);
+
+    ziti_posture_checks_free(ztx.posture_checks);
+    model_map_clear(&ztx.services, (_free_f) free_ziti_service_ptr);
 }

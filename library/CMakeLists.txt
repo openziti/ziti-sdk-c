@@ -94,6 +94,7 @@ SET(ZITI_SRC_FILES
         ziti_src.c
         metrics.c
         posture.c
+        glob_match.c
         auth_queries.c
         conn_bridge.c
         pool.c
