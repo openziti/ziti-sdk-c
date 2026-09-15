@@ -915,6 +915,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
             printer(ctx, "\t%s: online[%c] %s\n", detail->id, detail->is_online ? 'Y' : 'N', url);
         }
     }
+    printer(ctx, "Crypto Method: %s\n", e2ee_method_id(ztx->opts.e2ee_mode));
     printer(ctx, "Config types:\n");
     for (int i = 0; ztx->opts.config_types && ztx->opts.config_types[i]; i++) {
         printer(ctx, "\t%s\n", ztx->opts.config_types[i]);

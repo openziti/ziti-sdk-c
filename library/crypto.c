@@ -20,9 +20,9 @@
 extern e2ee_t *new_libsodium_e2ee(void);
 extern e2ee_t *new_none_e2ee(void);
 extern e2ee_t *new_aes_gcm_e2ee(void);
-extern e2ee_t *new_tls_e2ee(bool server, zt_x509 *creds, const char *ca);
+extern e2ee_t *new_tls_e2ee(bool server, tls_context *tls);
 
-e2ee_t* create_e2ee(ziti_crypto_method impl, bool server, zt_x509 *creds, const char *ca) {
+e2ee_t* create_e2ee(ziti_crypto_method impl, bool server, tls_context *tls) {
     switch (impl) {
     case ziti_crypto_none:
         return new_none_e2ee();
@@ -31,7 +31,7 @@ e2ee_t* create_e2ee(ziti_crypto_method impl, bool server, zt_x509 *creds, const 
     case ziti_crypto_aes_gcm:
         return new_aes_gcm_e2ee();
     case ziti_crypto_tls:
-        return new_tls_e2ee(server, creds, ca);
+        return new_tls_e2ee(server, tls);
     default:
         return NULL;
     }

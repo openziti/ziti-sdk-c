@@ -8,7 +8,6 @@
 
 struct e2ee_tls {
     e2ee_t api;
-    tls_context *tls;
     tlsuv_engine_t engine;
     bool server;
 
@@ -51,7 +50,6 @@ static bool ensure_capacity(char **buf, char **p, size_t *cap, size_t extra) {
 static void e2ee_tls_free(e2ee_t *e) {
     struct e2ee_tls *e2ee = (struct e2ee_tls *)e;
     e2ee->engine->free(e2ee->engine);
-    e2ee->tls->free_ctx(e2ee->tls);
     free(e2ee->out_buffer);
     free(e2ee->in_buffer);
     free(e2ee);
@@ -222,7 +220,13 @@ static ssize_t engine_in(void *ctx, char *buf, size_t buf_len) {
     return (long)len;
 }
 
-e2ee_t *new_tls_e2ee(bool server, zt_x509 *creds, const char *ca) {
+e2ee_t *new_tls_e2ee(bool server, tls_context *tls) {
+    // the context is borrowed from the ziti context, which drops it when disabled
+    if (tls == NULL) {
+        ZITI_LOG(ERROR, "no TLS context to create e2ee engine from");
+        return NULL;
+    }
+
     struct e2ee_tls *e2ee = calloc(1, sizeof(*e2ee));
     e2ee->api = e2ee_tls_impl;
     e2ee->in_buffer = malloc(BUF_INIT_CAP);
@@ -233,14 +237,11 @@ e2ee_t *new_tls_e2ee(bool server, zt_x509 *creds, const char *ca) {
     e2ee->out_buffer_len = BUF_INIT_CAP;
     e2ee->out_p = e2ee->out_buffer;
 
-    size_t ca_len = ca ? strlen(ca) : 0;
-    e2ee->tls = default_tls_context(ca, ca_len);
     e2ee->server = server;
     if (server) {
-        e2ee->tls->set_own_cert(e2ee->tls, creds->key, creds->cert);
-        e2ee->engine = e2ee->tls->new_server_engine(e2ee->tls);
+        e2ee->engine = tls->new_server_engine(tls);
     } else {
-        e2ee->engine = e2ee->tls->new_engine(e2ee->tls, NULL);
+        e2ee->engine = tls->new_engine(tls, NULL);
     }
 
     e2ee->engine->set_io(e2ee->engine, e2ee, engine_in, engine_out);

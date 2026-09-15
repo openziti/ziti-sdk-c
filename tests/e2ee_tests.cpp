@@ -85,8 +85,8 @@ TEST_CASE("e2ee", "[crypto]") {
     ziti_log_init(nullptr, 5, nullptr);
     auto e2ee = GENERATE(ziti_crypto_none, ziti_crypto_libsodium, ziti_crypto_aes_gcm);
     WHEN("e2ee_impl_t: " << e2ee_method_id(e2ee)) {
-        auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee, false, nullptr, nullptr));
-        auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee, false, nullptr, nullptr));
+        auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee, false, nullptr));
+        auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee, false, nullptr));
 
         if (alice == nullptr || bob == nullptr) {
             SKIP("e2ee method " << e2ee_method_id(e2ee) << " not implemented, skipping");
@@ -97,7 +97,7 @@ TEST_CASE("e2ee", "[crypto]") {
 }
 
 TEST_CASE("e2ee libsodium init rejects wrong peer key length", "[crypto]") {
-    auto e = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr, nullptr));
+    auto e = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr));
     uint8_t too_short[crypto_kx_PUBLICKEYBYTES - 1] = {0};
     uint8_t too_long[crypto_kx_PUBLICKEYBYTES + 1] = {0};
 
@@ -107,8 +107,8 @@ TEST_CASE("e2ee libsodium init rejects wrong peer key length", "[crypto]") {
 }
 
 TEST_CASE("e2ee libsodium init is one-shot", "[crypto]") {
-    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr, nullptr));
-    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr, nullptr));
+    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr));
+    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr));
     auto bob_pub = bob->pub(bob.get());
 
     REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, false) == 0);
@@ -116,8 +116,8 @@ TEST_CASE("e2ee libsodium init is one-shot", "[crypto]") {
 }
 
 TEST_CASE("e2ee libsodium get_header is one-shot", "[crypto]") {
-    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr, nullptr));
-    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr, nullptr));
+    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr));
+    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr));
     auto bob_pub = bob->pub(bob.get());
     REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, false) == 0);
 
@@ -130,11 +130,11 @@ TEST_CASE("e2ee libsodium clone is independent of parent", "[crypto]") {
     // Models the bind.c listener pattern: a parent keypair is cloned per
     // accepted connection, and init() on the clone must not consume the
     // parent's secret key.
-    auto listener = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr, nullptr));
+    auto listener = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr));
     auto listener_pub = listener->pub(listener.get());
     std::vector<uint8_t> pub_snapshot(listener_pub.key, listener_pub.key + listener_pub.key_len);
 
-    auto peer1 = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr, nullptr));
+    auto peer1 = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr));
     auto peer1_pub = peer1->pub(peer1.get());
 
     auto clone1 = std::unique_ptr<e2ee_t, e2ee_deleter>(listener->clone(listener.get()));
@@ -145,15 +145,15 @@ TEST_CASE("e2ee libsodium clone is independent of parent", "[crypto]") {
     REQUIRE(memcmp(listener_pub_after.key, pub_snapshot.data(), pub_snapshot.size()) == 0);
 
     // listener still usable: second clone+init succeeds against a fresh peer
-    auto peer2 = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr, nullptr));
+    auto peer2 = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr));
     auto peer2_pub = peer2->pub(peer2.get());
     auto clone2 = std::unique_ptr<e2ee_t, e2ee_deleter>(listener->clone(listener.get()));
     REQUIRE(clone2->init(clone2.get(), peer2_pub.key, peer2_pub.key_len, true) == 0);
 }
 
 TEST_CASE("e2ee libsodium decrypt retries after partial header", "[crypto]") {
-    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr, nullptr));
-    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr, nullptr));
+    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr));
+    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr));
     auto alice_pub = alice->pub(alice.get());
     auto bob_pub = bob->pub(bob.get());
     REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, true) == 0);
@@ -192,14 +192,14 @@ TEST_CASE("e2ee-ossl-apple-interop", "[crypto]") {
     ziti_log_init(nullptr, 5, nullptr);
 
     WHEN("apple is the server") {
-        auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm, false, nullptr, nullptr));
+        auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm, false, nullptr));
         auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>((e2ee_t *)ossl::new_aes_gcm_e2ee());
         test_e2ee(alice.get(), bob.get());
     }
 
     WHEN("openssl is the server") {
         auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>((e2ee_t *)ossl::new_aes_gcm_e2ee());
-        auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm, false, nullptr, nullptr));
+        auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm, false, nullptr));
         test_e2ee(alice.get(), bob.get());
     }
 }
@@ -218,8 +218,8 @@ namespace apple {
 // Note the receiving side rejects a tag-only frame (ciphertext_len <= AES_GCM_TAG_LEN); that
 // guard is pre-existing and identical in the OpenSSL backend, so this only pins encrypt.
 TEST_CASE("e2ee-apple-aes-gcm-empty-payload", "[crypto]") {
-    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm, false, nullptr, nullptr));
-    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm, false, nullptr, nullptr));
+    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm, false, nullptr));
+    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm, false, nullptr));
     auto alice_pub = alice->pub(alice.get());
     auto bob_pub = bob->pub(bob.get());
     REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, true) == 0);
@@ -450,23 +450,26 @@ wDSlpBxrVy9SSEp8CQ4L1Pr51O/NZG9Npl9HTZ7Db0Lm5jiLGyPIj6MIoviatVTP
 jrEaRTDiko6e0ifkFw==
 -----END CERTIFICATE-----)";
 
-    auto tls = default_tls_context(nullptr, 0);
+    // both engines borrow this context, so it has to outlive them: declared first so it
+    // is destroyed last. the credentials are up-ref'd by set_own_cert, so the order of
+    // cred_guard relative to the engines does not matter
+    auto tls = default_tls_context(ca, strlen(ca));
+    auto tls_guard = std::unique_ptr<tls_context, tls_ctx_deleter>(tls);
 
     zt_x509 srv_cred{};
+    x509_guard cred_guard{&srv_cred};
 
     REQUIRE(tls->load_cert(&srv_cred.cert, cert, strlen(cert)) == 0);
     REQUIRE(tls->load_key(&srv_cred.key, key, strlen(key)) == 0);
 
+    tls->set_own_cert(tls, srv_cred.key, srv_cred.cert);
 
-    auto srv = create_e2ee(ziti_crypto_tls, true, &srv_cred, ca);
-    auto clt = create_e2ee(ziti_crypto_tls, false, nullptr, ca);
-
-    // each e2ee owns a tls_context (and its parsed CA bundle); release them,
-    // along with the context and credentials used to load the server cert
+    auto srv = create_e2ee(ziti_crypto_tls, true, tls);
+    auto clt = create_e2ee(ziti_crypto_tls, false, tls);
+    REQUIRE(srv != nullptr);
+    REQUIRE(clt != nullptr);
     auto srv_guard = std::unique_ptr<e2ee_t, e2ee_deleter>(srv);
     auto clt_guard = std::unique_ptr<e2ee_t, e2ee_deleter>(clt);
-    auto tls_guard = std::unique_ptr<tls_context, tls_ctx_deleter>(tls);
-    x509_guard cred_guard{&srv_cred};
 
     auto clt_hello = clt->pub(clt);
 

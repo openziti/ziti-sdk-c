@@ -452,7 +452,7 @@ static void connect_get_service_cb(ziti_context ztx, const ziti_service *s, int 
         req->service_id = cstr_from(s->id);
         conn->encrypted = s->encryption;
         ziti_crypto_method zcm = conn->encrypted ? ztx->opts.e2ee_mode : ziti_crypto_none;
-        conn->e2ee = create_e2ee(zcm, false, NULL, ztx->config.id.ca);
+        conn->e2ee = create_e2ee(zcm, false, ztx->tlsCtx);
         if (conn->e2ee == NULL) {
             CONN_LOG(ERROR, "failed to initialize crypto method[%s]", e2ee_method_id(zcm));
             complete_conn_req(conn, ZITI_CRYPTO_FAIL);

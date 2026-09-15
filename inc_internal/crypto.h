@@ -63,7 +63,7 @@ typedef struct e2ee {
 extern "C" {
 #endif
 
-e2ee_t *create_e2ee(ziti_crypto_method, bool server, zt_x509 *creds, const char *ca);
+e2ee_t *create_e2ee(ziti_crypto_method, bool server, tls_context *tls);
 
 const char *e2ee_method_id(ziti_crypto_method mode);
 

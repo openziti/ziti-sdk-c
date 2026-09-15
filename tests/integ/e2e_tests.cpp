@@ -103,10 +103,10 @@ public:
         REQUIRE_ZITI_OK(ziti_context_run(client, loop()));
         REQUIRE_ZITI_OK(ziti_context_run(server, loop()));
 
-        run(UNTIL(server_loaded || server_load_error != ZITI_OK));
+        REQUIRE(run(UNTIL(server_loaded || server_load_error != ZITI_OK)));
         REQUIRE_ZITI_OK(server_load_error);
 
-        run(UNTIL(clt_loaded || clt_load_error != ZITI_OK));
+        REQUIRE(run(UNTIL(clt_loaded || clt_load_error != ZITI_OK)));
         REQUIRE_ZITI_OK(clt_load_error);
     }
 
@@ -146,15 +146,23 @@ public:
 }
 
 TEST_CASE_METHOD(E2EBase, "e2ee test", "[e2ee]") {
+    tls_context *srv_tls = nullptr;
+    auto clt_tls = default_tls_context(client_config.id.ca, strlen(client_config.id.ca));
+    // non-NULL creds is what makes load_tls() call init_tls_from_config() and set the
+    // server's own cert on srv_tls; the struct itself is only held so it can be dropped
     zt_x509 creds{};
-    DEFER { zt_x509_drop(&creds); };
-    REQUIRE_ZITI_OK(load_tls(&server_config, nullptr, &creds));
+    DEFER {
+        zt_x509_drop(&creds);
+        if (srv_tls) srv_tls->free_ctx(srv_tls);
+        if (clt_tls) clt_tls->free_ctx(clt_tls);
+    };
+    REQUIRE_ZITI_OK(load_tls(&server_config, &srv_tls, &creds));
 
     auto method = GENERATE(ziti_crypto_none, ziti_crypto_libsodium, ziti_crypto_tls);
 
     WHEN("method: " << e2ee_method_id(method)) {
-        auto clt_e2ee = create_e2ee(method, false, nullptr, client_config.id.ca);
-        auto srv_e2ee = create_e2ee(method, true, &creds, server_config.id.ca);
+        auto clt_e2ee = create_e2ee(method, false, clt_tls);
+        auto srv_e2ee = create_e2ee(method, true, srv_tls);
         DEFER {
             clt_e2ee->free(clt_e2ee);
             srv_e2ee->free(srv_e2ee);
@@ -217,11 +225,22 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
         client->opts.e2ee_mode = method;
         server->opts.e2ee_mode = method;
 
+        const char *ctrl_version = server->ctrl.version.version;
+        INFO("controller version: " << (ctrl_version ? ctrl_version : "<null>"));
+        REQUIRE(ctrl_version != nullptr);
+
+        // reported as "v2.0.5"; tolerate a missing 'v'. an unparseable version must fail
+        // the test rather than silently skip and hide a regression
         int major{}, minor{}, patch{};
-        sscanf(server->ctrl.version.version, "v%d.%d.%d", &major, &minor, &patch);
+        int parsed = sscanf(ctrl_version, "v%d.%d.%d", &major, &minor, &patch);
+        if (parsed != 3) {
+            parsed = sscanf(ctrl_version, "%d.%d.%d", &major, &minor, &patch);
+        }
+        REQUIRE(parsed == 3);
+
         if (method == ziti_crypto_tls &&
             (major < 2 || (major == 2 && minor == 0 && patch < 5))) {
-            SKIP("TLS crypto exchange won't work before 2.0.5");
+            SKIP("TLS crypto exchange won't work before 2.0.5, controller is " << ctrl_version);
         }
 
         ensureService(server);
@@ -265,8 +284,9 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
                 });
             }));
 
-        run(UNTIL(srv_ctx.bound || srv_ctx.bound_res != ZITI_OK));
+        bool bound_done = run(UNTIL(srv_ctx.bound || srv_ctx.bound_res != ZITI_OK));
         INFO("bound result: " << ziti_errorstr(srv_ctx.bound_res));
+        REQUIRE(bound_done);
         REQUIRE(srv_ctx.bound);
 
         ziti_connection clt_conn{};
@@ -306,8 +326,9 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
         // bound returned success but terminator is established async
         uv_sleep(1000);
 
-        run(UNTIL(clt_ctx.connected || clt_ctx.connect_res != ZITI_OK ));
+        bool connect_done = run(UNTIL(clt_ctx.connected || clt_ctx.connect_res != ZITI_OK ));
         INFO("connected result: " << ziti_errorstr(clt_ctx.connect_res));
+        REQUIRE(connect_done);
         REQUIRE(clt_ctx.connect_res == ZITI_OK);
 
         for (int i = 0; i < 100; i++) {
@@ -326,16 +347,19 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
                 else c_ctx->write_len += res;
             }, &clt_ctx);
 
-            run(UNTIL(clt_ctx.write_len > 0 || clt_ctx.write_res != ZITI_OK ));
+            bool write_done = run(UNTIL(clt_ctx.write_len > 0 || clt_ctx.write_res != ZITI_OK ));
             INFO("write_result: " << ziti_errorstr(clt_ctx.write_res));
+            REQUIRE(write_done);
             REQUIRE(clt_ctx.write_res == ZITI_OK);
 
-            run(UNTIL(!srv_ctx.received.empty() || srv_ctx.received_error != ZITI_OK ));
+            bool srv_recv_done = run(UNTIL(!srv_ctx.received.empty() || srv_ctx.received_error != ZITI_OK ));
             INFO("srv received result: " << ziti_errorstr(srv_ctx.received_error));
+            REQUIRE(srv_recv_done);
             REQUIRE(srv_ctx.received_error == ZITI_OK);
 
-            run(UNTIL(!clt_ctx.received.empty() || clt_ctx.receive_error != ZITI_OK ));
+            bool clt_recv_done = run(UNTIL(!clt_ctx.received.empty() || clt_ctx.receive_error != ZITI_OK ));
             INFO("clt received result: " << ziti_errorstr(clt_ctx.receive_error));
+            REQUIRE(clt_recv_done);
             REQUIRE(clt_ctx.receive_error == ZITI_OK);
 
             REQUIRE(clt_ctx.received.size() == sizeof(data));
@@ -358,7 +382,10 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
             s_ctx->bound = false;
         });
 
-        run(UNTIL(srv_ctx.srv_closed && clt_ctx.closed && !srv_ctx.bound));
+        // nothing is asserted after this, so an unchecked timeout here would pass silently
+        INFO("srv_closed: " << srv_ctx.srv_closed << " clt_closed: " << clt_ctx.closed
+             << " still bound: " << srv_ctx.bound);
+        REQUIRE(run(UNTIL(srv_ctx.srv_closed && clt_ctx.closed && !srv_ctx.bound)));
         ZITI_LOG(INFO, "test is done");
     }
 }
