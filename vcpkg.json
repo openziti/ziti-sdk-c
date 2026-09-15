@@ -15,11 +15,7 @@
   ],
   "dependencies": [
     "libuv",
-    {
-      "name": "openssl",
-      "platform": "!windows & !mingw",
-      "$comment": "use windows crypto on windows platforms"
-    },
+    "openssl",
     "zlib",
     "llhttp",
     "libsodium",

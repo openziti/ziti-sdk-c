@@ -399,6 +399,9 @@ static int dispose(ziti_connection server) {
     FREE(server->server.token);
     free_ziti_session_ptr(server->server.session);
     model_list_clear(&server->server.routers, (void (*)(void *)) free_ziti_edge_router_ptr);
+    if (server->close_cb) {
+        server->close_cb(server);
+    }
     free(server->service);
     free(server);
     return 1;
@@ -483,7 +486,14 @@ static void process_dial(struct binding_s *b, message *msg) {
     client->start = uv_now(conn->ziti_ctx->loop);
 
     client->encrypted = conn->encrypted;
-    client->e2ee = b->e2ee->clone(b->e2ee);
+    if (b->e2ee && b->e2ee->clone)
+        client->e2ee = b->e2ee->clone(b->e2ee);
+    else {
+        // channel_tls carries the session cert when the controller issues one,
+        // falling back to the identity cert -- see ztx_request_session_cert()
+        client->e2ee = create_e2ee(conn->ziti_ctx->opts.e2ee_mode, true, conn->ziti_ctx->channel_tls);
+    }
+
     if (client->e2ee->init(client->e2ee, peer_key, peer_key_len, true) != 0) {
         reject_dial_request(0, b->ch, msg->header.seq, "failed to establish crypto");
         ziti_close(client, NULL);
@@ -597,7 +607,9 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
     }
 
     ziti_crypto_method cm = conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none;
-    b->e2ee = create_e2ee(cm);
+
+    // bind side authenticates with channel_tls' own cert: session cert if available
+    b->e2ee = create_e2ee(cm, true, conn->ziti_ctx->channel_tls);
     if (b->e2ee == NULL) {
         CONN_LOG(ERROR, "failed to initialize crypto method[%s]", e2ee_method_id(cm));
         return 0;

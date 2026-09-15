@@ -180,10 +180,16 @@ int load_tls(ziti_config *cfg, tls_context **ctx, struct tls_credentials *creds)
     }
 
     if (rc == ZITI_OK) {
-        *ctx = tls;
+        if (ctx != NULL) {
+            *ctx = tls;
+        } else {
+            tls->free_ctx(tls);
+        }
     } else {
         tls->free_ctx(tls);
-        *ctx = NULL;
+        if (ctx) {
+            *ctx = NULL;
+        }
     }
     return rc;
 }
@@ -909,6 +915,7 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
             printer(ctx, "\t%s: online[%c] %s\n", detail->id, detail->is_online ? 'Y' : 'N', url);
         }
     }
+    printer(ctx, "Crypto Method: %s\n", e2ee_method_id(ztx->opts.e2ee_mode));
     printer(ctx, "Config types:\n");
     for (int i = 0; ztx->opts.config_types && ztx->opts.config_types[i]; i++) {
         printer(ctx, "\t%s\n", ztx->opts.config_types[i]);
@@ -1970,11 +1977,11 @@ void ztx_prepare(uv_prepare_t *prep) {
     }
 
     // switch to FIPS compliant e2ee crypto if requested
-    if (ztx->opts.e2ee_mode != ziti_crypto_aes_gcm) {
+    if (ztx->opts.e2ee_mode != ziti_crypto_tls) {
         if (ziti_ctrl_has_build_flag(&ztx->ctrl, "FIPS_MODE")) {
+            ztx->opts.e2ee_mode = ziti_crypto_tls;
             ZTX_LOG(INFO, "controller requested FIPS_MODE: using crypto method[%s]",
-                    e2ee_method_id(ziti_crypto_aes_gcm));
-            ztx->opts.e2ee_mode = ziti_crypto_aes_gcm;
+                    e2ee_method_id(ziti_crypto_tls));
             uint32_t conn_id;
             ziti_connection conn;
             MODEL_MAP_FOREACH(conn_id, conn, &ztx->connections) {

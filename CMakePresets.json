@@ -87,6 +87,7 @@
       "description": "Note that all the flags after /W4 are required for MSVC to conform to the language standard",
       "hidden": true,
       "cacheVariables": {
+        "TLSUV_TLSLIB": "openssl",
         "CMAKE_C_FLAGS": "/utf-8 /W4 /permissive- /volatile:iso /Zc:preprocessor",
         "CMAKE_CXX_FLAGS": "/utf-8 /W4 /permissive- /volatile:iso /Zc:preprocessor /Zc:__cplusplus /Zc:externConstexpr /Zc:throwingNew /EHsc"
       }
@@ -95,6 +96,7 @@
       "name": "flags-windows-mingw",
       "hidden": true,
       "cacheVariables": {
+        "TLSUV_TLSLIB": "openssl",
         "CMAKE_C_COMPILER": "gcc",
         "CMAKE_CXX_COMPILER": "g++",
         "CMAKE_EXE_LINKER_FLAGS": "-Wl,-Bstatic -lpthread"

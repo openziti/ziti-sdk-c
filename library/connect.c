@@ -452,7 +452,7 @@ static void connect_get_service_cb(ziti_context ztx, const ziti_service *s, int 
         req->service_id = cstr_from(s->id);
         conn->encrypted = s->encryption;
         ziti_crypto_method zcm = conn->encrypted ? ztx->opts.e2ee_mode : ziti_crypto_none;
-        conn->e2ee = create_e2ee(zcm);
+        conn->e2ee = create_e2ee(zcm, false, ztx->tlsCtx);
         if (conn->e2ee == NULL) {
             CONN_LOG(ERROR, "failed to initialize crypto method[%s]", e2ee_method_id(zcm));
             complete_conn_req(conn, ZITI_CRYPTO_FAIL);
@@ -709,8 +709,11 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
     if (crypto_bytes < 0) {
         CONN_LOG(ERROR, "encryption failed: %zd", crypto_bytes);
         complete_conn_req(conn, ZITI_CRYPTO_FAIL);
+        pool_return_obj(m);
+        on_write_completed(conn, req, ZITI_CRYPTO_FAIL);
         return;
     }
+
     m->header.body_len = crypto_bytes;
     send_message(conn, m, req);
 }
@@ -1098,7 +1101,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
             } else {
                 CONN_LOG(ERROR, "failed to %s, reason=%*.*s",
                          "connect",
-                         msg->header.body_len, msg->header.body_len, msg->body);
+                         (int)msg->header.body_len, (int)msg->header.body_len, (char*)msg->body);
                 conn_set_state(conn, Disconnected);
                 complete_conn_req(conn, ZITI_CONN_CLOSED);
             }

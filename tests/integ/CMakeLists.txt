@@ -39,6 +39,7 @@ add_executable(IntegrationTests
         connect_tests.cpp
         zitilib_tests.cpp
         zl_connect_tests.cpp
+        e2e_tests.cpp
 )
 target_include_directories(IntegrationTests
         PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include

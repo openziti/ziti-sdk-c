@@ -108,3 +108,11 @@ def test_controller(client_identity, test_service, tmp_path):
     env['test_client']=client_identity['path']
     env['test_service']=test_service['name']
     run_catch_test(env, tmp_path, "controller")
+
+
+def test_e2ee(client_identity, server_identity, test_service, tmp_path):
+    env = dict()
+    env['test_server']=server_identity['path']
+    env['test_client']=client_identity['path']
+    env['test_service']=test_service['name']
+    run_catch_test(env, tmp_path, tag="e2ee")
