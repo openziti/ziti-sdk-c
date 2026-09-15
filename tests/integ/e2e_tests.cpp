@@ -267,6 +267,10 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
             },
             [](ziti_connection s, ziti_connection c, int status, const ziti_client_ctx* clt_ctx) {
                 auto s_ctx = static_cast<struct srv_ctx_s*>(ziti_conn_data(s));
+                if (status != ZITI_OK) {
+                    // ignore error
+                    return;
+                }
                 s_ctx->srv_conn = c;
                 ziti_conn_set_data(c, s_ctx);
                 ziti_accept(
