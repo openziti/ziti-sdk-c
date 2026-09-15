@@ -145,10 +145,11 @@ TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
 
         auto ts = std::chrono::system_clock::now();
         auto code = totp.generate_totp(ts);
-        auto code_str = std::to_string(code);
+        char code_str[8];
+        snprintf(code_str, sizeof(code_str), "%06u", (unsigned)code);
 
         UNSCOPED_INFO("totp attempt: " << (i + 1));
-        ziti_mfa_verify(ztx, code_str.c_str(), [](ziti_context ztx, int status, void *ctx){
+        ziti_mfa_verify(ztx, code_str, [](ziti_context ztx, int status, void *ctx){
             auto m = (struct mfa *)ctx;
             m->cb_called = true;
             m->status = status;
