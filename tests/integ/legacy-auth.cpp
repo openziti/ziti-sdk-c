@@ -26,6 +26,10 @@
 
 static const char *const SERVICE_NAME = TEST_SERVICE;
 
+// Reads as "not a ziti controller". The `.invalid` TLD is reserved by RFC 6761
+// and is guaranteed never to resolve, so the dial always fails.
+static const char *const INVALID_CTRL_URL = "https://not.a.ziti.controller.invalid";
+
 using namespace std;
 using namespace Catch::Matchers;
 
@@ -37,7 +41,7 @@ TEST_CASE("invalid_controller", "[controller][GH-44]") {
 
     PREP(ziti);
     model_list endpoints = {nullptr};
-    model_list_append(&endpoints, (void*)"https://not.a.ziti.controll.er");
+    model_list_append(&endpoints, (void*)INVALID_CTRL_URL);
     TRY(ziti, ziti_ctrl_init(loop, &ctrl, &endpoints, nullptr));
     model_list_clear(&endpoints, nullptr);
 

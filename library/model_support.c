@@ -591,12 +591,12 @@ int model_list_from_json (model_list *list, json_object *json, const type_meta *
     return rc;
 }
 
-static int parse_map_from_json(void *mapp, json_object *json, type_meta *el_meta) {
+static int parse_map_from_json(void *mp, json_object *json, type_meta *el_meta) {
     if (json_object_get_type(json) != json_type_object) {
         ZITI_LOG(ERROR, "unexpected token: object as expected, received %d", json_object_get_type(json));
         return -1;
     }
-    model_map *map = mapp;
+    model_map *map = mp;
     json_object_object_foreach(json, key, child) {
         void *value = NULL;
         int rc;
