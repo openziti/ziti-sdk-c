@@ -1,0 +1,6 @@
+# Shared by CI (.github/workflows/linters.yml) and local runs.
+# Run locally with `codespell` from the checkout root, or `cmake --build <dir> --target codespell`.
+[codespell]
+# Build output and local-only tool directories. None of these contain tracked
+# files, so CI scans exactly what it did before.
+skip = ./.git,./build,./build-*,./cmake-build-*,./Testing,./.claude,./.worktrees,./.pytest_cache

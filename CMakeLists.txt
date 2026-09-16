@@ -149,6 +149,21 @@ if (ziti_DEVELOPER_MODE AND NOT CMAKE_CROSSCOMPILING)
     endif ()
 endif ()
 
+if (ziti_DEVELOPER_MODE)
+    find_program(CODESPELL codespell)
+    if (CODESPELL)
+        add_custom_target(codespell
+                COMMENT "check spelling (settings in .codespellrc)"
+                COMMAND ${CODESPELL}
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                USES_TERMINAL
+        )
+        message(NOTICE "dev mode: use codespell target to check spelling")
+    else ()
+        message(NOTICE "codespell not found: 'codespell' target is not available (pip install codespell)")
+    endif ()
+endif ()
+
 if (ziti-sdk_IS_TOP_LEVEL AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/local.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/local.cmake")
 endif ()

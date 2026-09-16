@@ -50,3 +50,30 @@ cd build
 cmake --preset ci-linux-x64 ..
 cmake --build .
 ```
+
+## Linting
+
+Pull requests run a [codespell](https://github.com/codespell-project/codespell) check. The settings live in
+`.codespellrc` at the checkout root, and both CI and local runs read that same file, so a run on your machine
+matches the one in CI.
+
+Install it once:
+
+```bash
+pip install codespell
+```
+
+Then check the tree from the checkout root:
+
+```bash
+codespell
+```
+
+If you have a configured build directory, the same check is wired up as a CMake target (developer mode only):
+
+```bash
+cmake --build build --target codespell
+```
+
+A clean tree exits 0. To let a flagged word through, add an `ignore-words-list` entry to `.codespellrc` rather than
+to the workflow — codespell merges the two lists, so an entry in only one place is easy to lose track of.
