@@ -357,8 +357,8 @@ static uint8_t get_terminator_precedence(const ziti_listen_opts *opts, const cha
     if (opts && opts->terminator_precedence > 0) return opts->terminator_precedence;
 
     if (ztx->identity_data) {
-        const char *precedence = model_map_get(&ztx->identity_data->service_hosting_precendences, service);
-        precedence = precedence ? precedence : ztx->identity_data->default_hosting_precendence;
+        const char *precedence = model_map_get(&ztx->identity_data->service_hosting_precedences, service);
+        precedence = precedence ? precedence : ztx->identity_data->default_hosting_precedence;
 
         if (precedence) {
             if (strcasecmp("failed", precedence) == 0) return PRECEDENCE.FAILED;

@@ -17,4 +17,4 @@ jobs:
       - name: Run code spelling check
         uses: codespell-project/actions-codespell@v2
         with:
-          ignore_words_list: controll,mapp,precendence,tolen,uknown,ununsed,unstalled
+          ignore_words_list: controll,mapp,tolen,unstalled
