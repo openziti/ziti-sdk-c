@@ -425,7 +425,7 @@ void bridge_alloc(uv_handle_t *h, size_t req, uv_buf_t *b) {
     b->len = pool_obj_size(b->base);
     if (b->base != NULL) {
         if (br->input_throttle) {
-            BR_LOG(TRACE, "unstalled");
+            BR_LOG(TRACE, "resumed");
         }
         br->input_throttle = false;
     }

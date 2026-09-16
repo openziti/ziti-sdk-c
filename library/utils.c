@@ -55,7 +55,7 @@
 #elif defined(__APPLE__)
 #define ZITI_OS MacOS
 #else
-#define ZITI_OS UKNOWN
+#define ZITI_OS UNKNOWN
 #endif
 
 #ifndef MAXPATHLEN
@@ -80,7 +80,7 @@
 #elif defined(__i386__)
 #define ZITI_ARCH x86
 #else
-#define ZITI_ARCH UKNOWN
+#define ZITI_ARCH UNKNOWN
 #endif
 
 #define LEVEL_LBL(lvl) #lvl,

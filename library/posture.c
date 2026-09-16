@@ -933,7 +933,7 @@ static
     char winver[16];
     sprintf_s(winver, 16, "%d.%d.%d", os_info.dwMajorVersion, os_info.dwMinorVersion, os_info.dwBuildNumber);
     ver = winver;
-    build = "ununsed";
+    build = "unused";
 #else
     const ziti_env_info *info = get_env_info();
     os = info->os;

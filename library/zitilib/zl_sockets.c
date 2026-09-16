@@ -49,8 +49,8 @@ bool zl_is_blocking(ziti_socket_t s) {
      */
     DWORD timeout;
     DWORD fast_check = 1;
-    int tolen = sizeof(timeout);
-    int rc = getsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char *) &timeout, &tolen);
+    int to_len = sizeof(timeout);
+    int rc = getsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (char *) &timeout, &to_len);
     rc = setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *) &fast_check, sizeof(fast_check));
     char b;
     int r = recv(s, &b, 0, MSG_OOB);

@@ -213,7 +213,7 @@ XX(connect_timeout_seconds, model_number, none, connectTimeoutSeconds, __VA_ARGS
 XX(cost, model_number, none, cost, __VA_ARGS__) \
 XX(identity, model_string, none, identity, __VA_ARGS__) \
 XX(max_connections, model_number, none, maxConnections, __VA_ARGS__)\
-XX(precendence, model_string, none, precendence, __VA_ARGS__)
+XX(precedence, model_string, none, precedence, __VA_ARGS__)
 
 
 #ifdef __cplusplus
