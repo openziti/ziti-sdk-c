@@ -149,8 +149,14 @@ if (APPLE)
 
     # CryptoKit floors: macOS 10.15, iOS 13. arm64 macOS itself does not exist before 11.0.
     if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
-        set(cryptokit_target ${cryptokit_arch}-apple-ios13.0)
-        set(cryptokit_sdk iphoneos)
+        # distinguish device vs simulator with CMAKE_OSX_SYSROOT
+        if (CMAKE_OSX_SYSROOT MATCHES "[Ss]imulator")
+            set(cryptokit_target ${cryptokit_arch}-apple-ios13.0-simulator)
+            set(cryptokit_sdk iphonesimulator)
+        else ()
+            set(cryptokit_target ${cryptokit_arch}-apple-ios13.0)
+            set(cryptokit_sdk iphoneos)
+        endif ()
     elseif (cryptokit_arch STREQUAL "arm64")
         set(cryptokit_target ${cryptokit_arch}-apple-macosx11.0)
         set(cryptokit_sdk macosx)
