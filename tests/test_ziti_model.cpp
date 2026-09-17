@@ -811,6 +811,122 @@ TEST_CASE("ziti-intercept_test", "[model]") {
     free_ziti_client_cfg_v1(&cltV1);
 }
 
+TEST_CASE("host.v1 health checks", "[model]") {
+    const char *json = R"({
+        "protocol": "tcp",
+        "address": "127.0.0.1",
+        "port": 8080,
+        "portChecks": [
+            {
+                "address": "127.0.0.1:8080",
+                "interval": "5s",
+                "timeout": "250ms",
+                "actions": [
+                    { "trigger": "fail", "action": "mark unhealthy" },
+                    { "trigger": "pass", "action": "mark healthy", "consecutiveEvents": 3, "duration": "1m" }
+                ]
+            }
+        ],
+        "httpChecks": [
+            {
+                "url": "http://127.0.0.1:8080/health",
+                "method": "GET",
+                "expectStatus": 200,
+                "expectInBody": "ok",
+                "interval": "10s",
+                "timeout": "2s",
+                "actions": [
+                    { "trigger": "change", "action": "increase cost 50" }
+                ]
+            }
+        ]
+    })";
+
+    ziti_host_cfg_v1 cfg;
+    REQUIRE(parse_ziti_host_cfg_v1(&cfg, json, strlen(json)) > 0);
+
+    REQUIRE(cfg.port_checks != nullptr);
+    REQUIRE(cfg.port_checks[0] != nullptr);
+    REQUIRE(cfg.port_checks[1] == nullptr);
+
+    auto *pc = cfg.port_checks[0];
+    CHECK_THAT(pc->address, Equals("127.0.0.1:8080"));
+    CHECK(DURATION_MILLISECONDS(pc->interval) == 5000);
+    CHECK(DURATION_MILLISECONDS(pc->timeout) == 250);
+    REQUIRE(pc->actions != nullptr);
+    REQUIRE(pc->actions[0] != nullptr);
+    REQUIRE(pc->actions[1] != nullptr);
+    REQUIRE(pc->actions[2] == nullptr);
+
+    CHECK_THAT(pc->actions[0]->trigger, Equals("fail"));
+    CHECK_THAT(pc->actions[0]->action, Equals("mark unhealthy"));
+    CHECK(pc->actions[0]->consecutive_events == nullptr);
+    CHECK(pc->actions[0]->duration == nullptr);
+
+    CHECK_THAT(pc->actions[1]->trigger, Equals("pass"));
+    CHECK_THAT(pc->actions[1]->action, Equals("mark healthy"));
+    REQUIRE(pc->actions[1]->consecutive_events != nullptr);
+    CHECK(*pc->actions[1]->consecutive_events == 3);
+    REQUIRE(pc->actions[1]->duration != nullptr);
+    CHECK(DURATION_MILLISECONDS(*pc->actions[1]->duration) == 60000);
+
+    REQUIRE(cfg.http_checks != nullptr);
+    REQUIRE(cfg.http_checks[0] != nullptr);
+    REQUIRE(cfg.http_checks[1] == nullptr);
+
+    auto *hc = cfg.http_checks[0];
+    CHECK_THAT(hc->url, Equals("http://127.0.0.1:8080/health"));
+    CHECK_THAT(hc->method, Equals("GET"));
+    CHECK(hc->expect_status == 200);
+    CHECK_THAT(hc->expect_in_body, Equals("ok"));
+    CHECK(DURATION_MILLISECONDS(hc->interval) == 10000);
+    CHECK(DURATION_MILLISECONDS(hc->timeout) == 2000);
+    REQUIRE(hc->actions != nullptr);
+    REQUIRE(hc->actions[0] != nullptr);
+    REQUIRE(hc->actions[1] == nullptr);
+    CHECK_THAT(hc->actions[0]->trigger, Equals("change"));
+    CHECK_THAT(hc->actions[0]->action, Equals("increase cost 50"));
+
+    free_ziti_host_cfg_v1(&cfg);
+}
+
+TEST_CASE("host.v1 health check change detection", "[model]") {
+    // identical to json1 except portChecks[0].interval: "5s" -> "10s" -- everything
+    // else (including forwardPort/protocol/address) stays the same, so this isolates
+    // change detection to the check field alone.
+    const char *json1 = R"({
+        "protocol": "tcp",
+        "address": "127.0.0.1",
+        "port": 8080,
+        "portChecks": [
+            { "address": "127.0.0.1:8080", "interval": "5s", "timeout": "250ms" }
+        ]
+    })";
+
+    const char *json1_dup = json1;
+
+    const char *json2 = R"({
+        "protocol": "tcp",
+        "address": "127.0.0.1",
+        "port": 8080,
+        "portChecks": [
+            { "address": "127.0.0.1:8080", "interval": "10s", "timeout": "250ms" }
+        ]
+    })";
+
+    ziti_host_cfg_v1 c1, c1dup, c2;
+    REQUIRE(parse_ziti_host_cfg_v1(&c1, json1, strlen(json1)) > 0);
+    REQUIRE(parse_ziti_host_cfg_v1(&c1dup, json1_dup, strlen(json1_dup)) > 0);
+    REQUIRE(parse_ziti_host_cfg_v1(&c2, json2, strlen(json2)) > 0);
+
+    CHECK(cmp_ziti_host_cfg_v1(&c1, &c1dup) == 0);
+    CHECK(cmp_ziti_host_cfg_v1(&c1, &c2) != 0);
+
+    free_ziti_host_cfg_v1(&c1);
+    free_ziti_host_cfg_v1(&c1dup);
+    free_ziti_host_cfg_v1(&c2);
+}
+
 TEST_CASE("load cfg", "[model]") {
     auto good_json = R"({
   "ztAPI": "https://calculon.local:1280",

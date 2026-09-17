@@ -183,6 +183,28 @@ XX(from, ziti_address, none, from, __VA_ARGS__) \
 XX(to, ziti_address, none, to, __VA_ARGS__)     \
 XX(prefix_length, model_number, none, prefixLength, __VA_ARGS__ )
 
+#define ZITI_CHECK_ACTION_MODEL(XX, ...) \
+XX(trigger, model_string, none, trigger, __VA_ARGS__) \
+XX(action, model_string, none, action, __VA_ARGS__) \
+XX(consecutive_events, model_number, ptr, consecutiveEvents, __VA_ARGS__) \
+XX(duration, duration, ptr, duration, __VA_ARGS__)
+
+#define ZITI_PORT_CHECK_MODEL(XX, ...) \
+XX(address, model_string, none, address, __VA_ARGS__) \
+XX(interval, duration, none, interval, __VA_ARGS__) \
+XX(timeout, duration, none, timeout, __VA_ARGS__) \
+XX(actions, ziti_check_action, array, actions, __VA_ARGS__)
+
+#define ZITI_HTTP_CHECK_MODEL(XX, ...) \
+XX(url, model_string, none, url, __VA_ARGS__) \
+XX(method, model_string, none, method, __VA_ARGS__) \
+XX(body, model_string, none, body, __VA_ARGS__) \
+XX(expect_status, model_number, none, expectStatus, __VA_ARGS__) \
+XX(expect_in_body, model_string, none, expectInBody, __VA_ARGS__) \
+XX(interval, duration, none, interval, __VA_ARGS__) \
+XX(timeout, duration, none, timeout, __VA_ARGS__) \
+XX(actions, ziti_check_action, array, actions, __VA_ARGS__)
+
 #define ZITI_HOST_CFG_V1_MODEL(XX, ...) \
 XX(protocol, model_string, none, protocol, __VA_ARGS__) \
 XX(forward_protocol, model_bool, none, forwardProtocol, __VA_ARGS__) \
@@ -196,7 +218,9 @@ XX(forward_port, model_bool, none, forwardPort, __VA_ARGS__) \
 XX(allowed_port_ranges, ziti_port_range, array, allowedPortRanges, __VA_ARGS__) \
 XX(allowed_source_addresses, ziti_address, array, allowedSourceAddresses, __VA_ARGS__) \
 XX(proxy, ziti_proxy_server, none, proxy, __VA_ARGS__) \
-XX(listen_options, ziti_listen_options, ptr, listenOptions, __VA_ARGS__)
+XX(listen_options, ziti_listen_options, ptr, listenOptions, __VA_ARGS__) \
+XX(port_checks, ziti_port_check, array, portChecks, __VA_ARGS__) \
+XX(http_checks, ziti_http_check, array, httpChecks, __VA_ARGS__)
 
 #define ZITI_HOST_CFG_V2_MODEL(XX, ...) \
 XX(terminators, ziti_host_cfg_v1, list, terminators, __VA_ARGS__)
@@ -321,6 +345,12 @@ DECLARE_ENUM(ziti_proxy_server_type, ZITI_PROXY_SERVER_TYPE_ENUM)
 DECLARE_MODEL(ziti_proxy_server, ZITI_PROXY_SERVER_MODEL)
 
 DECLARE_MODEL(ziti_address_translation, ZITI_ADDRESS_TRANSLATION_MODEL)
+
+DECLARE_MODEL(ziti_check_action, ZITI_CHECK_ACTION_MODEL)
+
+DECLARE_MODEL(ziti_port_check, ZITI_PORT_CHECK_MODEL)
+
+DECLARE_MODEL(ziti_http_check, ZITI_HTTP_CHECK_MODEL)
 
 DECLARE_MODEL(ziti_host_cfg_v1, ZITI_HOST_CFG_V1_MODEL)
 

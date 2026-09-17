@@ -703,6 +703,89 @@ static void stop_binding(struct binding_s *b) {
     }
 }
 
+int ziti_update_terminator(ziti_connection conn, const uint16_t *cost, const uint8_t *precedence) {
+    assert(conn->type == Server);
+
+    if (cost == NULL && precedence == NULL) {
+        return ZITI_OK;
+    }
+
+    if (conn->server.token == NULL) {
+        CONN_LOG(DEBUG, "not yet bound: skipping terminator update");
+        return ZITI_INVALID_STATE;
+    }
+
+    uint16_t new_cost = cost ? *cost : conn->server.cost;
+    uint8_t new_precedence = precedence ? *precedence : conn->server.precedence;
+    uint16_t cost_le = htole16(new_cost);
+    char *token = conn->server.token;
+
+    // record the new baseline now, before attempting to notify any router: a binding
+    // that (re)establishes later -- even on a router that is currently disconnected --
+    // reads conn->server.cost/precedence when it (re)sends Bind, so this is what keeps
+    // a degraded terminator from reverting to its original bind-time value on reconnect.
+    if (cost != NULL) conn->server.cost = new_cost;
+    if (precedence != NULL) conn->server.precedence = new_precedence;
+
+    const char *n;
+    struct binding_s *b;
+    MODEL_MAP_FOREACH(n, b, &conn->server.bindings) {
+        if (b->state != st_bound || b->ch == NULL || !ziti_channel_is_connected(b->ch)) {
+            continue;
+        }
+
+        int32_t conn_id = htole32(b->conn_id);
+        hdr_t headers[3];
+        int nheaders = 0;
+        headers[nheaders++] = var_header(ConnIdHeader, conn_id);
+        if (cost != NULL) {
+            headers[nheaders++] = var_header(CostHeader, cost_le);
+        }
+        if (precedence != NULL) {
+            headers[nheaders++] = var_header(PrecedenceHeader, new_precedence);
+        }
+
+        CONN_LOG(DEBUG, "requesting UpdateBind on ch[%s] cost[%d] precedence[%d]",
+                 zch_get_name(b->ch), new_cost, new_precedence);
+        ziti_channel_send(b->ch, ContentTypeUpdateBind, headers, nheaders,
+                          (uint8_t *) token, strlen(token), NULL);
+    }
+
+    return ZITI_OK;
+}
+
+int ziti_send_health_event(ziti_connection conn, bool pass) {
+    assert(conn->type == Server);
+
+    if (conn->server.token == NULL) {
+        CONN_LOG(DEBUG, "not yet bound: skipping health event");
+        return ZITI_INVALID_STATE;
+    }
+
+    char *token = conn->server.token;
+    uint8_t pass_val = pass ? 1 : 0;
+
+    const char *n;
+    struct binding_s *b;
+    MODEL_MAP_FOREACH(n, b, &conn->server.bindings) {
+        if (b->state != st_bound || b->ch == NULL || !ziti_channel_is_connected(b->ch)) {
+            continue;
+        }
+
+        int32_t conn_id = htole32(b->conn_id);
+        hdr_t headers[] = {
+            var_header(ConnIdHeader, conn_id),
+            var_header(HealthStatusHeader, pass_val),
+        };
+
+        CONN_LOG(DEBUG, "sending health event on ch[%s] pass[%d]", zch_get_name(b->ch), pass_val);
+        ziti_channel_send(b->ch, ContentTypeHealthEvent, headers, 2,
+                          (uint8_t *) token, strlen(token), NULL);
+    }
+
+    return ZITI_OK;
+}
+
 int ziti_close_server(struct ziti_conn *conn) {
     const char *id;
     struct binding_s *b;
