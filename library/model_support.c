@@ -1162,6 +1162,7 @@ static int m_duration_to_json(const duration *d, string_buf_t *buf, int UNUSED(i
 const type_meta *get_duration_meta() {
     static type_meta _meta = {
             .name = "duration",
+            .size = sizeof(duration),
             .comparer = (_cmp_f) cmp_duration,
             .jsonifier = (_to_json_f) m_duration_to_json,
             .destroyer = m_free_noop,

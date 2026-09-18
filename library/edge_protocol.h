@@ -39,6 +39,8 @@ enum content_type {
     ContentTypeDialFailed = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__DialFailedType,
     ContentTypeBind = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__BindType,
     ContentTypeUnbind = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UnbindType,
+    ContentTypeUpdateBind = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UpdateBindType,
+    ContentTypeHealthEvent = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__HealthEventType,
 
     ContentTypeUpdateToken = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UpdateTokenType,
     ContentTypeUpdateTokenSuccess = ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UpdateTokenSuccessType,
@@ -104,6 +106,7 @@ enum header_id {
     ServiceIdentifierTypeHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ServiceIdentifierType,
     ConnectRequestIdHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnectRequestId,
     RouterCapabilitiesHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__RouterCapabilities,
+    HealthStatusHeader = ZITI__EDGE_CLIENT__PB__HEADER_ID__HealthStatus,
 };
 
 typedef uint8_t connection_type_t;
