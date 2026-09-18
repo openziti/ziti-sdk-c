@@ -129,7 +129,23 @@ int connect_socket(int af, ziti_socket_t clt_sock, ziti_socket_t *ziti_sock) {
     TRY(WSOCK, WSAGetLastError() != WSAEWOULDBLOCK);
     rc = 0;
 
-    TRY(WSOCK, (ssock = accept(lsock, NULL, NULL)) == SOCKET_ERROR);
+    // Wait for the loopback connection to be ready BEFORE accepting. The
+    // immediate non-blocking accept() loses the race on Windows 10 (the
+    // loopback handshake completes asynchronously) and returns INVALID_SOCKET.
+    // The TRY guard used below is a no-op for this case (PREPF's lt_zero
+    // condition applied to a 0/1 boolean never fires), so INVALID_SOCKET was
+    // passed on as "success" and reached the bridge -> "unsupported fd type",
+    // killing the connection (0 bytes, later RST). select() with a timeout
+    // makes accept() reliable without risking an indefinite block.
+    {
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(lsock, &rfds);
+        struct timeval tv = { 5, 0 };
+        TRY(WSOCK, (select(0, &rfds, NULL, NULL, &tv) <= 0) ? SOCKET_ERROR : 0);
+    }
+    ssock = accept(lsock, NULL, NULL);
+    TRY(WSOCK, (ssock == INVALID_SOCKET) ? SOCKET_ERROR : 0);
 
     nonblocking = 0;
     ioctlsocket(clt_sock, FIONBIO, &nonblocking);
