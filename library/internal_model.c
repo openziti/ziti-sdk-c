@@ -77,6 +77,12 @@ IMPL_MODEL(ziti_proxy_server, ZITI_PROXY_SERVER_MODEL)
 
 IMPL_MODEL(ziti_address_translation, ZITI_ADDRESS_TRANSLATION_MODEL)
 
+IMPL_MODEL(ziti_check_action, ZITI_CHECK_ACTION_MODEL)
+
+IMPL_MODEL(ziti_port_check, ZITI_PORT_CHECK_MODEL)
+
+IMPL_MODEL(ziti_http_check, ZITI_HTTP_CHECK_MODEL)
+
 IMPL_MODEL(ziti_host_cfg_v1, ZITI_HOST_CFG_V1_MODEL)
 
 IMPL_MODEL(ziti_host_cfg_v2, ZITI_HOST_CFG_V2_MODEL)

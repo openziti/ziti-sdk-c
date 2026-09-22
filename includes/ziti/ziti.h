@@ -829,6 +829,49 @@ extern int ziti_listen_with_options(ziti_connection serv_conn, const char *servi
                                     ziti_listen_cb lcb, ziti_client_cb cb);
 
 /**
+ * @brief Updates the cost and/or precedence of a hosted service's terminator(s).
+ *
+ * Sends an update to the edge router(s) currently bound for `server`, which forwards it
+ * to the controller. Typically used by a health-check implementation to steer traffic
+ * away from (or back to) a terminator whose backend is failing or recovering.
+ *
+ * `cost` and `precedence` are independent: pass NULL for either to leave that value
+ * unchanged. Passing NULL for both is a no-op. On success, the new value(s) also become
+ * the baseline used for any future bind/rebind of this connection, so a value applied
+ * here survives edge router reconnects.
+ *
+ * @param server a #ziti_connection previously passed to ziti_listen() or
+ *               ziti_listen_with_options()
+ * @param cost new terminator cost, or NULL to leave unchanged
+ * @param precedence new terminator precedence (see #ziti_terminator_precedence_s), or
+ *                   NULL to leave unchanged
+ *
+ * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ *
+ * @see ziti_listen(), ziti_listen_with_options(), ziti_send_health_event()
+ */
+ZITI_FUNC
+extern int ziti_update_terminator(ziti_connection server, const uint16_t *cost, const uint8_t *precedence);
+
+/**
+ * @brief Reports a health-check pass/fail result for a hosted service.
+ *
+ * Unlike ziti_update_terminator(), this does not change cost or precedence on its own —
+ * it forwards a health event for the controller/observability stack. Call
+ * ziti_update_terminator() separately if the check result should also change routing.
+ *
+ * @param server a #ziti_connection previously passed to ziti_listen() or
+ *               ziti_listen_with_options()
+ * @param pass true if the health check passed, false if it failed
+ *
+ * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ *
+ * @see ziti_update_terminator()
+ */
+ZITI_FUNC
+extern int ziti_send_health_event(ziti_connection server, bool pass);
+
+/**
  * @brief Completes client connection.
  *
  * After a client connects to a hosted Ziti service this function is invoked to finish the connection
