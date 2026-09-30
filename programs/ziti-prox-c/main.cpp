@@ -44,7 +44,13 @@ public:
             ->expected(0,1)
             ->default_str("3128");
 
-        add_flag("--aes", aes_crypto, "e2ee: use AES-GCM (instead of libsodium)");
+        add_option("--e2ee", e2ee_method, "e2ee method")
+            ->transform(CLI::CheckedTransformer(std::map<std::string, ziti_crypto_method>{
+                {"none", ziti_crypto_none},
+                {"libsodium", ziti_crypto_libsodium},
+                {"tls", ziti_crypto_tls},
+            }, CLI::ignore_case))
+            ->default_str("libsodium");
         final_callback([this] {
             this->execute();
         });
@@ -52,7 +58,7 @@ public:
 
 
 private:
-    bool aes_crypto{false};
+    ziti_crypto_method e2ee_method{ziti_crypto_libsodium};
     int debug{3};
     std::string identity;
     std::vector<std::string> intercepts;
@@ -63,7 +69,7 @@ private:
 
     void execute() const {
         run_opts opts{};
-        opts.e2ee_method = aes_crypto ? ziti_crypto_aes_gcm : ziti_crypto_libsodium;
+        opts.e2ee_method = this->e2ee_method;
         opts.identity = this->identity.c_str();
         opts.debug = this->debug;
         opts.http_proxy_port = this->http_proxy_port;

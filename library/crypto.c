@@ -19,7 +19,6 @@
 
 extern e2ee_t *new_libsodium_e2ee(void);
 extern e2ee_t *new_none_e2ee(void);
-extern e2ee_t *new_aes_gcm_e2ee(void);
 extern e2ee_t *new_tls_e2ee(bool server, tls_context *tls);
 
 e2ee_t* create_e2ee(ziti_crypto_method impl, bool server, tls_context *tls) {
@@ -28,8 +27,6 @@ e2ee_t* create_e2ee(ziti_crypto_method impl, bool server, tls_context *tls) {
         return new_none_e2ee();
     case ziti_crypto_libsodium:
         return new_libsodium_e2ee();
-    case ziti_crypto_aes_gcm:
-        return new_aes_gcm_e2ee();
     case ziti_crypto_tls:
         return new_tls_e2ee(server, tls);
     default:
@@ -43,8 +40,6 @@ const char *e2ee_method_id(ziti_crypto_method mode) {
         return "none";
     case ziti_crypto_libsodium:
         return "libsodium";
-    case ziti_crypto_aes_gcm:
-        return "aes-gcm";
     case ziti_crypto_tls:
         return "tls";
     default:
@@ -58,7 +53,6 @@ ziti_crypto_method e2ee_method_from_id(const char *id) {
 
     if (strcmp(id, "none") == 0) return ziti_crypto_none;
     if (strcmp(id, "libsodium") == 0) return ziti_crypto_libsodium;
-    if (strcmp(id, "aes-gcm") == 0) return ziti_crypto_aes_gcm;
     if (strcmp(id, "tls") == 0) return ziti_crypto_tls;
     return ziti_crypto_invalid;
 }
