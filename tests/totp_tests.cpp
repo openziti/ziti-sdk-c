@@ -53,7 +53,8 @@ TEST_CASE("totp RFC 6238 vectors (SHA-1)", "[totp]") {
         {1111111111, 14050471},
         {1234567890, 89005924},
         {2000000000, 69279037},
-        {20000000000, 65353130},
+        // RFC 6238's 20000000000 vector is omitted: it overflows system_clock::time_point
+        // where the rep is int64 nanoseconds (libstdc++)
     };
 
     for (auto &v: vectors) {
