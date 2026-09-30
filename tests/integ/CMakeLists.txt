@@ -1,4 +1,4 @@
-find_package(botan REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 find_program(ZITI_CLI NAMES ziti)
 if (NOT ZITI_CLI)
@@ -43,11 +43,12 @@ add_executable(IntegrationTests
 )
 target_include_directories(IntegrationTests
         PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include
-        PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal)
+        PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(IntegrationTests
         PRIVATE ziti
         PRIVATE Catch2::Catch2WithMain
-        PRIVATE botan::botan-static
+        PRIVATE OpenSSL::Crypto
 )
 
 set_target_properties(IntegrationTests PROPERTIES
