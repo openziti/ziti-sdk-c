@@ -14,8 +14,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <botan/base32.h>
-#include <botan/otp.h>
 #include <catch2/catch_all.hpp>
 #include <tlsuv/tlsuv.h>
 #include <ziti/ziti.h>
@@ -24,6 +22,7 @@
 #include "fixtures.h"
 #include "oidc.h"
 #include "test-data.h"
+#include "totp.h"
 #include "ziti/ziti_log.h"
 
 class AuthTests: public LoopTestCase {};
@@ -126,8 +125,7 @@ TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
     CHECK(run(UNTIL(!mfa.link.empty())));
     INFO("provisioning url: " << mfa.link);
     auto secret = mfa.link.substr(mfa.link.find("secret=") + 7);
-    auto key = Botan::base32_decode(secret);
-    Botan::TOTP totp(key.data(), key.size());
+    auto key = totp::base32_decode(secret);
 
     // try invalid token first
     ziti_mfa_verify(ztx, "000000", [](ziti_context ztx, int status, void *ctx){
@@ -144,7 +142,7 @@ TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
         mfa.status = ZITI_OK;
 
         auto ts = std::chrono::system_clock::now();
-        auto code = totp.generate_totp(ts);
+        auto code = totp::generate(key, ts);
         char code_str[8];
         snprintf(code_str, sizeof(code_str), "%06u", (unsigned)code);
 

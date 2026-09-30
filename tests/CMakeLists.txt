@@ -23,9 +23,14 @@ add_executable(all_tests
         oidc_recovery_tests.cpp
         oidc_auth_retry_tests.cpp
         ctrl_endpoint_tests.cpp
-        posture_tests.cpp)
+        posture_tests.cpp
+        totp.h
+        totp_tests.cpp)
 
 set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(all_tests PRIVATE OpenSSL::Crypto)
+
 target_compile_definitions(all_tests
         PRIVATE ZITI_TEST_DIR=${CMAKE_CURRENT_SOURCE_DIR})
 target_include_directories(all_tests
