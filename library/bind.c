@@ -571,7 +571,6 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
         return;
     }
 
-
     if (msg->header.content == ContentTypeStateConnected) {
         CONN_LOG(TRACE, "received msg ct[%s] code[%d]", content_type_id(msg->header.content), code);
         CONN_LOG(DEBUG, "bound successfully on router[%s]", zch_get_name(b->ch));

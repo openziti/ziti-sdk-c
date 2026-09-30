@@ -41,7 +41,6 @@ typedef enum {
     ziti_crypto_invalid = -1,
     ziti_crypto_none = 0,
     ziti_crypto_libsodium,
-    ziti_crypto_aes_gcm,
     ziti_crypto_tls,
 } ziti_crypto_method;
 

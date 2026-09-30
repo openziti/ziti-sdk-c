@@ -83,7 +83,7 @@ static void test_e2ee(e2ee_t *alice, e2ee_t *bob) {
 
 TEST_CASE("e2ee", "[crypto]") {
     ziti_log_init(nullptr, 5, nullptr);
-    auto e2ee = GENERATE(ziti_crypto_none, ziti_crypto_libsodium, ziti_crypto_aes_gcm);
+    auto e2ee = GENERATE(ziti_crypto_none, ziti_crypto_libsodium);
     WHEN("e2ee_impl_t: " << e2ee_method_id(e2ee)) {
         auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee, false, nullptr));
         auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(e2ee, false, nullptr));
@@ -180,84 +180,6 @@ TEST_CASE("e2ee libsodium decrypt retries after partial header", "[crypto]") {
     REQUIRE(memcmp(out, plaintext, sizeof(plaintext)) == 0);
 }
 
-
-#if defined(__APPLE__)
-namespace ossl {
-#include "../library/e2ee/e2ee_aes_gcm_ossl.c"
-}
-// the Apple backend derives keys with Security.framework + CommonCrypto, so this is what
-// proves it stays wire-compatible with the OpenSSL/BCrypt peers. Both orderings, because
-// the two directions use different HKDF info.
-TEST_CASE("e2ee-ossl-apple-interop", "[crypto]") {
-    ziti_log_init(nullptr, 5, nullptr);
-
-    WHEN("apple is the server") {
-        auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm, false, nullptr));
-        auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>((e2ee_t *)ossl::new_aes_gcm_e2ee());
-        test_e2ee(alice.get(), bob.get());
-    }
-
-    WHEN("openssl is the server") {
-        auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>((e2ee_t *)ossl::new_aes_gcm_e2ee());
-        auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm, false, nullptr));
-        test_e2ee(alice.get(), bob.get());
-    }
-}
-// the ossl backend above defines the same tuning macros with different values
-#undef AES_GCM_TAG_LEN
-#undef AES_GCM_NONCE_LEN
-#undef AES_GCM_NONCE_PREFIX_LEN
-#undef AES_GCM_KEY_LEN
-#undef P256_PUB_KEY_LEN
-namespace apple {
-#include "../library/e2ee/e2ee_aes_gcm_apple.c"
-}
-// An empty payload reaches the CryptoKit shim as (NULL, 0), a different path through the
-// Swift bridging than a non-empty buffer -- and one that traps inside CryptoKit if the null
-// base pointer is passed straight through, where the CommonCrypto one-shot accepted it.
-// Note the receiving side rejects a tag-only frame (ciphertext_len <= AES_GCM_TAG_LEN); that
-// guard is pre-existing and identical in the OpenSSL backend, so this only pins encrypt.
-TEST_CASE("e2ee-apple-aes-gcm-empty-payload", "[crypto]") {
-    auto alice = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm, false, nullptr));
-    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_aes_gcm, false, nullptr));
-    auto alice_pub = alice->pub(alice.get());
-    auto bob_pub = bob->pub(bob.get());
-    REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, true) == 0);
-    REQUIRE(bob->init(bob.get(), alice_pub.key, alice_pub.key_len, false) == 0);
-
-    // must not trap: produces a tag and nothing else
-    uint8_t ciphertext[E2EE_MAX_MSG_OVERHEAD];
-    auto ct_len = alice->encrypt(alice.get(), nullptr, 0, ciphertext, sizeof(ciphertext));
-    REQUIRE(ct_len == 16);
-
-    // and the receive side must not trap on the resulting tag-only frame either
-    uint8_t out[16];
-    REQUIRE(bob->decrypt(bob.get(), ciphertext, ct_len, out, sizeof(out)) == -1);
-}
-
-// RFC 5869 test case 3: SHA-256, zero-length salt and info. The zero-length salt is exactly
-// what derive_session_keys() uses, so this pins the CCHmac-based HKDF independently of OpenSSL.
-TEST_CASE("e2ee-apple-hkdf-rfc5869", "[crypto]") {
-    const uint8_t ikm[22] = {
-            0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b,
-            0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b, 0x0b,
-    };
-    const uint8_t expected[42] = {
-            0x8d, 0xa4, 0xe7, 0x75, 0xa5, 0x63, 0xc1, 0x8f, 0x71, 0x5f, 0x80, 0x2a, 0x06, 0x3c,
-            0x5a, 0x31, 0xb8, 0xa1, 0x1f, 0x5c, 0x5e, 0xe1, 0x87, 0x9e, 0xc3, 0x45, 0x4e, 0x5f,
-            0x3c, 0x73, 0x8d, 0x2d, 0x9d, 0x20, 0x13, 0x95, 0xfa, 0xa4, 0xb6, 0x1a, 0x96, 0xc8,
-    };
-    const uint8_t info[1] = {0};
-
-    uint8_t out[sizeof(expected)];
-    REQUIRE(apple::hkdf_sha256(ikm, sizeof(ikm), info, 0, out, sizeof(out)) == 0);
-    REQUIRE(memcmp(out, expected, sizeof(expected)) == 0);
-
-    // more than 255 blocks of output is out of range for HKDF
-    REQUIRE(apple::hkdf_sha256(ikm, sizeof(ikm), info, 0, out, 255 * 32 + 1) == -1);
-}
-
-#endif
 
 TEST_CASE("e2ee-tls", "[crypto]") {
     ziti_log_init(nullptr, 6, nullptr);

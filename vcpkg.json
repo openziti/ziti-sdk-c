@@ -37,11 +37,6 @@
           "$comment": "main testing framework"
         },
         {
-          "name": "openssl",
-          "platform": "windows | mingw",
-          "$comment": "for testing e2ee compat"
-        },
-        {
           "name": "botan",
           "$comment": "needed for TOTP testing"
         }

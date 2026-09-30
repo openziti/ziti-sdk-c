@@ -119,7 +119,6 @@ enum connection_type {
 
 enum crypto_method {
     CryptoMethodLibsodium = 0,
-    CryptoMethodAES256GCM = 1,
 };
 
 enum edge_flag {
