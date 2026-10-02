@@ -927,6 +927,46 @@ TEST_CASE("host.v1 health check change detection", "[model]") {
     free_ziti_host_cfg_v1(&c2);
 }
 
+TEST_CASE("host.v1 listen options", "[model]") {
+    const char *json = R"({
+        "protocol": "tcp",
+        "address": "127.0.0.1",
+        "port": 8080,
+        "listenOptions": {
+            "identity": "$tunneler_id.name",
+            "listenIdentityType": "dns"
+        }
+    })";
+
+    ziti_host_cfg_v1 cfg;
+    REQUIRE(parse_ziti_host_cfg_v1(&cfg, json, strlen(json)) > 0);
+    REQUIRE(cfg.listen_options != nullptr);
+    CHECK_THAT(cfg.listen_options->identity, Equals("$tunneler_id.name"));
+    CHECK(cfg.listen_options->listen_identity_type == ziti_listen_identity_type_dns);
+    CHECK_FALSE(cfg.listen_options->bind_with_identity);
+
+    free_ziti_host_cfg_v1(&cfg);
+}
+
+TEST_CASE("host.v1 listen options with unknown listenIdentityType", "[model]") {
+    const char *json = R"({
+        "protocol": "tcp",
+        "address": "127.0.0.1",
+        "port": 8080,
+        "listenOptions": {
+            "identity": "$tunneler_id.name",
+            "listenIdentityType": "some-future-type"
+        }
+    })";
+
+    ziti_host_cfg_v1 cfg;
+    REQUIRE(parse_ziti_host_cfg_v1(&cfg, json, strlen(json)) > 0);
+    REQUIRE(cfg.listen_options != nullptr);
+    CHECK(cfg.listen_options->listen_identity_type == ziti_listen_identity_type_Unknown);
+
+    free_ziti_host_cfg_v1(&cfg);
+}
+
 TEST_CASE("load cfg", "[model]") {
     auto good_json = R"({
   "ztAPI": "https://calculon.local:1280",

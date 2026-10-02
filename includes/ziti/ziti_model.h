@@ -230,12 +230,16 @@ XX(is_verified, model_bool, none, isVerified, __VA_ARGS__) \
 XX(recovery_codes, model_string, array, recoveryCodes, __VA_ARGS__) \
 XX(provisioning_url, model_string, none, provisioningUrl, __VA_ARGS__)
 
+#define ZITI_LISTEN_IDENTITY_TYPE_ENUM(XX, ...) \
+XX(dns, __VA_ARGS__)
+
 #define ZITI_LISTEN_OPTS_MODEL(XX, ...) \
 XX(bind_with_identity, model_bool, none, bindUsingEdgeIdentity, __VA_ARGS__) \
 XX(connect_timeout, duration, none, connectTimeout, __VA_ARGS__)       \
 XX(connect_timeout_seconds, model_number, none, connectTimeoutSeconds, __VA_ARGS__) \
 XX(cost, model_number, none, cost, __VA_ARGS__) \
 XX(identity, model_string, none, identity, __VA_ARGS__) \
+XX(listen_identity_type, ziti_listen_identity_type, none, listenIdentityType, __VA_ARGS__) \
 XX(max_connections, model_number, none, maxConnections, __VA_ARGS__)\
 XX(precedence, model_string, none, precedence, __VA_ARGS__)
 
@@ -331,6 +335,8 @@ DECLARE_MODEL(ziti_client_cfg_v1, ZITI_CLIENT_CFG_V1_MODEL)
 DECLARE_MODEL(ziti_port_range, ZITI_PORT_RANGE_MODEL)
 
 DECLARE_MODEL(ziti_intercept_cfg_v1, ZITI_INTERCEPT_CFG_V1_MODEL)
+
+DECLARE_ENUM(ziti_listen_identity_type, ZITI_LISTEN_IDENTITY_TYPE_ENUM)
 
 DECLARE_MODEL(ziti_listen_options, ZITI_LISTEN_OPTS_MODEL)
 
