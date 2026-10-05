@@ -89,6 +89,10 @@ private:
 };
 
 int main(int argc, char *argv[]) {
+    // stderr is fully buffered and flushed once per loop iteration (see run_proxy). Unbuffered,
+    // msvcrt writes one character per WriteFile, which costs ~3 ms each on a write-through handle
+    // on an Azure disk; left to msvcrt's own buffering, a killed process loses its logs.
+    setvbuf(stderr, nullptr, _IOFBF, 64 * 1024);
     const char *name = basename(argv[0]);
     CLI::App app{name};
     ziti_set_app_info(name, ziti_get_version()->revision);

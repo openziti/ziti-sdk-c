@@ -887,6 +887,11 @@ static void set_proxy(const char *proxy_url) {
     tlsuv_set_global_connector(proxy);
 }
 
+static void flush_logs(uv_prepare_t *p) {
+    (void) p;
+    fflush(stderr);
+}
+
 int run_proxy(struct run_opts *opts) {
     int rc;
     PREPF(uv, uv_strerror);
@@ -894,6 +899,12 @@ int run_proxy(struct run_opts *opts) {
     NEWP(loop, uv_loop_t);
     uv_loop_init(loop);
     app_ctx.loop = loop;
+
+    // runs just before the loop blocks, so everything logged is on disk while the process waits
+    static uv_prepare_t log_flusher;
+    uv_prepare_init(loop, &log_flusher);
+    uv_prepare_start(&log_flusher, flush_logs);
+    uv_unref((uv_handle_t *) &log_flusher);
 
     ziti_log_init(loop, opts->debug, NULL);
 
@@ -937,8 +948,15 @@ int run_proxy(struct run_opts *opts) {
 
     ziti_config cfg;
 
-    ziti_load_config(&cfg, opts->identity);
-    ziti_context_init(&app_ctx.ziti, &cfg);
+    if ((rc = ziti_load_config(&cfg, opts->identity)) != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to load identity[%s]: %s", opts->identity, ziti_errorstr(rc));
+        return rc;
+    }
+    if ((rc = ziti_context_init(&app_ctx.ziti, &cfg)) != ZITI_OK) {
+        ZITI_LOG(ERROR, "failed to initialize ziti context: %s", ziti_errorstr(rc));
+        free_ziti_config(&cfg);
+        return rc;
+    }
     free_ziti_config(&cfg);
 
     if (opts->identity) {
