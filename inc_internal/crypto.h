@@ -55,9 +55,9 @@ typedef struct e2ee {
     ssize_t (*get_header)(struct e2ee *e2ee, uint8_t header[E2EE_MAX_HEADER_LEN]);
     ssize_t (*encrypt)(struct e2ee *e2ee, const uint8_t *plaintext, size_t plaintext_len, uint8_t *ciphertext, size_t ciphertext_len);
     ssize_t (*decrypt)(struct e2ee *e2ee, const uint8_t *ciphertext, size_t ciphertext_len, uint8_t *plaintext, size_t plaintext_len);
-    // optional: handshake output a decrypt produced, which the peer needs next, e.g. the host's final
-    // TLS 1.2 flight or a TLS 1.3 post-handshake reply. NULL means decrypt never produces any
-    ssize_t (*handshake_output)(struct e2ee *e2ee, uint8_t out[E2EE_MAX_HEADER_LEN]);
+    // optional: false while the session cannot encrypt yet, e.g. a TLS 1.2 client waiting for the
+    // server's Finished. NULL means always ready
+    bool (*ready)(struct e2ee *e2ee);
     void (*free)(struct e2ee *e2ee);
 } e2ee_t;
 
@@ -67,6 +67,12 @@ extern "C" {
 #endif
 
 e2ee_t *create_e2ee(ziti_crypto_method, bool server, tls_context *tls);
+
+// Checks a tls e2ee server's first flight and logs what it negotiated. With fips set, only these pass:
+//   TLS 1.3: TLS_AES_128/256_GCM, a P-256/P-384/P-521 key share
+//   TLS 1.2: ECDHE-ECDSA/RSA with AES-128/256-GCM, extended master secret, a P-256/P-384/P-521 curve
+// anything else fails (-1). Without fips only the log line is produced.
+int tls_e2ee_check_server_flight(bool fips, const uint8_t *flight, size_t len);
 
 const char *e2ee_method_id(ziti_crypto_method mode);
 
