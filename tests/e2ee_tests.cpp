@@ -18,6 +18,7 @@
 
 #include "crypto.h"
 #include "ziti/ziti_log.h"
+#include "tls_wire.h"
 
 #include <sodium/randombytes.h>
 
@@ -181,7 +182,11 @@ TEST_CASE("e2ee libsodium decrypt retries after partial header", "[crypto]") {
 }
 
 
-TEST_CASE("e2ee-tls", "[crypto]") {
+// in-memory TLS e2ee handshake plus data exchange between a server and a client engine.
+// optionally hands back the server's first flight (its ServerHello), the TLS library's version string, and the
+// header the server produces after decrypting the client's second flight
+static void e2ee_tls_exchange(std::vector<uint8_t> *server_hello = nullptr, std::string *lib_version = nullptr,
+                              std::vector<uint8_t> *server_final = nullptr) {
     ziti_log_init(nullptr, 6, nullptr);
     auto ca = R"(-----BEGIN CERTIFICATE-----
 MIIF2TCCA8GgAwIBAgIQAdOZLbzMYKkdruxAB4eOEzANBgkqhkiG9w0BAQsFADBa
@@ -385,7 +390,7 @@ jrEaRTDiko6e0ifkFw==
     REQUIRE(tls->load_cert(&srv_cred.cert, cert, strlen(cert)) == 0);
     REQUIRE(tls->load_key(&srv_cred.key, key, strlen(key)) == 0);
 
-    tls->set_own_cert(tls, srv_cred.key, srv_cred.cert);
+    REQUIRE(tls->set_own_cert(tls, srv_cred.key, srv_cred.cert) == 0);
 
     auto srv = create_e2ee(ziti_crypto_tls, true, tls);
     auto clt = create_e2ee(ziti_crypto_tls, false, tls);
@@ -400,6 +405,12 @@ jrEaRTDiko6e0ifkFw==
     uint8_t clt_header[E2EE_MAX_HEADER_LEN];
     REQUIRE(srv->init(srv, clt_hello.key, clt_hello.key_len, true) == 0);
     auto srv_hello = srv->pub(srv);
+    if (server_hello) {
+        server_hello->assign(srv_hello.key, srv_hello.key + srv_hello.key_len);
+    }
+    if (lib_version) {
+        *lib_version = tls->version();
+    }
 
     REQUIRE(clt->init(clt, srv_hello.key, srv_hello.key_len, false) == 0);
 
@@ -411,6 +422,10 @@ jrEaRTDiko6e0ifkFw==
     REQUIRE(l == 0);
 
     auto srv_hdr_len = srv->get_header(srv, srv_header);
+    REQUIRE(srv_hdr_len >= 0);
+    if (server_final) {
+        server_final->assign(srv_header, srv_header + srv_hdr_len);
+    }
     l = clt->decrypt(clt, srv_header, srv_hdr_len, plaintext, sizeof(plaintext));
     REQUIRE(l == 0);
 
@@ -439,4 +454,254 @@ jrEaRTDiko6e0ifkFw==
     l = srv->decrypt(srv, big_ct.data(), l, big_pt.data(), big_pt.size());
     REQUIRE(l == (ssize_t)big.size());
     CHECK(memcmp(big.data(), big_pt.data(), big.size()) == 0);
+}
+
+TEST_CASE("e2ee-tls", "[crypto]") {
+    e2ee_tls_exchange();
+}
+
+TEST_CASE("e2ee-tls server without own cert", "[crypto]") {
+    // what a ziti context has when set_own_cert failed: the server engine cannot be created
+    auto tls = default_tls_context();
+    auto tls_guard = std::unique_ptr<tls_context, tls_ctx_deleter>(tls);
+
+    CHECK(create_e2ee(ziti_crypto_tls, true, tls) == nullptr);
+}
+
+// TLS 1.2 ends with the server's ChangeCipherSpec and Finished, which it produces only while decrypting the
+// client's second flight. The host must hand them back from get_header() after that decrypt, or the client never
+// completes. Neither backend exposes a version cap, so the cap comes from outside the process:
+//   OpenSSL:  OPENSSL_CONF=<config with "Protocol = -TLSv1.3" in its system_default section>
+//   Schannel: SCHANNEL\Protocols\TLS 1.3\{Client,Server} Enabled=0 in the registry (machine-wide; test VMs only)
+// The test fails if TLS 1.2 is not what the handshake negotiated, so a missing cap cannot pass silently.
+TEST_CASE("e2ee-tls TLS 1.2 host sends its final flight after decrypt", "[crypto]") {
+    const char *want = getenv("ZITI_TEST_TLS12");
+    if (want == nullptr || strcmp(want, "1") != 0) {
+        SKIP("set ZITI_TEST_TLS12=1 and cap the TLS backend at 1.2 (see comment) to run");
+    }
+
+    std::vector<uint8_t> server_hello;
+    std::vector<uint8_t> server_final;
+    e2ee_tls_exchange(&server_hello, nullptr, &server_final);
+
+    tls_wire::server_hello_info info;
+    REQUIRE(tls_wire::parse_server_hello(server_hello, info));
+    CHECK(info.version == 0x0303);
+
+    // a ChangeCipherSpec record (type 20) followed by the encrypted Finished (handshake record, type 22).
+    // OpenSSL puts a NewSessionTicket handshake record ahead of them
+    std::vector<uint8_t> types;
+    for (size_t p = 0; p + 5 <= server_final.size(); p += 5 + ((server_final[p + 3] << 8) | server_final[p + 4])) {
+        types.push_back(server_final[p]);
+    }
+    auto ccs = std::ranges::find(types, 0x14);
+    REQUIRE(ccs != types.end());
+    CHECK(std::find(ccs, types.end(), 0x16) != types.end());
+}
+
+#if !defined(__APPLE__) && __has_include(<openssl/provider.h>)
+#include <openssl/evp.h>
+#include <openssl/core_names.h>
+#include <openssl/provider.h>
+
+namespace {
+using namespace tls_wire;
+
+int print_provider(OSSL_PROVIDER *prov, void *) {
+    const char *name = nullptr, *version = nullptr, *build = nullptr;
+    OSSL_PARAM params[] = {
+            OSSL_PARAM_construct_utf8_ptr(OSSL_PROV_PARAM_NAME, (char **)&name, 0),
+            OSSL_PARAM_construct_utf8_ptr(OSSL_PROV_PARAM_VERSION, (char **)&version, 0),
+            OSSL_PARAM_construct_utf8_ptr(OSSL_PROV_PARAM_BUILDINFO, (char **)&build, 0),
+            OSSL_PARAM_construct_end(),
+    };
+    OSSL_PROVIDER_get_params(prov, params);
+    printf("[fips] provider %s: %s, version %s, build %s\n", OSSL_PROVIDER_get0_name(prov),
+           name ? name : "?", version ? version : "?", build ? build : "?");
+    return 1;
+}
+}
+
+// run with OPENSSL_CONF pointing at a config that activates only the fips and base providers, e.g.
+//   OPENSSL_CONF=~/fips/openssl.cnf OPENSSL_MODULES=~/fips/lib/ossl-modules ZITI_TEST_FIPS=1 all_tests "e2ee-tls*"
+// see scripts/fips-linux
+TEST_CASE("e2ee-tls-fips", "[crypto][fips]") {
+    const char *want = getenv("ZITI_TEST_FIPS");
+    if (want == nullptr || strcmp(want, "1") != 0) {
+        SKIP("set ZITI_TEST_FIPS=1 (and OPENSSL_CONF to a FIPS-only config) to run");
+    }
+
+    printf("[fips] libcrypto: %s\n", OpenSSL_version(OPENSSL_VERSION));
+    printf("[fips] OPENSSL_CONF=%s\n", getenv("OPENSSL_CONF") ? getenv("OPENSSL_CONF") : "(unset)");
+    printf("[fips] OPENSSL_MODULES=%s\n", getenv("OPENSSL_MODULES") ? getenv("OPENSSL_MODULES") : "(unset)");
+    OSSL_PROVIDER_do_all(nullptr, print_provider, nullptr);
+
+    // tlsuv's openssl engine builds its SSL_CTX on its own OSSL_LIB_CTX only after tlsuv_set_config_path();
+    // otherwise on the default (NULL) context, which OPENSSL_CONF configures. these checks are on that context,
+    // and the handshake below re-checks it through tlsuv's own version string
+    CHECK(EVP_default_properties_is_fips_enabled(nullptr) == 1);
+    CHECK(OSSL_PROVIDER_available(nullptr, "fips") == 1);
+    CHECK(OSSL_PROVIDER_available(nullptr, "default") == 0);
+
+    EVP_MD *md5 = EVP_MD_fetch(nullptr, "MD5", nullptr);
+    CHECK(md5 == nullptr);
+    EVP_MD_free(md5);
+
+    EVP_CIPHER *chacha = EVP_CIPHER_fetch(nullptr, "ChaCha20-Poly1305", nullptr);
+    CHECK(chacha == nullptr);
+    EVP_CIPHER_free(chacha);
+
+    EVP_CIPHER *aes = EVP_CIPHER_fetch(nullptr, "AES-256-GCM", nullptr);
+    REQUIRE(aes != nullptr);
+    CHECK(std::string(OSSL_PROVIDER_get0_name(EVP_CIPHER_get0_provider(aes))) == "fips");
+    EVP_CIPHER_free(aes);
+
+    std::vector<uint8_t> server_hello;
+    std::string lib_version;
+    e2ee_tls_exchange(&server_hello, &lib_version);
+
+    printf("[fips] tlsuv tls lib: %s\n", lib_version.c_str());
+    CHECK(lib_version.find("[FIPS]") != std::string::npos);
+
+    server_hello_info info;
+    REQUIRE(parse_server_hello(server_hello, info));
+    printf("[fips] negotiated %s (0x%04x), cipher %s (0x%04x), key share %s (0x%04x)\n",
+           tls_version_name(info.version), info.version,
+           cipher_suite_name(info.cipher_suite), info.cipher_suite,
+           group_name(info.key_share_group), info.key_share_group);
+    CHECK(info.cipher_suite != 0x1303);
+    CHECK(info.cipher_suite != 0xCCA8);
+
+    // the 3.1.2 fips provider serves X25519/X448 itself, so fips=yes alone lets TLS 1.3 pick X25519. only a
+    // config that also restricts the TLS groups (scripts/fips-linux openssl-nist-groups.cnf) keeps them out
+    const char *nist = getenv("ZITI_TEST_FIPS_NIST_GROUPS");
+    if (nist != nullptr && strcmp(nist, "1") == 0) {
+        CHECK(info.key_share_group != 0x001d);
+        CHECK(info.key_share_group != 0x001e);
+    }
+}
+#endif
+
+namespace {
+// a TLS 1.3-style ServerHello record carrying `version` in supported_versions, `suite`, and a
+// key_share for `group`; enough for the parameter check, not a handshake
+std::vector<uint8_t> server_hello(uint16_t version, uint16_t suite, uint16_t group) {
+    std::vector<uint8_t> ext = {
+            0x00, 0x2b, 0x00, 0x02, (uint8_t)(version >> 8), (uint8_t) version,
+            0x00, 0x33, 0x00, 0x06, (uint8_t)(group >> 8), (uint8_t) group, 0x00, 0x02, 0xaa, 0xbb,
+    };
+    std::vector<uint8_t> body = {0x03, 0x03};         // legacy_version
+    body.insert(body.end(), 32, 0x11);                // random
+    body.push_back(0);                                // session id length
+    body.push_back((uint8_t)(suite >> 8));
+    body.push_back((uint8_t) suite);
+    body.push_back(0);                                // compression
+    body.push_back((uint8_t)(ext.size() >> 8));
+    body.push_back((uint8_t) ext.size());
+    body.insert(body.end(), ext.begin(), ext.end());
+
+    std::vector<uint8_t> rec = {0x16, 0x03, 0x03, (uint8_t)((body.size() + 4) >> 8), (uint8_t)(body.size() + 4),
+                                0x02, 0x00, (uint8_t)(body.size() >> 8), (uint8_t) body.size()};
+    rec.insert(rec.end(), body.begin(), body.end());
+    return rec;
+}
+
+void append_handshake(std::vector<uint8_t> &hs, uint8_t type, const std::vector<uint8_t> &body) {
+    hs.insert(hs.end(), {type, 0x00, (uint8_t)(body.size() >> 8), (uint8_t) body.size()});
+    hs.insert(hs.end(), body.begin(), body.end());
+}
+
+// a TLS 1.2 server flight: a ServerHello with `suite` (and the extended_master_secret extension if `ems`),
+// a ServerKeyExchange naming `curve`, and a ServerHelloDone, cut into handshake records of at most
+// `record_size` bytes, so a message can span records the way a real flight's Certificate does
+std::vector<uint8_t> tls12_flight(uint16_t suite, uint16_t curve, bool ems, size_t record_size = 16384) {
+    std::vector<uint8_t> hello = {0x03, 0x03};        // version
+    hello.insert(hello.end(), 32, 0x11);              // random
+    hello.push_back(0);                               // session id length
+    hello.insert(hello.end(), {(uint8_t)(suite >> 8), (uint8_t) suite, 0x00});
+    std::vector<uint8_t> ext = {0xff, 0x01, 0x00, 0x01, 0x00};  // renegotiation_info
+    if (ems) {
+        ext.insert(ext.end(), {0x00, 0x17, 0x00, 0x00});
+    }
+    hello.insert(hello.end(), {(uint8_t)(ext.size() >> 8), (uint8_t) ext.size()});
+    hello.insert(hello.end(), ext.begin(), ext.end());
+
+    // named_curve, the curve, a 65-byte point, then a signature the check does not read
+    std::vector<uint8_t> ske = {0x03, (uint8_t)(curve >> 8), (uint8_t) curve, 65, 0x04};
+    ske.insert(ske.end(), 64, 0x22);
+    ske.insert(ske.end(), {0x04, 0x03, 0x00, 0x04, 0x33, 0x33, 0x33, 0x33});
+
+    std::vector<uint8_t> hs;
+    append_handshake(hs, 2, hello);
+    append_handshake(hs, 12, ske);
+    append_handshake(hs, 14, {});
+
+    std::vector<uint8_t> flight;
+    for (size_t p = 0; p < hs.size(); p += record_size) {
+        size_t n = std::min(record_size, hs.size() - p);
+        flight.insert(flight.end(), {0x16, 0x03, 0x03, (uint8_t)(n >> 8), (uint8_t) n});
+        flight.insert(flight.end(), hs.begin() + (long) p, hs.begin() + (long)(p + n));
+    }
+    return flight;
+}
+}
+
+TEST_CASE("tls e2ee accepts only FIPS-approved parameters in FIPS mode", "[crypto][fips]") {
+    auto check = [](bool fips, const std::vector<uint8_t> &hello) {
+        return tls_e2ee_check_server_flight(fips, hello.data(), hello.size());
+    };
+
+    SECTION("approved: TLS 1.3, AES-GCM, NIST curves") {
+        CHECK(check(true, server_hello(0x0304, 0x1301, 0x0017)) == 0);
+        CHECK(check(true, server_hello(0x0304, 0x1302, 0x0018)) == 0);
+        CHECK(check(true, server_hello(0x0304, 0x1302, 0x0019)) == 0);
+    }
+    SECTION("X25519 and X448 are refused") {
+        CHECK(check(true, server_hello(0x0304, 0x1302, 0x001d)) == -1);
+        CHECK(check(true, server_hello(0x0304, 0x1302, 0x001e)) == -1);
+    }
+    SECTION("ChaCha20-Poly1305 is refused") {
+        CHECK(check(true, server_hello(0x0304, 0x1303, 0x0017)) == -1);
+    }
+    SECTION("approved: TLS 1.2, ECDHE AES-GCM, extended master secret, NIST curves") {
+        CHECK(check(true, tls12_flight(0xc02b, 0x0017, true)) == 0);
+        CHECK(check(true, tls12_flight(0xc02c, 0x0018, true)) == 0);
+        CHECK(check(true, tls12_flight(0xc02f, 0x0017, true)) == 0);
+        CHECK(check(true, tls12_flight(0xc030, 0x0019, true)) == 0);
+    }
+    SECTION("TLS 1.2 messages split across records are reassembled") {
+        CHECK(check(true, tls12_flight(0xc02b, 0x0017, true, 7)) == 0);
+        CHECK(check(true, tls12_flight(0xc02b, 0x001d, true, 7)) == -1);
+    }
+    SECTION("TLS 1.2 without the extended master secret is refused") {
+        CHECK(check(true, tls12_flight(0xc02f, 0x0017, false)) == -1);
+    }
+    SECTION("TLS 1.2 with X25519, CBC, ChaCha20 or DHE is refused") {
+        CHECK(check(true, tls12_flight(0xc02f, 0x001d, true)) == -1);
+        CHECK(check(true, tls12_flight(0xc027, 0x0017, true)) == -1);
+        CHECK(check(true, tls12_flight(0xcca8, 0x0017, true)) == -1);
+        CHECK(check(true, tls12_flight(0x009e, 0x0017, true)) == -1);
+    }
+    SECTION("TLS 1.2 without a ServerKeyExchange is refused") {
+        // the ServerHello alone names no curve
+        auto flight = tls12_flight(0xc02f, 0x0017, true);
+        size_t hello_len = 4 + ((flight[7] << 8) | flight[8]);
+        flight.resize(5 + hello_len);
+        flight[3] = (uint8_t)(hello_len >> 8);
+        flight[4] = (uint8_t) hello_len;
+        CHECK(check(true, flight) == -1);
+    }
+    SECTION("TLS 1.1 and older are refused") {
+        CHECK(check(true, server_hello(0x0302, 0xc013, 0x0017)) == -1);
+    }
+    SECTION("a flight that is not a ServerHello is refused") {
+        std::vector<uint8_t> junk(64, 0x42);
+        CHECK(check(true, junk) == -1);
+        CHECK(check(true, {}) == -1);
+    }
+    SECTION("outside FIPS mode the same parameters only get logged") {
+        CHECK(check(false, server_hello(0x0304, 0x1303, 0x001d)) == 0);
+        CHECK(check(false, server_hello(0x0303, 0xc02f, 0x0017)) == 0);
+        CHECK(check(false, tls12_flight(0xc02f, 0x001d, false)) == 0);
+    }
 }
