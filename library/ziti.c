@@ -69,6 +69,8 @@ static void grim_reaper(ziti_context ztx);
 
 static void ztx_work_async(ziti_context ztx);
 
+static void ztx_process_deadlines(uv_timer_t *t);
+
 static void ziti_stop_internal(ziti_context ztx, void *data);
 
 static void ziti_start_internal(ziti_context ztx, void *init_req);
@@ -557,6 +559,9 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         if (ztx->closing) {
             shutdown_and_free(ztx);
         }
+    } else if (ztx->closing && !uv_is_closing((uv_handle_t *) &ztx->prepper)) {
+        // already disabled, for example by a TLS init failure
+        shutdown_and_free(ztx);
     }
 }
 
@@ -877,6 +882,12 @@ int ziti_shutdown(ziti_context ztx) {
     ZTX_LOG(INFO, "Ziti is shutting down");
     ztx->closing = true;
 
+    // a disabled context has stopped the prepper that runs queued work. the 0 timer wakes the loop
+    // when nothing else would
+    if (ztx->loop) {
+        uv_prepare_start(&ztx->prepper, ztx_prepare);
+        uv_timer_start(&ztx->deadline_timer, ztx_process_deadlines, 0, 0);
+    }
     ziti_queue_work(ztx, ziti_stop_internal, NULL);
 
     return ZITI_OK;
@@ -2066,8 +2077,14 @@ void ztx_prepare(uv_prepare_t *prep) {
     ztx_work_async(ztx);
 
     if (!ztx->enabled || ztx->closing) {
-        uv_timer_stop(&ztx->deadline_timer);
-        uv_prepare_stop(&ztx->prepper);
+        if (STAILQ_EMPTY(&ztx->w_queue)) {
+            uv_timer_stop(&ztx->deadline_timer);
+            uv_prepare_stop(&ztx->prepper);
+        } else {
+            // work queued by this pass, such as a ziti_shutdown from an event callback: a 0 timer
+            // keeps the loop from blocking in poll before the next prepare runs it
+            uv_timer_start(&ztx->deadline_timer, ztx_process_deadlines, 0, 0);
+        }
     }
 }
 
