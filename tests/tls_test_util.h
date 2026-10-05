@@ -165,6 +165,12 @@ struct key_store_unreachable {
         BYTE user_buf[256];
         DWORD user_len = 0;
         REQUIRE(GetTokenInformation(self, TokenUser, user_buf, sizeof(user_buf), &user_len));
+        // SYSTEM's key store stays reachable through a token that denies the SYSTEM SID
+        if (IsWellKnownSid(reinterpret_cast<TOKEN_USER *>(user_buf)->User.Sid, WinLocalSystemSid)) {
+            CloseHandle(self);
+            self = nullptr;
+            SKIP("the user key store cannot be denied to SYSTEM");
+        }
         SID_AND_ATTRIBUTES deny = {reinterpret_cast<TOKEN_USER *>(user_buf)->User.Sid, 0};
         REQUIRE(CreateRestrictedToken(self, 0, 1, &deny, 0, nullptr, 0, nullptr, &restricted));
         REQUIRE(DuplicateToken(restricted, SecurityImpersonation, &imp));
