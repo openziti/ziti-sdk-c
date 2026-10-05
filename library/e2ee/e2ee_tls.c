@@ -17,6 +17,8 @@ struct e2ee_tls {
     bool failed;
     // the server has seen the dialer's certificate
     bool peer_checked;
+    // the server sent a HelloRetryRequest: its next ServerHello is checked
+    bool hello_retry;
 
     // framing of the peer's records once the handshake is done: a partial record header,
     // and the bytes of the current record still to come
@@ -91,162 +93,32 @@ static e2ee_pub_t e2ee_tls_pub(e2ee_t * e2ee) {
 
     return (e2ee_pub_t){ .key = NULL, .key_len = 0 };
 }
+
+#define REC_HANDSHAKE 0x16
+#define REC_HEADER_LEN 5
+
 static uint16_t rd16(const uint8_t *p) {
     return (uint16_t) ((p[0] << 8) | p[1]);
 }
 
-#define TLS_1_2 0x0303
-#define TLS_1_3 0x0304
-#define GROUP_SECP256R1 0x0017
-#define GROUP_SECP521R1 0x0019
-
-#define REC_HANDSHAKE 0x16
-#define HS_SERVER_HELLO 2
-#define HS_SERVER_KEY_EXCHANGE 12
-#define EXT_EXTENDED_MASTER_SECRET 0x0017
-#define EXT_SUPPORTED_VERSIONS 0x002b
-#define EXT_KEY_SHARE 0x0033
-#define CURVE_TYPE_NAMED 3
-
-struct server_flight {
-    uint16_t version;
-    uint16_t suite;
-    uint16_t group;
-    bool ems;
-};
-
-// Joins the payloads of the handshake records at the start of a flight, since a handshake message
-// can span records. Stops at the first other record: TLS 1.3 encrypts everything after the ServerHello.
-static uint8_t *flight_handshake_bytes(const uint8_t *b, size_t len, size_t *hs_len) {
-    uint8_t *hs = malloc(len > 0 ? len : 1);
-    size_t n = 0;
-    size_t p = 0;
-    while (hs != NULL && p + 5 <= len && b[p] == REC_HANDSHAKE) {
-        size_t rec_len = rd16(b + p + 3);
-        if (p + 5 + rec_len > len) {
-            break;
-        }
-        memcpy(hs + n, b + p + 5, rec_len);
-        n += rec_len;
-        p += 5 + rec_len;
-    }
-    *hs_len = n;
-    return hs;
-}
-
-static bool parse_server_hello(const uint8_t *m, size_t len, struct server_flight *f) {
-    // legacy_version(2) + random(32) + session id length(1)
-    if (len < 35) {
-        return false;
-    }
-    f->version = rd16(m);
-    size_t p = 2 + 32;
-    p += 1 + m[p];
-    // cipher suite(2) + compression(1)
-    if (p + 3 > len) {
-        return false;
-    }
-    f->suite = rd16(m + p);
-    p += 3;
-    if (p + 2 > len) {
-        return true;
-    }
-    size_t ext_end = p + 2 + rd16(m + p);
-    if (ext_end > len) {
-        return false;
-    }
-    p += 2;
-    while (p + 4 <= ext_end) {
-        uint16_t type = rd16(m + p);
-        uint16_t ext_len = rd16(m + p + 2);
-        p += 4;
-        if (p + ext_len > ext_end) {
-            return false;
-        }
-        if (type == EXT_SUPPORTED_VERSIONS && ext_len == 2) f->version = rd16(m + p);
-        if (type == EXT_KEY_SHARE && ext_len >= 2) f->group = rd16(m + p);
-        if (type == EXT_EXTENDED_MASTER_SECRET) f->ems = true;
-        p += ext_len;
-    }
-    return true;
-}
-
-static bool fips_tls12_suite(uint16_t suite) {
-    switch (suite) {
-        case 0xc02b: // ECDHE-ECDSA-AES128-GCM-SHA256
-        case 0xc02c: // ECDHE-ECDSA-AES256-GCM-SHA384
-        case 0xc02f: // ECDHE-RSA-AES128-GCM-SHA256
-        case 0xc030: // ECDHE-RSA-AES256-GCM-SHA384
-            return true;
-        default:
-            return false;
-    }
-}
-
-// Reads the negotiated version, cipher suite and key exchange group from a server's first flight: the
-// ServerHello, and for TLS 1.2 the curve in the ServerKeyExchange. The engines differ in what they report,
-// so the wire is the one source both backends share. Neither backend restricts these on its own in FIPS
-// mode: the OpenSSL FIPS provider serves X25519, and Schannel's group order starts with it. So with the
-// backend in FIPS mode only the choices SP 800-52r2 approves pass: an AES-GCM suite, a NIST curve, and
-// for TLS 1.2 ECDHE with the extended master secret.
-int tls_e2ee_check_server_flight(bool fips, const uint8_t *b, size_t len) {
-    size_t hs_len = 0;
-    uint8_t *hs = flight_handshake_bytes(b, len, &hs_len);
-    struct server_flight f = {0};
-    bool hello = false;
-    size_t p = 0;
-    while (hs != NULL && p + 4 <= hs_len) {
-        uint8_t type = hs[p];
-        size_t msg_len = ((size_t)hs[p + 1] << 16) | ((size_t)hs[p + 2] << 8) | hs[p + 3];
-        if (p + 4 + msg_len > hs_len) {
-            break;
-        }
-        const uint8_t *m = hs + p + 4;
-        if (p == 0) {
-            hello = type == HS_SERVER_HELLO && parse_server_hello(m, msg_len, &f);
-            if (!hello) {
-                break;
-            }
-        } else if (type == HS_SERVER_KEY_EXCHANGE && msg_len >= 3 && m[0] == CURVE_TYPE_NAMED) {
-            f.group = rd16(m + 1);
-        }
-        p += 4 + msg_len;
-    }
-    free(hs);
-
-    if (!hello) {
-        ZITI_LOG(fips ? ERROR : DEBUG, "tls e2ee: server flight does not start with a ServerHello");
-        return fips ? -1 : 0;
-    }
-
-    ZITI_LOG(INFO, "tls e2ee negotiated version[0x%04x] suite[0x%04x] group[0x%04x]%s%s",
-             f.version, f.suite, f.group, f.version == TLS_1_2 ? (f.ems ? " ems" : " no-ems") : "",
-             fips ? " (FIPS mode)" : "");
-    if (!fips) {
-        return 0;
-    }
-    if (f.version == TLS_1_3) {
-        if (f.suite != 0x1301 && f.suite != 0x1302) {
-            ZITI_LOG(ERROR, "tls e2ee: FIPS mode requires an AES-GCM suite, negotiated[0x%04x]", f.suite);
-            return -1;
-        }
-    } else if (f.version == TLS_1_2) {
-        if (!fips_tls12_suite(f.suite)) {
-            ZITI_LOG(ERROR, "tls e2ee: FIPS mode requires an ECDHE AES-GCM suite, negotiated[0x%04x]", f.suite);
-            return -1;
-        }
-        if (!f.ems) {
-            ZITI_LOG(ERROR, "tls e2ee: FIPS mode requires the extended master secret with TLS 1.2");
-            return -1;
-        }
-    } else {
-        ZITI_LOG(ERROR, "tls e2ee: FIPS mode requires TLS 1.2 or 1.3, negotiated[0x%04x]", f.version);
+static int buffer_input(struct e2ee_tls *e, const uint8_t *b, size_t len) {
+    if (!ensure_capacity(&e->in_buffer, &e->in_p, &e->in_buffer_len, len)) {
+        ee_log(ERROR, "failed to buffer %zd bytes of input: out of memory", len);
         return -1;
     }
-    if (f.group < GROUP_SECP256R1 || f.group > GROUP_SECP521R1) {
-        ZITI_LOG(ERROR, "tls e2ee: FIPS mode requires a NIST-curve group, negotiated[0x%04x]", f.group);
+    memcpy(e->in_p, b, len);
+    e->in_p += len;
+    return 0;
+}
+
+// a flight that starts with a HelloRetryRequest leaves the check to the ServerHello that follows
+static int check_flight(struct e2ee_tls *e, const uint8_t *b, size_t len) {
+    int rc = tls_e2ee_check_server_flight(e->fips, b, len);
+    if (rc < 0) {
+        e->failed = true;
         return -1;
     }
+    e->hello_retry = rc == 1;
     return 0;
 }
 
@@ -302,22 +174,19 @@ static int e2ee_tls_init(e2ee_t *e2ee, const uint8_t * hello, size_t hello_len, 
     struct e2ee_tls *e = (struct e2ee_tls*)e2ee;
     ee_log(VERBOSE, "init hello[%zd]", hello_len);
     // the client is handed the host's flight, which starts with the ServerHello
-    if (!e->server && tls_e2ee_check_server_flight(e->fips, hello, hello_len) != 0) {
+    if (!e->server && check_flight(e, hello, hello_len) != 0) {
         return -1;
     }
-    if (!ensure_capacity(&e->in_buffer, &e->in_p, &e->in_buffer_len, hello_len)) {
-        ee_log(ERROR, "failed to buffer hello[%zd]: out of memory", hello_len);
+    if (buffer_input(e, hello, hello_len) != 0) {
         return -1;
     }
-    memcpy(e->in_p, hello, hello_len);
-    e->in_p += hello_len;
     tls_handshake_state st = e->engine->handshake(e->engine);
     if (st == TLS_HS_ERROR) {
         ee_log(ERROR, "handshake failed");
         return -1;
     }
     // the server has just produced its flight from the client's hello
-    if (e->server && tls_e2ee_check_server_flight(e->fips, (const uint8_t *) e->out_buffer, e->out_p - e->out_buffer) != 0) {
+    if (e->server && check_flight(e, (const uint8_t *) e->out_buffer, e->out_p - e->out_buffer) != 0) {
         return -1;
     }
     return 0;
@@ -397,19 +266,24 @@ static ssize_t e2ee_tls_decrypt(e2ee_t *e2ee, const uint8_t * ciphertext, size_t
     if (e->failed) {
         return -1;
     }
-    tls_handshake_state st = e->engine->handshake_state(e->engine);
-    if (st == TLS_HS_COMPLETE && check_records(e, ciphertext, ciphertext_len) != 0) {
+    // the ServerHello that answers the client's second hello
+    if (e->hello_retry && !e->server && check_flight(e, ciphertext, ciphertext_len) != 0) {
         return -1;
     }
-    if (!ensure_capacity(&e->in_buffer, &e->in_p, &e->in_buffer_len, ciphertext_len)) {
-        ee_log(ERROR, "failed to buffer %zd bytes of ciphertext: out of memory", ciphertext_len);
-        return -1;
-    }
-    memcpy(e->in_p, ciphertext, ciphertext_len);
-    e->in_p += ciphertext_len;
 
-    size_t plen = 0;
-    if (st == TLS_HS_CONTINUE) {
+    // the handshake takes one record at a time, so the records after the one that completes it
+    // are checked like any later ones
+    tls_handshake_state st = e->engine->handshake_state(e->engine);
+    size_t fed = 0;
+    while (st == TLS_HS_CONTINUE && fed < ciphertext_len) {
+        size_t n = ciphertext_len - fed;
+        if (n >= REC_HEADER_LEN) {
+            n = MIN(n, REC_HEADER_LEN + rd16(ciphertext + fed + 3));
+        }
+        if (buffer_input(e, ciphertext + fed, n) != 0) {
+            return -1;
+        }
+        fed += n;
         st = e->engine->handshake(e->engine);
     }
     // a failed handshake includes a rejected peer certificate. an engine may still decrypt
@@ -418,6 +292,21 @@ static ssize_t e2ee_tls_decrypt(e2ee_t *e2ee, const uint8_t * ciphertext, size_t
         ee_log(ERROR, "handshake failed");
         return -1;
     }
+    // the server's answer to the client's second hello, before get_header sends it
+    if (e->hello_retry && e->server && e->out_p > e->out_buffer &&
+        check_flight(e, (const uint8_t *) e->out_buffer, e->out_p - e->out_buffer) != 0) {
+        return -1;
+    }
+    if (fed < ciphertext_len) {
+        if (st == TLS_HS_COMPLETE && check_records(e, ciphertext + fed, ciphertext_len - fed) != 0) {
+            return -1;
+        }
+        if (buffer_input(e, ciphertext + fed, ciphertext_len - fed) != 0) {
+            return -1;
+        }
+    }
+
+    size_t plen = 0;
     int rrc = e->engine->read(e->engine, (char*)plaintext, &plen, plaintext_len);
     if (rrc == TLS_AGAIN) {
         return 0;
@@ -445,16 +334,19 @@ static e2ee_t e2ee_tls_impl = {
     .encrypt = e2ee_tls_encrypt,
     .decrypt = e2ee_tls_decrypt,
     .ready = e2ee_tls_ready,
+    .handshake_output = e2ee_tls_get_header,
     .free = e2ee_tls_free,
 };
 
 static ssize_t engine_out(void *ctx, const char* data, size_t len) {
     struct e2ee_tls *e = (struct e2ee_tls*)ctx;
     ee_log(TRACE, "output %zd bytes", len);
+    // a dropped tail would corrupt the record stream, so fail the engine instead
     if (!ensure_capacity(&e->out_buffer, &e->out_p, &e->out_buffer_len, len)) {
-        ee_log(WARN, "out of memory");
+        ee_log(ERROR, "failed to buffer %zd bytes of output: out of memory", len);
+        e->failed = true;
+        return TLS_ERR;
     }
-    len = MIN(e->out_buffer_len - (e->out_p - e->out_buffer), len);
     memcpy(e->out_p, data, len);
     e->out_p += len;
     return (long)len;
@@ -489,30 +381,34 @@ e2ee_t *new_tls_e2ee(bool server, tls_context *tls) {
         return NULL;
     }
 
+    struct e2ee_tls *e2ee = calloc(1, sizeof(*e2ee));
+    if (e2ee == NULL) {
+        ZITI_LOG(ERROR, "failed to allocate e2ee engine: out of memory");
+        return NULL;
+    }
+    e2ee->in_buffer = malloc(BUF_INIT_CAP);
+    e2ee->out_buffer = malloc(BUF_INIT_CAP);
     // the server engine needs the identity cert, which set_own_cert may have failed to set
-    tlsuv_engine_t engine = !server ? tls->new_engine(tls, NULL) :
+    tlsuv_engine_t engine = e2ee->in_buffer == NULL || e2ee->out_buffer == NULL ? NULL :
+                            !server ? tls->new_engine(tls, NULL) :
                             tls->new_server_engine ? tls->new_server_engine(tls) : NULL;
     if (engine == NULL) {
         ZITI_LOG(ERROR, "failed to create %s TLS engine for e2ee", server ? "server" : "client");
+        free(e2ee->in_buffer);
+        free(e2ee->out_buffer);
+        free(e2ee);
         return NULL;
     }
 
-    struct e2ee_tls *e2ee = calloc(1, sizeof(*e2ee));
     e2ee->api = e2ee_tls_impl;
-    e2ee->in_buffer = malloc(BUF_INIT_CAP);
     e2ee->in_buffer_len = BUF_INIT_CAP;
     e2ee->in_p = e2ee->in_buffer;
-
-    e2ee->out_buffer = malloc(BUF_INIT_CAP);
     e2ee->out_buffer_len = BUF_INIT_CAP;
     e2ee->out_p = e2ee->out_buffer;
 
     e2ee->server = server;
     e2ee->engine = engine;
-    // both tlsuv backends mark their version string: OpenSSL with the FIPS provider as the
-    // default, win32crypto with the Windows FIPS policy on
-    const char *tls_ver = tls->version ? tls->version() : NULL;
-    e2ee->fips = tls_ver != NULL && strstr(tls_ver, "FIPS") != NULL;
+    e2ee->fips = tls_is_fips(tls);
 
     e2ee->engine->set_io(e2ee->engine, e2ee, engine_in, engine_out);
 

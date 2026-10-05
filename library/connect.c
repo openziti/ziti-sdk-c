@@ -216,6 +216,7 @@ static int close_conn_internal(struct ziti_conn *conn) {
         }
 
         clear_deadline(&conn->flusher);
+        clear_deadline(&conn->e2ee_deadline);
         int count = 0;
         while (!TAILQ_EMPTY(&conn->in_q)) {
             message *m = TAILQ_FIRST(&conn->in_q);
@@ -810,9 +811,10 @@ int establish_crypto(ziti_connection conn, message *msg) {
     return ZITI_OK;
 }
 
-static int send_crypto_header(ziti_connection conn) {
+// crypto messages go ahead of app writes, in the order they were produced
+static int queue_crypto_message(ziti_connection conn, ssize_t (*get)(struct e2ee *, uint8_t[E2EE_MAX_HEADER_LEN])) {
     uint8_t crypto_header[E2EE_MAX_HEADER_LEN];
-    ssize_t crypto_header_len = conn->e2ee->get_header(conn->e2ee, crypto_header);
+    ssize_t crypto_header_len = get(conn->e2ee, crypto_header);
     if (crypto_header_len < 0) {
         CONN_LOG(ERROR, "failed to establish encryption: crypto error getting header");
         return ZITI_CRYPTO_FAIL;
@@ -825,10 +827,24 @@ static int send_crypto_header(ziti_connection conn) {
         wr->conn = conn;
         wr->message = m;
 
-        TAILQ_INSERT_HEAD(&conn->wreqs, wr, _next);
+        struct ziti_write_req_s *last = NULL;
+        struct ziti_write_req_s *r = TAILQ_FIRST(&conn->wreqs);
+        while (r && r->message) {
+            last = r;
+            r = TAILQ_NEXT(r, _next);
+        }
+        if (last) {
+            TAILQ_INSERT_AFTER(&conn->wreqs, last, wr, _next);
+        } else {
+            TAILQ_INSERT_HEAD(&conn->wreqs, wr, _next);
+        }
         flush_connection(conn);
     }
     return ZITI_OK;
+}
+
+static int send_crypto_header(ziti_connection conn) {
+    return queue_crypto_message(conn, conn->e2ee->get_header);
 }
 
 static void on_flush(void *ctx) {
@@ -883,6 +899,24 @@ static bool e2ee_ready(ziti_connection conn) {
     return conn->e2ee->ready == NULL || conn->e2ee->ready(conn->e2ee);
 }
 
+// the peer answers the handshake within one round trip
+#define E2EE_HANDSHAKE_TIMEOUT (30 * 1000)
+
+static void e2ee_handshake_timeout(void *ctx) {
+    ziti_connection conn = ctx;
+    if (e2ee_ready(conn)) {
+        flush_connection(conn);
+        return;
+    }
+    CONN_LOG(ERROR, "e2ee handshake did not complete in %ds", E2EE_HANDSHAKE_TIMEOUT / 1000);
+    // the flush fails the held writes, a close still goes out
+    conn_set_state(conn, Disconnected);
+    flush_connection(conn);
+    if (conn->data_cb) {
+        conn->data_cb(conn, NULL, ZITI_TIMEOUT);
+    }
+}
+
 static bool flush_to_service(ziti_connection conn) {
 
     // still connecting
@@ -892,18 +926,15 @@ static bool flush_to_service(ziti_connection conn) {
     int count = 0;
     while (!TAILQ_EMPTY(&conn->wreqs)) {
         struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
-        if (!e2ee_ready(conn) && !req->message) {
-            // app data cannot be encrypted before the e2ee handshake completes: hold it, in order,
-            // until a decrypt completes the handshake. only handshake output and a close go ahead
-            struct ziti_write_req_s *close = req;
-            while (close && !close->close) {
-                close = TAILQ_NEXT(close, _next);
-            }
-            if (close == NULL) {
+        if (conn->state == Connected && !req->message && !e2ee_ready(conn)) {
+            // app data cannot be encrypted before the e2ee handshake completes: hold the queue, in
+            // order, until a decrypt completes the handshake. only crypto messages go ahead
+            if (conn->e2ee_deadline.expire_cb == NULL) {
                 CONN_LOG(VERBOSE, "holding writes until the e2ee handshake completes");
-                break;
+                ztx_set_deadline(conn->ziti_ctx, E2EE_HANDSHAKE_TIMEOUT, &conn->e2ee_deadline,
+                                 e2ee_handshake_timeout, conn);
             }
-            req = close;
+            break;
         }
         TAILQ_REMOVE(&conn->wreqs, req, _next);
 
@@ -1046,16 +1077,15 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
         return;
     }
 
-    // TLS e2ee can produce handshake output while decrypting (the host's final TLS 1.2
-    // flight, a TLS 1.3 post-handshake reply) and the peer cannot proceed without it
-    if (conn->e2ee->method == ziti_crypto_tls && send_crypto_header(conn) != ZITI_OK) {
+    if (conn->e2ee->handshake_output && queue_crypto_message(conn, conn->e2ee->handshake_output) != ZITI_OK) {
         FREE(plain_text);
         conn_set_state(conn, Disconnected);
         conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
         return;
     }
     // this decrypt may have completed the handshake: release the writes flush_to_service held
-    if (!TAILQ_EMPTY(&conn->wreqs) && e2ee_ready(conn)) {
+    if (conn->e2ee_deadline.expire_cb != NULL && e2ee_ready(conn)) {
+        clear_deadline(&conn->e2ee_deadline);
         flush_connection(conn);
     }
 

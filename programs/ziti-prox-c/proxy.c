@@ -887,10 +887,12 @@ static void set_proxy(const char *proxy_url) {
     tlsuv_set_global_connector(proxy);
 }
 
+#if _WIN32
 static void flush_logs(uv_prepare_t *p) {
     (void) p;
     fflush(stderr);
 }
+#endif
 
 int run_proxy(struct run_opts *opts) {
     int rc;
@@ -900,11 +902,14 @@ int run_proxy(struct run_opts *opts) {
     uv_loop_init(loop);
     app_ctx.loop = loop;
 
-    // runs just before the loop blocks, so everything logged is on disk while the process waits
+#if _WIN32
+    // main() buffers stderr: flush just before the loop blocks, so everything logged is on disk
+    // while the process waits
     static uv_prepare_t log_flusher;
     uv_prepare_init(loop, &log_flusher);
     uv_prepare_start(&log_flusher, flush_logs);
     uv_unref((uv_handle_t *) &log_flusher);
+#endif
 
     ziti_log_init(loop, opts->debug, NULL);
 
@@ -1020,7 +1025,13 @@ int run_proxy(struct run_opts *opts) {
     uv_run(loop, UV_RUN_DEFAULT);
 
     uv_close((uv_handle_t *) &shutdown_timer, NULL);
+#if _WIN32
+    uv_close((uv_handle_t *) &log_flusher, NULL);
+#endif
     uv_run(loop, UV_RUN_DEFAULT);
+#if _WIN32
+    fflush(stderr);
+#endif
 
     int excode = 0;
     CATCH(uv) {
