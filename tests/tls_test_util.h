@@ -249,14 +249,6 @@ static std::wstring persisted_key_name() {
     return name;
 }
 
-// an older tlsuv patch wrote the name with '/' replaced by '_'; cleanup removes that copy too
-static std::wstring legacy_key_name(std::wstring name) {
-    for (auto &ch : name) {
-        if (ch == L'/') ch = L'_';
-    }
-    return name;
-}
-
 static SECURITY_STATUS open_persisted_key(const wchar_t *name, NCRYPT_PROV_HANDLE *prov, NCRYPT_KEY_HANDLE *key) {
     SECURITY_STATUS rc = NCryptOpenStorageProvider(prov, MS_KEY_STORAGE_PROVIDER, 0);
     if (rc != ERROR_SUCCESS) return rc;
@@ -271,13 +263,11 @@ static SECURITY_STATUS open_persisted_key(const wchar_t *name, NCRYPT_PROV_HANDL
 struct persisted_key_cleanup {
     ~persisted_key_cleanup() {
         std::wstring name = persisted_key_name();
-        for (const auto &n : {name, legacy_key_name(name)}) {
-            NCRYPT_PROV_HANDLE prov = 0;
-            NCRYPT_KEY_HANDLE key = 0;
-            if (!n.empty() && open_persisted_key(n.c_str(), &prov, &key) == ERROR_SUCCESS) {
-                NCryptDeleteKey(key, 0); // frees the key handle
-                NCryptFreeObject(prov);
-            }
+        NCRYPT_PROV_HANDLE prov = 0;
+        NCRYPT_KEY_HANDLE key = 0;
+        if (!name.empty() && open_persisted_key(name.c_str(), &prov, &key) == ERROR_SUCCESS) {
+            NCryptDeleteKey(key, 0); // frees the key handle
+            NCryptFreeObject(prov);
         }
     }
 };
