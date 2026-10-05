@@ -902,19 +902,30 @@ static bool e2ee_ready(ziti_connection conn) {
 // the peer answers the handshake within one round trip
 #define E2EE_HANDSHAKE_TIMEOUT (30 * 1000)
 
+// ends the conn on a local crypto failure: StateClosed still reaches the peer, held writes fail
+static void conn_crypto_failed(ziti_connection conn, int err) {
+    if (conn->channel && !conn->disconnecting) {
+        NEWP(wr, struct ziti_write_req_s);
+        wr->conn = conn;
+        wr->close = true;
+        TAILQ_INSERT_TAIL(&conn->wreqs, wr, _next);
+    }
+    conn_set_state(conn, Disconnected);
+    flush_connection(conn);
+    if (conn->data_cb) {
+        conn->data_cb(conn, NULL, err);
+    }
+}
+
 static void e2ee_handshake_timeout(void *ctx) {
     ziti_connection conn = ctx;
-    if (e2ee_ready(conn)) {
+    // the flush fails or sends the held writes
+    if (conn->state != Connected || e2ee_ready(conn)) {
         flush_connection(conn);
         return;
     }
     CONN_LOG(ERROR, "e2ee handshake did not complete in %ds", E2EE_HANDSHAKE_TIMEOUT / 1000);
-    // the flush fails the held writes, a close still goes out
-    conn_set_state(conn, Disconnected);
-    flush_connection(conn);
-    if (conn->data_cb) {
-        conn->data_cb(conn, NULL, ZITI_TIMEOUT);
-    }
+    conn_crypto_failed(conn, ZITI_TIMEOUT);
 }
 
 static bool flush_to_service(ziti_connection conn) {
@@ -926,7 +937,7 @@ static bool flush_to_service(ziti_connection conn) {
     int count = 0;
     while (!TAILQ_EMPTY(&conn->wreqs)) {
         struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
-        if (conn->state == Connected && !req->message && !e2ee_ready(conn)) {
+        if (conn->state == Connected && !req->message && !req->close && !e2ee_ready(conn)) {
             // app data cannot be encrypted before the e2ee handshake completes: hold the queue, in
             // order, until a decrypt completes the handshake. only crypto messages go ahead
             if (conn->e2ee_deadline.expire_cb == NULL) {
@@ -1072,20 +1083,19 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
     if (plain_len < 0) {
         CONN_LOG(ERROR, "decryption failed: %zd", plain_len);
         FREE(plain_text);
-        conn_set_state(conn, Disconnected);
-        conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
+        conn_crypto_failed(conn, ZITI_CRYPTO_FAIL);
         return;
     }
 
     if (conn->e2ee->handshake_output && queue_crypto_message(conn, conn->e2ee->handshake_output) != ZITI_OK) {
         FREE(plain_text);
-        conn_set_state(conn, Disconnected);
-        conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
+        conn_crypto_failed(conn, ZITI_CRYPTO_FAIL);
         return;
     }
-    // this decrypt may have completed the handshake: release the writes flush_to_service held
+    // this decrypt may have completed the handshake: release the writes flush_to_service held.
+    // the deadline stays armed: ztx_process_deadlines may hold it in its expired list, and
+    // clear_deadline here would unlink it twice
     if (conn->e2ee_deadline.expire_cb != NULL && e2ee_ready(conn)) {
-        clear_deadline(&conn->e2ee_deadline);
         flush_connection(conn);
     }
 
