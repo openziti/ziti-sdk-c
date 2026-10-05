@@ -152,13 +152,11 @@ void delete_persisted_key(X509 *x) {
     CryptBinaryToStringW(ASN1_STRING_get0_data(ski), (DWORD) ASN1_STRING_length(ski),
                          CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, name.data(), &len);
     name.resize(len);
-    for (const auto &n : {name, legacy_key_name(name)}) {
-        NCRYPT_PROV_HANDLE prov = 0;
-        NCRYPT_KEY_HANDLE key = 0;
-        if (open_persisted_key(n.c_str(), &prov, &key) == ERROR_SUCCESS) {
-            NCryptDeleteKey(key, 0);
-            NCryptFreeObject(prov);
-        }
+    NCRYPT_PROV_HANDLE prov = 0;
+    NCRYPT_KEY_HANDLE key = 0;
+    if (open_persisted_key(name.c_str(), &prov, &key) == ERROR_SUCCESS) {
+        NCryptDeleteKey(key, 0);
+        NCryptFreeObject(prov);
     }
 #else
     (void) x;

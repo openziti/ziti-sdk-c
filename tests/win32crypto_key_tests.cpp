@@ -15,7 +15,7 @@
 // limitations under the License.
 
 
-// win32crypto identity keys: persisting them into the CNG user key store, and failing cleanly when it is out of reach.
+// win32crypto identity keys: persisting them into the CNG user key store, and failing when it is out of reach.
 
 #include "tls_test_util.h"
 
@@ -32,7 +32,7 @@ TEST_CASE("win32crypto set_own_cert with RSA PKCS#1 key", "[crypto]") {
     }
 
     SECTION("user key store unreachable") {
-        // fails cleanly: Schannel has no use for a key that is not persisted
+        // Schannel cannot use a key that is not persisted
         CHECK(srv.load(false) == -1);
     }
 

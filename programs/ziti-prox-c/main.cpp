@@ -89,9 +89,7 @@ private:
 };
 
 int main(int argc, char *argv[]) {
-    // stderr is fully buffered and flushed once per loop iteration (see run_proxy). Unbuffered,
-    // msvcrt writes one character per WriteFile, which costs ~3 ms each on a write-through handle
-    // on an Azure disk; left to msvcrt's own buffering, a killed process loses its logs.
+    // unbuffered, msvcrt issues one WriteFile per character. run_proxy flushes once per loop iteration
     setvbuf(stderr, nullptr, _IOFBF, 64 * 1024);
     const char *name = basename(argv[0]);
     CLI::App app{name};
