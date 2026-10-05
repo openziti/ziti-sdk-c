@@ -23,6 +23,9 @@
 #include "crypto.h"
 #include "tls_wire.h"
 
+#include <algorithm>
+#include <map>
+
 #if ZITI_TEST_OPENSSL_PEER
 #include <openssl/err.h>
 #include <openssl/evp.h>
@@ -58,8 +61,7 @@ TEST_CASE("tls engine negotiated TLS parameters", "[crypto][fips]") {
 
     tls_wire::server_hello_info info;
     REQUIRE(tls_wire::parse_server_hello(server_flight, info));
-    // the backend reports its FIPS mode in its version string
-    bool fips = strstr(srv.tls->version(), "FIPS") != nullptr;
+    bool fips = tls_is_fips(srv.tls);
     printf("[tls] %s, FIPS mode %s: negotiated %s (0x%04x), cipher %s (0x%04x), key share %s (0x%04x)\n",
            srv.tls->version(), fips ? "on" : "off",
            tls_wire::tls_version_name(info.version), info.version,
@@ -458,7 +460,7 @@ int client_read(tlsuv_engine_t clt, std::string &got) {
     return TLS_AGAIN;
 }
 
-// an OpenSSL TLS 1.3 client on memory BIOs, against a tlsuv server engine
+// an OpenSSL client on memory BIOs, against a tlsuv server engine. TLS 1.3 unless capped at `max_version`
 struct openssl_client {
     SSL_CTX *ctx = nullptr;
     SSL *ssl = nullptr;
@@ -470,10 +472,11 @@ struct openssl_client {
     // what arrived from the server: 'A' app data record, 'K' KeyUpdate
     std::string received_order;
 
-    openssl_client() {
+    explicit openssl_client(int max_version = 0) {
         ctx = SSL_CTX_new(TLS_client_method());
         REQUIRE(ctx != nullptr);
-        SSL_CTX_set_min_proto_version(ctx, TLS1_3_VERSION);
+        SSL_CTX_set_min_proto_version(ctx, max_version ? TLS1_2_VERSION : TLS1_3_VERSION);
+        SSL_CTX_set_max_proto_version(ctx, max_version);
         // the server's certificate is not what this checks
         SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, nullptr);
         // a server with a verify callback requires a client certificate
@@ -764,5 +767,198 @@ TEST_CASE("e2ee-tls dialer refuses a TLS 1.2 renegotiation", "[crypto]") {
     CHECK(clt.e->get_header(clt.e, hdr.data()) == 0);
     uint8_t ct[256];
     CHECK(clt.e->encrypt(clt.e, (const uint8_t *) "x", 1, ct, sizeof(ct)) == -1);
+}
+
+namespace {
+struct ctx_guard {
+    tls_context *c;
+    ~ctx_guard() { if (c) c->free_ctx(c); }
+};
+
+struct e2ee_guard {
+    e2ee_t *e;
+    ~e2ee_guard() { if (e) e->free(e); }
+};
+
+std::vector<uint8_t> drain(BIO *b) {
+    std::vector<uint8_t> out;
+    uint8_t chunk[4096];
+    int n;
+    while ((n = BIO_read(b, chunk, sizeof(chunk))) > 0) out.insert(out.end(), chunk, chunk + n);
+    return out;
+}
+
+// a group from the ClientHello's supported_groups that its key_share leaves out, as an OpenSSL group name, or
+// nullptr. Backends differ in which key shares they send up front
+const char *group_without_key_share(const uint8_t *rec, size_t len) {
+    auto rd16 = [](const uint8_t *p) { return (size_t) (p[0] << 8 | p[1]); };
+    std::vector<size_t> supported, shared;
+    // record header(5), handshake header(4), legacy_version(2), random(32)
+    size_t off = 5 + 4 + 2 + 32;
+    if (len < off + 1) return nullptr;
+    off += 1 + rec[off];                              // session id
+    if (len < off + 2) return nullptr;
+    off += 2 + rd16(rec + off);                       // cipher suites
+    if (len < off + 1) return nullptr;
+    off += 1 + rec[off];                              // compression methods
+    if (len < off + 2) return nullptr;
+    size_t end = std::min(len, off + 2 + rd16(rec + off));
+    off += 2;
+    while (off + 4 <= end) {
+        size_t type = rd16(rec + off), ext_len = rd16(rec + off + 2);
+        const uint8_t *p = rec + off + 4;
+        if (off + 4 + ext_len > end) return nullptr;
+        if (type == 0x000a && ext_len >= 2) {         // supported_groups
+            for (size_t i = 2; i + 2 <= ext_len; i += 2) supported.push_back(rd16(p + i));
+        } else if (type == 0x0033 && ext_len >= 2) {  // key_share
+            for (size_t i = 2; i + 4 <= ext_len; i += 4 + rd16(p + i + 2)) shared.push_back(rd16(p + i));
+        }
+        off += 4 + ext_len;
+    }
+    const std::map<size_t, const char *> names = {
+        {0x0017, "P-256"}, {0x0018, "P-384"}, {0x0019, "P-521"}, {0x001d, "X25519"}, {0x001e, "X448"},
+    };
+    for (size_t g: supported) {
+        auto name = names.find(g);
+        if (name != names.end() && std::find(shared.begin(), shared.end(), g) == shared.end()) return name->second;
+    }
+    return nullptr;
+}
+}
+
+// TLS 1.2 ends with the host's ChangeCipherSpec and Finished, produced while it decrypts the dialer's second flight.
+// The host hands them back through handshake_output(), and cannot encrypt before the dialer's Finished arrived.
+TEST_CASE("e2ee-tls TLS 1.2 host completes the handshake in decrypt", "[crypto]") {
+    persisted_key_cleanup cleanup;
+    identity_ctx srv_id;
+    REQUIRE(srv_id.load(true) == 0);
+    e2ee_guard srv{create_e2ee(ziti_crypto_tls, true, srv_id.tls)};
+    REQUIRE(srv.e != nullptr);
+
+    openssl_client clt(TLS1_2_VERSION);
+    // NIST curves only, so the host's flight also passes its FIPS check on a FIPS-mode backend
+    REQUIRE(SSL_set1_groups_list(clt.ssl, "P-256:P-384") == 1);
+    SSL_do_handshake(clt.ssl);
+    std::vector<uint8_t> hello = drain(clt.out);
+    REQUIRE(srv.e->init(srv.e, hello.data(), hello.size(), true) == 0);
+    e2ee_pub_t flight = srv.e->pub(srv.e);
+    REQUIRE(flight.key_len > 0);
+    BIO_write(clt.in, flight.key, (int) flight.key_len);
+    SSL_do_handshake(clt.ssl);
+    REQUIRE(SSL_version(clt.ssl) == TLS1_2_VERSION);
+    std::vector<uint8_t> clt_flight = drain(clt.out);
+    CHECK_FALSE(srv.e->ready(srv.e));
+
+    uint8_t pt[4096];
+    REQUIRE(srv.e->decrypt(srv.e, clt_flight.data(), clt_flight.size(), pt, sizeof(pt)) == 0);
+    CHECK(srv.e->ready(srv.e));
+    REQUIRE(srv.e->handshake_output != nullptr);
+    std::vector<uint8_t> fin(E2EE_MAX_HEADER_LEN);
+    ssize_t fin_len = srv.e->handshake_output(srv.e, fin.data());
+    REQUIRE(fin_len > 0);
+    BIO_write(clt.in, fin.data(), (int) fin_len);
+    REQUIRE(SSL_do_handshake(clt.ssl) == 1);
+
+    const std::string ping = "ping over TLS 1.2";
+    std::vector<uint8_t> ct(ping.size() + E2EE_MAX_MSG_OVERHEAD);
+    ssize_t ct_len = srv.e->encrypt(srv.e, (const uint8_t *) ping.data(), ping.size(), ct.data(), ct.size());
+    REQUIRE(ct_len > 0);
+    BIO_write(clt.in, ct.data(), (int) ct_len);
+    char buf[256];
+    int n = SSL_read(clt.ssl, buf, sizeof(buf));
+    CHECK(std::string(buf, n > 0 ? (size_t) n : 0) == ping);
+}
+
+// A TLS 1.2 dialer completes on the host's ChangeCipherSpec and Finished. Whatever the host sends right behind them
+// in the same message is past the handshake, so the renegotiation check covers it.
+TEST_CASE("e2ee-tls TLS 1.2 dialer completes on the host's final flight", "[crypto]") {
+    ctx_guard clt_ctx{tls_with_ca(rsa_cert)};
+    e2ee_guard clt{create_e2ee(ziti_crypto_tls, false, clt_ctx.c)};
+    REQUIRE(clt.e != nullptr);
+
+    openssl_server srv(TLS1_2_VERSION);
+    REQUIRE(SSL_set1_groups_list(srv.ssl, "P-256") == 1);
+    e2ee_pub_t hello = clt.e->pub(clt.e);
+    BIO_write(srv.in, hello.key, (int) hello.key_len);
+    SSL_do_handshake(srv.ssl);
+    std::vector<uint8_t> srv_flight = drain(srv.out);
+    REQUIRE(clt.e->init(clt.e, srv_flight.data(), srv_flight.size(), false) == 0);
+
+    std::vector<uint8_t> hdr(E2EE_MAX_HEADER_LEN);
+    ssize_t hdr_len = clt.e->get_header(clt.e, hdr.data());
+    REQUIRE(hdr_len > 0);
+    BIO_write(srv.in, hdr.data(), (int) hdr_len);
+    REQUIRE(SSL_do_handshake(srv.ssl) == 1);
+    REQUIRE(SSL_version(srv.ssl) == TLS1_2_VERSION);
+    // the dialer has sent its Finished, but cannot encrypt before the host's
+    CHECK_FALSE(clt.e->ready(clt.e));
+
+    uint8_t pt[4096] = {};
+    SECTION("app data that comes with the final flight is delivered") {
+        const std::string ping = "ping with the final flight";
+        REQUIRE(SSL_write(srv.ssl, ping.data(), (int) ping.size()) == (int) ping.size());
+        std::vector<uint8_t> recs = drain(srv.out);
+        ssize_t n = clt.e->decrypt(clt.e, recs.data(), recs.size(), pt, sizeof(pt));
+        CHECK(std::string((const char *) pt, n > 0 ? (size_t) n : 0) == ping);
+        CHECK(clt.e->ready(clt.e));
+    }
+    SECTION("a renegotiation request that comes with the final flight is refused") {
+        REQUIRE(SSL_renegotiate(srv.ssl) == 1);
+        SSL_do_handshake(srv.ssl);
+        std::vector<uint8_t> recs = drain(srv.out);
+        CHECK(clt.e->decrypt(clt.e, recs.data(), recs.size(), pt, sizeof(pt)) == -1);
+        CHECK_FALSE(clt.e->ready(clt.e));
+    }
+}
+
+// A host that wants a key share the dialer did not send answers with a HelloRetryRequest. Its key share names a group
+// only, so the parameter check moves to the ServerHello that answers the dialer's second hello.
+TEST_CASE("e2ee-tls dialer completes a handshake through a HelloRetryRequest", "[crypto]") {
+    if (tls12_capped()) {
+        SKIP("ZITI_TEST_TLS12=1: the TLS backend has no TLS 1.3 here");
+    }
+    ctx_guard clt_ctx{tls_with_ca(rsa_cert)};
+    e2ee_guard clt{create_e2ee(ziti_crypto_tls, false, clt_ctx.c)};
+    REQUIRE(clt.e != nullptr);
+
+    openssl_server srv;
+    e2ee_pub_t hello = clt.e->pub(clt.e);
+    const char *group = group_without_key_share(hello.key, hello.key_len);
+    if (group == nullptr) {
+        SKIP("the dialer sends a key share for every group it supports");
+    }
+    REQUIRE(SSL_set1_groups_list(srv.ssl, group) == 1);
+    BIO_write(srv.in, hello.key, (int) hello.key_len);
+    SSL_do_handshake(srv.ssl);
+    std::vector<uint8_t> hrr = drain(srv.out);
+    // record header(5), handshake header(4), legacy_version(2), then the RFC 8446 HelloRetryRequest random
+    REQUIRE(hrr.size() > 15);
+    REQUIRE(std::vector<uint8_t>(hrr.begin() + 11, hrr.begin() + 15) == std::vector<uint8_t>{0xcf, 0x21, 0xad, 0x74});
+    REQUIRE(clt.e->init(clt.e, hrr.data(), hrr.size(), false) == 0);
+
+    std::vector<uint8_t> hdr(E2EE_MAX_HEADER_LEN);
+    ssize_t hdr_len = clt.e->get_header(clt.e, hdr.data());
+    REQUIRE(hdr_len > 0);
+    BIO_write(srv.in, hdr.data(), (int) hdr_len);
+    SSL_do_handshake(srv.ssl);
+    std::vector<uint8_t> srv_flight = drain(srv.out);
+
+    uint8_t pt[4096];
+    REQUIRE(clt.e->decrypt(clt.e, srv_flight.data(), srv_flight.size(), pt, sizeof(pt)) == 0);
+    REQUIRE(clt.e->ready(clt.e));
+    hdr_len = clt.e->handshake_output(clt.e, hdr.data());
+    REQUIRE(hdr_len > 0);
+    BIO_write(srv.in, hdr.data(), (int) hdr_len);
+    REQUIRE(SSL_do_handshake(srv.ssl) == 1);
+    CHECK(SSL_version(srv.ssl) == TLS1_3_VERSION);
+
+    const std::string ping = "ping after a HelloRetryRequest";
+    std::vector<uint8_t> ct(ping.size() + E2EE_MAX_MSG_OVERHEAD);
+    ssize_t ct_len = clt.e->encrypt(clt.e, (const uint8_t *) ping.data(), ping.size(), ct.data(), ct.size());
+    REQUIRE(ct_len > 0);
+    BIO_write(srv.in, ct.data(), (int) ct_len);
+    char buf[256];
+    int n = SSL_read(srv.ssl, buf, sizeof(buf));
+    CHECK(std::string(buf, n > 0 ? (size_t) n : 0) == ping);
 }
 #endif
