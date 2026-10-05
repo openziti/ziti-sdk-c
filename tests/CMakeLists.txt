@@ -25,11 +25,21 @@ add_executable(all_tests
         ctrl_endpoint_tests.cpp
         posture_tests.cpp
         totp.h
-        totp_tests.cpp)
+        totp_tests.cpp
+        tls_engine_tests.cpp
+        win32crypto_key_tests.cpp)
 
 set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
+# tls_engine_tests runs an OpenSSL peer and issues test certificates with it, against whichever TLS
+# backend the SDK is built on; Linux also uses it for the provider checks in e2ee-tls-fips
 find_package(OpenSSL REQUIRED)
-target_link_libraries(all_tests PRIVATE OpenSSL::Crypto)
+target_link_libraries(all_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+target_compile_definitions(all_tests PRIVATE ZITI_TEST_OPENSSL_PEER=1)
+
+# win32crypto_key_tests inspects the CNG user key store
+if (WIN32)
+    target_link_libraries(all_tests PRIVATE ncrypt)
+endif ()
 
 target_compile_definitions(all_tests
         PRIVATE ZITI_TEST_DIR=${CMAKE_CURRENT_SOURCE_DIR})
