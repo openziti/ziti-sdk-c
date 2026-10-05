@@ -136,10 +136,10 @@ static int init_tls_from_config(tls_context *tls, ziti_config *cfg, struct tls_c
         return 0;
     }
     tlsuv_private_key_t pk = NULL;
+    tlsuv_certificate_t c = NULL;
 
     TRY(ziti, load_key_internal(tls, &pk, cfg->id.key));
 
-    tlsuv_certificate_t c = NULL;
     if (cfg->id.cert) {
         const char *cert;
         size_t cert_len = parse_ref(cfg->id.cert, &cert);
@@ -476,6 +476,21 @@ const char* ziti_get_api_session_token(ziti_context ztx) {
     return NULL;
 }
 
+static void free_tls_contexts(ziti_context ztx) {
+    if (ztx->channel_tls) {
+        ztx->channel_tls->free_ctx(ztx->channel_tls);
+        ztx->channel_tls = NULL;
+    }
+    if (ztx->e2ee_host_tls) {
+        ztx->e2ee_host_tls->free_ctx(ztx->e2ee_host_tls);
+        ztx->e2ee_host_tls = NULL;
+    }
+    if (ztx->tlsCtx) {
+        ztx->tlsCtx->free_ctx(ztx->tlsCtx);
+        ztx->tlsCtx = NULL;
+    }
+}
+
 static void ziti_stop_internal(ziti_context ztx, void *data) {
     if (ztx->enabled) {
         ZTX_LOG(INFO, "disabling Ziti Context");
@@ -537,18 +552,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
         ztx->enabled = false;
         ziti_ctrl_close(ztx_get_controller(ztx));
-        if (ztx->tlsCtx) {
-            ztx->tlsCtx->free_ctx(ztx->tlsCtx);
-            ztx->tlsCtx = NULL;
-        }
-        if (ztx->channel_tls) {
-            ztx->channel_tls->free_ctx(ztx->channel_tls);
-            ztx->channel_tls = NULL;
-        }
-        if (ztx->e2ee_host_tls) {
-            ztx->e2ee_host_tls->free_ctx(ztx->e2ee_host_tls);
-            ztx->e2ee_host_tls = NULL;
-        }
+        free_tls_contexts(ztx);
 
         if (ztx->closing) {
             shutdown_and_free(ztx);
@@ -559,18 +563,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
 // Leaves the context disabled, so a later ziti_set_enabled(ztx, true) retries, and reports rc.
 static void tls_init_failed(ziti_context ztx, int rc, const char *what) {
     ztx->enabled = false;
-    if (ztx->channel_tls) {
-        ztx->channel_tls->free_ctx(ztx->channel_tls);
-        ztx->channel_tls = NULL;
-    }
-    if (ztx->e2ee_host_tls) {
-        ztx->e2ee_host_tls->free_ctx(ztx->e2ee_host_tls);
-        ztx->e2ee_host_tls = NULL;
-    }
-    if (ztx->tlsCtx) {
-        ztx->tlsCtx->free_ctx(ztx->tlsCtx);
-        ztx->tlsCtx = NULL;
-    }
+    free_tls_contexts(ztx);
     ZTX_LOG(ERROR, "%s: %s", what, ziti_errorstr(rc));
     ziti_event_t ev = {
             .type = ZitiContextEvent,
@@ -608,7 +601,7 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
         ZTX_LOG(INFO, "using tlsuv[%s/%s]", tlsuv_version(), tls_ver ? tls_ver : "unspecified");
         // libsodium e2ee (X25519, XChaCha20-Poly1305) is outside any FIPS module, so a backend
         // running its FIPS module gets tls e2ee before the first dial or bind
-        if (ztx->opts.e2ee_mode != ziti_crypto_tls && tls_ver && strstr(tls_ver, "FIPS")) {
+        if (ztx->opts.e2ee_mode != ziti_crypto_tls && tls_is_fips(ztx->tlsCtx)) {
             ztx->opts.e2ee_mode = ziti_crypto_tls;
             ZTX_LOG(INFO, "TLS backend is in FIPS mode: using crypto method[%s]", e2ee_method_id(ziti_crypto_tls));
         }
@@ -616,6 +609,8 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
         rc = ztx_init_controller(ztx);
         if (rc != ZITI_OK) {
             ztx->enabled = false;
+            ziti_ctrl_close(ztx_get_controller(ztx));
+            free_tls_contexts(ztx);
             return;
         }
 
@@ -2019,7 +2014,7 @@ void ztx_prepare(uv_prepare_t *prep) {
         if (ziti_ctrl_has_build_flag(&ztx->ctrl, "FIPS_MODE")) {
             ztx->opts.e2ee_mode = ziti_crypto_tls;
             const char *tls_ver = ztx->tlsCtx && ztx->tlsCtx->version ? ztx->tlsCtx->version() : NULL;
-            if (tls_ver && strstr(tls_ver, "FIPS")) {
+            if (tls_is_fips(ztx->tlsCtx)) {
                 ZTX_LOG(INFO, "controller requested FIPS_MODE: using crypto method[%s]",
                         e2ee_method_id(ziti_crypto_tls));
             } else {

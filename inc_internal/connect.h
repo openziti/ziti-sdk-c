@@ -105,6 +105,8 @@ struct ziti_conn {
             bool disconnecting;
 
             deadline_t flusher;
+            // armed while writes wait for the e2ee handshake to complete
+            deadline_t e2ee_deadline;
             TAILQ_HEAD(, message_s) in_q;
             buffer *inbound;
             TAILQ_HEAD(, ziti_write_req_s) wreqs;
