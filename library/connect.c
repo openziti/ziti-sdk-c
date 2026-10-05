@@ -902,8 +902,8 @@ static bool e2ee_ready(ziti_connection conn) {
 // the peer answers the handshake within one round trip
 #define E2EE_HANDSHAKE_TIMEOUT (30 * 1000)
 
-// ends the conn on a local crypto failure: StateClosed still reaches the peer, held writes fail
-static void conn_crypto_failed(ziti_connection conn, int err) {
+// ends the conn on a local failure: StateClosed still reaches the peer, held writes fail
+static void conn_failed(ziti_connection conn, int err) {
     if (conn->channel && !conn->disconnecting) {
         NEWP(wr, struct ziti_write_req_s);
         wr->conn = conn;
@@ -925,7 +925,7 @@ static void e2ee_handshake_timeout(void *ctx) {
         return;
     }
     CONN_LOG(ERROR, "e2ee handshake did not complete in %ds", E2EE_HANDSHAKE_TIMEOUT / 1000);
-    conn_crypto_failed(conn, ZITI_TIMEOUT);
+    conn_failed(conn, ZITI_TIMEOUT);
 }
 
 static bool flush_to_service(ziti_connection conn) {
@@ -1028,6 +1028,34 @@ static bool flush_to_client(ziti_connection conn) {
     return false;
 }
 
+ssize_t conn_parse_multipart(buffer *out, const uint8_t *data, size_t len) {
+    uint16_t partlen;
+    size_t off = 0;
+    // the lengths come from the peer: check them all before appending anything
+    while (off < len) {
+        if (len - off < sizeof(partlen)) {
+            return -1;
+        }
+        memcpy(&partlen, data + off, sizeof(partlen));
+        off += sizeof(partlen) + le16toh(partlen);
+        if (off > len) {
+            return -1;
+        }
+    }
+
+    ssize_t total = 0;
+    off = 0;
+    while (off < len) {
+        memcpy(&partlen, data + off, sizeof(partlen));
+        partlen = le16toh(partlen);
+        off += sizeof(partlen);
+        buffer_append_copy(out, data + off, partlen);
+        off += partlen;
+        total += partlen;
+    }
+    return total;
+}
+
 void conn_inbound_data_msg(ziti_connection conn, message *msg) {
     if (conn->state >= Disconnected || conn->fin_recv) {
         CONN_LOG(WARN, "inbound data on closed connection");
@@ -1083,13 +1111,13 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
     if (plain_len < 0) {
         CONN_LOG(ERROR, "decryption failed: %zd", plain_len);
         FREE(plain_text);
-        conn_crypto_failed(conn, ZITI_CRYPTO_FAIL);
+        conn_failed(conn, ZITI_CRYPTO_FAIL);
         return;
     }
 
     if (conn->e2ee->handshake_output && queue_crypto_message(conn, conn->e2ee->handshake_output) != ZITI_OK) {
         FREE(plain_text);
-        conn_crypto_failed(conn, ZITI_CRYPTO_FAIL);
+        conn_failed(conn, ZITI_CRYPTO_FAIL);
         return;
     }
     // this decrypt may have completed the handshake: release the writes flush_to_service held.
@@ -1106,19 +1134,15 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
 
     if (flags & EDGE_MULTIPART_MSG) {
         CONN_LOG(TRACE, "chunking multipart[%zu] message", plain_len);
-        uint8_t *end = plain_text + plain_len;
-        uint8_t *p = plain_text;
-
-        do {
-            uint16_t partlen;
-            memcpy(&partlen, p, sizeof(partlen));
-            p += sizeof(partlen);
-            partlen = le32toh(partlen);
-            buffer_append_copy(conn->inbound, p, partlen);
-            p += partlen;
-            CONN_LOG(TRACE, "chunk[%d]", partlen);
-        } while (p < end);
+        ssize_t data_len = conn_parse_multipart(conn->inbound, plain_text, plain_len);
         free(plain_text);
+        if (data_len < 0) {
+            CONN_LOG(ERROR, "malformed multipart message[%zd bytes]", plain_len);
+            conn_failed(conn, ZITI_INVALID_STATE);
+            return;
+        }
+        metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) data_len);
+        conn->received += data_len;
     } else {
         buffer_append(conn->inbound, plain_text, plain_len);
         metrics_rate_update(&conn->ziti_ctx->down_rate, (int64_t) plain_len);
