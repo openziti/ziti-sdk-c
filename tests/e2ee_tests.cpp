@@ -704,4 +704,80 @@ TEST_CASE("tls e2ee accepts only FIPS-approved parameters in FIPS mode", "[crypt
         CHECK(check(false, server_hello(0x0303, 0xc02f, 0x0017)) == 0);
         CHECK(check(false, tls12_flight(0xc02f, 0x001d, false)) == 0);
     }
+    SECTION("a HelloRetryRequest leaves the check to the ServerHello that follows") {
+        // RFC 8446 4.1.3
+        const uint8_t hrr_random[32] = {
+                0xcf, 0x21, 0xad, 0x74, 0xe5, 0x9a, 0x61, 0x11, 0xbe, 0x1d, 0x8c, 0x02, 0x1e, 0x65, 0xb8, 0x91,
+                0xc2, 0xa2, 0x11, 0x16, 0x7a, 0xbb, 0x8c, 0x5e, 0x07, 0x9e, 0x09, 0xe2, 0xc8, 0xa8, 0x33, 0x9c,
+        };
+        // record header(5) + handshake header(4) + legacy_version(2)
+        auto hrr = server_hello(0x0304, 0x1301, 0x001d);
+        std::copy(std::begin(hrr_random), std::end(hrr_random), hrr.begin() + 11);
+        CHECK(check(true, hrr) == 1);
+        CHECK(check(false, hrr) == 1);
+    }
+}
+
+namespace {
+// a TLS engine past its handshake that frames nothing: each write() passes at most `chunk` bytes
+// through, the way Schannel encrypts one record at a time. chunk 0 makes no progress at all
+struct fake_engine {
+    tlsuv_engine_s api{};
+    io_ctx io = nullptr;
+    io_write out = nullptr;
+    size_t chunk = 0;
+    int writes = 0;
+};
+
+fake_engine *the_fake;
+
+fake_engine *fake(tlsuv_engine_t e) {
+    return reinterpret_cast<fake_engine *>(e);
+}
+
+tlsuv_engine_t fake_new_engine(tls_context *, const char *) {
+    the_fake->api.set_io = [](tlsuv_engine_t e, io_ctx io, io_read, io_write out) {
+        fake(e)->io = io;
+        fake(e)->out = out;
+    };
+    the_fake->api.handshake_state = [](tlsuv_engine_t) { return TLS_HS_COMPLETE; };
+    the_fake->api.handshake = [](tlsuv_engine_t) { return TLS_HS_COMPLETE; };
+    the_fake->api.write = [](tlsuv_engine_t e, const char *data, size_t len) {
+        fake(e)->writes++;
+        size_t n = std::min(len, fake(e)->chunk);
+        if (n > 0) {
+            fake(e)->out(fake(e)->io, data, n);
+        }
+        return (int) n;
+    };
+    the_fake->api.free = [](tlsuv_engine_t) {};
+    return &the_fake->api;
+}
+}
+
+TEST_CASE("e2ee-tls encrypt keeps writing until the engine took the whole payload", "[crypto]") {
+    fake_engine eng;
+    the_fake = &eng;
+    tls_context ctx{};
+    ctx.new_engine = fake_new_engine;
+    ctx.fips_status = [](tls_context *, char *, size_t) { return TLS_FIPS_DISABLED; };
+
+    auto e = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_tls, false, &ctx));
+    REQUIRE(e != nullptr);
+
+    const std::string msg = "a payload the engine takes ten bytes at a time";
+    std::vector<uint8_t> ct(msg.size() + E2EE_MAX_MSG_OVERHEAD);
+
+    SECTION("partial writes add up to the payload") {
+        eng.chunk = 10;
+        ssize_t n = e->encrypt(e.get(), (const uint8_t *) msg.data(), msg.size(), ct.data(), ct.size());
+        REQUIRE(n == (ssize_t) msg.size());
+        CHECK(std::string((const char *) ct.data(), (size_t) n) == msg);
+        CHECK(eng.writes == (int) (msg.size() + 9) / 10);
+    }
+    SECTION("an engine that takes nothing fails the encrypt") {
+        eng.chunk = 0;
+        CHECK(e->encrypt(e.get(), (const uint8_t *) msg.data(), msg.size(), ct.data(), ct.size()) == -1);
+        CHECK(eng.writes == 1);
+    }
 }

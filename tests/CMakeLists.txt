@@ -30,11 +30,16 @@ add_executable(all_tests
         win32crypto_key_tests.cpp)
 
 set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
+find_package(OpenSSL REQUIRED)
+target_link_libraries(all_tests PRIVATE OpenSSL::Crypto)
+
 # tls_engine_tests runs an OpenSSL peer and issues test certificates with it, against whichever TLS
 # backend the SDK is built on; Linux also uses it for the provider checks in e2ee-tls-fips
-find_package(OpenSSL REQUIRED)
-target_link_libraries(all_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
-target_compile_definitions(all_tests PRIVATE ZITI_TEST_OPENSSL_PEER=1)
+option(ZITI_TEST_OPENSSL_PEER "test the TLS backend against an OpenSSL peer (links libssl)" ON)
+if (ZITI_TEST_OPENSSL_PEER)
+    target_link_libraries(all_tests PRIVATE OpenSSL::SSL)
+    target_compile_definitions(all_tests PRIVATE ZITI_TEST_OPENSSL_PEER=1)
+endif ()
 
 # win32crypto_key_tests inspects the CNG user key store
 if (WIN32)
