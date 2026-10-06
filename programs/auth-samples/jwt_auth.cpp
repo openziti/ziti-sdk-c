@@ -122,7 +122,7 @@ static void event_handler(ziti_context ztx, const ziti_event_t *ev){
 }
 
 static std::string getCAbundle(uv_loop_t *l, const std::string &ctrl) {
-    auto bootstrapTLS = default_tls_context("", 0);
+    auto bootstrapTLS = default_tls_context();
     bootstrapTLS->set_cert_verify(bootstrapTLS,
                                   [](const tlsuv_certificate_s*, void*) {
                                       return 0;

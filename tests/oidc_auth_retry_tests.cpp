@@ -355,7 +355,7 @@ struct TestClient {
 
     TestClient(const FakeOidcEndpoint &server, uint64_t retry_window_ms, Creds creds = Creds::ExtJwt) {
         loop = uv_loop_new();
-        tls = default_tls_context(nullptr, 0);
+        tls = default_tls_context();
         REQUIRE(oidc_client_init(loop, &clt, server.url("/oidc").c_str(), tls) == 0);
 
         clt.auth_retry_window = retry_window_ms;

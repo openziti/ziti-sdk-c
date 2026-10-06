@@ -189,7 +189,7 @@ int fetch_network_token(struct ziti_enroll_req *er) {
         return ZITI_INVALID_CONFIG;
     }
 
-    er->tls = default_tls_context(NULL, 0);
+    er->tls = default_tls_context();
 
     model_list ctrls = {};
 
@@ -232,7 +232,7 @@ static int start_enrollment(struct ziti_enroll_req *er) {
         return ZITI_JWT_INVALID;
     }
 
-    er->tls = default_tls_context("", 0); // no default CAs
+    er->tls = default_tls_context();
     er->tls->set_cert_verify(er->tls, verify_controller_jwt, er);
 
     // check key/cert if provided
@@ -414,7 +414,8 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     ziti_ctrl_close(&er->controller);
     er->tls->free_ctx(er->tls);
 
-    er->tls = default_tls_context(er->cfg.id.ca, strlen(er->cfg.id.ca));
+    er->tls = default_tls_context();
+    er->tls->set_ca_bundle(er->tls, er->cfg.id.ca, strlen(er->cfg.id.ca));
     ziti_ctrl_init(er->loop, &er->controller, &er->cfg.controllers, er->tls);
 
     switch (er->enrollment.method) {

@@ -169,7 +169,10 @@ int load_tls(ziti_config *cfg, tls_context **ctx, struct tls_credentials *creds)
     // load ca from ziti config if present
     const char *ca;
     size_t ca_len = parse_ref(cfg->id.ca, &ca);
-    tls_context *tls = default_tls_context(ca, ca_len);
+    tls_context *tls = default_tls_context();
+    if (ca != NULL) {
+        tls->set_ca_bundle(tls, ca, ca_len);
+    }
     if (tls->allow_partial_chain) {
         tls->allow_partial_chain(tls, true);
     }

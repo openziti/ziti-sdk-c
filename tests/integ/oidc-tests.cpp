@@ -35,7 +35,8 @@ TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
     };
     auto *cfg_str = checkENV("test_client");
     REQUIRE(ziti_load_config(&cfg, cfg_str) == ZITI_OK);
-    auto tls = default_tls_context(cfg.id.ca, strlen(cfg.id.ca));
+    auto tls = default_tls_context();
+    REQUIRE(tls->set_ca_bundle(tls, cfg.id.ca, strlen(cfg.id.ca)) == 0);
     tlsuv_certificate_t cert{};
     tlsuv_private_key_t key{};
     DEFER {

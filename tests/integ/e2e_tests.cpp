@@ -147,7 +147,8 @@ public:
 
 TEST_CASE_METHOD(E2EBase, "e2ee test", "[e2ee]") {
     tls_context *srv_tls = nullptr;
-    auto clt_tls = default_tls_context(client_config.id.ca, strlen(client_config.id.ca));
+    auto clt_tls = default_tls_context();
+    REQUIRE(clt_tls->set_ca_bundle(clt_tls, client_config.id.ca, strlen(client_config.id.ca)) == 0);
     // non-NULL creds is what makes load_tls() call init_tls_from_config() and set the
     // server's own cert on srv_tls; the struct itself is only held so it can be dropped
     zt_x509 creds{};
