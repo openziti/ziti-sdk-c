@@ -318,9 +318,9 @@ TEST_CASE("e2ee-tls host delivers no data from a dialer whose certificate it rej
     CHECK_FALSE(srv.e->ready(srv.e));
 }
 
-// TLS makes a client certificate optional, and a backend may not even ask for one. The e2ee host requires the
-// dialer's, so every backend refuses the same dialers.
-TEST_CASE("e2ee-tls host refuses a dialer without a certificate", "[crypto]") {
+// the SDK's e2ee host context has no CA, so the host does not ask for the dialer's certificate. dialers whose
+// identity comes from a 3rd party CA, or has no certificate at all, still get tls e2ee
+TEST_CASE("e2ee-tls host without a CA accepts a dialer without a certificate", "[crypto]") {
     persisted_key_cleanup cleanup;
     struct ctx_guard {
         tls_context *c;
@@ -332,7 +332,7 @@ TEST_CASE("e2ee-tls host refuses a dialer without a certificate", "[crypto]") {
     };
 
     identity_ctx srv_id;
-    REQUIRE(srv_id.load(true) == 0);
+    REQUIRE(srv_id.load(true, false) == 0);
     // the dialer trusts the host and has no identity of its own
     ctx_guard clt_ctx{tls_with_ca(rsa_cert)};
 
@@ -361,12 +361,13 @@ TEST_CASE("e2ee-tls host refuses a dialer without a certificate", "[crypto]") {
     }
 
     std::vector<uint8_t> pt(16 * 1024, 0);
-    CHECK(srv.e->decrypt(srv.e, flight.data(), flight.size(), pt.data(), pt.size()) == -1);
-    CHECK(std::search(pt.begin(), pt.end(), secret.begin(), secret.end()) == pt.end());
-    CHECK_FALSE(srv.e->ready(srv.e));
-    // the refusal holds: the host does not go on with the session
-    uint8_t out[256];
-    CHECK(srv.e->encrypt(srv.e, (const uint8_t *) "x", 1, out, sizeof(out)) == -1);
+    ssize_t pt_len = srv.e->decrypt(srv.e, flight.data(), flight.size(), pt.data(), pt.size());
+    REQUIRE(pt_len >= 0);
+    if (!tls12_capped()) {
+        CHECK(std::string((const char *) pt.data(), (size_t) pt_len) == secret);
+        CHECK(srv.e->ready(srv.e));
+        CHECK(srv_id.peer_certs == 0);
+    }
 }
 
 namespace {

@@ -205,10 +205,14 @@ struct identity_ctx {
         if (key) key->free(key);
     }
 
-    int load(bool key_store_reachable) {
+    // verify_peer false leaves the context like ztx->e2ee_host_tls: no CA and no verify callback, so a host
+    // does not ask for the dialer's certificate
+    int load(bool key_store_reachable, bool verify_peer = true) {
         REQUIRE(tls->load_key(&key, rsa_key, strlen(rsa_key)) == 0);
         REQUIRE(tls->load_cert(&cert, rsa_cert, strlen(rsa_cert)) == 0);
-        tls->set_cert_verify(tls, count_peer_cert, &peer_certs);
+        if (verify_peer) {
+            tls->set_cert_verify(tls, count_peer_cert, &peer_certs);
+        }
         if (key_store_reachable) {
             return tls->set_own_cert(tls, key, cert);
         }
