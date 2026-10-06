@@ -160,6 +160,9 @@ struct ziti_ctx {
     char *last_update;
 
     tls_context *channel_tls;
+    // specifically created without a CA so dialers don't get asked to supply a cert. identities from a
+    // 3rd party CA would fail if asked for a cert from an openziti authority
+    tls_context *e2ee_host_tls;
     struct tls_credentials session_creds;
     deadline_t session_creds_deadline;
     // map<erUrl,ziti_channel>
@@ -283,6 +286,8 @@ int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer, bool
 void ztx_dump_external_auth(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx);
 extern void ztx_request_session_cert(ziti_context ztx);
 extern void ztx_clear_session_creds(ziti_context ztx);
+// sets the cert on both channel_tls and e2ee_host_tls so they don't drift apart
+extern int ztx_set_channel_cert(ziti_context ztx, tlsuv_private_key_t key, tlsuv_certificate_t cert);
 
 void ztx_auth_state_cb(void *, ziti_auth_state , const void *);
 ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er);

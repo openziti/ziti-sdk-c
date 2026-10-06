@@ -147,7 +147,8 @@ public:
 
 TEST_CASE_METHOD(E2EBase, "e2ee test", "[e2ee]") {
     tls_context *srv_tls = nullptr;
-    auto clt_tls = default_tls_context(client_config.id.ca, strlen(client_config.id.ca));
+    auto clt_tls = default_tls_context();
+    REQUIRE(clt_tls->set_ca_bundle(clt_tls, client_config.id.ca, strlen(client_config.id.ca)) == 0);
     // non-NULL creds is what makes load_tls() call init_tls_from_config() and set the
     // server's own cert on srv_tls; the struct itself is only held so it can be dropped
     zt_x509 creds{};
@@ -156,7 +157,10 @@ TEST_CASE_METHOD(E2EBase, "e2ee test", "[e2ee]") {
         if (srv_tls) srv_tls->free_ctx(srv_tls);
         if (clt_tls) clt_tls->free_ctx(clt_tls);
     };
-    REQUIRE_ZITI_OK(load_tls(&server_config, &srv_tls, &creds));
+    // the server has no CA so the dialer isn't asked for a cert
+    ziti_config srv_cfg = server_config;
+    srv_cfg.id.ca = nullptr;
+    REQUIRE_ZITI_OK(load_tls(&srv_cfg, &srv_tls, &creds));
 
     auto method = GENERATE(ziti_crypto_none, ziti_crypto_libsodium, ziti_crypto_tls);
 

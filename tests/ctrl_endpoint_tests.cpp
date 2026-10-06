@@ -54,7 +54,7 @@ namespace {
         uv_loop_t *loop = test_loop();
         simulate_uptime(loop, uptime_ms > 0 ? uptime_ms : uv_hrtime() / 1000000);
 
-        tls_context *tls = default_tls_context(nullptr, 0);
+        tls_context *tls = default_tls_context();
 
         model_list urls = {};
         for (const char *ep: endpoints) {
@@ -108,7 +108,7 @@ TEST_CASE("endpoint-backoff-lasts-a-minute-after-a-failure", "[controller]") {
     uv_loop_t *loop = test_loop();
     simulate_uptime(loop, failed_at);
 
-    tls_context *tls = default_tls_context(nullptr, 0);
+    tls_context *tls = default_tls_context();
 
     model_list urls = {};
     model_list_append(&urls, (void *) "https://203.0.113.1:1280");
@@ -143,7 +143,7 @@ TEST_CASE("endpoint-selection-skips-the-one-still-cooling-down", "[controller]")
     uv_loop_t *loop = test_loop();
     simulate_uptime(loop, failed_at);
 
-    tls_context *tls = default_tls_context(nullptr, 0);
+    tls_context *tls = default_tls_context();
 
     model_list urls = {};
     model_list_append(&urls, (void *) "https://203.0.113.1:1280");
@@ -171,7 +171,7 @@ TEST_CASE("controller-init-rejects-empty-endpoint-list", "[controller]") {
     uv_loop_t *loop = test_loop();
     simulate_uptime(loop, 5 * 1000);
 
-    tls_context *tls = default_tls_context(nullptr, 0);
+    tls_context *tls = default_tls_context();
 
     model_list urls = {};
     ziti_controller ctrl{};

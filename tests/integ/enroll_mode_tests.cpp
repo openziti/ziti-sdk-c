@@ -52,7 +52,8 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-then-list-services", "[integ][enroll
 
     // build mTLS context with enrolled cert
     const char *ca = ctx.resp->cas_pem ? ctx.resp->cas_pem : cs.cfg.id.ca;
-    auto mtls_tls = default_tls_context(ca, strlen(ca));
+    auto mtls_tls = default_tls_context();
+    REQUIRE(mtls_tls->set_ca_bundle(mtls_tls, ca, strlen(ca)) == 0);
 
     tlsuv_certificate_t cert = nullptr;
     REQUIRE(mtls_tls->load_cert(&cert, ctx.resp->client_cert_pem,

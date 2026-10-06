@@ -169,7 +169,10 @@ int load_tls(ziti_config *cfg, tls_context **ctx, struct tls_credentials *creds)
     // load ca from ziti config if present
     const char *ca;
     size_t ca_len = parse_ref(cfg->id.ca, &ca);
-    tls_context *tls = default_tls_context(ca, ca_len);
+    tls_context *tls = default_tls_context();
+    if (ca != NULL) {
+        tls->set_ca_bundle(tls, ca, ca_len);
+    }
     if (tls->allow_partial_chain) {
         tls->allow_partial_chain(tls, true);
     }
@@ -539,6 +542,10 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
             ztx->channel_tls->free_ctx(ztx->channel_tls);
             ztx->channel_tls = NULL;
         }
+        if (ztx->e2ee_host_tls) {
+            ztx->e2ee_host_tls->free_ctx(ztx->e2ee_host_tls);
+            ztx->e2ee_host_tls = NULL;
+        }
 
         if (ztx->closing) {
             shutdown_and_free(ztx);
@@ -569,7 +576,8 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
             ZTX_LOG(ERROR, "failed to create channel TLS context: %s", ziti_errorstr(rc));
             return;
         }
-        ztx->channel_tls->set_own_cert(ztx->channel_tls, ztx->id_creds.key, ztx->id_creds.cert);
+        ztx->e2ee_host_tls = default_tls_context();
+        ztx_set_channel_cert(ztx, ztx->id_creds.key, ztx->id_creds.cert);
 
         ZTX_LOG(INFO, "using tlsuv[%s/%s]", tlsuv_version(),
                 ztx->tlsCtx->version ? ztx->tlsCtx->version() : "unspecified");
@@ -2375,7 +2383,7 @@ static void cert_verify_cb(void *r, const ziti_error *err, void *ctx) {
     }
 
     if (ztx->session_creds.cert == NULL) {
-        if (ztx->channel_tls->set_own_cert(ztx->channel_tls, ztx->id_creds.key, req->new_cert) != 0) {
+        if (ztx_set_channel_cert(ztx, ztx->id_creds.key, req->new_cert) != 0) {
             ZTX_LOG(ERROR, "extended certificate did not match key");
             goto done;
         }

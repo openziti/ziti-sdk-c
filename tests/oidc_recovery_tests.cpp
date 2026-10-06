@@ -209,7 +209,7 @@ TEST_CASE("oidc-refresh-recovers-after-silent-connection-death", "[oidc]") {
     FakeTokenEndpoint server;
 
     uv_loop_t *loop = uv_loop_new();
-    tls_context *tls = default_tls_context(nullptr, 0);
+    tls_context *tls = default_tls_context();
 
     oidc_client_t clt{};
     // Provider URL is never actually dialed by the refresh path - refresh

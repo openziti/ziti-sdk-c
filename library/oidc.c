@@ -1069,7 +1069,8 @@ ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, const char 
     u = model_list_it_element(clt->cur_url);
 
     clt->loop = l;
-    clt->tls = default_tls_context(ca, strlen(ca));
+    clt->tls = default_tls_context();
+    clt->tls->set_ca_bundle(clt->tls, ca, strlen(ca));
     clt->x509 = x509;
     if (clt->x509 && clt->x509->cert != NULL) {
         clt->tls->set_own_cert(clt->tls, clt->x509->key, clt->x509->cert);

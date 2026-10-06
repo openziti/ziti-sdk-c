@@ -375,8 +375,9 @@ jrEaRTDiko6e0ifkFw==
     // both engines borrow this context, so it has to outlive them: declared first so it
     // is destroyed last. the credentials are up-ref'd by set_own_cert, so the order of
     // cred_guard relative to the engines does not matter
-    auto tls = default_tls_context(ca, strlen(ca));
+    auto tls = default_tls_context();
     auto tls_guard = std::unique_ptr<tls_context, tls_ctx_deleter>(tls);
+    REQUIRE(tls->set_ca_bundle(tls, ca, strlen(ca)) == 0);
 
     zt_x509 srv_cred{};
     x509_guard cred_guard{&srv_cred};

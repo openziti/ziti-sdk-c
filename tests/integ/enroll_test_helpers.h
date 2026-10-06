@@ -156,7 +156,8 @@ struct ctrl_setup {
 
     void init(uv_loop_t *loop) {
         REQUIRE(ziti_load_config(&cfg, TEST_CLIENT) == ZITI_OK);
-        tls = default_tls_context(cfg.id.ca, strlen(cfg.id.ca));
+        tls = default_tls_context();
+        REQUIRE(tls->set_ca_bundle(tls, cfg.id.ca, strlen(cfg.id.ca)) == 0);
         REQUIRE(ziti_ctrl_init(loop, &ctrl, &cfg.controllers, tls) == ZITI_OK);
     }
 
