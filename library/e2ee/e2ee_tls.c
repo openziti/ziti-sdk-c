@@ -16,7 +16,6 @@ struct e2ee_tls {
     // set once the session is refused; the engine may still report its handshake complete
     bool failed;
     // the server has seen the dialer's certificate
-    bool peer_checked;
     // the server sent a HelloRetryRequest: its next ServerHello is checked
     bool hello_retry;
 
@@ -122,23 +121,6 @@ static int check_flight(struct e2ee_tls *e, const uint8_t *b, size_t len) {
     return 0;
 }
 
-// A host requires the dialer's certificate. The engine has already checked the chain of one
-// that was sent; a client certificate is optional in TLS, so its absence is caught here.
-static int check_peer(struct e2ee_tls *e, tls_handshake_state st) {
-    if (st != TLS_HS_COMPLETE || !e->server || e->peer_checked) {
-        return 0;
-    }
-    tlsuv_certificate_t cert = NULL;
-    if (e->engine->get_peer_cert == NULL || e->engine->get_peer_cert(e->engine, &cert) != 0 || cert == NULL) {
-        ee_log(ERROR, "dialer presented no certificate");
-        e->failed = true;
-        return -1;
-    }
-    cert->free(cert);
-    e->peer_checked = true;
-    return 0;
-}
-
 // Refuses a TLS 1.2 renegotiation from either side: after the handshake every record a peer sends
 // is application data or an alert. TLS 1.3 sends its post-handshake messages (tickets, KeyUpdate)
 // in application data records, so they pass. Every e2ee message carries whole records, so the
@@ -218,7 +200,7 @@ static ssize_t e2ee_tls_encrypt(e2ee_t * e2ee, const uint8_t *plaintext, size_t 
         return -1;
     }
     enum tls_handshake_st hs = e->engine->handshake(e->engine);
-    if (hs == TLS_HS_ERROR || check_peer(e, hs) != 0) {
+    if (hs == TLS_HS_ERROR) {
         ee_log(ERROR, "handshake failed");
         return -1;
     }
@@ -288,7 +270,7 @@ static ssize_t e2ee_tls_decrypt(e2ee_t *e2ee, const uint8_t * ciphertext, size_t
     }
     // a failed handshake includes a rejected peer certificate. an engine may still decrypt
     // records that came with the peer's flight, and none of them may reach the caller
-    if (st == TLS_HS_ERROR || check_peer(e, st) != 0) {
+    if (st == TLS_HS_ERROR) {
         ee_log(ERROR, "handshake failed");
         return -1;
     }

@@ -599,6 +599,7 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
             return;
         }
         ztx->e2ee_host_tls = default_tls_context();
+        tls_restrict_fips(ztx->e2ee_host_tls);
         // on win32crypto this imports the key into CNG again, which can fail
         if (ztx_set_channel_cert(ztx, ztx->id_creds.key, ztx->id_creds.cert) != 0) {
             tls_init_failed(ztx, ZITI_INVALID_CERT_KEY_PAIR, "failed to set channel TLS identity");
