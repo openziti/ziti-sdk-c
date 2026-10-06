@@ -29,7 +29,8 @@ add_executable(all_tests
         tls_engine_tests.cpp
         win32crypto_key_tests.cpp
         ztx_shutdown_tests.cpp
-        multipart_tests.cpp)
+        multipart_tests.cpp
+        e2ee_handshake_tests.cpp)
 
 set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
 find_package(OpenSSL REQUIRED)

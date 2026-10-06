@@ -1985,6 +1985,8 @@ static void ztx_process_deadlines(uv_timer_t *t) {
     model_list expired = {0};
     while ((d = LIST_FIRST(&ztx->deadlines)) != NULL && now >= d->expiration) {
         LIST_REMOVE(d, _next);
+        // unlinked: clear_deadline must not remove it again
+        d->_next.le_prev = NULL;
         model_list_append(&expired, d);
         n++;
     }
@@ -1993,6 +1995,10 @@ static void ztx_process_deadlines(uv_timer_t *t) {
     }
 
     MODEL_LIST_FOREACH(d, expired) {
+        // an earlier callback cleared it or set it again
+        if (d->expire_cb == NULL || d->_next.le_prev != NULL) {
+            continue;
+        }
         void *ctx = d->ctx;
         void (*cb)(void *) = d->expire_cb;
         d->expire_cb = NULL;

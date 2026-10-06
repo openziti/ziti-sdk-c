@@ -216,7 +216,6 @@ static int close_conn_internal(struct ziti_conn *conn) {
         }
 
         clear_deadline(&conn->flusher);
-        clear_deadline(&conn->e2ee_deadline);
         int count = 0;
         while (!TAILQ_EMPTY(&conn->in_q)) {
             message *m = TAILQ_FIRST(&conn->in_q);
@@ -373,13 +372,35 @@ static void complete_conn_req(struct ziti_conn *conn, int code) {
     }
 }
 
+static bool e2ee_ready(ziti_connection conn) {
+    return conn->e2ee->ready == NULL || conn->e2ee->ready(conn->e2ee);
+}
+
+// a tls 1.2 dial is Connected but its conn cb waits for the host's last handshake flight
+static bool dial_pending(ziti_connection conn) {
+    return conn->state == Connected && conn->conn_req && conn->conn_req->cb;
+}
+
+// tls 1.2 needs the host's last flight before the dialer can encrypt, so the conn cb waits for the
+// decrypt that completes the handshake. the conn is Connected meanwhile so that data gets processed
+static void complete_dial(ziti_connection conn, int rc) {
+    if (rc == ZITI_OK && !e2ee_ready(conn)) {
+        CONN_LOG(DEBUG, "waiting for the e2ee handshake to complete");
+        return;
+    }
+    complete_conn_req(conn, rc);
+}
+
 static void connect_timeout(void *data) {
     struct ziti_conn *conn = data;
     ziti_channel_t *ch = conn->channel;
 
-    if (conn->state == Connecting || conn->state == Accepting) {
+    if (conn->state == Connecting || conn->state == Accepting || dial_pending(conn)) {
         if (ch == NULL) {
             CONN_LOG(WARN, "connect timeout: no suitable edge router for service");
+        } else if (conn->state == Connected) {
+            CONN_LOG(WARN, "e2ee handshake did not complete in %ds on ch[%d]",
+                     conn->conn_req->connect_timeout_seconds, zch_get_id(ch));
         } else {
             CONN_LOG(WARN, "failed to establish connection in %ds on ch[%d]",
                      conn->conn_req->connect_timeout_seconds, zch_get_id(ch));
@@ -895,13 +916,6 @@ void chain_data_requests(ziti_connection conn, struct ziti_write_req_s *req) {
     }
 }
 
-static bool e2ee_ready(ziti_connection conn) {
-    return conn->e2ee->ready == NULL || conn->e2ee->ready(conn->e2ee);
-}
-
-// the peer answers the handshake within one round trip
-#define E2EE_HANDSHAKE_TIMEOUT (30 * 1000)
-
 // ends the conn on a local failure: StateClosed still reaches the peer, held writes fail
 static void conn_failed(ziti_connection conn, int err) {
     if (conn->channel && !conn->disconnecting) {
@@ -917,17 +931,6 @@ static void conn_failed(ziti_connection conn, int err) {
     }
 }
 
-static void e2ee_handshake_timeout(void *ctx) {
-    ziti_connection conn = ctx;
-    // the flush fails or sends the held writes
-    if (conn->state != Connected || e2ee_ready(conn)) {
-        flush_connection(conn);
-        return;
-    }
-    CONN_LOG(ERROR, "e2ee handshake did not complete in %ds", E2EE_HANDSHAKE_TIMEOUT / 1000);
-    conn_failed(conn, ZITI_TIMEOUT);
-}
-
 static bool flush_to_service(ziti_connection conn) {
 
     // still connecting
@@ -939,12 +942,9 @@ static bool flush_to_service(ziti_connection conn) {
         struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
         if (conn->state == Connected && !req->message && !req->close && !e2ee_ready(conn)) {
             // app data cannot be encrypted before the e2ee handshake completes: hold the queue, in
-            // order, until a decrypt completes the handshake. only crypto messages go ahead
-            if (conn->e2ee_deadline.expire_cb == NULL) {
-                CONN_LOG(VERBOSE, "holding writes until the e2ee handshake completes");
-                ztx_set_deadline(conn->ziti_ctx, E2EE_HANDSHAKE_TIMEOUT, &conn->e2ee_deadline,
-                                 e2ee_handshake_timeout, conn);
-            }
+            // order, until a decrypt completes the handshake. only crypto messages go ahead.
+            // no timer: a dialer that never finishes times out its dial and the circuit closes
+            CONN_LOG(VERBOSE, "holding writes until the e2ee handshake completes");
             break;
         }
         TAILQ_REMOVE(&conn->wreqs, req, _next);
@@ -1082,6 +1082,7 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
     }
 
     CONN_LOG(VERBOSE, "decrypting %d bytes", msg->header.body_len);
+    bool was_ready = e2ee_ready(conn);
     ssize_t plain_len = conn->e2ee->decrypt(conn->e2ee,
                                             msg->body, msg->header.body_len,
                                             plain_text, msg->header.body_len);
@@ -1108,23 +1109,28 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
         CONN_LOG(VERBOSE, "decrypted %zd bytes", plain_len);
     }
 
-    if (plain_len < 0) {
-        CONN_LOG(ERROR, "decryption failed: %zd", plain_len);
+    if (plain_len < 0 ||
+        (conn->e2ee->handshake_output && queue_crypto_message(conn, conn->e2ee->handshake_output) != ZITI_OK)) {
+        if (plain_len < 0) {
+            CONN_LOG(ERROR, "decryption failed: %zd", plain_len);
+        }
         FREE(plain_text);
-        conn_failed(conn, ZITI_CRYPTO_FAIL);
+        // a dial still waiting for the handshake fails through its conn cb
+        if (dial_pending(conn)) {
+            complete_conn_req(conn, ZITI_CRYPTO_FAIL);
+        } else {
+            conn_failed(conn, ZITI_CRYPTO_FAIL);
+        }
         return;
     }
 
-    if (conn->e2ee->handshake_output && queue_crypto_message(conn, conn->e2ee->handshake_output) != ZITI_OK) {
-        FREE(plain_text);
-        conn_failed(conn, ZITI_CRYPTO_FAIL);
-        return;
-    }
-    // this decrypt may have completed the handshake: release the writes flush_to_service held.
-    // the deadline stays armed: ztx_process_deadlines may hold it in its expired list, and
-    // clear_deadline here would unlink it twice
-    if (conn->e2ee_deadline.expire_cb != NULL && e2ee_ready(conn)) {
-        flush_connection(conn);
+    // this decrypt completed the handshake: finish the dial or release the writes flush_to_service held
+    if (!was_ready && e2ee_ready(conn)) {
+        if (dial_pending(conn)) {
+            complete_conn_req(conn, ZITI_OK);
+        } else {
+            flush_connection(conn);
+        }
     }
 
     if (plain_len == 0) {
@@ -1173,7 +1179,10 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
     struct ziti_conn_req *req = conn->conn_req;
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
-    clear_deadline(&req->deadline);
+    // a dial that goes on to wait for the e2ee handshake keeps its timer
+    if (msg == NULL || msg->header.content != ContentTypeStateConnected || conn->state != Connecting) {
+        clear_deadline(&req->deadline);
+    }
 
     req->waiter = NULL;
     if (err != 0 && msg == NULL) {
@@ -1227,7 +1236,7 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
                     sticky_tokens_map_erase(&ztx->sticky_tokens, req_sticky_key(req));
                 }
                 conn_set_state(conn, rc == ZITI_OK ? Connected : Disconnected);
-                complete_conn_req(conn, rc);
+                complete_dial(conn, rc);
             } else if (conn->state == Accepting) {
                 CONN_LOG(TRACE, "accepted");
                 if (conn->encrypted) {
@@ -1632,6 +1641,11 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
 
                 case Connected:
                 case CloseWrite:
+                    if (dial_pending(conn)) {
+                        CONN_LOG(ERROR, "closed before the e2ee handshake completed");
+                        complete_conn_req(conn, ZITI_CONN_CLOSED);
+                        break;
+                    }
                     conn_set_state(conn, conn->close ? Closed : Disconnected);
                     break;
 
@@ -1668,7 +1682,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
                     send_crypto_header(conn);
                 }
                 conn_set_state(conn, rc == ZITI_OK ? Connected : Disconnected);
-                complete_conn_req(conn, rc);
+                complete_dial(conn, rc);
             } else if (conn->state == Accepting) {
                 CONN_LOG(TRACE, "accepted");
                 if (conn->encrypted) {
