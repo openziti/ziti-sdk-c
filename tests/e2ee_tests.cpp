@@ -382,6 +382,8 @@ jrEaRTDiko6e0ifkFw==
     // cred_guard relative to the engines does not matter
     auto tls = default_tls_context();
     auto tls_guard = std::unique_ptr<tls_context, tls_ctx_deleter>(tls);
+    // as the SDK's load_tls() does
+    tls_restrict_fips(tls);
     REQUIRE(tls->set_ca_bundle(tls, ca, strlen(ca)) == 0);
 
     zt_x509 srv_cred{};
@@ -572,13 +574,10 @@ TEST_CASE("e2ee-tls-fips", "[crypto][fips]") {
     CHECK(info.cipher_suite != 0x1303);
     CHECK(info.cipher_suite != 0xCCA8);
 
-    // the 3.1.2 fips provider serves X25519/X448 itself, so fips=yes alone lets TLS 1.3 pick X25519. only a
-    // config that also restricts the TLS groups (scripts/fips-linux openssl-nist-groups.cnf) keeps them out
-    const char *nist = getenv("ZITI_TEST_FIPS_NIST_GROUPS");
-    if (nist != nullptr && strcmp(nist, "1") == 0) {
-        CHECK(info.key_share_group != 0x001d);
-        CHECK(info.key_share_group != 0x001e);
-    }
+    // the 3.1.2 fips provider serves X25519/X448 itself, so fips=yes alone would let TLS 1.3 pick X25519.
+    // tls_restrict_fips() keeps them out with or without a config that restricts the groups
+    CHECK(info.key_share_group != 0x001d);
+    CHECK(info.key_share_group != 0x001e);
 }
 #endif
 
@@ -638,7 +637,8 @@ std::vector<uint8_t> tls12_flight(uint16_t suite, uint16_t curve, bool ems, size
 
     std::vector<uint8_t> flight;
     for (size_t p = 0; p < hs.size(); p += record_size) {
-        size_t n = std::min(record_size, hs.size() - p);
+        // parenthesized: windows.h defines a min() macro on MSVC
+        size_t n = (std::min)(record_size, hs.size() - p);
         flight.insert(flight.end(), {0x16, 0x03, 0x03, (uint8_t)(n >> 8), (uint8_t) n});
         flight.insert(flight.end(), hs.begin() + (long) p, hs.begin() + (long)(p + n));
     }
@@ -744,7 +744,7 @@ tlsuv_engine_t fake_new_engine(tls_context *, const char *) {
     the_fake->api.handshake = [](tlsuv_engine_t) { return TLS_HS_COMPLETE; };
     the_fake->api.write = [](tlsuv_engine_t e, const char *data, size_t len) {
         fake(e)->writes++;
-        size_t n = std::min(len, fake(e)->chunk);
+        size_t n = (std::min)(len, fake(e)->chunk);
         if (n > 0) {
             fake(e)->out(fake(e)->io, data, n);
         }

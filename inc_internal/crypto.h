@@ -74,6 +74,11 @@ e2ee_t *create_e2ee(ziti_crypto_method, bool server, tls_context *tls);
 // true when the TLS backend runs its FIPS module
 bool tls_is_fips(tls_context *tls);
 
+// when the backend runs its FIPS module, limits what the context offers to FIPS-approved algorithms
+// (tlsuv require_fips). a backend in FIPS mode still offers some it does not approve: the OpenSSL FIPS
+// provider serves X25519. call it before any engine is created from the context
+void tls_restrict_fips(tls_context *tls);
+
 // Checks a tls e2ee server's first flight and logs what it negotiated. With fips set, only these pass:
 //   TLS 1.3: TLS_AES_128/256_GCM, a P-256/P-384/P-521 key share
 //   TLS 1.2: ECDHE-ECDSA/RSA with AES-128/256-GCM, extended master secret, a P-256/P-384/P-521 curve

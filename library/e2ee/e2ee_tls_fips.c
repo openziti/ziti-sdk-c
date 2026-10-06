@@ -50,6 +50,12 @@ bool tls_is_fips(tls_context *tls) {
     return tls != NULL && tls->fips_status(tls, NULL, 0) == TLS_FIPS_ENABLED;
 }
 
+void tls_restrict_fips(tls_context *tls) {
+    if (tls_is_fips(tls) && tls->require_fips != NULL) {
+        tls->require_fips(tls);
+    }
+}
+
 static uint16_t rd16(const uint8_t *p) {
     return (uint16_t) ((p[0] << 8) | p[1]);
 }
