@@ -29,7 +29,8 @@
 
 #if _WIN32
 #include <time.h>
-#else
+#endif
+#if defined(__APPLE__)
 #include <errno.h>
 #include <unistd.h>
 #include <sys/uio.h>
