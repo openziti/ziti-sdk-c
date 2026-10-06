@@ -490,9 +490,8 @@ static void process_dial(struct binding_s *b, message *msg) {
     if (b->e2ee && b->e2ee->clone)
         client->e2ee = b->e2ee->clone(b->e2ee);
     else {
-        // channel_tls carries the session cert when the controller issues one,
-        // falling back to the identity cert -- see ztx_request_session_cert()
-        client->e2ee = create_e2ee(conn->ziti_ctx->opts.e2ee_mode, true, conn->ziti_ctx->channel_tls);
+        // uses the session cert if the controller issued one, otherwise the identity cert
+        client->e2ee = create_e2ee(conn->ziti_ctx->opts.e2ee_mode, true, conn->ziti_ctx->e2ee_host_tls);
     }
 
     if (client->e2ee->init(client->e2ee, peer_key, peer_key_len, true) != 0) {
@@ -607,8 +606,7 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
 
     ziti_crypto_method cm = conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none;
 
-    // bind side authenticates with channel_tls' own cert: session cert if available
-    b->e2ee = create_e2ee(cm, true, conn->ziti_ctx->channel_tls);
+    b->e2ee = create_e2ee(cm, true, conn->ziti_ctx->e2ee_host_tls);
     if (b->e2ee == NULL) {
         CONN_LOG(ERROR, "failed to initialize crypto method[%s]", e2ee_method_id(cm));
         return 0;

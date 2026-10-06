@@ -94,11 +94,14 @@ static int e2ee_tls_init(e2ee_t *e2ee, const uint8_t * hello, size_t hello_len, 
 static ssize_t e2ee_tls_get_header(e2ee_t *e2ee, uint8_t header[E2EE_MAX_HEADER_LEN]) {
     struct e2ee_tls *e = (struct e2ee_tls*)e2ee;
     ee_log(VERBOSE, "getting header");
-    if (e->server)
-        return 0;
-
+    // a server can be left with handshake output after taking the client's flight:
+    // under TLS 1.2 its ChangeCipherSpec and Finished, which the client needs first
     if (e->out_p > e->out_buffer) {
         ssize_t len = e->out_p - e->out_buffer;
+        if (len > E2EE_MAX_HEADER_LEN) {
+            ee_log(ERROR, "pending handshake output[%zd] exceeds header limit[%d]", len, E2EE_MAX_HEADER_LEN);
+            return -1;
+        }
         memcpy(header, e->out_buffer, len);
         e->out_p = e->out_buffer;
         ee_log(VERBOSE, "header %zd bytes", len);
@@ -183,6 +186,7 @@ static e2ee_t e2ee_tls_impl = {
     .get_header = e2ee_tls_get_header,
     .encrypt = e2ee_tls_encrypt,
     .decrypt = e2ee_tls_decrypt,
+    .handshake_output = e2ee_tls_get_header,
     .free = e2ee_tls_free,
 };
 

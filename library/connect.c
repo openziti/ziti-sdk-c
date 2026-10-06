@@ -810,9 +810,10 @@ int establish_crypto(ziti_connection conn, message *msg) {
     return ZITI_OK;
 }
 
-static int send_crypto_header(ziti_connection conn) {
+// crypto messages go ahead of app writes, in the order they were produced
+static int queue_crypto_message(ziti_connection conn, ssize_t (*get)(struct e2ee *, uint8_t[E2EE_MAX_HEADER_LEN])) {
     uint8_t crypto_header[E2EE_MAX_HEADER_LEN];
-    ssize_t crypto_header_len = conn->e2ee->get_header(conn->e2ee, crypto_header);
+    ssize_t crypto_header_len = get(conn->e2ee, crypto_header);
     if (crypto_header_len < 0) {
         CONN_LOG(ERROR, "failed to establish encryption: crypto error getting header");
         return ZITI_CRYPTO_FAIL;
@@ -825,10 +826,24 @@ static int send_crypto_header(ziti_connection conn) {
         wr->conn = conn;
         wr->message = m;
 
-        TAILQ_INSERT_HEAD(&conn->wreqs, wr, _next);
+        struct ziti_write_req_s *last = NULL;
+        struct ziti_write_req_s *r = TAILQ_FIRST(&conn->wreqs);
+        while (r && r->message) {
+            last = r;
+            r = TAILQ_NEXT(r, _next);
+        }
+        if (last) {
+            TAILQ_INSERT_AFTER(&conn->wreqs, last, wr, _next);
+        } else {
+            TAILQ_INSERT_HEAD(&conn->wreqs, wr, _next);
+        }
         flush_connection(conn);
     }
     return ZITI_OK;
+}
+
+static int send_crypto_header(ziti_connection conn) {
+    return queue_crypto_message(conn, conn->e2ee->get_header);
 }
 
 static void on_flush(void *ctx) {
@@ -1022,6 +1037,13 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
 
     if (plain_len < 0) {
         CONN_LOG(ERROR, "decryption failed: %zd", plain_len);
+        FREE(plain_text);
+        conn_set_state(conn, Disconnected);
+        conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);
+        return;
+    }
+
+    if (conn->e2ee->handshake_output && queue_crypto_message(conn, conn->e2ee->handshake_output) != ZITI_OK) {
         FREE(plain_text);
         conn_set_state(conn, Disconnected);
         conn->data_cb(conn, NULL, ZITI_CRYPTO_FAIL);

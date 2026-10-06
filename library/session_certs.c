@@ -34,8 +34,8 @@ static void on_create_cert(ziti_create_api_cert_resp *resp, const ziti_error *e,
         if (ztx->channel_tls->load_cert(&cert, resp->client_cert_pem, strlen(resp->client_cert_pem)) != 0) {
             ZTX_LOG(ERROR, "failed to parse supplied session cert");
         } else {
-            ztx->channel_tls->set_own_cert(ztx->channel_tls, NULL, NULL);
-            if (ztx->channel_tls->set_own_cert(ztx->channel_tls, pk, cert) != 0) {
+            ztx_set_channel_cert(ztx, NULL, NULL);
+            if (ztx_set_channel_cert(ztx, pk, cert) != 0) {
                 ZTX_LOG(ERROR, "failed to set session cert");
                 // what to do here? this shouldn't happen
                 cert->free(cert);
@@ -119,11 +119,18 @@ void ztx_request_session_cert(ziti_context ztx) {
     free(csr);
 }
 
+int ztx_set_channel_cert(ziti_context ztx, tlsuv_private_key_t key, tlsuv_certificate_t cert) {
+    if (ztx->e2ee_host_tls) {
+        ztx->e2ee_host_tls->set_own_cert(ztx->e2ee_host_tls, key, cert);
+    }
+    return ztx->channel_tls->set_own_cert(ztx->channel_tls, key, cert);
+}
+
 void ztx_clear_session_creds(ziti_context ztx) {
     if (ztx->session_creds.cert || ztx->session_creds.key) {
         if (ztx->channel_tls) {
-            ztx->channel_tls->set_own_cert(ztx->channel_tls, NULL, NULL);
-            ztx->channel_tls->set_own_cert(ztx->channel_tls, ztx->id_creds.key, ztx->id_creds.cert);
+            ztx_set_channel_cert(ztx, NULL, NULL);
+            ztx_set_channel_cert(ztx, ztx->id_creds.key, ztx->id_creds.cert);
         }
 
         if (ztx->session_creds.cert) {

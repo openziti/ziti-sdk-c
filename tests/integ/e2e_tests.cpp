@@ -157,7 +157,10 @@ TEST_CASE_METHOD(E2EBase, "e2ee test", "[e2ee]") {
         if (srv_tls) srv_tls->free_ctx(srv_tls);
         if (clt_tls) clt_tls->free_ctx(clt_tls);
     };
-    REQUIRE_ZITI_OK(load_tls(&server_config, &srv_tls, &creds));
+    // the server has no CA so the dialer isn't asked for a cert
+    ziti_config srv_cfg = server_config;
+    srv_cfg.id.ca = nullptr;
+    REQUIRE_ZITI_OK(load_tls(&srv_cfg, &srv_tls, &creds));
 
     auto method = GENERATE(ziti_crypto_none, ziti_crypto_libsodium, ziti_crypto_tls);
 
