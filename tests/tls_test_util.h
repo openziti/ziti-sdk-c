@@ -22,6 +22,8 @@
 
 #include <tlsuv/tls_engine.h>
 
+#include "crypto.h"
+
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
@@ -108,7 +110,7 @@ ssize_t mem_read(io_ctx c, char *out, size_t len) {
     auto *p = static_cast<mem_endpoint *>(c)->in;
     if (p->buf.empty()) return TLS_AGAIN;
 
-    size_t n = std::min(len, p->buf.size());
+    size_t n = (std::min)(len, p->buf.size());
     std::copy_n(p->buf.begin(), n, out);
     p->buf.erase(p->buf.begin(), p->buf.begin() + (long) n);
     return (ssize_t) n;
@@ -146,9 +148,10 @@ int count_peer_cert(const struct tlsuv_certificate_s *, void *ctx) {
     return 0;
 }
 
-// a context that trusts only `ca`
+// a context that trusts only `ca`, restricted in FIPS mode like the SDK's load_tls()
 tls_context *tls_with_ca(const char *ca) {
     tls_context *tls = default_tls_context();
+    tls_restrict_fips(tls);
     REQUIRE(tls->set_ca_bundle(tls, ca, strlen(ca)) == 0);
     return tls;
 }
@@ -194,7 +197,7 @@ struct identity_ctx {
     tlsuv_certificate_t cert = nullptr;
     int peer_certs = 0;
 
-    identity_ctx() : tls(default_tls_context()) {}
+    identity_ctx() : tls(default_tls_context()) { tls_restrict_fips(tls); }
 
     ~identity_ctx() {
         if (tls) tls->free_ctx(tls);

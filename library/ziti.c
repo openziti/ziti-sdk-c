@@ -175,6 +175,9 @@ int load_tls(ziti_config *cfg, tls_context **ctx, struct tls_credentials *creds)
     const char *ca;
     size_t ca_len = parse_ref(cfg->id.ca, &ca);
     tls_context *tls = default_tls_context();
+    // offer only approved algorithms in FIPS mode, so a handshake does not pick one the
+    // tls e2ee FIPS check then refuses
+    tls_restrict_fips(tls);
     if (ca != NULL) {
         tls->set_ca_bundle(tls, ca, ca_len);
     }

@@ -802,7 +802,7 @@ const char *group_without_key_share(const uint8_t *rec, size_t len) {
     if (len < off + 1) return nullptr;
     off += 1 + rec[off];                              // compression methods
     if (len < off + 2) return nullptr;
-    size_t end = std::min(len, off + 2 + rd16(rec + off));
+    size_t end = (std::min)(len, off + 2 + rd16(rec + off));
     off += 2;
     while (off + 4 <= end) {
         size_t type = rd16(rec + off), ext_len = rd16(rec + off + 2);
