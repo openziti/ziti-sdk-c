@@ -89,10 +89,6 @@ private:
 };
 
 int main(int argc, char *argv[]) {
-#if _WIN32
-    // unbuffered, msvcrt issues one WriteFile per character. run_proxy flushes once per loop iteration
-    setvbuf(stderr, nullptr, _IOFBF, 64 * 1024);
-#endif
     const char *name = basename(argv[0]);
     CLI::App app{name};
     ziti_set_app_info(name, ziti_get_version()->revision);
