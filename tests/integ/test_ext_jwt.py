@@ -14,12 +14,13 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-"""The ``idp_signer`` setup against the quickstart controller, without the SDK.
+"""External JWT login with tokens from the in-process OIDC provider (``oidc_idp.py``).
 
-An ``ext-jwt-signer`` trusting the in-process OIDC provider (``oidc_idp.py``) is the starting point of
-every external JWT login. These tests make the controller do what the SDK asks of it
-(``library/oidc.c``: ``/oidc/login/ext-jwt``, ``library/external_auth.c``: ``/enroll/token``), with a
-token from the idp, so that a failing SDK test can tell a harness problem from an SDK problem.
+An ``ext-jwt-signer`` trusting that provider (``idp_signer``) is the starting point of every external
+JWT login. The first tests make the controller do what the SDK asks of it (``library/oidc.c``:
+``/oidc/login/ext-jwt``, ``library/external_auth.c``: ``/enroll/token``), with a token from the idp and
+no SDK involved, so that a failing SDK test can tell a harness problem from an SDK problem. The last
+one runs the SDK itself, in each enroll mode.
 """
 
 import base64
@@ -35,6 +36,7 @@ import urllib.request
 import pytest
 
 from conftest import IDP_CLIENT_ID, ziti_edge
+from test_integ import run_catch_test
 
 pytestmark = pytest.mark.require_ziti('>=2.0.0')
 
@@ -175,3 +177,22 @@ def test_enroll_to_cert(idp, idp_signer, idp_user, enroll_mode, tmp_path):
     assert status == 200, resp
     assert "BEGIN CERTIFICATE" in resp["data"]["cert"]
     assert identity_exists(idp_user)
+
+
+@pytest.mark.parametrize("mode", ["cert", "token", "none"])
+def test_sdk_login_per_enroll_mode(idp, idp_signer, idp_user, enroll_mode, client_identity, tmp_path, mode):
+    """The SDK logs in with a token from the idp: ``ztx-enroll-<mode>-lifecycle`` in enroll_mode_tests.cpp.
+
+    ``client_identity`` only provides the controller's address and CA, the way a bootstrap config would.
+    """
+    enroll_mode(mode)
+    if mode == "none":
+        # nothing creates the identity for the SDK to log in to
+        ziti_edge("create", "identity", idp_user, "--external-id", idp_user, "-a", "client")
+
+    env = {
+        "test_client": client_identity["path"],
+        "IDP_SIGNER": idp_signer,
+        "IDP_TOKEN": idp.password_grant(idp_user)["access_token"],
+    }
+    run_catch_test(env, tmp_path, test=f"ztx-enroll-{mode}-lifecycle")
