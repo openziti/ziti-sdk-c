@@ -155,6 +155,22 @@ def ziti_model(base_model, quickstart_home):
               "-o", os.path.join(quickstart_home, "test_server.jwt"))
 
 
+# the SDK's external auth (library/ext_oidc.c) always uses this redirect uri
+IDP_CLIENT_ID = "ziti-test-client"
+IDP_REDIRECT_URI = "http://localhost:20314/auth/callback"
+
+
+@pytest.fixture(scope="session")
+def idp():
+    """OIDC provider for the external JWT tests: ``idp.issuer``, ``idp.add_user(email, password)``."""
+    # imported here so that a venv without authlib only breaks the tests that need the idp
+    from oidc_idp import OidcIdp
+
+    with OidcIdp(IDP_CLIENT_ID, [IDP_REDIRECT_URI]) as provider:
+        logger.info("oidc idp: %s", provider.issuer)
+        yield provider
+
+
 @pytest.fixture(scope="session")
 def jwt_signers(ziti_model, quickstart_home, ziti_version):
     """Generate JWT signing key/cert and create ext-jwt-signers."""

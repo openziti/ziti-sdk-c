@@ -1,3 +1,6 @@
 pytest
 pytest-env
 semver
+authlib>=1.8,<1.9
+flask>=3
+joserfc
