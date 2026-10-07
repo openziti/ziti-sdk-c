@@ -30,12 +30,6 @@
 #if _WIN32
 #include <time.h>
 #endif
-#if defined(__APPLE__)
-#include <errno.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/uio.h>
-#endif
 
 
 #if !defined(ZITI_VERSION)
@@ -386,49 +380,11 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
 
 static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
     const char *elapsed = get_elapsed();
-#if !defined(__APPLE__)
+    // clear the stream's sticky error flag (which may have been set by any earlier failed write to the stream).
+    // on Darwin, fprintf() to an unbuffered stream with the error flag set silently drops short lines entirely
+    // and truncates long ones (losing the newline).
+    clearerr(ziti_debug_out);
     fprintf(ziti_debug_out, "(%u)[%s] %7s %s %.*s\n", log_pid, elapsed, level_labels[level], loc, (unsigned int) msglen, msg);
-#else
-    // Write each line with a single writev() instead of fprintf().
-    // fprintf() to an unbuffered stream is emitted in BUFSIZ chunks, and on Darwin the final partial chunk
-    // is silently dropped once the stream's sticky error flag has been set by any earlier failed write,
-    // which truncates long lines, drops short ones entirely, and strips newlines.
-    char prefix[256];
-    int plen = snprintf(prefix, sizeof(prefix), "(%u)[%s] %7s %s ", log_pid, elapsed, level_labels[level], loc);
-    if (plen < 0) {
-        plen = 0;
-    } else if (plen >= (int) sizeof(prefix)) {
-        plen = (int) sizeof(prefix) - 1;
-    }
-
-    // msglen can include the NUL terminator (truncated message) or be (size_t)-1 (vsnprintf error)
-    size_t mlen = strnlen(msg, msglen);
-    struct iovec iov[3] = {
-            {.iov_base = prefix, .iov_len = (size_t) plen},
-            {.iov_base = (void *) msg, .iov_len = mlen},
-            {.iov_base = "\n", .iov_len = 1},
-    };
-    struct iovec *v = iov;
-    int vcnt = 3;
-    int fd = fileno(ziti_debug_out);
-    while (vcnt > 0) {
-        ssize_t n = writev(fd, v, vcnt);
-        if (n < 0) {
-            if (errno == EINTR) continue;
-            return;
-        }
-        // advance past whatever was written (handles partial writes)
-        while (vcnt > 0 && (size_t) n >= v->iov_len) {
-            n -= (ssize_t) v->iov_len;
-            v++;
-            vcnt--;
-        }
-        if (vcnt > 0) {
-            v->iov_base = (char *) v->iov_base + n;
-            v->iov_len -= (size_t) n;
-        }
-    }
-#endif
 }
 
 void tlsuv_logger(int level, const char *file, unsigned int line, const char *msg) {
