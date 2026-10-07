@@ -270,10 +270,6 @@ def jwt_signers(ziti_model, quickstart_home, ziti_version):
               "--kid", kid,
               check=False)
 
-    # keycloak not available
-    with open(os.path.join(quickstart_home, "keycloak-available"), "w") as f:
-        f.write("0\n")
-
     # pre-created identity for enroll-none tests
     ziti_edge("create", "identity", "test-precreated", "-a", "client")
 
