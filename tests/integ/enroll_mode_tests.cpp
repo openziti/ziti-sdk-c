@@ -26,9 +26,11 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-then-list-services", "[integ][enroll
 
     // generate keypair + CSR
     tlsuv_private_key_t pk = nullptr;
+    DEFER { if (pk) pk->free(pk); };
     REQUIRE(cs.tls->generate_key(&pk) == 0);
 
     char *csr = nullptr;
+    DEFER { free(csr); };
     size_t csr_len = 0;
     REQUIRE(cs.tls->generate_csr_to_pem(pk, &csr, &csr_len,
                                          "O", "OpenZiti",
@@ -53,19 +55,27 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-then-list-services", "[integ][enroll
     // build mTLS context with enrolled cert
     const char *ca = ctx.resp->cas_pem ? ctx.resp->cas_pem : cs.cfg.id.ca;
     auto mtls_tls = default_tls_context();
+    DEFER { if (mtls_tls) mtls_tls->free_ctx(mtls_tls); };
+    REQUIRE(mtls_tls != nullptr);
     REQUIRE(mtls_tls->set_ca_bundle(mtls_tls, ca, strlen(ca)) == 0);
 
+    // set_own_cert() takes its own references: pk and cert stay ours to free
     tlsuv_certificate_t cert = nullptr;
+    DEFER { if (cert) cert->free(cert); };
     REQUIRE(mtls_tls->load_cert(&cert, ctx.resp->client_cert_pem,
                                 strlen(ctx.resp->client_cert_pem)) == 0);
     REQUIRE(mtls_tls->set_own_cert(mtls_tls, pk, cert) == 0);
-    pk = nullptr; // ownership transferred
 
     // connect and authenticate with the new cert
     ziti_controller mtls_ctrl{};
     REQUIRE(ziti_ctrl_init(loop(), &mtls_ctrl, &cs.cfg.controllers, mtls_tls) == ZITI_OK);
+    DEFER { ziti_ctrl_close(&mtls_ctrl); };
 
     auto *auth = new_legacy_auth(loop(), cs.cfg.controller_url, mtls_tls, true);
+    DEFER {
+        auth->stop(auth);
+        auth->free(auth);
+    };
     auto token = auth_login(auth, loop());
     REQUIRE(!token.empty());
     ziti_ctrl_set_token(&mtls_ctrl, token.c_str());
@@ -77,12 +87,6 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-then-list-services", "[integ][enroll
     if (services) {
         free_ziti_service_array(&services);
     }
-
-    auth->stop(auth);
-    auth->free(auth);
-    ziti_ctrl_close(&mtls_ctrl);
-    mtls_tls->free_ctx(mtls_tls);
-    free(csr);
 }
 
 
@@ -196,9 +200,11 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-with-token-only-signer", "[integ][en
 
     // generate CSR
     tlsuv_private_key_t pk = nullptr;
+    DEFER { if (pk) pk->free(pk); };
     REQUIRE(cs.tls->generate_key(&pk) == 0);
 
     char *csr = nullptr;
+    DEFER { free(csr); };
     size_t csr_len = 0;
     REQUIRE(cs.tls->generate_csr_to_pem(pk, &csr, &csr_len,
                                          "O", "OpenZiti",
@@ -217,9 +223,6 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-with-token-only-signer", "[integ][en
 
     REQUIRE(ctx.called);
     CHECK(ctx.error.err != 0);
-
-    free(csr);
-    pk->free(pk);
 }
 
 
@@ -245,6 +248,25 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-token-expired-jwt", "[integ][enroll-mode]
 //
 // The ext-jwt-signer that trusts the IdP and a user's token come from the environment
 // (IDP_SIGNER, IDP_TOKEN), which test_ext_jwt.py sets up. Without them the tests skip.
+
+// The test client's CA and controller as a bootstrap config: what an identity has before it enrolls.
+// Cleans up after itself, also when a REQUIRE fails halfway.
+struct bootstrap_config {
+    ziti_config client{};
+    ziti_config cfg{};
+
+    void init(const char *client_path) {
+        REQUIRE(ziti_load_config(&client, client_path) == ZITI_OK);
+        cfg.id.ca = strdup(client.id.ca);
+        model_list_append(&cfg.controllers, strdup(client.controller_url));
+    }
+
+    ~bootstrap_config() {
+        free((void *) cfg.id.ca);
+        model_list_clear(&cfg.controllers, free);
+        free_ziti_config(&client);
+    }
+};
 
 // State for lifecycle test event handling
 struct lifecycle_state {
@@ -308,17 +330,12 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-lifecycle", "[integ][enroll-mode
     std::string idp_token = checkENV("IDP_TOKEN");
     std::string idp_signer = checkENV("IDP_SIGNER");
 
-    // load CA from test client config
-    ziti_config client_cfg{};
-    REQUIRE(ziti_load_config(&client_cfg, TEST_CLIENT) == ZITI_OK);
-
-    // build bootstrap config (CA + controller URL only, no cert/key)
-    ziti_config bootstrap_cfg{};
-    bootstrap_cfg.id.ca = strdup(client_cfg.id.ca);
-    model_list_append(&bootstrap_cfg.controllers, strdup(client_cfg.controller_url));
+    // CA + controller URL only, no cert/key
+    bootstrap_config bootstrap;
+    bootstrap.init(TEST_CLIENT);
 
     ziti_context ztx = nullptr;
-    REQUIRE(ziti_context_init(&ztx, &bootstrap_cfg) == ZITI_OK);
+    REQUIRE(ziti_context_init(&ztx, &bootstrap.cfg) == ZITI_OK);
 
     lifecycle_state state{};
     state.loop = loop();
@@ -352,10 +369,6 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-lifecycle", "[integ][enroll-mode
     CHECK_FALSE(state.auth_failed);
     CHECK(state.config_received);
     CHECK(state.cert_received);
-
-    free((void *)bootstrap_cfg.id.ca);
-    model_list_clear(&bootstrap_cfg.controllers, nullptr);
-    free_ziti_config(&client_cfg);
 }
 
 
@@ -363,15 +376,12 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-token-lifecycle", "[integ][enroll-mod
     std::string idp_token = checkENV("IDP_TOKEN");
     std::string idp_signer = checkENV("IDP_SIGNER");
 
-    ziti_config client_cfg{};
-    REQUIRE(ziti_load_config(&client_cfg, TEST_CLIENT) == ZITI_OK);
-
-    ziti_config bootstrap_cfg{};
-    bootstrap_cfg.id.ca = strdup(client_cfg.id.ca);
-    model_list_append(&bootstrap_cfg.controllers, strdup(client_cfg.controller_url));
+    // CA + controller URL only, no cert/key
+    bootstrap_config bootstrap;
+    bootstrap.init(TEST_CLIENT);
 
     ziti_context ztx = nullptr;
-    REQUIRE(ziti_context_init(&ztx, &bootstrap_cfg) == ZITI_OK);
+    REQUIRE(ziti_context_init(&ztx, &bootstrap.cfg) == ZITI_OK);
 
     lifecycle_state state{};
     state.loop = loop();
@@ -404,10 +414,6 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-token-lifecycle", "[integ][enroll-mod
     CHECK_FALSE(state.auth_failed);
     CHECK(state.auth_ok);
     CHECK(state.config_received);
-
-    free((void *)bootstrap_cfg.id.ca);
-    model_list_clear(&bootstrap_cfg.controllers, nullptr);
-    free_ziti_config(&client_cfg);
 }
 
 
@@ -415,15 +421,12 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-none-lifecycle", "[integ][enroll-mode
     std::string idp_token = checkENV("IDP_TOKEN");
     std::string idp_signer = checkENV("IDP_SIGNER");
 
-    ziti_config client_cfg{};
-    REQUIRE(ziti_load_config(&client_cfg, TEST_CLIENT) == ZITI_OK);
-
-    ziti_config bootstrap_cfg{};
-    bootstrap_cfg.id.ca = strdup(client_cfg.id.ca);
-    model_list_append(&bootstrap_cfg.controllers, strdup(client_cfg.controller_url));
+    // CA + controller URL only, no cert/key
+    bootstrap_config bootstrap;
+    bootstrap.init(TEST_CLIENT);
 
     ziti_context ztx = nullptr;
-    REQUIRE(ziti_context_init(&ztx, &bootstrap_cfg) == ZITI_OK);
+    REQUIRE(ziti_context_init(&ztx, &bootstrap.cfg) == ZITI_OK);
 
     lifecycle_state state{};
     state.loop = loop();
@@ -455,8 +458,4 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-none-lifecycle", "[integ][enroll-mode
     INFO("error: " << state.error_msg);
     CHECK_FALSE(state.auth_failed);
     CHECK(state.auth_ok);
-
-    free((void *)bootstrap_cfg.id.ca);
-    model_list_clear(&bootstrap_cfg.controllers, nullptr);
-    free_ziti_config(&client_cfg);
 }
