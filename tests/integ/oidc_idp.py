@@ -24,12 +24,16 @@ It runs in-process on a thread and plays the external IdP of an ``ext-jwt-signer
 * RS256 ``id_token`` *and* ``access_token``, both JWTs with ``aud`` = client id and ``sub`` = ``email`` = user
 
 Users are an email -> password dict; ``/authorize`` shows a bare login form, so a test can drive
-the browser step with plain HTTP.
+the browser step with plain HTTP: see ``OidcIdp.login`` and ``OidcIdp.password_grant``.
 """
 
+import json
 import logging
 import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 from flask import Flask, jsonify, request
 from joserfc import jwt
@@ -50,6 +54,25 @@ TOKEN_TTL = 3600
 LOGIN_FORM = ('<form method="post">'
               '<input name="login"><input name="password" type="password"><button>login</button>'
               '</form>')
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+# no proxies (this is all loopback) and no redirects (the interesting part of a login is the redirect itself)
+_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
+
+
+def _request(url, form=None):
+    """GET, or POST of ``form``: returns ``(status, headers, body)`` and never raises on an http error status."""
+    data = urllib.parse.urlencode(form).encode() if form is not None else None
+    try:
+        with _opener.open(urllib.request.Request(url, data=data), timeout=10) as resp:
+            return resp.status, resp.headers, resp.read().decode()
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers, e.read().decode()
 
 
 class _Client(ClientMixin):
@@ -125,6 +148,28 @@ class OidcIdp:
 
     def add_user(self, email, password):
         self.users[email] = password
+
+    # ---- for tests: what a user and their browser would do ---------------------------------
+    def password_grant(self, email, scope="openid email offline_access"):
+        """Tokens for a user without a browser: ``{"access_token", "id_token", "refresh_token", ...}``."""
+        status, _, body = _request(f"{self.issuer}/token", {
+            "grant_type": "password", "client_id": self.client.client_id,
+            "username": email, "password": self.users[email], "scope": scope})
+        if status != 200:
+            raise RuntimeError(f"password grant for {email} failed: {status} {body}")
+        return json.loads(body)
+
+    def login(self, authorize_url, email):
+        """Play the browser at ``authorize_url`` (as handed out by the sdk): show the login page, submit the
+        credentials of ``email`` and return where the idp redirects to, ``<redirect_uri>?code=...&state=...``.
+        The caller delivers that to the redirect uri, i.e. the sdk's loopback listener."""
+        status, _, body = _request(authorize_url)
+        if status != 200:
+            raise RuntimeError(f"login page at {authorize_url} failed: {status} {body}")
+        status, headers, body = _request(authorize_url, {"login": email, "password": self.users[email]})
+        if status not in (302, 303):
+            raise RuntimeError(f"login of {email} failed: {status} {body}")
+        return headers["Location"]
 
     def start(self):
         self._thread.start()
