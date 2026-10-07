@@ -32,6 +32,7 @@
 #endif
 #if defined(__APPLE__)
 #include <errno.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/uio.h>
 #endif
@@ -400,9 +401,11 @@ static void default_log_writer(int level, const char *loc, const char *msg, size
         plen = (int) sizeof(prefix) - 1;
     }
 
+    // msglen can include the NUL terminator (truncated message) or be (size_t)-1 (vsnprintf error)
+    size_t mlen = strnlen(msg, msglen);
     struct iovec iov[3] = {
             {.iov_base = prefix, .iov_len = (size_t) plen},
-            {.iov_base = (void *) msg, .iov_len = msglen},
+            {.iov_base = (void *) msg, .iov_len = mlen},
             {.iov_base = "\n", .iov_len = 1},
     };
     struct iovec *v = iov;
