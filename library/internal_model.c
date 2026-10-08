@@ -63,6 +63,8 @@ IMPL_MODEL(ziti_port_range, ZITI_PORT_RANGE_MODEL)
 
 IMPL_MODEL(ziti_intercept_cfg_v1, ZITI_INTERCEPT_CFG_V1_MODEL)
 
+IMPL_ENUM(ziti_listen_identity_type, ZITI_LISTEN_IDENTITY_TYPE_ENUM)
+
 IMPL_MODEL(ziti_listen_options, ZITI_LISTEN_OPTS_MODEL)
 
 IMPL_MODEL(ziti_server_cfg_v1, ZITI_SERVER_CFG_V1_MODEL)
