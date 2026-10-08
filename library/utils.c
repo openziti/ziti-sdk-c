@@ -380,6 +380,10 @@ void ziti_logger(int level, const char *module, const char *file, unsigned int l
 
 static void default_log_writer(int level, const char *loc, const char *msg, size_t msglen) {
     const char *elapsed = get_elapsed();
+    // clear the stream's sticky error flag (which may have been set by any earlier failed write to the stream).
+    // on Darwin, fprintf() to an unbuffered stream with the error flag set silently drops short lines entirely
+    // and truncates long ones (losing the newline).
+    clearerr(ziti_debug_out);
     fprintf(ziti_debug_out, "(%u)[%s] %7s %s %.*s\n", log_pid, elapsed, level_labels[level], loc, (unsigned int) msglen, msg);
 }
 
