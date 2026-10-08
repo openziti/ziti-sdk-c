@@ -175,8 +175,7 @@ int load_tls(ziti_config *cfg, tls_context **ctx, struct tls_credentials *creds)
     const char *ca;
     size_t ca_len = parse_ref(cfg->id.ca, &ca);
     tls_context *tls = default_tls_context();
-    // offer only approved algorithms in FIPS mode, so a handshake does not pick one the
-    // tls e2ee FIPS check then refuses
+    // offer only approved algorithms in FIPS mode
     tls_restrict_fips(tls);
     if (ca != NULL) {
         tls->set_ca_bundle(tls, ca, ca_len);
@@ -490,6 +489,10 @@ static void free_tls_contexts(ziti_context ztx) {
         ztx->e2ee_host_tls->free_ctx(ztx->e2ee_host_tls);
         ztx->e2ee_host_tls = NULL;
     }
+    if (ztx->e2ee_dial_tls) {
+        ztx->e2ee_dial_tls->free_ctx(ztx->e2ee_dial_tls);
+        ztx->e2ee_dial_tls = NULL;
+    }
     if (ztx->tlsCtx) {
         ztx->tlsCtx->free_ctx(ztx->tlsCtx);
         ztx->tlsCtx = NULL;
@@ -599,7 +602,13 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
             return;
         }
         ztx->e2ee_host_tls = default_tls_context();
-        tls_restrict_fips(ztx->e2ee_host_tls);
+        e2ee_restrict_tls(ztx->e2ee_host_tls);
+        rc = load_tls(&ztx->config, &ztx->e2ee_dial_tls, NULL);
+        if (rc != 0) {
+            tls_init_failed(ztx, rc, "failed to create e2ee TLS context");
+            return;
+        }
+        e2ee_restrict_tls(ztx->e2ee_dial_tls);
         // on win32crypto this imports the key into CNG again, which can fail
         if (ztx_set_channel_cert(ztx, ztx->id_creds.key, ztx->id_creds.cert) != 0) {
             tls_init_failed(ztx, ZITI_INVALID_CERT_KEY_PAIR, "failed to set channel TLS identity");
@@ -608,12 +617,6 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
 
         const char *tls_ver = ztx->tlsCtx->version ? ztx->tlsCtx->version() : NULL;
         ZTX_LOG(INFO, "using tlsuv[%s/%s]", tlsuv_version(), tls_ver ? tls_ver : "unspecified");
-        // libsodium e2ee (X25519, XChaCha20-Poly1305) is outside any FIPS module, so a backend
-        // running its FIPS module gets tls e2ee before the first dial or bind
-        if (ztx->opts.e2ee_mode != ziti_crypto_tls && tls_is_fips(ztx->tlsCtx)) {
-            ztx->opts.e2ee_mode = ziti_crypto_tls;
-            ZTX_LOG(INFO, "TLS backend is in FIPS mode: using crypto method[%s]", e2ee_method_id(ziti_crypto_tls));
-        }
 
         rc = ztx_init_controller(ztx);
         if (rc != ZITI_OK) {
@@ -888,7 +891,7 @@ int ziti_shutdown(ziti_context ztx) {
 
     // a disabled context has stopped the prepper that runs queued work. the 0 timer wakes the loop
     // when nothing else would
-    if (ztx->loop) {
+    if (ztx->loop && !uv_is_closing((uv_handle_t *) &ztx->prepper)) {
         uv_prepare_start(&ztx->prepper, ztx_prepare);
         uv_timer_start(&ztx->deadline_timer, ztx_process_deadlines, 0, 0);
     }
@@ -1855,6 +1858,7 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
         if (ztx->config.id.ca == NULL || strcmp(new_pem, ztx->config.id.ca) != 0) {
             ztx->tlsCtx->set_ca_bundle(ztx->tlsCtx, new_pem, strlen(new_pem));
             ztx->channel_tls->set_ca_bundle(ztx->channel_tls, new_pem, strlen(new_pem));
+            ztx->e2ee_dial_tls->set_ca_bundle(ztx->e2ee_dial_tls, new_pem, strlen(new_pem));
             if (ztx->auth_method && ztx->auth_method->set_ca) {
                 ztx->auth_method->set_ca(ztx->auth_method, new_pem);
             }
@@ -2034,15 +2038,8 @@ void ztx_prepare(uv_prepare_t *prep) {
     if (ztx->opts.e2ee_mode != ziti_crypto_tls) {
         if (ziti_ctrl_has_build_flag(&ztx->ctrl, "FIPS_MODE")) {
             ztx->opts.e2ee_mode = ziti_crypto_tls;
-            const char *tls_ver = ztx->tlsCtx && ztx->tlsCtx->version ? ztx->tlsCtx->version() : NULL;
-            if (tls_is_fips(ztx->tlsCtx)) {
-                ZTX_LOG(INFO, "controller requested FIPS_MODE: using crypto method[%s]",
-                        e2ee_method_id(ziti_crypto_tls));
-            } else {
-                ZTX_LOG(WARN, "controller requested FIPS_MODE: using crypto method[%s], but the TLS backend[%s] "
-                              "is not in FIPS mode, so the TLS algorithms are not limited to FIPS-approved ones",
-                        e2ee_method_id(ziti_crypto_tls), tls_ver ? tls_ver : "unknown");
-            }
+            ZTX_LOG(INFO, "controller requested FIPS_MODE: using crypto method[%s]",
+                    e2ee_method_id(ziti_crypto_tls));
             uint32_t conn_id;
             ziti_connection conn;
             MODEL_MAP_FOREACH(conn_id, conn, &ztx->connections) {

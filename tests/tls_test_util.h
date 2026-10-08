@@ -148,10 +148,10 @@ int count_peer_cert(const struct tlsuv_certificate_s *, void *ctx) {
     return 0;
 }
 
-// a context that trusts only `ca`, restricted in FIPS mode like the SDK's load_tls()
+// a context that trusts only `ca`, restricted like the SDK's e2ee contexts
 tls_context *tls_with_ca(const char *ca) {
     tls_context *tls = default_tls_context();
-    tls_restrict_fips(tls);
+    e2ee_restrict_tls(tls);
     REQUIRE(tls->set_ca_bundle(tls, ca, strlen(ca)) == 0);
     return tls;
 }
@@ -197,7 +197,7 @@ struct identity_ctx {
     tlsuv_certificate_t cert = nullptr;
     int peer_certs = 0;
 
-    identity_ctx() : tls(default_tls_context()) { tls_restrict_fips(tls); }
+    identity_ctx() : tls(default_tls_context()) { e2ee_restrict_tls(tls); }
 
     ~identity_ctx() {
         if (tls) tls->free_ctx(tls);

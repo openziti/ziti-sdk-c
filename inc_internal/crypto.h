@@ -32,11 +32,16 @@ typedef intptr_t ssize_t;
 #include <ziti/enums.h>
 
 #define E2EE_MAX_HEADER_LEN (16 * 1024)
-// must cover the worst-case expansion of any supported method:
-// TLS fragments at 16k and adds ~22 bytes of framing per record, so a
-// MAX_CHAIN_LEN (31k) write costs 2 records worth of overhead
-// also there could be some handshake data sitting in the output buffer
+// fixed expansion of any supported method, e.g. handshake data sitting in the TLS output buffer
 #define E2EE_MAX_MSG_OVERHEAD 1024
+// TLS fragments at 16k. a record adds at most ~325 bytes (TLS 1.2 CBC with SHA-384 and full padding)
+#define E2EE_RECORD_LEN (16 * 1024)
+#define E2EE_RECORD_OVERHEAD 512
+
+// ciphertext buffer size that holds the encryption of plaintext_len bytes, for any method
+static inline size_t e2ee_ciphertext_len(size_t plaintext_len) {
+    return plaintext_len + E2EE_MAX_MSG_OVERHEAD + (plaintext_len / E2EE_RECORD_LEN + 1) * E2EE_RECORD_OVERHEAD;
+}
 
 typedef struct e2ee_pub_s {
     const uint8_t *key;
@@ -79,12 +84,8 @@ bool tls_is_fips(tls_context *tls);
 // provider serves X25519. call it before any engine is created from the context
 void tls_restrict_fips(tls_context *tls);
 
-// Checks a tls e2ee server's first flight and logs what it negotiated. With fips set, only these pass:
-//   TLS 1.3: TLS_AES_128/256_GCM, a P-256/P-384/P-521 key share
-//   TLS 1.2: ECDHE-ECDSA/RSA with AES-128/256-GCM, extended master secret, a P-256/P-384/P-521 curve
-// anything else fails (-1). Without fips only the log line is produced. A HelloRetryRequest returns 1:
-// the ServerHello that follows it has to be checked instead.
-int tls_e2ee_check_server_flight(bool fips, const uint8_t *flight, size_t len);
+// restricts to fips approved algorithms, fips mode or not
+void e2ee_restrict_tls(tls_context *tls);
 
 const char *e2ee_method_id(ziti_crypto_method mode);
 

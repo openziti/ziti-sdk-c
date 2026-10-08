@@ -382,8 +382,8 @@ jrEaRTDiko6e0ifkFw==
     // cred_guard relative to the engines does not matter
     auto tls = default_tls_context();
     auto tls_guard = std::unique_ptr<tls_context, tls_ctx_deleter>(tls);
-    // as the SDK's load_tls() does
-    tls_restrict_fips(tls);
+    // as the SDK does for its e2ee contexts
+    e2ee_restrict_tls(tls);
     REQUIRE(tls->set_ca_bundle(tls, ca, strlen(ca)) == 0);
 
     zt_x509 srv_cred{};
@@ -444,11 +444,10 @@ jrEaRTDiko6e0ifkFw==
     l = clt->decrypt(clt, ciphertext, l, plaintext, sizeof(plaintext));
     CHECK(std::string((char*)plaintext, l) == msg);
 
-    // largest payload the SDK hands to encrypt() (MAX_CHAIN_LEN): spans multiple TLS
-    // records, so it exceeds both the initial 16k buffers and a single record's framing
-    std::vector<uint8_t> big(31 * 1024);
+    // ziti_write does not limit a write: 1 MiB is 64 records, whose framing alone exceeds E2EE_MAX_MSG_OVERHEAD
+    std::vector<uint8_t> big(1024 * 1024);
     randombytes_buf(big.data(), big.size());
-    std::vector<uint8_t> big_ct(big.size() + E2EE_MAX_MSG_OVERHEAD);
+    std::vector<uint8_t> big_ct(e2ee_ciphertext_len(big.size()));
     std::vector<uint8_t> big_pt(big.size());
 
     l = clt->encrypt(clt, big.data(), big.size(), big_ct.data(), big_ct.size());
@@ -580,143 +579,6 @@ TEST_CASE("e2ee-tls-fips", "[crypto][fips]") {
     CHECK(info.key_share_group != 0x001e);
 }
 #endif
-
-namespace {
-// a TLS 1.3-style ServerHello record carrying `version` in supported_versions, `suite`, and a
-// key_share for `group`; enough for the parameter check, not a handshake
-std::vector<uint8_t> server_hello(uint16_t version, uint16_t suite, uint16_t group) {
-    std::vector<uint8_t> ext = {
-            0x00, 0x2b, 0x00, 0x02, (uint8_t)(version >> 8), (uint8_t) version,
-            0x00, 0x33, 0x00, 0x06, (uint8_t)(group >> 8), (uint8_t) group, 0x00, 0x02, 0xaa, 0xbb,
-    };
-    std::vector<uint8_t> body = {0x03, 0x03};         // legacy_version
-    body.insert(body.end(), 32, 0x11);                // random
-    body.push_back(0);                                // session id length
-    body.push_back((uint8_t)(suite >> 8));
-    body.push_back((uint8_t) suite);
-    body.push_back(0);                                // compression
-    body.push_back((uint8_t)(ext.size() >> 8));
-    body.push_back((uint8_t) ext.size());
-    body.insert(body.end(), ext.begin(), ext.end());
-
-    std::vector<uint8_t> rec = {0x16, 0x03, 0x03, (uint8_t)((body.size() + 4) >> 8), (uint8_t)(body.size() + 4),
-                                0x02, 0x00, (uint8_t)(body.size() >> 8), (uint8_t) body.size()};
-    rec.insert(rec.end(), body.begin(), body.end());
-    return rec;
-}
-
-void append_handshake(std::vector<uint8_t> &hs, uint8_t type, const std::vector<uint8_t> &body) {
-    hs.insert(hs.end(), {type, 0x00, (uint8_t)(body.size() >> 8), (uint8_t) body.size()});
-    hs.insert(hs.end(), body.begin(), body.end());
-}
-
-// a TLS 1.2 server flight: a ServerHello with `suite` (and the extended_master_secret extension if `ems`),
-// a ServerKeyExchange naming `curve`, and a ServerHelloDone, cut into handshake records of at most
-// `record_size` bytes, so a message can span records the way a real flight's Certificate does
-std::vector<uint8_t> tls12_flight(uint16_t suite, uint16_t curve, bool ems, size_t record_size = 16384) {
-    std::vector<uint8_t> hello = {0x03, 0x03};        // version
-    hello.insert(hello.end(), 32, 0x11);              // random
-    hello.push_back(0);                               // session id length
-    hello.insert(hello.end(), {(uint8_t)(suite >> 8), (uint8_t) suite, 0x00});
-    std::vector<uint8_t> ext = {0xff, 0x01, 0x00, 0x01, 0x00};  // renegotiation_info
-    if (ems) {
-        ext.insert(ext.end(), {0x00, 0x17, 0x00, 0x00});
-    }
-    hello.insert(hello.end(), {(uint8_t)(ext.size() >> 8), (uint8_t) ext.size()});
-    hello.insert(hello.end(), ext.begin(), ext.end());
-
-    // named_curve, the curve, a 65-byte point, then a signature the check does not read
-    std::vector<uint8_t> ske = {0x03, (uint8_t)(curve >> 8), (uint8_t) curve, 65, 0x04};
-    ske.insert(ske.end(), 64, 0x22);
-    ske.insert(ske.end(), {0x04, 0x03, 0x00, 0x04, 0x33, 0x33, 0x33, 0x33});
-
-    std::vector<uint8_t> hs;
-    append_handshake(hs, 2, hello);
-    append_handshake(hs, 12, ske);
-    append_handshake(hs, 14, {});
-
-    std::vector<uint8_t> flight;
-    for (size_t p = 0; p < hs.size(); p += record_size) {
-        // parenthesized: windows.h defines a min() macro on MSVC
-        size_t n = (std::min)(record_size, hs.size() - p);
-        flight.insert(flight.end(), {0x16, 0x03, 0x03, (uint8_t)(n >> 8), (uint8_t) n});
-        flight.insert(flight.end(), hs.begin() + (long) p, hs.begin() + (long)(p + n));
-    }
-    return flight;
-}
-}
-
-TEST_CASE("tls e2ee accepts only FIPS-approved parameters in FIPS mode", "[crypto][fips]") {
-    auto check = [](bool fips, const std::vector<uint8_t> &hello) {
-        return tls_e2ee_check_server_flight(fips, hello.data(), hello.size());
-    };
-
-    SECTION("approved: TLS 1.3, AES-GCM, NIST curves") {
-        CHECK(check(true, server_hello(0x0304, 0x1301, 0x0017)) == 0);
-        CHECK(check(true, server_hello(0x0304, 0x1302, 0x0018)) == 0);
-        CHECK(check(true, server_hello(0x0304, 0x1302, 0x0019)) == 0);
-    }
-    SECTION("X25519 and X448 are refused") {
-        CHECK(check(true, server_hello(0x0304, 0x1302, 0x001d)) == -1);
-        CHECK(check(true, server_hello(0x0304, 0x1302, 0x001e)) == -1);
-    }
-    SECTION("ChaCha20-Poly1305 is refused") {
-        CHECK(check(true, server_hello(0x0304, 0x1303, 0x0017)) == -1);
-    }
-    SECTION("approved: TLS 1.2, ECDHE AES-GCM, extended master secret, NIST curves") {
-        CHECK(check(true, tls12_flight(0xc02b, 0x0017, true)) == 0);
-        CHECK(check(true, tls12_flight(0xc02c, 0x0018, true)) == 0);
-        CHECK(check(true, tls12_flight(0xc02f, 0x0017, true)) == 0);
-        CHECK(check(true, tls12_flight(0xc030, 0x0019, true)) == 0);
-    }
-    SECTION("TLS 1.2 messages split across records are reassembled") {
-        CHECK(check(true, tls12_flight(0xc02b, 0x0017, true, 7)) == 0);
-        CHECK(check(true, tls12_flight(0xc02b, 0x001d, true, 7)) == -1);
-    }
-    SECTION("TLS 1.2 without the extended master secret is refused") {
-        CHECK(check(true, tls12_flight(0xc02f, 0x0017, false)) == -1);
-    }
-    SECTION("TLS 1.2 with X25519, CBC, ChaCha20 or DHE is refused") {
-        CHECK(check(true, tls12_flight(0xc02f, 0x001d, true)) == -1);
-        CHECK(check(true, tls12_flight(0xc027, 0x0017, true)) == -1);
-        CHECK(check(true, tls12_flight(0xcca8, 0x0017, true)) == -1);
-        CHECK(check(true, tls12_flight(0x009e, 0x0017, true)) == -1);
-    }
-    SECTION("TLS 1.2 without a ServerKeyExchange is refused") {
-        // the ServerHello alone names no curve
-        auto flight = tls12_flight(0xc02f, 0x0017, true);
-        size_t hello_len = 4 + ((flight[7] << 8) | flight[8]);
-        flight.resize(5 + hello_len);
-        flight[3] = (uint8_t)(hello_len >> 8);
-        flight[4] = (uint8_t) hello_len;
-        CHECK(check(true, flight) == -1);
-    }
-    SECTION("TLS 1.1 and older are refused") {
-        CHECK(check(true, server_hello(0x0302, 0xc013, 0x0017)) == -1);
-    }
-    SECTION("a flight that is not a ServerHello is refused") {
-        std::vector<uint8_t> junk(64, 0x42);
-        CHECK(check(true, junk) == -1);
-        CHECK(check(true, {}) == -1);
-    }
-    SECTION("outside FIPS mode the same parameters only get logged") {
-        CHECK(check(false, server_hello(0x0304, 0x1303, 0x001d)) == 0);
-        CHECK(check(false, server_hello(0x0303, 0xc02f, 0x0017)) == 0);
-        CHECK(check(false, tls12_flight(0xc02f, 0x001d, false)) == 0);
-    }
-    SECTION("a HelloRetryRequest leaves the check to the ServerHello that follows") {
-        // RFC 8446 4.1.3
-        const uint8_t hrr_random[32] = {
-                0xcf, 0x21, 0xad, 0x74, 0xe5, 0x9a, 0x61, 0x11, 0xbe, 0x1d, 0x8c, 0x02, 0x1e, 0x65, 0xb8, 0x91,
-                0xc2, 0xa2, 0x11, 0x16, 0x7a, 0xbb, 0x8c, 0x5e, 0x07, 0x9e, 0x09, 0xe2, 0xc8, 0xa8, 0x33, 0x9c,
-        };
-        // record header(5) + handshake header(4) + legacy_version(2)
-        auto hrr = server_hello(0x0304, 0x1301, 0x001d);
-        std::copy(std::begin(hrr_random), std::end(hrr_random), hrr.begin() + 11);
-        CHECK(check(true, hrr) == 1);
-        CHECK(check(false, hrr) == 1);
-    }
-}
 
 namespace {
 // a TLS engine past its handshake that frames nothing: each write() passes at most `chunk` bytes

@@ -11,19 +11,8 @@ struct e2ee_tls {
     e2ee_t api;
     tlsuv_engine_t engine;
     bool server;
-    // the TLS backend runs its FIPS module: only FIPS-approved parameters are accepted
-    bool fips;
-    // set once the session is refused; the engine may still report its handshake complete
+    // set when output could not be buffered. the engine still thinks the records went out
     bool failed;
-    // the server has seen the dialer's certificate
-    // the server sent a HelloRetryRequest: its next ServerHello is checked
-    bool hello_retry;
-
-    // framing of the peer's records once the handshake is done: a partial record header,
-    // and the bytes of the current record still to come
-    uint8_t rec_hdr[5];
-    size_t rec_hdr_len;
-    size_t rec_left;
 
     char *out_buffer;
     char *out_p;
@@ -93,13 +82,6 @@ static e2ee_pub_t e2ee_tls_pub(e2ee_t * e2ee) {
     return (e2ee_pub_t){ .key = NULL, .key_len = 0 };
 }
 
-#define REC_HANDSHAKE 0x16
-#define REC_HEADER_LEN 5
-
-static uint16_t rd16(const uint8_t *p) {
-    return (uint16_t) ((p[0] << 8) | p[1]);
-}
-
 static int buffer_input(struct e2ee_tls *e, const uint8_t *b, size_t len) {
     if (!ensure_capacity(&e->in_buffer, &e->in_p, &e->in_buffer_len, len)) {
         ee_log(ERROR, "failed to buffer %zd bytes of input: out of memory", len);
@@ -110,65 +92,15 @@ static int buffer_input(struct e2ee_tls *e, const uint8_t *b, size_t len) {
     return 0;
 }
 
-// a flight that starts with a HelloRetryRequest leaves the check to the ServerHello that follows
-static int check_flight(struct e2ee_tls *e, const uint8_t *b, size_t len) {
-    int rc = tls_e2ee_check_server_flight(e->fips, b, len);
-    if (rc < 0) {
-        e->failed = true;
-        return -1;
-    }
-    e->hello_retry = rc == 1;
-    return 0;
-}
-
-// Refuses a TLS 1.2 renegotiation from either side: after the handshake every record a peer sends
-// is application data or an alert. TLS 1.3 sends its post-handshake messages (tickets, KeyUpdate)
-// in application data records, so they pass. Every e2ee message carries whole records, so the
-// framing starts on a record boundary.
-static int check_records(struct e2ee_tls *e, const uint8_t *b, size_t len) {
-    size_t p = 0;
-    while (p < len) {
-        if (e->rec_left > 0) {
-            size_t n = MIN(e->rec_left, len - p);
-            e->rec_left -= n;
-            p += n;
-            continue;
-        }
-        size_t n = MIN(sizeof(e->rec_hdr) - e->rec_hdr_len, len - p);
-        memcpy(e->rec_hdr + e->rec_hdr_len, b + p, n);
-        e->rec_hdr_len += n;
-        p += n;
-        if (e->rec_hdr_len < sizeof(e->rec_hdr)) {
-            break;
-        }
-        e->rec_hdr_len = 0;
-        if (e->rec_hdr[0] == REC_HANDSHAKE) {
-            ee_log(ERROR, "peer sent a handshake record after the handshake: renegotiation is not supported");
-            e->failed = true;
-            return -1;
-        }
-        e->rec_left = rd16(e->rec_hdr + 3);
-    }
-    return 0;
-}
-
 static int e2ee_tls_init(e2ee_t *e2ee, const uint8_t * hello, size_t hello_len, bool server) {
     struct e2ee_tls *e = (struct e2ee_tls*)e2ee;
     ee_log(VERBOSE, "init hello[%zd]", hello_len);
-    // the client is handed the host's flight, which starts with the ServerHello
-    if (!e->server && check_flight(e, hello, hello_len) != 0) {
-        return -1;
-    }
     if (buffer_input(e, hello, hello_len) != 0) {
         return -1;
     }
     tls_handshake_state st = e->engine->handshake(e->engine);
     if (st == TLS_HS_ERROR) {
         ee_log(ERROR, "handshake failed");
-        return -1;
-    }
-    // the server has just produced its flight from the client's hello
-    if (e->server && check_flight(e, (const uint8_t *) e->out_buffer, e->out_p - e->out_buffer) != 0) {
         return -1;
     }
     return 0;
@@ -228,9 +160,9 @@ static ssize_t e2ee_tls_encrypt(e2ee_t * e2ee, const uint8_t *plaintext, size_t 
     }
 
     size_t out_len = e->out_p - e->out_buffer;
-    // the caller sizes `ciphertext` as plaintext_len + E2EE_MAX_MSG_OVERHEAD; TLS record
-    // framing (plus any pending handshake output) could still exceed it, so fail rather
-    // than overflow. the records stay buffered -- the caller treats this as fatal.
+    // the caller sizes `ciphertext` with e2ee_ciphertext_len. an engine that frames records
+    // smaller than that assumes could still exceed it, so fail rather than overflow.
+    // the records stay buffered -- the caller treats this as fatal.
     if (out_len > ciphertext_len) {
         ee_log(ERROR, "ciphertext buffer too small: need %zd, have %zd", out_len, ciphertext_len);
         return -1;
@@ -248,24 +180,12 @@ static ssize_t e2ee_tls_decrypt(e2ee_t *e2ee, const uint8_t * ciphertext, size_t
     if (e->failed) {
         return -1;
     }
-    // the ServerHello that answers the client's second hello
-    if (e->hello_retry && !e->server && check_flight(e, ciphertext, ciphertext_len) != 0) {
+    if (buffer_input(e, ciphertext, ciphertext_len) != 0) {
         return -1;
     }
 
-    // the handshake takes one record at a time, so the records after the one that completes it
-    // are checked like any later ones
     tls_handshake_state st = e->engine->handshake_state(e->engine);
-    size_t fed = 0;
-    while (st == TLS_HS_CONTINUE && fed < ciphertext_len) {
-        size_t n = ciphertext_len - fed;
-        if (n >= REC_HEADER_LEN) {
-            n = MIN(n, REC_HEADER_LEN + rd16(ciphertext + fed + 3));
-        }
-        if (buffer_input(e, ciphertext + fed, n) != 0) {
-            return -1;
-        }
-        fed += n;
+    if (st == TLS_HS_CONTINUE) {
         st = e->engine->handshake(e->engine);
     }
     // a failed handshake includes a rejected peer certificate. an engine may still decrypt
@@ -273,19 +193,6 @@ static ssize_t e2ee_tls_decrypt(e2ee_t *e2ee, const uint8_t * ciphertext, size_t
     if (st == TLS_HS_ERROR) {
         ee_log(ERROR, "handshake failed");
         return -1;
-    }
-    // the server's answer to the client's second hello, before get_header sends it
-    if (e->hello_retry && e->server && e->out_p > e->out_buffer &&
-        check_flight(e, (const uint8_t *) e->out_buffer, e->out_p - e->out_buffer) != 0) {
-        return -1;
-    }
-    if (fed < ciphertext_len) {
-        if (st == TLS_HS_COMPLETE && check_records(e, ciphertext + fed, ciphertext_len - fed) != 0) {
-            return -1;
-        }
-        if (buffer_input(e, ciphertext + fed, ciphertext_len - fed) != 0) {
-            return -1;
-        }
     }
 
     size_t plen = 0;
@@ -390,7 +297,6 @@ e2ee_t *new_tls_e2ee(bool server, tls_context *tls) {
 
     e2ee->server = server;
     e2ee->engine = engine;
-    e2ee->fips = tls_is_fips(tls);
 
     e2ee->engine->set_io(e2ee->engine, e2ee, engine_in, engine_out);
 
