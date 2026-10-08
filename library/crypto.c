@@ -16,6 +16,7 @@
 #include "crypto.h"
 #include "utils.h"
 #include "credentials.h"
+#include <tlsuv/tls_engine.h>
 
 extern e2ee_t *new_libsodium_e2ee(void);
 extern e2ee_t *new_none_e2ee(void);
@@ -31,6 +32,22 @@ e2ee_t* create_e2ee(ziti_crypto_method impl, bool server, tls_context *tls) {
         return new_tls_e2ee(server, tls);
     default:
         return NULL;
+    }
+}
+
+bool tls_is_fips(tls_context *tls) {
+    return tls != NULL && tls->fips_status(tls, NULL, 0) == TLS_FIPS_ENABLED;
+}
+
+void tls_restrict_fips(tls_context *tls) {
+    if (tls_is_fips(tls) && tls->require_fips != NULL) {
+        tls->require_fips(tls);
+    }
+}
+
+void e2ee_restrict_tls(tls_context *tls) {
+    if (tls != NULL && tls->require_fips != NULL) {
+        tls->require_fips(tls);
     }
 }
 

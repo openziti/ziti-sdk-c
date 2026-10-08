@@ -36,6 +36,7 @@
 #include "ext_oidc.h"
 #include "ext_oidc_pages.h"
 #include "buffer.h"
+#include "crypto.h"
 
 #define INVALID_SOCK ((uv_os_sock_t) -1)
 #define PENDING_WATCHDOG_MS (60 * 1000)
@@ -232,6 +233,11 @@ int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
     if (rc != 0) {
         return rc;
     }
+
+    // offer only approved algorithms in FIPS mode
+    clt->tls = default_tls_context();
+    tls_restrict_fips(clt->tls);
+    tlsuv_http_set_ssl(&clt->http, clt->tls);
 
     tlsuv_http_connect_timeout(&clt->http, 10 * 1000);
     tlsuv_http_idle_keepalive(&clt->http, 0); // no reason to keep idle connections
@@ -814,6 +820,10 @@ static void http_close_cb(tlsuv_http_t *h) {
     ext_oidc_close_cb cb = clt->close_cb;
     json_object_put(clt->config);
     json_object_put(clt->tokens);
+    if (clt->tls) {
+        clt->tls->free_ctx(clt->tls);
+        clt->tls = NULL;
+    }
     if (cb) {
         cb(clt);
     }

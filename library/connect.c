@@ -475,7 +475,7 @@ static void connect_get_service_cb(ziti_context ztx, const ziti_service *s, int 
         req->service_id = cstr_from(s->id);
         conn->encrypted = s->encryption;
         ziti_crypto_method zcm = conn->encrypted ? ztx->opts.e2ee_mode : ziti_crypto_none;
-        conn->e2ee = create_e2ee(zcm, false, ztx->tlsCtx);
+        conn->e2ee = create_e2ee(zcm, false, ztx->e2ee_dial_tls);
         if (conn->e2ee == NULL) {
             CONN_LOG(ERROR, "failed to initialize crypto method[%s]", e2ee_method_id(zcm));
             complete_conn_req(conn, ZITI_CRYPTO_FAIL);
@@ -686,11 +686,11 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
     ssize_t crypto_bytes = 0;
 
     uint32_t flags = multipart && !stream ? EDGE_MULTIPART_MSG : 0;
-    size_t total_len = E2EE_MAX_MSG_OVERHEAD;
+    size_t total_len;
     message *m = NULL;
 
     if (multipart) {
-        total_len += req->chain_len;
+        total_len = e2ee_ciphertext_len(req->chain_len);
         m = create_message(conn, ContentTypeData, flags, total_len);
 
         string_buf_t buf;
@@ -719,7 +719,7 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
         crypto_bytes = conn->e2ee->encrypt(conn->e2ee, msg_buf, buf_len, m->body, total_len);
         string_buf_free(&buf);
     } else {
-        total_len += req->len;
+        total_len = e2ee_ciphertext_len(req->len);
         m = create_message(conn, ContentTypeData, flags, total_len);
         crypto_bytes = conn->e2ee->encrypt(conn->e2ee, (uint8_t *)req->buf, req->len, m->body, total_len);
         conn->sent += req->len;
@@ -941,11 +941,20 @@ static bool flush_to_service(ziti_connection conn) {
     while (!TAILQ_EMPTY(&conn->wreqs)) {
         struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
         if (conn->state == Connected && !req->message && !req->close && !e2ee_ready(conn)) {
-            // app data cannot be encrypted before the e2ee handshake completes: hold the queue, in
-            // order, until a decrypt completes the handshake. only crypto messages go ahead.
-            // no timer: a dialer that never finishes times out its dial and the circuit closes
-            CONN_LOG(VERBOSE, "holding writes until the e2ee handshake completes");
-            break;
+            if (!conn->disconnecting) {
+                // app data cannot be encrypted before the e2ee handshake completes: hold the queue, in
+                // order, until a decrypt completes the handshake. only crypto messages go ahead.
+                // no timer: a dialer that never finishes times out its dial and the circuit closes
+                CONN_LOG(VERBOSE, "holding writes until the e2ee handshake completes");
+                break;
+            }
+            // closing before the handshake completed: the held writes can never go out
+            TAILQ_REMOVE(&conn->wreqs, req, _next);
+            if (req->cb) {
+                req->cb(conn, ZITI_CONN_CLOSED, req->ctx);
+            }
+            free(req);
+            continue;
         }
         TAILQ_REMOVE(&conn->wreqs, req, _next);
 
@@ -1537,6 +1546,7 @@ static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {
     if (msg == NULL) {
         CONN_LOG(DEBUG, "closed due to err[%d](%s)", code, ziti_errorstr(code));
         enum conn_state st = conn->state;
+        bool pending = dial_pending(conn);
         on_disconnect(conn, code, NULL);
 
         switch (st) {
@@ -1546,7 +1556,12 @@ static void queue_edge_message(struct ziti_conn *conn, message *msg, int code) {
                 break;
             case Connected:
             case CloseWrite:
-                if (conn->data_cb) conn->data_cb(conn, NULL, code);
+                // a dial waiting for the e2ee handshake fails through its conn cb
+                if (pending) {
+                    complete_conn_req(conn, code);
+                } else if (conn->data_cb) {
+                    conn->data_cb(conn, NULL, code);
+                }
                 break;
             default:
                 CONN_LOG(WARN, "disconnecting from state[%d]", st);

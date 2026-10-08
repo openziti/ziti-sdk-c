@@ -42,6 +42,7 @@ typedef void (*ext_oidc_link_cb)(ext_oidc_client_t *, const char *link, void *ct
 struct ext_oidc_client_s {
     void *data;
     tlsuv_http_t http;
+    tls_context *tls;
 
     ziti_jwt_signer signer_cfg;
 

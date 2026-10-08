@@ -123,6 +123,9 @@ int ztx_set_channel_cert(ziti_context ztx, tlsuv_private_key_t key, tlsuv_certif
     if (ztx->e2ee_host_tls) {
         ztx->e2ee_host_tls->set_own_cert(ztx->e2ee_host_tls, key, cert);
     }
+    if (ztx->e2ee_dial_tls) {
+        ztx->e2ee_dial_tls->set_own_cert(ztx->e2ee_dial_tls, key, cert);
+    }
     return ztx->channel_tls->set_own_cert(ztx->channel_tls, key, cert);
 }
 

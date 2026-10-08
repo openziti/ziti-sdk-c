@@ -40,6 +40,7 @@ namespace {
         bool ready = false;
         bool fail_decrypt = false;
         int decrypts = 0;
+        std::vector<std::pair<size_t, size_t>> encrypts; // plaintext len, ciphertext capacity
     };
 
     fake_e2ee *as_fake(e2ee_t *e) { return (fake_e2ee *) e; }
@@ -59,11 +60,18 @@ namespace {
         return 0;
     }
 
+    // records the buffer it was given and fails, so nothing reaches the channel
+    ssize_t fake_encrypt(e2ee_t *e, const uint8_t *, size_t len, uint8_t *, size_t cap) {
+        as_fake(e)->encrypts.emplace_back(len, cap);
+        return -1;
+    }
+
     void install(fake_e2ee &f, ziti_connection conn) {
         f.api.method = conn->e2ee ? conn->e2ee->method : ziti_crypto_none;
         f.api.init = fake_init;
         f.api.get_header = fake_get_header;
         f.api.decrypt = fake_decrypt;
+        f.api.encrypt = fake_encrypt;
         f.api.ready = fake_ready;
         f.api.free = fake_free;
         if (conn->e2ee) {
@@ -335,6 +343,53 @@ TEST_CASE("host holds writes until the e2ee handshake completes", "[e2ee]") {
     CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_CONN_CLOSED});
     CHECK(f.app.write_cb == std::vector<ssize_t>{ZITI_INVALID_STATE, ZITI_INVALID_STATE});
     CHECK(TAILQ_EMPTY(&conn->wreqs));
+
+    f.dispose(conn);
+}
+
+TEST_CASE("a write gets a ciphertext buffer that fits tls record framing", "[e2ee]") {
+    // tls 1.2 cbc with sha-384: 5 header + 16 iv + 48 mac + 256 padding per 16k record
+    auto tls12_worst = [](size_t len) { return len + (len / (16 * 1024) + 1) * 325; };
+
+    ztx_fixture f;
+    auto conn = (ziti_connection) calloc(1, sizeof(struct ziti_conn));
+    conn->ziti_ctx = &f.ztx;
+    conn->rt_conn_id = 7;
+    init_transport_conn(conn);
+    install(f.e2ee, conn);
+    f.e2ee.ready = true;
+    conn->state = Connected;
+    conn->data_cb = on_data;
+    ziti_conn_set_data(conn, &f.app);
+    // the fake encrypt fails every write, so nothing on this path reads it
+    conn->channel = (ziti_channel_t *) &f;
+
+    SECTION("one large write") {
+        // ziti_write does not limit a write
+        std::vector<uint8_t> big(1024 * 1024);
+        REQUIRE(ziti_write(conn, big.data(), big.size(), on_write, nullptr) == ZITI_OK);
+        run_all_due(&f.ztx);
+
+        REQUIRE(f.e2ee.encrypts.size() == 1);
+        CHECK(f.e2ee.encrypts[0].first == big.size());
+        CHECK(f.e2ee.encrypts[0].second >= tls12_worst(big.size()));
+        CHECK(f.app.write_cb == std::vector<ssize_t>{ZITI_CRYPTO_FAIL});
+    }
+
+    SECTION("a multipart chain") {
+        conn->flags |= EDGE_MULTIPART;
+        std::vector<uint8_t> part(1000);
+        for (int i = 0; i < 30; i++) {
+            REQUIRE(ziti_write(conn, part.data(), part.size(), on_write, nullptr) == ZITI_OK);
+        }
+        run_all_due(&f.ztx);
+
+        // each part carries a 2 byte length
+        REQUIRE(f.e2ee.encrypts.size() == 1);
+        CHECK(f.e2ee.encrypts[0].first == 30 * (part.size() + 2));
+        CHECK(f.e2ee.encrypts[0].second >= tls12_worst(f.e2ee.encrypts[0].first));
+        CHECK(f.app.write_cb == std::vector<ssize_t>(30, ZITI_CRYPTO_FAIL));
+    }
 
     f.dispose(conn);
 }

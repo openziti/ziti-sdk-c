@@ -27,6 +27,7 @@ struct server_hello_info {
     uint16_t version = 0;       // negotiated protocol: supported_versions if present, else legacy_version
     uint16_t cipher_suite = 0;
     uint16_t key_share_group = 0;
+    bool extended_master_secret = false;
 };
 
 // reads the negotiated version, cipher suite and TLS 1.3 key-share group straight off the wire, so the
@@ -50,6 +51,7 @@ inline bool parse_server_hello(const std::vector<uint8_t> &b, server_hello_info 
         p += 4;
         if (type == 0x002b && len == 2) out.version = u16(p);
         if (type == 0x0033 && len >= 2) out.key_share_group = u16(p);
+        if (type == 0x0017) out.extended_master_secret = true;
         p += len;
     }
     return true;

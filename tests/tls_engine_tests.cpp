@@ -68,9 +68,13 @@ TEST_CASE("tls engine negotiated TLS parameters", "[crypto][fips]") {
            tls_wire::cipher_suite_name(info.cipher_suite), info.cipher_suite,
            tls_wire::group_name(info.key_share_group), info.key_share_group);
     CHECK(info.version == (tls12_capped() ? 0x0303 : 0x0304));
-    if (fips) {
-        // the SDK's own FIPS check; for TLS 1.2 it also reads the curve from the ServerKeyExchange
-        CHECK(tls_e2ee_check_server_flight(true, server_flight.data(), server_flight.size()) == 0);
+    // e2ee contexts are restricted with or without FIPS mode
+    if (info.version == 0x0304) {
+        CHECK((info.cipher_suite == 0x1301 || info.cipher_suite == 0x1302));
+        CHECK((info.key_share_group == 0x0017 || info.key_share_group == 0x0018));
+    } else {
+        // FIPS TLS 1.2 needs the extended master secret
+        CHECK(info.extended_master_secret);
     }
 }
 
@@ -713,8 +717,19 @@ TEST_CASE("tls engine refuses a TLS 1.2 renegotiation", "[crypto]") {
     CHECK(peer_certs == verified);
 }
 
-// The same refusal one layer up, where the SDK enforces it whatever the backend does: an e2ee dialer whose
-// host asks for a TLS 1.2 renegotiation gets no data past the request and the session ends.
+namespace {
+// a handshake record waiting for the peer, e.g. the ClientHello of a second handshake
+bool pending_handshake_record(e2ee_t *e) {
+    std::vector<uint8_t> out(E2EE_MAX_HEADER_LEN);
+    ssize_t len = e->get_header(e, out.data());
+    for (ssize_t p = 0; p + 5 <= len; p += 5 + (out[p + 3] << 8 | out[p + 4])) {
+        if (out[p] == 0x16) return true;
+    }
+    return false;
+}
+}
+
+// The same refusal one layer up: an e2ee dialer whose host asks for a TLS 1.2 renegotiation does not start one.
 TEST_CASE("e2ee-tls dialer refuses a TLS 1.2 renegotiation", "[crypto]") {
     struct ctx_guard {
         tls_context *c;
@@ -760,14 +775,10 @@ TEST_CASE("e2ee-tls dialer refuses a TLS 1.2 renegotiation", "[crypto]") {
     std::vector<uint8_t> recs = from_srv();
     REQUIRE_FALSE(recs.empty());
 
-    memset(pt, 0, sizeof(pt));
-    CHECK(clt.e->decrypt(clt.e, recs.data(), recs.size(), pt, sizeof(pt)) == -1);
-    CHECK(std::search(pt, pt + sizeof(pt), ping.begin(), ping.end()) == pt + sizeof(pt));
-    CHECK_FALSE(clt.e->ready(clt.e));
-    // no ClientHello for a second handshake
-    CHECK(clt.e->get_header(clt.e, hdr.data()) == 0);
-    uint8_t ct[256];
-    CHECK(clt.e->encrypt(clt.e, (const uint8_t *) "x", 1, ct, sizeof(ct)) == -1);
+    // Schannel fails the read; OpenSSL declines with a no_renegotiation warning alert and goes on
+    ssize_t n = clt.e->decrypt(clt.e, recs.data(), recs.size(), pt, sizeof(pt));
+    CHECK((n == -1 || std::string((const char *) pt, n > 0 ? (size_t) n : 0) == ping));
+    CHECK_FALSE(pending_handshake_record(clt.e));
 }
 
 namespace {
@@ -837,7 +848,7 @@ TEST_CASE("e2ee-tls TLS 1.2 host completes the handshake in decrypt", "[crypto]"
     REQUIRE(srv.e != nullptr);
 
     openssl_client clt(TLS1_2_VERSION);
-    // NIST curves only, so the host's flight also passes its FIPS check on a FIPS-mode backend
+    // NIST curves only, which a FIPS-mode host requires
     REQUIRE(SSL_set1_groups_list(clt.ssl, "P-256:P-384") == 1);
     SSL_do_handshake(clt.ssl);
     std::vector<uint8_t> hello = drain(clt.out);
@@ -859,6 +870,7 @@ TEST_CASE("e2ee-tls TLS 1.2 host completes the handshake in decrypt", "[crypto]"
     REQUIRE(fin_len > 0);
     BIO_write(clt.in, fin.data(), (int) fin_len);
     REQUIRE(SSL_do_handshake(clt.ssl) == 1);
+    CHECK(SSL_get_extms_support(clt.ssl) == 1);
 
     const std::string ping = "ping over TLS 1.2";
     std::vector<uint8_t> ct(ping.size() + E2EE_MAX_MSG_OVERHEAD);
@@ -870,8 +882,52 @@ TEST_CASE("e2ee-tls TLS 1.2 host completes the handshake in decrypt", "[crypto]"
     CHECK(std::string(buf, n > 0 ? (size_t) n : 0) == ping);
 }
 
-// A TLS 1.2 dialer completes on the host's ChangeCipherSpec and Finished. Whatever the host sends right behind them
-// in the same message is past the handshake, so the renegotiation check covers it.
+// the host side of the renegotiation tests above: a dialer's second ClientHello never starts a second handshake
+TEST_CASE("e2ee-tls host refuses a TLS 1.2 renegotiation", "[crypto]") {
+    persisted_key_cleanup cleanup;
+    identity_ctx srv_id;
+    REQUIRE(srv_id.load(true) == 0);
+    e2ee_guard srv{create_e2ee(ziti_crypto_tls, true, srv_id.tls)};
+    REQUIRE(srv.e != nullptr);
+
+    openssl_client clt(TLS1_2_VERSION);
+    REQUIRE(SSL_set1_groups_list(clt.ssl, "P-256:P-384") == 1);
+    SSL_do_handshake(clt.ssl);
+    std::vector<uint8_t> hello = drain(clt.out);
+    REQUIRE(srv.e->init(srv.e, hello.data(), hello.size(), true) == 0);
+    e2ee_pub_t flight = srv.e->pub(srv.e);
+    REQUIRE(flight.key_len > 0);
+    BIO_write(clt.in, flight.key, (int) flight.key_len);
+    SSL_do_handshake(clt.ssl);
+    REQUIRE(SSL_version(clt.ssl) == TLS1_2_VERSION);
+    std::vector<uint8_t> clt_flight = drain(clt.out);
+    uint8_t pt[4096];
+    REQUIRE(srv.e->decrypt(srv.e, clt_flight.data(), clt_flight.size(), pt, sizeof(pt)) == 0);
+    REQUIRE(srv.e->ready(srv.e));
+    std::vector<uint8_t> fin(E2EE_MAX_HEADER_LEN);
+    ssize_t fin_len = srv.e->handshake_output(srv.e, fin.data());
+    REQUIRE(fin_len > 0);
+    BIO_write(clt.in, fin.data(), (int) fin_len);
+    REQUIRE(SSL_do_handshake(clt.ssl) == 1);
+    const int verified = srv_id.peer_certs;
+    REQUIRE(verified > 0);
+
+    // a second ClientHello, encrypted under the first session
+    REQUIRE(SSL_renegotiate(clt.ssl) == 1);
+    SSL_do_handshake(clt.ssl);
+    std::vector<uint8_t> reneg = drain(clt.out);
+    REQUIRE_FALSE(reneg.empty());
+
+    // Schannel fails the read; OpenSSL declines with a no_renegotiation warning alert and goes on
+    ssize_t n = srv.e->decrypt(srv.e, reneg.data(), reneg.size(), pt, sizeof(pt));
+    CHECK(n <= 0);
+    // no ServerHello went out
+    CHECK_FALSE(pending_handshake_record(srv.e));
+    CHECK(srv_id.peer_certs == verified);
+}
+
+// A TLS 1.2 dialer completes on the host's ChangeCipherSpec and Finished, and takes what the host sends right behind
+// them in the same message.
 TEST_CASE("e2ee-tls TLS 1.2 dialer completes on the host's final flight", "[crypto]") {
     ctx_guard clt_ctx{tls_with_ca(rsa_cert)};
     e2ee_guard clt{create_e2ee(ziti_crypto_tls, false, clt_ctx.c)};
@@ -891,6 +947,7 @@ TEST_CASE("e2ee-tls TLS 1.2 dialer completes on the host's final flight", "[cryp
     BIO_write(srv.in, hdr.data(), (int) hdr_len);
     REQUIRE(SSL_do_handshake(srv.ssl) == 1);
     REQUIRE(SSL_version(srv.ssl) == TLS1_2_VERSION);
+    CHECK(SSL_get_extms_support(srv.ssl) == 1);
     // the dialer has sent its Finished, but cannot encrypt before the host's
     CHECK_FALSE(clt.e->ready(clt.e));
 
@@ -907,13 +964,68 @@ TEST_CASE("e2ee-tls TLS 1.2 dialer completes on the host's final flight", "[cryp
         REQUIRE(SSL_renegotiate(srv.ssl) == 1);
         SSL_do_handshake(srv.ssl);
         std::vector<uint8_t> recs = drain(srv.out);
-        CHECK(clt.e->decrypt(clt.e, recs.data(), recs.size(), pt, sizeof(pt)) == -1);
-        CHECK_FALSE(clt.e->ready(clt.e));
+        clt.e->decrypt(clt.e, recs.data(), recs.size(), pt, sizeof(pt));
+        CHECK_FALSE(pending_handshake_record(clt.e));
     }
 }
 
-// A host that wants a key share the dialer did not send answers with a HelloRetryRequest. Its key share names a group
-// only, so the parameter check moves to the ServerHello that answers the dialer's second hello.
+// no tlsuv engine requires the extended master secret yet. these fail until one does, then shouldfail flags them
+TEST_CASE("e2ee-tls TLS 1.2 host refuses a dialer without the extended master secret", "[crypto][fips][!shouldfail]") {
+    persisted_key_cleanup cleanup;
+    identity_ctx srv_id;
+    REQUIRE(srv_id.load(true) == 0);
+    e2ee_guard srv{create_e2ee(ziti_crypto_tls, true, srv_id.tls)};
+    REQUIRE(srv.e != nullptr);
+
+    openssl_client clt(TLS1_2_VERSION);
+    SSL_set_options(clt.ssl, SSL_OP_NO_EXTENDED_MASTER_SECRET);
+    REQUIRE(SSL_set1_groups_list(clt.ssl, "P-256:P-384") == 1);
+    SSL_do_handshake(clt.ssl);
+    std::vector<uint8_t> hello = drain(clt.out);
+
+    bool ready = false;
+    if (srv.e->init(srv.e, hello.data(), hello.size(), true) == 0) {
+        e2ee_pub_t flight = srv.e->pub(srv.e);
+        BIO_write(clt.in, flight.key, (int) flight.key_len);
+        SSL_do_handshake(clt.ssl);
+        std::vector<uint8_t> clt_flight = drain(clt.out);
+        uint8_t pt[4096];
+        ready = srv.e->decrypt(srv.e, clt_flight.data(), clt_flight.size(), pt, sizeof(pt)) == 0 &&
+                srv.e->ready(srv.e);
+    }
+    CHECK_FALSE(ready);
+}
+
+TEST_CASE("e2ee-tls TLS 1.2 dialer refuses a host without the extended master secret", "[crypto][fips][!shouldfail]") {
+    ctx_guard clt_ctx{tls_with_ca(rsa_cert)};
+    e2ee_guard clt{create_e2ee(ziti_crypto_tls, false, clt_ctx.c)};
+    REQUIRE(clt.e != nullptr);
+
+    openssl_server srv(TLS1_2_VERSION);
+    SSL_set_options(srv.ssl, SSL_OP_NO_EXTENDED_MASTER_SECRET);
+    REQUIRE(SSL_set1_groups_list(srv.ssl, "P-256") == 1);
+    e2ee_pub_t hello = clt.e->pub(clt.e);
+    BIO_write(srv.in, hello.key, (int) hello.key_len);
+    SSL_do_handshake(srv.ssl);
+    std::vector<uint8_t> srv_flight = drain(srv.out);
+
+    bool ready = false;
+    if (clt.e->init(clt.e, srv_flight.data(), srv_flight.size(), false) == 0) {
+        std::vector<uint8_t> hdr(E2EE_MAX_HEADER_LEN);
+        ssize_t hdr_len = clt.e->get_header(clt.e, hdr.data());
+        if (hdr_len > 0) {
+            BIO_write(srv.in, hdr.data(), (int) hdr_len);
+            SSL_do_handshake(srv.ssl);
+            std::vector<uint8_t> srv_final = drain(srv.out);
+            uint8_t pt[4096];
+            ready = clt.e->decrypt(clt.e, srv_final.data(), srv_final.size(), pt, sizeof(pt)) == 0 &&
+                    clt.e->ready(clt.e);
+        }
+    }
+    CHECK_FALSE(ready);
+}
+
+// A host that wants a key share the dialer did not send answers with a HelloRetryRequest.
 TEST_CASE("e2ee-tls dialer completes a handshake through a HelloRetryRequest", "[crypto]") {
     if (tls12_capped()) {
         SKIP("ZITI_TEST_TLS12=1: the TLS backend has no TLS 1.3 here");
