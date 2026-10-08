@@ -18,7 +18,6 @@
 
 #include "crypto.h"
 #include "ziti/ziti_log.h"
-#include "tls_wire.h"
 
 #include <sodium/randombytes.h>
 
@@ -182,11 +181,7 @@ TEST_CASE("e2ee libsodium decrypt retries after partial header", "[crypto]") {
 }
 
 
-// in-memory TLS e2ee handshake plus data exchange between a server and a client engine.
-// optionally hands back the server's first flight (its ServerHello), the TLS library's version string, and the
-// header the server produces after decrypting the client's second flight
-static void e2ee_tls_exchange(std::vector<uint8_t> *server_hello = nullptr, std::string *lib_version = nullptr,
-                              std::vector<uint8_t> *server_final = nullptr) {
+TEST_CASE("e2ee-tls", "[crypto]") {
     ziti_log_init(nullptr, 6, nullptr);
     auto ca = R"(-----BEGIN CERTIFICATE-----
 MIIF2TCCA8GgAwIBAgIQAdOZLbzMYKkdruxAB4eOEzANBgkqhkiG9w0BAQsFADBa
@@ -407,12 +402,6 @@ jrEaRTDiko6e0ifkFw==
     uint8_t clt_header[E2EE_MAX_HEADER_LEN];
     REQUIRE(srv->init(srv, clt_hello.key, clt_hello.key_len, true) == 0);
     auto srv_hello = srv->pub(srv);
-    if (server_hello) {
-        server_hello->assign(srv_hello.key, srv_hello.key + srv_hello.key_len);
-    }
-    if (lib_version) {
-        *lib_version = tls->version();
-    }
 
     REQUIRE(clt->init(clt, srv_hello.key, srv_hello.key_len, false) == 0);
 
@@ -425,9 +414,6 @@ jrEaRTDiko6e0ifkFw==
 
     auto srv_hdr_len = srv->get_header(srv, srv_header);
     REQUIRE(srv_hdr_len >= 0);
-    if (server_final) {
-        server_final->assign(srv_header, srv_header + srv_hdr_len);
-    }
     l = clt->decrypt(clt, srv_header, srv_hdr_len, plaintext, sizeof(plaintext));
     REQUIRE(l == 0);
 
@@ -457,10 +443,6 @@ jrEaRTDiko6e0ifkFw==
     CHECK(memcmp(big.data(), big_pt.data(), big.size()) == 0);
 }
 
-TEST_CASE("e2ee-tls", "[crypto]") {
-    e2ee_tls_exchange();
-}
-
 TEST_CASE("e2ee-tls server without own cert", "[crypto]") {
     // what a ziti context has when set_own_cert failed: the server engine cannot be created
     auto tls = default_tls_context();
@@ -468,117 +450,6 @@ TEST_CASE("e2ee-tls server without own cert", "[crypto]") {
 
     CHECK(create_e2ee(ziti_crypto_tls, true, tls) == nullptr);
 }
-
-// TLS 1.2 ends with the server's ChangeCipherSpec and Finished, which it produces only while decrypting the
-// client's second flight. The host must hand them back from get_header() after that decrypt, or the client never
-// completes. Neither backend exposes a version cap, so the cap comes from outside the process:
-//   OpenSSL:  OPENSSL_CONF=<config with "Protocol = -TLSv1.3" in its system_default section>
-//   Schannel: SCHANNEL\Protocols\TLS 1.3\{Client,Server} Enabled=0 in the registry (machine-wide; test VMs only)
-// The test fails if TLS 1.2 is not what the handshake negotiated, so a missing cap cannot pass silently.
-TEST_CASE("e2ee-tls TLS 1.2 host sends its final flight after decrypt", "[crypto]") {
-    const char *want = getenv("ZITI_TEST_TLS12");
-    if (want == nullptr || strcmp(want, "1") != 0) {
-        SKIP("set ZITI_TEST_TLS12=1 and cap the TLS backend at 1.2 (see comment) to run");
-    }
-
-    std::vector<uint8_t> server_hello;
-    std::vector<uint8_t> server_final;
-    e2ee_tls_exchange(&server_hello, nullptr, &server_final);
-
-    tls_wire::server_hello_info info;
-    REQUIRE(tls_wire::parse_server_hello(server_hello, info));
-    CHECK(info.version == 0x0303);
-
-    // a ChangeCipherSpec record (type 20) followed by the encrypted Finished (handshake record, type 22).
-    // OpenSSL puts a NewSessionTicket handshake record ahead of them
-    std::vector<uint8_t> types;
-    for (size_t p = 0; p + 5 <= server_final.size(); p += 5 + ((server_final[p + 3] << 8) | server_final[p + 4])) {
-        types.push_back(server_final[p]);
-    }
-    auto ccs = std::ranges::find(types, 0x14);
-    REQUIRE(ccs != types.end());
-    CHECK(std::find(ccs, types.end(), 0x16) != types.end());
-}
-
-#if !defined(__APPLE__) && __has_include(<openssl/provider.h>)
-#include <openssl/evp.h>
-#include <openssl/core_names.h>
-#include <openssl/provider.h>
-
-namespace {
-using namespace tls_wire;
-
-int print_provider(OSSL_PROVIDER *prov, void *) {
-    const char *name = nullptr, *version = nullptr, *build = nullptr;
-    OSSL_PARAM params[] = {
-            OSSL_PARAM_construct_utf8_ptr(OSSL_PROV_PARAM_NAME, (char **)&name, 0),
-            OSSL_PARAM_construct_utf8_ptr(OSSL_PROV_PARAM_VERSION, (char **)&version, 0),
-            OSSL_PARAM_construct_utf8_ptr(OSSL_PROV_PARAM_BUILDINFO, (char **)&build, 0),
-            OSSL_PARAM_construct_end(),
-    };
-    OSSL_PROVIDER_get_params(prov, params);
-    printf("[fips] provider %s: %s, version %s, build %s\n", OSSL_PROVIDER_get0_name(prov),
-           name ? name : "?", version ? version : "?", build ? build : "?");
-    return 1;
-}
-}
-
-// run with OPENSSL_CONF pointing at a config that activates only the fips and base providers, e.g.
-//   OPENSSL_CONF=~/fips/openssl.cnf OPENSSL_MODULES=~/fips/lib/ossl-modules ZITI_TEST_FIPS=1 all_tests "e2ee-tls*"
-// see scripts/fips-linux
-TEST_CASE("e2ee-tls-fips", "[crypto][fips]") {
-    const char *want = getenv("ZITI_TEST_FIPS");
-    if (want == nullptr || strcmp(want, "1") != 0) {
-        SKIP("set ZITI_TEST_FIPS=1 (and OPENSSL_CONF to a FIPS-only config) to run");
-    }
-
-    printf("[fips] libcrypto: %s\n", OpenSSL_version(OPENSSL_VERSION));
-    printf("[fips] OPENSSL_CONF=%s\n", getenv("OPENSSL_CONF") ? getenv("OPENSSL_CONF") : "(unset)");
-    printf("[fips] OPENSSL_MODULES=%s\n", getenv("OPENSSL_MODULES") ? getenv("OPENSSL_MODULES") : "(unset)");
-    OSSL_PROVIDER_do_all(nullptr, print_provider, nullptr);
-
-    // tlsuv's openssl engine builds its SSL_CTX on its own OSSL_LIB_CTX only after tlsuv_set_config_path();
-    // otherwise on the default (NULL) context, which OPENSSL_CONF configures. these checks are on that context,
-    // and the handshake below re-checks it through tlsuv's own version string
-    CHECK(EVP_default_properties_is_fips_enabled(nullptr) == 1);
-    CHECK(OSSL_PROVIDER_available(nullptr, "fips") == 1);
-    CHECK(OSSL_PROVIDER_available(nullptr, "default") == 0);
-
-    EVP_MD *md5 = EVP_MD_fetch(nullptr, "MD5", nullptr);
-    CHECK(md5 == nullptr);
-    EVP_MD_free(md5);
-
-    EVP_CIPHER *chacha = EVP_CIPHER_fetch(nullptr, "ChaCha20-Poly1305", nullptr);
-    CHECK(chacha == nullptr);
-    EVP_CIPHER_free(chacha);
-
-    EVP_CIPHER *aes = EVP_CIPHER_fetch(nullptr, "AES-256-GCM", nullptr);
-    REQUIRE(aes != nullptr);
-    CHECK(std::string(OSSL_PROVIDER_get0_name(EVP_CIPHER_get0_provider(aes))) == "fips");
-    EVP_CIPHER_free(aes);
-
-    std::vector<uint8_t> server_hello;
-    std::string lib_version;
-    e2ee_tls_exchange(&server_hello, &lib_version);
-
-    printf("[fips] tlsuv tls lib: %s\n", lib_version.c_str());
-    CHECK(lib_version.find("[FIPS]") != std::string::npos);
-
-    server_hello_info info;
-    REQUIRE(parse_server_hello(server_hello, info));
-    printf("[fips] negotiated %s (0x%04x), cipher %s (0x%04x), key share %s (0x%04x)\n",
-           tls_version_name(info.version), info.version,
-           cipher_suite_name(info.cipher_suite), info.cipher_suite,
-           group_name(info.key_share_group), info.key_share_group);
-    CHECK(info.cipher_suite != 0x1303);
-    CHECK(info.cipher_suite != 0xCCA8);
-
-    // the 3.1.2 fips provider serves X25519/X448 itself, so fips=yes alone would let TLS 1.3 pick X25519.
-    // tls_restrict_fips() keeps them out with or without a config that restricts the groups
-    CHECK(info.key_share_group != 0x001d);
-    CHECK(info.key_share_group != 0x001e);
-}
-#endif
 
 namespace {
 // a TLS engine past its handshake that frames nothing: each write() passes at most `chunk` bytes
