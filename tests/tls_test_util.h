@@ -15,7 +15,7 @@
 // limitations under the License.
 
 
-// Fixtures shared by the e2ee-tls engine tests and the win32crypto key tests.
+// Fixtures shared by the e2ee-tls tests and the win32crypto key test.
 #pragma once
 
 #include <catch2/catch_all.hpp>
@@ -91,9 +91,8 @@ Y0eQ
 )";
 
 namespace {
-// counts the peer certs it is shown, and accepts them: the fixture is self-signed
-int count_peer_cert(const struct tlsuv_certificate_s *, void *ctx) {
-    (*static_cast<int *>(ctx))++;
+// accepts any peer cert: the fixture is self-signed
+int accept_peer_cert(const struct tlsuv_certificate_s *, void *) {
     return 0;
 }
 
@@ -144,7 +143,6 @@ struct identity_ctx {
     tls_context *tls = nullptr;
     tlsuv_private_key_t key = nullptr;
     tlsuv_certificate_t cert = nullptr;
-    int peer_certs = 0;
 
     identity_ctx() : tls(default_tls_context()) { e2ee_restrict_tls(tls); }
 
@@ -157,7 +155,7 @@ struct identity_ctx {
     int load() {
         REQUIRE(tls->load_key(&key, rsa_key, strlen(rsa_key)) == 0);
         REQUIRE(tls->load_cert(&cert, rsa_cert, strlen(rsa_cert)) == 0);
-        tls->set_cert_verify(tls, count_peer_cert, &peer_certs);
+        tls->set_cert_verify(tls, accept_peer_cert, nullptr);
         return tls->set_own_cert(tls, key, cert);
     }
 };
@@ -197,27 +195,19 @@ static std::wstring persisted_key_name() {
     return name;
 }
 
-static SECURITY_STATUS open_persisted_key(const wchar_t *name, NCRYPT_PROV_HANDLE *prov, NCRYPT_KEY_HANDLE *key) {
-    SECURITY_STATUS rc = NCryptOpenStorageProvider(prov, MS_KEY_STORAGE_PROVIDER, 0);
-    if (rc != ERROR_SUCCESS) return rc;
-    rc = NCryptOpenKey(*prov, key, name, 0, NCRYPT_SILENT_FLAG);
-    if (rc != ERROR_SUCCESS) {
-        NCryptFreeObject(*prov);
-        *prov = 0;
+static void delete_persisted_key(const std::wstring &name) {
+    if (name.empty()) return;
+    NCRYPT_PROV_HANDLE prov = 0;
+    NCRYPT_KEY_HANDLE key = 0;
+    if (NCryptOpenStorageProvider(&prov, MS_KEY_STORAGE_PROVIDER, 0) != ERROR_SUCCESS) return;
+    if (NCryptOpenKey(prov, &key, name.c_str(), 0, NCRYPT_SILENT_FLAG) == ERROR_SUCCESS) {
+        NCryptDeleteKey(key, 0); // frees the key handle
     }
-    return rc;
+    NCryptFreeObject(prov);
 }
 
 struct persisted_key_cleanup {
-    ~persisted_key_cleanup() {
-        std::wstring name = persisted_key_name();
-        NCRYPT_PROV_HANDLE prov = 0;
-        NCRYPT_KEY_HANDLE key = 0;
-        if (!name.empty() && open_persisted_key(name.c_str(), &prov, &key) == ERROR_SUCCESS) {
-            NCryptDeleteKey(key, 0); // frees the key handle
-            NCryptFreeObject(prov);
-        }
-    }
+    ~persisted_key_cleanup() { delete_persisted_key(persisted_key_name()); }
 };
 #else
 // only win32crypto persists identity keys

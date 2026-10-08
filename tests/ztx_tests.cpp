@@ -14,11 +14,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// model_support.h #defines `map`: tls_test_util.h pulls in the standard headers, so it goes first
+#include "tls_test_util.h"
+
 #include "catch2_includes.hpp"
 
 #include <uv.h>
 #include <ziti/ziti.h>
 #include <ziti/errors.h>
+
+#include "credentials.h"
 
 namespace {
     // one loop for every case: creating and closing a loop per case trips libuv's fd assertion when
@@ -103,4 +108,32 @@ TEST_CASE("ziti_shutdown completes after a TLS init failure", "[ztx]") {
     CHECK(test.init_err == ZITI_INVALID_CONFIG);
     CHECK_FALSE(timed_out);
     CHECK(test.disabled);
+}
+
+TEST_CASE("load_tls reports a key the win32crypto key store cannot persist", "[crypto]") {
+    persisted_key_cleanup cleanup;
+    identity_ctx probe;
+    if (strstr(probe.tls->version(), "win32crypto") == nullptr) {
+        SKIP("not a win32crypto build: " << probe.tls->version());
+    }
+
+    std::string key_ref = std::string("pem:") + rsa_key;
+    std::string cert_ref = std::string("pem:") + rsa_cert;
+    ziti_config cfg{};
+    cfg.id.key = const_cast<char *>(key_ref.c_str());
+    cfg.id.cert = const_cast<char *>(cert_ref.c_str());
+
+    tls_context *tls = nullptr;
+    zt_x509 creds{};
+    int rc;
+    {
+        key_store_unreachable guard;
+        rc = load_tls(&cfg, &tls, &creds);
+    }
+    CHECK(rc == ZITI_INVALID_CERT_KEY_PAIR);
+    CHECK(tls == nullptr);
+    CHECK(creds.key == nullptr);
+    CHECK(creds.cert == nullptr);
+    if (tls) tls->free_ctx(tls);
+    zt_x509_drop(&creds);
 }
