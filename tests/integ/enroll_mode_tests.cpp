@@ -112,7 +112,7 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-token-then-list-services", "[integ][enrol
     }
 
     // authenticate with JWT bearer token
-    ziti_ctrl_set_ext_token(&cs.ctrl, jwt.c_str());
+    ziti_ctrl_set_ext_token(&cs.ctrl, TEST_JWT_TOKEN_SIGNER_ISSUER, jwt.c_str());
 
     // verify identity exists
     auto identity = ctrl_get(cs.ctrl, ziti_ctrl_current_identity);
@@ -138,7 +138,7 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-none-precreated-list-services", "[integ][
                              TEST_JWT_SIGNER_AUDIENCE, 300);
 
     // no enrollment call - just set JWT as bearer
-    ziti_ctrl_set_ext_token(&cs.ctrl, jwt.c_str());
+    ziti_ctrl_set_ext_token(&cs.ctrl, TEST_JWT_SIGNER_ISSUER, jwt.c_str());
 
     // verify identity
     auto identity = ctrl_get(cs.ctrl, ziti_ctrl_current_identity);

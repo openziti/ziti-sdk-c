@@ -183,14 +183,19 @@ class OidcIdp:
     def __exit__(self, *exc): self.stop()
 
     # ---- tokens -----------------------------------------------------------------------------
-    def _sign(self, claims):
+    def _sign(self, claims, ttl=TOKEN_TTL):
         now = int(time.time())
-        claims = {"iss": self.issuer, "iat": now, "exp": now + TOKEN_TTL, **claims}
+        claims = {"iss": self.issuer, "iat": now, "exp": now + ttl, **claims}
         return jwt.encode({"alg": "RS256", "kid": self.key.kid}, claims, self.key)
 
-    def _access_token(self, client, grant_type, user=None, scope=None):
+    def _access_token(self, client, grant_type, user=None, scope=None, ttl=TOKEN_TTL):
         # a JWT, not an opaque string: an ext-jwt-signer validates whichever token the SDK sends
-        return self._sign({"sub": user, "email": user, "aud": client.get_client_id(), "scope": scope})
+        return self._sign({"sub": user, "email": user, "aud": client.get_client_id(), "scope": scope}, ttl)
+
+    def access_token(self, email, ttl=TOKEN_TTL):
+        """An access token of ``email`` like the grants issue, but valid for ``ttl`` seconds: for tests of what
+        happens when one expires."""
+        return self._access_token(self.client, "password", email, "openid email", ttl)
 
     # ---- authlib wiring ---------------------------------------------------------------------
     def _configure_authlib(self):

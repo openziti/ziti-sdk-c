@@ -130,6 +130,8 @@ struct ctrl_resp {
 static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl_resp *resp);
 static void internal_get_version(ziti_controller *ctrl);
 
+static void ctrl_set_auth_headers(ziti_controller *ctrl);
+
 static struct ctrl_resp *prepare_resp(ziti_controller *ctrl, ctrl_resp_cb_t cb, body_parse_fn parser, void *ctx);
 
 static void ctrl_paging_req(struct ctrl_resp *resp);
@@ -413,10 +415,11 @@ void ziti_ctrl_set_legacy(ziti_controller *ctrl, bool legacy) {
 
 void ziti_ctrl_clear_auth(ziti_controller *ctrl) {
     ctrl->has_token = false;
+    cstr_clear(&ctrl->token);
+    model_map_clear(&ctrl->ext_tokens, free);
     if (ctrl->client) {
         CTRL_LOG(DEBUG, "clearing api session token for ziti_controller");
-        tlsuv_http_header(ctrl->client, HTTP_ZT_SESSION, NULL);
-        tlsuv_http_header(ctrl->client, HTTP_AUTHORIZATION, NULL);
+        ctrl_set_auth_headers(ctrl);
     }
 }
 
@@ -657,6 +660,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
     tlsuv_http_connect_timeout(ctrl->client, ZITI_CTRL_TIMEOUT);
     tlsuv_http_header(ctrl->client, HTTP_ACCEPT, APPLICATION_JSON);
     ctrl->has_token = false;
+    ctrl->token = cstr_init();
     ctrl->instance_id = cstr_init();
 
     CTRL_LOG(DEBUG, "ziti controller client initialized");
@@ -664,34 +668,60 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
     return ZITI_OK;
 }
 
-int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const char *jwt) {
+// Setting a header adds a value to the ones the client has, it does not replace them, and the controller
+// takes the first token of a signer that it finds in the Authorization headers: so when any token changes
+// the whole set is removed and put back.
+static void ctrl_set_auth_headers(ziti_controller *ctrl) {
+    if (ctrl->client == NULL) {
+        return;
+    }
+
+    tlsuv_http_header(ctrl->client, HTTP_ZT_SESSION, NULL);
+    tlsuv_http_header(ctrl->client, HTTP_AUTHORIZATION, NULL);
+
+    if (ctrl->has_token) {
+        if (ctrl->legacy) {
+            tlsuv_http_header(ctrl->client, HTTP_ZT_SESSION, cstr_str(&ctrl->token));
+        } else {
+            c_with(cstr bearer = cstr_from_fmt(HTTP_BEARER_FMT, cstr_str(&ctrl->token)), cstr_drop(&bearer)) {
+                tlsuv_http_header(ctrl->client, HTTP_AUTHORIZATION, cstr_str(&bearer));
+            }
+        }
+    }
+
+    const char *issuer;
+    const char *jwt;
+    MODEL_MAP_FOREACH(issuer, jwt, &ctrl->ext_tokens) {
+        c_with(cstr bearer = cstr_from_fmt(HTTP_BEARER_FMT, jwt), cstr_drop(&bearer)) {
+            tlsuv_http_header(ctrl->client, HTTP_AUTHORIZATION, cstr_str(&bearer));
+        }
+    }
+}
+
+int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const char *issuer, const char *jwt) {
+    assert(issuer);
     assert(jwt);
 
-    cstr header = cstr_from_fmt(HTTP_BEARER_FMT, jwt);
-    tlsuv_http_header(ctrl->client, HTTP_AUTHORIZATION, cstr_str(&header));
-    cstr_drop(&header);
+    free(model_map_set(&ctrl->ext_tokens, issuer, strdup(jwt)));
+    ctrl_set_auth_headers(ctrl);
     return 0;
 }
 
 
 int ziti_ctrl_set_token(ziti_controller *ctrl, const char *token) {
     if (token == NULL) {
-        tlsuv_http_header(ctrl->client, ctrl->legacy ? HTTP_ZT_SESSION : HTTP_AUTHORIZATION, NULL);
+        cstr_clear(&ctrl->token);
         ctrl->has_token = false;
+        ctrl_set_auth_headers(ctrl);
         return 0;
     }
 
+    cstr_assign(&ctrl->token, token);
     ctrl->has_token = true;
-    if (ctrl->legacy) {
-        tlsuv_http_header(ctrl->client, HTTP_ZT_SESSION, token);
-    } else {
-        c_with(cstr bearer = cstr_from_fmt(HTTP_BEARER_FMT, token), cstr_drop(&bearer)) {
-            tlsuv_http_header(ctrl->client, HTTP_AUTHORIZATION, cstr_str(&bearer));
-        }
+    ctrl_set_auth_headers(ctrl);
 
-        if (ctrl->capabilities.ha) {
-            ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
-        }
+    if (!ctrl->legacy && ctrl->capabilities.ha) {
+        ziti_ctrl_list_controllers(ctrl, internal_ctrl_list_cb, ctrl);
     }
     return ZITI_OK;
 }
@@ -723,9 +753,12 @@ int ziti_ctrl_close(ziti_controller *ctrl) {
     free_ziti_ctrl_version(&ctrl->version);
     model_map_clear(&ctrl->build_flags, NULL);
     model_map_clear(&ctrl->endpoints, (void (*)(void *)) free_ziti_controller_detail_ptr);
+    model_map_clear(&ctrl->ext_tokens, free);
     if (ctrl->client) {
         tlsuv_http_close(ctrl->client, on_http_close);
     }
+    cstr_drop(&ctrl->token);
+    ctrl->token = cstr_init();
     cstr_drop(&ctrl->url);
     ctrl->url = cstr_init();
     cstr_drop(&ctrl->instance_id);

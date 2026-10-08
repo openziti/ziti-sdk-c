@@ -345,6 +345,13 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
 
     ztx->auth_method->set_ext_jwt(ztx->auth_method, token);
 
+    // the controller checks the external token of every request, so a context that is authenticated has
+    // to send the new one: the one it sends expires, and the login that refreshed it does not know about it.
+    // Before that the tokens go to the controller client when authentication completes.
+    if (ztx->auth_state == ZitiAuthStateFullyAuthenticated) {
+        ziti_ctrl_set_ext_token(ztx_get_controller(ztx), cstr_str(&jwt->issuer), token);
+    }
+
     // enrollment based on configured mode
     if (ztx->identity_data == NULL && ztx->id_creds.cert == NULL) {
         if (ztx->opts.enroll_mode == ziti_enroll_cert || ztx->opts.enroll_mode == ziti_enroll_token) {

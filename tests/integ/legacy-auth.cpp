@@ -179,3 +179,142 @@ TEST_CASE("ztx-legacy-auth", "[integ]") {
 
     free_ziti_config(&cfg);
 }
+
+// The identity logs in with its cert, and its auth policy requires a token from an ext-jwt-signer as
+// secondary auth: test_auth.py sets up the policy and passes the tokens as IDP_TOKEN (and IDP_TOKEN_NEXT).
+//
+// ziti_context picks the legacy method only for a controller without OIDC, which the test controller
+// is not. The controller serves /authenticate all the same, so these drive the method itself.
+class LegacySecondaryAuth : public LoopTestCase {
+protected:
+    struct auth_result {
+        ziti_auth_method_t *auth{};
+        const std::string *token{};  // set when the callback is to give it to the method
+        bool ext_jwt_requested{false};
+        std::string api_session;
+        std::string error;
+    } result;
+
+    ziti_config config{};
+    tls_credentials creds{};
+    tls_context *tls{};
+    ziti_auth_method_t *auth{};
+
+    // not in the constructor: the destructor of an object whose constructor threw does not run
+    void init() {
+        REQUIRE(ziti_load_config(&config, TEST_CLIENT) == ZITI_OK);
+        REQUIRE(load_tls(&config, &tls, &creds) == ZITI_OK);
+        auth = new_legacy_auth(loop(), config.controller_url, tls, true);
+        result.auth = auth;
+    }
+
+    void start() {
+        auth->start(auth, [](void *ctx, ziti_auth_state state, const void *data) {
+            auto *r = static_cast<auth_result *>(ctx);
+            switch (state) {
+                case ZitiAuthStatePartiallyAuthenticated: {
+                    auto *query = static_cast<const ziti_auth_query_mfa *>(data);
+                    r->ext_jwt_requested = query->type_id == ziti_auth_query_type_EXT_JWT;
+                    if (r->ext_jwt_requested && r->token) {
+                        r->auth->set_ext_jwt(r->auth, r->token->c_str());
+                    }
+                    break;
+                }
+                case ZitiAuthStateFullyAuthenticated:
+                    r->api_session = static_cast<const char *>(data);
+                    break;
+                case ZitiAuthStateUnauthenticated:
+                case ZitiAuthImpossibleToAuthenticate:
+                    r->error = static_cast<const ziti_error *>(data)->message;
+                    break;
+                default:
+                    break;
+            }
+        }, &result);
+    }
+
+    ~LegacySecondaryAuth() {
+        if (auth) {
+            auth->stop(auth);
+            auth->free(auth);
+        }
+        zt_x509_drop(&creds);
+        if (tls) {
+            tls->free_ctx(tls);
+        }
+        free_ziti_config(&config);
+    }
+};
+
+// GH-919
+TEST_CASE_METHOD(LegacySecondaryAuth, "legacy-secondary-ext-jwt", "[integ][legacy-secondary]") {
+    std::string idp_token = checkENV("IDP_TOKEN");
+    // the token comes from the external login, usually after the auth callback has returned, but an app
+    // may also answer the auth event with it right away, or already hold it from an earlier login
+    enum Delivery { AfterCallback, FromCallback, BeforeLogin };
+    auto delivery = GENERATE(AfterCallback, FromCallback, BeforeLogin);
+    INFO("token delivery: " << delivery);
+
+    init();
+    if (delivery == FromCallback) {
+        result.token = &idp_token;
+    }
+    if (delivery == BeforeLogin) {
+        REQUIRE(auth->set_ext_jwt(auth, idp_token.c_str()) == ZITI_OK);
+    }
+    start();
+
+    if (delivery != BeforeLogin) {
+        // the cert is enough for a session, but not for a full one
+        REQUIRE(run(UNTIL(result.ext_jwt_requested || !result.error.empty() || !result.api_session.empty())));
+        INFO("error: " << result.error);
+        REQUIRE(result.ext_jwt_requested);
+        if (delivery == AfterCallback) {
+            CHECK(result.api_session.empty());
+            REQUIRE(auth->set_ext_jwt(auth, idp_token.c_str()) == ZITI_OK);
+        }
+    }
+
+    REQUIRE(run(UNTIL(!result.api_session.empty() || !result.error.empty())));
+    INFO("error: " << result.error);
+    CHECK(result.error.empty());
+    REQUIRE_FALSE(result.api_session.empty());
+    if (delivery == BeforeLogin) {
+        // the authentication request carried the token: the controller had nothing to ask for
+        CHECK_FALSE(result.ext_jwt_requested);
+    }
+
+    // a refresh of the session carries the token as well: without it the controller asks for it again
+    result.ext_jwt_requested = false;
+    REQUIRE(auth->force_refresh(auth) == 0);
+    CHECK_FALSE(run(UNTIL(result.ext_jwt_requested || !result.error.empty()), 2000));
+    CHECK(result.error.empty());
+}
+
+// The token the identity logged in with expires, but the external login has refreshed it by then: the
+// controller wants the new one on the requests, the old one is a rejection. GH-1158
+TEST_CASE_METHOD(LegacySecondaryAuth, "legacy-secondary-ext-jwt-rotation", "[integ][legacy-secondary]") {
+    std::string first = checkENV("IDP_TOKEN");  // short-lived
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+
+    init();
+    start();
+
+    REQUIRE(run(UNTIL(result.ext_jwt_requested || !result.error.empty() || !result.api_session.empty())));
+    INFO("error: " << result.error);
+    REQUIRE(result.ext_jwt_requested);
+    REQUIRE(auth->set_ext_jwt(auth, first.c_str()) == ZITI_OK);
+    REQUIRE(run(UNTIL(!result.api_session.empty() || !result.error.empty())));
+    REQUIRE_FALSE(result.api_session.empty());
+
+    REQUIRE(auth->set_ext_jwt(auth, next.c_str()) == ZITI_OK);
+
+    auto expiration = jwt_expiration(first);
+    REQUIRE(run(UNTIL(time(nullptr) > expiration + 1), 15000));
+
+    // the refresh of the session is what tells the controller which token the identity has now
+    result.ext_jwt_requested = false;
+    REQUIRE(auth->force_refresh(auth) == 0);
+    CHECK_FALSE(run(UNTIL(result.ext_jwt_requested || !result.error.empty()), 2000));
+    CHECK(result.error.empty());
+}
