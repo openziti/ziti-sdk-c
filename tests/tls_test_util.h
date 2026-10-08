@@ -15,7 +15,7 @@
 // limitations under the License.
 
 
-// Fixtures and in-memory transport shared by the TLS engine tests and the win32crypto key tests.
+// Fixtures shared by the e2ee-tls engine tests and the win32crypto key tests.
 #pragma once
 
 #include <catch2/catch_all.hpp>
@@ -163,8 +163,7 @@ struct identity_ctx {
 };
 
 // ZITI_TEST_TLS12=1: the TLS backend cannot negotiate TLS 1.3 here, because the OS predates it (Schannel below build
-// 20348) or it is disabled (the Schannel registry, or an OpenSSL config cap; see the e2ee-tls TLS 1.2 test). Without
-// it TLS 1.3 is required.
+// 20348) or it is disabled (the Schannel registry, or an OpenSSL config cap). Without it TLS 1.3 is required.
 inline bool tls12_capped() {
     const char *tls12 = getenv("ZITI_TEST_TLS12");
     return tls12 != nullptr && strcmp(tls12, "1") == 0;

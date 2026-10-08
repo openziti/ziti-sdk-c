@@ -1071,7 +1071,6 @@ ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, const char 
 
     clt->loop = l;
     clt->tls = default_tls_context();
-    // offer only approved algorithms in FIPS mode
     tls_restrict_fips(clt->tls);
     clt->tls->set_ca_bundle(clt->tls, ca, strlen(ca));
     clt->x509 = x509;
