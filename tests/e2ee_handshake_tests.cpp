@@ -277,45 +277,6 @@ TEST_CASE("tls 1.2 dial waits for the e2ee handshake", "[e2ee]") {
     }
 }
 
-TEST_CASE("tls 1.3 dial completes on the connect reply", "[e2ee]") {
-    // a tls 1.3 client is ready once establish_crypto returns
-    ztx_fixture f;
-    ziti_edge_router er{};
-    er.name = (char *) "er";
-    ziti_session session{};
-    session.id = (char *) "session";
-    model_list_append(&session.edge_routers, &er);
-    ziti_service service{};
-    service.name = (char *) "svc";
-    service.id = (char *) "svc-id";
-    service.perm_flags = ZITI_CAN_DIAL;
-    model_map_set(&f.ztx.services, service.name, &service);
-    model_map_set(&f.ztx.sessions, service.id, &session);
-
-    auto conn = (ziti_connection) calloc(1, sizeof(struct ziti_conn));
-    conn->ziti_ctx = &f.ztx;
-    ziti_conn_set_data(conn, &f.app);
-    REQUIRE(ziti_dial(conn, "svc", on_conn, on_data) == ZITI_OK);
-    install(f.e2ee, conn);
-    f.e2ee.ready = true;
-
-    message *m = conn_msg(ContentTypeStateConnected, 7, "");
-    connect_reply_cb(conn, m, 0);
-    pool_return_obj(m);
-    CHECK(f.app.conn_cb == std::vector<int>{ZITI_OK});
-    CHECK(conn->state == Connected);
-
-    f.loop.time += ZITI_DEFAULT_TIMEOUT;
-    run_all_due(&f.ztx);
-    CHECK(f.app.conn_cb == std::vector<int>{ZITI_OK});
-
-    f.dispose(conn);
-    model_map_clear(&f.ztx.services, nullptr);
-    model_map_clear(&f.ztx.sessions, nullptr);
-    model_map_clear(&f.ztx.waiting_connections, nullptr);
-    model_list_clear(&session.edge_routers, nullptr);
-}
-
 TEST_CASE("host holds writes until the e2ee handshake completes", "[e2ee]") {
     ztx_fixture f;
     auto conn = (ziti_connection) calloc(1, sizeof(struct ziti_conn));

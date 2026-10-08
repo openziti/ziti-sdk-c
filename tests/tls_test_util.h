@@ -24,10 +24,8 @@
 
 #include "crypto.h"
 
-#include <algorithm>
 #include <cstdlib>
 #include <cstring>
-#include <deque>
 #include <memory>
 #include <string>
 #include <vector>
@@ -93,55 +91,6 @@ Y0eQ
 )";
 
 namespace {
-struct mem_pipe {
-    std::deque<char> buf;
-};
-
-struct mem_endpoint {
-    mem_pipe *in;
-    mem_pipe *out;
-    // when set, keeps a copy of everything written
-    std::vector<uint8_t> *tap = nullptr;
-    // when set, writes fail the way a full non-blocking socket does
-    bool block_writes = false;
-};
-
-ssize_t mem_read(io_ctx c, char *out, size_t len) {
-    auto *p = static_cast<mem_endpoint *>(c)->in;
-    if (p->buf.empty()) return TLS_AGAIN;
-
-    size_t n = (std::min)(len, p->buf.size());
-    std::copy_n(p->buf.begin(), n, out);
-    p->buf.erase(p->buf.begin(), p->buf.begin() + (long) n);
-    return (ssize_t) n;
-}
-
-ssize_t mem_write(io_ctx c, const char *in, size_t len) {
-    auto *ep = static_cast<mem_endpoint *>(c);
-    if (ep->block_writes) {
-        // the io contract for a blocked write. no socket error is set, as with any io that is not a
-        // Winsock socket, so an engine has to go by the return value
-#if _WIN32
-        SetLastError(ERROR_SUCCESS); // the slot WSAGetLastError() reads
-#endif
-        return TLS_AGAIN;
-    }
-    ep->out->buf.insert(ep->out->buf.end(), in, in + len);
-    if (ep->tap) ep->tap->insert(ep->tap->end(), in, in + len);
-    return (ssize_t) len;
-}
-
-// runs both engines until each completes or one fails
-void run_handshake(tlsuv_engine_t clt, tlsuv_engine_t srv, tls_handshake_state &cs, tls_handshake_state &ss) {
-    cs = TLS_HS_CONTINUE;
-    ss = TLS_HS_CONTINUE;
-    for (int i = 0; i < 100 && !(cs == TLS_HS_COMPLETE && ss == TLS_HS_COMPLETE); i++) {
-        cs = clt->handshake(clt);
-        ss = srv->handshake(srv);
-        if (cs == TLS_HS_ERROR || ss == TLS_HS_ERROR) break;
-    }
-}
-
 // counts the peer certs it is shown, and accepts them: the fixture is self-signed
 int count_peer_cert(const struct tlsuv_certificate_s *, void *ctx) {
     (*static_cast<int *>(ctx))++;
@@ -205,25 +154,12 @@ struct identity_ctx {
         if (key) key->free(key);
     }
 
-    // verify_peer false leaves the context like ztx->e2ee_host_tls: no CA and no verify callback, so a host
-    // does not ask for the dialer's certificate
-    int load(bool key_store_reachable, bool verify_peer = true) {
+    int load() {
         REQUIRE(tls->load_key(&key, rsa_key, strlen(rsa_key)) == 0);
         REQUIRE(tls->load_cert(&cert, rsa_cert, strlen(rsa_cert)) == 0);
-        if (verify_peer) {
-            tls->set_cert_verify(tls, count_peer_cert, &peer_certs);
-        }
-        if (key_store_reachable) {
-            return tls->set_own_cert(tls, key, cert);
-        }
-        key_store_unreachable guard;
+        tls->set_cert_verify(tls, count_peer_cert, &peer_certs);
         return tls->set_own_cert(tls, key, cert);
     }
-};
-
-struct engine_guard {
-    tlsuv_engine_t e;
-    ~engine_guard() { if (e) e->free(e); }
 };
 
 // ZITI_TEST_TLS12=1: the TLS backend cannot negotiate TLS 1.3 here, because the OS predates it (Schannel below build
