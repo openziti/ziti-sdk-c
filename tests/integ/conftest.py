@@ -18,6 +18,8 @@ import hashlib
 import json
 import logging
 import os
+import re
+import secrets
 import subprocess
 import threading
 from semver import Version
@@ -155,6 +157,73 @@ def ziti_model(base_model, quickstart_home):
               "-o", os.path.join(quickstart_home, "test_server.jwt"))
 
 
+# the SDK's external auth (library/ext_oidc.c) always uses this redirect uri
+IDP_CLIENT_ID = "ziti-test-client"
+IDP_REDIRECT_URI = "http://localhost:20314/auth/callback"
+
+
+@pytest.fixture(scope="session")
+def idp():
+    """OIDC provider for the external JWT tests: ``idp.issuer``, ``idp.add_user(email, password)``."""
+    # imported here so that a venv without authlib only breaks the tests that need the idp
+    from oidc_idp import OidcIdp
+
+    with OidcIdp(IDP_CLIENT_ID, [IDP_REDIRECT_URI]) as provider:
+        logger.info("oidc idp: %s", provider.issuer)
+        yield provider
+
+
+IDP_SIGNER = "integration-test-signer"
+
+
+@pytest.fixture(scope="session")
+def idp_signer(idp, ziti_model, ziti_version):
+    """Name of the ext-jwt-signer that trusts ``idp``.
+
+    The controller allows one signer per issuer, so every test shares this one: use ``enroll_mode``
+    to change what it does for a user that has no identity yet.
+    """
+    if ziti_version.major < 2:
+        pytest.skip("JWT signers require Ziti 2.0 or later")
+
+    # sub == email and both tokens are JWTs, so the default claims-property and target-token apply
+    ziti_edge("create", "ext-jwt-signer", IDP_SIGNER, idp.issuer,
+              "--jwks-endpoint", f"{idp.issuer}/keys",
+              "--external-auth-url", idp.issuer,
+              "--client-id", IDP_CLIENT_ID,
+              "--audience", IDP_CLIENT_ID)
+    return IDP_SIGNER
+
+
+@pytest.fixture
+def enroll_mode(idp_signer):
+    """``enroll_mode("cert" | "token" | "none")`` sets what ``idp_signer`` does for a user without an identity.
+
+    The signer goes back to ``"none"`` (identities must be pre-created) when the test is done.
+    """
+    changed = False
+
+    def set_mode(mode):
+        nonlocal changed
+        assert mode in ("cert", "token", "none")
+        ziti_edge("update", "ext-jwt-signer", idp_signer,
+                  f"--enroll-to-cert={str(mode == 'cert').lower()}",
+                  f"--enroll-to-token={str(mode == 'token').lower()}")
+        changed = True
+
+    yield set_mode
+    if changed:
+        set_mode("none")
+
+
+@pytest.fixture
+def idp_user(idp, request):
+    """Email of a new ``idp`` user named after the test, so identities of different tests never clash."""
+    email = re.sub(r"\W+", "-", request.node.name).strip("-").lower() + "@example.com"
+    idp.add_user(email, secrets.token_urlsafe(9))
+    return email
+
+
 @pytest.fixture(scope="session")
 def jwt_signers(ziti_model, quickstart_home, ziti_version):
     """Generate JWT signing key/cert and create ext-jwt-signers."""
@@ -200,10 +269,6 @@ def jwt_signers(ziti_model, quickstart_home, ziti_version):
               "--enroll-to-token",
               "--kid", kid,
               check=False)
-
-    # keycloak not available
-    with open(os.path.join(quickstart_home, "keycloak-available"), "w") as f:
-        f.write("0\n")
 
     # pre-created identity for enroll-none tests
     ziti_edge("create", "identity", "test-precreated", "-a", "client")

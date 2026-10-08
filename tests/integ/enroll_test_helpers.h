@@ -42,15 +42,17 @@ static std::string sign_test_jwt(
 
     // load signing key
     char *key_pem = nullptr;
+    DEFER { free(key_pem); };
     size_t key_len = 0;
     REQUIRE(load_file(key_path, strlen(key_path), &key_pem, &key_len) == 0);
 
     tlsuv_private_key_t pk = nullptr;
+    DEFER { if (pk) pk->free(pk); };
     REQUIRE(tls->load_key(&pk, key_pem, key_len) == 0);
-    free(key_pem);
 
     // read kid (cert fingerprint) for JWT header
     char *kid_buf = nullptr;
+    DEFER { free(kid_buf); };
     size_t kid_len = 0;
     REQUIRE(load_file(TEST_JWT_SIGNER_KID, strlen(TEST_JWT_SIGNER_KID), &kid_buf, &kid_len) == 0);
     // trim trailing newline
@@ -60,15 +62,16 @@ static std::string sign_test_jwt(
 
     // build header: {"alg":"RS256","typ":"JWT","kid":"<fingerprint>"}
     json_object *hdr = json_object_new_object();
+    DEFER { json_object_put(hdr); };
     json_object_object_add(hdr, "alg", json_object_new_string("RS256"));
     json_object_object_add(hdr, "typ", json_object_new_string("JWT"));
     json_object_object_add(hdr, "kid", json_object_new_string(kid_buf));
-    free(kid_buf);
     const char *hdr_str = json_object_to_json_string_ext(hdr, JSON_C_TO_STRING_PLAIN);
 
     // build payload
     auto now = (int64_t)time(nullptr);
     json_object *payload = json_object_new_object();
+    DEFER { json_object_put(payload); };
     json_object_object_add(payload, "iss", json_object_new_string(issuer));
     json_object_object_add(payload, "sub", json_object_new_string(subject));
     json_object_object_add(payload, "aud", json_object_new_string(audience));
@@ -79,12 +82,14 @@ static std::string sign_test_jwt(
     // base64url-encode header and payload
     size_t hdr_b64_len = sodium_base64_ENCODED_LEN(strlen(hdr_str), sodium_base64_VARIANT_URLSAFE_NO_PADDING);
     char *hdr_b64 = (char *)malloc(hdr_b64_len);
+    DEFER { free(hdr_b64); };
     sodium_bin2base64(hdr_b64, hdr_b64_len,
                       (const unsigned char *)hdr_str, strlen(hdr_str),
                       sodium_base64_VARIANT_URLSAFE_NO_PADDING);
 
     size_t pay_b64_len = sodium_base64_ENCODED_LEN(strlen(pay_str), sodium_base64_VARIANT_URLSAFE_NO_PADDING);
     char *pay_b64 = (char *)malloc(pay_b64_len);
+    DEFER { free(pay_b64); };
     sodium_bin2base64(pay_b64, pay_b64_len,
                       (const unsigned char *)pay_str, strlen(pay_str),
                       sodium_base64_VARIANT_URLSAFE_NO_PADDING);
@@ -102,20 +107,12 @@ static std::string sign_test_jwt(
     // base64url-encode signature
     size_t sig_b64_len = sodium_base64_ENCODED_LEN(sig_len, sodium_base64_VARIANT_URLSAFE_NO_PADDING);
     char *sig_b64 = (char *)malloc(sig_b64_len);
+    DEFER { free(sig_b64); };
     sodium_bin2base64(sig_b64, sig_b64_len,
                       (const unsigned char *)sig, sig_len,
                       sodium_base64_VARIANT_URLSAFE_NO_PADDING);
 
-    std::string jwt = signing_input + "." + std::string(sig_b64);
-
-    free(hdr_b64);
-    free(pay_b64);
-    free(sig_b64);
-    json_object_put(hdr);
-    json_object_put(payload);
-    pk->free(pk);
-
-    return jwt;
+    return signing_input + "." + std::string(sig_b64);
 }
 
 // Generate a unique subject for each test invocation to avoid ALREADY_ENROLLED

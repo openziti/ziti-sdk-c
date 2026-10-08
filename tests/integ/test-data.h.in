@@ -24,13 +24,6 @@
 
 #define TEST_JWT_TOKEN_SIGNER_ISSUER "https://test-jwt-issuer-token.example.com"
 
-#define TEST_KEYCLOAK_AVAILABLE "@test_keycloak_available@"
-#define TEST_KEYCLOAK_HOST_FILE "@test_keycloak_host@"
-#define TEST_KEYCLOAK_REALM "ziti-test"
-#define TEST_KEYCLOAK_CLIENT_ID "ziti-enrolltocert"
-#define TEST_KEYCLOAK_USERNAME "testuser"
-#define TEST_KEYCLOAK_PASSWORD "testpass"
-
 static const char* test_client() {
     return getenv("test_client");
 }

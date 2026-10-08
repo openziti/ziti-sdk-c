@@ -26,9 +26,11 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-then-list-services", "[integ][enroll
 
     // generate keypair + CSR
     tlsuv_private_key_t pk = nullptr;
+    DEFER { if (pk) pk->free(pk); };
     REQUIRE(cs.tls->generate_key(&pk) == 0);
 
     char *csr = nullptr;
+    DEFER { free(csr); };
     size_t csr_len = 0;
     REQUIRE(cs.tls->generate_csr_to_pem(pk, &csr, &csr_len,
                                          "O", "OpenZiti",
@@ -53,19 +55,27 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-then-list-services", "[integ][enroll
     // build mTLS context with enrolled cert
     const char *ca = ctx.resp->cas_pem ? ctx.resp->cas_pem : cs.cfg.id.ca;
     auto mtls_tls = default_tls_context();
+    DEFER { if (mtls_tls) mtls_tls->free_ctx(mtls_tls); };
+    REQUIRE(mtls_tls != nullptr);
     REQUIRE(mtls_tls->set_ca_bundle(mtls_tls, ca, strlen(ca)) == 0);
 
+    // set_own_cert() takes its own references: pk and cert stay ours to free
     tlsuv_certificate_t cert = nullptr;
+    DEFER { if (cert) cert->free(cert); };
     REQUIRE(mtls_tls->load_cert(&cert, ctx.resp->client_cert_pem,
                                 strlen(ctx.resp->client_cert_pem)) == 0);
     REQUIRE(mtls_tls->set_own_cert(mtls_tls, pk, cert) == 0);
-    pk = nullptr; // ownership transferred
 
     // connect and authenticate with the new cert
     ziti_controller mtls_ctrl{};
     REQUIRE(ziti_ctrl_init(loop(), &mtls_ctrl, &cs.cfg.controllers, mtls_tls) == ZITI_OK);
+    DEFER { ziti_ctrl_close(&mtls_ctrl); };
 
     auto *auth = new_legacy_auth(loop(), cs.cfg.controller_url, mtls_tls, true);
+    DEFER {
+        auth->stop(auth);
+        auth->free(auth);
+    };
     auto token = auth_login(auth, loop());
     REQUIRE(!token.empty());
     ziti_ctrl_set_token(&mtls_ctrl, token.c_str());
@@ -77,12 +87,6 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-then-list-services", "[integ][enroll
     if (services) {
         free_ziti_service_array(&services);
     }
-
-    auth->stop(auth);
-    auth->free(auth);
-    ziti_ctrl_close(&mtls_ctrl);
-    mtls_tls->free_ctx(mtls_tls);
-    free(csr);
 }
 
 
@@ -196,9 +200,11 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-with-token-only-signer", "[integ][en
 
     // generate CSR
     tlsuv_private_key_t pk = nullptr;
+    DEFER { if (pk) pk->free(pk); };
     REQUIRE(cs.tls->generate_key(&pk) == 0);
 
     char *csr = nullptr;
+    DEFER { free(csr); };
     size_t csr_len = 0;
     REQUIRE(cs.tls->generate_csr_to_pem(pk, &csr, &csr_len,
                                          "O", "OpenZiti",
@@ -217,9 +223,6 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-cert-with-token-only-signer", "[integ][en
 
     REQUIRE(ctx.called);
     CHECK(ctx.error.err != 0);
-
-    free(csr);
-    pk->free(pk);
 }
 
 
@@ -241,89 +244,54 @@ TEST_CASE_METHOD(LoopTestCase, "enroll-token-expired-jwt", "[integ][enroll-mode]
 }
 
 
-// === Lifecycle Tests (full ziti_context with OIDC via Keycloak) ===
+// === Lifecycle Tests (full ziti_context, OIDC login with a token from an external IdP) ===
+//
+// The ext-jwt-signer that trusts the IdP and a user's token come from the environment
+// (IDP_SIGNER, IDP_TOKEN), which test_ext_jwt.py sets up. Without them the tests skip.
 
-static bool keycloak_available() {
-#if defined(_WIN32)
-    return false; // skip Keycloak checks on Windows - requires additional setup (curl.exe in PATH, etc.)
-#else
-    FILE *f = fopen(TEST_KEYCLOAK_AVAILABLE, "r");
-    if (!f) return false;
-    char buf[8];
-    bool available = fgets(buf, sizeof(buf), f) && buf[0] == '1';
-    fclose(f);
-    return available;
-#endif
-}
+// The test client's CA and controller as a bootstrap config: what an identity has before it enrolls.
+// Cleans up after itself, also when a REQUIRE fails halfway.
+struct bootstrap_config {
+    ziti_config client{};
+    ziti_config cfg{};
 
-static std::string get_keycloak_host() {
-    FILE *f = fopen(TEST_KEYCLOAK_HOST_FILE, "r");
-    if (!f) return "localhost";
-    char buf[256];
-    std::string host;
-    if (fgets(buf, sizeof(buf), f)) {
-        host = buf;
-        while (!host.empty() && (host.back() == '\n' || host.back() == '\r'))
-            host.pop_back();
+    void init(const char *client_path) {
+        REQUIRE(ziti_load_config(&client, client_path) == ZITI_OK);
+        cfg.id.ca = strdup(client.id.ca);
+        model_list_append(&cfg.controllers, strdup(client.controller_url));
     }
-    fclose(f);
-    return host.empty() ? "localhost" : host;
-}
 
-// Get an access token from Keycloak via Resource Owner Password Credentials grant
-static std::string get_keycloak_token() {
-#if defined(_WIN32)
-    return ""; // skip token retrieval on Windows - requires additional setup (curl.exe in PATH, etc.)
-#else
-    auto kc_host = get_keycloak_host();
-    std::string kc_url = "http://" + kc_host + ":8080";
-    std::string cmd = "curl -sf -X POST "
-        "'" + kc_url + "/realms/" TEST_KEYCLOAK_REALM "/protocol/openid-connect/token' "
-        "-d 'grant_type=password"
-        "&client_id=" TEST_KEYCLOAK_CLIENT_ID
-        "&username=" TEST_KEYCLOAK_USERNAME
-        "&password=" TEST_KEYCLOAK_PASSWORD
-        "&scope=openid' 2>/dev/null";
-
-    FILE *fp = popen(cmd.c_str(), "r");
-    REQUIRE(fp != nullptr);
-
-    char buf[8192];
-    std::string result;
-    while (fgets(buf, sizeof(buf), fp)) {
-        result += buf;
+    ~bootstrap_config() {
+        free((void *) cfg.id.ca);
+        model_list_clear(&cfg.controllers, free);
+        free_ziti_config(&client);
     }
-    int status = pclose(fp);
-    REQUIRE(status == 0);
-
-    // extract access_token from JSON response
-    json_object *resp = json_tokener_parse(result.c_str());
-    REQUIRE(resp != nullptr);
-
-    json_object *token_obj = nullptr;
-    REQUIRE(json_object_object_get_ex(resp, "access_token", &token_obj));
-    std::string token = json_object_get_string(token_obj);
-    json_object_put(resp);
-
-    REQUIRE(!token.empty());
-    return token;
-#endif
-}
+};
 
 // State for lifecycle test event handling
 struct lifecycle_state {
     uv_loop_t *loop;
-    std::string token;           // pre-obtained Keycloak token
+    std::string token;           // pre-obtained IdP token
     std::string signer_name;     // OIDC signer to select
     bool config_received{false};
+    bool cert_received{false};   // the config event had a client cert and its key
     bool auth_ok{false};
     bool auth_failed{false};
-    const ziti_config *saved_config{nullptr};
+    bool done{false};            // we shut the context down: events after that are the shutdown, not a result
     std::string error_msg;
 };
 
+static void lifecycle_done(ziti_context ztx, lifecycle_state *state) {
+    state->done = true;
+    ziti_shutdown(ztx);
+}
+
 static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
     auto *state = static_cast<lifecycle_state *>(ziti_app_ctx(ztx));
+
+    if (state->done && ev->type != ZitiConfigEvent) {
+        return;
+    }
 
     if (ev->type == ZitiAuthEvent) {
         if (ev->auth.action == ziti_auth_select_external) {
@@ -336,47 +304,43 @@ static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
         } else if (ev->auth.action == ziti_auth_cannot_continue) {
             state->auth_failed = true;
             state->error_msg = ev->auth.error ? ev->auth.error : "unknown";
-            ziti_shutdown(ztx);
+            lifecycle_done(ztx, state);
         }
     } else if (ev->type == ZitiContextEvent) {
         if (ev->ctx.ctrl_status == ZITI_OK) {
             state->auth_ok = true;
-            ziti_shutdown(ztx);
+            lifecycle_done(ztx, state);
         } else if (ev->ctx.ctrl_status != ZITI_PARTIALLY_AUTHENTICATED) {
             state->auth_failed = true;
             state->error_msg = ev->ctx.err ? ev->ctx.err : "unknown";
-            ziti_shutdown(ztx);
+            lifecycle_done(ztx, state);
         }
     } else if (ev->type == ZitiConfigEvent) {
-        state->saved_config = ev->cfg.config;
+        // the config belongs to the context: read what the test checks now, not after the shutdown
         state->config_received = true;
+        state->cert_received = ev->cfg.config->id.cert && ev->cfg.config->id.key;
         if (ev->cfg.config->id.cert) {
             // cert mode: got the cert, we're done
-            ziti_shutdown(ztx);
+            lifecycle_done(ztx, state);
         }
     }
 }
 
 TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-lifecycle", "[integ][enroll-mode][lifecycle]") {
-    if (!keycloak_available()) { SKIP("Keycloak not available"); }
-    auto kc_token = get_keycloak_token();
+    std::string idp_token = checkENV("IDP_TOKEN");
+    std::string idp_signer = checkENV("IDP_SIGNER");
 
-    // load CA from test client config
-    ziti_config client_cfg{};
-    REQUIRE(ziti_load_config(&client_cfg, TEST_CLIENT) == ZITI_OK);
-
-    // build bootstrap config (CA + controller URL only, no cert/key)
-    ziti_config bootstrap_cfg{};
-    bootstrap_cfg.id.ca = strdup(client_cfg.id.ca);
-    model_list_append(&bootstrap_cfg.controllers, strdup(client_cfg.controller_url));
+    // CA + controller URL only, no cert/key
+    bootstrap_config bootstrap;
+    bootstrap.init(TEST_CLIENT);
 
     ziti_context ztx = nullptr;
-    REQUIRE(ziti_context_init(&ztx, &bootstrap_cfg) == ZITI_OK);
+    REQUIRE(ziti_context_init(&ztx, &bootstrap.cfg) == ZITI_OK);
 
     lifecycle_state state{};
     state.loop = loop();
-    state.token = kc_token;
-    state.signer_name = "test-oidc-signer";
+    state.token = idp_token;
+    state.signer_name = idp_signer;
 
     ziti_options opts{};
     opts.app_ctx = &state;
@@ -394,6 +358,7 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-lifecycle", "[integ][enroll-mode
     uv_timer_start(&timer, [](uv_timer_t *t) {
         uv_stop((uv_loop_t *)t->data);
     }, 30000, 0);
+    uv_unref((uv_handle_t *)&timer); // the loop ends when the context is gone, the timer only bounds a hang
 
     uv_run(loop(), UV_RUN_DEFAULT);
     uv_timer_stop(&timer);
@@ -403,36 +368,25 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-lifecycle", "[integ][enroll-mode
     INFO("error: " << state.error_msg);
     CHECK_FALSE(state.auth_failed);
     CHECK(state.config_received);
-    // verify cert was received
-    if (state.saved_config) {
-        CHECK(state.saved_config->id.cert != nullptr);
-        CHECK(state.saved_config->id.key != nullptr);
-    }
-
-    free((void *)bootstrap_cfg.id.ca);
-    model_list_clear(&bootstrap_cfg.controllers, nullptr);
-    free_ziti_config(&client_cfg);
+    CHECK(state.cert_received);
 }
 
 
 TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-token-lifecycle", "[integ][enroll-mode][lifecycle]") {
-    if (!keycloak_available()) { SKIP("Keycloak not available"); }
-    auto kc_token = get_keycloak_token();
+    std::string idp_token = checkENV("IDP_TOKEN");
+    std::string idp_signer = checkENV("IDP_SIGNER");
 
-    ziti_config client_cfg{};
-    REQUIRE(ziti_load_config(&client_cfg, TEST_CLIENT) == ZITI_OK);
-
-    ziti_config bootstrap_cfg{};
-    bootstrap_cfg.id.ca = strdup(client_cfg.id.ca);
-    model_list_append(&bootstrap_cfg.controllers, strdup(client_cfg.controller_url));
+    // CA + controller URL only, no cert/key
+    bootstrap_config bootstrap;
+    bootstrap.init(TEST_CLIENT);
 
     ziti_context ztx = nullptr;
-    REQUIRE(ziti_context_init(&ztx, &bootstrap_cfg) == ZITI_OK);
+    REQUIRE(ziti_context_init(&ztx, &bootstrap.cfg) == ZITI_OK);
 
     lifecycle_state state{};
     state.loop = loop();
-    state.token = kc_token;
-    state.signer_name = "test-oidc-signer";
+    state.token = idp_token;
+    state.signer_name = idp_signer;
 
     ziti_options opts2{};
     opts2.app_ctx = &state;
@@ -449,6 +403,7 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-token-lifecycle", "[integ][enroll-mod
     uv_timer_start(&timer, [](uv_timer_t *t) {
         uv_stop((uv_loop_t *)t->data);
     }, 30000, 0);
+    uv_unref((uv_handle_t *)&timer); // the loop ends when the context is gone, the timer only bounds a hang
 
     uv_run(loop(), UV_RUN_DEFAULT);
     uv_timer_stop(&timer);
@@ -459,31 +414,24 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-token-lifecycle", "[integ][enroll-mod
     CHECK_FALSE(state.auth_failed);
     CHECK(state.auth_ok);
     CHECK(state.config_received);
-
-    free((void *)bootstrap_cfg.id.ca);
-    model_list_clear(&bootstrap_cfg.controllers, nullptr);
-    free_ziti_config(&client_cfg);
 }
 
 
 TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-none-lifecycle", "[integ][enroll-mode][lifecycle]") {
-    if (!keycloak_available()) { SKIP("Keycloak not available"); }
-    auto kc_token = get_keycloak_token();
+    std::string idp_token = checkENV("IDP_TOKEN");
+    std::string idp_signer = checkENV("IDP_SIGNER");
 
-    ziti_config client_cfg{};
-    REQUIRE(ziti_load_config(&client_cfg, TEST_CLIENT) == ZITI_OK);
-
-    ziti_config bootstrap_cfg{};
-    bootstrap_cfg.id.ca = strdup(client_cfg.id.ca);
-    model_list_append(&bootstrap_cfg.controllers, strdup(client_cfg.controller_url));
+    // CA + controller URL only, no cert/key
+    bootstrap_config bootstrap;
+    bootstrap.init(TEST_CLIENT);
 
     ziti_context ztx = nullptr;
-    REQUIRE(ziti_context_init(&ztx, &bootstrap_cfg) == ZITI_OK);
+    REQUIRE(ziti_context_init(&ztx, &bootstrap.cfg) == ZITI_OK);
 
     lifecycle_state state{};
     state.loop = loop();
-    state.token = kc_token;
-    state.signer_name = "test-oidc-signer";
+    state.token = idp_token;
+    state.signer_name = idp_signer;
 
     ziti_options opts3{};
     opts3.app_ctx = &state;
@@ -500,6 +448,7 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-none-lifecycle", "[integ][enroll-mode
     uv_timer_start(&timer, [](uv_timer_t *t) {
         uv_stop((uv_loop_t *)t->data);
     }, 30000, 0);
+    uv_unref((uv_handle_t *)&timer); // the loop ends when the context is gone, the timer only bounds a hang
 
     uv_run(loop(), UV_RUN_DEFAULT);
     uv_timer_stop(&timer);
@@ -509,8 +458,4 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-none-lifecycle", "[integ][enroll-mode
     INFO("error: " << state.error_msg);
     CHECK_FALSE(state.auth_failed);
     CHECK(state.auth_ok);
-
-    free((void *)bootstrap_cfg.id.ca);
-    model_list_clear(&bootstrap_cfg.controllers, nullptr);
-    free_ziti_config(&client_cfg);
 }
