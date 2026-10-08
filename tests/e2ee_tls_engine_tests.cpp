@@ -15,8 +15,8 @@
 // limitations under the License.
 
 
-// TLS engine behaviour that every backend has to show, driven through the tlsuv engine API with an
-// in-memory transport. OpenSSL serves as the peer and as the certificate factory.
+// The SDK's e2ee-tls against an OpenSSL peer, on whichever TLS backend the SDK is built with. OpenSSL serves as the
+// peer and as the certificate factory.
 
 #include "tls_test_util.h"
 

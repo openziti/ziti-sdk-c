@@ -234,7 +234,6 @@ int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
         return rc;
     }
 
-    // offer only approved algorithms in FIPS mode
     clt->tls = default_tls_context();
     tls_restrict_fips(clt->tls);
     tlsuv_http_set_ssl(&clt->http, clt->tls);

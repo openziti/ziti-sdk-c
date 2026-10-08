@@ -15,7 +15,7 @@
 // limitations under the License.
 
 
-// win32crypto identity keys: persisting them into the CNG user key store, and failing when it is out of reach.
+// win32crypto identity keys: load_tls fails cleanly when the CNG user key store is out of reach.
 
 #include "tls_test_util.h"
 
