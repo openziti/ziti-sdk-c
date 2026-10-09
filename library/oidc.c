@@ -27,7 +27,6 @@
 
 #include "auth_method.h"
 #include "credentials.h"
-#include "crypto.h"
 #include "internal_model.h"
 #include "oidc.h"
 #include "utils.h"
@@ -1071,7 +1070,6 @@ ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, const char 
 
     clt->loop = l;
     clt->tls = default_tls_context();
-    tls_restrict_fips(clt->tls);
     clt->tls->set_ca_bundle(clt->tls, ca, strlen(ca));
     clt->x509 = x509;
     if (clt->x509 && clt->x509->cert != NULL) {

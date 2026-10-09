@@ -19,7 +19,6 @@
 #include <uv.h>
 
 #include <ziti/ziti.h>
-#include "crypto.h"
 #include "utils.h"
 #include "zt_internal.h"
 
@@ -191,7 +190,6 @@ int fetch_network_token(struct ziti_enroll_req *er) {
     }
 
     er->tls = default_tls_context();
-    tls_restrict_fips(er->tls);
 
     model_list ctrls = {};
 
@@ -235,7 +233,6 @@ static int start_enrollment(struct ziti_enroll_req *er) {
     }
 
     er->tls = default_tls_context();
-    tls_restrict_fips(er->tls);
     er->tls->set_cert_verify(er->tls, verify_controller_jwt, er);
 
     // check key/cert if provided
@@ -418,7 +415,6 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     er->tls->free_ctx(er->tls);
 
     er->tls = default_tls_context();
-    tls_restrict_fips(er->tls);
     er->tls->set_ca_bundle(er->tls, er->cfg.id.ca, strlen(er->cfg.id.ca));
     ziti_ctrl_init(er->loop, &er->controller, &er->cfg.controllers, er->tls);
 

@@ -277,10 +277,15 @@ e2ee_t *new_tls_e2ee(bool server, tls_context *tls) {
     }
     e2ee->in_buffer = malloc(BUF_INIT_CAP);
     e2ee->out_buffer = malloc(BUF_INIT_CAP);
-    // the server engine needs the identity cert, which set_own_cert may have failed to set
-    tlsuv_engine_t engine = e2ee->in_buffer == NULL || e2ee->out_buffer == NULL ? NULL :
-                            !server ? tls->new_engine(tls, NULL) :
-                            tls->new_server_engine ? tls->new_server_engine(tls) : NULL;
+    tlsuv_engine_t engine = NULL;
+    if (e2ee->in_buffer != NULL && e2ee->out_buffer != NULL) {
+        if (!server) {
+            engine = tls->new_engine(tls, NULL);
+        } else if (tls->new_server_engine != NULL) {
+            // the server engine needs the identity cert, which set_own_cert may have failed to set
+            engine = tls->new_server_engine(tls);
+        }
+    }
     if (engine == NULL) {
         ZITI_LOG(ERROR, "failed to create %s TLS engine for e2ee", server ? "server" : "client");
         free(e2ee->in_buffer);
