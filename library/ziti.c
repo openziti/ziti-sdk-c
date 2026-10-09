@@ -478,23 +478,18 @@ const char* ziti_get_api_session_token(ziti_context ztx) {
     return NULL;
 }
 
+static void free_tls(tls_context **tls) {
+    if (*tls) {
+        (*tls)->free_ctx(*tls);
+        *tls = NULL;
+    }
+}
+
 static void free_tls_contexts(ziti_context ztx) {
-    if (ztx->channel_tls) {
-        ztx->channel_tls->free_ctx(ztx->channel_tls);
-        ztx->channel_tls = NULL;
-    }
-    if (ztx->e2ee_host_tls) {
-        ztx->e2ee_host_tls->free_ctx(ztx->e2ee_host_tls);
-        ztx->e2ee_host_tls = NULL;
-    }
-    if (ztx->e2ee_dial_tls) {
-        ztx->e2ee_dial_tls->free_ctx(ztx->e2ee_dial_tls);
-        ztx->e2ee_dial_tls = NULL;
-    }
-    if (ztx->tlsCtx) {
-        ztx->tlsCtx->free_ctx(ztx->tlsCtx);
-        ztx->tlsCtx = NULL;
-    }
+    free_tls(&ztx->channel_tls);
+    free_tls(&ztx->e2ee_host_tls);
+    free_tls(&ztx->e2ee_dial_tls);
+    free_tls(&ztx->tlsCtx);
 }
 
 static void ziti_stop_internal(ziti_context ztx, void *data) {

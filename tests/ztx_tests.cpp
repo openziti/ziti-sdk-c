@@ -65,6 +65,41 @@ namespace {
             ziti_shutdown(ztx);
         }
     }
+
+    // stands in for a process without a loaded user profile, where every persisted key
+    // operation fails: the thread impersonates its own token with the user SID deny-only,
+    // so the user key store is denied
+    struct key_store_unreachable {
+#if _WIN32
+        HANDLE self = nullptr, restricted = nullptr, imp = nullptr;
+
+        key_store_unreachable() {
+            REQUIRE(OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_QUERY, &self));
+            BYTE user_buf[256];
+            DWORD user_len = 0;
+            REQUIRE(GetTokenInformation(self, TokenUser, user_buf, sizeof(user_buf), &user_len));
+            // SYSTEM's key store stays reachable through a token that denies the SYSTEM SID
+            if (IsWellKnownSid(reinterpret_cast<TOKEN_USER *>(user_buf)->User.Sid, WinLocalSystemSid)) {
+                CloseHandle(self);
+                self = nullptr;
+                SKIP("the user key store cannot be denied to SYSTEM");
+            }
+            SID_AND_ATTRIBUTES deny = {reinterpret_cast<TOKEN_USER *>(user_buf)->User.Sid, 0};
+            REQUIRE(CreateRestrictedToken(self, 0, 1, &deny, 0, nullptr, 0, nullptr, &restricted));
+            REQUIRE(DuplicateToken(restricted, SecurityImpersonation, &imp));
+            REQUIRE(SetThreadToken(nullptr, imp));
+        }
+
+        ~key_store_unreachable() {
+            RevertToSelf();
+            if (imp) CloseHandle(imp);
+            if (restricted) CloseHandle(restricted);
+            if (self) CloseHandle(self);
+        }
+#else
+        key_store_unreachable() { FAIL("win32 only"); }
+#endif
+    };
 }
 
 TEST_CASE("ziti_shutdown completes after a TLS init failure", "[ztx]") {
@@ -112,9 +147,12 @@ TEST_CASE("ziti_shutdown completes after a TLS init failure", "[ztx]") {
 
 TEST_CASE("load_tls reports a key the win32crypto key store cannot persist", "[crypto]") {
     persisted_key_cleanup cleanup;
-    identity_ctx probe;
-    if (strstr(probe.tls->version(), "win32crypto") == nullptr) {
-        SKIP("not a win32crypto build: " << probe.tls->version());
+    // other backends keep the key in memory, so the key store can only fail on win32crypto
+    tls_context *probe = default_tls_context();
+    std::string version = probe->version();
+    probe->free_ctx(probe);
+    if (version.find("win32crypto") == std::string::npos) {
+        SKIP("not a win32crypto build: " << version);
     }
 
     std::string key_ref = std::string("pem:") + rsa_key;

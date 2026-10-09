@@ -524,10 +524,27 @@ TEST_CASE("e2ee-tls encrypt keeps writing until the engine took the whole payloa
     }
 }
 
-// The SDK's e2ee-tls against an OpenSSL peer, on whichever TLS backend the SDK is built with. OpenSSL serves as the
+// the SDK's e2ee-tls against an OpenSSL peer, on whichever TLS backend the SDK is built with. OpenSSL serves as the
 // peer and as the certificate factory.
 #if ZITI_TEST_OPENSSL_PEER
 namespace {
+struct ctx_guard {
+    tls_context *c;
+    ~ctx_guard() { if (c) c->free_ctx(c); }
+};
+
+struct e2ee_guard {
+    e2ee_t *e;
+    ~e2ee_guard() { if (e) e->free(e); }
+};
+
+// ZITI_TEST_TLS12=1: the TLS backend cannot negotiate TLS 1.3 here, because the OS predates it (Schannel below build
+// 20348) or it is disabled (the Schannel registry, or an OpenSSL config cap). without it TLS 1.3 is required.
+bool tls12_capped() {
+    const char *tls12 = getenv("ZITI_TEST_TLS12");
+    return tls12 != nullptr && strcmp(tls12, "1") == 0;
+}
+
 struct pkey_deleter { void operator()(EVP_PKEY *k) const { EVP_PKEY_free(k); } };
 using pkey_ptr = std::unique_ptr<EVP_PKEY, pkey_deleter>;
 
@@ -599,29 +616,18 @@ void delete_leaf_key(X509 *x) {
 #if _WIN32
     const ASN1_OCTET_STRING *ski = X509_get0_subject_key_id(x);
     if (ski == nullptr) return;
-    DWORD len = 0;
-    CryptBinaryToStringW(ASN1_STRING_get0_data(ski), (DWORD) ASN1_STRING_length(ski),
-                         CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, nullptr, &len);
-    std::wstring name(len, L'\0');
-    CryptBinaryToStringW(ASN1_STRING_get0_data(ski), (DWORD) ASN1_STRING_length(ski),
-                         CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, name.data(), &len);
-    name.resize(len);
-    delete_persisted_key(name);
+    delete_persisted_key(key_name_from_kid(ASN1_STRING_get0_data(ski), (DWORD) ASN1_STRING_length(ski)));
 #else
     (void) x;
 #endif
 }
 }
 
-// The host checks the dialer's certificate while it decrypts the dialer's second flight. Under TLS 1.3 the dialer is
-// done once it has sent Finished, so its first app record can arrive in that same decrypt. A rejected certificate has
+// the host checks the dialer's certificate while it decrypts the dialer's second flight. under TLS 1.3 the dialer is
+// done once it has sent Finished, so its first app record can arrive in that same decrypt. a rejected certificate has
 // to fail the decrypt, and none of the app data may come out of it.
 TEST_CASE("e2ee-tls host delivers no data from a dialer whose certificate it rejects", "[crypto]") {
     persisted_key_cleanup cleanup;
-    struct ctx_guard {
-        tls_context *c;
-        ~ctx_guard() { if (c) c->free_ctx(c); }
-    };
     struct cred_guard {
         tlsuv_private_key_t k = nullptr;
         tlsuv_certificate_t c = nullptr;
@@ -629,10 +635,6 @@ TEST_CASE("e2ee-tls host delivers no data from a dialer whose certificate it rej
             if (c) c->free(c);
             if (k) k->free(k);
         }
-    };
-    struct e2ee_guard {
-        e2ee_t *e;
-        ~e2ee_guard() { if (e) e->free(e); }
     };
 
     // the host trusts only the fixture CA, and presents the fixture identity
@@ -692,48 +694,18 @@ TEST_CASE("e2ee-tls host delivers no data from a dialer whose certificate it rej
 }
 
 namespace {
-// an OpenSSL server on memory BIOs, fed from and to the same pipes as a tlsuv engine
-struct openssl_server {
+// an OpenSSL peer on memory BIOs, fed from and to the same pipes as a tlsuv engine. a client is TLS 1.3 unless
+// capped at `max_version`
+struct openssl_peer {
     SSL_CTX *ctx = nullptr;
     SSL *ssl = nullptr;
     BIO *in = nullptr;
     BIO *out = nullptr;
 
-    explicit openssl_server(int max_version = 0) {
-        ctx = SSL_CTX_new(TLS_server_method());
+    openssl_peer(bool server, int max_version) {
+        ctx = SSL_CTX_new(server ? TLS_server_method() : TLS_client_method());
         REQUIRE(ctx != nullptr);
-        SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION);
-        SSL_CTX_set_max_proto_version(ctx, max_version);
-        pkey_ptr key = fixture_key();
-        BIO *b = BIO_new_mem_buf(rsa_cert, -1);
-        x509_ptr cert{PEM_read_bio_X509(b, nullptr, nullptr, nullptr)};
-        BIO_free(b);
-        REQUIRE(SSL_CTX_use_certificate(ctx, cert.get()) == 1);
-        REQUIRE(SSL_CTX_use_PrivateKey(ctx, key.get()) == 1);
-        ssl = SSL_new(ctx);
-        in = BIO_new(BIO_s_mem());
-        out = BIO_new(BIO_s_mem());
-        SSL_set_bio(ssl, in, out); // ssl owns both
-        SSL_set_accept_state(ssl);
-    }
-
-    ~openssl_server() {
-        SSL_free(ssl);
-        SSL_CTX_free(ctx);
-    }
-};
-
-// an OpenSSL client on memory BIOs, against a tlsuv server engine. TLS 1.3 unless capped at `max_version`
-struct openssl_client {
-    SSL_CTX *ctx = nullptr;
-    SSL *ssl = nullptr;
-    BIO *in = nullptr;
-    BIO *out = nullptr;
-
-    explicit openssl_client(int max_version = 0) {
-        ctx = SSL_CTX_new(TLS_client_method());
-        REQUIRE(ctx != nullptr);
-        SSL_CTX_set_min_proto_version(ctx, max_version ? TLS1_2_VERSION : TLS1_3_VERSION);
+        SSL_CTX_set_min_proto_version(ctx, server || max_version ? TLS1_2_VERSION : TLS1_3_VERSION);
         SSL_CTX_set_max_proto_version(ctx, max_version);
         // the server's certificate is not what this checks
         SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, nullptr);
@@ -748,10 +720,10 @@ struct openssl_client {
         in = BIO_new(BIO_s_mem());
         out = BIO_new(BIO_s_mem());
         SSL_set_bio(ssl, in, out); // ssl owns both
-        SSL_set_connect_state(ssl);
+        if (server) SSL_set_accept_state(ssl); else SSL_set_connect_state(ssl);
     }
 
-    ~openssl_client() {
+    ~openssl_peer() {
         SSL_free(ssl);
         SSL_CTX_free(ctx);
     }
@@ -759,16 +731,6 @@ struct openssl_client {
 }
 
 namespace {
-struct ctx_guard {
-    tls_context *c;
-    ~ctx_guard() { if (c) c->free_ctx(c); }
-};
-
-struct e2ee_guard {
-    e2ee_t *e;
-    ~e2ee_guard() { if (e) e->free(e); }
-};
-
 std::vector<uint8_t> drain(BIO *b) {
     std::vector<uint8_t> out;
     uint8_t chunk[4096];
@@ -779,7 +741,7 @@ std::vector<uint8_t> drain(BIO *b) {
 }
 
 // TLS 1.2 ends with the host's ChangeCipherSpec and Finished, produced while it decrypts the dialer's second flight.
-// The host hands them back through handshake_output(), and cannot encrypt before the dialer's Finished arrived.
+// the host hands them back through handshake_output(), and cannot encrypt before the dialer's Finished arrived.
 TEST_CASE("e2ee-tls TLS 1.2 host completes the handshake in decrypt", "[crypto]") {
     persisted_key_cleanup cleanup;
     identity_ctx srv_id;
@@ -787,7 +749,7 @@ TEST_CASE("e2ee-tls TLS 1.2 host completes the handshake in decrypt", "[crypto]"
     e2ee_guard srv{create_e2ee(ziti_crypto_tls, true, srv_id.tls)};
     REQUIRE(srv.e != nullptr);
 
-    openssl_client clt(TLS1_2_VERSION);
+    openssl_peer clt(false, TLS1_2_VERSION);
     // NIST curves only, which a FIPS-mode host requires
     REQUIRE(SSL_set1_groups_list(clt.ssl, "P-256:P-384") == 1);
     SSL_do_handshake(clt.ssl);
@@ -821,14 +783,14 @@ TEST_CASE("e2ee-tls TLS 1.2 host completes the handshake in decrypt", "[crypto]"
     CHECK(std::string(buf, n > 0 ? (size_t) n : 0) == ping);
 }
 
-// A TLS 1.2 dialer completes on the host's ChangeCipherSpec and Finished, and takes what the host sends right behind
+// a TLS 1.2 dialer completes on the host's ChangeCipherSpec and Finished, and takes what the host sends right behind
 // them in the same message.
 TEST_CASE("e2ee-tls TLS 1.2 dialer completes on the host's final flight", "[crypto]") {
     ctx_guard clt_ctx{tls_with_ca(rsa_cert)};
     e2ee_guard clt{create_e2ee(ziti_crypto_tls, false, clt_ctx.c)};
     REQUIRE(clt.e != nullptr);
 
-    openssl_server srv(TLS1_2_VERSION);
+    openssl_peer srv(true, TLS1_2_VERSION);
     REQUIRE(SSL_set1_groups_list(srv.ssl, "P-256") == 1);
     e2ee_pub_t hello = clt.e->pub(clt.e);
     BIO_write(srv.in, hello.key, (int) hello.key_len);

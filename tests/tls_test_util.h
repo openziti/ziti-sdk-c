@@ -15,7 +15,7 @@
 // limitations under the License.
 
 
-// Fixtures shared by the e2ee-tls tests and the win32crypto key test.
+// fixtures shared by e2ee_tests and ztx_tests
 #pragma once
 
 #include <catch2/catch_all.hpp>
@@ -36,8 +36,8 @@
 #include <ncrypt.h>
 #endif
 
-// RSA identity in PKCS#1 form, the way the ziti CLI enrolls by default. The
-// self-signed cert is CN=localhost, EKU serverAuth + clientAuth. Its key id
+// RSA identity in PKCS#1 form, the way the ziti CLI enrolls by default. the
+// self-signed cert is CN=localhost, EKU serverAuth + clientAuth. its key id
 // base64-encodes to "sgxT/vuuyAviWvuuZbkd5wVrKu8=", which has a '/'.
 static const char *rsa_key = R"(-----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEAsQnLQvgQZEWQa/Wdf5zCR6QtIPS28ZPDT8d+5gO+sCeaE66U
@@ -90,54 +90,18 @@ Y0eQ
 -----END CERTIFICATE-----
 )";
 
-namespace {
-// accepts any peer cert: the fixture is self-signed
-int accept_peer_cert(const struct tlsuv_certificate_s *, void *) {
-    return 0;
-}
-
 // a context that trusts only `ca`, restricted like the SDK's e2ee contexts
-tls_context *tls_with_ca(const char *ca) {
+static tls_context *tls_with_ca(const char *ca) {
     tls_context *tls = default_tls_context();
     e2ee_restrict_tls(tls);
     REQUIRE(tls->set_ca_bundle(tls, ca, strlen(ca)) == 0);
     return tls;
 }
 
-// stands in for a process without a loaded user profile, where every persisted key
-// operation fails: the thread impersonates its own token with the user SID deny-only,
-// so the user key store is denied
-struct key_store_unreachable {
-#if _WIN32
-    HANDLE self = nullptr, restricted = nullptr, imp = nullptr;
-
-    key_store_unreachable() {
-        REQUIRE(OpenProcessToken(GetCurrentProcess(), TOKEN_DUPLICATE | TOKEN_QUERY, &self));
-        BYTE user_buf[256];
-        DWORD user_len = 0;
-        REQUIRE(GetTokenInformation(self, TokenUser, user_buf, sizeof(user_buf), &user_len));
-        // SYSTEM's key store stays reachable through a token that denies the SYSTEM SID
-        if (IsWellKnownSid(reinterpret_cast<TOKEN_USER *>(user_buf)->User.Sid, WinLocalSystemSid)) {
-            CloseHandle(self);
-            self = nullptr;
-            SKIP("the user key store cannot be denied to SYSTEM");
-        }
-        SID_AND_ATTRIBUTES deny = {reinterpret_cast<TOKEN_USER *>(user_buf)->User.Sid, 0};
-        REQUIRE(CreateRestrictedToken(self, 0, 1, &deny, 0, nullptr, 0, nullptr, &restricted));
-        REQUIRE(DuplicateToken(restricted, SecurityImpersonation, &imp));
-        REQUIRE(SetThreadToken(nullptr, imp));
-    }
-
-    ~key_store_unreachable() {
-        RevertToSelf();
-        if (imp) CloseHandle(imp);
-        if (restricted) CloseHandle(restricted);
-        if (self) CloseHandle(self);
-    }
-#else
-    key_store_unreachable() { FAIL("win32 only"); }
-#endif
-};
+// accepts any peer cert: the fixture is self-signed
+static int accept_peer_cert(const struct tlsuv_certificate_s *, void *) {
+    return 0;
+}
 
 struct identity_ctx {
     tls_context *tls = nullptr;
@@ -160,15 +124,16 @@ struct identity_ctx {
     }
 };
 
-// ZITI_TEST_TLS12=1: the TLS backend cannot negotiate TLS 1.3 here, because the OS predates it (Schannel below build
-// 20348) or it is disabled (the Schannel registry, or an OpenSSL config cap). Without it TLS 1.3 is required.
-inline bool tls12_capped() {
-    const char *tls12 = getenv("ZITI_TEST_TLS12");
-    return tls12 != nullptr && strcmp(tls12, "1") == 0;
-}
+#if _WIN32
+static std::wstring key_name_from_kid(const BYTE *kid, DWORD kid_len) {
+    DWORD len = 0;
+    if (!CryptBinaryToStringW(kid, kid_len, CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, nullptr, &len)) return {};
+    std::wstring name(len, L'\0');
+    CryptBinaryToStringW(kid, kid_len, CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, name.data(), &len);
+    name.resize(len);
+    return name;
 }
 
-#if _WIN32
 // set_own_cert persists the key into the user key store, named by the base64 of the cert's
 // key id, the same way tlsuv derives it
 static std::wstring persisted_key_name() {
@@ -184,12 +149,8 @@ static std::wstring persisted_key_name() {
 
     BYTE kid[64] = {};
     DWORD kid_len = sizeof(kid);
-    DWORD len = 0;
-    if (CertGetCertificateContextProperty(cert, CERT_KEY_IDENTIFIER_PROP_ID, kid, &kid_len) &&
-        CryptBinaryToStringW(kid, kid_len, CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, nullptr, &len)) {
-        name.resize(len);
-        CryptBinaryToStringW(kid, kid_len, CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, name.data(), &len);
-        name.resize(len);
+    if (CertGetCertificateContextProperty(cert, CERT_KEY_IDENTIFIER_PROP_ID, kid, &kid_len)) {
+        name = key_name_from_kid(kid, kid_len);
     }
     CertFreeCertificateContext(cert);
     return name;
