@@ -25,6 +25,7 @@
 #include "catch2_includes.hpp"
 
 #include "ziti_ctrl.h"
+#include "utils.h"  // strcasecmp on Windows
 #include <ziti/errors.h>
 #include <tlsuv/tlsuv.h>
 
