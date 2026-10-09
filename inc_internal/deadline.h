@@ -38,7 +38,10 @@ static inline void clear_deadline(deadline_t *dl) {
     ZITI_LOG(TRACE, "expire_cb[%s]", dl->expire_cb_name);
     dl->expire_cb = NULL;
     dl->expire_cb_name = NULL;
-    LIST_REMOVE(dl, _next);
+    // ztx_process_deadlines has already unlinked an expired one
+    if (dl->_next.le_prev != NULL) {
+        LIST_REMOVE(dl, _next);
+    }
 }
 
 #endif //ZITI_SDK_DEADLINE_H

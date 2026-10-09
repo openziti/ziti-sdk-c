@@ -135,6 +135,10 @@ int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts 
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg);
 
+// appends the parts of a multipart payload (2-byte little-endian length, then the part) to out.
+// returns the bytes appended, or -1 with nothing appended when a length runs past the payload
+ssize_t conn_parse_multipart(buffer *out, const uint8_t *data, size_t len);
+
 void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, int status);
 
 void conn_update_bindings(struct ziti_conn *conn, bool force_rebind);

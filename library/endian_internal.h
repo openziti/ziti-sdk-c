@@ -27,6 +27,7 @@
 #  define htole16(x) OSSwapHostToLittleInt16(x)
 #  define htole32(x) OSSwapHostToLittleInt32(x)
 #  define htole64(x) OSSwapHostToLittleInt64(x)
+#  define le16toh(x) OSSwapLittleToHostInt16(x)
 #  define le32toh(x) OSSwapLittleToHostInt32(x)
 #elif defined(__WINDOWS__)
 // thanks to https://gist.github.com/PkmX/63dd23f28ba885be53a5

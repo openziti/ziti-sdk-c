@@ -69,6 +69,8 @@ static void grim_reaper(ziti_context ztx);
 
 static void ztx_work_async(ziti_context ztx);
 
+static void ztx_process_deadlines(uv_timer_t *t);
+
 static void ziti_stop_internal(ziti_context ztx, void *data);
 
 static void ziti_start_internal(ziti_context ztx, void *init_req);
@@ -135,19 +137,22 @@ static int init_tls_from_config(tls_context *tls, ziti_config *cfg, struct tls_c
     if (cfg->id.key == NULL) {
         return 0;
     }
-    tlsuv_private_key_t pk;
+    tlsuv_private_key_t pk = NULL;
+    tlsuv_certificate_t c = NULL;
 
     TRY(ziti, load_key_internal(tls, &pk, cfg->id.key));
 
-    tlsuv_certificate_t c = NULL;
     if (cfg->id.cert) {
         const char *cert;
         size_t cert_len = parse_ref(cfg->id.cert, &cert);
         TRY(ziti, tls->load_cert(&c, cert, cert_len));
     }
-    TRY(ziti, tls->set_own_cert(tls, pk, c));
+    // tlsuv returns -1, which would read as ZITI_CONFIG_NOT_FOUND
+    TRY(ziti, tls->set_own_cert(tls, pk, c) == 0 ? ZITI_OK : ZITI_INVALID_CERT_KEY_PAIR);
 
     CATCH(ziti) {
+        if (c) c->free(c);
+        if (pk) pk->free(pk);
         return ERR(ziti);
     }
     if (creds) {
@@ -473,6 +478,20 @@ const char* ziti_get_api_session_token(ziti_context ztx) {
     return NULL;
 }
 
+static void free_tls(tls_context **tls) {
+    if (*tls) {
+        (*tls)->free_ctx(*tls);
+        *tls = NULL;
+    }
+}
+
+static void free_tls_contexts(ziti_context ztx) {
+    free_tls(&ztx->channel_tls);
+    free_tls(&ztx->e2ee_host_tls);
+    free_tls(&ztx->e2ee_dial_tls);
+    free_tls(&ztx->tlsCtx);
+}
+
 static void ziti_stop_internal(ziti_context ztx, void *data) {
     if (ztx->enabled) {
         ZTX_LOG(INFO, "disabling Ziti Context");
@@ -534,23 +553,30 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         update_ctrl_status(ztx, ZITI_DISABLED, ziti_errorstr(ZITI_DISABLED));
         ztx->enabled = false;
         ziti_ctrl_close(ztx_get_controller(ztx));
-        if (ztx->tlsCtx) {
-            ztx->tlsCtx->free_ctx(ztx->tlsCtx);
-            ztx->tlsCtx = NULL;
-        }
-        if (ztx->channel_tls) {
-            ztx->channel_tls->free_ctx(ztx->channel_tls);
-            ztx->channel_tls = NULL;
-        }
-        if (ztx->e2ee_host_tls) {
-            ztx->e2ee_host_tls->free_ctx(ztx->e2ee_host_tls);
-            ztx->e2ee_host_tls = NULL;
-        }
+        free_tls_contexts(ztx);
 
         if (ztx->closing) {
             shutdown_and_free(ztx);
         }
+    } else if (ztx->closing && !uv_is_closing((uv_handle_t *) &ztx->prepper)) {
+        // already disabled, for example by a TLS init failure
+        shutdown_and_free(ztx);
     }
+}
+
+// leaves the context disabled, so a later ziti_set_enabled(ztx, true) retries, and reports rc
+static void tls_init_failed(ziti_context ztx, int rc, const char *what) {
+    ztx->enabled = false;
+    free_tls_contexts(ztx);
+    ZTX_LOG(ERROR, "%s: %s", what, ziti_errorstr(rc));
+    ziti_event_t ev = {
+            .type = ZitiContextEvent,
+            .ctx = {
+                .ctrl_status = rc,
+                .err = ziti_errorstr(rc),
+            }
+    };
+    ziti_send_event(ztx, &ev);
 }
 
 static void ziti_start_internal(ziti_context ztx, void *init_req) {
@@ -560,24 +586,27 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
 
         int rc = load_tls(&ztx->config, &ztx->tlsCtx, &ztx->id_creds);
         if (rc != 0) {
-            ZTX_LOG(ERROR, "invalid TLS config: %s", ziti_errorstr(rc));
-            ziti_event_t ev = {
-                    .type = ZitiContextEvent,
-                    .ctx = {
-                        .ctrl_status = rc,
-                        .err = ziti_errorstr(rc),
-                    }
-            };
-            ziti_send_event(ztx, &ev);
+            tls_init_failed(ztx, rc, "invalid TLS config");
             return;
         }
         rc = load_tls(&ztx->config, &ztx->channel_tls, NULL);
         if (rc != 0) {
-            ZTX_LOG(ERROR, "failed to create channel TLS context: %s", ziti_errorstr(rc));
+            tls_init_failed(ztx, rc, "failed to create channel TLS context");
             return;
         }
         ztx->e2ee_host_tls = default_tls_context();
-        ztx_set_channel_cert(ztx, ztx->id_creds.key, ztx->id_creds.cert);
+        e2ee_restrict_tls(ztx->e2ee_host_tls);
+        rc = load_tls(&ztx->config, &ztx->e2ee_dial_tls, NULL);
+        if (rc != 0) {
+            tls_init_failed(ztx, rc, "failed to create e2ee TLS context");
+            return;
+        }
+        e2ee_restrict_tls(ztx->e2ee_dial_tls);
+        // on win32crypto this imports the key into CNG again, which can fail
+        if (ztx_set_channel_cert(ztx, ztx->id_creds.key, ztx->id_creds.cert) != 0) {
+            tls_init_failed(ztx, ZITI_INVALID_CERT_KEY_PAIR, "failed to set channel TLS identity");
+            return;
+        }
 
         ZTX_LOG(INFO, "using tlsuv[%s/%s]", tlsuv_version(),
                 ztx->tlsCtx->version ? ztx->tlsCtx->version() : "unspecified");
@@ -585,6 +614,8 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
         rc = ztx_init_controller(ztx);
         if (rc != ZITI_OK) {
             ztx->enabled = false;
+            ziti_ctrl_close(ztx_get_controller(ztx));
+            free_tls_contexts(ztx);
             return;
         }
 
@@ -851,6 +882,12 @@ int ziti_shutdown(ziti_context ztx) {
     ZTX_LOG(INFO, "Ziti is shutting down");
     ztx->closing = true;
 
+    // a disabled context has stopped the prepper that runs queued work. the 0 timer wakes the loop
+    // when nothing else would
+    if (ztx->loop && !uv_is_closing((uv_handle_t *) &ztx->prepper)) {
+        uv_prepare_start(&ztx->prepper, ztx_prepare);
+        uv_timer_start(&ztx->deadline_timer, ztx_process_deadlines, 0, 0);
+    }
     ziti_queue_work(ztx, ziti_stop_internal, NULL);
 
     return ZITI_OK;
@@ -1814,6 +1851,7 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
         if (ztx->config.id.ca == NULL || strcmp(new_pem, ztx->config.id.ca) != 0) {
             ztx->tlsCtx->set_ca_bundle(ztx->tlsCtx, new_pem, strlen(new_pem));
             ztx->channel_tls->set_ca_bundle(ztx->channel_tls, new_pem, strlen(new_pem));
+            ztx->e2ee_dial_tls->set_ca_bundle(ztx->e2ee_dial_tls, new_pem, strlen(new_pem));
             if (ztx->auth_method && ztx->auth_method->set_ca) {
                 ztx->auth_method->set_ca(ztx->auth_method, new_pem);
             }
@@ -1944,6 +1982,8 @@ static void ztx_process_deadlines(uv_timer_t *t) {
     model_list expired = {0};
     while ((d = LIST_FIRST(&ztx->deadlines)) != NULL && now >= d->expiration) {
         LIST_REMOVE(d, _next);
+        // unlinked: clear_deadline must not remove it again
+        d->_next.le_prev = NULL;
         model_list_append(&expired, d);
         n++;
     }
@@ -1952,6 +1992,10 @@ static void ztx_process_deadlines(uv_timer_t *t) {
     }
 
     MODEL_LIST_FOREACH(d, expired) {
+        // an earlier callback cleared it or set it again
+        if (d->expire_cb == NULL || d->_next.le_prev != NULL) {
+            continue;
+        }
         void *ctx = d->ctx;
         void (*cb)(void *) = d->expire_cb;
         d->expire_cb = NULL;
@@ -2033,8 +2077,14 @@ void ztx_prepare(uv_prepare_t *prep) {
     ztx_work_async(ztx);
 
     if (!ztx->enabled || ztx->closing) {
-        uv_timer_stop(&ztx->deadline_timer);
-        uv_prepare_stop(&ztx->prepper);
+        if (STAILQ_EMPTY(&ztx->w_queue)) {
+            uv_timer_stop(&ztx->deadline_timer);
+            uv_prepare_stop(&ztx->prepper);
+        } else {
+            // work queued by this pass, such as a ziti_shutdown from an event callback: a 0 timer
+            // keeps the loop from blocking in poll before the next prepare runs it
+            uv_timer_start(&ztx->deadline_timer, ztx_process_deadlines, 0, 0);
+        }
     }
 }
 

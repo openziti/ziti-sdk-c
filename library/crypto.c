@@ -16,6 +16,7 @@
 #include "crypto.h"
 #include "utils.h"
 #include "credentials.h"
+#include <tlsuv/tls_engine.h>
 
 extern e2ee_t *new_libsodium_e2ee(void);
 extern e2ee_t *new_none_e2ee(void);
@@ -32,6 +33,20 @@ e2ee_t* create_e2ee(ziti_crypto_method impl, bool server, tls_context *tls) {
     default:
         return NULL;
     }
+}
+
+void e2ee_restrict_tls(tls_context *tls) {
+    if (tls != NULL && tls->require_fips != NULL) {
+        tls->require_fips(tls);
+    }
+}
+
+// TLS fragments at 16k. a record adds at most ~325 bytes (TLS 1.2 CBC with SHA-384 and full padding)
+#define E2EE_RECORD_LEN (16 * 1024)
+#define E2EE_RECORD_OVERHEAD 512
+
+size_t e2ee_ciphertext_len(size_t plaintext_len) {
+    return plaintext_len + E2EE_MAX_MSG_OVERHEAD + (plaintext_len / E2EE_RECORD_LEN + 1) * E2EE_RECORD_OVERHEAD;
 }
 
 const char *e2ee_method_id(ziti_crypto_method mode) {

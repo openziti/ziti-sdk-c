@@ -494,7 +494,7 @@ static void process_dial(struct binding_s *b, message *msg) {
         client->e2ee = create_e2ee(conn->ziti_ctx->opts.e2ee_mode, true, conn->ziti_ctx->e2ee_host_tls);
     }
 
-    if (client->e2ee->init(client->e2ee, peer_key, peer_key_len, true) != 0) {
+    if (client->e2ee == NULL || client->e2ee->init(client->e2ee, peer_key, peer_key_len, true) != 0) {
         reject_dial_request(0, b->ch, msg->header.seq, "failed to establish crypto");
         ziti_close(client, NULL);
         return;

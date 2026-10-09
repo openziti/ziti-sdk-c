@@ -25,11 +25,26 @@ add_executable(all_tests
         ctrl_endpoint_tests.cpp
         posture_tests.cpp
         totp.h
-        totp_tests.cpp)
+        totp_tests.cpp
+        connect_tests.cpp
+        ztx_tests.cpp)
 
 set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
 find_package(OpenSSL REQUIRED)
 target_link_libraries(all_tests PRIVATE OpenSSL::Crypto)
+
+# e2ee_tests runs an OpenSSL peer and issues test certificates with it, against whichever TLS
+# backend the SDK is built on
+option(ZITI_TEST_OPENSSL_PEER "test the TLS backend against an OpenSSL peer (links libssl)" ON)
+if (ZITI_TEST_OPENSSL_PEER)
+    target_link_libraries(all_tests PRIVATE OpenSSL::SSL)
+    target_compile_definitions(all_tests PRIVATE ZITI_TEST_OPENSSL_PEER=1)
+endif ()
+
+# the tests delete the keys win32crypto persists into the CNG user key store
+if (WIN32)
+    target_link_libraries(all_tests PRIVATE ncrypt)
+endif ()
 
 target_compile_definitions(all_tests
         PRIVATE ZITI_TEST_DIR=${CMAKE_CURRENT_SOURCE_DIR})
