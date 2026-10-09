@@ -166,3 +166,50 @@ TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
     INFO("TOTP enrollment and verification successful");
     REQUIRE(run(UNTIL(this->loaded && this->load_error == ZITI_OK)));
 }
+
+// The identity logs in with its cert, and its auth policy requires a token from an ext-jwt-signer as
+// secondary auth: test_auth.py sets up the policy and passes the tokens as IDP_TOKEN (and IDP_TOKEN_NEXT).
+class SecondaryExtJwt : public ZitiTestCase {
+protected:
+    void login(const std::string &token) {
+        // the cert is enough for a session, but not for a full one
+        CHECK(load() == ZITI_PARTIALLY_AUTHENTICATED);
+
+        // the SDK asks the app to log in with the signer of the policy
+        REQUIRE(run(UNTIL(authState.count > 0)));
+        REQUIRE(authState.action == ziti_auth_login_external);
+        CHECK_FALSE(loaded);
+
+        // the token comes from that login: here, straight from the IdP
+        REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, token.c_str()));
+
+        REQUIRE(run(UNTIL(loaded)));
+        CHECK(load_error == ZITI_OK);
+    }
+};
+
+// GH-919
+TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt", "[integ][oidc-secondary]") {
+    std::string idp_token = checkENV("IDP_TOKEN");
+
+    login(idp_token);
+}
+
+// The token the identity logged in with expires, but the external login has refreshed it by then: the
+// controller wants the new one on the requests, the old one is a rejection. GH-1158
+TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-rotation", "[integ][oidc-secondary]") {
+    std::string first = checkENV("IDP_TOKEN");  // short-lived
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+
+    login(first);
+
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, next.c_str()));
+
+    auto expiration = jwt_expiration(first);
+    REQUIRE(run(UNTIL(time(nullptr) > expiration + 1), 15000));
+
+    // a request of the context: when the controller turns it down the context authenticates again
+    auto logins = authState.success;
+    REQUIRE_ZITI_OK(ziti_refresh(ztx));
+    CHECK_FALSE(run(UNTIL(authState.success > logins), 3000));
+}

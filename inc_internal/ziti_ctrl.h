@@ -58,6 +58,8 @@ typedef struct ziti_controller_s {
     void *version_req;
 
     bool has_token;
+    cstr token;             // the api session token
+    model_map ext_tokens;   // issuer -> external JWT, the secondary auth the controller checks on every request
     cstr instance_id;
 
     ziti_ctrl_change_cb change_cb;
@@ -73,7 +75,8 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
 const char *ziti_ctrl_next_ep(ziti_controller *ctrl, const char *current);
 
 int ziti_ctrl_set_token(ziti_controller *ctrl, const char *access_token);
-int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const char *jwt);
+// sets the external JWT of an issuer, replacing the one it had
+int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const char *issuer, const char *jwt);
 
 void ziti_ctrl_set_legacy(ziti_controller *ctrl, bool legacy);
 

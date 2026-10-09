@@ -416,7 +416,6 @@ static void ztx_set_fully_authenticated(ziti_context ztx, const char *session_to
     cstr_assign(&ztx->session_token, session_token);
     ziti_controller *ctrl = ztx_get_controller(ztx);
     ziti_ctrl_clear_auth(ctrl);
-    ziti_ctrl_set_token(ctrl, session_token);
     const char *iss;
     zt_jwt *jwt;
     uv_timeval64_t now;
@@ -426,8 +425,10 @@ static void ztx_set_fully_authenticated(ziti_context ztx, const char *session_to
             ZTX_LOG(WARN, "external JWT[%s] is expired: skipped", iss);
             continue;
         }
-        ziti_ctrl_set_ext_token(ctrl, cstr_str(&jwt->encoded));
+        ziti_ctrl_set_ext_token(ctrl, iss, cstr_str(&jwt->encoded));
     }
+    // last: it can start requests, which need the external tokens
+    ziti_ctrl_set_token(ctrl, session_token);
     if (ztx->auth_method->kind == OIDC) {
         if (ziti_ctrl_has_capability(&ztx->ctrl, ziti_ctrl_cap_HA_CONTROLLER)) {
             ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
