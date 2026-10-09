@@ -175,7 +175,6 @@ int load_tls(ziti_config *cfg, tls_context **ctx, struct tls_credentials *creds)
     const char *ca;
     size_t ca_len = parse_ref(cfg->id.ca, &ca);
     tls_context *tls = default_tls_context();
-    tls_restrict_fips(tls);
     if (ca != NULL) {
         tls->set_ca_bundle(tls, ca, ca_len);
     }
@@ -570,7 +569,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
     }
 }
 
-// Leaves the context disabled, so a later ziti_set_enabled(ztx, true) retries, and reports rc.
+// leaves the context disabled, so a later ziti_set_enabled(ztx, true) retries, and reports rc
 static void tls_init_failed(ziti_context ztx, int rc, const char *what) {
     ztx->enabled = false;
     free_tls_contexts(ztx);

@@ -76,14 +76,6 @@ extern "C" {
 
 e2ee_t *create_e2ee(ziti_crypto_method, bool server, tls_context *tls);
 
-// true when the TLS backend runs its FIPS module
-bool tls_is_fips(tls_context *tls);
-
-// when the backend runs its FIPS module, limits what the context offers to FIPS-approved algorithms
-// (tlsuv require_fips). a backend in FIPS mode still offers some it does not approve: the OpenSSL FIPS
-// provider serves X25519. call it before any engine is created from the context
-void tls_restrict_fips(tls_context *tls);
-
 // restricts to fips approved algorithms, fips mode or not
 void e2ee_restrict_tls(tls_context *tls);
 

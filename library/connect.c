@@ -942,9 +942,6 @@ static bool flush_to_service(ziti_connection conn) {
         struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
         if (conn->state == Connected && !req->message && !req->close && !e2ee_ready(conn)) {
             if (!conn->disconnecting) {
-                // app data cannot be encrypted before the e2ee handshake completes: hold the queue, in
-                // order, until a decrypt completes the handshake. only crypto messages go ahead.
-                // no timer: a dialer that never finishes times out its dial and the circuit closes
                 CONN_LOG(VERBOSE, "holding writes until the e2ee handshake completes");
                 break;
             }
@@ -1189,7 +1186,8 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
     // a dial that goes on to wait for the e2ee handshake keeps its timer
-    if (msg == NULL || msg->header.content != ContentTypeStateConnected || conn->state != Connecting) {
+    bool connected = msg != NULL && msg->header.content == ContentTypeStateConnected;
+    if (!connected || conn->state != Connecting) {
         clear_deadline(&req->deadline);
     }
 
