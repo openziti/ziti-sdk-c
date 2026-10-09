@@ -929,6 +929,15 @@ static void conn_failed(ziti_connection conn, int err) {
     }
 }
 
+// a dial still waiting for the handshake fails through its conn cb
+static void e2ee_failed(ziti_connection conn) {
+    if (dial_pending(conn)) {
+        complete_conn_req(conn, ZITI_CRYPTO_FAIL);
+    } else {
+        conn_failed(conn, ZITI_CRYPTO_FAIL);
+    }
+}
+
 static bool flush_to_service(ziti_connection conn) {
 
     // still connecting
@@ -1112,18 +1121,16 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg) {
         CONN_LOG(VERBOSE, "decrypted %zd bytes", plain_len);
     }
 
-    if (plain_len < 0 ||
-        (conn->e2ee->handshake_output && queue_crypto_message(conn, conn->e2ee->handshake_output) != ZITI_OK)) {
-        if (plain_len < 0) {
-            CONN_LOG(ERROR, "decryption failed: %zd", plain_len);
-        }
+    if (plain_len < 0) {
+        CONN_LOG(ERROR, "decryption failed: %zd", plain_len);
         FREE(plain_text);
-        // a dial still waiting for the handshake fails through its conn cb
-        if (dial_pending(conn)) {
-            complete_conn_req(conn, ZITI_CRYPTO_FAIL);
-        } else {
-            conn_failed(conn, ZITI_CRYPTO_FAIL);
-        }
+        e2ee_failed(conn);
+        return;
+    }
+
+    if (conn->e2ee->handshake_output && queue_crypto_message(conn, conn->e2ee->handshake_output) != ZITI_OK) {
+        FREE(plain_text);
+        e2ee_failed(conn);
         return;
     }
 
