@@ -60,8 +60,7 @@ typedef struct e2ee {
     ssize_t (*get_header)(struct e2ee *e2ee, uint8_t header[E2EE_MAX_HEADER_LEN]);
     ssize_t (*encrypt)(struct e2ee *e2ee, const uint8_t *plaintext, size_t plaintext_len, uint8_t *ciphertext, size_t ciphertext_len);
     ssize_t (*decrypt)(struct e2ee *e2ee, const uint8_t *ciphertext, size_t ciphertext_len, uint8_t *plaintext, size_t plaintext_len);
-    // optional: false while the session cannot encrypt yet, e.g. a TLS 1.2 client waiting for the
-    // server's Finished. NULL means always ready
+    // optional: false while the session cannot encrypt yet. NULL means always ready
     bool (*ready)(struct e2ee *e2ee);
     // optional: handshake output a decrypt produced, which the peer needs next, e.g. the host's final
     // TLS 1.2 flight or a TLS 1.3 post-handshake reply. NULL means decrypt never produces any

@@ -381,8 +381,6 @@ static bool dial_pending(ziti_connection conn) {
     return conn->state == Connected && conn->conn_req && conn->conn_req->cb;
 }
 
-// tls 1.2 needs the host's last flight before the dialer can encrypt, so the conn cb waits for the
-// decrypt that completes the handshake. the conn is Connected meanwhile so that data gets processed
 static void complete_dial(ziti_connection conn, int rc) {
     if (rc == ZITI_OK && !e2ee_ready(conn)) {
         CONN_LOG(DEBUG, "waiting for the e2ee handshake to complete");
@@ -943,7 +941,7 @@ static bool flush_to_service(ziti_connection conn) {
         if (conn->state == Connected && !req->message && !req->close && !e2ee_ready(conn)) {
             if (!conn->disconnecting) {
                 CONN_LOG(VERBOSE, "holding writes until the e2ee handshake completes");
-                break;
+                return false;
             }
             // closing before the handshake completed: the held writes can never go out
             TAILQ_REMOVE(&conn->wreqs, req, _next);
@@ -979,8 +977,7 @@ static bool flush_to_service(ziti_connection conn) {
     }
     CONN_LOG(TRACE, "flushed %d messages", count);
 
-    // held writes wait for a decrypt, not for another flush
-    return !TAILQ_EMPTY(&conn->wreqs) && e2ee_ready(conn);
+    return !TAILQ_EMPTY(&conn->wreqs);
 }
 
 static bool flush_to_client(ziti_connection conn) {
