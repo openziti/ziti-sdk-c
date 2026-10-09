@@ -275,33 +275,30 @@ e2ee_t *new_tls_e2ee(bool server, tls_context *tls) {
         ZITI_LOG(ERROR, "failed to allocate e2ee engine: out of memory");
         return NULL;
     }
+    e2ee->api = e2ee_tls_impl;
     e2ee->in_buffer = malloc(BUF_INIT_CAP);
+    e2ee->in_buffer_len = BUF_INIT_CAP;
+    e2ee->in_p = e2ee->in_buffer;
+
     e2ee->out_buffer = malloc(BUF_INIT_CAP);
-    tlsuv_engine_t engine = NULL;
-    if (e2ee->in_buffer != NULL && e2ee->out_buffer != NULL) {
-        if (!server) {
-            engine = tls->new_engine(tls, NULL);
-        } else if (tls->new_server_engine != NULL) {
-            // the server engine needs the identity cert, which set_own_cert may have failed to set
-            engine = tls->new_server_engine(tls);
-        }
+    e2ee->out_buffer_len = BUF_INIT_CAP;
+    e2ee->out_p = e2ee->out_buffer;
+
+    e2ee->server = server;
+    if (server) {
+        // the server engine needs the identity cert, which set_own_cert may have failed to set
+        e2ee->engine = tls->new_server_engine ? tls->new_server_engine(tls) : NULL;
+    } else {
+        e2ee->engine = tls->new_engine(tls, NULL);
     }
-    if (engine == NULL) {
+    if (e2ee->in_buffer == NULL || e2ee->out_buffer == NULL || e2ee->engine == NULL) {
         ZITI_LOG(ERROR, "failed to create %s TLS engine for e2ee", server ? "server" : "client");
+        if (e2ee->engine) e2ee->engine->free(e2ee->engine);
         free(e2ee->in_buffer);
         free(e2ee->out_buffer);
         free(e2ee);
         return NULL;
     }
-
-    e2ee->api = e2ee_tls_impl;
-    e2ee->in_buffer_len = BUF_INIT_CAP;
-    e2ee->in_p = e2ee->in_buffer;
-    e2ee->out_buffer_len = BUF_INIT_CAP;
-    e2ee->out_p = e2ee->out_buffer;
-
-    e2ee->server = server;
-    e2ee->engine = engine;
 
     e2ee->engine->set_io(e2ee->engine, e2ee, engine_in, engine_out);
 

@@ -490,11 +490,8 @@ static void process_dial(struct binding_s *b, message *msg) {
     if (b->e2ee && b->e2ee->clone)
         client->e2ee = b->e2ee->clone(b->e2ee);
     else {
-        // uses the session cert if the controller issued one, otherwise the identity cert.
-        // the method the peer was just checked against, not opts.e2ee_mode, which a FIPS_MODE
-        // switch can change before this binding is renewed
-        client->e2ee = create_e2ee(b->e2ee ? b->e2ee->method : conn->ziti_ctx->opts.e2ee_mode, true,
-                                   conn->ziti_ctx->e2ee_host_tls);
+        // uses the session cert if the controller issued one, otherwise the identity cert
+        client->e2ee = create_e2ee(conn->ziti_ctx->opts.e2ee_mode, true, conn->ziti_ctx->e2ee_host_tls);
     }
 
     if (client->e2ee == NULL || client->e2ee->init(client->e2ee, peer_key, peer_key_len, true) != 0) {

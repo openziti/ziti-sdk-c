@@ -608,8 +608,8 @@ static void ziti_start_internal(ziti_context ztx, void *init_req) {
             return;
         }
 
-        const char *tls_ver = ztx->tlsCtx->version ? ztx->tlsCtx->version() : NULL;
-        ZTX_LOG(INFO, "using tlsuv[%s/%s]", tlsuv_version(), tls_ver ? tls_ver : "unspecified");
+        ZTX_LOG(INFO, "using tlsuv[%s/%s]", tlsuv_version(),
+                ztx->tlsCtx->version ? ztx->tlsCtx->version() : "unspecified");
 
         rc = ztx_init_controller(ztx);
         if (rc != ZITI_OK) {

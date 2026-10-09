@@ -34,14 +34,6 @@ typedef intptr_t ssize_t;
 #define E2EE_MAX_HEADER_LEN (16 * 1024)
 // fixed expansion of any supported method, e.g. handshake data sitting in the TLS output buffer
 #define E2EE_MAX_MSG_OVERHEAD 1024
-// TLS fragments at 16k. a record adds at most ~325 bytes (TLS 1.2 CBC with SHA-384 and full padding)
-#define E2EE_RECORD_LEN (16 * 1024)
-#define E2EE_RECORD_OVERHEAD 512
-
-// ciphertext buffer size that holds the encryption of plaintext_len bytes, for any method
-static inline size_t e2ee_ciphertext_len(size_t plaintext_len) {
-    return plaintext_len + E2EE_MAX_MSG_OVERHEAD + (plaintext_len / E2EE_RECORD_LEN + 1) * E2EE_RECORD_OVERHEAD;
-}
 
 typedef struct e2ee_pub_s {
     const uint8_t *key;
@@ -77,6 +69,9 @@ e2ee_t *create_e2ee(ziti_crypto_method, bool server, tls_context *tls);
 
 // restricts to fips approved algorithms, fips mode or not
 void e2ee_restrict_tls(tls_context *tls);
+
+// ciphertext buffer size that holds the encryption of plaintext_len bytes, for any method
+size_t e2ee_ciphertext_len(size_t plaintext_len);
 
 const char *e2ee_method_id(ziti_crypto_method mode);
 
