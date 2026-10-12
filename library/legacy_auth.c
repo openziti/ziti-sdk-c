@@ -37,7 +37,6 @@ struct legacy_auth_s {
     
     bool has_x509;
     cstr primary_jwt;
-    cstr secondary_jwt;
     
     int fail_count;
     bool refreshing;
@@ -62,6 +61,7 @@ static void free_body_cb(tlsuv_http_req_t *req, char *body, ssize_t len) {
 }
 
 static void legacy_timer_cb(uv_timer_t *t);
+static void legacy_refresh_session(struct legacy_auth_s *auth);
 
 #define LEGACY_AUTH_INIT()          \
     (ziti_auth_method_t) {          \
@@ -97,7 +97,18 @@ static int legacy_auth_jwt_token(ziti_auth_method_t *self, const char *token) {
     if (auth->has_x509 || auth->session) {
         AUTH_LOG(DEBUG, "setting secondary JWT token: %s", 
                  token[0] ? jwt_payload(token) : "<empty>");
-        cstr_assign(&auth->secondary_jwt, token);
+        // the controller wants the secondary JWT on every request, authentication ones included.
+        // A header set is a header added, and the controller takes the first token of the signer: keep one
+        tlsuv_http_header(&auth->http, HTTP_AUTHORIZATION, NULL);
+        if (token[0]) {
+            cstr bearer = cstr_from_fmt(HTTP_BEARER_FMT, token);
+            tlsuv_http_header(&auth->http, HTTP_AUTHORIZATION, cstr_str(&bearer));
+            cstr_drop(&bearer);
+        }
+        if (auth->session && token[0]) {
+            // do not wait for the next refresh to send it
+            legacy_refresh_session(auth);
+        }
     } else {
         AUTH_LOG(DEBUG, "setting primary JWT token: %s", 
                  token[0] ? jwt_payload(token) : "<empty>");
@@ -180,7 +191,6 @@ void legacy_auth_free(ziti_auth_method_t *self) {
     free_ziti_api_session_ptr(auth->session);
     auth->session = NULL;
     cstr_drop(&auth->primary_jwt);
-    cstr_drop(&auth->secondary_jwt);
 
     uv_close((uv_handle_t *)&auth->timer, (uv_close_cb)close_cb);
     tlsuv_http_close(&auth->http, NULL);
@@ -323,6 +333,13 @@ static void legacy_session_cb(tlsuv_http_resp_t *resp, const char *err, json_obj
     uv_timer_start(&auth->timer, legacy_timer_cb, delay, 0);
 }
 
+static void legacy_refresh_session(struct legacy_auth_s *auth) {
+    AUTH_LOG(DEBUG, "refreshing session[%s]", auth->session->id);
+    auth->refreshing = true;
+    tlsuv_http_req_t *req = ziti_json_request(&auth->http, "GET", "/current-api-session", legacy_session_cb, auth);
+    tlsuv_http_req_header(req, HTTP_ZT_SESSION, auth->session->token);
+}
+
 void legacy_timer_cb(uv_timer_t *t) {
     struct legacy_auth_s *auth = container_of(t, struct legacy_auth_s, timer);
     auth->refreshing = true;
@@ -334,9 +351,7 @@ void legacy_timer_cb(uv_timer_t *t) {
             free_ziti_api_session_ptr(auth->session);
             auth->session = NULL;
         } else {
-            AUTH_LOG(DEBUG, "refreshing session[%p]", auth->session->id);
-            tlsuv_http_req_t *req = ziti_json_request(&auth->http, "GET", "/current-api-session", legacy_session_cb, auth);
-            tlsuv_http_req_header(req, HTTP_ZT_SESSION, auth->session->token);
+            legacy_refresh_session(auth);
             return;
         }
     }

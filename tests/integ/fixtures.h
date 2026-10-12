@@ -23,6 +23,7 @@
 #include <cstdlib>
 #include "ziti_ctrl.h"
 #include "auth_method.h"
+#include "jwt.h"
 #include <ziti/ziti_log.h>
 #include <ziti/ziti.h>
 #include <ziti/zitilib.h>
@@ -114,7 +115,9 @@ class ZitiTestCase : public LoopTestCase {
     bool loaded{};
     int load_error{};
     struct {
-        ziti_auth_action action{};
+        ziti_auth_action action{};  // ziti_auth_cannot_continue is 0: look at `count` to tell it from "no event yet"
+        unsigned count{};
+        unsigned success{};         // every time authentication completes, a re-authentication included
         std::string totpEnroll;
     } authState;
 
@@ -139,6 +142,10 @@ class ZitiTestCase : public LoopTestCase {
         case ZitiAuthEvent:
             ZITI_LOG(INFO, "got auth event: %d => %s", ev->auth.action, ev->auth.detail);
             self->authState.action = ev->auth.action;
+            self->authState.count++;
+            if (ev->auth.action == ziti_auth_success) {
+                self->authState.success++;
+            }
             if (ev->auth.action == ziti_auth_enroll_totp) {
                 CHECK(ev->auth.detail);
                 if (ev->auth.detail) {
@@ -266,6 +273,15 @@ static inline std::string auth_login(ziti_auth_method_t *m, uv_loop_t *loop) {
     if (session.error.err != 0) { throw session.error; }
 
     return session.resp;
+}
+
+// when a JWT expires, in seconds since the epoch
+static inline int64_t jwt_expiration(const std::string &token) {
+    zt_jwt jwt{};
+    REQUIRE(zt_jwt_parse(token.c_str(), &jwt) == ZITI_OK);
+    int64_t expiration = jwt.expiration;
+    zt_jwt_drop(&jwt);
+    return expiration;
 }
 
 struct deferer {
