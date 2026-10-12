@@ -19,6 +19,7 @@
 #include <stc/cstr.h>
 #include <tlsuv/http.h>
 #include "internal_model.h"
+#include "jwt.h"
 #include "ziti/ziti_model.h"
 
 #ifdef __cplusplus
@@ -75,8 +76,9 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
 const char *ziti_ctrl_next_ep(ziti_controller *ctrl, const char *current);
 
 int ziti_ctrl_set_token(ziti_controller *ctrl, const char *access_token);
-// sets the external JWT of an issuer, replacing the one it had
-int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const char *issuer, const char *jwt);
+// sets the external JWT of its issuer, replacing the one that issuer had. The controller keeps a copy of the
+// encoded token, `jwt` does not have to outlive the call.
+int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const zt_jwt *jwt);
 
 void ziti_ctrl_set_legacy(ziti_controller *ctrl, bool legacy);
 

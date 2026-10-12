@@ -349,7 +349,7 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
     // to send the new one: the one it sends expires, and the login that refreshed it does not know about it.
     // Before that the tokens go to the controller client when authentication completes.
     if (ztx->auth_state == ZitiAuthStateFullyAuthenticated) {
-        ziti_ctrl_set_ext_token(ztx_get_controller(ztx), cstr_str(&jwt->issuer), token);
+        ziti_ctrl_set_ext_token(ztx_get_controller(ztx), jwt);
     }
 
     // enrollment based on configured mode

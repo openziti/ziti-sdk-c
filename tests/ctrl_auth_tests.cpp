@@ -24,14 +24,21 @@
 
 #include "catch2_includes.hpp"
 
+#include <algorithm>
+#include <string>
+#include <vector>
+
+// stc/cstr.h declares _cstr_init as plain `extern`, which mangles under C++; common.h first, then cstr.h
+// under C linkage, satisfies both (as in posture_tests.cpp). Needed to fill in a zt_jwt.
+#include <stc/common.h>
+extern "C" {
+#include <stc/cstr.h>
+}
+
 #include "ziti_ctrl.h"
 #include "utils.h"  // strcasecmp on Windows
 #include <ziti/errors.h>
 #include <tlsuv/tlsuv.h>
-
-#include <algorithm>
-#include <string>
-#include <vector>
 
 namespace {
     // one loop for every case, never run and never closed: see ctrl_endpoint_tests.cpp
@@ -69,6 +76,15 @@ namespace {
             return result;
         }
 
+        // the controller keeps its own copy: the jwt is gone when this returns
+        void set_ext(const char *issuer, const char *token) {
+            zt_jwt jwt{};
+            jwt.issuer = cstr_from(issuer);
+            jwt.encoded = cstr_from(token);
+            ziti_ctrl_set_ext_token(&ctrl, &jwt);
+            zt_jwt_drop(&jwt);
+        }
+
         ziti_controller ctrl{};
         tls_context *tls{};
     };
@@ -82,14 +98,14 @@ TEST_CASE("controller-sends-the-latest-token-of-each-issuer", "[controller]") {
     ziti_ctrl_set_token(&c.ctrl, "session1");
     CHECK(c.values("Authorization") == Values{"Bearer session1"});
 
-    ziti_ctrl_set_ext_token(&c.ctrl, "issuer-a", "a1");
+    c.set_ext("issuer-a", "a1");
     CHECK(c.values("Authorization") == Values{"Bearer a1", "Bearer session1"});
 
     // the token of that issuer is refreshed: the old one must not go out any more
-    ziti_ctrl_set_ext_token(&c.ctrl, "issuer-a", "a2");
+    c.set_ext("issuer-a", "a2");
     CHECK(c.values("Authorization") == Values{"Bearer a2", "Bearer session1"});
 
-    ziti_ctrl_set_ext_token(&c.ctrl, "issuer-b", "b1");
+    c.set_ext("issuer-b", "b1");
     CHECK(c.values("Authorization") == Values{"Bearer a2", "Bearer b1", "Bearer session1"});
 
     // a new api session token takes the place of the old one, and keeps the external tokens
@@ -104,7 +120,7 @@ TEST_CASE("controller-sends-the-latest-token-of-each-issuer", "[controller]") {
 TEST_CASE("controller-sends-the-token-set-before-the-session", "[controller]") {
     Client c(false);
 
-    ziti_ctrl_set_ext_token(&c.ctrl, "issuer-a", "a1");
+    c.set_ext("issuer-a", "a1");
     CHECK(c.values("Authorization") == Values{"Bearer a1"});
 
     ziti_ctrl_set_token(&c.ctrl, "session1");
@@ -115,8 +131,8 @@ TEST_CASE("legacy-controller-sends-the-session-once-next-to-the-external-tokens"
     Client c(true);
 
     ziti_ctrl_set_token(&c.ctrl, "session1");
-    ziti_ctrl_set_ext_token(&c.ctrl, "issuer-a", "a1");
-    ziti_ctrl_set_ext_token(&c.ctrl, "issuer-a", "a2");
+    c.set_ext("issuer-a", "a1");
+    c.set_ext("issuer-a", "a2");
     CHECK(c.values("zt-session") == Values{"session1"});
     CHECK(c.values("Authorization") == Values{"Bearer a2"});
 

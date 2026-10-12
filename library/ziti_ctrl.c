@@ -698,11 +698,10 @@ static void ctrl_set_auth_headers(ziti_controller *ctrl) {
     }
 }
 
-int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const char *issuer, const char *jwt) {
-    assert(issuer);
+int ziti_ctrl_set_ext_token(ziti_controller *ctrl, const zt_jwt *jwt) {
     assert(jwt);
 
-    free(model_map_set(&ctrl->ext_tokens, issuer, strdup(jwt)));
+    free(model_map_set(&ctrl->ext_tokens, cstr_str(&jwt->issuer), strdup(cstr_str(&jwt->encoded))));
     ctrl_set_auth_headers(ctrl);
     return 0;
 }

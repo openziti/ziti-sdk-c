@@ -425,7 +425,7 @@ static void ztx_set_fully_authenticated(ziti_context ztx, const char *session_to
             ZTX_LOG(WARN, "external JWT[%s] is expired: skipped", iss);
             continue;
         }
-        ziti_ctrl_set_ext_token(ctrl, iss, cstr_str(&jwt->encoded));
+        ziti_ctrl_set_ext_token(ctrl, jwt);
     }
     // last: it can start requests, which need the external tokens
     ziti_ctrl_set_token(ctrl, session_token);
