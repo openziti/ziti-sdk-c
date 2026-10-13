@@ -1,0 +1,446 @@
+// Copyright (c) 2026.  NetFoundry Inc
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "catch2_includes.hpp"
+
+// model_support.h #defines `map`: the standard headers go first
+#include <string>
+#include <vector>
+
+// stc/cstr.h declares _cstr_init as plain `extern`, which mangles under C++; common.h first, then cstr.h
+// under C linkage, satisfies both without wrapping connect.h (that breaks stc's C++ templates).
+#include <stc/common.h>
+extern "C" {
+#include <stc/cstr.h>
+}
+
+#include "connect.h"
+#include "edge_protocol.h"
+#include "endian_internal.h"
+#include "zt_internal.h"
+
+extern "C" void connect_reply_cb(void *ctx, message *msg, int err);
+
+namespace {
+    // stands in for a tls 1.2 session: not ready until a decrypt brings in the peer's last flight
+    struct fake_e2ee {
+        e2ee_t api{};
+        bool ready = false;
+        bool fail_decrypt = false;
+        int decrypts = 0;
+        std::vector<std::pair<size_t, size_t>> encrypts; // plaintext len, ciphertext capacity
+    };
+
+    fake_e2ee *as_fake(e2ee_t *e) { return (fake_e2ee *) e; }
+
+    int fake_init(e2ee_t *, const uint8_t *, size_t, bool) { return 0; }
+    ssize_t fake_get_header(e2ee_t *, uint8_t *) { return 0; }
+    bool fake_ready(e2ee_t *e) { return as_fake(e)->ready; }
+    void fake_free(e2ee_t *) {}
+
+    ssize_t fake_decrypt(e2ee_t *e, const uint8_t *, size_t, uint8_t *, size_t) {
+        auto f = as_fake(e);
+        f->decrypts++;
+        if (f->fail_decrypt) {
+            return -1;
+        }
+        f->ready = true;
+        return 0;
+    }
+
+    // records the buffer it was given and fails, so nothing reaches the channel
+    ssize_t fake_encrypt(e2ee_t *e, const uint8_t *, size_t len, uint8_t *, size_t cap) {
+        as_fake(e)->encrypts.emplace_back(len, cap);
+        return -1;
+    }
+
+    void install(fake_e2ee &f, ziti_connection conn) {
+        f.api.method = conn->e2ee ? conn->e2ee->method : ziti_crypto_none;
+        f.api.init = fake_init;
+        f.api.get_header = fake_get_header;
+        f.api.decrypt = fake_decrypt;
+        f.api.encrypt = fake_encrypt;
+        f.api.ready = fake_ready;
+        f.api.free = fake_free;
+        if (conn->e2ee) {
+            conn->e2ee->free(conn->e2ee);
+        }
+        conn->e2ee = &f.api;
+    }
+
+    message *conn_msg(uint32_t content, uint32_t rt_conn_id, const std::string &body, uint32_t flags = 0) {
+        int32_t conn_id = (int32_t) htole32(rt_conn_id);
+        int32_t le_flags = (int32_t) htole32(flags);
+        hdr_t hdrs[] = {
+            {ConnIdHeader, sizeof(conn_id), (const uint8_t *) &conn_id},
+            {FlagsHeader, sizeof(le_flags), (const uint8_t *) &le_flags},
+        };
+        message *m = message_new(nullptr, content, hdrs, flags ? 2 : 1, body.size());
+        memcpy(m->body, body.data(), body.size());
+        return m;
+    }
+
+    struct app_recorder {
+        std::vector<int> conn_cb;
+        std::string data;
+        std::vector<ssize_t> data_cb; // the errors the data cb got
+        std::vector<ssize_t> write_cb;
+    };
+
+    app_recorder *app_of(ziti_connection conn) { return (app_recorder *) ziti_conn_data(conn); }
+
+    void on_conn(ziti_connection conn, int status) { app_of(conn)->conn_cb.push_back(status); }
+
+    ssize_t on_data(ziti_connection conn, const uint8_t *data, ssize_t len) {
+        if (data == nullptr) {
+            app_of(conn)->data_cb.push_back(len);
+            return len;
+        }
+        app_of(conn)->data.append((const char *) data, len);
+        return len;
+    }
+
+    // closes on the first error, as an app does
+    ssize_t on_data_close_on_error(ziti_connection conn, const uint8_t *data, ssize_t len) {
+        if (data == nullptr) {
+            app_of(conn)->data_cb.push_back(len);
+            ziti_close(conn, nullptr);
+            return 0;
+        }
+        return on_data(conn, data, len);
+    }
+
+    void on_write(ziti_connection conn, ssize_t status, void *) { app_of(conn)->write_cb.push_back(status); }
+
+    // ztx_process_deadlines is static: run the due deadlines the same way
+    void run_due(ziti_context ztx) {
+        std::vector<deadline_t *> expired;
+        deadline_t *d;
+        while ((d = LIST_FIRST(&ztx->deadlines)) != nullptr && uv_now(ztx->loop) >= d->expiration) {
+            LIST_REMOVE(d, _next);
+            d->_next.le_prev = nullptr;
+            expired.push_back(d);
+        }
+        for (auto e: expired) {
+            if (e->expire_cb == nullptr || e->_next.le_prev != nullptr) {
+                continue;
+            }
+            auto cb = e->expire_cb;
+            e->expire_cb = nullptr;
+            cb(e->ctx);
+        }
+    }
+
+    // flushers re-arm at the same time: run until only future deadlines are left
+    void run_all_due(ziti_context ztx) {
+        for (int i = 0; i < 16; i++) {
+            deadline_t *d = LIST_FIRST(&ztx->deadlines);
+            if (d == nullptr || uv_now(ztx->loop) < d->expiration) {
+                return;
+            }
+            run_due(ztx);
+        }
+        FAIL("deadlines keep firing");
+    }
+
+    struct ztx_fixture {
+        // needed only so uv_now() has a loop->time, never inited
+        uv_loop_t loop{};
+        ziti_ctx ztx{};
+        app_recorder app;
+        fake_e2ee e2ee;
+
+        ztx_fixture() {
+            ztx.loop = &loop;
+            ztx.enabled = true;
+            ztx.auth_state = ZitiAuthStateFullyAuthenticated;
+        }
+
+        // a Connected conn with no channel: inbound messages take the real in_q -> flush_to_client path
+        ziti_connection new_conn(ziti_data_cb data_cb) {
+            auto conn = (ziti_connection) calloc(1, sizeof(struct ziti_conn));
+            conn->ziti_ctx = &ztx;
+            conn->rt_conn_id = 7;
+            init_transport_conn(conn);
+            conn->e2ee = create_e2ee(ziti_crypto_none, false, nullptr);
+            conn->state = Connected;
+            conn->data_cb = data_cb;
+            ziti_conn_set_data(conn, &app);
+            return conn;
+        }
+
+        void flush(ziti_connection conn) {
+            // setting the data_cb with a queued message arms the flusher
+            REQUIRE(ziti_conn_set_data_cb(conn, conn->data_cb) == ZITI_OK);
+            run_all_due(&ztx);
+        }
+
+        void receive(ziti_connection conn, uint32_t content, const std::string &body, uint32_t flags = 0) {
+            // TAILQ_INSERT_TAIL evaluates the element more than once
+            message *m = conn_msg(content, conn->rt_conn_id, body, flags);
+            TAILQ_INSERT_TAIL(&conn->in_q, m, _next);
+            flush(conn);
+        }
+
+        void dispose(ziti_connection conn) {
+            // ziti_close would send StateClosed over the channel
+            conn->channel = nullptr;
+            conn->state = Closed;
+            CHECK(conn->disposer(conn) == 1);
+        }
+    };
+
+    // a dial with no edge router channel: the conn_req timer is the real one process_connect arms
+    struct dial_fixture : ztx_fixture {
+        ziti_edge_router er{};
+        ziti_session session{};
+        ziti_service service{};
+        ziti_connection conn;
+
+        dial_fixture() {
+            er.name = (char *) "er";
+            session.id = (char *) "session";
+            model_list_append(&session.edge_routers, &er);
+            service.name = (char *) "svc";
+            service.id = (char *) "svc-id";
+            service.perm_flags = ZITI_CAN_DIAL;
+            model_map_set(&ztx.services, service.name, &service);
+            model_map_set(&ztx.sessions, service.id, &session);
+
+            conn = (ziti_connection) calloc(1, sizeof(*conn));
+            conn->ziti_ctx = &ztx;
+            ziti_conn_set_data(conn, &app);
+            REQUIRE(ziti_dial(conn, "svc", on_conn, on_data) == ZITI_OK);
+            REQUIRE(conn->state == Connecting);
+            conn->rt_conn_id = 7;
+            install(e2ee, conn);
+
+            int32_t conn_id = (int32_t) htole32(conn->rt_conn_id);
+            hdr_t hdrs[] = {
+                {ConnIdHeader, sizeof(conn_id), (const uint8_t *) &conn_id},
+                {PublicKeyHeader, 4, (const uint8_t *) "peer"},
+            };
+            message *m = message_new(nullptr, ContentTypeStateConnected, hdrs, 2, 0);
+            connect_reply_cb(conn, m, 0);
+            pool_return_obj(m);
+            run_all_due(&ztx);
+        }
+
+        ~dial_fixture() {
+            dispose(conn);
+            model_map_clear(&ztx.services, nullptr);
+            model_map_clear(&ztx.sessions, nullptr);
+            model_map_clear(&ztx.waiting_connections, nullptr);
+            model_list_clear(&session.edge_routers, nullptr);
+        }
+
+        void advance(uint64_t ms) {
+            loop.time += ms;
+            run_all_due(&ztx);
+        }
+    };
+
+    std::string drain(buffer *b) {
+        std::string out;
+        uint8_t *chunk;
+        ssize_t n;
+        while ((n = buffer_get_next(b, SIZE_MAX, &chunk)) > 0) {
+            out.append((const char *) chunk, n);
+        }
+        return out;
+    }
+
+    // the payload sits at the front of a buffer larger than any part length, so a parser that reads
+    // past len stays inside memory the test owns and the test fails instead of crashing
+    ssize_t parse(buffer *b, const std::string &payload) {
+        std::vector<uint8_t> mem(UINT16_MAX + 16, 0);
+        memcpy(mem.data(), payload.data(), payload.size());
+        return conn_parse_multipart(b, mem.data(), payload.size());
+    }
+}
+
+TEST_CASE("tls 1.2 dial waits for the e2ee handshake", "[e2ee]") {
+    dial_fixture f;
+
+    // the host's last flight has not arrived: Connected so data gets processed, but no conn cb yet
+    REQUIRE(f.conn->state == Connected);
+    REQUIRE(f.app.conn_cb.empty());
+
+    SECTION("the conn cb fires when a decrypt completes the handshake") {
+        f.advance(ZITI_DEFAULT_TIMEOUT / 2);
+        CHECK(f.app.conn_cb.empty());
+
+        f.receive(f.conn, ContentTypeData, "flight");
+        CHECK(f.e2ee.decrypts == 1);
+        CHECK(f.app.conn_cb == std::vector<int>{ZITI_OK});
+        CHECK(f.conn->state == Connected);
+        CHECK(TAILQ_EMPTY(&f.conn->wreqs));
+
+        // the dial timer is gone with the conn cb
+        f.advance(ZITI_DEFAULT_TIMEOUT);
+        CHECK(f.app.conn_cb == std::vector<int>{ZITI_OK});
+        CHECK(f.conn->state == Connected);
+        CHECK(f.app.data_cb.empty());
+    }
+
+    SECTION("a host that never sends its last flight times out the dial") {
+        f.advance(ZITI_DEFAULT_TIMEOUT);
+        CHECK(f.app.conn_cb == std::vector<int>{ZITI_TIMEOUT});
+        CHECK(f.conn->data_cb == nullptr);
+        CHECK(f.conn->state == Disconnected);
+    }
+
+    SECTION("a failed decrypt fails the dial, not the data cb") {
+        f.e2ee.fail_decrypt = true;
+        f.receive(f.conn, ContentTypeData, "flight");
+        CHECK(f.app.conn_cb == std::vector<int>{ZITI_CRYPTO_FAIL});
+        CHECK(f.app.data_cb.empty());
+
+        f.advance(ZITI_DEFAULT_TIMEOUT);
+        CHECK(f.app.conn_cb == std::vector<int>{ZITI_CRYPTO_FAIL});
+    }
+
+    SECTION("StateClosed before the handshake fails the dial") {
+        f.receive(f.conn, ContentTypeStateClosed, "closed");
+        CHECK(f.app.conn_cb == std::vector<int>{ZITI_CONN_CLOSED});
+        CHECK(f.app.data_cb.empty());
+        CHECK(f.conn->state == Disconnected);
+
+        f.advance(ZITI_DEFAULT_TIMEOUT);
+        CHECK(f.app.conn_cb == std::vector<int>{ZITI_CONN_CLOSED});
+    }
+}
+
+TEST_CASE("host holds writes until the e2ee handshake completes", "[e2ee]") {
+    ztx_fixture f;
+    auto conn = f.new_conn(on_data);
+    install(f.e2ee, conn);
+    // flush_to_service only needs it non-NULL to get to the hold, nothing on this path reads it
+    conn->channel = (ziti_channel_t *) &f;
+
+    REQUIRE(ziti_write(conn, (const uint8_t *) "one", 3, on_write, nullptr) == ZITI_OK);
+    REQUIRE(ziti_write(conn, (const uint8_t *) "two", 3, on_write, nullptr) == ZITI_OK);
+    run_all_due(&f.ztx);
+    CHECK(f.app.write_cb.empty());
+    CHECK(!TAILQ_EMPTY(&conn->wreqs));
+    // no timer keeps the hold
+    CHECK(LIST_EMPTY(&f.ztx.deadlines));
+
+    // the dialer timed out or failed and the circuit closed
+    f.receive(conn, ContentTypeStateClosed, "closed");
+    CHECK(conn->state == Disconnected);
+    CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_CONN_CLOSED});
+    CHECK(f.app.write_cb == std::vector<ssize_t>{ZITI_INVALID_STATE, ZITI_INVALID_STATE});
+    CHECK(TAILQ_EMPTY(&conn->wreqs));
+
+    f.dispose(conn);
+}
+
+TEST_CASE("a write gets a ciphertext buffer that fits tls record framing", "[e2ee]") {
+    // tls 1.2 cbc with sha-384: 5 header + 16 iv + 48 mac + 256 padding per 16k record
+    auto tls12_worst = [](size_t len) { return len + (len / (16 * 1024) + 1) * 325; };
+
+    ztx_fixture f;
+    auto conn = f.new_conn(on_data);
+    install(f.e2ee, conn);
+    f.e2ee.ready = true;
+    // the fake encrypt fails every write, so nothing on this path reads it
+    conn->channel = (ziti_channel_t *) &f;
+
+    SECTION("one large write") {
+        // ziti_write does not limit a write
+        std::vector<uint8_t> big(1024 * 1024);
+        REQUIRE(ziti_write(conn, big.data(), big.size(), on_write, nullptr) == ZITI_OK);
+        run_all_due(&f.ztx);
+
+        REQUIRE(f.e2ee.encrypts.size() == 1);
+        CHECK(f.e2ee.encrypts[0].first == big.size());
+        CHECK(f.e2ee.encrypts[0].second >= tls12_worst(big.size()));
+        CHECK(f.app.write_cb == std::vector<ssize_t>{ZITI_CRYPTO_FAIL});
+    }
+
+    SECTION("a multipart chain") {
+        conn->flags |= EDGE_MULTIPART;
+        std::vector<uint8_t> part(1000);
+        for (int i = 0; i < 30; i++) {
+            REQUIRE(ziti_write(conn, part.data(), part.size(), on_write, nullptr) == ZITI_OK);
+        }
+        run_all_due(&f.ztx);
+
+        // each part carries a 2 byte length
+        REQUIRE(f.e2ee.encrypts.size() == 1);
+        CHECK(f.e2ee.encrypts[0].first == 30 * (part.size() + 2));
+        CHECK(f.e2ee.encrypts[0].second >= tls12_worst(f.e2ee.encrypts[0].first));
+        CHECK(f.app.write_cb == std::vector<ssize_t>(30, ZITI_CRYPTO_FAIL));
+    }
+
+    f.dispose(conn);
+}
+
+TEST_CASE("multipart payload parsing", "[multipart]") {
+    buffer *b = new_buffer();
+
+    SECTION("parts are appended in order") {
+        CHECK(parse(b, std::string("\x03\x00" "abc" "\x02\x00" "de", 9)) == 5);
+        CHECK(drain(b) == "abcde");
+    }
+
+    SECTION("an empty last part is valid") {
+        CHECK(parse(b, std::string("\x01\x00" "a" "\x00\x00", 5)) == 1);
+        CHECK(drain(b) == "a");
+    }
+
+    SECTION("a part length past the payload is rejected") {
+        CHECK(parse(b, std::string("\xff\xff" "A", 3)) == -1);
+        CHECK(buffer_available(b) == 0);
+    }
+
+    SECTION("a payload shorter than a length prefix is rejected") {
+        CHECK(parse(b, std::string("\x01", 1)) == -1);
+        CHECK(buffer_available(b) == 0);
+    }
+
+    SECTION("a truncated second length prefix is rejected with nothing appended") {
+        CHECK(parse(b, std::string("\x01\x00" "a" "\x05", 4)) == -1);
+        CHECK(buffer_available(b) == 0);
+    }
+
+    free_buffer(b);
+}
+
+TEST_CASE("multipart message delivery", "[multipart]") {
+    ztx_fixture f;
+    auto conn = f.new_conn(on_data_close_on_error);
+
+    SECTION("a valid message reaches the app") {
+        f.receive(conn, ContentTypeData, std::string("\x03\x00" "abc" "\x02\x00" "de", 9), EDGE_MULTIPART_MSG);
+        CHECK(f.app.data == "abcde");
+        CHECK(f.app.data_cb.empty());
+        CHECK(conn->received == 5);
+        CHECK(conn->state == Connected);
+    }
+
+    SECTION("a malformed message ends the conn with nothing delivered") {
+        f.receive(conn, ContentTypeData, std::string("\xff\xff" "A", 3), EDGE_MULTIPART_MSG);
+        CHECK(f.app.data.empty());
+        CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_INVALID_STATE});
+        CHECK(conn->received == 0);
+        CHECK(conn->state == Closed);
+        CHECK(buffer_available(conn->inbound) == 0);
+    }
+
+    f.dispose(conn);
+}
