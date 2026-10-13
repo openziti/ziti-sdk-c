@@ -523,13 +523,7 @@ void ztx_ext_token_received(ziti_context ztx, const zt_jwt *jwt) {
         return;
     }
 
-    if (secondary_token_expired(ztx)) {
-        // not the token that is needed (or already expired): the login that brought it is not done
-        ext_oidc_client_finalize(ztx->ext_auth2, false, "no valid token of the secondary external signer");
-        ztx_wait_for_secondary(ztx, cstr_str(&ztx->session_token));
-        return;
-    }
-
+    // an expired token never gets here (ziti_ext_auth_token turns it down)
     ZTX_LOG(DEBUG, "received the secondary external token: completing the authentication");
     ztx_set_fully_authenticated(ztx, cstr_str(&ztx->session_token));
     ext_oidc_client_finalize(ztx->ext_auth2, true, NULL);

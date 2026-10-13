@@ -145,7 +145,13 @@ static void ext_token_cb(ext_oidc_client_t *oidc, enum ext_oidc_status status, c
     const char *err = NULL;
     switch (status) {
         case EXT_OIDC_TOKEN_OK: {
-            ziti_ext_auth_token(ztx, (const char*)data);
+            int rc = ziti_ext_auth_token(ztx, (const char*)data);
+            if (rc != ZITI_OK) {
+                // the token is turned down (it has expired, or is not a JWT) and nothing will tell the browser
+                // that is waiting for the verdict
+                ZTX_LOG(WARN, "external token rejected: %s", ziti_errorstr(rc));
+                ext_oidc_client_finalize(oidc, false, ziti_errorstr(rc));
+            }
             return;
         }
         case EXT_OIDC_CONFIG_FAILED: {
@@ -335,6 +341,17 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
     NEWP(jwt, zt_jwt);
     if (zt_jwt_parse(token, jwt) != 0) {
         ZTX_LOG(WARN, "failed to parse JWT token");
+        free(jwt);
+        return ZITI_JWT_INVALID;
+    }
+
+    // a token is expired from the second of its `exp`, which is when the controller turns it down. Every use of it
+    // would drop it, and a wait for this login would only ask for it again at once.
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+    if (jwt->expiration != 0 && jwt->expiration <= now.tv_sec) {
+        ZTX_LOG(WARN, "external JWT iss[%s] has expired: rejected", cstr_str(&jwt->issuer));
+        zt_jwt_drop(jwt);
         free(jwt);
         return ZITI_JWT_INVALID;
     }
