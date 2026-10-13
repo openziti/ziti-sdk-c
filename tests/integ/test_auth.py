@@ -84,3 +84,32 @@ def test_secondary_ext_jwt_rotation(secondary_ext_jwt, idp, idp_user, tmp_path, 
     env['IDP_TOKEN_NEXT'] = idp.access_token(idp_user)
     run_catch_test(env, tmp_path, test=f"{method}-secondary-ext-jwt-rotation")
 
+
+@pytest.mark.require_ziti('>=2.0.0')
+def test_secondary_ext_jwt_issuer_is_not_the_signer_url(secondary_ext_jwt, idp, idp_signer, tmp_path):
+    """The signer says its IdP is somewhere else than the issuer of the tokens, so the SDK cannot tell whose token is whose.
+
+    It must carry on as before and not wait for a login that it already has the token for. GH-1159
+    """
+    ziti_edge("update", "ext-jwt-signer", idp_signer, "--external-auth-url", f"{idp.issuer}/elsewhere")
+    try:
+        run_catch_test(secondary_ext_jwt, tmp_path, test="oidc-secondary-ext-jwt")
+    finally:
+        ziti_edge("update", "ext-jwt-signer", idp_signer, "--external-auth-url", idp.issuer)
+
+
+@pytest.mark.require_ziti('>=2.0.0')
+@pytest.mark.parametrize("variant", ["", "-answered-in-event", "-other-issuer"])
+def test_secondary_ext_jwt_expired(variant, secondary_ext_jwt, idp, idp_user, tmp_path):
+    """The secondary token expires and nothing replaces it, as when the IdP session ended.
+
+    The context has to ask for the external login again, not carry on as authenticated and re-authenticate
+    in a loop, and a new token completes the authentication. GH-1159
+
+    Variants: the app answers from inside the event that asks, and a token of another issuer arrives meanwhile.
+    """
+    env = dict(secondary_ext_jwt)
+    env['IDP_TOKEN'] = idp.access_token(idp_user, ttl=4)
+    env['IDP_TOKEN_NEXT'] = idp.access_token(idp_user)
+    env['IDP_TOKEN_OTHER_ISSUER'] = idp.token_of_other_issuer(idp_user)
+    run_catch_test(env, tmp_path, test=f"oidc-secondary-ext-jwt-expired{variant}")

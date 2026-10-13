@@ -197,6 +197,11 @@ class OidcIdp:
         happens when one expires."""
         return self._access_token(self.client, "password", email, "openid email", ttl)
 
+    def token_of_other_issuer(self, email, issuer="https://other-idp.example.com"):
+        """A token like ``access_token`` makes, as an IdP with another ``iss`` would issue it: the controller knows
+        no signer of that issuer."""
+        return self._sign({"iss": issuer, "sub": email, "email": email, "aud": self.client.get_client_id()})
+
     # ---- authlib wiring ---------------------------------------------------------------------
     def _configure_authlib(self):
         idp = self

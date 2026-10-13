@@ -259,6 +259,7 @@ static void ztx_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
 
     ZTX_LOG(DEBUG, "setting auth_state[%d] to %d", ztx->auth_state, ZitiAuthStateUnauthenticated);
     ztx->auth_state = ZitiAuthStateUnauthenticated;
+    ztx->awaiting_secondary = false;
     cstr_clear(&ztx->session_token);
     free_ziti_api_session_ptr(ztx->session);
     ztx->session = NULL;
@@ -284,6 +285,7 @@ static void ztx_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
 static void ztx_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err) {
     ziti_controller *ctrl = ztx_get_controller(ztx);
     ztx->auth_state = ZitiAuthImpossibleToAuthenticate;
+    ztx->awaiting_secondary = false;
     if (err->err == UV_ECONNREFUSED || err->err == UV_EAI_NONAME) {
         ZTX_LOG(ERROR, "auth provider is not available: %s", uv_strerror(err->err));
         // current controller became unavailable
@@ -353,7 +355,11 @@ static void ztx_set_partially_authenticated(ziti_context ztx, const ziti_auth_qu
             break;
     }
 
-    ziti_send_event(ztx, &ev);
+    // the app can answer the event that asks for the external login from inside it (ztx_init_external_auth
+    // sends it), which completes the authentication: after that it is not asked for a login any more
+    if (ztx->auth_state == ZitiAuthStatePartiallyAuthenticated) {
+        ziti_send_event(ztx, &ev);
+    }
 }
 
 static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *err, void *ctx) {
@@ -413,8 +419,48 @@ static void ctrl_list_cb(ziti_controller_detail_array ctrls, const ziti_error *e
     free(ctrls);
 }
 
+// A secondary external signer was asked for (its auth query set up ext_auth2), and the context has a token of
+// it, and that token has expired. The controller checks that token on every request, so it turns all of them down.
+//
+// This acts only on that evidence. The signer is known to the SDK by where its IdP is, not by the issuer the
+// controller has for it, so when no token matches, the context goes on as before.
+static bool secondary_token_expired(ziti_context ztx) {
+    ext_oidc_client_t *signer = ztx->ext_auth2;
+    if (signer == NULL) {
+        return false;
+    }
+
+    uv_timeval64_t now;
+    uv_gettimeofday(&now);
+    zt_jwt *jwt = model_map_get(&ztx->ext_jwt_tokens, cstr_str(&signer->issuer));
+
+    // a token is expired from the second of its `exp` on, that is when the controller turns it down
+    return jwt && jwt->expiration != 0 && jwt->expiration <= now.tv_sec;
+ }
+
+// The api session is there but the token of the secondary external signer has expired. Declaring success would
+// only have every request turned down, and the re-authentications that follow succeed without a new token (the
+// controller does not ask for it on a token refresh): a loop that never asks for the login. Ask for it instead,
+// and finish when the token comes (ztx_ext_token_received).
+static void ztx_wait_for_secondary(ziti_context ztx, const char *session_token) {
+    ZTX_LOG(WARN, "token of the secondary external signer has expired: waiting for external login");
+    if (session_token != cstr_str(&ztx->session_token)) {  // it is asked again with its own token
+        cstr_assign(&ztx->session_token, session_token);
+    }
+    ztx->awaiting_secondary = true;
+    ziti_ctrl_clear_auth(ztx_get_controller(ztx));
+
+    ziti_auth_query_mfa query = {
+            .type_id = ziti_auth_query_type_EXT_JWT,
+            .id = ztx->ext_auth2->signer_cfg.id,
+    };
+    ztx_set_partially_authenticated(ztx, &query);
+}
+
 static void ztx_set_fully_authenticated(ziti_context ztx, const char *session_token) {
     assert(session_token);
+    ztx->awaiting_secondary = false;
+
     ZTX_LOG(DEBUG, "setting auth_state[%d] to %d", ztx->auth_state, ZitiAuthStateFullyAuthenticated);
     ztx->auth_state = ZitiAuthStateFullyAuthenticated;
     const struct timeval *exp = ztx->auth_method->expiration(ztx->auth_method);
@@ -465,6 +511,28 @@ static void ztx_set_fully_authenticated(ziti_context ztx, const char *session_to
         },
     };
     ziti_send_event(ztx, &auth_ev);
+}
+
+void ztx_ext_token_received(ziti_context ztx, const zt_jwt *jwt) {
+    if (!ztx->awaiting_secondary || ztx->auth_state != ZitiAuthStatePartiallyAuthenticated) {
+        return;
+    }
+
+    // the token of another issuer, the primary signer's refreshed one for instance, is not what is waited for
+    if (strcmp(cstr_str(&jwt->issuer), cstr_str(&ztx->ext_auth2->issuer)) != 0) {
+        return;
+    }
+
+    if (secondary_token_expired(ztx)) {
+        // not the token that is needed (or already expired): the login that brought it is not done
+        ext_oidc_client_finalize(ztx->ext_auth2, false, "no valid token of the secondary external signer");
+        ztx_wait_for_secondary(ztx, cstr_str(&ztx->session_token));
+        return;
+    }
+
+    ZTX_LOG(DEBUG, "received the secondary external token: completing the authentication");
+    ztx_set_fully_authenticated(ztx, cstr_str(&ztx->session_token));
+    ext_oidc_client_finalize(ztx->ext_auth2, true, NULL);
 }
 
 void ziti_force_api_session_refresh(ziti_context ztx) {
@@ -1712,6 +1780,12 @@ static void refresh_cb(void *data) {
         return;
     }
 
+    if (ztx->auth_state == ZitiAuthStatePartiallyAuthenticated) {
+        // nothing to poll with until the authentication completes, and that starts the polling again
+        ZTX_LOG(VERBOSE, "api session is partially authenticated: not polling the controller");
+        return;
+    }
+
     ziti_ctrl_current_identity(ztx_get_controller(ztx), update_identity_data, ztx);
 
     ziti_ctrl_current_edge_routers(ztx_get_controller(ztx), edge_routers_cb, ztx);
@@ -2411,7 +2485,17 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
             break;
         }
         case ZitiAuthStateFullyAuthenticated:
-            ztx_set_fully_authenticated(ztx, data);
+            if (secondary_token_expired(ztx)) {
+                ztx_wait_for_secondary(ztx, data);
+                // the app can answer the event that asks for the login from inside it, which completes the
+                // authentication before this returns
+                state = ztx->auth_state;
+                if (state == ZitiAuthStatePartiallyAuthenticated) {
+                    message = "partially authenticated";
+                }
+            } else {
+                ztx_set_fully_authenticated(ztx, data);
+            }
             success = true;
             break;
         case ZitiAuthImpossibleToAuthenticate: {

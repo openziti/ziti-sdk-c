@@ -351,6 +351,7 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
     if (ztx->auth_state == ZitiAuthStateFullyAuthenticated) {
         ziti_ctrl_set_ext_token(ztx_get_controller(ztx), jwt);
     }
+    ztx_ext_token_received(ztx, jwt);
 
     // enrollment based on configured mode
     if (ztx->identity_data == NULL && ztx->id_creds.cert == NULL) {
