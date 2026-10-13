@@ -2478,6 +2478,9 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
             ztx_set_auth_started(ztx);
             break;
         case ZitiAuthStatePartiallyAuthenticated: {
+            // the auth method reports a login of its own (the wait for the secondary token goes
+            // straight to ztx_set_partially_authenticated): that wait is over, and the session token it had with it
+            ztx->awaiting_secondary = false;
             ztx_set_partially_authenticated(ztx, data);
             // external token accepted but needs user needs to finish via app (TOTP, etc)
             success = true;

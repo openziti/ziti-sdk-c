@@ -25,6 +25,9 @@
 #include "totp.h"
 #include "ziti/ziti_log.h"
 
+// the SDK's own callback for the state of the authentication, which the auth method calls
+extern "C" void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data);
+
 class AuthTests: public LoopTestCase {};
 
 TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
@@ -393,4 +396,24 @@ TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-expired-other-issuer",
     REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, other.c_str()));
     CHECK(authState.count == events);
     CHECK(authState.success == logins);
+}
+
+// The login the context waits for is not the one that is going on any more: the auth method starts over (its refresh
+// token is gone) and the controller asks for something else, a TOTP. A token of the secondary signer that arrives then
+// belongs to that login: the SDK must not take it as the end of the wait, with the session token it had. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-expired-login-restarted", "[integ][oidc-secondary]") {
+    std::string first = checkENV("IDP_TOKEN");  // short-lived
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+
+    wait_for_secondary_login(first);
+
+    // as the auth method reports it
+    ziti_auth_query_mfa totp = ZITI_MFA;
+    totp.enrolled = true;
+    ztx_auth_state_cb(ztx, ZitiAuthStatePartiallyAuthenticated, &totp);
+    REQUIRE(authState.action == ziti_auth_prompt_totp);
+
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, next.c_str()));
+    CHECK(authState.success == logins);
+    CHECK(load_error != ZITI_OK);
 }
