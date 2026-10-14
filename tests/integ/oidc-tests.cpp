@@ -15,6 +15,7 @@
 // limitations under the License.
 
 #include <catch2/catch_all.hpp>
+#include <vector>
 #include <tlsuv/tlsuv.h>
 #include <ziti/ziti.h>
 #include <ziti/zitilib.h>
@@ -36,6 +37,7 @@ extern "C" {
 // the SDK's own callback for the state of the authentication, which the auth method calls
 extern "C" void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data);
 extern "C" ziti_controller *ztx_get_controller(ziti_context ztx);
+extern "C" void ziti_force_api_session_refresh(ziti_context ztx);
 
 class AuthTests: public LoopTestCase {};
 
@@ -558,6 +560,98 @@ TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-rejected-answered-with
     CHECK(authState.count == count);
     CHECK(authState.success == logins);
     CHECK(load_error != ZITI_OK);
+}
+
+// Every success the context reports is put to the controller: the services are requested from inside the event, with
+// the auth the context has just declared good (a request made later could see a wait that has started over since).
+class SecondaryExtJwtVerified : public SecondaryExtJwt {
+protected:
+    SecondaryExtJwtVerified() {
+        options.event_cb = verifying_event_cb;
+        options.events |= ZitiServiceEvent;
+    }
+
+    static void verifying_event_cb(ziti_context ztx, const ziti_event_t *ev) {
+        event_cb(ztx, ev);
+        auto self = (SecondaryExtJwtVerified *) ziti_app_ctx(ztx);
+        if (ev->type == ZitiServiceEvent) {
+            self->service_events++;
+        }
+        if (ev->type == ZitiAuthEvent && ev->auth.action == ziti_auth_success) {
+            ziti_ctrl_get_services(ztx_get_controller(ztx), services_cb, self);
+        }
+    }
+
+    static void services_cb(ziti_service_array services, const ziti_error *err, void *ctx) {
+        auto self = (SecondaryExtJwtVerified *) ctx;
+        if (err) {
+            self->services_errors.push_back(std::string(err->code ? err->code : "") + "/" + (err->message ? err->message : ""));
+        }
+        free_ziti_service_array(&services);
+        self->services_responses++;
+    }
+
+    // wait for answers to the /services requests of every "successful" auth so far. return the errors from the failed requests
+    std::vector<std::string> verify() {
+        REQUIRE(run(UNTIL(services_responses == authState.success), 5000));
+        return services_errors;
+    }
+
+    unsigned service_events{};
+    unsigned services_responses{};
+    std::vector<std::string> services_errors;
+};
+
+// The context waits for the login after the controller turned down a token that has not expired, and the auth method
+// refreshes its api session token meanwhile, as it does on its timer. The refresh succeeds (the controller does not ask
+// for the external token on a refresh), but the token the controller turned down is still all the context has: the
+// refresh must not end the wait and report success. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwtVerified, "oidc-secondary-ext-jwt-rejected-refreshed", "[integ][oidc-secondary]") {
+    std::string idp_token = checkENV("IDP_TOKEN");
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+    std::string rejected = checkENV("IDP_TOKEN_BAD_SIGNATURE");
+
+    options.refresh_interval = 1;
+    REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+
+    login(idp_token);
+    REQUIRE(authState.success == 1);
+    REQUIRE(verify().empty());
+
+    // let the first load of the services finish: a /services request that's still out when the token is rejected
+    // triggers re-auth, which is not what this is about
+    REQUIRE(run(UNTIL(service_events > 0), 5000));
+    logins = authState.success;
+    events = authState.count;
+
+    // use the bad-signature token, and wait until the context asks for login_external.
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, rejected.c_str()));
+    REQUIRE(run(UNTIL(authState.action == ziti_auth_login_external && authState.count > events), 5000));
+    run(UNTIL(false), 1000);
+    events = authState.count;
+
+    // trigger oidc_client_refresh without waiting for the token lifetime.
+    ziti_force_api_session_refresh(ztx);
+    run(UNTIL(false), 3000);
+
+    // every successful auth the SDK reports is used to make a /services request
+    auto failures = verify();
+    INFO("successes reported after the refresh: " << authState.success - logins
+         << ", turned down by the controller: " << failures.size()
+         << (failures.empty() ? "" : ", first: " + failures.front()));
+    REQUIRE(failures.empty());
+
+    // no successful logins should be reported
+    REQUIRE(authState.success == logins);
+    CHECK(authState.count == events);
+    CHECK(authState.action == ziti_auth_login_external);
+    CHECK(load_error != ZITI_OK);
+
+    // the new token from that login completes the authentication, once, and the controller takes the requests
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, next.c_str()));
+    REQUIRE(run(UNTIL(authState.success == logins + 1 && load_error == ZITI_OK), 5000));
+    CHECK_FALSE(run(UNTIL(authState.success > logins + 1), 2000));
+    CHECK_THAT(verify(), Catch::Matchers::IsEmpty());
 }
 
 // A token of another issuer is not the one that is waited for: it must not make the context ask again, and the
