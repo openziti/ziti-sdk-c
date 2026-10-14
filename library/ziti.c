@@ -175,7 +175,8 @@ int load_tls(ziti_config *cfg, tls_context **ctx, struct tls_credentials *creds)
     const char *ca;
     size_t ca_len = parse_ref(cfg->id.ca, &ca);
     tls_context *tls = default_tls_context();
-    if (ca != NULL && tls->set_ca_bundle(tls, ca, ca_len) != 0) {
+    // an empty CA (ziti_context_init() stores one for a config without a CA) means the system CA store
+    if (ca != NULL && *ca != '\0' && tls->set_ca_bundle(tls, ca, ca_len) != 0) {
         // the context would keep trusting the system CA store instead of the identity's CA
         ZITI_LOG(ERROR, "failed to load identity CA bundle");
         tls->free_ctx(tls);

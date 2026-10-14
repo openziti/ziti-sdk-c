@@ -31,6 +31,9 @@ namespace {
     // the whole suite runs in one process
     uv_loop_t *test_loop() {
         static uv_loop_t *loop = uv_loop_new();
+        // the cached time is stale if other cases ran since the loop last did: timers started on
+        // it would fire at once
+        uv_update_time(loop);
         return loop;
     }
 
@@ -190,6 +193,22 @@ TEST_CASE("load_tls rejects a CA bundle the TLS backend cannot load", "[ztx]") {
     tls_context *tls = nullptr;
     CHECK(load_tls(&cfg, &tls, nullptr) == ZITI_INVALID_CONFIG);
     CHECK(tls == nullptr);
+    if (tls) tls->free_ctx(tls);
+}
+
+TEST_CASE("load_tls uses the system CA store when the identity has no CA", "[ztx]") {
+    ziti_config cfg{};
+    SECTION("no CA") {
+        cfg.id.ca = nullptr;
+    }
+    SECTION("empty CA") {
+        // what ziti_context_init() stores for a config without a CA
+        cfg.id.ca = (char *) "";
+    }
+
+    tls_context *tls = nullptr;
+    CHECK(load_tls(&cfg, &tls, nullptr) == ZITI_OK);
+    CHECK(tls != nullptr);
     if (tls) tls->free_ctx(tls);
 }
 
