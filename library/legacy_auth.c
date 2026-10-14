@@ -454,9 +454,11 @@ static uint64_t refresh_delay(struct legacy_auth_s *auth, ziti_api_session *sess
 
     // add some jitter and time buffer
     // renew some time between 1/2 and 5/6 of remaining time
-    uint64_t rando = randombytes_random();
-    rando = rando % (delay_seconds / 3);
-    delay_seconds = delay_seconds / 2 + rando;
+    if (delay_seconds >= API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS) {
+        uint64_t rando = randombytes_random();
+        rando = rando % (delay_seconds / 3);
+        delay_seconds = delay_seconds / 2 + rando;
+    }
 
 
     if (delay_seconds < API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS) {
