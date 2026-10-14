@@ -2322,7 +2322,16 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
 
     if (!ztx->auth_method) {
         if (use_oidc) {
-            ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, ztx->config.id.ca, &ztx->id_creds);
+            // id.ca may be a ref ("pem:..."/"file:...") for identities enrolled by
+            // other tools (e.g. the Go CLI). Resolve it the same way load_tls() does,
+            // otherwise tlsuv treats the "pem:" prefix as PEM and drops the first
+            // certificate, leaving the OIDC client with an empty trust store.
+            const char *oidc_ca = NULL;
+            parse_ref(ztx->config.id.ca, &oidc_ca);
+            if (oidc_ca == NULL) {
+                oidc_ca = "";
+            }
+            ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, oidc_ca, &ztx->id_creds);
         } else {
             ztx->auth_method = new_legacy_auth(ztx->loop, ziti_get_controller(ztx), ztx->tlsCtx,
                                                ztx->id_creds.key != NULL);
