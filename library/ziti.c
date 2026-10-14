@@ -1842,6 +1842,14 @@ static void refresh_cb(void *data) {
 }
 
 void ziti_services_refresh(ziti_context ztx, bool now) {
+    // The refresh needs the api session, and the callbacks of its requests schedule the next one, also the
+    // ones that come back after the session is gone. Without a session it does not run: it would only fail,
+    // and it would take the deadline from the retry of the authentication. Authenticating starts it again.
+    if (ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
+        ZTX_LOG(VERBOSE, "not fully authenticated: services refresh is not scheduled");
+        return;
+    }
+
     if (now || ztx->opts.refresh_interval > 0) {
         if (now) {
             ZTX_LOG(VERBOSE, "forcing service refresh");
@@ -2477,6 +2485,12 @@ int ziti_context_run(ziti_context ztx, uv_loop_t *loop) {
 
 int ziti_refresh(ziti_context ztx) {
     if (!ztx->enabled) return ZITI_DISABLED;
+
+    // the requests of a refresh need the api session, and their callbacks schedule the next one
+    if (ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
+        ZTX_LOG(DEBUG, "application requested service refresh, but the context is not fully authenticated");
+        return ZITI_INVALID_STATE;
+    }
 
     ZTX_LOG(DEBUG, "application requested service refresh");
     ziti_services_refresh(ztx, true);
