@@ -53,6 +53,7 @@ static void legacy_auth_free(ziti_auth_method_t *self);
 static int legacy_auth_totp(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
 static const ziti_auth_query_mfa* get_mfa(ziti_api_session *session);
 static uint64_t refresh_delay(struct legacy_auth_s *auth, ziti_api_session *);
+static bool session_is_expired(struct legacy_auth_s *auth, ziti_api_session *session);
 static const struct timeval* legacy_auth_expiration(ziti_auth_method_t *self);
 static void legacy_auth_dump(ziti_auth_method_t *self, int (*printer)(void *arg, const char *fmt, ...), void *ctx);
 
@@ -291,6 +292,23 @@ static void legacy_session_cb(tlsuv_http_resp_t *resp, const char *err, json_obj
             delay = auth->session ? refresh_delay(auth, auth->session)
                                   : next_backoff(&auth->fail_count, MAX_BACKOFF, BACKOFF_BASE_DELAY);
             delay_type = auth->session ? "refresh" : "backoff";
+        } else if (session_is_expired(auth, session)) {
+            // handing it on would only get it thrown out again by the first check of the context,
+            // followed by another authentication, so it is a failed authentication
+            AUTH_LOG(ERROR, "controller issued api session[%s] that is already expired", session->id);
+            free_ziti_api_session_ptr(session);
+            free_ziti_api_session_ptr(auth->session);
+            auth->session = NULL;
+            auth->cb(auth->ctx, ZitiAuthImpossibleToAuthenticate,
+                     &(ziti_error){
+                         .err = ZITI_AUTHENTICATION_FAILED,
+                         .code = "EXPIRED_API_SESSION",
+                         .message = "controller issued an expired api session",
+                     });
+            // not a transient failure: wait as long as for the refresh of any other session
+            delay = next_backoff(&auth->fail_count, MAX_BACKOFF, BACKOFF_BASE_DELAY);
+            delay = MAX(delay, API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS * 1000);
+            delay_type = "backoff";
         } else {
             auth->fail_count = 0;
             ziti_api_session *old_session = auth->session;
@@ -402,6 +420,30 @@ static const ziti_auth_query_mfa* get_mfa(ziti_api_session *session) {
     return aq;
 }
 
+// The controller sets the expiration of a session on its own clock. A local clock that is off by more than
+// the lifetime of the session makes a good session look expired, and the context throws out a session
+// token that is past its expiration. So a session that looks expired is judged on the clock of the
+// controller: the expiration is shifted by the difference of the clocks, taken from the time the
+// controller stamped on the session. Returns true when the session is expired even so.
+static bool session_is_expired(struct legacy_auth_s *auth, ziti_api_session *session) {
+    uv_timeval64_t now;
+    if (uv_gettimeofday(&now) != 0 || session->expires.tv_sec <= 0 || session->expires.tv_sec >= now.tv_sec) {
+        return false;
+    }
+
+    int64_t stamped = session->cached_last_activity_at.tv_sec > 0 ? session->cached_last_activity_at.tv_sec
+                                                                  : session->updated.tv_sec;
+    if (stamped > 0) {
+        int64_t skew = now.tv_sec - stamped;
+        if (skew > 10 || skew < -10) {
+            AUTH_LOG(ERROR, "local clock is %" PRId64 " seconds %s UTC (as reported by controller)",
+                     skew > 0 ? skew : -skew, skew > 0 ? "ahead" : "behind");
+        }
+        session->expires.tv_sec += skew;
+    }
+    return session->expires.tv_sec < now.tv_sec;
+}
+
 static uint64_t refresh_delay(struct legacy_auth_s *auth, ziti_api_session *session) {
     uint64_t delay_seconds;
     const char *source;
@@ -410,7 +452,7 @@ static uint64_t refresh_delay(struct legacy_auth_s *auth, ziti_api_session *sess
     if (uv_gettimeofday(&now) == 0 && session->expires.tv_sec > 0) {
         if (session->expires.tv_sec < now.tv_sec) {
             AUTH_LOG(WARN, "api session is already expired according to local clock");
-            return 0;
+            return API_SESSION_MINIMUM_REFRESH_DELAY_SECONDS * 1000; // not 0: that would be a loop
         }
 
         delay_seconds = session->expires.tv_sec - now.tv_sec;
