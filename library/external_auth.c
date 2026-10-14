@@ -334,6 +334,37 @@ static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti
     if (cert_resp) { free_ziti_enrollment_cert_resp_ptr(cert_resp); }
 }
 
+// an issuer is compared as the URL it is: with or without the trailing slash
+static bool same_issuer(const char *a, const char *b) {
+    size_t la = strlen(a);
+    size_t lb = strlen(b);
+    if (la > 0 && a[la - 1] == '/') la--;
+    if (lb > 0 && b[lb - 1] == '/') lb--;
+    return la == lb && strncmp(a, b, la) == 0;
+}
+
+// Is `issuer` the one of a signer the SDK knows? It knows a signer by where its IdP is (`externalAuthUrl`, or the issuer its
+// discovery document named), and the controller by the issuer of its tokens: the two are not always the same string.
+// Nothing is known to compare with before the signers are listed.
+static bool issuer_matches_a_signer(ziti_context ztx, const char *issuer) {
+    ext_oidc_client_t *clients[] = {ztx->ext_auth, ztx->ext_auth2};
+    bool any = false;
+    for (int i = 0; i < sizeof(clients) / sizeof(clients[0]); i++) {
+        if (clients[i]) {
+            any = true;
+            if (same_issuer(issuer, cstr_str(&clients[i]->issuer))) return true;
+        }
+    }
+
+    const char *name;
+    const ziti_jwt_signer *signer;
+    MODEL_MAP_FOREACH(name, signer, &ztx->ext_signers) {
+        any = true;
+        if (signer->provider_url && same_issuer(issuer, signer->provider_url)) return true;
+    }
+    return !any;
+}
+
 extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
     ZTX_LOG(DEBUG, "received access token: %s", jwt_payload(token));
     assert(ztx->auth_method);
@@ -355,7 +386,25 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
         free(jwt);
         return ZITI_JWT_INVALID;
     }
+
+    // the wait is for another token: the controller has turned down the one the context holds, and giving it again
+    // would start the requests, and the wait, over
+    if (ztx->awaiting_secondary && ztx->auth_state == ZitiAuthStatePartiallyAuthenticated) {
+        const zt_jwt *held = model_map_get(&ztx->ext_jwt_tokens, cstr_str(&jwt->issuer));
+        if (held && strcmp(cstr_str(&held->encoded), cstr_str(&jwt->encoded)) == 0) {
+            ZTX_LOG(WARN, "external JWT iss[%s] is the one that was turned down: rejected", cstr_str(&jwt->issuer));
+            zt_jwt_drop(jwt);
+            free(jwt);
+            return ZITI_JWT_INVALID;
+        }
+    }
     ZTX_LOG(DEBUG, "received access token: %s", json_object_get_string(jwt->claims));
+    if (model_map_get(&ztx->ext_jwt_tokens, cstr_str(&jwt->issuer)) == NULL &&
+        !issuer_matches_a_signer(ztx, cstr_str(&jwt->issuer))) {
+        ZTX_LOG(WARN, "external JWT iss[%s] matches no known external signer: the signers are known by the URL of their "
+                      "IdP, which can differ from the issuer of their tokens, and the controller decides if it takes the token",
+                cstr_str(&jwt->issuer));
+    }
     zt_jwt *prev = model_map_set(&ztx->ext_jwt_tokens, cstr_str(&jwt->issuer), jwt);
     zt_jwt_drop(prev);
     free(prev);

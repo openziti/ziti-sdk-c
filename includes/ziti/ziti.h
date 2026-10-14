@@ -1196,7 +1196,8 @@ extern int ziti_ext_auth_set_params(ziti_context ztx, const ziti_auth_query_para
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
  * @param token the token received from the external JWT signer
  *
- * @return ZITI_OK, or ZITI_JWT_INVALID if the token cannot be parsed or has expired: nothing is changed then,
+ * @return ZITI_OK, or ZITI_JWT_INVALID if the token cannot be parsed, has expired, or is the very token the
+ *         controller has turned down and the context is waiting to replace: nothing is changed then,
  *         and the app is not asked for the login again
  *
  * @see ziti_ext_auth()
