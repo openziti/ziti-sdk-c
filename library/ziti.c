@@ -50,6 +50,11 @@
 
 #define ONE_DAY (60 * 60 * 24)
 
+// wait between the attempts to authenticate while the controller or its auth provider is not reachable:
+// at least the base, at most about 2^max times that
+#define AUTH_RETRY_BASE_MS 1000
+#define AUTH_RETRY_MAX_BACKOFF 5
+
 #define ztx_controller(ztx) \
 (!cstr_is_empty(&(ztx)->ctrl.url) ? cstr_str(&(ztx)->ctrl.url) : (ztx)->config.controller_url)
 
@@ -63,6 +68,7 @@ static void edge_routers_cb(ziti_edge_router_array ers, const ziti_error *err, v
 static void ziti_init_async(ziti_context ztx, void *data);
 
 static void ziti_re_auth(ziti_context ztx);
+static void pre_auth_retry(void *data);
 
 static void ztx_prepare(uv_prepare_t *prep);
 static void grim_reaper(ziti_context ztx);
@@ -282,6 +288,17 @@ static void ztx_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
     }
 }
 
+// Authenticate again after a wait that grows with every failure in a row. The version of the controller is
+// cached, so nothing in a failing re-authentication has to wait for the network: without this wait it
+// runs as fast as the failures come back, and does not leave room for the recovery.
+static void ztx_retry_auth_later(ziti_context ztx) {
+    // MAX() evaluates its arguments twice, and every call of next_backoff() is another failure
+    uint64_t delay = next_backoff(&ztx->auth_retries, AUTH_RETRY_MAX_BACKOFF, AUTH_RETRY_BASE_MS);
+    delay = MAX(delay, AUTH_RETRY_BASE_MS);
+    ZTX_LOG(INFO, "authenticating again in %" PRIu64 " ms", delay);
+    ztx_set_deadline(ztx, delay, &ztx->refresh_deadline, pre_auth_retry, ztx);
+}
+
 static void ztx_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err) {
     ziti_controller *ctrl = ztx_get_controller(ztx);
     ztx->auth_state = ZitiAuthImpossibleToAuthenticate;
@@ -289,8 +306,8 @@ static void ztx_set_impossible_to_authenticate(ziti_context ztx, const ziti_erro
     if (err->err == UV_ECONNREFUSED || err->err == UV_EAI_NONAME) {
         ZTX_LOG(ERROR, "auth provider is not available: %s", uv_strerror(err->err));
         // current controller became unavailable
-        // re-auth will find another controller if possible or start back-off retries
-        ziti_re_auth(ztx);
+        // re-auth will find another controller if possible
+        ztx_retry_auth_later(ztx);
         return;
     }
 
@@ -2587,6 +2604,14 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
 
 void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
     ziti_context ztx = ctx;
+
+    if (state == ZitiAuthStatePartiallyAuthenticated || state == ZitiAuthStateFullyAuthenticated) {
+        // the controller and its auth provider answered: nothing to retry, and the next failure starts over
+        ztx->auth_retries = 0;
+        if (ztx->refresh_deadline.expire_cb == pre_auth_retry) {
+            clear_deadline(&ztx->refresh_deadline);
+        }
+    }
 
     bool success = false;
     const char *message = NULL;
