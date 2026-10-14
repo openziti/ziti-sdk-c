@@ -654,6 +654,36 @@ TEST_CASE_METHOD(SecondaryExtJwtVerified, "oidc-secondary-ext-jwt-rejected-refre
     CHECK_THAT(verify(), Catch::Matchers::IsEmpty());
 }
 
+// The secondary token expired and the context is waiting for the external login. A refresh of the api session token
+// (as the auth method's timer does) must not prompt the app for the login again: it already has been, once. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwtVerified, "oidc-secondary-ext-jwt-expired-refreshed", "[integ][oidc-secondary]") {
+    std::string first = checkENV("IDP_TOKEN");  // short-lived
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+
+    // log in with the short-lived token, and wait until it expires and the context asks for login_external
+    wait_for_secondary_login(first);
+    run(UNTIL(false), 1000);
+    events = authState.count;
+
+    // trigger oidc_client_refresh without waiting for the token lifetime.
+    ziti_force_api_session_refresh(ztx);
+    run(UNTIL(false), 3000);
+
+    // no new prompt for the login, and no success
+    INFO("auth events after the refresh: " << authState.count - events
+         << ", successes: " << authState.success - logins);
+    REQUIRE(authState.count == events);
+    REQUIRE(authState.success == logins);
+    CHECK(authState.action == ziti_auth_login_external);
+    CHECK(load_error != ZITI_OK);
+
+    // the new token from that login completes the authentication, once, and the controller takes the requests
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, next.c_str()));
+    REQUIRE(run(UNTIL(authState.success == logins + 1 && load_error == ZITI_OK), 5000));
+    CHECK_FALSE(run(UNTIL(authState.success > logins + 1), 2000));
+    CHECK_THAT(verify(), Catch::Matchers::IsEmpty());
+}
+
 // A token of another issuer is not the one that is waited for: it must not make the context ask again, and the
 // login that is going on is not over. GH-1159
 TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-expired-other-issuer", "[integ][oidc-secondary]") {

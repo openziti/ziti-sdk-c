@@ -99,7 +99,8 @@ def test_secondary_ext_jwt_issuer_is_not_the_signer_url(secondary_ext_jwt, idp, 
 
 
 @pytest.mark.require_ziti('>=2.0.0')
-@pytest.mark.parametrize("variant", ["", "-answered-in-event", "-answered-with-expired", "-other-issuer", "-login-restarted"])
+@pytest.mark.parametrize("variant", ["", "-answered-in-event", "-answered-with-expired", "-other-issuer", "-login-restarted",
+                                     "-refreshed"])
 def test_secondary_ext_jwt_expired(variant, secondary_ext_jwt, idp, idp_user, tmp_path):
     """The secondary token expires and nothing replaces it, as when the IdP session ended.
 
@@ -107,8 +108,8 @@ def test_secondary_ext_jwt_expired(variant, secondary_ext_jwt, idp, idp_user, tm
     in a loop, and a new token completes the authentication. GH-1159
 
     Variants: the app answers from inside the event that asks (with a valid token, and with the expired one every
-    time), a token of another issuer arrives meanwhile, and the auth method starts its login over and the
-    controller asks for a TOTP.
+    time), a token of another issuer arrives meanwhile, the auth method starts its login over and the
+    controller asks for a TOTP, and the api session token is refreshed during the wait.
     """
     env = dict(secondary_ext_jwt)
     env['IDP_TOKEN'] = idp.access_token(idp_user, ttl=4)
