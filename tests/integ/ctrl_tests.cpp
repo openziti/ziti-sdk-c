@@ -186,6 +186,7 @@ TEST_CASE_METHOD(CtrlTest, "authenticate", "[controller]") {
     REQUIRE(version);
     auto p = map_get<api_path*>(version.value()->api_versions->oidc, "v1");
     auto auth = new_oidc_auth(loop(), p, cfg->id.ca, &creds);
+    REQUIRE(auth != nullptr);
 
     DEFER {
         auth->free(auth);
