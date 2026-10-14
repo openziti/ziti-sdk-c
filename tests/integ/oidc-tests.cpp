@@ -213,3 +213,83 @@ TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-rotation", "[integ][oi
     REQUIRE_ZITI_OK(ziti_refresh(ztx));
     CHECK_FALSE(run(UNTIL(authState.success > logins), 3000));
 }
+
+namespace {
+
+// Holds the auth/context state as fixture members so it outlives ziti_shutdown():
+// the shutdown callbacks may still deliver events, and app_ctx() points back here.
+class PemCaTestCase : public LoopTestCase {
+protected:
+    ziti_context ztx{};
+    struct {
+        bool loaded{false};
+        int load_error{ZITI_OK};
+        unsigned auth_success{0};
+    } state;
+
+    static void event_cb(ziti_context ztx, const ziti_event_t *ev) {
+        auto *self = static_cast<PemCaTestCase *>(ziti_app_ctx(ztx));
+        switch (ev->type) {
+        case ZitiContextEvent:
+            self->state.load_error = ev->ctx.ctrl_status;
+            if (ev->ctx.ctrl_status == ZITI_OK) {
+                self->state.loaded = true;
+            }
+            break;
+        case ZitiAuthEvent:
+            if (ev->auth.action == ziti_auth_success) {
+                self->state.auth_success++;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
+    ~PemCaTestCase() {
+        if (ztx != nullptr) {
+            ziti_shutdown(ztx);
+        }
+    }
+};
+
+} // namespace
+
+// GH-1146: identities enrolled by tools other than this SDK (e.g. the Go CLI)
+// store the CA as a ref ("pem:-----BEGIN ..."), not bare PEM. ziti.c used to hand
+// that raw string to the OIDC client; tlsuv then treated the "pem:" prefix as PEM,
+// dropped the first (here: only) certificate and left an empty trust store, so the
+// OIDC handshake failed and the context never authenticated. Driving a full context
+// (not new_oidc_auth directly) is what exercises the ref resolution in ziti.c.
+TEST_CASE_METHOD(PemCaTestCase, "oidc-pem-prefixed-ca", "[auth]") {
+    auto *path = checkENV("test_client");
+
+    ziti_config cfg{};
+    DEFER { free_ziti_config(&cfg); };
+    REQUIRE_ZITI_OK(ziti_load_config(&cfg, path));
+
+    // reproduce the CA ref a CLI-enrolled identity carries
+    std::string ca_ref = cfg.id.ca != nullptr ? cfg.id.ca : "";
+    if (ca_ref.rfind("pem:", 0) != 0) {
+        ca_ref = "pem:" + ca_ref;
+    }
+    free((void *) cfg.id.ca);
+    cfg.id.ca = strdup(ca_ref.c_str());
+
+    REQUIRE_ZITI_OK(ziti_context_init(&ztx, &cfg));
+
+    ziti_options opts{};
+    opts.config_types = (const char **) ALL_CONFIGS;
+    opts.app_ctx = this;
+    opts.events = ZitiContextEvent | ZitiAuthEvent;
+    opts.event_cb = event_cb;
+    REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &opts));
+    REQUIRE_ZITI_OK(ziti_context_run(ztx, loop()));
+
+    // before the fix the OIDC TLS handshake has no trust anchor, auth retries
+    // forever and this times out without a context event
+    REQUIRE(run(UNTIL(state.loaded || state.load_error != ZITI_OK)));
+    CHECK(state.load_error == ZITI_OK);
+    CHECK(state.loaded);
+    CHECK(state.auth_success > 0);
+}
