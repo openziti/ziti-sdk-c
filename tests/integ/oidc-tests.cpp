@@ -644,7 +644,7 @@ TEST_CASE_METHOD(SecondaryExtJwtVerified, "oidc-secondary-ext-jwt-rejected-refre
     // or what follows would pass for a refresh that never happened
     auto refreshes = token_refreshes;
     ziti_force_api_session_refresh(ztx);
-    REQUIRE(run(UNTIL(token_refreshes == refreshes), 5000));
+    REQUIRE(run(UNTIL(token_refreshes > refreshes), 5000));
     run(UNTIL(false), 2000);
 
     // every successful auth the SDK reports is used to make a /services request
@@ -682,7 +682,7 @@ TEST_CASE_METHOD(SecondaryExtJwtVerified, "oidc-secondary-ext-jwt-expired-refres
     // or what follows would pass for a refresh that never happened
     auto refreshes = token_refreshes;
     ziti_force_api_session_refresh(ztx);
-    REQUIRE(run(UNTIL(token_refreshes == refreshes), 5000));
+    REQUIRE(run(UNTIL(token_refreshes > refreshes), 5000));
     run(UNTIL(false), 2000);
 
     // no new prompt for the login, and no success
