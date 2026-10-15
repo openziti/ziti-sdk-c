@@ -700,6 +700,84 @@ TEST_CASE_METHOD(SecondaryExtJwtVerified, "oidc-secondary-ext-jwt-expired-refres
     CHECK_THAT(verify(), Catch::Matchers::IsEmpty());
 }
 
+// what the SDK has logged about /current-identity requests rejected during the wait for the external login
+static bool late_unauthorized_waiting;
+static unsigned late_unauthorized_identity_401s;
+
+static void late_unauthorized_logger(int level, const char *loc, const char *msg, size_t len) {
+    std::string line(msg, len);
+    if (line.find("waiting for the external login") != std::string::npos) {
+        late_unauthorized_waiting = true;
+    }
+    if (late_unauthorized_waiting && line.find("failed to get identity_data") != std::string::npos) {
+        late_unauthorized_identity_401s++;
+    }
+    count_sdk_log_lines(level, loc, msg, len);
+}
+
+// The controller starts rejecting a secondary token that has not expired (revoked, signing key rotated), and an api
+// session refresh is what finds out: the refresh succeeds (the controller does not check the external token on a
+// refresh) and the SDK reports success, as on every refresh. It sends /current-identity, whose 401 starts the wait, and
+// /current-api-session, whose answer sends another /current-identity behind ztx_unauthorized's check. That 401 arrives
+// during the wait. It is the same rejection, not a lost api session: the context must keep waiting, not re-authenticate
+// and report a success the controller doesn't accept. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwtVerified, "oidc-secondary-ext-jwt-rejected-late-unauthorized", "[integ][oidc-secondary]") {
+    std::string idp_token = checkENV("IDP_TOKEN");
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+    std::string rejected = checkENV("IDP_TOKEN_BAD_SIGNATURE");
+
+    // no background polling (the SDK default): nothing finds out about the bad token until the refresh
+    options.refresh_interval = 0;
+    REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+
+    login(idp_token);
+    REQUIRE(authState.success == 1);
+    REQUIRE(verify().empty());
+    REQUIRE(run(UNTIL(service_events > 0), 5000));
+    events = authState.count;
+
+    late_unauthorized_waiting = false;
+    late_unauthorized_identity_401s = 0;
+    ziti_log_set_logger(late_unauthorized_logger);
+
+    // the controller rejects the token from now on, and nothing has noticed yet
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, rejected.c_str()));
+    run(UNTIL(false), 1000);
+    REQUIRE(authState.count == events);
+
+    // the api session token is refreshed, as the timer of the auth method does it: it reports success (the SDK cannot
+    // know yet), and the requests that follow find out and start the wait for the login
+    auto refreshes = token_refreshes;
+    ziti_force_api_session_refresh(ztx);
+    REQUIRE(run(UNTIL(token_refreshes > refreshes), 5000));
+    REQUIRE(run(UNTIL(authState.action == ziti_auth_login_external), 5000));
+    logins = authState.success;
+    events = authState.count;
+    auto expected_failures = verify().size();
+
+    // a 401 has to arrive during the wait, or the test checks nothing
+    REQUIRE(run(UNTIL(late_unauthorized_identity_401s > 0), 5000));
+    run(UNTIL(false), 2000);
+
+    // no success after the wait started: every one the SDK reports gets a /services request, and the controller rejects them
+    auto failures = verify();
+    INFO("successes reported after the wait started: " << authState.success - logins
+         << ", turned down by the controller: " << failures.size() - expected_failures
+         << (failures.size() == expected_failures ? "" : ", first: " + failures[expected_failures]));
+    REQUIRE(authState.success == logins);
+    CHECK(failures.size() == expected_failures);
+
+    // still waiting for the login, without asking again
+    CHECK(authState.count == events);
+    CHECK(authState.action == ziti_auth_login_external);
+
+    // the new token from that login completes the authentication, once, and the controller takes the requests
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, next.c_str()));
+    REQUIRE(run(UNTIL(authState.success == logins + 1 && load_error == ZITI_OK), 5000));
+    CHECK_FALSE(run(UNTIL(authState.success > logins + 1), 2000));
+    CHECK(verify().size() == expected_failures);
+}
+
 // A token of another issuer is not the one that is waited for: it must not make the context ask again, and the
 // login that is going on is not over. GH-1159
 TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-expired-other-issuer", "[integ][oidc-secondary]") {

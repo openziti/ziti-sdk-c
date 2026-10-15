@@ -119,15 +119,16 @@ def test_secondary_ext_jwt_expired(variant, secondary_ext_jwt, idp, idp_user, tm
 
 
 @pytest.mark.require_ziti('>=2.0.0')
-@pytest.mark.parametrize("variant", ["", "-answered-with-rejected", "-refreshed"])
+@pytest.mark.parametrize("variant", ["", "-answered-with-rejected", "-refreshed", "-late-unauthorized"])
 def test_secondary_ext_jwt_rejected(variant, secondary_ext_jwt, idp, idp_user, tmp_path):
     """The controller turns down the secondary token although it has not expired, here for its signature.
 
     The context has to find out from the controller that the token is what it wants, ask for the external login
     and wait for it, not re-authenticate in a loop, and a new token completes the authentication. GH-1159
 
-    Variants: the app answers every request for the login with the token that was turned down, and the auth method
-    refreshes the api session token during the wait.
+    Variants: the app answers every request for the login with the token that was turned down, the auth method
+    refreshes the api session token during the wait, and a refresh finds out about the rejected token (a 401 from a
+    request sent before the wait then arrives during it).
     """
     env = dict(secondary_ext_jwt)
     env['IDP_TOKEN_NEXT'] = idp.access_token(idp_user)
