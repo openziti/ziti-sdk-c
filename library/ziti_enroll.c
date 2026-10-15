@@ -411,11 +411,19 @@ static void well_known_certs_cb(char *base64_encoded_pkcs7, const ziti_error *er
     ZITI_LOG(DEBUG, "CA PEM len = %zd", total_pem_len);
     ZITI_LOG(TRACE, "CA PEM:\n%s", er->cfg.id.ca);
 
+    tls_context *tls = default_tls_context();
+    if (tls->set_ca_bundle(tls, er->cfg.id.ca, strlen(er->cfg.id.ca)) != 0) {
+        // the controller would be contacted with the system CA store instead of its own CA
+        ZITI_LOG(ERROR, "failed to load controller CA bundle");
+        tls->free_ctx(tls);
+        complete_request(er, ZITI_INVALID_CONFIG);
+        return;
+    }
+
     ziti_ctrl_close(&er->controller);
     er->tls->free_ctx(er->tls);
 
-    er->tls = default_tls_context();
-    er->tls->set_ca_bundle(er->tls, er->cfg.id.ca, strlen(er->cfg.id.ca));
+    er->tls = tls;
     ziti_ctrl_init(er->loop, &er->controller, &er->cfg.controllers, er->tls);
 
     switch (er->enrollment.method) {

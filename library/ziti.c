@@ -175,8 +175,15 @@ int load_tls(ziti_config *cfg, tls_context **ctx, struct tls_credentials *creds)
     const char *ca;
     size_t ca_len = parse_ref(cfg->id.ca, &ca);
     tls_context *tls = default_tls_context();
-    if (ca != NULL) {
-        tls->set_ca_bundle(tls, ca, ca_len);
+    // an empty CA (ziti_context_init() stores one for a config without a CA) means the system CA store
+    if (ca != NULL && *ca != '\0' && tls->set_ca_bundle(tls, ca, ca_len) != 0) {
+        // the context would keep trusting the system CA store instead of the identity's CA
+        ZITI_LOG(ERROR, "failed to load identity CA bundle");
+        tls->free_ctx(tls);
+        if (ctx) {
+            *ctx = NULL;
+        }
+        return ZITI_INVALID_CONFIG;
     }
     if (tls->allow_partial_chain) {
         tls->allow_partial_chain(tls, true);
@@ -1850,11 +1857,19 @@ static void ca_bundle_cb(char *pkcs7, const ziti_error *err, void *ctx) {
         }
 
         if (ztx->config.id.ca == NULL || strcmp(new_pem, ztx->config.id.ca) != 0) {
-            ztx->tlsCtx->set_ca_bundle(ztx->tlsCtx, new_pem, strlen(new_pem));
-            ztx->channel_tls->set_ca_bundle(ztx->channel_tls, new_pem, strlen(new_pem));
-            ztx->e2ee_dial_tls->set_ca_bundle(ztx->e2ee_dial_tls, new_pem, strlen(new_pem));
-            if (ztx->auth_method && ztx->auth_method->set_ca) {
-                ztx->auth_method->set_ca(ztx->auth_method, new_pem);
+            // a context that rejects the bundle keeps its current one: stop at the first
+            // failure and keep id.ca as it is
+            tls_context *targets[] = {ztx->tlsCtx, ztx->channel_tls, ztx->e2ee_dial_tls};
+            for (size_t i = 0; i < sizeof(targets) / sizeof(targets[0]); i++) {
+                if (targets[i]->set_ca_bundle(targets[i], new_pem, strlen(new_pem)) != 0) {
+                    ZTX_LOG(ERROR, "failed to apply updated CA bundle");
+                    goto error;
+                }
+            }
+            if (ztx->auth_method && ztx->auth_method->set_ca &&
+                ztx->auth_method->set_ca(ztx->auth_method, new_pem) != 0) {
+                ZTX_LOG(ERROR, "failed to apply updated CA bundle to the auth method");
+                goto error;
             }
             char *old_ca = (char*)ztx->config.id.ca;
             free(old_ca);
@@ -2332,6 +2347,12 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
                 oidc_ca = "";
             }
             ztx->auth_method = new_oidc_auth(ztx->loop, oidc_path, oidc_ca, &ztx->id_creds);
+            if (ztx->auth_method == NULL) {
+                // retrying cannot help: the CA is the same one every time
+                ZTX_LOG(ERROR, "failed to create OIDC authentication method");
+                update_ctrl_status(ztx, ZITI_INVALID_CONFIG, ziti_errorstr(ZITI_INVALID_CONFIG));
+                return;
+            }
         } else {
             ztx->auth_method = new_legacy_auth(ztx->loop, ziti_get_controller(ztx), ztx->tlsCtx,
                                                ztx->id_creds.key != NULL);
