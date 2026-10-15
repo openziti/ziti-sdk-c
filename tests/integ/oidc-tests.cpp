@@ -183,11 +183,16 @@ TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
 
 // how often the SDK has said that the issuer of a token is not one it knows a signer by
 static unsigned unmatched_issuer_warnings;
+// how often the OIDC client has got a new token with its refresh token
+static unsigned token_refreshes;
 
-static void count_unmatched_issuer_warnings(int level, const char *loc, const char *msg, size_t len) {
+static void count_sdk_log_lines(int level, const char *loc, const char *msg, size_t len) {
     std::string line(msg, len);
     if (line.find("matches no known external signer") != std::string::npos) {
         unmatched_issuer_warnings++;
+    }
+    if (line.find("token refresh success") != std::string::npos) {
+        token_refreshes++;
     }
     fprintf(stderr, "(log)[%d] %s %s\n", level, loc, line.c_str());
 }
@@ -198,7 +203,8 @@ class SecondaryExtJwt : public ZitiTestCase {
 protected:
     SecondaryExtJwt() {
         unmatched_issuer_warnings = 0;
-        ziti_log_set_logger(count_unmatched_issuer_warnings);
+        token_refreshes = 0;
+        ziti_log_set_logger(count_sdk_log_lines);
     }
 
     void login(const std::string &token) {
@@ -564,31 +570,39 @@ TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-rejected-answered-with
 
 // Every success the context reports is put to the controller: the services are requested from inside the event, with
 // the auth the context has just declared good (a request made later could see a wait that has started over since).
+//
+// What the callbacks leave behind is not in the fixture: the callbacks of the requests still in flight get called when
+// ziti_shutdown() and the draining of the loop run, in the destructors of its bases, after its members are gone.
+static unsigned service_events;
+static unsigned services_responses;
+static std::vector<std::string> services_errors;
+
 class SecondaryExtJwtVerified : public SecondaryExtJwt {
 protected:
     SecondaryExtJwtVerified() {
+        service_events = 0;
+        services_responses = 0;
+        services_errors.clear();
         options.event_cb = verifying_event_cb;
         options.events |= ZitiServiceEvent;
     }
 
     static void verifying_event_cb(ziti_context ztx, const ziti_event_t *ev) {
         event_cb(ztx, ev);
-        auto self = (SecondaryExtJwtVerified *) ziti_app_ctx(ztx);
         if (ev->type == ZitiServiceEvent) {
-            self->service_events++;
+            service_events++;
         }
         if (ev->type == ZitiAuthEvent && ev->auth.action == ziti_auth_success) {
-            ziti_ctrl_get_services(ztx_get_controller(ztx), services_cb, self);
+            ziti_ctrl_get_services(ztx_get_controller(ztx), services_cb, nullptr);
         }
     }
 
     static void services_cb(ziti_service_array services, const ziti_error *err, void *ctx) {
-        auto self = (SecondaryExtJwtVerified *) ctx;
         if (err) {
-            self->services_errors.push_back(std::string(err->code ? err->code : "") + "/" + (err->message ? err->message : ""));
+            services_errors.push_back(std::string(err->code ? err->code : "") + "/" + (err->message ? err->message : ""));
         }
         free_ziti_service_array(&services);
-        self->services_responses++;
+        services_responses++;
     }
 
     // wait for answers to the /services requests of every "successful" auth so far. return the errors from the failed requests
@@ -596,10 +610,6 @@ protected:
         REQUIRE(run(UNTIL(services_responses == authState.success), 5000));
         return services_errors;
     }
-
-    unsigned service_events{};
-    unsigned services_responses{};
-    std::vector<std::string> services_errors;
 };
 
 // The context waits for the login after the controller turned down a token that has not expired, and the auth method
@@ -630,9 +640,12 @@ TEST_CASE_METHOD(SecondaryExtJwtVerified, "oidc-secondary-ext-jwt-rejected-refre
     run(UNTIL(false), 1000);
     events = authState.count;
 
-    // trigger oidc_client_refresh without waiting for the token lifetime.
+    // trigger oidc_client_refresh without waiting for the token lifetime: the refresh has to get its token,
+    // or what follows would pass for a refresh that never happened
+    auto refreshes = token_refreshes;
     ziti_force_api_session_refresh(ztx);
-    run(UNTIL(false), 3000);
+    REQUIRE(run(UNTIL(token_refreshes == refreshes), 5000));
+    run(UNTIL(false), 2000);
 
     // every successful auth the SDK reports is used to make a /services request
     auto failures = verify();
@@ -665,9 +678,12 @@ TEST_CASE_METHOD(SecondaryExtJwtVerified, "oidc-secondary-ext-jwt-expired-refres
     run(UNTIL(false), 1000);
     events = authState.count;
 
-    // trigger oidc_client_refresh without waiting for the token lifetime.
+    // trigger oidc_client_refresh without waiting for the token lifetime: the refresh has to get its token,
+    // or what follows would pass for a refresh that never happened
+    auto refreshes = token_refreshes;
     ziti_force_api_session_refresh(ztx);
-    run(UNTIL(false), 3000);
+    REQUIRE(run(UNTIL(token_refreshes == refreshes), 5000));
+    run(UNTIL(false), 2000);
 
     // no new prompt for the login, and no success
     INFO("auth events after the refresh: " << authState.count - events

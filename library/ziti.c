@@ -454,7 +454,7 @@ static ziti_auth_query_mfa *ext_jwt_query(ziti_api_session *api_sess) {
 // re-authentications that follow succeed without a new token (the controller does not ask for it on a token
 // refresh): a loop that never asks for the login. Ask for it instead, and finish when the token comes
 // (ztx_ext_token_received).
-static void ztx_wait_for_secondary(ziti_context ztx, const char *session_token, char *signer_id) {
+static void ztx_wait_for_secondary(ziti_context ztx, const char *session_token, const char *signer_id) {
     ZTX_LOG(WARN, "waiting for the external login of signer[%s]", signer_id);
     if (session_token != cstr_str(&ztx->session_token)) {  // the context may ask again with its own token
         cstr_assign(&ztx->session_token, session_token);
@@ -2589,6 +2589,16 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
             break;
         }
         case ZitiAuthStateFullyAuthenticated:
+            if (ztx->awaiting_secondary && ztx->auth_state == ZitiAuthStatePartiallyAuthenticated) {
+                // The auth method refreshed the api session while the context waits for the secondary external login
+                // (the controller does not ask for the token on a refresh). The wait goes on: the app has been asked
+                // for the login already, and the token the controller turned down is all the context has.
+                // The refreshed session token is the one the wait ends with.
+                ZTX_LOG(DEBUG, "api session refreshed while waiting for the secondary external login");
+                cstr_assign(&ztx->session_token, data);
+                state = ztx->auth_state;
+                break;
+            }
             if (secondary_token_expired(ztx)) {
                 ZTX_LOG(WARN, "token of the secondary external signer has expired");
                 ztx_wait_for_secondary(ztx, data, ztx->ext_auth2->signer_cfg.id);
