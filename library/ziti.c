@@ -1973,6 +1973,14 @@ done:
 // ends in the same answer. Only the api session says which it is, with the queries the controller still has for it
 // (/current-api-session is allowed while the authentication is partial).
 static void ztx_unauthorized(ziti_context ztx, const ziti_error *err) {
+    // The context waits for the secondary external login already: a request that was sent before the wait began is
+    // turned down because of the very login the wait is for. Authenticating again does not help, it ends in a refresh
+    // that reports a success the controller does not agree to, and the round starts again.
+    if (ztx->awaiting_secondary && ztx->auth_state == ZitiAuthStatePartiallyAuthenticated) {
+        ZTX_LOG(DEBUG, "request turned down while waiting for the secondary external login: ignored");
+        return;
+    }
+
     if (ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
         ztx_session_lost(ztx, err);
         return;
