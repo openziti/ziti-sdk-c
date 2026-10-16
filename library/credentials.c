@@ -120,6 +120,10 @@ error:
     return result;
 }
 
+bool zt_jwt_expired(const zt_jwt *jwt, uv_timeval64_t now) {
+    return jwt->expiration != 0 && jwt->expiration <= now.tv_sec;
+}
+
 int zt_credential_from_jwt(const char *jwt, ziti_credential_t *cred) {
     assert(jwt);
     assert(cred);

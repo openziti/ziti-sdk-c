@@ -129,6 +129,8 @@ struct ziti_ctx {
 
     ziti_auth_method_t *auth_method;
     ziti_auth_state auth_state;
+    // the api session is there, but the token of the secondary external signer is not: waiting for the external login
+    bool awaiting_secondary;
     ziti_mfa_cb mfa_cb;
     void *mfa_ctx;
     model_map ext_jwt_tokens; // map<issuer, zt_jwt>
@@ -285,6 +287,8 @@ static inline bool ctrl_version_supports_enroll_to(const char *ctrl_ver) {
 const ziti_env_info* get_env_info();
 
 int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer, bool secondary);
+// a new external token arrived: completes the authentication that waited for the secondary one, if it is that one's
+void ztx_ext_token_received(ziti_context ztx, const zt_jwt *jwt);
 void ztx_dump_external_auth(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx);
 extern void ztx_request_session_cert(ziti_context ztx);
 extern void ztx_clear_session_creds(ziti_context ztx);

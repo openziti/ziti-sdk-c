@@ -183,10 +183,10 @@ class OidcIdp:
     def __exit__(self, *exc): self.stop()
 
     # ---- tokens -----------------------------------------------------------------------------
-    def _sign(self, claims, ttl=TOKEN_TTL):
+    def _sign(self, claims, ttl=TOKEN_TTL, key=None):
         now = int(time.time())
         claims = {"iss": self.issuer, "iat": now, "exp": now + ttl, **claims}
-        return jwt.encode({"alg": "RS256", "kid": self.key.kid}, claims, self.key)
+        return jwt.encode({"alg": "RS256", "kid": self.key.kid}, claims, key or self.key)
 
     def _access_token(self, client, grant_type, user=None, scope=None, ttl=TOKEN_TTL):
         # a JWT, not an opaque string: an ext-jwt-signer validates whichever token the SDK sends
@@ -196,6 +196,17 @@ class OidcIdp:
         """An access token of ``email`` like the grants issue, but valid for ``ttl`` seconds: for tests of what
         happens when one expires."""
         return self._access_token(self.client, "password", email, "openid email", ttl)
+
+    def token_of_other_issuer(self, email, issuer="https://other-idp.example.com"):
+        """A token like ``access_token`` makes, as an IdP with another ``iss`` would issue it: the controller knows
+        no signer of that issuer."""
+        return self._sign({"iss": issuer, "sub": email, "email": email, "aud": self.client.get_client_id()})
+
+    def token_with_bad_signature(self, email):
+        """A token like ``access_token`` makes, signed with another key under the kid of the IdP's own: it has not
+        expired and nothing in it looks wrong, but the controller cannot verify it."""
+        other = RSAKey.generate_key(2048, parameters={"use": "sig", "alg": "RS256"})
+        return self._sign({"sub": email, "email": email, "aud": self.client.get_client_id()}, key=other)
 
     # ---- authlib wiring ---------------------------------------------------------------------
     def _configure_authlib(self):

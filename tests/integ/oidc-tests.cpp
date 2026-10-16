@@ -15,15 +15,29 @@
 // limitations under the License.
 
 #include <catch2/catch_all.hpp>
+#include <vector>
 #include <tlsuv/tlsuv.h>
 #include <ziti/ziti.h>
 #include <ziti/zitilib.h>
+
+// stc/cstr.h declares _cstr_init as plain `extern`, which mangles under C++; common.h first, then cstr.h
+// under C linkage, satisfies both (as in e2e_tests.cpp)
+#include <stc/common.h>
+extern "C" {
+#include <stc/cstr.h>
+}
 
 #include "fixtures.h"
 #include "oidc.h"
 #include "test-data.h"
 #include "totp.h"
 #include "ziti/ziti_log.h"
+#include "ziti_ctrl.h"
+
+// the SDK's own callback for the state of the authentication, which the auth method calls
+extern "C" void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data);
+extern "C" ziti_controller *ztx_get_controller(ziti_context ztx);
+extern "C" void ziti_force_api_session_refresh(ziti_context ztx);
 
 class AuthTests: public LoopTestCase {};
 
@@ -167,10 +181,32 @@ TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
     REQUIRE(run(UNTIL(this->loaded && this->load_error == ZITI_OK)));
 }
 
+// how often the SDK has said that the issuer of a token is not one it knows a signer by
+static unsigned unmatched_issuer_warnings;
+// how often the OIDC client has got a new token with its refresh token
+static unsigned token_refreshes;
+
+static void count_sdk_log_lines(int level, const char *loc, const char *msg, size_t len) {
+    std::string line(msg, len);
+    if (line.find("matches no known external signer") != std::string::npos) {
+        unmatched_issuer_warnings++;
+    }
+    if (line.find("token refresh success") != std::string::npos) {
+        token_refreshes++;
+    }
+    fprintf(stderr, "(log)[%d] %s %s\n", level, loc, line.c_str());
+}
+
 // The identity logs in with its cert, and its auth policy requires a token from an ext-jwt-signer as
 // secondary auth: test_auth.py sets up the policy and passes the tokens as IDP_TOKEN (and IDP_TOKEN_NEXT).
 class SecondaryExtJwt : public ZitiTestCase {
 protected:
+    SecondaryExtJwt() {
+        unmatched_issuer_warnings = 0;
+        token_refreshes = 0;
+        ziti_log_set_logger(count_sdk_log_lines);
+    }
+
     void login(const std::string &token) {
         // the cert is enough for a session, but not for a full one
         CHECK(load() == ZITI_PARTIALLY_AUTHENTICATED);
@@ -186,6 +222,45 @@ protected:
         REQUIRE(run(UNTIL(loaded)));
         CHECK(load_error == ZITI_OK);
     }
+
+    // Logs in with the short-lived `token` and waits until it has expired and the context asks for the
+    // external login again: `logins` and `events` are what the app has seen up to that request.
+    void wait_for_secondary_login(const std::string &token) {
+        // poll the controller as an app does: the polling must not fight the wait for the login
+        options.refresh_interval = 1;
+        REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+
+        login(token);
+        logins = authState.success;
+        events = authState.count;
+
+        // the polling finds out that the controller turns the requests down
+        auto expiration = jwt_expiration(token);
+        REQUIRE(run(UNTIL(time(nullptr) > expiration + 1), 15000));
+
+        // the app is asked to log in with the external signer again
+        REQUIRE(run(UNTIL(authState.action == ziti_auth_login_external && authState.count > events), 5000));
+        events = authState.count;
+    }
+
+    // an app that has a token at hand: `answer` is given from the event that asks for the external login,
+    // before the SDK is done with that event, once or (`answer_every_time`) to every such event
+    static void answering_event_cb(ziti_context ztx, const ziti_event_t *ev) {
+        event_cb(ztx, ev);
+        auto self = (SecondaryExtJwt *) ziti_app_ctx(ztx);
+        if (ev->type == ZitiAuthEvent && ev->auth.action == ziti_auth_login_external && !self->answer.empty()) {
+            std::string token = self->answer;
+            if (!self->answer_every_time) {
+                self->answer.clear();
+            }
+            ziti_ext_auth_token(ztx, token.c_str());
+        }
+    }
+
+    std::string answer;
+    bool answer_every_time{};
+    unsigned logins{};
+    unsigned events{};
 };
 
 // GH-919
@@ -292,4 +367,453 @@ TEST_CASE_METHOD(PemCaTestCase, "oidc-pem-prefixed-ca", "[auth]") {
     CHECK(state.load_error == ZITI_OK);
     CHECK(state.loaded);
     CHECK(state.auth_success > 0);
+}
+
+// The token the identity logged in with expires and nothing replaces it, as when the IdP session has ended:
+// the controller wants the secondary auth again, and the context has to say so instead of carrying on as
+// authenticated and re-authenticating in a loop. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-expired", "[integ][oidc-secondary]") {
+    std::string first = checkENV("IDP_TOKEN");  // short-lived
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+
+    wait_for_secondary_login(first);
+
+    // and the context waits for it: not authenticated, not reporting success, and the polling does not
+    // restart the authentication
+    run(UNTIL(false), 2000);
+    CHECK(authState.success == logins);
+    CHECK(authState.count == events);
+    CHECK(load_error != ZITI_OK);
+
+    // a token that has expired is turned down, and nothing changes: the app is not asked again for the same
+    // login it has just failed to give, and the context does not report success
+    CHECK(ziti_ext_auth_token(ztx, first.c_str()) == ZITI_JWT_INVALID);
+    CHECK(authState.count == events);
+    CHECK(authState.success == logins);
+
+    // the new token from that login completes the authentication, once
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, next.c_str()));
+    REQUIRE(run(UNTIL(authState.success == logins + 1 && load_error == ZITI_OK), 5000));
+    CHECK_FALSE(run(UNTIL(authState.success > logins + 1), 2000));
+}
+
+// The app has a token at hand and gives it from the event that asks for it, before the SDK is done with that
+// event: the authentication completes there, and once. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-expired-answered-in-event", "[integ][oidc-secondary]") {
+    std::string first = checkENV("IDP_TOKEN");  // short-lived
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+
+    options.refresh_interval = 1;
+    options.event_cb = answering_event_cb;
+    REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+
+    login(first);
+    logins = authState.success;
+    answer = next;
+
+    // the polling finds out that the controller turns the requests down, and the new token is there at once
+    auto expiration = jwt_expiration(first);
+    REQUIRE(run(UNTIL(time(nullptr) > expiration + 1), 15000));
+    REQUIRE(run(UNTIL(authState.success == logins + 1 && load_error == ZITI_OK), 5000));
+    CHECK_FALSE(run(UNTIL(authState.success > logins + 1), 2000));
+
+    // and the app is not asked to log in after that: success is the last it hears
+    CHECK(authState.action == ziti_auth_success);
+}
+
+// The app gives the token it has, which has expired too, to every request for the login. Turned down each time, it
+// must not send the SDK round in circles: the app is asked, and the context waits. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-expired-answered-with-expired", "[integ][oidc-secondary]") {
+    std::string first = checkENV("IDP_TOKEN");  // short-lived
+
+    options.refresh_interval = 1;
+    options.event_cb = answering_event_cb;
+    REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+
+    login(first);
+    logins = authState.success;
+    events = authState.count;
+    answer = first;
+    answer_every_time = true;
+
+    auto expiration = jwt_expiration(first);
+    REQUIRE(run(UNTIL(time(nullptr) > expiration + 1), 15000));
+    REQUIRE(run(UNTIL(authState.count > events), 5000));
+
+    // the requests are over, and the context waits
+    run(UNTIL(false), 2000);
+    auto count = authState.count;
+    run(UNTIL(false), 2000);
+    CHECK(authState.count == count);
+    CHECK(authState.success == logins);
+    CHECK(load_error != ZITI_OK);
+}
+
+// The controller turns down a token that has not expired (the signature does not verify; a revoked token or a clock that
+// is off do as well). The context cannot tell from the 401, and the re-authentication that follows succeeds without a new
+// token: a loop. It asks the controller what is missing, and that is the external login. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-rejected", "[integ][oidc-secondary]") {
+    std::string idp_token = checkENV("IDP_TOKEN");
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+    std::string rejected = checkENV("IDP_TOKEN_BAD_SIGNATURE");
+
+    options.refresh_interval = 1;
+    REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+
+    login(idp_token);
+    logins = authState.success;
+    events = authState.count;
+
+    // the app gives the token of its login, and it is the one the controller gets from now on
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, rejected.c_str()));
+
+    // the polling finds out that the controller turns it down: the app is asked to log in with the external signer again
+    REQUIRE(run(UNTIL(authState.action == ziti_auth_login_external && authState.count > events), 5000));
+    events = authState.count;
+
+    // and the context waits for it: not authenticated, not reporting success, not authenticating again
+    run(UNTIL(false), 2000);
+    CHECK(authState.success == logins);
+    CHECK(authState.count == events);
+    CHECK(load_error != ZITI_OK);
+
+    // the token that was turned down is not what is waited for: it is turned down again, and nothing changes
+    CHECK(ziti_ext_auth_token(ztx, rejected.c_str()) == ZITI_JWT_INVALID);
+    CHECK(authState.count == events);
+    CHECK(authState.success == logins);
+
+    // the new token from that login completes the authentication, once
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, next.c_str()));
+    REQUIRE(run(UNTIL(authState.success == logins + 1 && load_error == ZITI_OK), 5000));
+    CHECK_FALSE(run(UNTIL(authState.success > logins + 1), 2000));
+
+    // the tokens are the signer's own: there is nothing to say about their issuer
+    CHECK(unmatched_issuer_warnings == 0);
+}
+
+// The SDK knows the signer by where its IdP is (test_auth.py sets that to somewhere else than the issuer of the tokens, which
+// is what the controller knows it by), so it cannot tell whose token is whose. It says so once, and it leaves the decision
+// to the controller: the controller turns the token down, and the one that completes the login is not one the SDK takes
+// for the signer's. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-issuer-differs", "[integ][oidc-secondary]") {
+    std::string idp_token = checkENV("IDP_TOKEN");
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+    std::string rejected = checkENV("IDP_TOKEN_BAD_SIGNATURE");
+
+    options.refresh_interval = 1;
+    REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+
+    login(idp_token);
+    CHECK(unmatched_issuer_warnings == 1);
+    logins = authState.success;
+    events = authState.count;
+
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, rejected.c_str()));
+    REQUIRE(run(UNTIL(authState.action == ziti_auth_login_external && authState.count > events), 5000));
+    events = authState.count;
+
+    // the issuer is the same, and has been said
+    CHECK(unmatched_issuer_warnings == 1);
+
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, next.c_str()));
+    REQUIRE(run(UNTIL(authState.success == logins + 1 && load_error == ZITI_OK), 5000));
+    CHECK_FALSE(run(UNTIL(authState.success > logins + 1), 2000));
+}
+
+// The api session is no good to the controller any more (it is gone): that says nothing about the secondary token, the
+// controller wants no external login, and the context authenticates again as it always did. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-session-lost", "[integ][oidc-secondary]") {
+    std::string idp_token = checkENV("IDP_TOKEN");
+
+    options.refresh_interval = 1;
+    REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+
+    login(idp_token);
+    logins = authState.success;
+
+    // what the controller client sends from now on is not a session
+    ziti_ctrl_set_token(ztx_get_controller(ztx), "not-a-session-token");
+
+    // the polling is turned down, the controller has no query for the context, and it authenticates again
+    REQUIRE(run(UNTIL(authState.success == logins + 1 && load_error == ZITI_OK), 10000));
+    CHECK(authState.action == ziti_auth_success);
+}
+
+// The app gives the token it has, which the controller has just turned down, to every request for the login. That must
+// not send the context round in circles either (login, requests turned down, login...): the app is asked, and the
+// context waits. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-rejected-answered-with-rejected", "[integ][oidc-secondary]") {
+    std::string idp_token = checkENV("IDP_TOKEN");
+    std::string rejected = checkENV("IDP_TOKEN_BAD_SIGNATURE");
+
+    options.refresh_interval = 1;
+    options.event_cb = answering_event_cb;
+    REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+
+    login(idp_token);
+    logins = authState.success;
+    events = authState.count;
+    answer = rejected;
+    answer_every_time = true;
+
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, rejected.c_str()));
+    REQUIRE(run(UNTIL(authState.count > events), 5000));
+
+    // the requests are over, and the context waits
+    run(UNTIL(false), 2000);
+    auto count = authState.count;
+    run(UNTIL(false), 2000);
+    CHECK(authState.count == count);
+    CHECK(authState.success == logins);
+    CHECK(load_error != ZITI_OK);
+}
+
+// Every success the context reports is put to the controller: the services are requested from inside the event, with
+// the auth the context has just declared good (a request made later could see a wait that has started over since).
+//
+// What the callbacks leave behind is not in the fixture: the callbacks of the requests still in flight get called when
+// ziti_shutdown() and the draining of the loop run, in the destructors of its bases, after its members are gone.
+static unsigned service_events;
+static unsigned services_responses;
+static std::vector<std::string> services_errors;
+
+class SecondaryExtJwtVerified : public SecondaryExtJwt {
+protected:
+    SecondaryExtJwtVerified() {
+        service_events = 0;
+        services_responses = 0;
+        services_errors.clear();
+        options.event_cb = verifying_event_cb;
+        options.events |= ZitiServiceEvent;
+    }
+
+    static void verifying_event_cb(ziti_context ztx, const ziti_event_t *ev) {
+        event_cb(ztx, ev);
+        if (ev->type == ZitiServiceEvent) {
+            service_events++;
+        }
+        if (ev->type == ZitiAuthEvent && ev->auth.action == ziti_auth_success) {
+            ziti_ctrl_get_services(ztx_get_controller(ztx), services_cb, nullptr);
+        }
+    }
+
+    static void services_cb(ziti_service_array services, const ziti_error *err, void *ctx) {
+        if (err) {
+            services_errors.push_back(std::string(err->code ? err->code : "") + "/" + (err->message ? err->message : ""));
+        }
+        free_ziti_service_array(&services);
+        services_responses++;
+    }
+
+    // wait for answers to the /services requests of every "successful" auth so far. return the errors from the failed requests
+    std::vector<std::string> verify() {
+        REQUIRE(run(UNTIL(services_responses == authState.success), 5000));
+        return services_errors;
+    }
+};
+
+// The context waits for the login after the controller turned down a token that has not expired, and the auth method
+// refreshes its api session token meanwhile, as it does on its timer. The refresh succeeds (the controller does not ask
+// for the external token on a refresh), but the token the controller turned down is still all the context has: the
+// refresh must not end the wait and report success. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwtVerified, "oidc-secondary-ext-jwt-rejected-refreshed", "[integ][oidc-secondary]") {
+    std::string idp_token = checkENV("IDP_TOKEN");
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+    std::string rejected = checkENV("IDP_TOKEN_BAD_SIGNATURE");
+
+    options.refresh_interval = 1;
+    REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+
+    login(idp_token);
+    REQUIRE(authState.success == 1);
+    REQUIRE(verify().empty());
+
+    // let the first load of the services finish: a /services request that's still out when the token is rejected
+    // triggers re-auth, which is not what this is about
+    REQUIRE(run(UNTIL(service_events > 0), 5000));
+    logins = authState.success;
+    events = authState.count;
+
+    // use the bad-signature token, and wait until the context asks for login_external.
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, rejected.c_str()));
+    REQUIRE(run(UNTIL(authState.action == ziti_auth_login_external && authState.count > events), 5000));
+    run(UNTIL(false), 1000);
+    events = authState.count;
+
+    // trigger oidc_client_refresh without waiting for the token lifetime: the refresh has to get its token,
+    // or what follows would pass for a refresh that never happened
+    auto refreshes = token_refreshes;
+    ziti_force_api_session_refresh(ztx);
+    REQUIRE(run(UNTIL(token_refreshes > refreshes), 5000));
+    run(UNTIL(false), 2000);
+
+    // every successful auth the SDK reports is used to make a /services request
+    auto failures = verify();
+    INFO("successes reported after the refresh: " << authState.success - logins
+         << ", turned down by the controller: " << failures.size()
+         << (failures.empty() ? "" : ", first: " + failures.front()));
+    REQUIRE(failures.empty());
+
+    // no successful logins should be reported
+    REQUIRE(authState.success == logins);
+    CHECK(authState.count == events);
+    CHECK(authState.action == ziti_auth_login_external);
+    CHECK(load_error != ZITI_OK);
+
+    // the new token from that login completes the authentication, once, and the controller takes the requests
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, next.c_str()));
+    REQUIRE(run(UNTIL(authState.success == logins + 1 && load_error == ZITI_OK), 5000));
+    CHECK_FALSE(run(UNTIL(authState.success > logins + 1), 2000));
+    CHECK_THAT(verify(), Catch::Matchers::IsEmpty());
+}
+
+// The secondary token expired and the context is waiting for the external login. A refresh of the api session token
+// (as the auth method's timer does) must not prompt the app for the login again: it already has been, once. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwtVerified, "oidc-secondary-ext-jwt-expired-refreshed", "[integ][oidc-secondary]") {
+    std::string first = checkENV("IDP_TOKEN");  // short-lived
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+
+    // log in with the short-lived token, and wait until it expires and the context asks for login_external
+    wait_for_secondary_login(first);
+    run(UNTIL(false), 1000);
+    events = authState.count;
+
+    // trigger oidc_client_refresh without waiting for the token lifetime: the refresh has to get its token,
+    // or what follows would pass for a refresh that never happened
+    auto refreshes = token_refreshes;
+    ziti_force_api_session_refresh(ztx);
+    REQUIRE(run(UNTIL(token_refreshes > refreshes), 5000));
+    run(UNTIL(false), 2000);
+
+    // no new prompt for the login, and no success
+    INFO("auth events after the refresh: " << authState.count - events
+         << ", successes: " << authState.success - logins);
+    REQUIRE(authState.count == events);
+    REQUIRE(authState.success == logins);
+    CHECK(authState.action == ziti_auth_login_external);
+    CHECK(load_error != ZITI_OK);
+
+    // the new token from that login completes the authentication, once, and the controller takes the requests
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, next.c_str()));
+    REQUIRE(run(UNTIL(authState.success == logins + 1 && load_error == ZITI_OK), 5000));
+    CHECK_FALSE(run(UNTIL(authState.success > logins + 1), 2000));
+    CHECK_THAT(verify(), Catch::Matchers::IsEmpty());
+}
+
+// what the SDK has logged about /current-identity requests rejected during the wait for the external login
+static bool late_unauthorized_waiting;
+static unsigned late_unauthorized_identity_401s;
+
+static void late_unauthorized_logger(int level, const char *loc, const char *msg, size_t len) {
+    std::string line(msg, len);
+    if (line.find("waiting for the external login") != std::string::npos) {
+        late_unauthorized_waiting = true;
+    }
+    if (late_unauthorized_waiting && line.find("failed to get identity_data") != std::string::npos) {
+        late_unauthorized_identity_401s++;
+    }
+    count_sdk_log_lines(level, loc, msg, len);
+}
+
+// The controller starts rejecting a secondary token that has not expired (revoked, signing key rotated), and an api
+// session refresh is what finds out: the refresh succeeds (the controller does not check the external token on a
+// refresh) and the SDK reports success, as on every refresh. It sends /current-identity, whose 401 starts the wait, and
+// /current-api-session, whose answer sends another /current-identity behind ztx_unauthorized's check. That 401 arrives
+// during the wait. It is the same rejection, not a lost api session: the context must keep waiting, not re-authenticate
+// and report a success the controller doesn't accept. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwtVerified, "oidc-secondary-ext-jwt-rejected-late-unauthorized", "[integ][oidc-secondary]") {
+    std::string idp_token = checkENV("IDP_TOKEN");
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+    std::string rejected = checkENV("IDP_TOKEN_BAD_SIGNATURE");
+
+    // no background polling (the SDK default): nothing finds out about the bad token until the refresh
+    options.refresh_interval = 0;
+    REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+
+    login(idp_token);
+    REQUIRE(authState.success == 1);
+    REQUIRE(verify().empty());
+    REQUIRE(run(UNTIL(service_events > 0), 5000));
+    events = authState.count;
+
+    late_unauthorized_waiting = false;
+    late_unauthorized_identity_401s = 0;
+    ziti_log_set_logger(late_unauthorized_logger);
+
+    // the controller rejects the token from now on, and nothing has noticed yet
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, rejected.c_str()));
+    run(UNTIL(false), 1000);
+    REQUIRE(authState.count == events);
+
+    // the api session token is refreshed, as the timer of the auth method does it: it reports success (the SDK cannot
+    // know yet), and the requests that follow find out and start the wait for the login
+    auto refreshes = token_refreshes;
+    ziti_force_api_session_refresh(ztx);
+    REQUIRE(run(UNTIL(token_refreshes > refreshes), 5000));
+    REQUIRE(run(UNTIL(authState.action == ziti_auth_login_external), 5000));
+    logins = authState.success;
+    events = authState.count;
+    auto expected_failures = verify().size();
+
+    // a 401 has to arrive during the wait, or the test checks nothing
+    REQUIRE(run(UNTIL(late_unauthorized_identity_401s > 0), 5000));
+    run(UNTIL(false), 2000);
+
+    // no success after the wait started: every one the SDK reports gets a /services request, and the controller rejects them
+    auto failures = verify();
+    INFO("successes reported after the wait started: " << authState.success - logins
+         << ", turned down by the controller: " << failures.size() - expected_failures
+         << (failures.size() == expected_failures ? "" : ", first: " + failures[expected_failures]));
+    REQUIRE(authState.success == logins);
+    CHECK(failures.size() == expected_failures);
+
+    // still waiting for the login, without asking again
+    CHECK(authState.count == events);
+    CHECK(authState.action == ziti_auth_login_external);
+
+    // the new token from that login completes the authentication, once, and the controller takes the requests
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, next.c_str()));
+    REQUIRE(run(UNTIL(authState.success == logins + 1 && load_error == ZITI_OK), 5000));
+    CHECK_FALSE(run(UNTIL(authState.success > logins + 1), 2000));
+    CHECK(verify().size() == expected_failures);
+}
+
+// A token of another issuer is not the one that is waited for: it must not make the context ask again, and the
+// login that is going on is not over. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-expired-other-issuer", "[integ][oidc-secondary]") {
+    std::string first = checkENV("IDP_TOKEN");  // short-lived
+    std::string other = checkENV("IDP_TOKEN_OTHER_ISSUER");
+
+    wait_for_secondary_login(first);
+
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, other.c_str()));
+    CHECK(authState.count == events);
+    CHECK(authState.success == logins);
+
+    // the controller is asked whether that token is what it waits for, and it is not (it knows no signer of that
+    // issuer): the wait goes on
+    run(UNTIL(false), 2000);
+    CHECK(authState.count == events);
+    CHECK(authState.success == logins);
+    CHECK(load_error != ZITI_OK);
+}
+
+// The login the context waits for is not the one that is going on any more: the auth method starts over (its refresh
+// token is gone) and the controller asks for something else, a TOTP. A token of the secondary signer that arrives then
+// belongs to that login: the SDK must not take it as the end of the wait, with the session token it had. GH-1159
+TEST_CASE_METHOD(SecondaryExtJwt, "oidc-secondary-ext-jwt-expired-login-restarted", "[integ][oidc-secondary]") {
+    std::string first = checkENV("IDP_TOKEN");  // short-lived
+    std::string next = checkENV("IDP_TOKEN_NEXT");
+
+    wait_for_secondary_login(first);
+
+    // as the auth method reports it
+    ziti_auth_query_mfa totp = ZITI_MFA;
+    totp.enrolled = true;
+    ztx_auth_state_cb(ztx, ZitiAuthStatePartiallyAuthenticated, &totp);
+    REQUIRE(authState.action == ziti_auth_prompt_totp);
+
+    REQUIRE_ZITI_OK(ziti_ext_auth_token(ztx, next.c_str()));
+    CHECK(authState.success == logins);
+    CHECK(load_error != ZITI_OK);
 }
