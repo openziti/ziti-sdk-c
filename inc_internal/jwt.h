@@ -22,6 +22,7 @@
 
 #include <stc/cstr.h>
 #include <json-c/json.h>
+#include <uv.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,6 +39,9 @@ typedef struct zt_jwt_s {
 extern void zt_jwt_drop(zt_jwt *jwt);
 extern void zt_jwt_free(zt_jwt *jwt);
 extern int zt_jwt_parse(const char *jwt_str, zt_jwt *jwt);
+
+// a token is expired from the second of its `exp` on, which is when the controller turns it down
+extern bool zt_jwt_expired(const zt_jwt *jwt, uv_timeval64_t now);
 
 #ifdef __cplusplus
 }

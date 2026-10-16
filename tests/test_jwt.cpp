@@ -153,6 +153,21 @@ TEST_CASE("zt_jwt_parse valid", "[model]") {
     }
 }
 
+// a token is expired from the second of its `exp` on, which is when the controller turns it down
+TEST_CASE("zt_jwt_expired", "[model]") {
+    zt_jwt token{};
+    token.expiration = 1704661695;
+
+    auto at = [](int64_t sec, int32_t usec = 0) { return uv_timeval64_t{sec, usec}; };
+    CHECK_FALSE(zt_jwt_expired(&token, at(token.expiration - 1, 999999)));
+    CHECK(zt_jwt_expired(&token, at(token.expiration)));
+    CHECK(zt_jwt_expired(&token, at(token.expiration + 1)));
+
+    // no exp: it does not expire
+    token.expiration = 0;
+    CHECK_FALSE(zt_jwt_expired(&token, at(1704661695)));
+}
+
 TEST_CASE("zt_jwt_parse extra dots", "[model]") {
     zt_jwt jwt_struct{};
     // header.payload.sig.extra — extra segment; verify no crash

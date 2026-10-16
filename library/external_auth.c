@@ -376,11 +376,10 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
         return ZITI_JWT_INVALID;
     }
 
-    // a token is expired from the second of its `exp`, which is when the controller turns it down. Every use of it
-    // would drop it, and a wait for this login would only ask for it again at once.
+    // every use of an expired token would drop it, and a wait for this login would only ask for it again at once
     uv_timeval64_t now;
     uv_gettimeofday(&now);
-    if (jwt->expiration != 0 && jwt->expiration <= now.tv_sec) {
+    if (zt_jwt_expired(jwt, now)) {
         ZTX_LOG(WARN, "external JWT iss[%s] has expired: rejected", cstr_str(&jwt->issuer));
         zt_jwt_drop(jwt);
         free(jwt);

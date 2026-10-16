@@ -434,8 +434,7 @@ static bool secondary_token_expired(ziti_context ztx) {
     uv_gettimeofday(&now);
     zt_jwt *jwt = model_map_get(&ztx->ext_jwt_tokens, cstr_str(&signer->issuer));
 
-    // a token is expired from the second of its `exp` on, that is when the controller turns it down
-    return jwt && jwt->expiration != 0 && jwt->expiration <= now.tv_sec;
+    return jwt && zt_jwt_expired(jwt, now);
  }
 
 // the secondary external login the controller asks for, if it does
@@ -478,7 +477,7 @@ static void ztx_set_ctrl_auth(ziti_context ztx, const char *session_token) {
     uv_timeval64_t now;
     uv_gettimeofday(&now);
     MODEL_MAP_FOREACH(iss, jwt, &ztx->ext_jwt_tokens) {
-        if (jwt->expiration != 0 && jwt->expiration < now.tv_sec) {
+        if (zt_jwt_expired(jwt, now)) {
             ZTX_LOG(WARN, "external JWT[%s] is expired: skipped", iss);
             continue;
         }
@@ -554,6 +553,10 @@ static void secondary_probe_cb(ziti_api_session *api_sess, const ziti_error *err
         // it is not the token that is waited for, or the controller could not say: the wait goes on
         ZTX_LOG(DEBUG, "the controller still wants the external login%s", err ? " (or could not say)" : "");
         ziti_ctrl_clear_auth(ztx_get_controller(ztx));
+        if (api_sess) {
+            // the controller said so: nothing else tells the browser that waits for the verdict on the token
+            ext_oidc_client_finalize(ztx->ext_auth2, false, "the controller does not accept the token");
+        }
     }
 
 done:
