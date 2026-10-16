@@ -194,6 +194,8 @@ struct ziti_ctx {
     deadline_t refresh_deadline;
     deadline_t api_session_deadline;
     deadline_t ca_bundle_deadline;
+    // consecutive failures to authenticate because the controller (or its auth provider) is not reachable
+    int auth_retries;
     deadline_list_t deadlines;
 
     uv_loop_t *loop;

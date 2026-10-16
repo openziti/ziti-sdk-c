@@ -24,6 +24,8 @@ add_executable(all_tests
         oidc_auth_retry_tests.cpp
         ctrl_endpoint_tests.cpp
         ctrl_auth_tests.cpp
+        legacy_auth_tests.cpp
+        reauth_tests.cpp
         posture_tests.cpp
         totp.h
         totp_tests.cpp
