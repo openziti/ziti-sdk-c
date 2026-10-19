@@ -1213,24 +1213,35 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token);
  *
  * When set via ziti_set_enroll_key_cb(), this callback is invoked during
  * enrollToCert to let the caller provide a private key. The callback must
- * allocate and return a PEM-formatted key string in *key_pem. The SDK takes
- * ownership and will free it.
+ * allocate and return a key string in *key. The SDK takes ownership and will
+ * free it.
+ *
+ * The string is anything accepted as `id.key` of an identity config: a PEM,
+ * `pem:<PEM>`, `file://<path>`, `keychain:<name>` or a `pkcs11:` URI. A
+ * `keychain:` or `pkcs11:` reference lets the key stay in the platform keystore,
+ * without the SDK ever holding its bytes. The key must exist when the callback
+ * returns, so the callback is expected to create it. If the SDK cannot load it,
+ * enrollment fails with ZITI_KEY_LOAD_FAILED.
+ *
+ * The string is stored in the identity config as `id.key`, and is what the
+ * application persists with the rest of the config.
  *
  * If not set, the SDK generates a software key internally.
  *
  * @param ztx the Ziti context performing enrollment
- * @param key_pem output: caller-allocated PEM string for the private key
+ * @param key output: caller-allocated key string, a PEM or a key reference
  * @param ctx the context passed to ziti_set_enroll_key_cb()
  * @return ZITI_OK on success, or an error code
  */
-typedef int (*ziti_enroll_key_cb)(ziti_context ztx, char **key_pem, void *ctx);
+typedef int (*ziti_enroll_key_cb)(ziti_context ztx, char **key, void *ctx);
 
 /**
  * @brief Set a callback to provide a private key for enrollToCert enrollment.
  *
  * This allows callers (e.g., CZiti/ziti-sdk-swift) to generate and manage
  * private keys in a platform keychain rather than using SDK-generated software
- * keys. The SDK will generate the CSR and handle all enrollment networking.
+ * keys. The callback may return a `keychain:` reference to such a key.
+ * The SDK will generate the CSR and handle all enrollment networking.
  *
  * @param ztx the Ziti context
  * @param cb the callback, or NULL to use the default SDK key generation

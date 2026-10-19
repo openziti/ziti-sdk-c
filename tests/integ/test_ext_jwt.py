@@ -196,3 +196,15 @@ def test_sdk_login_per_enroll_mode(idp, idp_signer, idp_user, enroll_mode, clien
         "IDP_TOKEN": idp.password_grant(idp_user)["access_token"],
     }
     run_catch_test(env, tmp_path, test=f"ztx-enroll-{mode}-lifecycle")
+
+
+def test_sdk_enroll_cert_with_key_from_callback(idp, idp_signer, idp_user, enroll_mode, client_identity, tmp_path):
+    """``ztx-enroll-cert-key-cb-lifecycle``: ``enroll_key_cb`` returns a ``keychain:`` key reference, not PEM."""
+    enroll_mode("cert")
+
+    env = {
+        "test_client": client_identity["path"],
+        "IDP_SIGNER": idp_signer,
+        "IDP_TOKEN": idp.password_grant(idp_user)["access_token"],
+    }
+    run_catch_test(env, tmp_path, test="ztx-enroll-cert-key-cb-lifecycle")

@@ -437,20 +437,21 @@ extern int ziti_ext_auth_token(ziti_context ztx, const char *token) {
             ZTX_LOG(INFO, "enroll_mode=cert, enrolling with CSR");
             if (ztx->id_creds.key == NULL) {
                 if (ztx->enroll_key_cb) {
-                    char *key_pem = NULL;
-                    int rc = ztx->enroll_key_cb(ztx, &key_pem, ztx->enroll_key_ctx);
-                    if (rc != ZITI_OK || key_pem == NULL) {
+                    // anything an identity config takes as id.key: PEM or a reference (keychain:, pkcs11:, ...)
+                    char *key = NULL;
+                    int rc = ztx->enroll_key_cb(ztx, &key, ztx->enroll_key_ctx);
+                    if (rc != ZITI_OK || key == NULL) {
                         ZTX_LOG(ERROR, "enroll_key_cb failed to provide private key");
-                        FREE(key_pem);
+                        FREE(key);
                         return rc != ZITI_OK ? rc : ZITI_KEY_GENERATION_FAILED;
                     }
-                    if (ztx->tlsCtx->load_key(&ztx->id_creds.key, key_pem, strlen(key_pem)) != 0) {
+                    if (load_key_internal(ztx->tlsCtx, &ztx->id_creds.key, key) != 0) {
                         ZTX_LOG(ERROR, "failed to load private key from enroll_key_cb");
-                        FREE(key_pem);
+                        FREE(key);
                         return ZITI_KEY_LOAD_FAILED;
                     }
                     FREE(ztx->config.id.key);
-                    ztx->config.id.key = key_pem;
+                    ztx->config.id.key = key;
                 } else if (ztx->tlsCtx->generate_key(&ztx->id_creds.key) != 0) {
                     ZTX_LOG(ERROR, "failed to generate private key for enrollToCert");
                     return ZITI_KEY_GENERATION_FAILED;
