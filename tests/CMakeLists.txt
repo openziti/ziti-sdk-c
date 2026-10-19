@@ -33,7 +33,10 @@ add_executable(all_tests
         connect_tests.cpp
         ztx_tests.cpp)
 
-set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
+set_target_properties(all_tests PROPERTIES
+        CXX_STANDARD 20
+        C_STANDARD 11 # ztx_test_helper.c includes zt_internal.h, which needs C11 atomics (MSVC defaults to older C)
+)
 find_package(OpenSSL REQUIRED)
 target_link_libraries(all_tests PRIVATE OpenSSL::Crypto)
 
