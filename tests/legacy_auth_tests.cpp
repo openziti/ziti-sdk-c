@@ -34,6 +34,10 @@ using namespace fake_controller;
 // internal (zt_internal.h cannot be included from C++): the api session token, which the context has
 // only while it is fully authenticated
 extern "C" const char *ziti_get_api_session_token(ziti_context ztx);
+extern "C" void ziti_services_refresh(ziti_context ztx, bool now);
+// ztx_test_helper.c: what the auth method reports
+extern "C" void ztx_test_lose_session(ziti_context ztx);
+extern "C" void ztx_test_restart_auth(ziti_context ztx);
 
 namespace {
     std::string iso8601(time_t t) {
@@ -62,6 +66,9 @@ namespace {
         std::string url() const { return server_.url(); }
 
         std::atomic<int> authenticate_count{0};
+
+        // the requests whose path ends with `suffix`
+        int count(const std::string &suffix) const { return server_.count(suffix); }
 
     private:
         static bool ends_with(const std::string &s, const std::string &suffix) {
@@ -121,6 +128,54 @@ TEST_CASE("ziti-refresh-is-accepted-when-the-context-is-fully-authenticated", "[
     });
 
     CHECK(rc == ZITI_OK);
+}
+
+namespace {
+    struct refresh_effects {
+        int polls;              // requests of the refresh that the controller got
+        int session_refreshes;  // requests for the api session after the one that follows the login: a request that
+                                // is turned down has the session refreshed
+    };
+
+    // A refresh of the services is queued while the context is fully authenticated, and the context has left that
+    // state by the time it runs. The context makes none of these requests for any other reason on its own: the
+    // fake controller answers nothing else.
+    refresh_effects refresh_that_is_due_after_leaving_fully_authenticated(void (*leave)(ziti_context)) {
+        FakeLegacyController ctrl(0, 1800);
+        int ticks_since_leaving = -1;
+        run_context(ctrl.url(), 10000, [&](const context_run &run) {
+            if (ticks_since_leaving < 0) {
+                if (ziti_get_api_session_token(run.ztx) == nullptr) {
+                    return false;
+                }
+                ziti_services_refresh(run.ztx, true);  // runs on the next pass of the loop
+                leave(run.ztx);
+                ticks_since_leaving = 0;
+                return false;
+            }
+            return ++ticks_since_leaving >= 6;
+        });
+        return {ctrl.count("/current-identity/edge-routers") + ctrl.count("/current-api-session/service-updates"),
+                ctrl.count("/current-api-session") - 1};
+    }
+}
+
+// the refresh has nothing to poll with once the api session is gone or the authentication starts over, and the
+// authentication starts it again: a refresh that was due before that must not send its requests
+TEST_CASE("services-refresh-that-is-due-does-not-poll-a-context-that-left-fully-authenticated",
+          "[legacy-auth][refresh]") {
+    // the requests have no api session token to go with and are refused before they leave: the 401 they come back
+    // with is taken for a lost session, and has the session refreshed again
+    SECTION("the api session is lost") {
+        auto effects = refresh_that_is_due_after_leaving_fully_authenticated(ztx_test_lose_session);
+        CHECK(effects.polls == 0);
+        CHECK(effects.session_refreshes == 0);
+    }
+    SECTION("the authentication starts over") {
+        auto effects = refresh_that_is_due_after_leaving_fully_authenticated(ztx_test_restart_auth);
+        CHECK(effects.polls == 0);
+        CHECK(effects.session_refreshes == 0);
+    }
 }
 
 // control: nothing is wrong with the clocks or the session

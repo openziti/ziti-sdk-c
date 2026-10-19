@@ -32,6 +32,7 @@ using namespace fake_controller;
 
 // internal (zt_internal.h cannot be included from C++)
 extern "C" void ziti_services_refresh(ziti_context ztx, bool now);
+extern "C" int ztx_test_auth_retries(ziti_context ztx);  // ztx_test_helper.c
 
 namespace {
     bool ends_with(const std::string &s, const std::string &suffix) {
@@ -111,6 +112,38 @@ TEST_CASE("reauth-retry-survives-a-services-refresh-of-an-unauthenticated-contex
     run_context(ctrl.url(), 10000, done);
 
     CHECK(ctrl.signer_requests() >= 2);
+}
+
+// the failures in a row belong to the run of the context: disabling it ends the wait for the next retry, and the
+// count does not stay for the next time the context is enabled (its first failure would wait as long as the last)
+TEST_CASE("reauth-backoff-starts-over-when-the-context-is-disabled", "[reauth][GH-1157]") {
+    FakeOidcController ctrl;
+
+    int retries_before = 0;
+    int retries_after = -1;
+    int ticks_since_disable = -1;
+    auto done = [&](const context_run &run) {
+        if (ticks_since_disable < 0) {
+            // two failures so far: the wait for the next one is longer than the first was
+            if (ctrl.signer_requests() < 3) {
+                return false;
+            }
+            retries_before = ztx_test_auth_retries(run.ztx);
+            ziti_set_enabled(run.ztx, false);
+            ticks_since_disable = 0;
+            return false;
+        }
+        // the context has had its turns to stop
+        if (++ticks_since_disable < 3) {
+            return false;
+        }
+        retries_after = ztx_test_auth_retries(run.ztx);
+        return true;
+    };
+    run_context(ctrl.url(), 30000, done);
+
+    CHECK(retries_before >= 2);
+    CHECK(retries_after == 0);
 }
 
 // and the retries carry on until the endpoint is back

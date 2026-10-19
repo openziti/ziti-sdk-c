@@ -652,6 +652,9 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         clear_deadline(&ztx->api_session_deadline);
         clear_deadline(&ztx->ca_bundle_deadline);
 
+        // the failures in a row were of this run: enabling the context starts over
+        ztx->auth_retries = 0;
+
         if (ztx->posture_checks) {
             ziti_posture_checks_free(ztx->posture_checks);
             ztx->posture_checks = NULL;
@@ -1846,9 +1849,9 @@ static void refresh_cb(void *data) {
         return;
     }
 
-    if (ztx->auth_state == ZitiAuthStatePartiallyAuthenticated) {
+    if (ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
         // nothing to poll with until the authentication completes, and that starts the polling again
-        ZTX_LOG(VERBOSE, "api session is partially authenticated: not polling the controller");
+        ZTX_LOG(VERBOSE, "not fully authenticated: not polling the controller");
         return;
     }
 
