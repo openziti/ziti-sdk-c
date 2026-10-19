@@ -466,8 +466,11 @@ extern int ziti_context_run(ziti_context ztx, uv_loop_t *loop);
  * Appropriate events will be triggered as needed
  * (just like during normal refresh cycle [#ziti_options.refresh_interval]):
  * - Service Added/Removed, etc.
+ *
+ * The context has to be fully authenticated: the refresh goes to the controller with the API session.
  * @param ztx
- * @return #ZITI_OK on success, or error code
+ * @return #ZITI_OK on success, #ZITI_DISABLED if the context is disabled,
+ * #ZITI_INVALID_STATE if it is not fully authenticated (yet or any more), or other error code
  */
 ZITI_FUNC
 extern int ziti_refresh(ziti_context ztx);

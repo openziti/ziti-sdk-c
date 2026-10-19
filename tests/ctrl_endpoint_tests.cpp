@@ -27,6 +27,7 @@
 #include <ziti/errors.h>
 #include <catch2/generators/catch_generators.hpp>
 #include <tlsuv/tlsuv.h>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -132,6 +133,87 @@ TEST_CASE("endpoint-backoff-lasts-a-minute-after-a-failure", "[controller]") {
     model_list_clear(&urls, nullptr);
     ziti_ctrl_close(&ctrl);
     tls->free_ctx(tls);
+}
+
+namespace {
+    // one endpoint on a loop that has been up for `uptime_ms`; `body` gets it and the loop
+    void with_one_endpoint(uint64_t uptime_ms, const std::function<void(ziti_controller &, uv_loop_t *)> &body) {
+        uv_loop_t *loop = test_loop();
+        simulate_uptime(loop, uptime_ms);
+
+        tls_context *tls = default_tls_context();
+
+        model_list urls = {};
+        model_list_append(&urls, (void *) "https://203.0.113.1:1280");
+
+        ziti_controller ctrl{};
+        REQUIRE(ziti_ctrl_init(loop, &ctrl, &urls, tls) == ZITI_OK);
+
+        body(ctrl, loop);
+
+        model_list_clear(&urls, nullptr);
+        ziti_ctrl_close(&ctrl);
+        tls->free_ctx(tls);
+    }
+}
+
+// GH-1157: every failed request reports its endpoint, and a loop that fails faster than the cooldown
+// lasts must not keep restarting it, or the endpoint is never tried again
+
+TEST_CASE("endpoint-cooldown-is-not-extended-by-failures-during-it", "[controller][GH-1157]") {
+    const uint64_t failed_at = 200 * 1000;
+
+    with_one_endpoint(failed_at, [&](ziti_controller &ctrl, uv_loop_t *loop) {
+        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280") == nullptr);
+
+        // another request fails in the middle of the cooldown
+        simulate_uptime(loop, failed_at + 30 * 1000);
+        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280") == nullptr);
+
+        // the minute counts from the first failure
+        simulate_uptime(loop, failed_at + 60 * 1000 + 1);
+        const char *revived = ziti_ctrl_next_ep(&ctrl, nullptr);
+        REQUIRE(revived != nullptr);
+        CHECK(std::string(revived) == "https://203.0.113.1:1280");
+    });
+}
+
+TEST_CASE("endpoint-that-fails-its-re-probe-cools-down-again", "[controller][GH-1157]") {
+    const uint64_t failed_at = 200 * 1000;
+    const uint64_t probed_at = failed_at + 61 * 1000;
+
+    with_one_endpoint(failed_at, [&](ziti_controller &ctrl, uv_loop_t *loop) {
+        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280") == nullptr);
+
+        // the cooldown is over, the endpoint is tried and fails again
+        simulate_uptime(loop, probed_at);
+        REQUIRE(ziti_ctrl_next_ep(&ctrl, nullptr) != nullptr);
+        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280") == nullptr);
+
+        // a new cooldown, counted from the failed probe and not from the first failure
+        simulate_uptime(loop, probed_at + 30 * 1000);
+        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr) == nullptr);
+        simulate_uptime(loop, probed_at + 60 * 1000);
+        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr) == nullptr);
+        simulate_uptime(loop, probed_at + 60 * 1000 + 1);
+        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr) != nullptr);
+    });
+}
+
+TEST_CASE("endpoint-failing-within-a-minute-of-boot-still-cools-down", "[controller][GH-1157]") {
+    // the clock is below ONE_MINUTE, so `offline_time + ONE_MINUTE < now` holds for no endpoint, and an
+    // endpoint that never failed has offline_time 0, which also reads as "never tried"
+    const uint64_t failed_at = 5 * 1000;
+
+    with_one_endpoint(failed_at, [&](ziti_controller &ctrl, uv_loop_t *loop) {
+        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280") == nullptr);
+
+        simulate_uptime(loop, failed_at + 30 * 1000);
+        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr) == nullptr);
+
+        simulate_uptime(loop, failed_at + 60 * 1000 + 1);
+        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr) != nullptr);
+    });
 }
 
 TEST_CASE("endpoint-selection-skips-the-one-still-cooling-down", "[controller]") {

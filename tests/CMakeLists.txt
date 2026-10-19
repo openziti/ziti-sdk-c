@@ -24,13 +24,19 @@ add_executable(all_tests
         oidc_auth_retry_tests.cpp
         ctrl_endpoint_tests.cpp
         ctrl_auth_tests.cpp
+        legacy_auth_tests.cpp
+        reauth_tests.cpp
+        ztx_test_helper.c
         posture_tests.cpp
         totp.h
         totp_tests.cpp
         connect_tests.cpp
         ztx_tests.cpp)
 
-set_property(TARGET all_tests PROPERTY CXX_STANDARD 20)
+set_target_properties(all_tests PROPERTIES
+        CXX_STANDARD 20
+        C_STANDARD 11 # ztx_test_helper.c includes zt_internal.h, which needs C11 atomics (MSVC defaults to older C)
+)
 find_package(OpenSSL REQUIRED)
 target_link_libraries(all_tests PRIVATE OpenSSL::Crypto)
 
@@ -60,6 +66,13 @@ target_link_libraries(all_tests
 
 include(CTest)
 add_test(quick_tests all_tests -d yes "~[integ]~[metrics]" -r junit::out=TEST-quick_tests.xml -r console)
+if (ziti_ASAN AND APPLE)
+    # libc++ annotates the growth of a std::vector for AddressSanitizer, and the Catch2 package is not instrumented:
+    # its XML writer (the JUnit report) keeps its open tags in a std::vector<std::string>, grown by the instrumented
+    # code of the tests that use the same instantiation and by its own, which does not update the annotation. Once
+    # the tests have passed, the report is reported as a container-overflow and the run aborts.
+    set_tests_properties(quick_tests PROPERTIES ENVIRONMENT "ASAN_OPTIONS=detect_container_overflow=0")
+endif ()
 
 add_subdirectory(integ)
 

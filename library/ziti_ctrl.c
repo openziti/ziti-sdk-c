@@ -580,8 +580,13 @@ const char* ziti_ctrl_next_ep(ziti_controller *ctrl, const char *current) {
             model_map_get(&ctrl->endpoints, current) : NULL;
 
     if (curr) {
+        // Every failed request reports its endpoint. One that fails while the cooldown runs does not
+        // restart it: at the speed a failing loop spins, the minute would never be over and the
+        // endpoint never tried again. A failure after the minute is the answer to that new try.
+        if (curr->is_online || curr->offline_time == 0 || curr->offline_time + ONE_MINUTE < now) {
+            curr->offline_time = (model_number)now;
+        }
         curr->is_online = false;
-        curr->offline_time = (model_number)now;
     }
 
     model_list online = {};
