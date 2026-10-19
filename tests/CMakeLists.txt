@@ -66,6 +66,13 @@ target_link_libraries(all_tests
 
 include(CTest)
 add_test(quick_tests all_tests -d yes "~[integ]~[metrics]" -r junit::out=TEST-quick_tests.xml -r console)
+if (ziti_ASAN AND APPLE)
+    # libc++ annotates the growth of a std::vector for AddressSanitizer, and the Catch2 package is not instrumented:
+    # its XML writer (the JUnit report) keeps its open tags in a std::vector<std::string>, grown by the instrumented
+    # code of the tests that use the same instantiation and by its own, which does not update the annotation. Once
+    # the tests have passed, the report is reported as a container-overflow and the run aborts.
+    set_tests_properties(quick_tests PROPERTIES ENVIRONMENT "ASAN_OPTIONS=detect_container_overflow=0")
+endif ()
 
 add_subdirectory(integ)
 
