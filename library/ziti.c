@@ -1282,10 +1282,25 @@ void ziti_dump(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...)
     printer(ctx, "\n==================\n\n");
 }
 
+// ziti_bind() and ziti_dial() give the connection its own disposer once they accept it: until then
+// (and for good if they refuse it) the connection has nothing to release but itself
+static int dispose_untyped_conn(ziti_connection conn) {
+    assert(conn->type == None);
+
+    if (conn->close_cb) {
+        conn->close_cb(conn);
+    }
+    cstr_drop(&conn->service);
+    cstr_drop(&conn->source_identity);
+    free(conn);
+    return 1;
+}
+
 int ziti_conn_init(ziti_context ztx, ziti_connection *conn, void *data) {
     struct ziti_ctx *ctx = ztx;
     NEWP(c, struct ziti_conn);
     c->ziti_ctx = ztx;
+    c->disposer = dispose_untyped_conn;
     c->data = data;
     c->conn_id = ztx->conn_seq++;
     c->rt_conn_id = c->conn_id;
