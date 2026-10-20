@@ -217,6 +217,9 @@ void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, int er
 
 void ziti_force_api_session_refresh(ziti_context ztx);
 
+// the app says that the network may be back: a context that waits to authenticate again does not wait any longer
+void ztx_authenticate_now(ziti_context ztx);
+
 const char* ziti_get_api_session_token(ziti_context ztx);
 
 int ziti_close_channels(ziti_context ztx, int err);

@@ -613,6 +613,34 @@ void ziti_force_api_session_refresh(ziti_context ztx) {
     }
 }
 
+// The app says that the network may be back (the device woke up, or was unlocked). A context that has no api session is
+// waiting for the end of a backoff of the authentication; that wait was for a network that may be there now. The
+// backoff is for the failures that come back on their own: an explicit caller does not wait for it.
+void ztx_authenticate_now(ziti_context ztx) {
+    if (!ztx->enabled) return;
+
+    switch (ztx->auth_state) {
+        case ZitiAuthStateUnauthenticated:
+            // nothing to do without an auth method: the authentication starts with the external login
+            if (ztx->auth_method) {
+                ZTX_LOG(INFO, "not authenticated: authenticating now");
+                ziti_force_api_session_refresh(ztx);
+            }
+            break;
+        case ZitiAuthImpossibleToAuthenticate:
+            // only the retry of an auth provider that was not available is waiting for something
+            if (ztx->refresh_deadline.expire_cb == pre_auth_retry) {
+                ZTX_LOG(INFO, "auth provider was not available: authenticating now");
+                clear_deadline(&ztx->refresh_deadline);
+                ziti_re_auth(ztx);
+            }
+            break;
+        default:
+            // authenticated, or waiting for the login of the user
+            break;
+    }
+}
+
 const char* ziti_get_api_session_token(ziti_context ztx) {
     if (ztx->auth_state == ZitiAuthStateFullyAuthenticated) {
         return cstr_str(&ztx->session_token);

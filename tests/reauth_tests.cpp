@@ -146,6 +146,36 @@ TEST_CASE("reauth-backoff-starts-over-when-the-context-is-disabled", "[reauth][G
     CHECK(retries_after == 0);
 }
 
+// GH-1185: the app says that the device woke up, and the network may be back: the context that waits for the retry
+// of its authentication does not wait. The wait is a second at least, so only the state change gets a login sooner.
+TEST_CASE("reauth-does-not-wait-for-the-retry-when-the-device-wakes-up", "[reauth][GH-1185]") {
+    FakeOidcController ctrl;
+
+    uint64_t woke = 0;
+    uint64_t login_seen = 0;
+    auto done = [&](const context_run &run) {
+        uint64_t now = uv_now(test_loop());
+        if (woke == 0) {
+            // the first attempt has failed, and the retry is waiting
+            if (ztx_test_auth_retries(run.ztx) >= 1) {
+                ctrl.open_oidc();
+                ziti_endpoint_state_change(run.ztx, true, false);
+                woke = now;
+            }
+            return false;
+        }
+        if (ctrl.login_attempts() >= 1) {
+            login_seen = now;
+            return true;
+        }
+        return now - woke > 5000;
+    };
+    run_context(ctrl.url(), 10000, done);
+
+    REQUIRE(login_seen > 0);
+    CHECK(login_seen - woke < 800);
+}
+
 // and the retries carry on until the endpoint is back
 TEST_CASE("reauth-recovers-when-the-oidc-endpoint-is-back", "[reauth][GH-1157]") {
     FakeOidcController ctrl;
