@@ -136,8 +136,13 @@ enum edge_flag {
     EDGE_MULTIPART_MSG = ZITI__EDGE_CLIENT__PB__FLAG__MULTIPART_MSG,
 };
 
+// bit masks for the RouterCapabilitiesHeader value; the proto KIND values are bit positions
 enum router_capability {
-    ROUTER_CAPABILITY_CONNECT_V2 = ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__ConnectV2,
+    ROUTER_CAPABILITY_MultiChannel = 1 << ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__MultiChannel,
+    ROUTER_CAPABILITY_CONNECT_V2 = 1 << ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__ConnectV2,
+    ROUTER_CAPABILITY_ServiceSubscriptions = 1 << ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__ServiceSubscriptions,
+    ROUTER_CAPABILITY_PostureChecks = 1 << ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__PostureChecks,
+    ROUTER_CAPABILITY_BindSuccess = 1 << ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__BindSuccess,
 };
 
 #ifdef __cplusplus

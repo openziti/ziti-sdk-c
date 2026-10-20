@@ -16,6 +16,7 @@ PROTOBUF_C__BEGIN_DECLS
 
 #include "google/protobuf/timestamp.pb-c.h"
 
+typedef struct Ziti__EdgeClient__Pb__RouterCapability Ziti__EdgeClient__Pb__RouterCapability;
 typedef struct Ziti__EdgeClient__Pb__ServicePostureStateRequest Ziti__EdgeClient__Pb__ServicePostureStateRequest;
 typedef struct Ziti__EdgeClient__Pb__ServicePostureStateResponse Ziti__EdgeClient__Pb__ServicePostureStateResponse;
 typedef struct Ziti__EdgeClient__Pb__ServicePostureStateResponse__StatesEntry Ziti__EdgeClient__Pb__ServicePostureStateResponse__StatesEntry;
@@ -37,10 +38,48 @@ typedef struct Ziti__EdgeClient__Pb__PostureResponse__ProcessList Ziti__EdgeClie
 typedef struct Ziti__EdgeClient__Pb__PostureResponse__Woken Ziti__EdgeClient__Pb__PostureResponse__Woken;
 typedef struct Ziti__EdgeClient__Pb__PostureResponse__Unlocked Ziti__EdgeClient__Pb__PostureResponse__Unlocked;
 typedef struct Ziti__EdgeClient__Pb__PostureResponse__SdkInfo Ziti__EdgeClient__Pb__PostureResponse__SdkInfo;
+typedef struct Ziti__EdgeClient__Pb__SubscribeToServiceUpdates Ziti__EdgeClient__Pb__SubscribeToServiceUpdates;
+typedef struct Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates;
+typedef struct Ziti__EdgeClient__Pb__ResyncPostureState Ziti__EdgeClient__Pb__ResyncPostureState;
+typedef struct Ziti__EdgeClient__Pb__ServiceChangeSet Ziti__EdgeClient__Pb__ServiceChangeSet;
+typedef struct Ziti__EdgeClient__Pb__ServiceDef Ziti__EdgeClient__Pb__ServiceDef;
+typedef struct Ziti__EdgeClient__Pb__ConfigData Ziti__EdgeClient__Pb__ConfigData;
+typedef struct Ziti__EdgeClient__Pb__PolicyDef Ziti__EdgeClient__Pb__PolicyDef;
+typedef struct Ziti__EdgeClient__Pb__PostureCheckDef Ziti__EdgeClient__Pb__PostureCheckDef;
+typedef struct Ziti__EdgeClient__Pb__PostureCheckDef__Process Ziti__EdgeClient__Pb__PostureCheckDef__Process;
+typedef struct Ziti__EdgeClient__Pb__PostureStateChange Ziti__EdgeClient__Pb__PostureStateChange;
+typedef struct Ziti__EdgeClient__Pb__PostureStateChange__CheckState Ziti__EdgeClient__Pb__PostureStateChange__CheckState;
+typedef struct Ziti__EdgeClient__Pb__PostureStateChange__PolicyState Ziti__EdgeClient__Pb__PostureStateChange__PolicyState;
 
 
 /* --- enums --- */
 
+typedef enum _Ziti__EdgeClient__Pb__RouterCapability__Kind {
+  ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__NoRouterCapabilities = 0,
+  /*
+   * MultiChannel indicates the router supports multi-underlay channels
+   */
+  ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__MultiChannel = 1,
+  /*
+   * ConnectV2 indicates the router supports the ConnectV2 message flow
+   */
+  ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__ConnectV2 = 2,
+  /*
+   * ServiceSubscriptions indicates the router supports service change push subscriptions
+   */
+  ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__ServiceSubscriptions = 4,
+  /*
+   * PostureChecks indicates the router supports posture checks. Also advertised
+   * to older SDKs via the deprecated SupportsPostureChecks header.
+   */
+  ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__PostureChecks = 5,
+  /*
+   * BindSuccess indicates the router sends bind-success notifications. Also
+   * advertised to older SDKs via the deprecated SupportsBindSuccess header.
+   */
+  ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__BindSuccess = 6
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND)
+} Ziti__EdgeClient__Pb__RouterCapability__Kind;
 typedef enum _Ziti__EdgeClient__Pb__ContentType {
   ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Hello = 0,
   ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Ping = 1,
@@ -80,7 +119,27 @@ typedef enum _Ziti__EdgeClient__Pb__ContentType {
   ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__RouteCircuitType = 60807,
   ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureResponseType = 10800,
   ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ServicePostureStateRequestType = 108001,
-  ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ServicePostureStateResponseType = 108002
+  ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ServicePostureStateResponseType = 108002,
+  /*
+   * SDK -> router: opt in to service change push notifications
+   */
+  ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__SubscribeToServiceUpdatesType = 10900,
+  /*
+   * SDK -> router: stop receiving service change push notifications
+   */
+  ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UnsubscribeFromServiceUpdatesType = 10901,
+  /*
+   * SDK -> router: request a full posture state retransmit after a seq gap
+   */
+  ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ResyncPostureStateType = 10902,
+  /*
+   * router -> SDK: atomic structural changeset (services, policies, posture check defs)
+   */
+  ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ServiceChangeSetType = 10903,
+  /*
+   * router -> SDK: posture pass/fail state for all checks and policies in scope
+   */
+  ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureStateChangeType = 10904
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__CONTENT_TYPE)
 } Ziti__EdgeClient__Pb__ContentType;
 typedef enum _Ziti__EdgeClient__Pb__HeaderId {
@@ -110,6 +169,12 @@ typedef enum _Ziti__EdgeClient__Pb__HeaderId {
   ZITI__EDGE_CLIENT__PB__HEADER_ID__ListenerId = 1021,
   ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnType = 1022,
   ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsInspect = 1023,
+  /*
+   * SupportsBindSuccess: legacy boolean flag. The router->SDK advertisement is
+   * superseded by RouterCapability_BindSuccess; routers still send this header
+   * for pre-capability SDKs. The SDK->router bind-message use of this header is
+   * unchanged.
+   */
   ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsBindSuccess = 1024,
   ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnectionMarker = 1025,
   ZITI__EDGE_CLIENT__PB__HEADER_ID__CircuitId = 1026,
@@ -118,6 +183,11 @@ typedef enum _Ziti__EdgeClient__Pb__HeaderId {
   ZITI__EDGE_CLIENT__PB__HEADER_ID__XgressCtrlId = 1029,
   ZITI__EDGE_CLIENT__PB__HEADER_ID__XgressAddress = 1030,
   ZITI__EDGE_CLIENT__PB__HEADER_ID__InspectRequestedValues = 1031,
+  /*
+   * SupportsPostureChecks: legacy boolean flag, superseded by
+   * RouterCapability_PostureChecks. Routers still send this header for
+   * pre-capability SDKs.
+   */
   ZITI__EDGE_CLIENT__PB__HEADER_ID__SupportsPostureChecks = 1032,
   ZITI__EDGE_CLIENT__PB__HEADER_ID__StructuredError = 1033,
   ZITI__EDGE_CLIENT__PB__HEADER_ID__DialerIdentityId = 1034,
@@ -125,7 +195,24 @@ typedef enum _Ziti__EdgeClient__Pb__HeaderId {
   ZITI__EDGE_CLIENT__PB__HEADER_ID__ServiceId = 1036,
   ZITI__EDGE_CLIENT__PB__HEADER_ID__ServiceIdentifierType = 1037,
   ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnectRequestId = 1038,
-  ZITI__EDGE_CLIENT__PB__HEADER_ID__RouterCapabilities = 1039
+  ZITI__EDGE_CLIENT__PB__HEADER_ID__RouterCapabilities = 1039,
+  /*
+   * RESERVED for the deferred index fast-forward: SDK -> router hello carrying the last committed
+   * structural index (-1 = no prior state). Not yet sent by the SDK or read by the router; the
+   * initial feature always uses a full snapshot.
+   */
+  ZITI__EDGE_CLIENT__PB__HEADER_ID__ServiceSubscriptionIndex = 1040,
+  /*
+   * DirectE2EEModeHeader carries the asserted DirectE2EE mode. Sent on Connect, Bind and Dial
+   * by the initiator; on StateConnected and BindSuccess it carries the mode actually in effect,
+   * which is what tells a dialer whether to start TLS or fall back to legacy.
+   */
+  ZITI__EDGE_CLIENT__PB__HEADER_ID__DirectE2EEModeHeader = 1041,
+  /*
+   * DirectE2EECircuitTokenHeader carries the controller-signed circuit token. Sent on
+   * StateConnected to the dialer and on Dial to the host.
+   */
+  ZITI__EDGE_CLIENT__PB__HEADER_ID__DirectE2EECircuitTokenHeader = 1042
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__HEADER_ID)
 } Ziti__EdgeClient__Pb__HeaderId;
 typedef enum _Ziti__EdgeClient__Pb__Error {
@@ -143,7 +230,21 @@ typedef enum _Ziti__EdgeClient__Pb__Error {
   ZITI__EDGE_CLIENT__PB__ERROR__EncryptionDataMissing = 11,
   ZITI__EDGE_CLIENT__PB__ERROR__InvalidApiSessionType = 12,
   ZITI__EDGE_CLIENT__PB__ERROR__InvalidInstanceId = 13,
-  ZITI__EDGE_CLIENT__PB__ERROR__AccessDenied = 14
+  ZITI__EDGE_CLIENT__PB__ERROR__AccessDenied = 14,
+  /*
+   * PostureCheckFailed: policies grant access but their posture checks are failing. The
+   * structured error's failingPostureCheckIds carries the failing check ids.
+   */
+  ZITI__EDGE_CLIENT__PB__ERROR__PostureCheckFailed = 15,
+  /*
+   * E2eeNoCommonMode: the two endpoints support no e2ee mode in common.
+   */
+  ZITI__EDGE_CLIENT__PB__ERROR__E2eeNoCommonMode = 16,
+  /*
+   * E2eeDirectRequired: a legacy e2ee dial or bind was rejected because the network requires
+   * DirectE2EE.
+   */
+  ZITI__EDGE_CLIENT__PB__ERROR__E2eeDirectRequired = 17
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__ERROR)
 } Ziti__EdgeClient__Pb__Error;
 typedef enum _Ziti__EdgeClient__Pb__PrecedenceValue {
@@ -152,17 +253,6 @@ typedef enum _Ziti__EdgeClient__Pb__PrecedenceValue {
   ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE__Failed = 2
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__PRECEDENCE_VALUE)
 } Ziti__EdgeClient__Pb__PrecedenceValue;
-/*
- * RouterCapability values are bit positions within the RouterCapabilities header bitmask.
- */
-typedef enum _Ziti__EdgeClient__Pb__RouterCapability {
-  ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__NoRouterCapabilities = 0,
-  /*
-   * ConnectV2 indicates the router supports the ConnectV2 message flow
-   */
-  ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__ConnectV2 = 1
-    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY)
-} Ziti__EdgeClient__Pb__RouterCapability;
 typedef enum _Ziti__EdgeClient__Pb__Flag {
   ZITI__EDGE_CLIENT__PB__FLAG__ZERO = 0,
   /*
@@ -188,8 +278,54 @@ typedef enum _Ziti__EdgeClient__Pb__Flag {
   ZITI__EDGE_CLIENT__PB__FLAG__MULTIPART_MSG = 16
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__FLAG)
 } Ziti__EdgeClient__Pb__Flag;
+/*
+ * Op is the change operation for a structural entry in a ServiceChangeSet.
+ */
+typedef enum _Ziti__EdgeClient__Pb__Op {
+  ZITI__EDGE_CLIENT__PB__OP__Added = 0,
+  ZITI__EDGE_CLIENT__PB__OP__Updated = 1,
+  ZITI__EDGE_CLIENT__PB__OP__Removed = 2
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__OP)
+} Ziti__EdgeClient__Pb__Op;
+/*
+ * PolicyType distinguishes dial-access policies from bind-access policies.
+ */
+typedef enum _Ziti__EdgeClient__Pb__PolicyType {
+  ZITI__EDGE_CLIENT__PB__POLICY_TYPE__Dial = 0,
+  ZITI__EDGE_CLIENT__PB__POLICY_TYPE__Bind = 1
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__POLICY_TYPE)
+} Ziti__EdgeClient__Pb__PolicyType;
 
 /* --- messages --- */
+
+/*
+ * RouterCapability wraps the router capability enum. The enum values are bit
+ * positions within a single router capability namespace shared across the
+ * control channel and the edge channel. A router advertises the full set on both
+ * channels; each consumer acts on the bits it recognizes and ignores the rest.
+ * This enum is the source of truth for capabilities that the SDK cares about.
+ * These are numbered upward from bit 1; add a shared capability at the next
+ * unused position.
+ * Note: the ziti controller/router may also define control-plane-only
+ * capabilities that are NOT listed here (see ziti/common/capabilities/consts.go
+ * in the ziti repo). Those are given negative values that occupy bit positions
+ * counting down from the top of the mask, so they never collide with the values
+ * here and will appear to SDKs and the edge-api as unknown bits, which is
+ * expected.
+ * The enum is nested in a message so its value names are scoped to
+ * RouterCapability and cannot collide with other enum values in this package
+ * (proto enum values otherwise share one package-wide namespace). Generated Go
+ * value names are unchanged (e.g. RouterCapability_MultiChannel); only the enum
+ * type name becomes RouterCapability_Kind.
+ */
+struct  Ziti__EdgeClient__Pb__RouterCapability
+{
+  ProtobufCMessage base;
+};
+#define ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__router_capability__descriptor) \
+ }
+
 
 struct  Ziti__EdgeClient__Pb__ServicePostureStateRequest
 {
@@ -469,6 +605,259 @@ struct  Ziti__EdgeClient__Pb__PostureResponse
 , ZITI__EDGE_CLIENT__PB__POSTURE_RESPONSE__TYPE__NOT_SET, {0} }
 
 
+/*
+ * SubscribeToServiceUpdates is sent by the SDK to start receiving service change push notifications.
+ * index is RESERVED for the deferred fast-forward (last committed structural index); the SDK
+ * currently always sends -1 and the router treats every value as a full-snapshot request.
+ */
+struct  Ziti__EdgeClient__Pb__SubscribeToServiceUpdates
+{
+  ProtobufCMessage base;
+  int64_t index;
+};
+#define ZITI__EDGE_CLIENT__PB__SUBSCRIBE_TO_SERVICE_UPDATES__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__subscribe_to_service_updates__descriptor) \
+, 0 }
+
+
+/*
+ * UnsubscribeFromServiceUpdates is sent by the SDK to stop receiving service change push notifications.
+ */
+struct  Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates
+{
+  ProtobufCMessage base;
+};
+#define ZITI__EDGE_CLIENT__PB__UNSUBSCRIBE_FROM_SERVICE_UPDATES__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__unsubscribe_from_service_updates__descriptor) \
+ }
+
+
+/*
+ * ResyncPostureState is sent by the SDK when it detects a gap in PostureStateChange seq values.
+ * The router replies with a full PostureStateChange at the next seq.
+ */
+struct  Ziti__EdgeClient__Pb__ResyncPostureState
+{
+  ProtobufCMessage base;
+};
+#define ZITI__EDGE_CLIENT__PB__RESYNC_POSTURE_STATE__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__resync_posture_state__descriptor) \
+ }
+
+
+/*
+ * ServiceChangeSet is an atomic structural changeset mirroring the RDM DataState_ChangeSet envelope.
+ * The SDK applies the whole message atomically and commits index on receipt.
+ * previousIndex == -1 means full reset (clear structural cache, apply all Added entries).
+ * On an incremental: if previousIndex != committedIndex the SDK must resubscribe at -1.
+ */
+struct  Ziti__EdgeClient__Pb__ServiceChangeSet
+{
+  ProtobufCMessage base;
+  int64_t index;
+  int64_t previousindex;
+  size_t n_services;
+  Ziti__EdgeClient__Pb__ServiceDef **services;
+  size_t n_policies;
+  Ziti__EdgeClient__Pb__PolicyDef **policies;
+  size_t n_posturechecks;
+  Ziti__EdgeClient__Pb__PostureCheckDef **posturechecks;
+};
+#define ZITI__EDGE_CLIENT__PB__SERVICE_CHANGE_SET__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__service_change_set__descriptor) \
+, 0, 0, 0,NULL, 0,NULL, 0,NULL }
+
+
+/*
+ * ServiceDef describes one service in a ServiceChangeSet.
+ * policyIds references PolicyDef entries in the same envelope or already known to the SDK.
+ * configData carries the resolved config bodies for the subscribing identity, already merged
+ * with that identity's per-service config overrides.
+ * Removed entries carry id only; all other fields are empty.
+ */
+struct  Ziti__EdgeClient__Pb__ServiceDef
+{
+  ProtobufCMessage base;
+  Ziti__EdgeClient__Pb__Op op;
+  char *id;
+  char *name;
+  protobuf_c_boolean encryptionrequired;
+  size_t n_configs;
+  char **configs;
+  size_t n_policyids;
+  char **policyids;
+  size_t n_configdata;
+  Ziti__EdgeClient__Pb__ConfigData **configdata;
+};
+#define ZITI__EDGE_CLIENT__PB__SERVICE_DEF__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__service_def__descriptor) \
+, ZITI__EDGE_CLIENT__PB__OP__Added, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, 0, 0,NULL, 0,NULL, 0,NULL }
+
+
+/*
+ * ConfigData is one resolved config body for a service, scoped to the subscribing identity.
+ */
+struct  Ziti__EdgeClient__Pb__ConfigData
+{
+  ProtobufCMessage base;
+  char *typeid_;
+  char *typename_;
+  char *datajson;
+};
+#define ZITI__EDGE_CLIENT__PB__CONFIG_DATA__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__config_data__descriptor) \
+, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string }
+
+
+/*
+ * PolicyDef describes one service policy (dial or bind) in a ServiceChangeSet.
+ * postureCheckIds references PostureCheckDef entries in the same envelope or already known to the SDK.
+ */
+struct  Ziti__EdgeClient__Pb__PolicyDef
+{
+  ProtobufCMessage base;
+  Ziti__EdgeClient__Pb__Op op;
+  char *id;
+  Ziti__EdgeClient__Pb__PolicyType type;
+  size_t n_posturecheckids;
+  char **posturecheckids;
+};
+#define ZITI__EDGE_CLIENT__PB__POLICY_DEF__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__policy_def__descriptor) \
+, ZITI__EDGE_CLIENT__PB__OP__Added, (char *)protobuf_c_empty_string, ZITI__EDGE_CLIENT__PB__POLICY_TYPE__Dial, 0,NULL }
+
+
+struct  Ziti__EdgeClient__Pb__PostureCheckDef__Process
+{
+  ProtobufCMessage base;
+  char *ostype;
+  char *path;
+};
+#define ZITI__EDGE_CLIENT__PB__POSTURE_CHECK_DEF__PROCESS__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__posture_check_def__process__descriptor) \
+, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string }
+
+
+/*
+ * PostureCheckDef describes one posture check definition in a ServiceChangeSet.
+ * Only the fields relevant to the check type are populated.
+ */
+struct  Ziti__EdgeClient__Pb__PostureCheckDef
+{
+  ProtobufCMessage base;
+  Ziti__EdgeClient__Pb__Op op;
+  char *id;
+  /*
+   * type is one of: MFA, PROCESS_MULTI, OS, MAC, DOMAIN
+   */
+  char *type;
+  /*
+   * MFA prompt configuration
+   */
+  int32_t promptgraceperiodseconds;
+  protobuf_c_boolean promptonunlock;
+  protobuf_c_boolean promptonwake;
+  /*
+   * timeoutSeconds is the MFA timeout; -1 when the check never times out. 0 means the sender
+   * predates this field and the timeout is unknown.
+   */
+  int64_t timeoutseconds;
+  /*
+   * PROCESS_MULTI configuration
+   */
+  char *semantic;
+  size_t n_processes;
+  Ziti__EdgeClient__Pb__PostureCheckDef__Process **processes;
+};
+#define ZITI__EDGE_CLIENT__PB__POSTURE_CHECK_DEF__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__posture_check_def__descriptor) \
+, ZITI__EDGE_CLIENT__PB__OP__Added, (char *)protobuf_c_empty_string, (char *)protobuf_c_empty_string, 0, 0, 0, 0, (char *)protobuf_c_empty_string, 0,NULL }
+
+
+/*
+ * CheckState holds the current pass/fail state for one posture check.
+ * timeoutAt and timeoutRemainingSeconds are only set for checks with an active timeout (e.g. MFA).
+ */
+struct  Ziti__EdgeClient__Pb__PostureStateChange__CheckState
+{
+  ProtobufCMessage base;
+  char *checkid;
+  protobuf_c_boolean ispassing;
+  Google__Protobuf__Timestamp *timeoutat;
+  int32_t timeoutremainingseconds;
+};
+#define ZITI__EDGE_CLIENT__PB__POSTURE_STATE_CHANGE__CHECK_STATE__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__posture_state_change__check_state__descriptor) \
+, (char *)protobuf_c_empty_string, 0, NULL, 0 }
+
+
+/*
+ * PolicyState holds the current pass/fail state for one service policy.
+ */
+struct  Ziti__EdgeClient__Pb__PostureStateChange__PolicyState
+{
+  ProtobufCMessage base;
+  char *policyid;
+  protobuf_c_boolean ispassing;
+};
+#define ZITI__EDGE_CLIENT__PB__POSTURE_STATE_CHANGE__POLICY_STATE__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__posture_state_change__policy_state__descriptor) \
+, (char *)protobuf_c_empty_string, 0 }
+
+
+/*
+ * PostureStateChange carries the current posture pass/fail state for all checks and policies
+ * in scope for this connection. Sent full on subscribe; sent as a delta of affected entries
+ * on subsequent posture-data changes. Not indexed — recovered via ResyncPostureState on seq gap.
+ */
+struct  Ziti__EdgeClient__Pb__PostureStateChange
+{
+  ProtobufCMessage base;
+  /*
+   * seq is a per-connection monotonic counter starting at 1. Reset on reconnect.
+   */
+  uint64_t seq;
+  /*
+   * structuralIndex is the router's RDM index the posture evaluation ran against, for logging and
+   * correlation only — it is the GLOBAL RDM index, while a connection's ServiceChangeSet chain
+   * advances only when its own identity's services change, so it is NOT usable as a delivery gate
+   * against the SDK's committed structural index. Apply the state on receipt; ids not yet known
+   * structurally are attached when their definitions arrive.
+   */
+  uint64_t structuralindex;
+  /*
+   * generatedAt is a human-readable log aid only; never used for ordering or dedup.
+   */
+  Google__Protobuf__Timestamp *generatedat;
+  size_t n_checkstates;
+  Ziti__EdgeClient__Pb__PostureStateChange__CheckState **checkstates;
+  size_t n_policystates;
+  Ziti__EdgeClient__Pb__PostureStateChange__PolicyState **policystates;
+};
+#define ZITI__EDGE_CLIENT__PB__POSTURE_STATE_CHANGE__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__posture_state_change__descriptor) \
+, 0, 0, NULL, 0,NULL, 0,NULL }
+
+
+/* Ziti__EdgeClient__Pb__RouterCapability methods */
+void   ziti__edge_client__pb__router_capability__init
+                     (Ziti__EdgeClient__Pb__RouterCapability         *message);
+size_t ziti__edge_client__pb__router_capability__get_packed_size
+                     (const Ziti__EdgeClient__Pb__RouterCapability   *message);
+size_t ziti__edge_client__pb__router_capability__pack
+                     (const Ziti__EdgeClient__Pb__RouterCapability   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__router_capability__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__RouterCapability   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__RouterCapability *
+       ziti__edge_client__pb__router_capability__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__router_capability__free_unpacked
+                     (Ziti__EdgeClient__Pb__RouterCapability *message,
+                      ProtobufCAllocator *allocator);
 /* Ziti__EdgeClient__Pb__ServicePostureStateRequest methods */
 void   ziti__edge_client__pb__service_posture_state_request__init
                      (Ziti__EdgeClient__Pb__ServicePostureStateRequest         *message);
@@ -644,8 +1033,191 @@ Ziti__EdgeClient__Pb__PostureResponse *
 void   ziti__edge_client__pb__posture_response__free_unpacked
                      (Ziti__EdgeClient__Pb__PostureResponse *message,
                       ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__SubscribeToServiceUpdates methods */
+void   ziti__edge_client__pb__subscribe_to_service_updates__init
+                     (Ziti__EdgeClient__Pb__SubscribeToServiceUpdates         *message);
+size_t ziti__edge_client__pb__subscribe_to_service_updates__get_packed_size
+                     (const Ziti__EdgeClient__Pb__SubscribeToServiceUpdates   *message);
+size_t ziti__edge_client__pb__subscribe_to_service_updates__pack
+                     (const Ziti__EdgeClient__Pb__SubscribeToServiceUpdates   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__subscribe_to_service_updates__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__SubscribeToServiceUpdates   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__SubscribeToServiceUpdates *
+       ziti__edge_client__pb__subscribe_to_service_updates__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__subscribe_to_service_updates__free_unpacked
+                     (Ziti__EdgeClient__Pb__SubscribeToServiceUpdates *message,
+                      ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates methods */
+void   ziti__edge_client__pb__unsubscribe_from_service_updates__init
+                     (Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates         *message);
+size_t ziti__edge_client__pb__unsubscribe_from_service_updates__get_packed_size
+                     (const Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates   *message);
+size_t ziti__edge_client__pb__unsubscribe_from_service_updates__pack
+                     (const Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__unsubscribe_from_service_updates__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates *
+       ziti__edge_client__pb__unsubscribe_from_service_updates__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__unsubscribe_from_service_updates__free_unpacked
+                     (Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates *message,
+                      ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__ResyncPostureState methods */
+void   ziti__edge_client__pb__resync_posture_state__init
+                     (Ziti__EdgeClient__Pb__ResyncPostureState         *message);
+size_t ziti__edge_client__pb__resync_posture_state__get_packed_size
+                     (const Ziti__EdgeClient__Pb__ResyncPostureState   *message);
+size_t ziti__edge_client__pb__resync_posture_state__pack
+                     (const Ziti__EdgeClient__Pb__ResyncPostureState   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__resync_posture_state__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__ResyncPostureState   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__ResyncPostureState *
+       ziti__edge_client__pb__resync_posture_state__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__resync_posture_state__free_unpacked
+                     (Ziti__EdgeClient__Pb__ResyncPostureState *message,
+                      ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__ServiceChangeSet methods */
+void   ziti__edge_client__pb__service_change_set__init
+                     (Ziti__EdgeClient__Pb__ServiceChangeSet         *message);
+size_t ziti__edge_client__pb__service_change_set__get_packed_size
+                     (const Ziti__EdgeClient__Pb__ServiceChangeSet   *message);
+size_t ziti__edge_client__pb__service_change_set__pack
+                     (const Ziti__EdgeClient__Pb__ServiceChangeSet   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__service_change_set__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__ServiceChangeSet   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__ServiceChangeSet *
+       ziti__edge_client__pb__service_change_set__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__service_change_set__free_unpacked
+                     (Ziti__EdgeClient__Pb__ServiceChangeSet *message,
+                      ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__ServiceDef methods */
+void   ziti__edge_client__pb__service_def__init
+                     (Ziti__EdgeClient__Pb__ServiceDef         *message);
+size_t ziti__edge_client__pb__service_def__get_packed_size
+                     (const Ziti__EdgeClient__Pb__ServiceDef   *message);
+size_t ziti__edge_client__pb__service_def__pack
+                     (const Ziti__EdgeClient__Pb__ServiceDef   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__service_def__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__ServiceDef   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__ServiceDef *
+       ziti__edge_client__pb__service_def__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__service_def__free_unpacked
+                     (Ziti__EdgeClient__Pb__ServiceDef *message,
+                      ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__ConfigData methods */
+void   ziti__edge_client__pb__config_data__init
+                     (Ziti__EdgeClient__Pb__ConfigData         *message);
+size_t ziti__edge_client__pb__config_data__get_packed_size
+                     (const Ziti__EdgeClient__Pb__ConfigData   *message);
+size_t ziti__edge_client__pb__config_data__pack
+                     (const Ziti__EdgeClient__Pb__ConfigData   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__config_data__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__ConfigData   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__ConfigData *
+       ziti__edge_client__pb__config_data__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__config_data__free_unpacked
+                     (Ziti__EdgeClient__Pb__ConfigData *message,
+                      ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__PolicyDef methods */
+void   ziti__edge_client__pb__policy_def__init
+                     (Ziti__EdgeClient__Pb__PolicyDef         *message);
+size_t ziti__edge_client__pb__policy_def__get_packed_size
+                     (const Ziti__EdgeClient__Pb__PolicyDef   *message);
+size_t ziti__edge_client__pb__policy_def__pack
+                     (const Ziti__EdgeClient__Pb__PolicyDef   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__policy_def__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__PolicyDef   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__PolicyDef *
+       ziti__edge_client__pb__policy_def__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__policy_def__free_unpacked
+                     (Ziti__EdgeClient__Pb__PolicyDef *message,
+                      ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__PostureCheckDef__Process methods */
+void   ziti__edge_client__pb__posture_check_def__process__init
+                     (Ziti__EdgeClient__Pb__PostureCheckDef__Process         *message);
+/* Ziti__EdgeClient__Pb__PostureCheckDef methods */
+void   ziti__edge_client__pb__posture_check_def__init
+                     (Ziti__EdgeClient__Pb__PostureCheckDef         *message);
+size_t ziti__edge_client__pb__posture_check_def__get_packed_size
+                     (const Ziti__EdgeClient__Pb__PostureCheckDef   *message);
+size_t ziti__edge_client__pb__posture_check_def__pack
+                     (const Ziti__EdgeClient__Pb__PostureCheckDef   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__posture_check_def__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__PostureCheckDef   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__PostureCheckDef *
+       ziti__edge_client__pb__posture_check_def__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__posture_check_def__free_unpacked
+                     (Ziti__EdgeClient__Pb__PostureCheckDef *message,
+                      ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__PostureStateChange__CheckState methods */
+void   ziti__edge_client__pb__posture_state_change__check_state__init
+                     (Ziti__EdgeClient__Pb__PostureStateChange__CheckState         *message);
+/* Ziti__EdgeClient__Pb__PostureStateChange__PolicyState methods */
+void   ziti__edge_client__pb__posture_state_change__policy_state__init
+                     (Ziti__EdgeClient__Pb__PostureStateChange__PolicyState         *message);
+/* Ziti__EdgeClient__Pb__PostureStateChange methods */
+void   ziti__edge_client__pb__posture_state_change__init
+                     (Ziti__EdgeClient__Pb__PostureStateChange         *message);
+size_t ziti__edge_client__pb__posture_state_change__get_packed_size
+                     (const Ziti__EdgeClient__Pb__PostureStateChange   *message);
+size_t ziti__edge_client__pb__posture_state_change__pack
+                     (const Ziti__EdgeClient__Pb__PostureStateChange   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__posture_state_change__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__PostureStateChange   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__PostureStateChange *
+       ziti__edge_client__pb__posture_state_change__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__posture_state_change__free_unpacked
+                     (Ziti__EdgeClient__Pb__PostureStateChange *message,
+                      ProtobufCAllocator *allocator);
 /* --- per-message closures --- */
 
+typedef void (*Ziti__EdgeClient__Pb__RouterCapability_Closure)
+                 (const Ziti__EdgeClient__Pb__RouterCapability *message,
+                  void *closure_data);
 typedef void (*Ziti__EdgeClient__Pb__ServicePostureStateRequest_Closure)
                  (const Ziti__EdgeClient__Pb__ServicePostureStateRequest *message,
                   void *closure_data);
@@ -709,6 +1281,42 @@ typedef void (*Ziti__EdgeClient__Pb__PostureResponse__SdkInfo_Closure)
 typedef void (*Ziti__EdgeClient__Pb__PostureResponse_Closure)
                  (const Ziti__EdgeClient__Pb__PostureResponse *message,
                   void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__SubscribeToServiceUpdates_Closure)
+                 (const Ziti__EdgeClient__Pb__SubscribeToServiceUpdates *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates_Closure)
+                 (const Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__ResyncPostureState_Closure)
+                 (const Ziti__EdgeClient__Pb__ResyncPostureState *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__ServiceChangeSet_Closure)
+                 (const Ziti__EdgeClient__Pb__ServiceChangeSet *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__ServiceDef_Closure)
+                 (const Ziti__EdgeClient__Pb__ServiceDef *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__ConfigData_Closure)
+                 (const Ziti__EdgeClient__Pb__ConfigData *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__PolicyDef_Closure)
+                 (const Ziti__EdgeClient__Pb__PolicyDef *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__PostureCheckDef__Process_Closure)
+                 (const Ziti__EdgeClient__Pb__PostureCheckDef__Process *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__PostureCheckDef_Closure)
+                 (const Ziti__EdgeClient__Pb__PostureCheckDef *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__PostureStateChange__CheckState_Closure)
+                 (const Ziti__EdgeClient__Pb__PostureStateChange__CheckState *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__PostureStateChange__PolicyState_Closure)
+                 (const Ziti__EdgeClient__Pb__PostureStateChange__PolicyState *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__PostureStateChange_Closure)
+                 (const Ziti__EdgeClient__Pb__PostureStateChange *message,
+                  void *closure_data);
 
 /* --- services --- */
 
@@ -719,8 +1327,11 @@ extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__content_type__des
 extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__header_id__descriptor;
 extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__error__descriptor;
 extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__precedence_value__descriptor;
-extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__router_capability__descriptor;
 extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__flag__descriptor;
+extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__op__descriptor;
+extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__policy_type__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__router_capability__descriptor;
+extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__router_capability__kind__descriptor;
 extern const ProtobufCMessageDescriptor ziti__edge_client__pb__service_posture_state_request__descriptor;
 extern const ProtobufCMessageDescriptor ziti__edge_client__pb__service_posture_state_response__descriptor;
 extern const ProtobufCMessageDescriptor ziti__edge_client__pb__service_posture_state_response__states_entry__descriptor;
@@ -742,6 +1353,18 @@ extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_response_
 extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_response__woken__descriptor;
 extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_response__unlocked__descriptor;
 extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_response__sdk_info__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__subscribe_to_service_updates__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__unsubscribe_from_service_updates__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__resync_posture_state__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__service_change_set__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__service_def__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__config_data__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__policy_def__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_check_def__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_check_def__process__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_state_change__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_state_change__check_state__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_state_change__policy_state__descriptor;
 
 PROTOBUF_C__END_DECLS
 

@@ -66,6 +66,7 @@ struct ziti_channel {
     bool reconnect;
 
     struct {
+        uint64_t router_caps; // RouterCapabilitiesHeader mask, as advertised by the router
         bool support_posture:1;
         bool connect_v2:1;
         bool multi_underlay:1;
@@ -330,6 +331,35 @@ bool zch_can_accept_posture(ziti_channel_t *ch) {
     return ch->capabilities.support_posture;
 }
 
+// formats the remote (peer) or local address of the underlay connection
+static void format_name(const tlsuv_stream_t *tls, bool peer, char *buf, size_t len) {
+    struct sockaddr_storage name;
+    int name_len = sizeof(name);
+    char host[INET6_ADDRSTRLEN];
+
+    snprintf(buf, len, "unknown");
+    if (tls == NULL) {
+        return;
+    }
+    int rc = peer ? tlsuv_stream_peername(tls, (struct sockaddr *) &name, &name_len)
+                  : tlsuv_stream_sockname(tls, (struct sockaddr *) &name, &name_len);
+    if (rc != 0) {
+        return;
+    }
+
+    if (name.ss_family == AF_INET) {
+        const struct sockaddr_in *in = (const struct sockaddr_in *) &name;
+        if (uv_ip4_name(in, host, sizeof(host)) == 0) {
+            snprintf(buf, len, "%s:%d", host, ntohs(in->sin_port));
+        }
+    } else if (name.ss_family == AF_INET6) {
+        const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *) &name;
+        if (uv_ip6_name(in6, host, sizeof(host)) == 0) {
+            snprintf(buf, len, "[%s]:%d", host, ntohs(in6->sin6_port));
+        }
+    }
+}
+
 void zch_dump(ziti_channel_t *ch, dump_fn printer, void *ctx) {
     uint64_t now = uv_now(ch->ztx->loop);
 
@@ -339,10 +369,29 @@ void zch_dump(ziti_channel_t *ch, dump_fn printer, void *ctx) {
     if (ziti_channel_is_connected(ch)) {
         printer(ctx, " latency[%" PRIu64 "] connected[%" PRIu64 "s]\n",
                 zch_latency(ch), (now - zch_connect_time(ch)) / 1000);
-        printer(ctx, "\tcapabilities: posture[%c] connect.v2[%c] multi_underlay[%c]\n",
-                ch->capabilities.support_posture ? 'Y' : 'N',
-                ch->capabilities.connect_v2 ? 'Y' : 'N',
-                ch->capabilities.multi_underlay ? 'Y' : 'N');
+        char local[INET6_ADDRSTRLEN + 16];
+        char peer[INET6_ADDRSTRLEN + 16];
+        format_name(ch->connection, false, local, sizeof(local));
+        format_name(ch->connection, true, peer, sizeof(peer));
+        const char *alpn = ch->connection ? tlsuv_stream_get_protocol(ch->connection) : NULL;
+        printer(ctx, "\tunderlay[%s -> %s] protocol[%s] last_read[%" PRIu64 "s ago] last_write[%" PRIu64 "s ago]"
+                     " out_q[%zu msgs/%zu bytes]\n",
+                local, peer, alpn ? alpn : "none",
+                (now - ch->last_read) / 1000, (now - ch->last_write) / 1000,
+                ch->out_q, ch->out_q_bytes);
+        printer(ctx, "\tcapabilities:");
+        // bit 0 is not a capability; bits the proto does not name are not reported
+        for (int bit = 1; bit < 64; bit++) {
+            if ((ch->capabilities.router_caps & ((uint64_t) 1 << bit)) == 0) {
+                continue;
+            }
+            const ProtobufCEnumValue *cap = protobuf_c_enum_descriptor_get_value(
+                    &ziti__edge_client__pb__router_capability__kind__descriptor, bit);
+            if (cap) {
+                printer(ctx, " %s", cap->name);
+            }
+        }
+        printer(ctx, "\n");
     } else {
         printer(ctx, "\n");
     }
@@ -823,6 +872,32 @@ static void send_latency_probe(void *data) {
 
 }
 
+// RouterCapabilitiesHeader is a big-endian, variable length bit mask; bits above 63 are ignored.
+// Routers that predate it advertise the same capabilities with legacy headers.
+static uint64_t get_router_capabilities(message *msg) {
+    uint64_t caps = 0;
+    const uint8_t *hdr = NULL;
+    size_t len = 0;
+    if (message_get_bytes_header(msg, RouterCapabilitiesHeader, &hdr, &len)) {
+        for (size_t i = 0; i < len && i < sizeof(caps); i++) {
+            caps |= (uint64_t) hdr[len - 1 - i] << (i * 8);
+        }
+    }
+
+    bool bval = false;
+    if (message_get_bool_header(msg, SupportsPostureChecksHeader, &bval) && bval) {
+        caps |= ROUTER_CAPABILITY_PostureChecks;
+    }
+    if (message_get_bool_header(msg, SupportsBindSuccessHeader, &bval) && bval) {
+        caps |= ROUTER_CAPABILITY_BindSuccess;
+    }
+    // a router that accepted the grouped connection supports multiple underlays
+    if (message_get_bool_header(msg, IsGroupedHeader, &bval) && bval) {
+        caps |= ROUTER_CAPABILITY_MultiChannel;
+    }
+    return caps;
+}
+
 static void hello_reply_cb(void *ctx, message *msg, int err) {
     ziti_channel_t *ch = ctx;
     bool success = false;
@@ -851,17 +926,13 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         ztx_set_deadline(ch->ztx, LATENCY_INTERVAL, &ch->deadline, send_latency_probe, ch);
 
         memset(&ch->capabilities, 0, sizeof(ch->capabilities));
+        uint64_t caps = get_router_capabilities(msg);
+        CH_LOG(DEBUG, "edge router capabilities: 0x%" PRIx64, caps);
+        ch->capabilities.router_caps = caps;
+        ch->capabilities.connect_v2 = (caps & ROUTER_CAPABILITY_CONNECT_V2) != 0;
+        ch->capabilities.support_posture = (caps & ROUTER_CAPABILITY_PostureChecks) != 0;
+
         bool bval = false;
-        if (message_get_bool_header(msg, SupportsPostureChecksHeader, &bval) && bval) {
-            CH_LOG(DEBUG, "edge router supports posture: %s", bval ? "true" : "false");
-            ch->capabilities.support_posture = true;
-        }
-
-        uint32_t caps = 0;
-        if (message_get_int32_header(msg, RouterCapabilitiesHeader, (int32_t*)&caps)) {
-            ch->capabilities.connect_v2 = (caps & ROUTER_CAPABILITY_CONNECT_V2) != 0;
-        }
-
         if (message_get_bool_header(msg, IsGroupedHeader, &bval) && bval) {
             CH_LOG(DEBUG, "edge router supports grouped connections: %s", bval ? "true" : "false");
             ch->capabilities.multi_underlay = true;
@@ -872,7 +943,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         if (message_get_error(msg, &e)) {
             CH_LOG(ERROR, "connect rejected: %" PRIi64 " %s[%s]", e.code, e.message, e.cause);
         } else {
-            CH_LOG(ERROR, "connect rejected: %d %*s", success, msg->header.body_len, msg->body);
+            CH_LOG(ERROR, "connect rejected: %d %*s", success, msg->header.body_len, (const char*)msg->body);
         }
         free_edge_error(&e);
         on_channel_close(ch, ZITI_CONNABORT, 0);
