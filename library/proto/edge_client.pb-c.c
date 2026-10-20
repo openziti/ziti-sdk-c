@@ -7,6 +7,51 @@
 #endif
 
 #include "edge_client.pb-c.h"
+void   ziti__edge_client__pb__router_capability__init
+                     (Ziti__EdgeClient__Pb__RouterCapability         *message)
+{
+  static const Ziti__EdgeClient__Pb__RouterCapability init_value = ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__router_capability__get_packed_size
+                     (const Ziti__EdgeClient__Pb__RouterCapability *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__router_capability__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__router_capability__pack
+                     (const Ziti__EdgeClient__Pb__RouterCapability *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__router_capability__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__router_capability__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__RouterCapability *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__router_capability__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__RouterCapability *
+       ziti__edge_client__pb__router_capability__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__RouterCapability *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__router_capability__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__router_capability__free_unpacked
+                     (Ziti__EdgeClient__Pb__RouterCapability *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__router_capability__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
 void   ziti__edge_client__pb__service_posture_state_request__init
                      (Ziti__EdgeClient__Pb__ServicePostureStateRequest         *message)
 {
@@ -406,6 +451,483 @@ void   ziti__edge_client__pb__posture_response__free_unpacked
   assert(message->base.descriptor == &ziti__edge_client__pb__posture_response__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
+void   ziti__edge_client__pb__subscribe_to_service_updates__init
+                     (Ziti__EdgeClient__Pb__SubscribeToServiceUpdates         *message)
+{
+  static const Ziti__EdgeClient__Pb__SubscribeToServiceUpdates init_value = ZITI__EDGE_CLIENT__PB__SUBSCRIBE_TO_SERVICE_UPDATES__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__subscribe_to_service_updates__get_packed_size
+                     (const Ziti__EdgeClient__Pb__SubscribeToServiceUpdates *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__subscribe_to_service_updates__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__subscribe_to_service_updates__pack
+                     (const Ziti__EdgeClient__Pb__SubscribeToServiceUpdates *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__subscribe_to_service_updates__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__subscribe_to_service_updates__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__SubscribeToServiceUpdates *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__subscribe_to_service_updates__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__SubscribeToServiceUpdates *
+       ziti__edge_client__pb__subscribe_to_service_updates__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__SubscribeToServiceUpdates *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__subscribe_to_service_updates__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__subscribe_to_service_updates__free_unpacked
+                     (Ziti__EdgeClient__Pb__SubscribeToServiceUpdates *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__subscribe_to_service_updates__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   ziti__edge_client__pb__unsubscribe_from_service_updates__init
+                     (Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates         *message)
+{
+  static const Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates init_value = ZITI__EDGE_CLIENT__PB__UNSUBSCRIBE_FROM_SERVICE_UPDATES__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__unsubscribe_from_service_updates__get_packed_size
+                     (const Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__unsubscribe_from_service_updates__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__unsubscribe_from_service_updates__pack
+                     (const Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__unsubscribe_from_service_updates__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__unsubscribe_from_service_updates__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__unsubscribe_from_service_updates__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates *
+       ziti__edge_client__pb__unsubscribe_from_service_updates__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__unsubscribe_from_service_updates__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__unsubscribe_from_service_updates__free_unpacked
+                     (Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__unsubscribe_from_service_updates__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   ziti__edge_client__pb__resync_posture_state__init
+                     (Ziti__EdgeClient__Pb__ResyncPostureState         *message)
+{
+  static const Ziti__EdgeClient__Pb__ResyncPostureState init_value = ZITI__EDGE_CLIENT__PB__RESYNC_POSTURE_STATE__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__resync_posture_state__get_packed_size
+                     (const Ziti__EdgeClient__Pb__ResyncPostureState *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__resync_posture_state__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__resync_posture_state__pack
+                     (const Ziti__EdgeClient__Pb__ResyncPostureState *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__resync_posture_state__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__resync_posture_state__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__ResyncPostureState *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__resync_posture_state__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__ResyncPostureState *
+       ziti__edge_client__pb__resync_posture_state__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__ResyncPostureState *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__resync_posture_state__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__resync_posture_state__free_unpacked
+                     (Ziti__EdgeClient__Pb__ResyncPostureState *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__resync_posture_state__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   ziti__edge_client__pb__service_change_set__init
+                     (Ziti__EdgeClient__Pb__ServiceChangeSet         *message)
+{
+  static const Ziti__EdgeClient__Pb__ServiceChangeSet init_value = ZITI__EDGE_CLIENT__PB__SERVICE_CHANGE_SET__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__service_change_set__get_packed_size
+                     (const Ziti__EdgeClient__Pb__ServiceChangeSet *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__service_change_set__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__service_change_set__pack
+                     (const Ziti__EdgeClient__Pb__ServiceChangeSet *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__service_change_set__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__service_change_set__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__ServiceChangeSet *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__service_change_set__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__ServiceChangeSet *
+       ziti__edge_client__pb__service_change_set__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__ServiceChangeSet *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__service_change_set__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__service_change_set__free_unpacked
+                     (Ziti__EdgeClient__Pb__ServiceChangeSet *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__service_change_set__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   ziti__edge_client__pb__service_def__init
+                     (Ziti__EdgeClient__Pb__ServiceDef         *message)
+{
+  static const Ziti__EdgeClient__Pb__ServiceDef init_value = ZITI__EDGE_CLIENT__PB__SERVICE_DEF__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__service_def__get_packed_size
+                     (const Ziti__EdgeClient__Pb__ServiceDef *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__service_def__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__service_def__pack
+                     (const Ziti__EdgeClient__Pb__ServiceDef *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__service_def__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__service_def__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__ServiceDef *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__service_def__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__ServiceDef *
+       ziti__edge_client__pb__service_def__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__ServiceDef *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__service_def__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__service_def__free_unpacked
+                     (Ziti__EdgeClient__Pb__ServiceDef *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__service_def__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   ziti__edge_client__pb__config_data__init
+                     (Ziti__EdgeClient__Pb__ConfigData         *message)
+{
+  static const Ziti__EdgeClient__Pb__ConfigData init_value = ZITI__EDGE_CLIENT__PB__CONFIG_DATA__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__config_data__get_packed_size
+                     (const Ziti__EdgeClient__Pb__ConfigData *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__config_data__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__config_data__pack
+                     (const Ziti__EdgeClient__Pb__ConfigData *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__config_data__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__config_data__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__ConfigData *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__config_data__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__ConfigData *
+       ziti__edge_client__pb__config_data__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__ConfigData *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__config_data__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__config_data__free_unpacked
+                     (Ziti__EdgeClient__Pb__ConfigData *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__config_data__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   ziti__edge_client__pb__policy_def__init
+                     (Ziti__EdgeClient__Pb__PolicyDef         *message)
+{
+  static const Ziti__EdgeClient__Pb__PolicyDef init_value = ZITI__EDGE_CLIENT__PB__POLICY_DEF__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__policy_def__get_packed_size
+                     (const Ziti__EdgeClient__Pb__PolicyDef *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__policy_def__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__policy_def__pack
+                     (const Ziti__EdgeClient__Pb__PolicyDef *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__policy_def__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__policy_def__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__PolicyDef *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__policy_def__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__PolicyDef *
+       ziti__edge_client__pb__policy_def__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__PolicyDef *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__policy_def__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__policy_def__free_unpacked
+                     (Ziti__EdgeClient__Pb__PolicyDef *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__policy_def__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   ziti__edge_client__pb__posture_check_def__process__init
+                     (Ziti__EdgeClient__Pb__PostureCheckDef__Process         *message)
+{
+  static const Ziti__EdgeClient__Pb__PostureCheckDef__Process init_value = ZITI__EDGE_CLIENT__PB__POSTURE_CHECK_DEF__PROCESS__INIT;
+  *message = init_value;
+}
+void   ziti__edge_client__pb__posture_check_def__init
+                     (Ziti__EdgeClient__Pb__PostureCheckDef         *message)
+{
+  static const Ziti__EdgeClient__Pb__PostureCheckDef init_value = ZITI__EDGE_CLIENT__PB__POSTURE_CHECK_DEF__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__posture_check_def__get_packed_size
+                     (const Ziti__EdgeClient__Pb__PostureCheckDef *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__posture_check_def__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__posture_check_def__pack
+                     (const Ziti__EdgeClient__Pb__PostureCheckDef *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__posture_check_def__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__posture_check_def__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__PostureCheckDef *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__posture_check_def__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__PostureCheckDef *
+       ziti__edge_client__pb__posture_check_def__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__PostureCheckDef *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__posture_check_def__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__posture_check_def__free_unpacked
+                     (Ziti__EdgeClient__Pb__PostureCheckDef *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__posture_check_def__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   ziti__edge_client__pb__posture_state_change__check_state__init
+                     (Ziti__EdgeClient__Pb__PostureStateChange__CheckState         *message)
+{
+  static const Ziti__EdgeClient__Pb__PostureStateChange__CheckState init_value = ZITI__EDGE_CLIENT__PB__POSTURE_STATE_CHANGE__CHECK_STATE__INIT;
+  *message = init_value;
+}
+void   ziti__edge_client__pb__posture_state_change__policy_state__init
+                     (Ziti__EdgeClient__Pb__PostureStateChange__PolicyState         *message)
+{
+  static const Ziti__EdgeClient__Pb__PostureStateChange__PolicyState init_value = ZITI__EDGE_CLIENT__PB__POSTURE_STATE_CHANGE__POLICY_STATE__INIT;
+  *message = init_value;
+}
+void   ziti__edge_client__pb__posture_state_change__init
+                     (Ziti__EdgeClient__Pb__PostureStateChange         *message)
+{
+  static const Ziti__EdgeClient__Pb__PostureStateChange init_value = ZITI__EDGE_CLIENT__PB__POSTURE_STATE_CHANGE__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__posture_state_change__get_packed_size
+                     (const Ziti__EdgeClient__Pb__PostureStateChange *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__posture_state_change__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__posture_state_change__pack
+                     (const Ziti__EdgeClient__Pb__PostureStateChange *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__posture_state_change__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__posture_state_change__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__PostureStateChange *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__posture_state_change__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__PostureStateChange *
+       ziti__edge_client__pb__posture_state_change__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__PostureStateChange *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__posture_state_change__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__posture_state_change__free_unpacked
+                     (Ziti__EdgeClient__Pb__PostureStateChange *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__posture_state_change__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+static const ProtobufCEnumValue ziti__edge_client__pb__router_capability__kind__enum_values_by_number[6] =
+{
+  { "NoRouterCapabilities", "ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__NoRouterCapabilities", 0 },
+  { "MultiChannel", "ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__MultiChannel", 1 },
+  { "ConnectV2", "ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__ConnectV2", 2 },
+  { "ServiceSubscriptions", "ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__ServiceSubscriptions", 4 },
+  { "PostureChecks", "ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__PostureChecks", 5 },
+  { "BindSuccess", "ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__BindSuccess", 6 },
+};
+static const ProtobufCIntRange ziti__edge_client__pb__router_capability__kind__value_ranges[] = {
+{0, 0},{4, 3},{0, 6}
+};
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__router_capability__kind__enum_values_by_name[6] =
+{
+  { "BindSuccess", 5 },
+  { "ConnectV2", 2 },
+  { "MultiChannel", 1 },
+  { "NoRouterCapabilities", 0 },
+  { "PostureChecks", 4 },
+  { "ServiceSubscriptions", 3 },
+};
+const ProtobufCEnumDescriptor ziti__edge_client__pb__router_capability__kind__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.RouterCapability.Kind",
+  "Kind",
+  "Ziti__EdgeClient__Pb__RouterCapability__Kind",
+  "ziti.edge_client.pb",
+  6,
+  ziti__edge_client__pb__router_capability__kind__enum_values_by_number,
+  6,
+  ziti__edge_client__pb__router_capability__kind__enum_values_by_name,
+  2,
+  ziti__edge_client__pb__router_capability__kind__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+#define ziti__edge_client__pb__router_capability__field_descriptors NULL
+#define ziti__edge_client__pb__router_capability__field_indices_by_name NULL
+#define ziti__edge_client__pb__router_capability__number_ranges NULL
+const ProtobufCMessageDescriptor ziti__edge_client__pb__router_capability__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.RouterCapability",
+  "RouterCapability",
+  "Ziti__EdgeClient__Pb__RouterCapability",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__RouterCapability),
+  0,
+  ziti__edge_client__pb__router_capability__field_descriptors,
+  ziti__edge_client__pb__router_capability__field_indices_by_name,
+  0,  ziti__edge_client__pb__router_capability__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__router_capability__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
 static const ProtobufCFieldDescriptor ziti__edge_client__pb__service_posture_state_request__field_descriptors[1] =
 {
   {
@@ -1711,7 +2233,840 @@ const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_response__descri
   (ProtobufCMessageInit) ziti__edge_client__pb__posture_response__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
-static const ProtobufCEnumValue ziti__edge_client__pb__content_type__enum_values_by_number[36] =
+static const ProtobufCFieldDescriptor ziti__edge_client__pb__subscribe_to_service_updates__field_descriptors[1] =
+{
+  {
+    "index",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT64,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__SubscribeToServiceUpdates, index),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned ziti__edge_client__pb__subscribe_to_service_updates__field_indices_by_name[] = {
+  0,   /* field[0] = index */
+};
+static const ProtobufCIntRange ziti__edge_client__pb__subscribe_to_service_updates__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 1 }
+};
+const ProtobufCMessageDescriptor ziti__edge_client__pb__subscribe_to_service_updates__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.SubscribeToServiceUpdates",
+  "SubscribeToServiceUpdates",
+  "Ziti__EdgeClient__Pb__SubscribeToServiceUpdates",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__SubscribeToServiceUpdates),
+  1,
+  ziti__edge_client__pb__subscribe_to_service_updates__field_descriptors,
+  ziti__edge_client__pb__subscribe_to_service_updates__field_indices_by_name,
+  1,  ziti__edge_client__pb__subscribe_to_service_updates__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__subscribe_to_service_updates__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+#define ziti__edge_client__pb__unsubscribe_from_service_updates__field_descriptors NULL
+#define ziti__edge_client__pb__unsubscribe_from_service_updates__field_indices_by_name NULL
+#define ziti__edge_client__pb__unsubscribe_from_service_updates__number_ranges NULL
+const ProtobufCMessageDescriptor ziti__edge_client__pb__unsubscribe_from_service_updates__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.UnsubscribeFromServiceUpdates",
+  "UnsubscribeFromServiceUpdates",
+  "Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__UnsubscribeFromServiceUpdates),
+  0,
+  ziti__edge_client__pb__unsubscribe_from_service_updates__field_descriptors,
+  ziti__edge_client__pb__unsubscribe_from_service_updates__field_indices_by_name,
+  0,  ziti__edge_client__pb__unsubscribe_from_service_updates__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__unsubscribe_from_service_updates__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+#define ziti__edge_client__pb__resync_posture_state__field_descriptors NULL
+#define ziti__edge_client__pb__resync_posture_state__field_indices_by_name NULL
+#define ziti__edge_client__pb__resync_posture_state__number_ranges NULL
+const ProtobufCMessageDescriptor ziti__edge_client__pb__resync_posture_state__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.ResyncPostureState",
+  "ResyncPostureState",
+  "Ziti__EdgeClient__Pb__ResyncPostureState",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__ResyncPostureState),
+  0,
+  ziti__edge_client__pb__resync_posture_state__field_descriptors,
+  ziti__edge_client__pb__resync_posture_state__field_indices_by_name,
+  0,  ziti__edge_client__pb__resync_posture_state__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__resync_posture_state__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor ziti__edge_client__pb__service_change_set__field_descriptors[5] =
+{
+  {
+    "index",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT64,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__ServiceChangeSet, index),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "previousIndex",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT64,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__ServiceChangeSet, previousindex),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "services",
+    3,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Ziti__EdgeClient__Pb__ServiceChangeSet, n_services),
+    offsetof(Ziti__EdgeClient__Pb__ServiceChangeSet, services),
+    &ziti__edge_client__pb__service_def__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "policies",
+    4,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Ziti__EdgeClient__Pb__ServiceChangeSet, n_policies),
+    offsetof(Ziti__EdgeClient__Pb__ServiceChangeSet, policies),
+    &ziti__edge_client__pb__policy_def__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "postureChecks",
+    5,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Ziti__EdgeClient__Pb__ServiceChangeSet, n_posturechecks),
+    offsetof(Ziti__EdgeClient__Pb__ServiceChangeSet, posturechecks),
+    &ziti__edge_client__pb__posture_check_def__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned ziti__edge_client__pb__service_change_set__field_indices_by_name[] = {
+  0,   /* field[0] = index */
+  3,   /* field[3] = policies */
+  4,   /* field[4] = postureChecks */
+  1,   /* field[1] = previousIndex */
+  2,   /* field[2] = services */
+};
+static const ProtobufCIntRange ziti__edge_client__pb__service_change_set__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 5 }
+};
+const ProtobufCMessageDescriptor ziti__edge_client__pb__service_change_set__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.ServiceChangeSet",
+  "ServiceChangeSet",
+  "Ziti__EdgeClient__Pb__ServiceChangeSet",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__ServiceChangeSet),
+  5,
+  ziti__edge_client__pb__service_change_set__field_descriptors,
+  ziti__edge_client__pb__service_change_set__field_indices_by_name,
+  1,  ziti__edge_client__pb__service_change_set__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__service_change_set__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor ziti__edge_client__pb__service_def__field_descriptors[7] =
+{
+  {
+    "op",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__ServiceDef, op),
+    &ziti__edge_client__pb__op__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "id",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__ServiceDef, id),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "name",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__ServiceDef, name),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "encryptionRequired",
+    4,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_BOOL,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__ServiceDef, encryptionrequired),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "configs",
+    5,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_STRING,
+    offsetof(Ziti__EdgeClient__Pb__ServiceDef, n_configs),
+    offsetof(Ziti__EdgeClient__Pb__ServiceDef, configs),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "policyIds",
+    6,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_STRING,
+    offsetof(Ziti__EdgeClient__Pb__ServiceDef, n_policyids),
+    offsetof(Ziti__EdgeClient__Pb__ServiceDef, policyids),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "configData",
+    7,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Ziti__EdgeClient__Pb__ServiceDef, n_configdata),
+    offsetof(Ziti__EdgeClient__Pb__ServiceDef, configdata),
+    &ziti__edge_client__pb__config_data__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned ziti__edge_client__pb__service_def__field_indices_by_name[] = {
+  6,   /* field[6] = configData */
+  4,   /* field[4] = configs */
+  3,   /* field[3] = encryptionRequired */
+  1,   /* field[1] = id */
+  2,   /* field[2] = name */
+  0,   /* field[0] = op */
+  5,   /* field[5] = policyIds */
+};
+static const ProtobufCIntRange ziti__edge_client__pb__service_def__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 7 }
+};
+const ProtobufCMessageDescriptor ziti__edge_client__pb__service_def__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.ServiceDef",
+  "ServiceDef",
+  "Ziti__EdgeClient__Pb__ServiceDef",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__ServiceDef),
+  7,
+  ziti__edge_client__pb__service_def__field_descriptors,
+  ziti__edge_client__pb__service_def__field_indices_by_name,
+  1,  ziti__edge_client__pb__service_def__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__service_def__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor ziti__edge_client__pb__config_data__field_descriptors[3] =
+{
+  {
+    "typeId",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__ConfigData, typeid_),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "typeName",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__ConfigData, typename_),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "dataJson",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__ConfigData, datajson),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned ziti__edge_client__pb__config_data__field_indices_by_name[] = {
+  2,   /* field[2] = dataJson */
+  0,   /* field[0] = typeId */
+  1,   /* field[1] = typeName */
+};
+static const ProtobufCIntRange ziti__edge_client__pb__config_data__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 3 }
+};
+const ProtobufCMessageDescriptor ziti__edge_client__pb__config_data__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.ConfigData",
+  "ConfigData",
+  "Ziti__EdgeClient__Pb__ConfigData",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__ConfigData),
+  3,
+  ziti__edge_client__pb__config_data__field_descriptors,
+  ziti__edge_client__pb__config_data__field_indices_by_name,
+  1,  ziti__edge_client__pb__config_data__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__config_data__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor ziti__edge_client__pb__policy_def__field_descriptors[4] =
+{
+  {
+    "op",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PolicyDef, op),
+    &ziti__edge_client__pb__op__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "id",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PolicyDef, id),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "type",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PolicyDef, type),
+    &ziti__edge_client__pb__policy_type__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "postureCheckIds",
+    4,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_STRING,
+    offsetof(Ziti__EdgeClient__Pb__PolicyDef, n_posturecheckids),
+    offsetof(Ziti__EdgeClient__Pb__PolicyDef, posturecheckids),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned ziti__edge_client__pb__policy_def__field_indices_by_name[] = {
+  1,   /* field[1] = id */
+  0,   /* field[0] = op */
+  3,   /* field[3] = postureCheckIds */
+  2,   /* field[2] = type */
+};
+static const ProtobufCIntRange ziti__edge_client__pb__policy_def__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 4 }
+};
+const ProtobufCMessageDescriptor ziti__edge_client__pb__policy_def__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.PolicyDef",
+  "PolicyDef",
+  "Ziti__EdgeClient__Pb__PolicyDef",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__PolicyDef),
+  4,
+  ziti__edge_client__pb__policy_def__field_descriptors,
+  ziti__edge_client__pb__policy_def__field_indices_by_name,
+  1,  ziti__edge_client__pb__policy_def__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__policy_def__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor ziti__edge_client__pb__posture_check_def__process__field_descriptors[2] =
+{
+  {
+    "osType",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureCheckDef__Process, ostype),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "path",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureCheckDef__Process, path),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned ziti__edge_client__pb__posture_check_def__process__field_indices_by_name[] = {
+  0,   /* field[0] = osType */
+  1,   /* field[1] = path */
+};
+static const ProtobufCIntRange ziti__edge_client__pb__posture_check_def__process__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 2 }
+};
+const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_check_def__process__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.PostureCheckDef.Process",
+  "Process",
+  "Ziti__EdgeClient__Pb__PostureCheckDef__Process",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__PostureCheckDef__Process),
+  2,
+  ziti__edge_client__pb__posture_check_def__process__field_descriptors,
+  ziti__edge_client__pb__posture_check_def__process__field_indices_by_name,
+  1,  ziti__edge_client__pb__posture_check_def__process__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__posture_check_def__process__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor ziti__edge_client__pb__posture_check_def__field_descriptors[9] =
+{
+  {
+    "op",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_ENUM,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureCheckDef, op),
+    &ziti__edge_client__pb__op__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "id",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureCheckDef, id),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "type",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureCheckDef, type),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "promptGracePeriodSeconds",
+    4,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureCheckDef, promptgraceperiodseconds),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "promptOnUnlock",
+    5,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_BOOL,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureCheckDef, promptonunlock),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "promptOnWake",
+    6,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_BOOL,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureCheckDef, promptonwake),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "semantic",
+    7,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureCheckDef, semantic),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "processes",
+    8,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Ziti__EdgeClient__Pb__PostureCheckDef, n_processes),
+    offsetof(Ziti__EdgeClient__Pb__PostureCheckDef, processes),
+    &ziti__edge_client__pb__posture_check_def__process__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "timeoutSeconds",
+    9,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT64,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureCheckDef, timeoutseconds),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned ziti__edge_client__pb__posture_check_def__field_indices_by_name[] = {
+  1,   /* field[1] = id */
+  0,   /* field[0] = op */
+  7,   /* field[7] = processes */
+  3,   /* field[3] = promptGracePeriodSeconds */
+  4,   /* field[4] = promptOnUnlock */
+  5,   /* field[5] = promptOnWake */
+  6,   /* field[6] = semantic */
+  8,   /* field[8] = timeoutSeconds */
+  2,   /* field[2] = type */
+};
+static const ProtobufCIntRange ziti__edge_client__pb__posture_check_def__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 9 }
+};
+const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_check_def__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.PostureCheckDef",
+  "PostureCheckDef",
+  "Ziti__EdgeClient__Pb__PostureCheckDef",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__PostureCheckDef),
+  9,
+  ziti__edge_client__pb__posture_check_def__field_descriptors,
+  ziti__edge_client__pb__posture_check_def__field_indices_by_name,
+  1,  ziti__edge_client__pb__posture_check_def__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__posture_check_def__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor ziti__edge_client__pb__posture_state_change__check_state__field_descriptors[4] =
+{
+  {
+    "checkId",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange__CheckState, checkid),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "isPassing",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_BOOL,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange__CheckState, ispassing),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "timeoutAt",
+    3,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange__CheckState, timeoutat),
+    &google__protobuf__timestamp__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "timeoutRemainingSeconds",
+    4,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_INT32,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange__CheckState, timeoutremainingseconds),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned ziti__edge_client__pb__posture_state_change__check_state__field_indices_by_name[] = {
+  0,   /* field[0] = checkId */
+  1,   /* field[1] = isPassing */
+  2,   /* field[2] = timeoutAt */
+  3,   /* field[3] = timeoutRemainingSeconds */
+};
+static const ProtobufCIntRange ziti__edge_client__pb__posture_state_change__check_state__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 4 }
+};
+const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_state_change__check_state__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.PostureStateChange.CheckState",
+  "CheckState",
+  "Ziti__EdgeClient__Pb__PostureStateChange__CheckState",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__PostureStateChange__CheckState),
+  4,
+  ziti__edge_client__pb__posture_state_change__check_state__field_descriptors,
+  ziti__edge_client__pb__posture_state_change__check_state__field_indices_by_name,
+  1,  ziti__edge_client__pb__posture_state_change__check_state__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__posture_state_change__check_state__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor ziti__edge_client__pb__posture_state_change__policy_state__field_descriptors[2] =
+{
+  {
+    "policyId",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_STRING,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange__PolicyState, policyid),
+    NULL,
+    &protobuf_c_empty_string,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "isPassing",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_BOOL,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange__PolicyState, ispassing),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned ziti__edge_client__pb__posture_state_change__policy_state__field_indices_by_name[] = {
+  1,   /* field[1] = isPassing */
+  0,   /* field[0] = policyId */
+};
+static const ProtobufCIntRange ziti__edge_client__pb__posture_state_change__policy_state__number_ranges[1 + 1] =
+{
+  { 1, 0 },
+  { 0, 2 }
+};
+const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_state_change__policy_state__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.PostureStateChange.PolicyState",
+  "PolicyState",
+  "Ziti__EdgeClient__Pb__PostureStateChange__PolicyState",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__PostureStateChange__PolicyState),
+  2,
+  ziti__edge_client__pb__posture_state_change__policy_state__field_descriptors,
+  ziti__edge_client__pb__posture_state_change__policy_state__field_indices_by_name,
+  1,  ziti__edge_client__pb__posture_state_change__policy_state__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__posture_state_change__policy_state__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCFieldDescriptor ziti__edge_client__pb__posture_state_change__field_descriptors[5] =
+{
+  {
+    "seq",
+    1,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT64,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange, seq),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "structuralIndex",
+    2,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_UINT64,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange, structuralindex),
+    NULL,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "generatedAt",
+    4,
+    PROTOBUF_C_LABEL_NONE,
+    PROTOBUF_C_TYPE_MESSAGE,
+    0,   /* quantifier_offset */
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange, generatedat),
+    &google__protobuf__timestamp__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "checkStates",
+    5,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange, n_checkstates),
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange, checkstates),
+    &ziti__edge_client__pb__posture_state_change__check_state__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+  {
+    "policyStates",
+    6,
+    PROTOBUF_C_LABEL_REPEATED,
+    PROTOBUF_C_TYPE_MESSAGE,
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange, n_policystates),
+    offsetof(Ziti__EdgeClient__Pb__PostureStateChange, policystates),
+    &ziti__edge_client__pb__posture_state_change__policy_state__descriptor,
+    NULL,
+    0,             /* flags */
+    0,NULL,NULL    /* reserved1,reserved2, etc */
+  },
+};
+static const unsigned ziti__edge_client__pb__posture_state_change__field_indices_by_name[] = {
+  3,   /* field[3] = checkStates */
+  2,   /* field[2] = generatedAt */
+  4,   /* field[4] = policyStates */
+  0,   /* field[0] = seq */
+  1,   /* field[1] = structuralIndex */
+};
+static const ProtobufCIntRange ziti__edge_client__pb__posture_state_change__number_ranges[2 + 1] =
+{
+  { 1, 0 },
+  { 4, 2 },
+  { 0, 5 }
+};
+const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_state_change__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.PostureStateChange",
+  "PostureStateChange",
+  "Ziti__EdgeClient__Pb__PostureStateChange",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__PostureStateChange),
+  5,
+  ziti__edge_client__pb__posture_state_change__field_descriptors,
+  ziti__edge_client__pb__posture_state_change__field_indices_by_name,
+  2,  ziti__edge_client__pb__posture_state_change__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__posture_state_change__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCEnumValue ziti__edge_client__pb__content_type__enum_values_by_number[41] =
 {
   { "Hello", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Hello", 0 },
   { "Ping", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Ping", 1 },
@@ -1722,6 +3077,11 @@ static const ProtobufCEnumValue ziti__edge_client__pb__content_type__enum_values
   { "XgControlType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__XgControlType", 1102 },
   { "XgCloseType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__XgCloseType", 1103 },
   { "PostureResponseType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureResponseType", 10800 },
+  { "SubscribeToServiceUpdatesType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__SubscribeToServiceUpdatesType", 10900 },
+  { "UnsubscribeFromServiceUpdatesType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__UnsubscribeFromServiceUpdatesType", 10901 },
+  { "ResyncPostureStateType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ResyncPostureStateType", 10902 },
+  { "ServiceChangeSetType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ServiceChangeSetType", 10903 },
+  { "PostureStateChangeType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__PostureStateChangeType", 10904 },
   { "ConnectType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ConnectType", 60783 },
   { "StateConnectedType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__StateConnectedType", 60784 },
   { "StateClosedType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__StateClosedType", 60785 },
@@ -1751,42 +3111,47 @@ static const ProtobufCEnumValue ziti__edge_client__pb__content_type__enum_values
   { "ServicePostureStateResponseType", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__ServicePostureStateResponseType", 108002 },
 };
 static const ProtobufCIntRange ziti__edge_client__pb__content_type__value_ranges[] = {
-{0, 0},{1100, 4},{10800, 8},{60783, 9},{108001, 34},{0, 36}
+{0, 0},{1100, 4},{10800, 8},{10900, 9},{60783, 14},{108001, 39},{0, 41}
 };
-static const ProtobufCEnumValueIndex ziti__edge_client__pb__content_type__enum_values_by_name[36] =
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__content_type__enum_values_by_name[41] =
 {
-  { "BindSuccess", 26 },
-  { "BindType", 16 },
-  { "ConnInspectRequest", 24 },
-  { "ConnInspectResponse", 25 },
-  { "ConnectType", 9 },
-  { "ConnectV2Type", 32 },
-  { "DataType", 12 },
-  { "DialFailedType", 15 },
-  { "DialSuccessType", 14 },
-  { "DialType", 13 },
-  { "HealthEventType", 21 },
+  { "BindSuccess", 31 },
+  { "BindType", 21 },
+  { "ConnInspectRequest", 29 },
+  { "ConnInspectResponse", 30 },
+  { "ConnectType", 14 },
+  { "ConnectV2Type", 37 },
+  { "DataType", 17 },
+  { "DialFailedType", 20 },
+  { "DialSuccessType", 19 },
+  { "DialType", 18 },
+  { "HealthEventType", 26 },
   { "Hello", 0 },
-  { "InspectRequest", 30 },
-  { "InspectResponse", 31 },
+  { "InspectRequest", 35 },
+  { "InspectResponse", 36 },
   { "Latency", 3 },
   { "Ping", 1 },
   { "PostureResponseType", 8 },
-  { "ProbeType", 19 },
+  { "PostureStateChangeType", 13 },
+  { "ProbeType", 24 },
   { "Result", 2 },
-  { "RouteCircuitType", 33 },
-  { "ServicePostureStateRequestType", 34 },
-  { "ServicePostureStateResponseType", 35 },
-  { "StateClosedType", 11 },
-  { "StateConnectedType", 10 },
-  { "StateSessionEndedType", 18 },
-  { "TraceRouteResponseType", 23 },
-  { "TraceRouteType", 22 },
-  { "UnbindType", 17 },
-  { "UpdateBindType", 20 },
-  { "UpdateTokenFailureType", 28 },
-  { "UpdateTokenSuccessType", 27 },
-  { "UpdateTokenType", 29 },
+  { "ResyncPostureStateType", 11 },
+  { "RouteCircuitType", 38 },
+  { "ServiceChangeSetType", 12 },
+  { "ServicePostureStateRequestType", 39 },
+  { "ServicePostureStateResponseType", 40 },
+  { "StateClosedType", 16 },
+  { "StateConnectedType", 15 },
+  { "StateSessionEndedType", 23 },
+  { "SubscribeToServiceUpdatesType", 9 },
+  { "TraceRouteResponseType", 28 },
+  { "TraceRouteType", 27 },
+  { "UnbindType", 22 },
+  { "UnsubscribeFromServiceUpdatesType", 10 },
+  { "UpdateBindType", 25 },
+  { "UpdateTokenFailureType", 33 },
+  { "UpdateTokenSuccessType", 32 },
+  { "UpdateTokenType", 34 },
   { "XgAcknowledgementType", 5 },
   { "XgCloseType", 7 },
   { "XgControlType", 6 },
@@ -1799,15 +3164,15 @@ const ProtobufCEnumDescriptor ziti__edge_client__pb__content_type__descriptor =
   "ContentType",
   "Ziti__EdgeClient__Pb__ContentType",
   "ziti.edge_client.pb",
-  36,
+  41,
   ziti__edge_client__pb__content_type__enum_values_by_number,
-  36,
+  41,
   ziti__edge_client__pb__content_type__enum_values_by_name,
-  5,
+  6,
   ziti__edge_client__pb__content_type__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
-static const ProtobufCEnumValue ziti__edge_client__pb__header_id__enum_values_by_number[42] =
+static const ProtobufCEnumValue ziti__edge_client__pb__header_id__enum_values_by_number[45] =
 {
   { "ZER0", "ZITI__EDGE_CLIENT__PB__HEADER_ID__ZER0", 0 },
   { "UUID", "ZITI__EDGE_CLIENT__PB__HEADER_ID__UUID", 128 },
@@ -1851,11 +3216,14 @@ static const ProtobufCEnumValue ziti__edge_client__pb__header_id__enum_values_by
   { "ServiceIdentifierType", "ZITI__EDGE_CLIENT__PB__HEADER_ID__ServiceIdentifierType", 1037 },
   { "ConnectRequestId", "ZITI__EDGE_CLIENT__PB__HEADER_ID__ConnectRequestId", 1038 },
   { "RouterCapabilities", "ZITI__EDGE_CLIENT__PB__HEADER_ID__RouterCapabilities", 1039 },
+  { "ServiceSubscriptionIndex", "ZITI__EDGE_CLIENT__PB__HEADER_ID__ServiceSubscriptionIndex", 1040 },
+  { "DirectE2EEModeHeader", "ZITI__EDGE_CLIENT__PB__HEADER_ID__DirectE2EEModeHeader", 1041 },
+  { "DirectE2EECircuitTokenHeader", "ZITI__EDGE_CLIENT__PB__HEADER_ID__DirectE2EECircuitTokenHeader", 1042 },
 };
 static const ProtobufCIntRange ziti__edge_client__pb__header_id__value_ranges[] = {
-{0, 0},{128, 1},{1000, 2},{0, 42}
+{0, 0},{128, 1},{1000, 2},{0, 45}
 };
-static const ProtobufCEnumValueIndex ziti__edge_client__pb__header_id__enum_values_by_name[42] =
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__header_id__enum_values_by_name[45] =
 {
   { "AppData", 13 },
   { "CallerId", 10 },
@@ -1868,6 +3236,8 @@ static const ProtobufCEnumValueIndex ziti__edge_client__pb__header_id__enum_valu
   { "CryptoMethod", 11 },
   { "DialerIdentityId", 36 },
   { "DialerIdentityName", 37 },
+  { "DirectE2EECircuitTokenHeader", 44 },
+  { "DirectE2EEModeHeader", 43 },
   { "ErrorCode", 16 },
   { "Flags", 12 },
   { "HealthStatus", 15 },
@@ -1880,6 +3250,7 @@ static const ProtobufCEnumValueIndex ziti__edge_client__pb__header_id__enum_valu
   { "Seq", 3 },
   { "ServiceId", 38 },
   { "ServiceIdentifierType", 39 },
+  { "ServiceSubscriptionIndex", 42 },
   { "SessionToken", 4 },
   { "StickinessToken", 29 },
   { "StructuredError", 35 },
@@ -1907,15 +3278,15 @@ const ProtobufCEnumDescriptor ziti__edge_client__pb__header_id__descriptor =
   "HeaderId",
   "Ziti__EdgeClient__Pb__HeaderId",
   "ziti.edge_client.pb",
-  42,
+  45,
   ziti__edge_client__pb__header_id__enum_values_by_number,
-  42,
+  45,
   ziti__edge_client__pb__header_id__enum_values_by_name,
   3,
   ziti__edge_client__pb__header_id__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
-static const ProtobufCEnumValue ziti__edge_client__pb__error__enum_values_by_number[15] =
+static const ProtobufCEnumValue ziti__edge_client__pb__error__enum_values_by_number[18] =
 {
   { "OK", "ZITI__EDGE_CLIENT__PB__ERROR__OK", 0 },
   { "Internal", "ZITI__EDGE_CLIENT__PB__ERROR__Internal", 1 },
@@ -1932,13 +3303,18 @@ static const ProtobufCEnumValue ziti__edge_client__pb__error__enum_values_by_num
   { "InvalidApiSessionType", "ZITI__EDGE_CLIENT__PB__ERROR__InvalidApiSessionType", 12 },
   { "InvalidInstanceId", "ZITI__EDGE_CLIENT__PB__ERROR__InvalidInstanceId", 13 },
   { "AccessDenied", "ZITI__EDGE_CLIENT__PB__ERROR__AccessDenied", 14 },
+  { "PostureCheckFailed", "ZITI__EDGE_CLIENT__PB__ERROR__PostureCheckFailed", 15 },
+  { "E2eeNoCommonMode", "ZITI__EDGE_CLIENT__PB__ERROR__E2eeNoCommonMode", 16 },
+  { "E2eeDirectRequired", "ZITI__EDGE_CLIENT__PB__ERROR__E2eeDirectRequired", 17 },
 };
 static const ProtobufCIntRange ziti__edge_client__pb__error__value_ranges[] = {
-{0, 0},{0, 15}
+{0, 0},{0, 18}
 };
-static const ProtobufCEnumValueIndex ziti__edge_client__pb__error__enum_values_by_name[15] =
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__error__enum_values_by_name[18] =
 {
   { "AccessDenied", 14 },
+  { "E2eeDirectRequired", 17 },
+  { "E2eeNoCommonMode", 16 },
   { "EncryptionDataMissing", 11 },
   { "Internal", 1 },
   { "InvalidApiSession", 2 },
@@ -1951,6 +3327,7 @@ static const ProtobufCEnumValueIndex ziti__edge_client__pb__error__enum_values_b
   { "InvalidSession", 3 },
   { "InvalidTerminator", 8 },
   { "OK", 0 },
+  { "PostureCheckFailed", 15 },
   { "TunnelingNotEnabled", 7 },
   { "WrongSessionType", 4 },
 };
@@ -1961,9 +3338,9 @@ const ProtobufCEnumDescriptor ziti__edge_client__pb__error__descriptor =
   "Error",
   "Ziti__EdgeClient__Pb__Error",
   "ziti.edge_client.pb",
-  15,
+  18,
   ziti__edge_client__pb__error__enum_values_by_number,
-  15,
+  18,
   ziti__edge_client__pb__error__enum_values_by_name,
   1,
   ziti__edge_client__pb__error__value_ranges,
@@ -1997,34 +3374,6 @@ const ProtobufCEnumDescriptor ziti__edge_client__pb__precedence_value__descripto
   ziti__edge_client__pb__precedence_value__enum_values_by_name,
   1,
   ziti__edge_client__pb__precedence_value__value_ranges,
-  NULL,NULL,NULL,NULL   /* reserved[1234] */
-};
-static const ProtobufCEnumValue ziti__edge_client__pb__router_capability__enum_values_by_number[2] =
-{
-  { "NoRouterCapabilities", "ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__NoRouterCapabilities", 0 },
-  { "ConnectV2", "ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__ConnectV2", 1 },
-};
-static const ProtobufCIntRange ziti__edge_client__pb__router_capability__value_ranges[] = {
-{0, 0},{0, 2}
-};
-static const ProtobufCEnumValueIndex ziti__edge_client__pb__router_capability__enum_values_by_name[2] =
-{
-  { "ConnectV2", 1 },
-  { "NoRouterCapabilities", 0 },
-};
-const ProtobufCEnumDescriptor ziti__edge_client__pb__router_capability__descriptor =
-{
-  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
-  "ziti.edge_client.pb.RouterCapability",
-  "RouterCapability",
-  "Ziti__EdgeClient__Pb__RouterCapability",
-  "ziti.edge_client.pb",
-  2,
-  ziti__edge_client__pb__router_capability__enum_values_by_number,
-  2,
-  ziti__edge_client__pb__router_capability__enum_values_by_name,
-  1,
-  ziti__edge_client__pb__router_capability__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
 static const ProtobufCEnumValue ziti__edge_client__pb__flag__enum_values_by_number[6] =
@@ -2061,5 +3410,63 @@ const ProtobufCEnumDescriptor ziti__edge_client__pb__flag__descriptor =
   ziti__edge_client__pb__flag__enum_values_by_name,
   4,
   ziti__edge_client__pb__flag__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue ziti__edge_client__pb__op__enum_values_by_number[3] =
+{
+  { "Added", "ZITI__EDGE_CLIENT__PB__OP__Added", 0 },
+  { "Updated", "ZITI__EDGE_CLIENT__PB__OP__Updated", 1 },
+  { "Removed", "ZITI__EDGE_CLIENT__PB__OP__Removed", 2 },
+};
+static const ProtobufCIntRange ziti__edge_client__pb__op__value_ranges[] = {
+{0, 0},{0, 3}
+};
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__op__enum_values_by_name[3] =
+{
+  { "Added", 0 },
+  { "Removed", 2 },
+  { "Updated", 1 },
+};
+const ProtobufCEnumDescriptor ziti__edge_client__pb__op__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.Op",
+  "Op",
+  "Ziti__EdgeClient__Pb__Op",
+  "ziti.edge_client.pb",
+  3,
+  ziti__edge_client__pb__op__enum_values_by_number,
+  3,
+  ziti__edge_client__pb__op__enum_values_by_name,
+  1,
+  ziti__edge_client__pb__op__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+static const ProtobufCEnumValue ziti__edge_client__pb__policy_type__enum_values_by_number[2] =
+{
+  { "Dial", "ZITI__EDGE_CLIENT__PB__POLICY_TYPE__Dial", 0 },
+  { "Bind", "ZITI__EDGE_CLIENT__PB__POLICY_TYPE__Bind", 1 },
+};
+static const ProtobufCIntRange ziti__edge_client__pb__policy_type__value_ranges[] = {
+{0, 0},{0, 2}
+};
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__policy_type__enum_values_by_name[2] =
+{
+  { "Bind", 1 },
+  { "Dial", 0 },
+};
+const ProtobufCEnumDescriptor ziti__edge_client__pb__policy_type__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.PolicyType",
+  "PolicyType",
+  "Ziti__EdgeClient__Pb__PolicyType",
+  "ziti.edge_client.pb",
+  2,
+  ziti__edge_client__pb__policy_type__enum_values_by_number,
+  2,
+  ziti__edge_client__pb__policy_type__enum_values_by_name,
+  1,
+  ziti__edge_client__pb__policy_type__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };

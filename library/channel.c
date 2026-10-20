@@ -66,6 +66,7 @@ struct ziti_channel {
     bool reconnect;
 
     struct {
+        uint64_t router_caps; // RouterCapabilitiesHeader mask, as advertised by the router
         bool support_posture:1;
         bool connect_v2:1;
         bool multi_underlay:1;
@@ -339,10 +340,19 @@ void zch_dump(ziti_channel_t *ch, dump_fn printer, void *ctx) {
     if (ziti_channel_is_connected(ch)) {
         printer(ctx, " latency[%" PRIu64 "] connected[%" PRIu64 "s]\n",
                 zch_latency(ch), (now - zch_connect_time(ch)) / 1000);
-        printer(ctx, "\tcapabilities: posture[%c] connect.v2[%c] multi_underlay[%c]\n",
-                ch->capabilities.support_posture ? 'Y' : 'N',
-                ch->capabilities.connect_v2 ? 'Y' : 'N',
-                ch->capabilities.multi_underlay ? 'Y' : 'N');
+        printer(ctx, "\tcapabilities:");
+        // bit 0 is not a capability; bits the proto does not name are not reported
+        for (int bit = 1; bit < 64; bit++) {
+            if ((ch->capabilities.router_caps & ((uint64_t) 1 << bit)) == 0) {
+                continue;
+            }
+            const ProtobufCEnumValue *cap = protobuf_c_enum_descriptor_get_value(
+                    &ziti__edge_client__pb__router_capability__kind__descriptor, bit);
+            if (cap) {
+                printer(ctx, " %s", cap->name);
+            }
+        }
+        printer(ctx, "\n");
     } else {
         printer(ctx, "\n");
     }
@@ -823,6 +833,22 @@ static void send_latency_probe(void *data) {
 
 }
 
+// RouterCapabilitiesHeader is a big-endian, variable length bit mask; bits above 63 are ignored
+static bool get_router_capabilities(message *msg, uint64_t *caps) {
+    const uint8_t *hdr = NULL;
+    size_t len = 0;
+    if (!message_get_bytes_header(msg, RouterCapabilitiesHeader, &hdr, &len)) {
+        return false;
+    }
+
+    uint64_t val = 0;
+    for (size_t i = 0; i < len && i < sizeof(val); i++) {
+        val |= (uint64_t) hdr[len - 1 - i] << (i * 8);
+    }
+    *caps = val;
+    return true;
+}
+
 static void hello_reply_cb(void *ctx, message *msg, int err) {
     ziti_channel_t *ch = ctx;
     bool success = false;
@@ -851,15 +877,19 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         ztx_set_deadline(ch->ztx, LATENCY_INTERVAL, &ch->deadline, send_latency_probe, ch);
 
         memset(&ch->capabilities, 0, sizeof(ch->capabilities));
-        bool bval = false;
-        if (message_get_bool_header(msg, SupportsPostureChecksHeader, &bval) && bval) {
-            CH_LOG(DEBUG, "edge router supports posture: %s", bval ? "true" : "false");
-            ch->capabilities.support_posture = true;
+        uint64_t caps = 0;
+        if (get_router_capabilities(msg, &caps)) {
+            CH_LOG(DEBUG, "edge router capabilities: 0x%" PRIx64, caps);
         }
+        ch->capabilities.router_caps = caps;
+        ch->capabilities.connect_v2 = (caps & ROUTER_CAPABILITY_CONNECT_V2) != 0;
 
-        uint32_t caps = 0;
-        if (message_get_int32_header(msg, RouterCapabilitiesHeader, (int32_t*)&caps)) {
-            ch->capabilities.connect_v2 = (caps & ROUTER_CAPABILITY_CONNECT_V2) != 0;
+        // older routers only advertise posture support with the legacy header
+        bool bval = false;
+        if ((caps & ROUTER_CAPABILITY_PostureChecks) ||
+            (message_get_bool_header(msg, SupportsPostureChecksHeader, &bval) && bval)) {
+            CH_LOG(DEBUG, "edge router supports posture checks");
+            ch->capabilities.support_posture = true;
         }
 
         if (message_get_bool_header(msg, IsGroupedHeader, &bval) && bval) {
