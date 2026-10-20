@@ -49,6 +49,8 @@ def run_catch_test(env, tmp_path, tag="", test="", ):
 
     proc = subprocess.Popen(
         [test_exe, "-s",
+         # a case that SKIP()s itself (a feature the platform lacks) is not a failure: Catch exits with 4 otherwise
+         "--allow-running-no-tests",
          "--reporter", f"JUnit::out={tmp_path}/TEST-{filename}.xml",
          "--reporter", "console::out=-",
          spec],

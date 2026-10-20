@@ -285,7 +285,20 @@ struct lifecycle_state {
     bool auth_failed{false};
     bool done{false};            // we shut the context down: events after that are the shutdown, not a result
     std::string error_msg;
+    int token_rc{ZITI_OK};       // what ziti_ext_auth_token() returned
+
+    std::string enroll_key;      // what enroll_key_cb returns, when the test sets it
+    int enroll_key_calls{0};
+    bool key_is_cb_string{false}; // the config event's id.key is exactly what enroll_key_cb returned
 };
+
+// hands the SDK the key string in lifecycle_state::enroll_key; the SDK owns the copy
+static int lifecycle_enroll_key_cb(ziti_context ztx, char **key, void *ctx) {
+    auto *state = static_cast<lifecycle_state *>(ctx);
+    state->enroll_key_calls++;
+    *key = strdup(state->enroll_key.c_str());
+    return ZITI_OK;
+}
 
 static void lifecycle_done(ziti_context ztx, lifecycle_state *state) {
     state->done = true;
@@ -306,7 +319,12 @@ static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
             ziti_ext_auth(ztx, nullptr, nullptr);
         } else if (ev->auth.action == ziti_auth_login_external) {
             // signer is configured and ready - feed the pre-obtained token
-            ziti_ext_auth_token(ztx, state->token.c_str());
+            state->token_rc = ziti_ext_auth_token(ztx, state->token.c_str());
+            if (state->token_rc != ZITI_OK) {
+                // nothing more is coming: no point in waiting for the timeout
+                state->error_msg = ziti_errorstr(state->token_rc);
+                lifecycle_done(ztx, state);
+            }
         } else if (ev->auth.action == ziti_auth_cannot_continue) {
             state->auth_failed = true;
             state->error_msg = ev->auth.error ? ev->auth.error : "unknown";
@@ -325,6 +343,7 @@ static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
         // the config belongs to the context: read what the test checks now, not after the shutdown
         state->config_received = true;
         state->cert_received = ev->cfg.config->id.cert && ev->cfg.config->id.key;
+        state->key_is_cb_string = ev->cfg.config->id.key && state->enroll_key == ev->cfg.config->id.key;
         if (ev->cfg.config->id.cert) {
             // cert mode: got the cert, we're done
             lifecycle_done(ztx, state);
@@ -375,6 +394,73 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-lifecycle", "[integ][enroll-mode
     CHECK_FALSE(state.auth_failed);
     CHECK(state.config_received);
     CHECK(state.cert_received);
+}
+
+
+// enroll_key_cb returns a reference to a key in the platform keychain, which the SDK cannot read out:
+// it has to load it by name, sign the CSR with it, and the config has to keep the reference, not a PEM.
+TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-key-cb-lifecycle", "[integ][enroll-mode][lifecycle]") {
+    std::string idp_token = checkENV("IDP_TOKEN");
+    std::string idp_signer = checkENV("IDP_SIGNER");
+
+    auto tls = default_tls_context();
+    DEFER { tls->free_ctx(tls); };
+    if (tls->generate_keychain_key == nullptr || tls->remove_keychain_key == nullptr) {
+        SKIP("no keychain: " << tls->version());
+    }
+
+    // the callback creates the key, the SDK loads it by name
+    auto key_name = unique_subject("enroll-key-cb");
+    {
+        tlsuv_private_key_t pk = nullptr;
+        REQUIRE(tls->generate_keychain_key(&pk, key_name.c_str()) == 0);
+        pk->free(pk);
+    }
+    DEFER { tls->remove_keychain_key(key_name.c_str()); };
+
+    lifecycle_state state{};
+    state.enroll_key = "keychain:" + key_name;
+
+    bootstrap_config bootstrap;
+    bootstrap.init(TEST_CLIENT);
+
+    ziti_context ztx = nullptr;
+    REQUIRE(ziti_context_init(&ztx, &bootstrap.cfg) == ZITI_OK);
+
+    state.loop = loop();
+    state.token = idp_token;
+    state.signer_name = idp_signer;
+
+    ziti_options opts{};
+    opts.app_ctx = &state;
+    opts.events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent;
+    opts.event_cb = lifecycle_event_cb;
+    opts.enroll_mode = ziti_enroll_cert;
+    ziti_context_set_options(ztx, &opts);
+    ziti_set_enroll_key_cb(ztx, lifecycle_enroll_key_cb, &state);
+
+    ziti_context_run(ztx, loop());
+
+    uv_timer_t timer;
+    uv_timer_init(loop(), &timer);
+    timer.data = loop();
+    uv_timer_start(&timer, [](uv_timer_t *t) {
+        uv_stop((uv_loop_t *)t->data);
+    }, 30000, 0);
+    uv_unref((uv_handle_t *)&timer); // the loop ends when the context is gone, the timer only bounds a hang
+
+    uv_run(loop(), UV_RUN_DEFAULT);
+    uv_timer_stop(&timer);
+    uv_close((uv_handle_t *)&timer, nullptr);
+    uv_run(loop(), UV_RUN_NOWAIT);
+
+    INFO("error: " << state.error_msg);
+    CHECK(state.token_rc == ZITI_OK);
+    CHECK(state.enroll_key_calls == 1);
+    CHECK_FALSE(state.auth_failed);
+    CHECK(state.config_received);
+    CHECK(state.cert_received);
+    CHECK(state.key_is_cb_string);
 }
 
 
