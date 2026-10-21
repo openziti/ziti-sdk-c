@@ -2,17 +2,9 @@
   "name": "ziti",
   "version-semver": "1.0.0",
   "description": [
-    "using vcpkg baseline: 2026.07.29"
+    "using vcpkg baseline: 2026.10.21 (a2f9862)"
   ],
-  "builtin-baseline": "9e593bb18ea69cc5095e012465dcd675a822ed0d",
-  "overrides": [
-    {
-      "name": "libuv",
-      "version": "1.52.0",
-      "port-version": 0,
-      "$comment": "1.52.1 breaks on mingw so we're sticking with 1.52.0 until fix released and available in vcpkg"
-    }
-  ],
+  "builtin-baseline": "a2f9862da6d88040a8537fb9b8cb24deaa9a196b",
   "dependencies": [
     "libuv",
     "openssl",
