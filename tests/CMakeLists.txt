@@ -33,6 +33,7 @@ add_executable(all_tests
         totp_tests.cpp
         connect_tests.cpp
         conn_close_tests.cpp
+        bind_tests.cpp
         ztx_tests.cpp)
 
 set_target_properties(all_tests PROPERTIES

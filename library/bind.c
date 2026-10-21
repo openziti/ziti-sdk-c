@@ -173,7 +173,10 @@ void conn_update_bindings(ziti_connection conn, bool force_rebind) {
             stop_binding(b);
         }
         conn->server.attempt = 0;
-        clear_deadline(&conn->server.rebinder);
+        // without routers the pending retry of the lookup is the only thing that brings them
+        if (model_list_size(&conn->server.routers) > 0) {
+            clear_deadline(&conn->server.rebinder);
+        }
     }
 
     int target = MIN(conn->server.max_bindings,
@@ -192,7 +195,7 @@ void conn_update_bindings(ziti_connection conn, bool force_rebind) {
     // if we're still below target we may need to refresh service.routers
     if (target > active) {
         schedule_rebind(conn);
-    } else {
+    } else if (target > 0) {
         // target bindings achieved, reset backoff
         conn->server.attempt = 0;
         clear_deadline(&conn->server.rebinder);
@@ -281,6 +284,9 @@ static void list_routers_cb(ziti_service_routers *srv_routers, const ziti_error 
         // /edge/client/v1/service/{id}/edge-routers API not implemented yet
         if (err->http_code == 404) {
             conn->server.srv_routers_api_missing = true;
+        } else if (model_list_size(&conn->server.routers) == 0) {
+            // nothing to bind to, and no other event brings the routers: look them up again
+            schedule_rebind(conn);
         }
     }
 

@@ -19,6 +19,7 @@
 
 #include "zt_internal.h"
 #include "oidc.h"
+#include "connect.h"
 
 // The OIDC client treats the failures of a login as temporary for a window (a minute), then reports them. Shortens the
 // window of the context, and the one that is open already: the first failure may come before the test can call this.
@@ -68,4 +69,9 @@ void ztx_test_restart_auth(ziti_context ztx) {
 void ztx_test_auth_impossible(ziti_context ztx, int err) {
     ziti_error error = {.err = err, .message = "auth provider is not available"};
     ztx_auth_state_cb(ztx, ZitiAuthImpossibleToAuthenticate, &error);
+}
+
+// a re-bind of the listener is scheduled
+bool ztx_test_rebind_pending(ziti_connection conn) {
+    return conn->server.rebinder.expire_cb != NULL;
 }
