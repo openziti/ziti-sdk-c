@@ -1,0 +1,249 @@
+name: Bump vcpkg baseline
+
+on:
+  schedule:
+    - cron: '29 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: bump-vcpkg-baseline
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: get vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # mingw triplet is planned too: it is the only one that pulls in the Windows-only dependencies
+          if ! command -v x86_64-w64-mingw32-g++ > /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends g++-mingw-w64-x86-64
+          fi
+
+          git clone --quiet --filter=blob:none https://github.com/microsoft/vcpkg.git "${RUNNER_TEMP}/vcpkg"
+          "${RUNNER_TEMP}/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=${RUNNER_TEMP}/vcpkg" >> "${GITHUB_ENV}"
+
+      - name: find dependency updates
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tab=$'\t'
+          work="${RUNNER_TEMP}/vcpkg-bump"
+          mkdir -p "${work}"
+          vcpkg_git() { git -C "${VCPKG_ROOT}" "$@"; }
+          # release tag if the commit has one, else its date and short hash
+          label() {
+            vcpkg_git describe --tags --exact-match "$1" 2> /dev/null \
+              || echo "$(vcpkg_git show -s --format=%cd --date=format:%Y.%m.%d "$1") (${1:0:7})"
+          }
+
+          current=$(jq -r '."builtin-baseline"' vcpkg.json)
+          target=$(vcpkg_git rev-parse --verify origin/master)
+          old_label=$(label "${current}")
+          new_label=$(label "${target}")
+
+          if [ "${target}" = "${current}" ]; then
+            echo "baseline is already ${new_label}"
+            exit 0
+          fi
+          ancestor=0
+          vcpkg_git merge-base --is-ancestor "${current}" "${target}" || ancestor=$?
+          if [ "${ancestor}" = 1 ]; then
+            echo "baseline ${old_label} is not older than ${new_label}; nothing to do"
+            exit 0
+          elif [ "${ancestor}" != 0 ]; then
+            echo "::error::cannot compare baseline ${current} with ${target}"
+            exit 1
+          fi
+
+          # "name<TAB>version<TAB>overlay" of everything vcpkg would install, per package name
+          plan() {
+            local out triplet
+            for triplet in x64-linux x64-mingw-static; do
+              out=$("${VCPKG_ROOT}/vcpkg" install --dry-run --disable-metrics \
+                --x-manifest-root=. --x-install-root="${work}/installed" \
+                --triplet "${triplet}" --x-feature=test --x-feature=samples 2>&1) || {
+                echo "${out}" >&2
+                echo "::error::vcpkg dry-run failed for ${triplet}" >&2
+                return 1
+              }
+              printf '%s\n' "${out}"
+            done | awk '
+              /^ +(\* )?[a-z0-9][a-z0-9-]*(\[[^]]*\])?:[a-z0-9-]+@[^ ]+/ {
+                sub(/^ +(\* )?/, "")
+                name = substr($1, 1, index($1, ":") - 1)
+                sub(/\[.*/, "", name)
+                print name "\t" substr($1, index($1, "@") + 1) "\t" ($2 == "--" ? "overlay" : "")
+              }' | LC_ALL=C sort -u -t "${tab}" -k1,1
+          }
+
+          plan > "${work}/old.tsv"
+          sed -E "s/(\"builtin-baseline\": *\")[0-9a-f]{40}\"/\1${target}\"/; s/(using vcpkg baseline: )[^\"]*/\1${new_label}/" \
+            vcpkg.json > "${work}/vcpkg.json.new"
+          cp "${work}/vcpkg.json.new" vcpkg.json
+          if [ "$(jq -r '."builtin-baseline"' vcpkg.json)" != "${target}" ]; then
+            echo "::error::could not set builtin-baseline in vcpkg.json"
+            exit 1
+          fi
+          plan > "${work}/new.tsv"
+
+          awk -F "${tab}" '
+            NR == FNR { old[$1] = $2; next }
+            { new[$1] = $2 }
+            END {
+              for (n in old) names[n]
+              for (n in new) names[n]
+              for (n in names) {
+                o = (n in old) ? old[n] : "-"
+                v = (n in new) ? new[n] : "-"
+                if (o != v) print n "\t" o "\t" v
+              }
+            }' "${work}/old.tsv" "${work}/new.tsv" | LC_ALL=C sort > "${work}/changes.tsv"
+
+          if [ ! -s "${work}/changes.tsv" ]; then
+            echo "no dependency changes between ${old_label} and ${new_label}"
+            exit 0
+          fi
+
+          # overlays and overrides hold a package at one version whatever the baseline says
+          vcpkg_git show "${target}:versions/baseline.json" > "${work}/baseline.json"
+          { awk -F "${tab}" '$3 != "" { print $1 }' "${work}/new.tsv"; jq -r '.overrides[]?.name' vcpkg.json; } \
+            | sort -u | while read -r name; do
+            pinned=$(awk -F "${tab}" -v n="${name}" '$1 == n { print $2 }' "${work}/new.tsv")
+            registry=$(jq -r --arg n "${name}" \
+              '.default[$n] // empty | .baseline + (if (."port-version" // 0) > 0 then "#\(."port-version")" else "" end)' \
+              "${work}/baseline.json")
+            if [ -n "${pinned}" ] && [ -n "${registry}" ] && [ "${pinned}" != "${registry}" ]; then
+              echo "| ${name} | ${pinned} | ${registry} |"
+            fi
+          done > "${work}/pinned.md"
+
+          {
+            echo "Bumps the vcpkg baseline from ${old_label} to ${new_label} ([changes](https://github.com/microsoft/vcpkg/compare/${current}...${target}))."
+            echo
+            echo "| Package | Old | New |"
+            echo "|---|---|---|"
+            awk -F "${tab}" '{ printf "| %s | %s | %s |\n", $1, $2, $3 }' "${work}/changes.tsv"
+            if [ -s "${work}/pinned.md" ]; then
+              echo
+              echo "Held back by an overlay or override, the registry has another version:"
+              echo
+              echo "| Package | Pinned | Registry |"
+              echo "|---|---|---|"
+              cat "${work}/pinned.md"
+            fi
+          } > "${work}/body.md"
+          cat "${work}/body.md" >> "${GITHUB_STEP_SUMMARY}"
+
+          {
+            echo "changed=true"
+            echo "title=Bump vcpkg baseline to ${new_label}"
+            echo "work=${work}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: open or update the PR
+        if: steps.plan.outputs.changed == 'true'
+        shell: bash
+        env:
+          TITLE: ${{ steps.plan.outputs.title }}
+          WORK: ${{ steps.plan.outputs.work }}
+        run: |
+          set -euo pipefail
+
+          branch=bump-vcpkg-baseline
+          staging="${branch}-staging"
+          git_api="repos/${GITHUB_REPOSITORY}/git"
+
+          pr=$(gh pr list --head "${branch}" --state open --json number --jq '.[0].number // empty')
+          if [ -n "${pr}" ]; then
+            # master moves daily: only touch the PR (and rerun its CI) when the list of updates changed
+            rows() { tr -d '\r' | grep '^| ' || true; }
+            if [ "$(gh pr view "${pr}" --json body --jq .body | rows)" = "$(rows < "${WORK}/body.md")" ]; then
+              echo "#${pr} already lists these updates; nothing to do"
+              exit 0
+            fi
+            # the branch is rebuilt from main, which would discard anything pushed to it since
+            others=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${branch}" \
+              --jq '[.commits[] | select(.commit.message | startswith("Bump vcpkg baseline to") | not)] | length')
+            if [ "${others}" != 0 ]; then
+              echo "::warning::#${pr} has commits that are not baseline bumps; leaving it alone. Close it to get a fresh one."
+              exit 0
+            fi
+          fi
+
+          # commit on a staging branch, then move the PR branch in one step: a PR whose head equals main can get closed
+          head_sha=$(git rev-parse HEAD)
+          gh api -X DELETE "${git_api}/refs/heads/${staging}" > /dev/null 2>&1 || true
+          gh api "${git_api}/refs" -f ref="refs/heads/${staging}" -f sha="${head_sha}" > /dev/null
+          # GitHub signs commits made through its API, which a runner-side `git commit` cannot do
+          commit_oid=$(jq -n \
+            --arg repo "${GITHUB_REPOSITORY}" --arg branch "${staging}" --arg oid "${head_sha}" \
+            --arg headline "${TITLE}" \
+            --arg contents "$(base64 < vcpkg.json | tr -d '\n')" \
+            '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {input: {
+                branch: {repositoryNameWithOwner: $repo, branchName: $branch},
+                message: {headline: $headline},
+                expectedHeadOid: $oid,
+                fileChanges: {additions: [{path: "vcpkg.json", contents: $contents}]}
+              }}
+            }' | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid')
+          if [ -z "${commit_oid}" ]; then
+            echo "::error::creating the commit on ${staging} failed"
+            exit 1
+          fi
+          echo "commit ${commit_oid} verified: $(gh api "repos/${GITHUB_REPOSITORY}/commits/${commit_oid}" --jq .commit.verification.verified || echo unknown)"
+
+          if gh api "${git_api}/ref/heads/${branch}" > /dev/null 2>&1; then
+            gh api -X PATCH "${git_api}/refs/heads/${branch}" -f sha="${commit_oid}" -F force=true > /dev/null
+          else
+            gh api "${git_api}/refs" -f ref="refs/heads/${branch}" -f sha="${commit_oid}" > /dev/null
+          fi
+          gh api -X DELETE "${git_api}/refs/heads/${staging}" > /dev/null
+
+          if [ -n "${pr}" ]; then
+            gh pr edit "${pr}" --title "${TITLE}" --body-file "${WORK}/body.md"
+            echo "updated #${pr}"
+          else
+            pr_url=$(gh pr create --draft --base main --head "${branch}" --title "${TITLE}" --body-file "${WORK}/body.md")
+            echo "created ${pr_url}"
+          fi
+
+          # runs triggered by a PR from github-actions wait for approval; this PR only changes the baseline
+          approved=0
+          for attempt in 1 2 3 4 5 6; do
+            sleep "${APPROVE_DELAY:-10}"
+            pending=$(gh run list --event pull_request --branch "${branch}" --json databaseId,conclusion,headSha \
+              --jq ".[] | select(.headSha == \"${commit_oid}\") | select(.conclusion == \"action_required\") | .databaseId")
+            if [ -z "${pending}" ]; then
+              [ "${approved}" -gt 0 ] && break
+              continue
+            fi
+            for run_id in ${pending}; do
+              if gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/approve" > /dev/null; then
+                approved=$((approved + 1))
+              else
+                echo "::warning::could not approve run ${run_id}"
+              fi
+            done
+          done
+          echo "approved ${approved} pending run(s)"
