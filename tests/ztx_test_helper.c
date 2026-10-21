@@ -63,3 +63,9 @@ void ztx_test_lose_session(ziti_context ztx) {
 void ztx_test_restart_auth(ziti_context ztx) {
     ztx_auth_state_cb(ztx, ZitiAuthStateAuthStarted, NULL);
 }
+
+// the auth method reports that it cannot authenticate, with the error of the failure (a libuv one when the network is away)
+void ztx_test_auth_impossible(ziti_context ztx, int err) {
+    ziti_error error = {.err = err, .message = "auth provider is not available"};
+    ztx_auth_state_cb(ztx, ZitiAuthImpossibleToAuthenticate, &error);
+}

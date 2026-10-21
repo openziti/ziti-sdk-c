@@ -33,6 +33,7 @@ using namespace fake_controller;
 // internal (zt_internal.h cannot be included from C++)
 extern "C" void ziti_services_refresh(ziti_context ztx, bool now);
 extern "C" int ztx_test_auth_retries(ziti_context ztx);  // ztx_test_helper.c
+extern "C" void ztx_test_auth_impossible(ziti_context ztx, int err);  // ztx_test_helper.c
 
 namespace {
     bool ends_with(const std::string &s, const std::string &suffix) {
@@ -56,6 +57,18 @@ namespace {
         // the first leg of a login: the context got through the OIDC configuration
         int login_attempts() const { return oidc_.count("/authorize"); }
 
+        // from here on the OIDC endpoint answers a request for its configuration with `response` (a whole HTTP
+        // message), until serve_configuration()
+        void fail_configuration(const std::string &response) {
+            std::lock_guard<std::mutex> lock(mu_);
+            configuration_error_ = response;
+        }
+
+        void serve_configuration() {
+            std::lock_guard<std::mutex> lock(mu_);
+            configuration_error_.clear();
+        }
+
     private:
         std::string ctrl(const std::string &path) {
             if (ends_with(path, "/version")) {
@@ -71,6 +84,12 @@ namespace {
 
         std::string oidc(const std::string &path) {
             if (ends_with(path, "/.well-known/openid-configuration")) {
+                {
+                    std::lock_guard<std::mutex> lock(mu_);
+                    if (!configuration_error_.empty()) {
+                        return configuration_error_;
+                    }
+                }
                 return json_response(
                         "200 OK",
                         R"({"authorization_endpoint":")" + oidc_.url() + R"(/oidc/authorize",)"
@@ -79,6 +98,10 @@ namespace {
             // the test stops at the first sign of a login
             return json_response("503 Service Unavailable", "{}");
         }
+
+        // before the servers: their threads use it
+        std::mutex mu_;
+        std::string configuration_error_;
 
         FakeHttpServer oidc_;
         FakeHttpServer ctrl_;
@@ -174,6 +197,118 @@ TEST_CASE("reauth-does-not-wait-for-the-retry-when-the-device-wakes-up", "[reaut
 
     REQUIRE(login_seen > 0);
     CHECK(login_seen - woke < 800);
+}
+
+namespace {
+    // Runs a context that waits for the retry of its authentication, and has its auth method report that it cannot
+    // authenticate with each of `errors`, one after the other
+    struct impossible_run {
+        int retries;     // failures that the retry has counted for the reports
+        int auth_failed; // ZITI_AUTHENTICATION_FAILED events
+    };
+
+    impossible_run report_impossible(const std::vector<int> &errors) {
+        FakeOidcController ctrl;
+
+        int retries_before = -1;
+        int retries_after = -1;
+        int ticks = -1;
+        auto done = [&](const context_run &run) {
+            if (ticks < 0) {
+                // the first attempt has failed, and the retry is waiting
+                if (ztx_test_auth_retries(run.ztx) < 1) {
+                    return false;
+                }
+                retries_before = ztx_test_auth_retries(run.ztx);
+                for (int err: errors) {
+                    ztx_test_auth_impossible(run.ztx, err);
+                }
+                ticks = 0;
+                return false;
+            }
+            // the events of the reports have had their turns
+            if (++ticks < 3) {
+                return false;
+            }
+            retries_after = ztx_test_auth_retries(run.ztx);
+            return true;
+        };
+        context_run run = run_context(ctrl.url(), 10000, done);
+        return {retries_after - retries_before, run.auth_failed};
+    }
+}
+
+// GH-1185: a refused connection and a name that does not resolve are not the only ways for the auth provider to be out of
+// reach when the network is away: these are retried too, and are not reported as a failure to authenticate
+TEST_CASE("reauth-retries-whatever-error-the-network-being-away-gives", "[reauth][GH-1185]") {
+    const std::vector<int> offline = {UV_ETIMEDOUT, UV_ENETUNREACH, UV_EHOSTUNREACH, UV_ENETDOWN, UV_EAI_AGAIN};
+    impossible_run r = report_impossible(offline);
+
+    CHECK(r.auth_failed == 0);
+    CHECK(r.retries == (int) offline.size());
+}
+
+// any other error is reported as a failure to authenticate, as before: UV_EINVAL is what the fetch of the OIDC configuration
+// reports for an answer that is not the configuration and is not temporary
+TEST_CASE("reauth-reports-an-error-that-is-not-the-network-being-away", "[reauth][GH-1185]") {
+    impossible_run r = report_impossible({UV_EINVAL});
+
+    CHECK(r.auth_failed == 1);
+    CHECK(r.retries == 0);
+}
+
+namespace {
+    struct configuration_run {
+        int auth_failed;      // ZITI_AUTHENTICATION_FAILED events
+        int login_attempts;   // logins that got through the OIDC configuration
+    };
+
+    // The OIDC endpoint answers the request for its configuration with `response`, until the first attempt of the context
+    // has failed and the retry is waiting
+    configuration_run answer_configuration_with(const std::string &response) {
+        FakeOidcController ctrl;
+        ctrl.fail_configuration(response);
+        ctrl.open_oidc();
+
+        bool served = false;
+        auto done = [&](const context_run &run) {
+            if (!served && ztx_test_auth_retries(run.ztx) >= 1) {
+                ctrl.serve_configuration();
+                served = true;
+            }
+            return ctrl.login_attempts() >= 1 || run.auth_failed > 0;
+        };
+        context_run run = run_context(ctrl.url(), 10000, done);
+        return {run.auth_failed, ctrl.login_attempts()};
+    }
+}
+
+// GH-1185: a server that is not up to answering is the same as one that is not there. The OIDC configuration is asked for
+// again, and the context does not report a failure to authenticate
+TEST_CASE("reauth-retries-when-the-oidc-configuration-gets-a-temporary-error", "[reauth][GH-1185]") {
+    const std::vector<std::pair<std::string, std::string>> answers = {
+            {"a proxy in front of the controller, with a page of its own",
+                    http_response("503 Service Unavailable", {{"Content-Type", "text/html"}}, "<html>bad gateway</html>")},
+            {"the controller, with an error that is not the configuration",
+                    json_response("503 Service Unavailable", R"({"error":{"code":"UNAVAILABLE"}})")},
+            {"rate limiting", json_response("429 Too Many Requests", "{}")},
+    };
+
+    for (const auto &answer: answers) {
+        INFO(answer.first);
+        configuration_run r = answer_configuration_with(answer.second);
+
+        CHECK(r.auth_failed == 0);
+        CHECK(r.login_attempts >= 1);
+    }
+}
+
+// an answer that is not the configuration, and says nothing of being temporary, is reported: the address is wrong
+TEST_CASE("reauth-reports-an-oidc-configuration-that-is-not-there", "[reauth][GH-1185]") {
+    configuration_run r = answer_configuration_with(not_found());
+
+    CHECK(r.auth_failed == 1);
+    CHECK(r.login_attempts == 0);
 }
 
 // and the retries carry on until the endpoint is back

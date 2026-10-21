@@ -673,3 +673,29 @@ TEST_CASE("oidc-auth-retries-a-transport-error-after-the-login-got-through", "[o
     REQUIRE(c.result.calls == 1);
     CHECK(c.result.status == OIDC_TOKEN_OK);
 }
+
+// The time of an outage does not count against the window of the failures that are not transport errors: a 503 opens the
+// window, the outage outlasts it, and the first 503 after the network is back is retried like the first one was.
+TEST_CASE("oidc-auth-outage-does-not-use-up-the-window-of-other-failures", "[oidc]") {
+    FakeOidcEndpoint server;
+    server.scriptAuthorizeFailure("503 Service Unavailable");
+    TestClient c(server, 1000);
+    REQUIRE(c.start() == 0);
+
+    // the first attempt gets its 503, which opens the window
+    c.pumpUntil([&] { return server.authorize_count.load() >= 1; }, std::chrono::seconds(5));
+    REQUIRE(server.authorize_count.load() == 1);
+
+    // the network goes away for longer than the window
+    setEndpoint(c, "authorization_endpoint", refusedUrl(AUTHORIZE_PATH));
+    c.pumpFor(std::chrono::milliseconds(1200));
+    CHECK(c.result.calls == 0);
+
+    // and comes back, with a 503 first
+    server.scriptAuthorizeFailure("503 Service Unavailable");
+    setEndpoint(c, "authorization_endpoint", server.url(AUTHORIZE_PATH));
+    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(20));
+
+    REQUIRE(c.result.calls == 1);
+    CHECK(c.result.status == OIDC_TOKEN_OK);
+}

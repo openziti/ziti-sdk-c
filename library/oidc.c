@@ -207,6 +207,12 @@ static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_obje
     if (r->code < 0) {
         status = r->code;
         err = err ? err : uv_strerror((int) r->code);
+    } else if (ziti_http_error_is_temporary(r, resp)) {
+        // a server that is not up to answering (or the proxy in front of it) is the same as one that is not there: the
+        // caller waits and asks again, it does not take this for a configuration that cannot be used
+        OIDC_LOG(WARN, "OIDC configuration is not available: %d %s", r->code, r->status);
+        status = ZITI_CONTROLLER_UNAVAILABLE;
+        err = r->status;
     } else if (r->code != 200 && resp == NULL) {
         OIDC_LOG(ERROR, "unexpected response code[%d] body=%s", r->code, json_object_get_string(resp));
         status = UV_EINVAL;
@@ -409,6 +415,10 @@ static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, jso
     }
 
     if (transport) {
+        // the time of an outage does not count against the window of the failures that are not transport errors: the
+        // first of those after it is retried like the first one before it
+        clt->auth_retry_until = 0;
+
         // no MAX(): it would evaluate next_backoff() twice, and every call counts a failure
         uint64_t delay = next_backoff(&clt->auth_failures, AUTH_BACKOFF_MAX, AUTH_BACKOFF_BASE);
         if (delay < AUTH_BACKOFF_BASE) delay = AUTH_BACKOFF_BASE;

@@ -299,12 +299,34 @@ static void ztx_retry_auth_later(ziti_context ztx) {
     ztx_set_deadline(ztx, delay, &ztx->refresh_deadline, pre_auth_retry, ztx);
 }
 
+// The errors of a transport that has no network to go over, or no provider at the end of it, and the provider that
+// answers with an error of its own that is temporary (ZITI_CONTROLLER_UNAVAILABLE, from the fetch of the OIDC
+// configuration): waiting mends them. A list, not every error of libuv: the fetch reports UV_EINVAL for an answer
+// that is not the configuration and is not temporary either (a wrong URL), and that is reported as a failure to
+// authenticate.
+static bool auth_provider_is_away(int err) {
+    switch (err) {
+        case ZITI_CONTROLLER_UNAVAILABLE:
+        case UV_ECONNREFUSED:
+        case UV_EAI_NONAME:
+        case UV_EAI_AGAIN:
+        case UV_ETIMEDOUT:
+        case UV_ENETUNREACH:
+        case UV_ENETDOWN:
+        case UV_EHOSTUNREACH:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static void ztx_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err) {
     ziti_controller *ctrl = ztx_get_controller(ztx);
     ztx->auth_state = ZitiAuthImpossibleToAuthenticate;
     ztx->awaiting_secondary = false;
-    if (err->err == UV_ECONNREFUSED || err->err == UV_EAI_NONAME) {
-        ZTX_LOG(ERROR, "auth provider is not available: %s", uv_strerror(err->err));
+    if (auth_provider_is_away(err->err)) {
+        // not uv_strerror(): the code may be a ziti one
+        ZTX_LOG(ERROR, "auth provider is not available: %s", err->message ? err->message : uv_strerror(err->err));
         // current controller became unavailable
         // re-auth will find another controller if possible
         ztx_retry_auth_later(ztx);
