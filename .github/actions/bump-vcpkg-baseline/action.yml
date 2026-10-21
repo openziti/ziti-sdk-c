@@ -1,7 +1,7 @@
 name: Bump vcpkg baseline
 description: >
   Compare the dependencies in vcpkg.json at its builtin-baseline with vcpkg master and, when any of them
-  would be updated, open or update a draft PR that moves the baseline and lists the updated dependencies.
+  would be updated, open or update a PR that moves the baseline and lists the updated dependencies.
   Needs an Ubuntu runner, the base branch checked out, and a token that can write contents and pull requests
   (and actions, to approve the PR's CI runs).
 
@@ -203,19 +203,26 @@ runs:
 
         pr=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
         if [ -n "${pr}" ]; then
-          # master moves daily: only touch the PR (and rerun its CI) when the list of updates changed
+          compare=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${BASE}...${BRANCH}")
+          behind=$(jq -r '.behind_by' <<< "${compare}")
+          # master moves daily: leave the PR (and its CI run) alone while it lists the same updates
+          # and is on top of the base branch; a moved base branch needs the bump commit rebuilt on it
           rows() { tr -d '\r' | grep '^| ' || true; }
+          same_updates=false
           if [ "$(gh pr view "${pr}" --json body --jq .body | rows)" = "$(rows < "${WORK}/body.md")" ]; then
-            echo "#${pr} already lists these updates; nothing to do"
+            same_updates=true
+          fi
+          if [ "${same_updates}" = true ] && [ "${behind}" = 0 ]; then
+            echo "#${pr} already lists these updates and is up to date with ${BASE}; nothing to do"
             exit 0
           fi
           # the branch is rebuilt from the base branch, which would discard anything pushed to it since
-          others=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${BASE}...${BRANCH}" \
-            --jq '[.commits[] | select(.commit.message | startswith("Bump vcpkg baseline to") | not)] | length')
+          others=$(jq -r '[.commits[] | select(.commit.message | startswith("Bump vcpkg baseline to") | not)] | length' <<< "${compare}")
           if [ "${others}" != 0 ]; then
             echo "::warning::#${pr} has commits that are not baseline bumps; leaving it alone. Close it to get a fresh one."
             exit 0
           fi
+          echo "updating #${pr}: same updates: ${same_updates}, ${behind} commit(s) behind ${BASE}"
         fi
 
         # commit on a staging branch, then move the PR branch in one step: a PR whose head equals the base can get closed
@@ -253,7 +260,7 @@ runs:
           gh pr edit "${pr}" --title "${TITLE}" --body-file "${WORK}/body.md"
           echo "updated #${pr}"
         else
-          pr_url=$(gh pr create --draft --base "${BASE}" --head "${BRANCH}" --title "${TITLE}" --body-file "${WORK}/body.md")
+          pr_url=$(gh pr create --base "${BASE}" --head "${BRANCH}" --title "${TITLE}" --body-file "${WORK}/body.md")
           echo "created ${pr_url}"
         fi
         echo "commit=${commit_oid}" >> "${GITHUB_OUTPUT}"
