@@ -1238,6 +1238,12 @@ void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err,
 }
 
 void ziti_endpoint_state_change(ziti_context ztx, bool woken, bool unlocked) {
+    if (woken || unlocked) {
+        // the device was away and the network may have been: authenticating does not wait for the retry of the SDK.
+        // This is not about posture: a context that has not authenticated yet has no posture checks.
+        ztx_authenticate_now(ztx);
+    }
+
     if (!ztx->posture_checks) {
         ZTX_LOG(WARN, "endpoint is disabled");
         return;

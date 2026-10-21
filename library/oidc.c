@@ -207,6 +207,12 @@ static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_obje
     if (r->code < 0) {
         status = r->code;
         err = err ? err : uv_strerror((int) r->code);
+    } else if (ziti_http_error_is_temporary(r, resp)) {
+        // a server that is not up to answering (or the proxy in front of it) is the same as one that is not there: the
+        // caller waits and asks again, it does not take this for a configuration that cannot be used
+        OIDC_LOG(WARN, "OIDC configuration is not available: %d %s", r->code, r->status);
+        status = ZITI_CONTROLLER_UNAVAILABLE;
+        err = r->status;
     } else if (r->code != 200 && resp == NULL) {
         OIDC_LOG(ERROR, "unexpected response code[%d] body=%s", r->code, json_object_get_string(resp));
         status = UV_EINVAL;
@@ -385,18 +391,43 @@ static void auth_retry_cb(uv_timer_t *t) {
 // retry window has not run out. Returns true when a retry is pending, in which
 // case the caller must stay silent: the app keeps whatever auth state it has and
 // is not told about an intermediate failure.
+//
+// A transport error (no HTTP status: the name does not resolve, the connection is refused or times out) is not an
+// answer of the controller. It does not say that the identity is unknown or that the login was turned down, only
+// that the network or the provider is away, for as long as it is: an app in the background has no network for
+// hours. It is retried with a backoff for as long as it lasts, with no window and whatever the leg, like the refresh
+// of the token. Giving up would report an authentication failure and leave the context to wait for the app.
 static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, json_object *body,
                                 bool cert_login) {
     if (clt->token_cb == NULL) return false;
     if (!auth_error_is_temporary(resp, body, cert_login)) return false;
 
+    // resp is not NULL: auth_error_is_temporary() is false for no response
+    const bool transport = resp->code < 0;
+
     // controller knows about this identity
-    if (clt->primary_ok) return false;
+    if (clt->primary_ok && !transport) return false;
 
     // same guard as oidc_client_refresh(): nothing to arm during/after teardown
     if (clt->timer == NULL || uv_is_closing((const uv_handle_t *) clt->timer)) {
         OIDC_LOG(DEBUG, "not retrying auth: timer is %s", clt->timer ? "closing" : "null");
         return false;
+    }
+
+    if (transport) {
+        // the time of an outage does not count against the window of the failures that are not transport errors: the
+        // first of those after it is retried like the first one before it
+        clt->auth_retry_until = 0;
+
+        // no MAX(): it would evaluate next_backoff() twice, and every call counts a failure
+        uint64_t delay = next_backoff(&clt->auth_failures, AUTH_BACKOFF_MAX, AUTH_BACKOFF_BASE);
+        if (delay < AUTH_BACKOFF_BASE) delay = AUTH_BACKOFF_BASE;
+
+        OIDC_LOG(WARN, "OIDC auth failed (%d %s), attempt %d; retrying in %" PRIu64 ".%03" PRIu64 " s",
+                 resp->code, resp->status, clt->auth_failures, delay / 1000, delay % 1000);
+        uv_ref((uv_handle_t *) clt->timer);
+        uv_timer_start(clt->timer, auth_retry_cb, delay, 0);
+        return true;
     }
 
     uint64_t now = uv_now(clt->timer->loop);

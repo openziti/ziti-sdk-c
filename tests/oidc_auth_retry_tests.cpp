@@ -614,3 +614,88 @@ TEST_CASE("oidc-auth-falls-back-to-backoff-on-unparsable-retry-after", "[oidc]")
     CHECK(c.result.status == OIDC_TOKEN_OK);
     CHECK(server.authorize_count.load() == 2);
 }
+
+namespace {
+// A URL on a port nobody listens on: connecting to it is refused, which is a transport error (no HTTP status).
+std::string refusedUrl(const char *path) {
+    int fd = (int) ::socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    REQUIRE(::bind(fd, (sockaddr *) &addr, sizeof(addr)) == 0);
+    socklen_t len = sizeof(addr);
+    REQUIRE(getsockname(fd, (sockaddr *) &addr, &len) == 0);
+    CLOSESOCK(fd);
+    return "http://127.0.0.1:" + std::to_string(ntohs(addr.sin_port)) + path;
+}
+
+void setEndpoint(TestClient &c, const char *key, const std::string &url) {
+    json_object_object_add((json_object *) c.clt.config, key, json_object_new_string(url.c_str()));
+}
+} // namespace
+
+// GH-1185: a transport error says nothing about the identity or the login, only that the network is away, for as long
+// as it is. It is retried for as long as it lasts, whatever the window, and the app hears nothing until the flow gets
+// through. A 1 ms window is the smallest: any other failure is reported at the second attempt, a few ms after the first.
+TEST_CASE("oidc-auth-retries-a-transport-error-past-the-window", "[oidc]") {
+    FakeOidcEndpoint server;
+    TestClient c(server, 1);
+    setEndpoint(c, "authorization_endpoint", refusedUrl(AUTHORIZE_PATH));
+    REQUIRE(c.start() == 0);
+
+    c.pumpFor(std::chrono::milliseconds(400));
+    CHECK(c.result.calls == 0);
+
+    // the network is back
+    setEndpoint(c, "authorization_endpoint", server.url(AUTHORIZE_PATH));
+    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(10));
+
+    REQUIRE(c.result.calls == 1);
+    CHECK(c.result.status == OIDC_TOKEN_OK);
+}
+
+// The same on a late leg: the login got through, so the controller knows the identity, which ends the retries of the
+// failures that may be replication lag. The answer to the request for the token never came: that is not one of them.
+TEST_CASE("oidc-auth-retries-a-transport-error-after-the-login-got-through", "[oidc]") {
+    FakeOidcEndpoint server;
+    TestClient c(server, 60000);
+    setEndpoint(c, "token_endpoint", refusedUrl(TOKEN_PATH));
+    REQUIRE(c.start() == 0);
+
+    c.pumpUntil([&] { return server.login_count.load() >= 1; }, std::chrono::seconds(5));
+    REQUIRE(server.login_count.load() >= 1);
+    c.pumpFor(std::chrono::milliseconds(400));
+    CHECK(c.result.calls == 0);
+
+    setEndpoint(c, "token_endpoint", server.url(TOKEN_PATH));
+    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(10));
+
+    REQUIRE(c.result.calls == 1);
+    CHECK(c.result.status == OIDC_TOKEN_OK);
+}
+
+// The time of an outage does not count against the window of the failures that are not transport errors: a 503 opens the
+// window, the outage outlasts it, and the first 503 after the network is back is retried like the first one was.
+TEST_CASE("oidc-auth-outage-does-not-use-up-the-window-of-other-failures", "[oidc]") {
+    FakeOidcEndpoint server;
+    server.scriptAuthorizeFailure("503 Service Unavailable");
+    TestClient c(server, 1000);
+    REQUIRE(c.start() == 0);
+
+    // the first attempt gets its 503, which opens the window
+    c.pumpUntil([&] { return server.authorize_count.load() >= 1; }, std::chrono::seconds(5));
+    REQUIRE(server.authorize_count.load() == 1);
+
+    // the network goes away for longer than the window
+    setEndpoint(c, "authorization_endpoint", refusedUrl(AUTHORIZE_PATH));
+    c.pumpFor(std::chrono::milliseconds(1200));
+    CHECK(c.result.calls == 0);
+
+    // and comes back, with a 503 first
+    server.scriptAuthorizeFailure("503 Service Unavailable");
+    setEndpoint(c, "authorization_endpoint", server.url(AUTHORIZE_PATH));
+    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(20));
+
+    REQUIRE(c.result.calls == 1);
+    CHECK(c.result.status == OIDC_TOKEN_OK);
+}

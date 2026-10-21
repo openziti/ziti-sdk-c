@@ -1259,6 +1259,10 @@ extern void ziti_set_enroll_key_cb(ziti_context ztx, ziti_enroll_key_cb cb, void
  *
  * At one time, a device may be "woken" and "unlocked".
  *
+ * A context that is not authenticated, and waits for the SDK to authenticate it again (the network was away, and the SDK
+ * backs off between its attempts), takes the state change as a sign that the network may be back and does not wait
+ * for the next attempt.
+ *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
  * @param woken whether the host device has been woke from sleep/hibernation
  * @param unlocked whether the host device has been unlocked

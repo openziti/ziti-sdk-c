@@ -299,12 +299,34 @@ static void ztx_retry_auth_later(ziti_context ztx) {
     ztx_set_deadline(ztx, delay, &ztx->refresh_deadline, pre_auth_retry, ztx);
 }
 
+// The errors of a transport that has no network to go over, or no provider at the end of it, and the provider that
+// answers with an error of its own that is temporary (ZITI_CONTROLLER_UNAVAILABLE, from the fetch of the OIDC
+// configuration): waiting mends them. A list, not every error of libuv: the fetch reports UV_EINVAL for an answer
+// that is not the configuration and is not temporary either (a wrong URL), and that is reported as a failure to
+// authenticate.
+static bool auth_provider_is_away(int err) {
+    switch (err) {
+        case ZITI_CONTROLLER_UNAVAILABLE:
+        case UV_ECONNREFUSED:
+        case UV_EAI_NONAME:
+        case UV_EAI_AGAIN:
+        case UV_ETIMEDOUT:
+        case UV_ENETUNREACH:
+        case UV_ENETDOWN:
+        case UV_EHOSTUNREACH:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static void ztx_set_impossible_to_authenticate(ziti_context ztx, const ziti_error *err) {
     ziti_controller *ctrl = ztx_get_controller(ztx);
     ztx->auth_state = ZitiAuthImpossibleToAuthenticate;
     ztx->awaiting_secondary = false;
-    if (err->err == UV_ECONNREFUSED || err->err == UV_EAI_NONAME) {
-        ZTX_LOG(ERROR, "auth provider is not available: %s", uv_strerror(err->err));
+    if (auth_provider_is_away(err->err)) {
+        // not uv_strerror(): the code may be a ziti one
+        ZTX_LOG(ERROR, "auth provider is not available: %s", err->message ? err->message : uv_strerror(err->err));
         // current controller became unavailable
         // re-auth will find another controller if possible
         ztx_retry_auth_later(ztx);
@@ -610,6 +632,34 @@ void ziti_force_api_session_refresh(ziti_context ztx) {
         }
     } else {
         ZTX_LOG(WARN, "cannot refresh: auth_method was never set up");
+    }
+}
+
+// The app says that the network may be back (the device woke up, or was unlocked). A context that has no api session is
+// waiting for the end of a backoff of the authentication; that wait was for a network that may be there now. The
+// backoff is for the failures that come back on their own: an explicit caller does not wait for it.
+void ztx_authenticate_now(ziti_context ztx) {
+    if (!ztx->enabled) return;
+
+    switch (ztx->auth_state) {
+        case ZitiAuthStateUnauthenticated:
+            // nothing to do without an auth method: the authentication starts with the external login
+            if (ztx->auth_method) {
+                ZTX_LOG(INFO, "not authenticated: authenticating now");
+                ziti_force_api_session_refresh(ztx);
+            }
+            break;
+        case ZitiAuthImpossibleToAuthenticate:
+            // only the retry of an auth provider that was not available is waiting for something
+            if (ztx->refresh_deadline.expire_cb == pre_auth_retry) {
+                ZTX_LOG(INFO, "auth provider was not available: authenticating now");
+                clear_deadline(&ztx->refresh_deadline);
+                ziti_re_auth(ztx);
+            }
+            break;
+        default:
+            // authenticated, or waiting for the login of the user
+            break;
     }
 }
 
