@@ -28,6 +28,7 @@ add_executable(all_tests
         reauth_tests.cpp
         oidc_transport_tests.cpp
         ztx_test_helper.c
+        enroll_url_tests.cpp
         posture_tests.cpp
         totp.h
         totp_tests.cpp

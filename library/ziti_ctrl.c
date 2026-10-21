@@ -171,13 +171,17 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
         int e = ZITI_CONTROLLER_UNAVAILABLE;
         const char *code = "CONTROLLER_UNAVAILABLE";
 
+        // tlsuv sets the status to what it knows about the failure: a failed TLS handshake is always
+        // UV_ECONNABORTED, the status says why (e.g. the certificate is not trusted)
+        const char *reason = (r->status != NULL && r->status[0] != '\0') ? r->status : uv_strerror(r->code);
+
         // cancellation is cased by closing of ziti context
         // do not log error
         if (r->code == UV_ECANCELED) {
             e = ZITI_DISABLED;
             code = ziti_errorstr(ZITI_DISABLED);
         } else {
-            CTRL_LOG(WARN, "request[%s] failed: %d(%s)", r->req->path, r->code, uv_strerror(r->code));
+            CTRL_LOG(WARN, "request[%s] failed: %d(%s)", r->req->path, r->code, reason);
 
             if (ctrl->active_reqs == 0) {
                 CTRL_LOG(INFO, "attempting to switch endpoint");
@@ -194,7 +198,7 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
         ziti_error err = {
                 .err = e,
                 .code = (char *) code,
-                .message = (char *) uv_strerror(r->code),
+                .message = (char *) reason,
         };
 
         (resp->ctrl_cb ? resp->ctrl_cb : ctrl_default_cb)(NULL, &err, resp);
