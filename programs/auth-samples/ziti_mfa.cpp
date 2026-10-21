@@ -15,6 +15,7 @@
 #include <CLI/CLI.hpp>
 
 #include <cassert>
+#include <fstream>
 #include <iostream>
 #include <mutex>
 

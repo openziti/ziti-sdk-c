@@ -15,6 +15,8 @@
 
 #include <CLI/CLI.hpp>
 
+#include <iostream>
+
 #if _WIN32
 #include <winsock2.h>
 #include <windows.h>
