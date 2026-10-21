@@ -203,19 +203,26 @@ runs:
 
         pr=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
         if [ -n "${pr}" ]; then
-          # master moves daily: only touch the PR (and rerun its CI) when the list of updates changed
+          compare=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${BASE}...${BRANCH}")
+          behind=$(jq -r '.behind_by' <<< "${compare}")
+          # master moves daily: leave the PR (and its CI run) alone while it lists the same updates
+          # and is on top of the base branch; a moved base branch needs the bump commit rebuilt on it
           rows() { tr -d '\r' | grep '^| ' || true; }
+          same_updates=false
           if [ "$(gh pr view "${pr}" --json body --jq .body | rows)" = "$(rows < "${WORK}/body.md")" ]; then
-            echo "#${pr} already lists these updates; nothing to do"
+            same_updates=true
+          fi
+          if [ "${same_updates}" = true ] && [ "${behind}" = 0 ]; then
+            echo "#${pr} already lists these updates and is up to date with ${BASE}; nothing to do"
             exit 0
           fi
           # the branch is rebuilt from the base branch, which would discard anything pushed to it since
-          others=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${BASE}...${BRANCH}" \
-            --jq '[.commits[] | select(.commit.message | startswith("Bump vcpkg baseline to") | not)] | length')
+          others=$(jq -r '[.commits[] | select(.commit.message | startswith("Bump vcpkg baseline to") | not)] | length' <<< "${compare}")
           if [ "${others}" != 0 ]; then
             echo "::warning::#${pr} has commits that are not baseline bumps; leaving it alone. Close it to get a fresh one."
             exit 0
           fi
+          echo "updating #${pr}: same updates: ${same_updates}, ${behind} commit(s) behind ${BASE}"
         fi
 
         # commit on a staging branch, then move the PR branch in one step: a PR whose head equals the base can get closed
