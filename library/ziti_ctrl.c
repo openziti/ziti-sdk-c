@@ -344,13 +344,15 @@ static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl
     }
 
     if (v) {
-        if (ctrl->version.version != NULL &&
+        if (ctrl->version.version != NULL && v->version != NULL &&
             strcmp(ctrl->version.version, v->version) != 0) {
             CTRL_LOG(INFO, "controller updated to %s(%s)[%s]",
                      v->version, v->revision, v->build_date);
         }
+        model_map_clear(&ctrl->build_flags, NULL);
         for (int idx = 0; v->build_flags != NULL && v->build_flags[idx] != NULL; idx++) {
             CTRL_LOG(DEBUG, "controller build flag: %s", v->build_flags[idx]);
+            model_map_set(&ctrl->build_flags, v->build_flags[idx], (void*)1);
         }
         free_ziti_ctrl_version(&ctrl->version);
         ctrl->version = *v;
@@ -368,7 +370,7 @@ static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl
             CTRL_LOG(WARN, "controller did not provide expected(v1) API version path");
         }
         memset(&ctrl->capabilities, 0, sizeof(ctrl->capabilities));
-        for (int idx = 0; ctrl->version.capabilities[idx] != NULL; idx++) {
+        for (int idx = 0; ctrl->version.capabilities != NULL && ctrl->version.capabilities[idx] != NULL; idx++) {
             model_string name = ctrl->version.capabilities[idx];
             ziti_ctrl_cap cap = ziti_ctrl_caps.value_of(name);
             switch (cap) {
@@ -390,11 +392,6 @@ static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl
                 CTRL_LOG(WARN, "controller provided unknown capability: %s", name);
                 break;
             }
-        }
-        model_map_clear(&ctrl->build_flags, NULL);
-        const char *bf;
-        FOR(bf, ctrl->version.build_flags) {
-            model_map_set(&ctrl->build_flags, bf, (void*)1);
         }
 
         // data was moved to ctrl.version

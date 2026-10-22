@@ -2322,21 +2322,6 @@ void ztx_prepare(uv_prepare_t *prep) {
         }
     }
 
-    // switch to FIPS compliant e2ee crypto if requested
-    if (ztx->opts.e2ee_mode != ziti_crypto_tls) {
-        if (ziti_ctrl_has_build_flag(&ztx->ctrl, "FIPS_MODE")) {
-            ztx->opts.e2ee_mode = ziti_crypto_tls;
-            ZTX_LOG(INFO, "controller requested FIPS_MODE: using crypto method[%s]",
-                    e2ee_method_id(ziti_crypto_tls));
-            uint32_t conn_id;
-            ziti_connection conn;
-            MODEL_MAP_FOREACH(conn_id, conn, &ztx->connections) {
-                if (conn->type == Server) {
-                    conn_update_bindings(conn, true);
-                }
-            }
-        }
-    }
     if (!cstr_is_empty(&ztx->session_token)) {
         const struct timeval *exp = ztx->auth_method ? ztx->auth_method->expiration(ztx->auth_method) : NULL;
         // session token should be kept upto date by the auth_method,
