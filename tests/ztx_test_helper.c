@@ -196,3 +196,14 @@ void ztx_test_reauthenticated(ziti_context ztx) {
 const char *ztx_test_totp_token(ziti_context ztx) {
     return ztx->posture_checks ? cstr_str(&ztx->posture_checks->totp.token) : "";
 }
+
+// how many connections of the context the app has not closed
+int ztx_test_open_conns(ziti_context ztx) {
+    int count = 0;
+    uint32_t id;
+    ziti_connection conn;
+    MODEL_MAP_FOREACH(id, conn, &ztx->connections) {
+        count += !conn->close;
+    }
+    return count;
+}
