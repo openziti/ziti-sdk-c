@@ -63,6 +63,18 @@ static const uv_link_methods_t ziti_link_methods = {
         .read_cb_override = NULL
 };
 
+// The connection of the link is closed by whoever lets go of it first: zl_close(), ziti_src_release(),
+// the next connect, or a connect that failed (tlsuv makes no links for those, so zl_close() never runs).
+static void close_conn(ziti_link_t *zl) {
+    ziti_connection conn = zl->conn;
+    zl->conn = NULL;
+    if (conn != NULL) {
+        // what the connection still reports is of no use to the source
+        ziti_conn_set_data(conn, NULL);
+        ziti_close(conn, NULL);
+    }
+}
+
 int ziti_src_init(uv_loop_t *l, tlsuv_src_t *st, const char *svc, ziti_context ztx) {
     st->loop = l;
     st->connect = ziti_src_connect;
@@ -78,6 +90,7 @@ int ziti_src_init(uv_loop_t *l, tlsuv_src_t *st, const char *svc, ziti_context z
     else
         zl->service = NULL;
     zl->ztx = ztx;
+    zl->conn = NULL;
     
     return 0; 
 }
@@ -104,6 +117,9 @@ ziti_src_connect(tlsuv_src_t *src, const char *host, const char *port, tlsuv_src
     src->connect_cb = cb;
     src->connect_ctx = conn_ctx;
 
+    // an earlier connect may have left its connection behind (tlsuv gave up on it)
+    close_conn(zl);
+
     int status = ziti_conn_init(zl->ztx, &zl->conn, src);
     if (status != ZITI_OK) {
         return status;
@@ -125,17 +141,30 @@ ziti_src_connect(tlsuv_src_t *src, const char *host, const char *port, tlsuv_src
     };
 
 
-    return ziti_dial_with_options(zl->conn, zl->service, &opts, zlnf_conn_cb, zlnf_data_cb);
+    status = ziti_dial_with_options(zl->conn, zl->service, &opts, zlnf_conn_cb, zlnf_data_cb);
+    if (status != ZITI_OK) {
+        close_conn(zl);
+    }
+    return status;
 }
 
 static void ziti_src_release(tlsuv_src_t *src) {
     ziti_link_t *zl = (ziti_link_t *) src->link;
+    close_conn(zl);
     free(zl->service);
     free(src->link);
 }
 
 static void zlnf_conn_cb(ziti_connection conn, int status) {
     tlsuv_src_t *src = (tlsuv_src_t *) ziti_conn_data(conn);
+    if (src == NULL) {
+        // the source let go of this connection
+        return;
+    }
+
+    if (status != ZITI_OK) {
+        close_conn((ziti_link_t *) src->link);
+    }
     src->connect_cb(src, status, src->connect_ctx);
 }
 
@@ -198,7 +227,7 @@ void zl_close(uv_link_t* link, uv_link_t* source, uv_link_close_cb link_close_cb
     ziti_link_t *zl = (ziti_link_t *)link;
 
     ZITI_LOG(TRACE, "%s", zl->service);
-    ziti_close(zl->conn, NULL);
+    close_conn(zl);
     link_close_cb((uv_link_t *) zl);
 }
 

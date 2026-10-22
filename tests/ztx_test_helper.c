@@ -75,3 +75,14 @@ void ztx_test_auth_impossible(ziti_context ztx, int err) {
 bool ztx_test_rebind_pending(ziti_connection conn) {
     return conn->server.rebinder.expire_cb != NULL;
 }
+
+// how many connections of the context the app has not closed
+int ztx_test_open_conns(ziti_context ztx) {
+    int count = 0;
+    uint32_t id;
+    ziti_connection conn;
+    MODEL_MAP_FOREACH(id, conn, &ztx->connections) {
+        count += !conn->close;
+    }
+    return count;
+}
