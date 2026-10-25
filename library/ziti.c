@@ -53,7 +53,7 @@
 // wait between the attempts to authenticate while the controller or its auth provider is not reachable:
 // at least the base, at most about 2^max times that
 #define AUTH_RETRY_BASE_MS 1000
-#define AUTH_RETRY_MAX_BACKOFF 5
+#define AUTH_RETRY_MAX_BACKOFF 8 // ceiling 2^8 s: about 4 minutes, like the OIDC login retry (oidc.c AUTH_BACKOFF_MAX)
 
 #define ztx_controller(ztx) \
 (!cstr_is_empty(&(ztx)->ctrl.url) ? cstr_str(&(ztx)->ctrl.url) : (ztx)->config.controller_url)
@@ -647,6 +647,11 @@ void ztx_authenticate_now(ziti_context ztx) {
             if (ztx->auth_method) {
                 ZTX_LOG(INFO, "not authenticated: authenticating now");
                 ziti_force_api_session_refresh(ztx);
+            } else if (ztx->refresh_deadline.expire_cb == pre_auth_retry) {
+                // still waiting to probe the controller version: that wait was for a network that may be there now
+                ZTX_LOG(INFO, "controller was not reachable: authenticating now");
+                clear_deadline(&ztx->refresh_deadline);
+                ziti_re_auth(ztx);
             }
             break;
         case ZitiAuthImpossibleToAuthenticate:
@@ -2579,7 +2584,9 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
     ziti_context ztx = ctx;
     if (err) {
         ZTX_LOG(WARN, "failed to get controller version: %s/%s", err->code, err->message);
-        ztx_set_deadline(ztx, 5000, &ztx->refresh_deadline, pre_auth_retry, ztx);
+        // the probe that starts every (re-)authentication: a fixed 5 s retry of it, for the whole outage and with no jitter, is
+        // the cadence a restarting fleet hits an unreachable controller with. Same growing, jittered wait as the auth provider's.
+        ztx_retry_auth_later(ztx);
         return;
     }
     ZTX_LOG(INFO, "connected to controller %s version %s(%s %s)",
