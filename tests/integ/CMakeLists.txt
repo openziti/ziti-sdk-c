@@ -31,6 +31,7 @@ add_executable(IntegrationTests
         ctrl_tests.cpp
         api_session_retry_tests.cpp
         api_session_retry_test_helper.c
+        ../ztx_test_helper.c
         enroll_tests.cpp
         enroll_token_tests.cpp
         enroll_mode_tests.cpp
@@ -43,6 +44,7 @@ add_executable(IntegrationTests
 target_include_directories(IntegrationTests
         PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/include
         PRIVATE ${ziti-sdk_SOURCE_DIR}/inc_internal
+        PRIVATE ${ziti-sdk_SOURCE_DIR}/library   # posture.h, for ../ztx_test_helper.c, includes proto/edge_client.pb-c.h
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(IntegrationTests
         PRIVATE ziti

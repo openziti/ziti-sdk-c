@@ -26,6 +26,8 @@
 #include <string>
 #include <vector>
 
+#include "totp_jwt.h"
+
 // stc/cstr.h declares _cstr_init as plain `extern`, which mangles under C++; common.h first, then cstr.h
 // under C linkage, satisfies both without wrapping zt_internal.h (that breaks stc's C++ templates).
 #include <stc/common.h>
@@ -356,6 +358,92 @@ TEST_CASE("a check shared by two services lists both services when the process i
 
     ziti_posture_checks_free(ztx.posture_checks);
     model_map_clear(&ztx.services, (_free_f) free_ziti_service_ptr);
+}
+
+namespace {
+    using totp_test::totp_jwt;
+
+    // the batch the routers would receive when no other response is due
+    Ziti__EdgeClient__Pb__PostureResponses *pb_without_responses(ziti_context ztx) {
+        model_list none = {};
+        return ztx_posture_resp_pb(ztx, &none);
+    }
+}
+
+TEST_CASE("a TOTP token is sent as a TotpToken posture response", "[posture][totp]") {
+    posture_fixture f;
+    const std::string token = totp_jwt("session-1");
+    REQUIRE(ztx_posture_set_totp_token(&f.ztx, token.c_str()) == ZITI_OK);
+
+    pb_holder holder;
+    holder.resp = pb_without_responses(&f.ztx);
+
+    REQUIRE(holder.resp != nullptr);
+    REQUIRE(holder.resp->n_responses == 1);
+    const Ziti__EdgeClient__Pb__PostureResponse *r = holder.resp->responses[0];
+    REQUIRE(r->type_case == ZITI__EDGE_CLIENT__PB__POSTURE_RESPONSE__TYPE_TOTP_TOKEN);
+    CHECK(std::string(r->totptoken->token) == token);
+}
+
+TEST_CASE("a TOTP token of another api session is not sent until the session matches", "[posture][totp]") {
+    posture_fixture f;
+    const std::string token = totp_jwt("session-2");
+    REQUIRE(ztx_posture_set_totp_token(&f.ztx, token.c_str()) == ZITI_OK);
+
+    // the context is still on session-1: a token for another session is worth nothing to the router
+    pb_holder none;
+    none.resp = pb_without_responses(&f.ztx);
+    CHECK(none.resp == nullptr);
+
+    // the reply of a token request can beat the refresh of the api session: it goes out once they agree
+    f.session.id = "session-2";
+    pb_holder sent;
+    sent.resp = pb_without_responses(&f.ztx);
+    REQUIRE(sent.resp != nullptr);
+    REQUIRE(sent.resp->n_responses == 1);
+    CHECK(sent.resp->responses[0]->type_case == ZITI__EDGE_CLIENT__PB__POSTURE_RESPONSE__TYPE_TOTP_TOKEN);
+}
+
+TEST_CASE("a TOTP token comes along with the other responses", "[posture][totp]") {
+    posture_fixture f;
+    f.answer(true);
+    REQUIRE(ztx_posture_set_totp_token(&f.ztx, totp_jwt("session-1").c_str()) == ZITI_OK);
+
+    model_list send_prs = {};
+    ztx_collect_posture(&f.ztx, &send_prs, true);
+    pb_holder holder;
+    holder.resp = ztx_posture_resp_pb(&f.ztx, &send_prs);
+    model_list_clear(&send_prs, nullptr);
+
+    REQUIRE(holder.resp != nullptr);
+    REQUIRE(holder.resp->n_responses == 2);
+    int process_lists = 0, totp_tokens = 0;
+    for (size_t i = 0; i < holder.resp->n_responses; i++) {
+        switch (holder.resp->responses[i]->type_case) {
+            case ZITI__EDGE_CLIENT__PB__POSTURE_RESPONSE__TYPE_PROCESS_LIST: process_lists++; break;
+            case ZITI__EDGE_CLIENT__PB__POSTURE_RESPONSE__TYPE_TOTP_TOKEN: totp_tokens++; break;
+            default: break;
+        }
+    }
+    CHECK(process_lists == 1);
+    CHECK(totp_tokens == 1);
+}
+
+TEST_CASE("a token that is not a JWT with z_asid is refused", "[posture][totp]") {
+    posture_fixture f;
+
+    CHECK(ztx_posture_set_totp_token(&f.ztx, "garbage") == ZITI_JWT_INVALID);
+    CHECK(ztx_posture_set_totp_token(&f.ztx, "") == ZITI_JWT_INVALID);
+    CHECK(ztx_posture_set_totp_token(&f.ztx, totp_jwt(nullptr).c_str()) == ZITI_JWT_INVALID);
+
+    // a refused token leaves nothing to send
+    pb_holder holder;
+    holder.resp = pb_without_responses(&f.ztx);
+    CHECK(holder.resp == nullptr);
+
+    // no posture state (the endpoint is disabled): nowhere to keep it
+    ziti_ctx disabled{};
+    CHECK(ztx_posture_set_totp_token(&disabled, totp_jwt("session-1").c_str()) == ZITI_INVALID_STATE);
 }
 
 TEST_CASE("posture response still pending is not collected", "[posture]") {

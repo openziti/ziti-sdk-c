@@ -145,6 +145,9 @@ struct ziti_ctx {
 
     // HA access_token(JWT) or legacy ziti_api_session.token
     cstr session_token;
+
+    // the TOTP code a login took and has not finished with, see ztx_mfa_keep_code()
+    cstr totp_code;
     ziti_identity_data *identity_data;
     ziti_api_session *session;
 

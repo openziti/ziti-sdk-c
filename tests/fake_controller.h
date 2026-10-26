@@ -80,8 +80,14 @@ namespace fake_controller {
         return http_response(status_line, {{"Content-Type", "application/json"}}, body);
     }
 
+    // the error body of the controller API: "400 Bad Request", "MFA_INVALID_TOKEN"
+    inline std::string api_error(const std::string &status_line, const std::string &code) {
+        return json_response(status_line, R"({"error":{"code":")" + code +
+                                          R"(","message":"fake controller","requestId":"x"}})");
+    }
+
     inline std::string not_found() {
-        return json_response("404 Not Found", R"({"error":{"code":"NOT_FOUND","message":"fake controller","requestId":"x"}})");
+        return api_error("404 Not Found", "NOT_FOUND");
     }
 
     // One thread per connection. The handler runs on those threads: what it touches has to be
@@ -139,16 +145,31 @@ namespace fake_controller {
             std::lock_guard<std::mutex> lock(mu_);
             int n = 0;
             for (const auto &p: paths_) {
-                if (p.size() >= suffix.size() && p.compare(p.size() - suffix.size(), suffix.size(), suffix) == 0) {
+                if (has_suffix(p, suffix)) {
                     n++;
                 }
             }
             return n;
         }
 
+        // the body of the last request whose path ends with `suffix`, "" when there was none
+        std::string last_body(const std::string &suffix) const {
+            std::lock_guard<std::mutex> lock(mu_);
+            for (size_t i = paths_.size(); i-- > 0;) {
+                if (has_suffix(paths_[i], suffix)) {
+                    return bodies_[i];
+                }
+            }
+            return "";
+        }
+
         uint16_t port{};
 
     private:
+        static bool has_suffix(const std::string &s, const std::string &suffix) {
+            return s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+        }
+
         // takes `want` (0: any free one) on the loopback interface and records it in `port`
         void bind_socket(uint16_t want) {
             listen_fd_ = (int) ::socket(AF_INET, SOCK_STREAM, 0);
@@ -206,6 +227,7 @@ namespace fake_controller {
                     close_socket(client);
                     return;
                 }
+                received.append(buf, (size_t) n);
                 body_so_far += (size_t) n;
             }
 
@@ -220,6 +242,7 @@ namespace fake_controller {
             {
                 std::lock_guard<std::mutex> lock(mu_);
                 paths_.push_back(path);
+                bodies_.push_back(received.substr(header_end + 4, content_length));
             }
 
             std::string resp = handler_(method, path);
@@ -236,6 +259,7 @@ namespace fake_controller {
         std::vector<std::thread> workers_;
         mutable std::mutex mu_;
         std::vector<std::string> paths_;
+        std::vector<std::string> bodies_;   // parallel to paths_
     };
 
     // one loop for every case: creating and closing a loop per case trips libuv's fd assertion when

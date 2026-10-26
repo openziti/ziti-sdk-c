@@ -266,6 +266,8 @@ static void ztx_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
     ZTX_LOG(DEBUG, "setting auth_state[%d] to %d", ztx->auth_state, ZitiAuthStateUnauthenticated);
     ztx->auth_state = ZitiAuthStateUnauthenticated;
     ztx->awaiting_secondary = false;
+    // a login that ended here has no api session to buy a TOTP token for
+    ztx_mfa_drop_code(ztx);
     cstr_clear(&ztx->session_token);
     free_ziti_api_session_ptr(ztx->session);
     ztx->session = NULL;
@@ -334,6 +336,7 @@ static void ztx_set_impossible_to_authenticate(ziti_context ztx, const ziti_erro
     }
 
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthImpossibleToAuthenticate);
+    ztx_mfa_drop_code(ztx);
     cstr_clear(&ztx->session_token);
     free_ziti_api_session_ptr(ztx->session);
     ztx->session = NULL;
@@ -559,6 +562,9 @@ static void ztx_set_fully_authenticated(ziti_context ztx, const char *session_to
     ziti_ctrl_current_api_session(ctrl, api_session_cb, ztx);
 
     ziti_posture_init(ztx, 20);
+
+    // a login that took a TOTP code has created this api session: the routers need the token of the code for it
+    ztx_mfa_token_for_login(ztx);
 
     ziti_event_t auth_ev = {
         .type = ZitiAuthEvent,
@@ -1029,6 +1035,7 @@ static void free_ztx(uv_handle_t *h) {
     ztx_set_unauthenticated(ztx, NULL);
     FREE(ztx->last_update);
     cstr_drop(&ztx->session_token);
+    cstr_drop(&ztx->totp_code);
     free_ziti_api_session_ptr(ztx->session);
     ztx->session = NULL;
     cstr_drop(&ztx->auth_info.secondary_issuer);
@@ -2938,6 +2945,12 @@ static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, vo
 
         free_ziti_api_session_ptr(ztx->session);
         ztx->session = api_sess;
+
+        if (changed) {
+            // the first look at the posture data comes right after full authentication, before this session is known,
+            // and sends nothing: a TOTP token that is already there must not wait for the next one
+            ztx_posture_send_all(ztx);
+        }
 
         if (ztx->id_creds.cert == NULL && (changed || ztx->session_creds.cert == NULL)) {
             ztx_request_session_cert(ztx);

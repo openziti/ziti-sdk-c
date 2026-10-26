@@ -1421,9 +1421,10 @@ static int oidc_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb
     oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
     clt->mfa_cb = cb;
     if (oidc_client_mfa(clt, code) != 0) {
-        ZITI_LOG(WARN, "failed to submit MFA code");
+        // not a problem of the code or of the enrollment: no login is waiting for one
+        ZITI_LOG(WARN, "failed to submit MFA code: no login is waiting for it");
         clt->mfa_cb = NULL;
-        return ZITI_MFA_EXISTS;
+        return ZITI_INVALID_STATE;
     }
     return ZITI_OK;
 }
