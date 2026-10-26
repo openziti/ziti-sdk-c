@@ -1004,6 +1004,10 @@ const ziti_identity *ziti_get_identity(ziti_context ztx) {
     return NULL;
 }
 
+bool ziti_is_mfa_enrolled(ziti_context ztx) {
+    return ztx->identity_data && ztx->identity_data->is_mfa_enabled;
+}
+
 int ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
     if (!ztx->enabled) return ZITI_DISABLED;
 

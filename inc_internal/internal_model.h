@@ -33,7 +33,8 @@ ZITI_IDENTITY_MODEL(XX, __VA_ARGS__) \
 XX(default_hosting_precedence, model_string, none, defaultHostingPrecedence, __VA_ARGS__) \
 XX(default_hosting_cost, model_number, none, defaultHostingCost, __VA_ARGS__)                  \
 XX(service_hosting_precedences, model_string, map, serviceHostingPrecedences, __VA_ARGS__)\
-XX(service_hosting_costs, model_number, map, serviceHostingCosts, __VA_ARGS__)
+XX(service_hosting_costs, model_number, map, serviceHostingCosts, __VA_ARGS__) \
+XX(is_mfa_enabled, model_bool, none, isMfaEnabled, __VA_ARGS__)
 
 // add other protocols when we support them
 #define ZITI_ER_PROTOCOLS(XX, ...) \

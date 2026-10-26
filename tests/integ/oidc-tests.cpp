@@ -181,6 +181,121 @@ TEST_CASE_METHOD(ZitiTestCase, "oidc-totp", "[totp]") {
     REQUIRE(run(UNTIL(this->loaded && this->load_error == ZITI_OK)));
 }
 
+namespace {
+    struct mfa_result {
+        bool called{false};
+        int status{ZITI_OK};
+    };
+
+    void mfa_result_cb(ziti_context, int status, void *ctx) {
+        auto r = (mfa_result *) ctx;
+        r->called = true;
+        r->status = status;
+    }
+
+    std::string totp_code(const std::vector<uint8_t> &key) {
+        char code[8];
+        snprintf(code, sizeof(code), "%06u", (unsigned) totp::generate(key, std::chrono::system_clock::now()));
+        return code;
+    }
+
+    // a context of the same identity, as an application that was restarted would have it
+    struct restarted_context {
+        ziti_config config{};
+        ziti_context ztx{};
+        ziti_options options{
+            .config_types = (const char **) ALL_CONFIGS,
+            .app_ctx = this,
+            .events = ZitiContextEvent | ZitiAuthEvent,
+            .event_cb = [](ziti_context z, const ziti_event_t *ev) {
+                auto self = (restarted_context *) ziti_app_ctx(z);
+                if (ev->type == ZitiAuthEvent && ev->auth.action == ziti_auth_prompt_totp) {
+                    self->totp_prompted = true;
+                }
+                if (ev->type == ZitiContextEvent && ev->ctx.ctrl_status == ZITI_OK) {
+                    self->loaded = true;
+                }
+            },
+        };
+        bool totp_prompted{false};
+        bool loaded{false};
+
+        ~restarted_context() {
+            if (ztx) ziti_shutdown(ztx);
+            free_ziti_config(&config);
+        }
+    };
+}
+
+// ziti_is_mfa_enrolled() reports what the controller says of the identity: no for an identity without MFA,
+// no for an enrollment that is not verified, yes once it is. The context learns about its own verify and
+// remove at once, and a context that is started later learns it from the controller.
+TEST_CASE_METHOD(ZitiTestCase, "mfa-enrolled", "[mfa-enrolled]") {
+    REQUIRE_ZITI_OK(load());
+    // the identity data, which has the MFA state, comes after the context is loaded
+    REQUIRE(run(UNTIL(ziti_get_identity(ztx) != nullptr)));
+
+    CHECK_FALSE(ziti_is_mfa_enrolled(ztx));
+
+    struct {
+        std::string link;
+    } enrollment;
+    ziti_mfa_enroll(ztx, [](ziti_context, int status, ziti_mfa_enrollment *mfa_enrollment, void *ctx) {
+        CHECK(status == ZITI_OK);
+        if (mfa_enrollment) ((decltype(enrollment) *) ctx)->link = mfa_enrollment->provisioning_url;
+    }, &enrollment);
+    REQUIRE(run(UNTIL(!enrollment.link.empty())));
+    auto key = totp::base32_decode(enrollment.link.substr(enrollment.link.find("secret=") + 7));
+
+    // started, not verified
+    CHECK_FALSE(ziti_is_mfa_enrolled(ztx));
+
+    // the code can fall on the edge of its 30 s window: try again
+    mfa_result verify;
+    for (int i = 0; i < 3 && (!verify.called || verify.status != ZITI_OK); i++) {
+        verify = {};
+        auto code = totp_code(key);
+        ziti_mfa_verify(ztx, code.c_str(), mfa_result_cb, &verify);
+        REQUIRE(run(UNTIL(verify.called)));
+        if (verify.status != ZITI_OK) uv_sleep(1000);
+    }
+    REQUIRE(verify.status == ZITI_OK);
+    CHECK(ziti_is_mfa_enrolled(ztx));
+
+    // the controller asks the identity for the code from now on: the new context gets the state from it
+    restarted_context second;
+    REQUIRE_ZITI_OK(ziti_load_config(&second.config, test_client()));
+    REQUIRE_ZITI_OK(ziti_context_init(&second.ztx, &second.config));
+    REQUIRE_ZITI_OK(ziti_context_set_options(second.ztx, &second.options));
+    REQUIRE_ZITI_OK(ziti_context_run(second.ztx, loop()));
+    REQUIRE(run(UNTIL(second.totp_prompted)));
+    CHECK_FALSE(ziti_is_mfa_enrolled(second.ztx)); // nothing is known before the login is complete
+
+    mfa_result auth;
+    for (int i = 0; i < 3 && (!auth.called || auth.status != ZITI_OK); i++) {
+        auth = {};
+        auto code = totp_code(key);
+        ziti_mfa_auth(second.ztx, code.c_str(), mfa_result_cb, &auth);
+        REQUIRE(run(UNTIL(auth.called)));
+        if (auth.status != ZITI_OK) uv_sleep(1000);
+    }
+    REQUIRE(auth.status == ZITI_OK);
+    REQUIRE(run(UNTIL(second.loaded)));
+    REQUIRE(run(UNTIL(ziti_get_identity(second.ztx) != nullptr)));
+    CHECK(ziti_is_mfa_enrolled(second.ztx));
+
+    mfa_result remove;
+    for (int i = 0; i < 3 && (!remove.called || remove.status != ZITI_OK); i++) {
+        remove = {};
+        auto code = totp_code(key);
+        ziti_mfa_remove(second.ztx, code.c_str(), mfa_result_cb, &remove);
+        REQUIRE(run(UNTIL(remove.called)));
+        if (remove.status != ZITI_OK) uv_sleep(1000);
+    }
+    REQUIRE(remove.status == ZITI_OK);
+    CHECK_FALSE(ziti_is_mfa_enrolled(second.ztx));
+}
+
 // how often the SDK has said that the issuer of a token is not one it knows a signer by
 static unsigned unmatched_issuer_warnings;
 // how often the OIDC client has got a new token with its refresh token

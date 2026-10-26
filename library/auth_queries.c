@@ -195,6 +195,13 @@ void ziti_mfa_enroll(ziti_context ztx, ziti_mfa_enroll_cb enroll_cb, void *ctx) 
     ziti_ctrl_get_mfa(ztx_get_controller(ztx), ziti_mfa_enroll_get_internal_cb, mfa_enroll_cb_ctx);
 }
 
+// the controller reports the MFA state with the identity data: keep it right until that is loaded again
+static void set_mfa_enrolled(ziti_context ztx, bool enrolled) {
+    if (ztx->identity_data) {
+        ztx->identity_data->is_mfa_enabled = enrolled;
+    }
+}
+
 void ziti_mfa_remove_internal_cb(void *empty, const ziti_error *err, void *ctx) {
     ziti_mfa_cb_ctx *mfa_cb_ctx = ctx;
     ziti_context ztx = mfa_cb_ctx->ztx;
@@ -203,6 +210,7 @@ void ziti_mfa_remove_internal_cb(void *empty, const ziti_error *err, void *ctx) 
         ZTX_LOG(ERROR, "error during remove MFA call: %d - %s - %s", (int)err->http_code, err->code, err->message);
         mfa_cb_ctx->cb(mfa_cb_ctx->ztx, (int)err->err, mfa_cb_ctx->cb_ctx);
     } else {
+        set_mfa_enrolled(ztx, false);
         mfa_cb_ctx->cb(mfa_cb_ctx->ztx, ZITI_OK, mfa_cb_ctx->cb_ctx);
     }
 
@@ -233,6 +241,7 @@ void ziti_mfa_verify_internal_cb(void *empty, const ziti_error *err, void *ctx) 
         ZTX_LOG(ERROR, "error during verify MFA call: %d - %s - %s", (int)err->http_code, err->code, err->message);
         mfa_cb_ctx->cb(mfa_cb_ctx->ztx, (int)err->err, mfa_cb_ctx->cb_ctx);
     } else {
+        set_mfa_enrolled(ztx, true);
         ziti_force_api_session_refresh(ztx);
         mfa_cb_ctx->cb(mfa_cb_ctx->ztx, ZITI_OK, mfa_cb_ctx->cb_ctx);
     }
