@@ -46,7 +46,12 @@ struct posture_checks {
     struct {
         cstr token;
         cstr api_session_id;
+        // when the code of the token was given (its iat), seconds since the epoch
+        int64_t issued_at;
     } totp;
+
+    // map<query id, struct mfa_status>: what the app was told of each PC_MFA query last, see ztx_posture_notify_mfa()
+    model_map mfa_status;
 };
 
 void ziti_posture_init(ziti_context ztx, long interval_secs);
@@ -81,6 +86,12 @@ bool ziti_service_has_query_with_timeout(ziti_service *service);
 // (matched by query->id), since one policy -- and so one query -- can apply to more than
 // one service.
 void ziti_pr_notify_process_status(ziti_context ztx, const ziti_posture_query *query);
+
+// sends a ZitiPostureStatusEvent for every PC_MFA query that the app was not told of yet, or whose last code or timeout
+// changed since: the query is described as the services (every service it governs) have it, the last code is the
+// one of the TOTP token for the api session the context is on (0: none). Does nothing, and remembers nothing,
+// unless the app subscribed to ZitiPostureStatusEvent.
+void ztx_posture_notify_mfa(ziti_context ztx);
 
 #ifdef __cplusplus
 }

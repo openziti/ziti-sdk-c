@@ -33,9 +33,11 @@ namespace totp_test {
         return out;
     }
 
-    // signed (not really), no exp, scoped to an api session by z_asid; a null id leaves the claim out
-    inline std::string totp_jwt(const char *api_session_id) {
-        std::string payload = R"({"iss":"https://ctrl.example","sub":"identity-1","iat":1700000000,"z_t":"t")";
+    // signed (not really), no exp, scoped to an api session by z_asid; a null id leaves the claim out.
+    // iat is the moment of the code
+    inline std::string totp_jwt(const char *api_session_id, long long iat = 1700000000) {
+        std::string payload = R"({"iss":"https://ctrl.example","sub":"identity-1","iat":)" + std::to_string(iat) +
+                              R"(,"z_t":"t")";
         if (api_session_id != nullptr) {
             payload += std::string(R"(,"z_asid":")") + api_session_id + "\"";
         }

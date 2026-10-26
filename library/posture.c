@@ -168,6 +168,7 @@ void ziti_posture_checks_free(struct posture_checks *pcs) {
         cstr_drop(&pcs->controller_instance_id);
         cstr_drop(&pcs->totp.token);
         cstr_drop(&pcs->totp.api_session_id);
+        model_map_clear(&pcs->mfa_status, free);
         FREE(pcs);
     }
 }
@@ -192,10 +193,18 @@ int ztx_posture_set_totp_token(ziti_context ztx, const char *token) {
         ZTX_LOG(WARN, "TOTP token is not scoped to an api session");
         rc = ZITI_JWT_INVALID;
     } else {
+        json_object *iat = json_object_object_get(jwt.claims, "iat");
         cstr_assign(&checks->totp.token, token);
         cstr_assign(&checks->totp.api_session_id, json_object_get_string(asid));
+        // the controller sets it to the moment of the code; a token without it is taken as given just now
+        checks->totp.issued_at = iat != NULL && (json_object_is_type(iat, json_type_int) || json_object_is_type(iat, json_type_double))
+                                 ? json_object_get_int64(iat) : (int64_t) time(NULL);
     }
     zt_jwt_drop(&jwt);
+
+    if (rc == ZITI_OK) {
+        ztx_posture_notify_mfa(ztx);
+    }
     return rc;
 }
 
@@ -239,6 +248,10 @@ void ziti_send_posture_data(ziti_context ztx) {
     }
 
     ZTX_LOG(VERBOSE, "starting to send posture data");
+
+    // the clock moves a code towards the end of its timeout between the events that change anything else about it
+    ztx_posture_notify_mfa(ztx);
+
     bool new_session_id = !cstr_equals(&checks->previous_api_session_id, ztx->session->id);
 
     ziti_controller *ctrl = ztx_get_controller(ztx);
@@ -1225,6 +1238,81 @@ void ziti_pr_notify_process_status(ziti_context ztx, const ziti_posture_query *q
     free(paths);
     free(missing);
     free(services);
+}
+
+// what the app has been told of one PC_MFA query
+struct mfa_status {
+    int64_t last_code_at;
+    int64_t timeout;
+    bool expiring;
+};
+
+// a code starts to expire this long before the end of its timeout, or half of the timeout when that is shorter
+#define MFA_EXPIRING_SECS 300
+
+static bool mfa_code_expiring(int64_t last_code_at, int64_t timeout, int64_t now) {
+    if (last_code_at == 0 || timeout < 0) {
+        return false;
+    }
+    int64_t lead = timeout / 2 < MFA_EXPIRING_SECS ? timeout / 2 : MFA_EXPIRING_SECS;
+    return now >= last_code_at + timeout - lead;
+}
+
+void ztx_posture_notify_mfa(ziti_context ztx) {
+    struct posture_checks *checks = ztx->posture_checks;
+    // nothing is remembered for an app that does not listen: it gets the state of the checks when it subscribes
+    if (checks == NULL || (ztx->opts.events & ZitiPostureStatusEvent) == 0) {
+        return;
+    }
+
+    int64_t last_code_at = ztx_current_totp_token(ztx) != NULL ? checks->totp.issued_at : 0;
+    int64_t now = (int64_t) time(NULL);
+
+    const char *name;
+    ziti_service *svc;
+    MODEL_MAP_FOREACH(name, svc, &ztx->services) {
+        const char *policy_id;
+        ziti_posture_query_set *set;
+        MODEL_MAP_FOREACH(policy_id, set, &svc->posture_query_map) {
+            for (int i = 0; set->posture_queries[i] != NULL; i++) {
+                const ziti_posture_query *query = set->posture_queries[i];
+                if (query->query_type != ziti_posture_query_type_PC_MFA) {
+                    continue;
+                }
+
+                // one query can govern several services: the first of them that is met tells of all
+                bool expiring = mfa_code_expiring(last_code_at, query->timeout, now);
+                struct mfa_status *told = model_map_get(&checks->mfa_status, query->id);
+                if (told != NULL && told->last_code_at == last_code_at && told->timeout == query->timeout &&
+                    told->expiring == expiring) {
+                    continue;
+                }
+                if (told == NULL) {
+                    told = calloc(1, sizeof(*told));
+                    model_map_set(&checks->mfa_status, query->id, told);
+                }
+                told->last_code_at = last_code_at;
+                told->timeout = query->timeout;
+                told->expiring = expiring;
+
+                ziti_service **services = collect_services_for_query(ztx, query->id);
+                ziti_event_t ev = {
+                        .type = ZitiPostureStatusEvent,
+                        .posture_status = {
+                                .services = services,
+                                .query_type = query->query_type,
+                                .mfa = {
+                                        .timeout = query->timeout,
+                                        .last_code_at = last_code_at,
+                                        .expiring = expiring,
+                                },
+                        },
+                };
+                ziti_send_event(ztx, &ev);
+                free(services);
+            }
+        }
+    }
 }
 
 static void default_pq_process(ziti_context ztx, const char *id, const char *path, ziti_pr_process_cb cb) {
