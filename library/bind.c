@@ -77,7 +77,7 @@ static void free_binding(struct binding_s *b) {
 // convert random byte to printable char (between 32 and 126)
 #define make_printable(c) c = (uint8_t)(((c) % (127 - 32)) + 32)
 
-// a request that calls back with the connection keeps it from being disposed of: see dispose()
+// a request that calls back with the connection keeps its memory from being freed: see conn_free()
 static void lookup_service(struct ziti_conn *conn) {
     conn->pending_reqs++;
     if (ziti_service_available(conn->ziti_ctx, cstr_str(&conn->service), get_service_cb, conn) != ZITI_OK) {
@@ -234,8 +234,7 @@ static void schedule_rebind(struct ziti_conn *conn) {
 
 static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
-    conn->pending_reqs--;
-    if (conn->close) {
+    if (conn_req_done(conn)) {
         free_ziti_session_ptr(session);
         return;
     }
@@ -293,8 +292,7 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
 
 static void list_routers_cb(ziti_service_routers *srv_routers, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
-    conn->pending_reqs--;
-    if (conn->close) {
+    if (conn_req_done(conn)) {
         free_ziti_service_routers_ptr(srv_routers);
         return;
     }
@@ -330,8 +328,7 @@ static void list_routers_cb(ziti_service_routers *srv_routers, const ziti_error 
 
 static void get_service_cb(ziti_context ztx, const ziti_service *service, int status, void *ctx) {
     struct ziti_conn *conn = ctx;
-    conn->pending_reqs--;
-    if (conn->close) {
+    if (conn_req_done(conn)) {
         return;
     }
 
@@ -435,8 +432,7 @@ static int dispose(ziti_connection server) {
     if (server->close_cb) {
         server->close_cb(server);
     }
-    cstr_drop(&server->service);
-    free(server);
+    conn_free(server);
     return 1;
 }
 

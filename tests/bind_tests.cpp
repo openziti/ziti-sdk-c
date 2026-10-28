@@ -26,7 +26,10 @@
 
 #include "catch2_includes.hpp"
 
+#include <chrono>
+#include <condition_variable>
 #include <ctime>
+#include <mutex>
 
 using namespace fake_controller;
 
@@ -68,6 +71,23 @@ namespace {
         // lookups of the routers of the service received so far
         int lookups() const { return server_.count(ROUTERS_OF_SVC); }
 
+        // holds the answer to a lookup of the routers back until release()
+        void hold_lookups() {
+            std::lock_guard<std::mutex> lock(mu_);
+            held_ = true;
+        }
+
+        void release() {
+            {
+                std::lock_guard<std::mutex> lock(mu_);
+                held_ = false;
+            }
+            cv_.notify_all();
+        }
+
+        // the server joins its threads, which must not be waiting for a release
+        ~FakeBindController() { release(); }
+
     private:
         static bool ends_with(const std::string &s, const std::string &suffix) {
             return s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
@@ -93,6 +113,10 @@ namespace {
                                       R"("encryptionRequired":false}],"meta":{}})");
             }
             if (ends_with(path, ROUTERS_OF_SVC)) {
+                {
+                    std::unique_lock<std::mutex> lock(mu_);
+                    cv_.wait_for(lock, std::chrono::seconds(10), [this] { return !held_; });
+                }
                 // the request is already counted
                 if (server_.count(ROUTERS_OF_SVC) <= failed_lookups_) return "";
                 return json_response("200 OK", R"({"data":{"edgeRouters":[]},"meta":{}})");
@@ -105,6 +129,9 @@ namespace {
         }
 
         const int failed_lookups_;
+        std::mutex mu_;
+        std::condition_variable cv_;
+        bool held_ = false;
         FakeHttpServer server_;
     };
 
@@ -167,4 +194,41 @@ TEST_CASE("an edge router connecting leaves the retry of a failed router lookup 
     REQUIRE(updated);
     CHECK(pending_after);
     CHECK(ctrl.lookups() > lookups_at_update);
+}
+
+TEST_CASE("a closed listener does not wait for the controller to answer its requests", "[bind]") {
+    FakeBindController ctrl(0);
+    ctrl.hold_lookups();
+
+    bool closed = false;
+    bool closed_while_held = false;
+    ziti_connection conn = nullptr;
+    int ticks_since_close = -1;
+
+    run_context(ctrl.url(), 10000, [&](const context_run &run) {
+        if (conn == nullptr) {
+            if (ziti_get_api_session_token(run.ztx) == nullptr) return false;
+            REQUIRE(ziti_conn_init(run.ztx, &conn, &closed) == ZITI_OK);
+            REQUIRE(ziti_listen(conn, "svc",
+                                [](ziti_connection, int) {},
+                                [](ziti_connection, ziti_connection, int, const ziti_client_ctx *) {}) == ZITI_OK);
+            return false;
+        }
+        if (ticks_since_close < 0) {
+            // the lookup of the routers is in flight
+            if (ctrl.lookups() < 1) return false;
+            ziti_close(conn, [](ziti_connection c) { *(bool *) ziti_conn_data(c) = true; });
+            ticks_since_close = 0;
+            return false;
+        }
+        ticks_since_close++;
+        if (ticks_since_close == 10) {
+            closed_while_held = closed;
+            // the answers reach the listener, which was disposed of by now
+            ctrl.release();
+        }
+        return ticks_since_close == 20;
+    });
+
+    CHECK(closed_while_held);
 }

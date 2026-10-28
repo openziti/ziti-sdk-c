@@ -178,6 +178,27 @@ static void free_conn_req(struct ziti_conn_req *r) {
     free(r);
 }
 
+void conn_free(struct ziti_conn *conn) {
+    cstr_drop(&conn->service);
+    cstr_drop(&conn->source_identity);
+    if (conn->pending_reqs > 0) {
+        conn->disposed = true;
+        return;
+    }
+    free(conn);
+}
+
+bool conn_req_done(struct ziti_conn *conn) {
+    conn->pending_reqs--;
+    if (!conn->close) {
+        return false;
+    }
+    if (conn->disposed && conn->pending_reqs == 0) {
+        free(conn);
+    }
+    return true;
+}
+
 static int close_conn_internal(struct ziti_conn *conn) {
     assert(conn->type == Transport);
 
@@ -236,9 +257,7 @@ static int close_conn_internal(struct ziti_conn *conn) {
             conn->e2ee->free(conn->e2ee);
         }
         cstr_drop(&conn->circuit_id);
-        cstr_drop(&conn->service);
-        cstr_drop(&conn->source_identity);
-        FREE(conn);
+        conn_free(conn);
         return 1;
     }
     return 0;
@@ -459,9 +478,8 @@ static bool ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct zit
 
 static void connect_get_service_cb(ziti_context ztx, const ziti_service *s, int status, void *ctx) {
     struct ziti_conn *conn = ctx;
-    conn->pending_reqs--;
     // closed by the app while the service was looked up
-    if (conn->close) {
+    if (conn_req_done(conn)) {
         return;
     }
     struct ziti_conn_req *req = conn->conn_req;
@@ -508,9 +526,8 @@ static void refresh_session_cb(ziti_session *s, const ziti_error *err, void *ctx
 
 static void connect_get_net_session_cb(ziti_session *s, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
-    conn->pending_reqs--;
     // closed by the app while the session was requested
-    if (conn->close) {
+    if (conn_req_done(conn)) {
         free_ziti_session_ptr(s);
         return;
     }
