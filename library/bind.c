@@ -77,6 +77,15 @@ static void free_binding(struct binding_s *b) {
 // convert random byte to printable char (between 32 and 126)
 #define make_printable(c) c = (uint8_t)(((c) % (127 - 32)) + 32)
 
+// a request that calls back with the connection keeps it from being disposed of: see dispose()
+static void lookup_service(struct ziti_conn *conn) {
+    conn->pending_reqs++;
+    if (ziti_service_available(conn->ziti_ctx, cstr_str(&conn->service), get_service_cb, conn) != ZITI_OK) {
+        // no callback is coming
+        conn->pending_reqs--;
+    }
+}
+
 int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts *listen_opts,
               ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb) {
 
@@ -107,7 +116,7 @@ int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts 
     conn->server.listen_cb = listen_cb;
     conn->server.client_cb = on_clt_cb;
 
-    ziti_service_available(conn->ziti_ctx, cstr_str(&conn->service), get_service_cb, conn);
+    lookup_service(conn);
 
     return 0;
 }
@@ -116,7 +125,7 @@ static void rebind_delay_cb(void *data) {
     ziti_connection conn = data;
     CONN_LOG(DEBUG, "staring re-bind");
 
-    ziti_service_available(conn->ziti_ctx, cstr_str(&conn->service), get_service_cb, conn);
+    lookup_service(conn);
 }
 
 static struct binding_s* new_binding(struct ziti_conn *conn) {
@@ -225,6 +234,12 @@ static void schedule_rebind(struct ziti_conn *conn) {
 
 static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
+    conn->pending_reqs--;
+    if (conn->close) {
+        free_ziti_session_ptr(session);
+        return;
+    }
+
     int e = err ? (int)err->err : ZITI_OK;
     switch (e) {
         case ZITI_OK: {
@@ -278,6 +293,12 @@ static void session_cb(ziti_session *session, const ziti_error *err, void *ctx) 
 
 static void list_routers_cb(ziti_service_routers *srv_routers, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
+    conn->pending_reqs--;
+    if (conn->close) {
+        free_ziti_service_routers_ptr(srv_routers);
+        return;
+    }
+
     if (err) {
         CONN_LOG(WARN, "failed to list routers: %s", err->message);
         // older network
@@ -309,6 +330,10 @@ static void list_routers_cb(ziti_service_routers *srv_routers, const ziti_error 
 
 static void get_service_cb(ziti_context ztx, const ziti_service *service, int status, void *ctx) {
     struct ziti_conn *conn = ctx;
+    conn->pending_reqs--;
+    if (conn->close) {
+        return;
+    }
 
     if (status == ZITI_SERVICE_UNAVAILABLE) {
         CONN_LOG(WARN, "service is not available");
@@ -335,13 +360,16 @@ static void get_service_cb(ziti_context ztx, const ziti_service *service, int st
     }
 
     if (!conn->server.srv_routers_api_missing) {
+        conn->pending_reqs++;
         ziti_ctrl_list_service_routers(ztx_get_controller(ztx), service, list_routers_cb, conn);
     }
 
     conn->encrypted = service->encryption;
     if (conn->server.token == NULL) {
+        conn->pending_reqs++;
         ziti_ctrl_create_session(ztx_get_controller(ztx), service->id, ziti_session_types.Bind, session_cb, conn);
     } else if (conn->server.srv_routers_api_missing) {
+        conn->pending_reqs++;
         ziti_ctrl_get_session(ztx_get_controller(ztx), conn->server.session->id, session_cb, conn);
     }
 }

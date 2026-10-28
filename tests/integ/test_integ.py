@@ -118,3 +118,11 @@ def test_e2ee(client_identity, server_identity, test_service, tmp_path):
     env['test_client']=client_identity['path']
     env['test_service']=test_service['name']
     run_catch_test(env, tmp_path, tag="e2ee")
+
+
+def test_bind(server_identity, test_service, tmp_path):
+    env = dict()
+    # the identity the Catch test runs as: the one that can bind the service
+    env['test_client']=server_identity['path']
+    env['test_service']=test_service['name']
+    run_catch_test(env, tmp_path, tag="bind")

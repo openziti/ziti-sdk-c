@@ -35,6 +35,7 @@ add_executable(IntegrationTests
         enroll_token_tests.cpp
         enroll_mode_tests.cpp
         connect_tests.cpp
+        bind_tests.cpp
         zitilib_tests.cpp
         zl_connect_tests.cpp
         e2e_tests.cpp

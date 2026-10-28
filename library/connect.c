@@ -459,6 +459,11 @@ static bool ziti_connect(struct ziti_ctx *ztx, ziti_session *session, struct zit
 
 static void connect_get_service_cb(ziti_context ztx, const ziti_service *s, int status, void *ctx) {
     struct ziti_conn *conn = ctx;
+    conn->pending_reqs--;
+    // closed by the app while the service was looked up
+    if (conn->close) {
+        return;
+    }
     struct ziti_conn_req *req = conn->conn_req;
 
     if (status == ZITI_OK) {
@@ -503,6 +508,12 @@ static void refresh_session_cb(ziti_session *s, const ziti_error *err, void *ctx
 
 static void connect_get_net_session_cb(ziti_session *s, const ziti_error *err, void *ctx) {
     struct ziti_conn *conn = ctx;
+    conn->pending_reqs--;
+    // closed by the app while the session was requested
+    if (conn->close) {
+        free_ziti_session_ptr(s);
+        return;
+    }
     struct ziti_conn_req *req = conn->conn_req;
     struct ziti_ctx *ztx = conn->ziti_ctx;
 
@@ -541,6 +552,11 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
 
     assert(req->session_type == ziti_session_types.Dial);
 
+    // closed by the app: nothing to connect, and nothing more to hold it
+    if (conn->close) {
+        return;
+    }
+
     // verify ziti context is still authorized
     if (ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
         CONN_LOG(ERROR, "ziti context is not authenticated, cannot connect");
@@ -551,8 +567,11 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
     // find service
     if (cstr_is_empty(&req->service_id)) {
         // connect_get_service_cb will re-enter process_connect() if service is already cached in the context
+        conn->pending_reqs++;
         int rc = ziti_service_available(ztx, cstr_str(&conn->service), connect_get_service_cb, conn);
         if (rc != ZITI_OK) {
+            // no callback is coming
+            conn->pending_reqs--;
             complete_conn_req(conn, rc);
         }
         return;
@@ -566,6 +585,7 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
     if (session == NULL) {
         CONN_LOG(DEBUG, "requesting 'Dial' session");
         // this will re-enter with session if create succeeds
+        conn->pending_reqs++;
         ziti_ctrl_create_session(ztx_get_controller(ztx), cstr_str(&req->service_id), ziti_session_types.Dial,
                                  connect_get_net_session_cb, conn);
         return;
@@ -573,6 +593,7 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
 
     if (model_list_size(&session->edge_routers) == 0) {
         if (session->refresh) {
+            conn->pending_reqs++;
             ziti_ctrl_get_session(ztx_get_controller(ztx), session->id, connect_get_net_session_cb, conn);
             return;
         } else {

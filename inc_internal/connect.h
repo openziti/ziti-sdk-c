@@ -62,6 +62,9 @@ struct ziti_conn {
     void *data;
 
     int (*disposer)(struct ziti_conn *self);
+    // controller requests (service, session, routers) whose callbacks still point at this connection:
+    // connection closing waits for all of them to complete
+    unsigned int pending_reqs;
 
     ziti_close_cb close_cb;
     bool close;

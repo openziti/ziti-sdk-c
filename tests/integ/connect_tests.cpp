@@ -39,6 +39,7 @@ class ZitiConnectTestCase : public ZitiTestCase {
         REQUIRE_ZITI_OK(load());
     }
     void run_connect_test(const char *service, const ziti_dial_opts *dialOpts);
+    void close_while_connecting(const char *service, int close_after_ms);
 };
 
 TEST_CASE_METHOD(ZitiConnectTestCase, "connect with intercept", "[connection]") {
@@ -73,6 +74,47 @@ TEST_CASE_METHOD(ZitiConnectTestCase, "connect with intercept", "[connection]") 
 TEST_CASE_METHOD(ZitiConnectTestCase, "connect", "[connection]") {
     auto service = ensureService();
     run_connect_test(service->name, nullptr);
+}
+
+// An app can close a connection that is still being established. The answers to what the connection
+// asked of the controller and of the edge router come after that, and have to find the connection
+// still there (an ASAN build reports it when they do not).
+
+TEST_CASE_METHOD(ZitiConnectTestCase, "a connection closed while its session is requested", "[connection]") {
+    // a context that has not dialed the service has no session for it: the dial asks the controller
+    auto service = ensureService();
+    close_while_connecting(service->name, 0);
+}
+
+TEST_CASE_METHOD(ZitiConnectTestCase, "a connection closed while its service is looked up", "[connection]") {
+    // the context does not know the service: the dial asks the controller for it
+    close_while_connecting("no-such-service", 0);
+}
+
+TEST_CASE_METHOD(ZitiConnectTestCase, "a connection closed at any point while it is being established", "[connection]") {
+    // the name is copied: the context replaces its services when it refreshes them
+    std::string service = ensureService()->name;
+    for (int after_ms = 0; after_ms < 40; after_ms += 2) {
+        close_while_connecting(service.c_str(), after_ms);
+    }
+}
+
+void ZitiConnectTestCase::close_while_connecting(const char *service, int close_after_ms) {
+    capture c{};
+    ziti_connection conn{};
+    REQUIRE_ZITI_OK(ziti_conn_init(ztx, &conn, &c));
+
+    INFO("dialing service: " << service << ", closing after " << close_after_ms << " ms");
+    REQUIRE_ZITI_OK(ziti_dial(conn, service, [](ziti_connection, int) {}, nullptr));
+    run(UNTIL(false), close_after_ms);
+
+    REQUIRE_ZITI_OK(ziti_close(conn, [](ziti_connection conn) {
+        static_cast<capture *>(ziti_conn_data(conn))->closed = true;
+    }));
+    CHECK(run(UNTIL(c.closed)));
+
+    // the answers to the requests of the connection
+    run(UNTIL(false), 200);
 }
 
 void ZitiConnectTestCase::run_connect_test(const char *service, const ziti_dial_opts *dialOpts) {
