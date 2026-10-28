@@ -386,6 +386,17 @@ protected:
         return d.status;
     }
 
+    // The router reads the posture responses off the channel and applies them in a goroutine of its own, so a dial that
+    // follows the TotpToken closely can still be refused ("MFA has never been passed"). Dials again for up to a second.
+    int dial_after_totp_token(ziti_context z, const char *service) {
+        int rc = dial(z, service);
+        for (int i = 0; i < 5 && rc != ZITI_OK; i++) {
+            uv_sleep(200);
+            rc = dial(z, service);
+        }
+        return rc;
+    }
+
     // enrols TOTP (the secret goes to `key`), then verifies the enrollment with the code of the authenticator
     void enroll_and_verify() {
         struct mfa {
@@ -486,7 +497,7 @@ TEST_CASE_METHOD(TotpEnrolled, "oidc-totp-posture-check", "[totp]") {
 
     enroll_and_verify();
     CHECK(run(UNTIL(*ztx_test_totp_token(ztx) != '\0')));
-    CHECK_ZITI_OK(dial(ztx, service));
+    CHECK_ZITI_OK(dial_after_totp_token(ztx, service));
 
     login second;
     start_login(second);
@@ -495,7 +506,7 @@ TEST_CASE_METHOD(TotpEnrolled, "oidc-totp-posture-check", "[totp]") {
     REQUIRE(run(UNTIL(second.action == ziti_auth_prompt_totp)));
     CHECK(submit(second.ztx, code_now().c_str()) == ZITI_OK);
     REQUIRE(run(UNTIL(second.loaded)));
-    CHECK_ZITI_OK(dial(second.ztx, service));
+    CHECK_ZITI_OK(dial_after_totp_token(second.ztx, service));
 }
 
 // how often the SDK has said that the issuer of a token is not one it knows a signer by
