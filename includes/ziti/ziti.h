@@ -542,7 +542,9 @@ extern const ziti_identity *ziti_get_identity(ziti_context ztx);
  * answer up to date when ziti_mfa_verify() and ziti_mfa_remove() succeed.
  *
  * The state comes with the identity data that the context loads after it authenticates
- * (ziti_get_identity() returns non-NULL from then on). Until then it is not known and this returns false.
+ * (ziti_get_identity() returns non-NULL from then on), and is refreshed with it. Before the first load it is
+ * not known and this returns false; after a re-authentication it is the last state loaded until the identity
+ * data is loaded again.
  * @param ztx ziti context
  * @return true if MFA is enrolled for the identity
  */
