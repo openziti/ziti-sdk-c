@@ -31,6 +31,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -260,6 +261,76 @@ namespace fake_controller {
         mutable std::mutex mu_;
         std::vector<std::string> paths_;
         std::vector<std::string> bodies_;   // parallel to paths_
+    };
+
+    // A legacy (non-OIDC) controller with the service "svc", which the identity can dial, and a request
+    // for a session that it answers only after `session_delay_ms` (with a session that has no edge routers).
+    class FakeDialController {
+    public:
+        explicit FakeDialController(unsigned session_delay_ms)
+                : session_delay_ms_(session_delay_ms),
+                  server_([this](const std::string &method, const std::string &path) {
+                      return respond(method, path);
+                  }) {}
+
+        std::string url() const { return server_.url(); }
+
+        // the request for a session has reached the controller
+        bool session_requested() const { return requested_; }
+
+        // the delayed answer to the request for a session has been sent
+        bool session_answered() const { return answered_; }
+
+    private:
+        static bool ends_with(const std::string &s, const std::string &suffix) {
+            return s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+        }
+
+        static std::string iso8601(time_t t) {
+            struct tm tm = {};
+#if _WIN32
+            gmtime_s(&tm, &t);
+#else
+            gmtime_r(&t, &tm);
+#endif
+            char buf[40];
+            strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S.000000Z", &tm);
+            return buf;
+        }
+
+        std::string respond(const std::string &method, const std::string &path) {
+            if (ends_with(path, "/version")) {
+                return json_response("200 OK", R"({"data":{"version":"v0.0.0-fake","revision":"fake","buildDate":"never",)"
+                                      R"("runtimeVersion":"fake","capabilities":[],"buildFlags":[],)"
+                                      R"("apiVersions":{"edge":{"v1":{"path":"/edge/client/v1"}}}},"meta":{}})");
+            }
+            if (ends_with(path, "/authenticate")) {
+                time_t now = time(nullptr);
+                return json_response("200 OK",
+                                     R"({"data":{"id":"fake-session","token":"fake-token","identityId":"fake-id",)"
+                                     R"("expiresAt":")" + iso8601(now + 1800) + R"(",)" +
+                                     R"("updatedAt":")" + iso8601(now) + R"(",)" +
+                                     R"("cachedLastActivityAt":")" + iso8601(now) + R"(",)" +
+                                     R"("authQueries":[],"identity":{"id":"fake-id","name":"fake"}},"meta":{}})");
+            }
+            if (ends_with(path, "/services")) {
+                return json_response("200 OK", R"({"data":[{"id":"svc-id","name":"svc","permissions":["Dial"],)"
+                                      R"("encryptionRequired":false}],"meta":{}})");
+            }
+            if (method == "POST" && ends_with(path, "/sessions")) {
+                requested_ = true;
+                std::this_thread::sleep_for(std::chrono::milliseconds(session_delay_ms_));
+                answered_ = true;
+                return json_response("201 Created", R"({"data":{"id":"dial-session","token":"dial-token",)"
+                                      R"("apiSessionId":"fake-session","serviceId":"svc-id","edgeRouters":[]},"meta":{}})");
+            }
+            return not_found();
+        }
+
+        const unsigned session_delay_ms_;
+        std::atomic<bool> requested_{false};
+        std::atomic<bool> answered_{false};
+        FakeHttpServer server_;
     };
 
     // one loop for every case: creating and closing a loop per case trips libuv's fd assertion when

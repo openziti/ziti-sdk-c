@@ -193,3 +193,57 @@ TEST_CASE("ziti_src closes the connection of a dial that failed", "[ziti_src][GH
     REQUIRE(t.failed == 3);
     CHECK(t.open_conns == std::vector<int>{0, 0, 0});
 }
+
+// internal: the api session token, which the context has only while it is authenticated
+extern "C" const char *ziti_get_api_session_token(ziti_context ztx);
+
+namespace {
+    struct timed_out_dial {
+        tlsuv_src_t src{};
+        tlsuv_http_t clt{};
+        bool sent = false;
+        bool timed_out = false;
+        int ticks_after_answer = 0;
+        int open_conns = -1;
+    };
+}
+
+// tlsuv gives up on a connect that takes longer than its timeout and tells the source to cancel it: the
+// dial that is still in flight must not be left open
+TEST_CASE("ziti_src closes the connection of a dial that tlsuv timed out", "[ziti_src][GH-1187]") {
+    using namespace fake_controller;
+    FakeDialController ctrl(700);
+
+    timed_out_dial t;
+    auto done = [&](const context_run &run) {
+        if (!t.sent) {
+            if (ziti_get_api_session_token(run.ztx) == nullptr) return false;
+
+            t.sent = true;
+            ziti_src_init(test_loop(), &t.src, "svc", run.ztx);
+            tlsuv_http_init_with_src(test_loop(), &t.clt, "http://svc", &t.src);
+            tlsuv_http_connect_timeout(&t.clt, 200);
+            tlsuv_http_req(&t.clt, "GET", "/", [](tlsuv_http_resp_t *resp, void *ctx) {
+                if (resp->code < 0) {
+                    static_cast<timed_out_dial *>(ctx)->timed_out = true;
+                }
+            }, &t);
+            return false;
+        }
+
+        // the controller answers after tlsuv gave up: give the context turns to act on it
+        if (ctrl.session_answered() && ++t.ticks_after_answer > 5) {
+            t.open_conns = ztx_test_open_conns(run.ztx);
+            tlsuv_http_close(&t.clt, nullptr);
+            return true;
+        }
+        return false;
+    };
+    run_context(ctrl.url(), 10000, done);
+
+    // the client never connected, so it has not released the source
+    t.src.release(&t.src);
+
+    CHECK(t.timed_out);
+    CHECK(t.open_conns == 0);
+}

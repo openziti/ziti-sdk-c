@@ -75,10 +75,16 @@ static void close_conn(ziti_link_t *zl) {
     }
 }
 
+// tlsuv gave up on the connect (its timeout), or the connect finished after it did
+static void ziti_src_cancel(tlsuv_src_t *src) {
+    close_conn((ziti_link_t *) src->link);
+}
+
 int ziti_src_init(uv_loop_t *l, tlsuv_src_t *st, const char *svc, ziti_context ztx) {
     st->loop = l;
     st->connect = ziti_src_connect;
     st->connect_cb = NULL;
+    st->cancel = ziti_src_cancel;
     st->release = ziti_src_release;
     st->link = malloc(sizeof(ziti_link_t));
     uv_link_init(st->link, &ziti_link_methods);
