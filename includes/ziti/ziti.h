@@ -534,6 +534,23 @@ extern const char *ziti_get_controller(ziti_context ztx);
 ZITI_FUNC
 extern const ziti_identity *ziti_get_identity(ziti_context ztx);
 
+/**
+ * @brief Whether the identity of the given context has completed MFA enrollment.
+ *
+ * This is what the controller reports for the identity: an enrollment that was started with
+ * ziti_mfa_enroll() but not verified with ziti_mfa_verify() does not count. The context keeps the
+ * answer up to date when ziti_mfa_verify() and ziti_mfa_remove() succeed.
+ *
+ * The state comes with the identity data that the context loads after it authenticates
+ * (ziti_get_identity() returns non-NULL from then on), and is refreshed with it. Before the first load it is
+ * not known and this returns false; after a re-authentication it is the last state loaded until the identity
+ * data is loaded again.
+ * @param ztx ziti context
+ * @return true if MFA is enrolled for the identity
+ */
+ZITI_FUNC
+extern bool ziti_is_mfa_enrolled(ziti_context ztx);
+
 
 typedef void (*ziti_ext_signers_cb)(ziti_context, int err, ziti_jwt_signer_array, void*);
 

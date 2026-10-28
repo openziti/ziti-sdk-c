@@ -1071,7 +1071,7 @@ void ziti_ctrl_post_mfa(ziti_controller *ctrl, void(*cb)(void *, const ziti_erro
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, NULL, ctx);
     tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/current-identity/mfa", ctrl_resp_cb, resp);
     tlsuv_http_req_header(req, HTTP_CONTENT_TYPE, APPLICATION_JSON);
-    tlsuv_http_req_data(req, NULL, 0, free_body_cb);
+    // no body, tlsuv sends Content-Length: 0 itself; an empty body chunk is a zero-length TLS write that leaks
 }
 
 void ziti_ctrl_get_mfa(ziti_controller *ctrl, void(*cb)(ziti_mfa_enrollment *, const ziti_error *, void *), void *ctx) {

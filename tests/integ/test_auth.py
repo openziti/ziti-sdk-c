@@ -34,6 +34,12 @@ def test_totp_auth(client_identity, tmp_path):
     run_catch_test(env, tmp_path, test="oidc-totp")
 
 
+def test_mfa_enrolled(client_identity, tmp_path):
+    env = dict()
+    env['test_client']=client_identity['path']
+    run_catch_test(env, tmp_path, tag="mfa-enrolled")
+
+
 @pytest.fixture
 def secondary_ext_jwt(idp, idp_signer, idp_user, client_identity, request):
     """Environment of a Catch test for an identity that logs in with its cert and needs a token as secondary auth.
