@@ -62,9 +62,14 @@ struct ziti_conn {
     void *data;
 
     int (*disposer)(struct ziti_conn *self);
+    // controller requests (service, session, routers) whose callbacks still point at this connection:
+    // a disposed connection stays allocated until all of them complete
+    unsigned int pending_reqs;
 
     ziti_close_cb close_cb;
     bool close;
+    // closed and released, only the memory is left: see conn_free()
+    bool disposed;
     bool encrypted;
 
     union {
@@ -129,6 +134,15 @@ struct ziti_conn {
 int conn_bridge_info(ziti_connection conn, char *buf, size_t buflen);
 
 void process_connect(struct ziti_conn *conn, ziti_session *session);
+
+// last step of a disposer, after close_cb: frees the connection, or, while controller requests made
+// for it are in flight, leaves the memory to be freed by the callback of the last one
+void conn_free(struct ziti_conn *conn);
+
+// first step of the callback of a controller request made for conn.
+// returns true if the connection was closed in the meantime: the callback must drop the response
+// and leave conn alone, it may be gone
+bool conn_req_done(struct ziti_conn *conn);
 
 int ziti_bind(ziti_connection conn, const char *service, const ziti_listen_opts *listen_opts,
               ziti_listen_cb listen_cb, ziti_client_cb on_clt_cb);

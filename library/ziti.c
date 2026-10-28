@@ -944,7 +944,7 @@ static void ext_jwt_singers_cb(ziti_jwt_signer_array signers, const ziti_error *
 int ziti_get_ext_jwt_signers(ziti_context ztx, ziti_ext_signers_cb cb, void *ctx) {
     NEWP(req, struct ztx_req_s);
     req->ztx = ztx;
-    req->cb = cb;
+    req->cb = (z_typeof(req->cb))cb;
     req->cb_ctx = ctx;
 
     ziti_ctrl_list_ext_jwt_signers(ztx_get_controller(ztx), ext_jwt_singers_cb, req);
@@ -1434,7 +1434,7 @@ int ziti_service_available(ziti_context ztx, const char *service, ziti_service_c
 
     NEWP(req, struct ztx_req_s);
     req->ztx = ztx;
-    req->cb = cb;
+    req->cb = (z_typeof(req->cb))cb;
     req->cb_ctx = ctx;
 
     ziti_ctrl_get_service(ztx_get_controller(ztx), service, service_cb, req);
@@ -1464,7 +1464,7 @@ static void term_srv_cb(ziti_context ztx, const ziti_service *s, int err, void *
 int ziti_list_terminators(ziti_context ztx, const char *service, ziti_terminator_cb cb, void *ctx) {
     NEWP(req, struct ztx_req_s);
     req->ztx = ztx;
-    req->cb = cb;
+    req->cb = (z_typeof(req->cb))cb;
     req->cb_ctx = ctx;
 
     return ziti_service_available(ztx, service, term_srv_cb, req);
@@ -1619,7 +1619,8 @@ int ziti_listen(ziti_connection serv_conn, const char *service, ziti_listen_cb l
     return ziti_bind(serv_conn, service, NULL, lcb, cb);
 }
 
-int ziti_listen_with_options(ziti_connection serv_conn, const char *service, ziti_listen_opts *listen_opts,
+int ziti_listen_with_options(ziti_connection serv_conn,
+                             const char *service, const ziti_listen_opts *listen_opts,
                              ziti_listen_cb lcb, ziti_client_cb cb) {
     return ziti_bind(serv_conn, service, listen_opts, lcb, cb);
 }
@@ -1638,11 +1639,9 @@ static void ziti_re_auth(ziti_context ztx) {
     ziti_ctrl_get_version(ztx_get_controller(ztx), version_pre_auth_cb, ztx);
 }
 
-static void set_posture_query_defaults(ziti_service *service) {
-    int posture_set_idx;
-    for (posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
-        int posture_query_idx;
-        for (posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++) {
+static void set_posture_query_defaults(const ziti_service *service) {
+    for (int posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
+        for (int posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++) {
 
             //if the controller doesn't support
             if (service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]->timeoutRemaining == NULL) {
@@ -1681,7 +1680,7 @@ void ziti_force_service_update(ziti_context ztx, const char* service_id) {
 // is_service_updated returns 0 if the direct service properties
 // and configurations have not been altered. Will return non-0
 // values if they have. This ignores posture query alterations.
-static int is_service_updated(ziti_context ztx, ziti_service *new, ziti_service *old) {
+static int is_service_updated(ziti_context ztx, const ziti_service *new, const ziti_service *old) {
     if (strcmp(old->id, new->id) != 0) {
         ZTX_LOG(VERBOSE, "service [%s] was re-created, ID changed", new->name);
         return 1;
@@ -2827,7 +2826,7 @@ static void cert_extend_cb(ziti_extend_cert_authenticator_resp *resp, const ziti
 
 }
 
-static void ztx_check_cert_extension(ziti_context ztx, ziti_api_session *api_sess) {
+static void ztx_check_cert_extension(ziti_context ztx, const ziti_api_session *api_sess) {
     char *csr = NULL;
     size_t len = 0;
 

@@ -845,7 +845,8 @@ ZITI_FUNC
 extern int ziti_listen(ziti_connection serv_conn, const char *service, ziti_listen_cb lcb, ziti_client_cb cb);
 
 ZITI_FUNC
-extern int ziti_listen_with_options(ziti_connection serv_conn, const char *service, ziti_listen_opts *listen_opts,
+extern int ziti_listen_with_options(ziti_connection serv_conn, const char *service,
+                                    const ziti_listen_opts *listen_opts,
                                     ziti_listen_cb lcb, ziti_client_cb cb);
 
 /**
