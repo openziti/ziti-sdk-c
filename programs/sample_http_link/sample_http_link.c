@@ -24,6 +24,7 @@ static uv_loop_t *loop;
 static ziti_context ziti;
 static tlsuv_http_t clt;
 static tlsuv_src_t zs;
+static uv_timer_t finish_timer;
 
 #define DIE(v) do { \
 int code = (v);\
@@ -45,10 +46,23 @@ void resp_cb(tlsuv_http_resp_t *resp, void *data) {
     printf("\n");
 }
 
+// the client is closed: it is done with the source
+static void on_client_closed(tlsuv_http_t *c) {
+    ziti_src_free(&zs);
+    ziti_shutdown(ziti);
+}
+
+// the client is closed from here, not from its own body callback: that one runs inside the client's links
+static void close_client(uv_timer_t *t) {
+    uv_close((uv_handle_t *) t, NULL);
+    tlsuv_http_close(&clt, on_client_closed);
+}
+
 void body_cb(tlsuv_http_req_t *req, char *body, ssize_t len) {
     if (len == UV_EOF) {
         printf("\n\n====================\nRequest completed\n");
-        ziti_shutdown(ziti);
+        uv_timer_init(loop, &finish_timer);
+        uv_timer_start(&finish_timer, close_client, 0, 0);
     } else if (len < 0) {
         fprintf(stderr, "error(%zd) %s", len, uv_strerror(len));
         exit(-1);
@@ -58,6 +72,10 @@ void body_cb(tlsuv_http_req_t *req, char *body, ssize_t len) {
 }
 
 void on_ziti_init(ziti_context ztx, const ziti_event_t *ev) {
+
+    // the context reports its status more than once, and a last time when it is shut down:
+    // there is one source, one client and one request
+    if (ziti != NULL) return;
 
     DIE(ev->ctx.ctrl_status);
 
