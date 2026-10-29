@@ -30,8 +30,11 @@ add_executable(all_tests
         ztx_test_helper.c
         enroll_url_tests.cpp
         posture_tests.cpp
+        mfa_auth_tests.cpp
         totp.h
+        totp_jwt.h
         totp_tests.cpp
+        totp_token_tests.cpp
         connect_tests.cpp
         conn_close_tests.cpp
         bind_tests.cpp

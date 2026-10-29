@@ -67,6 +67,7 @@ XX(MFA_EXISTS, ZITI_MFA_EXISTS)                         \
 XX(MFA_NOT_ENROLLED, ZITI_MFA_NOT_ENROLLED)             \
 XX(INVALID_ENROLLMENT_TOKEN, ZITI_JWT_INVALID)          \
 XX(INVALID_CONTROLLER_RESPONSE, ZITI_INVALID_STATE)     \
+XX(NOT_IMPLEMENTED, ZITI_NOT_SUPPORTED)                 \
 XX(CERT_IN_USE, ZITI_CERT_IN_USE)                       \
 XX(CERT_FAILED_VALIDATION, ZITI_CERT_FAILED_VALIDATION) \
 XX(MISSING_CERT_CLAIM, ZITI_MISSING_CERT_CLAIM)         \
@@ -476,6 +477,11 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
                     error.code = strdup("INVALID_CONTROLLER_RESPONSE");
                     error.message = strdup(json_object_get_string(err_json));
                 }
+            } else if (req->resp.code == 501) {
+                // a controller that has the operation in its API and no handler for it answers with a plain string
+                error.code = strdup("NOT_IMPLEMENTED");
+                error.message = strdup(json_object_is_type(resp->content, json_type_string) ?
+                                       json_object_get_string(resp->content) : "operation is not implemented");
             }
             resp_meta meta = {0};
             resp_meta_from_json(&meta, json_object_object_get(resp->content, "meta"));

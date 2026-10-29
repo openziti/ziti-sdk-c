@@ -13,6 +13,9 @@
 // limitations under the License.
 
 #include "auth_queries.h"
+#include "posture.h"
+
+#include <sodium/utils.h>
 
 const char *AUTH_QUERY_TYPE_MFA = "MFA";
 const char *MFA_PROVIDER_ZITI = "ziti";
@@ -71,6 +74,11 @@ extern void ziti_auth_query_free(struct auth_queries *aq) {
 }
 
 static void mfa_cb(ziti_context ztx, int status) {
+    if (status != ZITI_OK) {
+        // the login did not take the code: nothing will need it
+        ztx_mfa_drop_code(ztx);
+    }
+
     if (ztx->mfa_cb) {
         ztx->mfa_cb(ztx, status, ztx->mfa_ctx);
     }
@@ -83,11 +91,21 @@ void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb status_cb, vo
     if (code == NULL) {
         ZTX_LOG(ERROR, "unexpected NULL MFA code");
         status_cb(ztx, ZITI_WTF, status_ctx);
+        return;
     }
 
     if (ztx->mfa_cb != NULL) {
         ZTX_LOG(ERROR, "unexpected state MFA is already in progress");
         status_cb(ztx, ZITI_INVALID_STATE, status_ctx);
+        return;
+    }
+
+    bool oidc = ztx->auth_method->kind == OIDC;
+    if (oidc && ztx->auth_state == ZitiAuthStateFullyAuthenticated) {
+        // no login waits for a code (the identity passed TOTP earlier, a posture check needs it again, or came later):
+        // the code goes to the controller for a TOTP token, which is what the routers take as proof
+        ztx_mfa_request_totp_token(ztx, code, status_cb, status_ctx);
+        return;
     }
 
     ztx->mfa_cb = status_cb;
@@ -99,7 +117,72 @@ void ziti_mfa_auth(ziti_context ztx, const char *code, ziti_mfa_cb status_cb, vo
         ztx->mfa_cb(ztx, err, ztx->mfa_ctx);
         ztx->mfa_cb = NULL;
         ztx->mfa_ctx = NULL;
+    } else if (oidc) {
+        ztx_mfa_keep_code(ztx, code);
     }
+}
+
+static void totp_token_cb(totp_token *token, const ziti_error *err, void *ctx) {
+    ziti_mfa_cb_ctx *req = ctx;
+    ziti_context ztx = req->ztx;
+
+    int status;
+    if (err != NULL) {
+        ZTX_LOG(WARN, "failed to get a TOTP token: %d/%s", (int) err->err, err->message ? err->message : ziti_errorstr(err->err));
+        status = (int) err->err;
+    } else if (token == NULL) {
+        ZTX_LOG(WARN, "the controller did not issue a TOTP token");
+        status = ZITI_INVALID_STATE;
+    } else {
+        status = ztx_posture_set_totp_token(ztx, token->token);
+        if (status == ZITI_OK) {
+            ZTX_LOG(DEBUG, "the TOTP token of the api session is in place");
+            ztx_posture_send_all(ztx);
+        } else {
+            ZTX_LOG(WARN, "the TOTP token of the controller is unusable: %d/%s", status, ziti_errorstr(status));
+        }
+    }
+
+    if (req->cb) {
+        req->cb(ztx, status, req->cb_ctx);
+    }
+    free_totp_token_ptr(token);
+    FREE(req);
+}
+
+void ztx_mfa_request_totp_token(ziti_context ztx, const char *code, ziti_mfa_cb cb, void *ctx) {
+    if (ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
+        ZTX_LOG(WARN, "cannot ask for a TOTP token: the context is not fully authenticated");
+        if (cb) cb(ztx, ZITI_INVALID_STATE, ctx);
+        return;
+    }
+
+    NEWP(req, ziti_mfa_cb_ctx);
+    req->ztx = ztx;
+    req->cb = cb;
+    req->cb_ctx = ctx;
+    ziti_ctrl_get_totp_token(ztx_get_controller(ztx), code, totp_token_cb, req);
+}
+
+void ztx_mfa_keep_code(ziti_context ztx, const char *code) {
+    ztx_mfa_drop_code(ztx);
+    cstr_assign(&ztx->totp_code, code);
+}
+
+void ztx_mfa_drop_code(ziti_context ztx) {
+    cstr_drop(&ztx->totp_code);
+    ztx->totp_code = cstr_init();
+}
+
+void ztx_mfa_token_for_login(ziti_context ztx) {
+    if (cstr_is_empty(&ztx->totp_code)) {
+        return;
+    }
+
+    // a failure is only logged: routers that seed MFA from the api session token do not need the token.
+    // The body of the request has its own copy of the code by the time this returns.
+    ztx_mfa_request_totp_token(ztx, cstr_str(&ztx->totp_code), NULL, NULL);
+    ztx_mfa_drop_code(ztx);
 }
 
 void ziti_auth_query_mfa_process(ziti_mfa_auth_ctx *mfa_auth_ctx) {
@@ -233,6 +316,13 @@ void ziti_mfa_remove(ziti_context ztx, const char *code, ziti_mfa_cb remove_cb, 
     ziti_ctrl_delete_mfa(ztx_get_controller(ztx), mfa_cb_ctx->code, ziti_mfa_remove_internal_cb, mfa_cb_ctx);
 }
 
+static void wipe_code(char *code) {
+    if (code != NULL) {
+        sodium_memzero(code, strlen(code));
+        free(code);
+    }
+}
+
 void ziti_mfa_verify_internal_cb(void *empty, const ziti_error *err, void *ctx) {
     ziti_mfa_cb_ctx *mfa_cb_ctx = ctx;
     ziti_context ztx = mfa_cb_ctx->ztx;
@@ -242,10 +332,21 @@ void ziti_mfa_verify_internal_cb(void *empty, const ziti_error *err, void *ctx) 
         mfa_cb_ctx->cb(mfa_cb_ctx->ztx, (int)err->err, mfa_cb_ctx->cb_ctx);
     } else {
         set_mfa_enrolled(ztx, true);
+        // the controller passes the MFA of the api session now: the routers need the token of the code to do the same
+        if (mfa_cb_ctx->code != NULL) {
+            if (ztx->auth_state == ZitiAuthStateFullyAuthenticated) {
+                // an enrollment verified after the login: no login took the code
+                ztx_mfa_request_totp_token(ztx, mfa_cb_ctx->code, NULL, NULL);
+            } else {
+                // a login took the code: the api session it creates is not there yet
+                ztx_mfa_keep_code(ztx, mfa_cb_ctx->code);
+            }
+        }
         ziti_force_api_session_refresh(ztx);
         mfa_cb_ctx->cb(mfa_cb_ctx->ztx, ZITI_OK, mfa_cb_ctx->cb_ctx);
     }
 
+    wipe_code(mfa_cb_ctx->code);
     FREE(ctx);
 }
 
@@ -265,16 +366,20 @@ void ziti_mfa_verify(ziti_context ztx, const char *code, ziti_mfa_cb verify_cb, 
     mfa_cb_ctx->ztx = ztx;
     mfa_cb_ctx->cb = verify_cb;
     mfa_cb_ctx->cb_ctx = ctx;
+    if (code != NULL && ztx->auth_method->kind == OIDC) {
+        mfa_cb_ctx->code = strdup(code);
+    }
     if (ztx->auth_method->verify_mfa) {
         int rc = ztx->auth_method->verify_mfa(ztx->auth_method, code, ziti_mfa_verify_internal_cb, mfa_cb_ctx);
         if (rc == ZITI_OK) {
             // verify request in progress
             return;
         }
-        
+
         if (rc != ZITI_INVALID_STATE) {
             ZTX_LOG(ERROR, "error initiating MFA verify");
             verify_cb(ztx, rc, ctx);
+            wipe_code(mfa_cb_ctx->code);
             free(mfa_cb_ctx);
             return;
         }

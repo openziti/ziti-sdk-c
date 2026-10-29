@@ -40,11 +40,27 @@ struct posture_checks {
     bool must_send_every_time;
 
     model_map active_work;
+
+    // the TOTP token the controller issued for a code (OIDC): proves to the routers that MFA passed.
+    // It is scoped to one api session, which is why it is kept with that session's id
+    struct {
+        cstr token;
+        cstr api_session_id;
+    } totp;
 };
 
 void ziti_posture_init(ziti_context ztx, long interval_secs);
 
 void ziti_posture_checks_free(struct posture_checks *pcs);
+
+// keeps a TOTP token to be sent to the routers as a TotpToken posture response; does not send it.
+// ZITI_JWT_INVALID: not a JWT with a z_asid claim, ZITI_INVALID_STATE: no posture state (endpoint disabled)
+int ztx_posture_set_totp_token(ziti_context ztx, const char *token);
+
+// sends everything that was answered so far, with the TOTP token, to every connected router (what a router that connects
+// gets, see ziti_send_posture_er()); it does not ask the OS, MAC, domain and process queries again.
+// Nothing happens unless a TOTP token is there for the api session the context is on.
+void ztx_posture_send_all(ziti_context ztx);
 
 void ziti_send_posture_data(ziti_context ztx);
 
@@ -53,7 +69,8 @@ void ziti_send_posture_er(ziti_context ztx, ziti_channel_t *ch);
 // collect_all also gathers responses that have not changed since the last send
 void ztx_collect_posture(ziti_context ztx, model_list *send_prs, bool collect_all);
 
-// exposed for tests: NULL when send_prs holds nothing the ER protocol can carry
+// exposed for tests: NULL when send_prs holds nothing the ER protocol can carry and no TOTP token is due.
+// The TOTP token (see ztx_posture_set_totp_token) is part of every batch while the context is on its api session
 Ziti__EdgeClient__Pb__PostureResponses *ztx_posture_resp_pb(ziti_context ztx, model_list *send_prs);
 
 bool ziti_service_has_query_with_timeout(ziti_service *service);

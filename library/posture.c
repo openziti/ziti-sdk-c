@@ -15,6 +15,7 @@
 #include "posture.h"
 #include "edge_protocol.h"
 #include "glob_match.h"
+#include "jwt.h"
 #include <utils.h>
 
 #if _WIN32
@@ -140,6 +141,8 @@ void ziti_posture_init(ziti_context ztx, long interval_secs) {
 
         pc->previous_api_session_id = cstr_init();
         pc->controller_instance_id = cstr_init();
+        pc->totp.token = cstr_init();
+        pc->totp.api_session_id = cstr_init();
         pc->must_send_every_time = true;
         pc->must_send = false;
         pc->send_period = interval_secs * 1000;
@@ -163,8 +166,48 @@ void ziti_posture_checks_free(struct posture_checks *pcs) {
         }
         cstr_drop(&pcs->previous_api_session_id);
         cstr_drop(&pcs->controller_instance_id);
+        cstr_drop(&pcs->totp.token);
+        cstr_drop(&pcs->totp.api_session_id);
         FREE(pcs);
     }
+}
+
+int ztx_posture_set_totp_token(ziti_context ztx, const char *token) {
+    struct posture_checks *checks = ztx->posture_checks;
+    if (checks == NULL) {
+        ZTX_LOG(DEBUG, "endpoint is disabled");
+        return ZITI_INVALID_STATE;
+    }
+
+    zt_jwt jwt = {0};
+    if (zt_jwt_parse(token, &jwt) != 0) {
+        ZTX_LOG(WARN, "TOTP token is not a JWT");
+        return ZITI_JWT_INVALID;
+    }
+
+    // the router takes the token only for the api session it names
+    int rc = ZITI_OK;
+    json_object *asid = json_object_object_get(jwt.claims, "z_asid");
+    if (asid == NULL || !json_object_is_type(asid, json_type_string)) {
+        ZTX_LOG(WARN, "TOTP token is not scoped to an api session");
+        rc = ZITI_JWT_INVALID;
+    } else {
+        cstr_assign(&checks->totp.token, token);
+        cstr_assign(&checks->totp.api_session_id, json_object_get_string(asid));
+    }
+    zt_jwt_drop(&jwt);
+    return rc;
+}
+
+// the TOTP token while the context is on the api session it was issued for, otherwise NULL.
+// The reply to a token request can come before the context learns of the new api session.
+static const char *ztx_current_totp_token(ziti_context ztx) {
+    struct posture_checks *checks = ztx->posture_checks;
+    if (checks == NULL || cstr_is_empty(&checks->totp.token) ||
+        ztx->session == NULL || !cstr_equals(&checks->totp.api_session_id, ztx->session->id)) {
+        return NULL;
+    }
+    return cstr_str(&checks->totp.token);
 }
 
 static void ziti_pr_ticker_cb(void *data) {
@@ -770,6 +813,19 @@ Ziti__EdgeClient__Pb__PostureResponses *ztx_posture_resp_pb(ziti_context z, mode
         model_list_clear(&process_list, NULL);
         pr_resp->type_case = ZITI__EDGE_CLIENT__PB__POSTURE_RESPONSE__TYPE_PROCESS_LIST;
         pr_resp->processlist = pl;
+        model_list_append(&pb_list, pr_resp);
+    }
+
+    const char *totp_token = ztx_current_totp_token(z);
+    if (totp_token != NULL) {
+        Ziti__EdgeClient__Pb__PostureResponse__TotpToken *totp = calloc(1, sizeof(*totp));
+        ziti__edge_client__pb__posture_response__totp_token__init(totp);
+        totp->token = s_strdup(totp_token);
+
+        pr_resp = calloc(1, sizeof(*pr_resp));
+        ziti__edge_client__pb__posture_response__init(pr_resp);
+        pr_resp->type_case = ZITI__EDGE_CLIENT__PB__POSTURE_RESPONSE__TYPE_TOTP_TOKEN;
+        pr_resp->totptoken = totp;
         model_list_append(&pb_list, pr_resp);
     }
 
@@ -1517,4 +1573,17 @@ void ziti_send_posture_er(ziti_context ztx, ziti_channel_t *ch) {
 
     ziti_channel_update_posture(ch, buffer.data, buffer.len);
     PROTOBUF_C_BUFFER_SIMPLE_CLEAR(&buffer);
+}
+
+void ztx_posture_send_all(ziti_context ztx) {
+    // the api session is not known yet, or no token was issued for it: what a router needs is the regular posture data
+    if (ztx_current_totp_token(ztx) == NULL) {
+        return;
+    }
+
+    ziti_channel_t *ch;
+    const char *name;
+    MODEL_MAP_FOREACH(name, ch, &ztx->channels) {
+        ziti_send_posture_er(ztx, ch);
+    }
 }

@@ -38,6 +38,9 @@ extern "C" {
 extern "C" void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data);
 extern "C" ziti_controller *ztx_get_controller(ziti_context ztx);
 extern "C" void ziti_force_api_session_refresh(ziti_context ztx);
+// totp_test_helper.c: what the context keeps of a TOTP login
+extern "C" const char *ztx_test_totp_token(ziti_context ztx);
+extern "C" const char *ztx_test_totp_code(ziti_context ztx);
 
 class AuthTests: public LoopTestCase {};
 
@@ -294,6 +297,216 @@ TEST_CASE_METHOD(ZitiTestCase, "mfa-enrolled", "[mfa-enrolled]") {
     }
     REQUIRE(remove.status == ZITI_OK);
     CHECK_FALSE(ziti_is_mfa_enrolled(second.ztx));
+}
+
+// GH-1170, GH-1061: the api session of a login that took a TOTP code has its TOTP token (routers that do not seed MFA
+// from the api session token take only that as proof), and a code is taken at any time after the login. The identity
+// has the auth policy of test_auth.py: cert as primary and TOTP as secondary.
+class TotpEnrolled : public ZitiTestCase {
+protected:
+    std::vector<uint8_t> key;
+
+    std::string code_now() const {
+        char buf[8];
+        snprintf(buf, sizeof(buf), "%06u", (unsigned) totp::generate(key, std::chrono::system_clock::now()));
+        return std::string(buf);
+    }
+
+    struct answer {
+        bool called{false};
+        int status{ZITI_WTF};
+    };
+
+    int submit(ziti_context z, const char *code) {
+        answer a;
+        ziti_mfa_auth(z, code, [](ziti_context, int status, void *ctx) {
+            auto *r = (answer *) ctx;
+            r->called = true;
+            r->status = status;
+        }, &a);
+        REQUIRE(run(UNTIL(a.called)));
+        return a.status;
+    }
+
+    // another context of the identity: a login and an api session of its own
+    struct login {
+        bool loaded{false};
+        ziti_auth_action action{};
+        ziti_options options{};
+        ziti_context ztx{};
+    };
+
+    void start_login(login &l) {
+        l.options = ziti_options{
+            .config_types = (const char **) ALL_CONFIGS,
+            .app_ctx = &l,
+            .events = ZitiContextEvent | ZitiAuthEvent,
+            .event_cb = [](ziti_context z, const ziti_event_t *ev) {
+                auto *l = (struct login *) ziti_app_ctx(z);
+                if (ev->type == ZitiContextEvent && ev->ctx.ctrl_status == ZITI_OK) l->loaded = true;
+                if (ev->type == ZitiAuthEvent) l->action = ev->auth.action;
+            },
+        };
+        REQUIRE_ZITI_OK(ziti_context_init(&l.ztx, &config));
+        REQUIRE_ZITI_OK(ziti_context_set_options(l.ztx, &l.options));
+        REQUIRE_ZITI_OK(ziti_context_run(l.ztx, loop()));
+    }
+
+    void end_login(login &l) {
+        ziti_shutdown(l.ztx);
+        for (int i = 0; i < 20; i++) {
+            uv_run(loop(), UV_RUN_NOWAIT);
+        }
+    }
+
+    // how a dial of `service` ends (ZITI_OK: connected); the connection is closed again
+    int dial(ziti_context z, const char *service) {
+        struct dialed {
+            bool done{false};
+            int status{ZITI_WTF};
+            bool closed{false};
+        } d;
+
+        ziti_connection conn{};
+        ziti_conn_init(z, &conn, &d);
+        int rc = ziti_dial(conn, service, [](ziti_connection c, int status) {
+            auto *r = (dialed *) ziti_conn_data(c);
+            r->done = true;
+            r->status = status;
+        }, nullptr);
+        if (rc == ZITI_OK) {
+            REQUIRE(run(UNTIL(d.done), 20000));
+        } else {
+            d.status = rc;
+        }
+
+        if (ziti_close(conn, [](ziti_connection c) { ((dialed *) ziti_conn_data(c))->closed = true; }) == ZITI_OK) {
+            run(UNTIL(d.closed));
+        }
+        return d.status;
+    }
+
+    // The router reads the posture responses off the channel and applies them in a goroutine of its own, so a dial that
+    // follows the TotpToken closely can still be refused ("MFA has never been passed"). Dials again for up to a second.
+    int dial_after_totp_token(ziti_context z, const char *service) {
+        int rc = dial(z, service);
+        for (int i = 0; i < 5 && rc != ZITI_OK; i++) {
+            uv_sleep(200);
+            rc = dial(z, service);
+        }
+        return rc;
+    }
+
+    // enrols TOTP (the secret goes to `key`), then verifies the enrollment with the code of the authenticator
+    void enroll_and_verify() {
+        struct mfa {
+            std::string link{};
+            bool verified{false};
+            bool cb_called{false};
+        } mfa;
+
+        ziti_mfa_enroll(ztx, [](ziti_context ztx, int status, ziti_mfa_enrollment *mfa_enrollment, void *ctx) {
+            auto m = (struct mfa *) ctx;
+            CHECK(status == ZITI_OK);
+            if (mfa_enrollment) {
+                m->link = mfa_enrollment->provisioning_url;
+            }
+        }, &mfa);
+        REQUIRE(run(UNTIL(!mfa.link.empty())));
+        key = totp::base32_decode(mfa.link.substr(mfa.link.find("secret=") + 7));
+
+        for (int i = 0; i < 3 && !mfa.verified; i++) {
+            mfa.cb_called = false;
+            auto code = code_now();
+            ziti_mfa_verify(ztx, code.c_str(), [](ziti_context ztx, int status, void *ctx) {
+                auto m = (struct mfa *) ctx;
+                m->cb_called = true;
+                m->verified = (status == ZITI_OK);
+            }, &mfa);
+            REQUIRE(run(UNTIL(mfa.cb_called)));
+            if (!mfa.verified) {
+                uv_sleep(1000);
+            }
+        }
+        REQUIRE(mfa.verified);
+    }
+
+    // login 1, the enrollment: ziti_mfa_verify() hands the first code to the login, which ends fully authenticated
+    void enroll_and_login() {
+        CHECK(load() == ZITI_PARTIALLY_AUTHENTICATED);
+        if (authState.action == 0) {
+            CHECK(run(WHILE(authState.action == 0)));
+        }
+
+        enroll_and_verify();
+        REQUIRE(run(UNTIL(loaded && load_error == ZITI_OK)));
+    }
+};
+
+TEST_CASE_METHOD(TotpEnrolled, "oidc-totp-token", "[totp]") {
+    enroll_and_login();
+
+    // the login that the code was handed to is over: the api session has its token, and the code is gone
+    CHECK(run(UNTIL(*ztx_test_totp_token(ztx) != '\0')));
+    CHECK(std::string(ztx_test_totp_code(ztx)).empty());
+
+    // no login waits for a code now: a code is exchanged for a token
+    CHECK(submit(ztx, code_now().c_str()) == ZITI_OK);
+    CHECK(submit(ztx, "000000") == ZITI_MFA_INVALID_TOKEN);
+    // a code that was turned down leaves the token that is there
+    CHECK(*ztx_test_totp_token(ztx) != '\0');
+
+    // login 2, a new context of the enrolled identity: the controller asks for the code, ziti_mfa_auth() gives it
+    login second;
+    start_login(second);
+
+    REQUIRE(run(UNTIL(second.action == ziti_auth_prompt_totp)));
+    CHECK(submit(second.ztx, code_now().c_str()) == ZITI_OK);
+    REQUIRE(run(UNTIL(second.loaded)));
+    CHECK(run(UNTIL(*ztx_test_totp_token(second.ztx) != '\0')));
+    CHECK(std::string(ztx_test_totp_code(second.ztx)).empty());
+
+    end_login(second);
+}
+
+// GH-1061, steps 1-4: an identity that logs in with its cert alone (nothing asks for a code) enrols MFA afterwards. No
+// login waits for the code of the enrollment, so the REST calls take it, and that code buys the TOTP token: the controller
+// passes the MFA of the session from then on, the routers that take only a token need it to agree. The identity has the
+// default auth policy.
+TEST_CASE_METHOD(TotpEnrolled, "oidc-totp-enroll-after-login", "[totp]") {
+    REQUIRE(load() == ZITI_OK);
+    CHECK(std::string(ztx_test_totp_token(ztx)).empty());
+
+    enroll_and_verify();
+
+    CHECK(run(UNTIL(*ztx_test_totp_token(ztx) != '\0')));
+    CHECK(std::string(ztx_test_totp_code(ztx)).empty());
+}
+
+// GH-1061, GH-1170: TOTP is not part of the auth policy of the identity but of the dial policy of the service, as an MFA
+// posture check (test_auth.py), and the routers decide that check from the TOTP token the SDK sends. The identity logs in
+// with its cert alone, nothing asks for a code (it has no MFA yet), and the router turns the dial down. It enrols MFA then:
+// the api session token cannot say that the MFA has passed (it has no amr=totp, the login had no TOTP step), so the
+// code of the enrollment, exchanged for a TOTP token, is the only proof the router gets. An enrolled identity is
+// asked for a code at every login: the next login answers it, and its api session has the token too.
+TEST_CASE_METHOD(TotpEnrolled, "oidc-totp-posture-check", "[totp]") {
+    const char *service = test_service();
+
+    REQUIRE(load() == ZITI_OK);
+    CHECK(dial(ztx, service) != ZITI_OK);
+
+    enroll_and_verify();
+    CHECK(run(UNTIL(*ztx_test_totp_token(ztx) != '\0')));
+    CHECK_ZITI_OK(dial_after_totp_token(ztx, service));
+
+    login second;
+    start_login(second);
+    DEFER { end_login(second); };
+
+    REQUIRE(run(UNTIL(second.action == ziti_auth_prompt_totp)));
+    CHECK(submit(second.ztx, code_now().c_str()) == ZITI_OK);
+    REQUIRE(run(UNTIL(second.loaded)));
+    CHECK_ZITI_OK(dial_after_totp_token(second.ztx, service));
 }
 
 // how often the SDK has said that the issuer of a token is not one it knows a signer by

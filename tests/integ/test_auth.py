@@ -40,6 +40,55 @@ def test_mfa_enrolled(client_identity, tmp_path):
     run_catch_test(env, tmp_path, tag="mfa-enrolled")
 
 
+@pytest.mark.require_ziti('>=2.0.0')
+def test_totp_token(client_identity, tmp_path):
+    """The api session of a TOTP login has its TOTP token, and a code is taken after the login."""
+    policy = "cert-totp-token"
+    ziti_edge("create", "auth-policy", policy,
+              "--primary-cert-allowed", "--secondary-req-totp")
+
+    ziti_edge("update", "identity", client_identity['name'],
+              "--auth-policy", policy)
+    env = dict()
+    env['test_client']=client_identity['path']
+    run_catch_test(env, tmp_path, test="oidc-totp-token")
+
+
+@pytest.mark.require_ziti('>=2.0.0')
+def test_totp_enroll_after_login(client_identity, tmp_path):
+    """An identity that logged in with its cert enrols MFA: the code of the enrollment buys the TOTP token."""
+    env = dict()
+    env['test_client']=client_identity['path']
+    run_catch_test(env, tmp_path, test="oidc-totp-enroll-after-login")
+
+
+@pytest.mark.require_ziti('>=2.0.0')
+def test_totp_posture_check(client_identity, echo_server, test_service, tmp_path):
+    """TOTP is part of the dial policy of a service (an MFA posture check) and not of the auth policy.
+
+    The identity logs in with its cert alone and has no MFA, so the router turns the dial down. It enrols MFA after
+    the login: the code of the enrollment is exchanged for a TOTP token, which is the proof the router takes, and the
+    dial goes through. The next login of the (now enrolled) identity answers the TOTP prompt and dials too.
+    GH-1061, GH-1170
+    """
+    name = test_service['name']
+    posture_check = f"mfa-{name}"
+    ziti_edge("create", "posture-check", "mfa", posture_check)
+
+    # `clients-dial` of the base model lets every identity with the `client` role dial every service, with no
+    # posture check: the identity leaves that role, and the policy with the check is its only way to the service
+    ziti_edge("update", "identity", client_identity['name'], "--role-attributes", "mfa-client")
+    ziti_edge("create", "service-policy", f"dial-{name}", "Dial",
+              "--identity-roles", f"@{client_identity['name']}",
+              "--service-roles", f"@{name}",
+              "--posture-check-roles", f"@{posture_check}")
+
+    env = dict()
+    env['test_client'] = client_identity['path']
+    env['test_service'] = name
+    run_catch_test(env, tmp_path, test="oidc-totp-posture-check")
+
+
 @pytest.fixture
 def secondary_ext_jwt(idp, idp_signer, idp_user, client_identity, request):
     """Environment of a Catch test for an identity that logs in with its cert and needs a token as secondary auth.
