@@ -1853,7 +1853,7 @@ static void update_services(ziti_service_array services, const ziti_error *error
                 ztx->services_loaded ? "false" : "true", addIdx, remIdx, chIdx);
         ziti_send_event(ztx, &ev);
         ztx->services_loaded = true;
-        // MFA checks that came with these services, or went away
+        // the MFA checks of the services that are there now: new ones, and the ones whose services changed
         ztx_posture_notify_mfa(ztx);
     } else {
         ZTX_LOG(VERBOSE, "no services added, changed, or removed");

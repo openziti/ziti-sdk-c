@@ -475,6 +475,16 @@ namespace {
         f.ztx.opts.events = ZitiPostureStatusEvent;
         f.ztx.opts.event_cb = stub_event_cb;
     }
+
+    // keeps the token as the context does when the controller issues it, then tells the app, as totp_token_cb() does once
+    // the routers have the token: an app that reacts to the event can count on the routers having it
+    int give_token(ziti_ctx *ztx, const char *token) {
+        int rc = ztx_posture_set_totp_token(ztx, token);
+        if (rc == ZITI_OK) {
+            ztx_posture_notify_mfa(ztx);
+        }
+        return rc;
+    }
 }
 
 TEST_CASE("an MFA check is reported with the timeout of the check and no code before a code is given", "[posture][totp]") {
@@ -501,24 +511,39 @@ TEST_CASE("an MFA check is reported once while nothing about its code changes", 
     CHECK(captured_event.count == 1);
 }
 
-TEST_CASE("a TOTP token of the api session reports when its code was given", "[posture][totp]") {
+TEST_CASE("keeping a TOTP token does not report it, the app is told once the routers have the token", "[posture][totp]") {
     posture_fixture f(SERVICE_JSON_MFA);
     watch(f);
     ztx_posture_notify_mfa(&f.ztx);
     REQUIRE(captured_event.count == 1);
 
     REQUIRE(ztx_posture_set_totp_token(&f.ztx, totp_jwt("session-1", 1700000123).c_str()) == ZITI_OK);
+    CHECK(captured_event.count == 1);
+
+    ztx_posture_notify_mfa(&f.ztx);
+
+    REQUIRE(captured_event.count == 2);
+    CHECK(captured_event.mfa_last_code_at == 1700000123);
+}
+
+TEST_CASE("a TOTP token of the api session reports when its code was given", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    watch(f);
+    ztx_posture_notify_mfa(&f.ztx);
+    REQUIRE(captured_event.count == 1);
+
+    REQUIRE(give_token(&f.ztx, totp_jwt("session-1", 1700000123).c_str()) == ZITI_OK);
 
     REQUIRE(captured_event.count == 2);
     CHECK(captured_event.mfa_last_code_at == 1700000123);
     CHECK(captured_event.mfa_timeout == 300);
 
     // a later code is a change again, the same code is not
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, totp_jwt("session-1", 1700000456).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, totp_jwt("session-1", 1700000456).c_str()) == ZITI_OK);
     REQUIRE(captured_event.count == 3);
     CHECK(captured_event.mfa_last_code_at == 1700000456);
 
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, totp_jwt("session-1", 1700000456).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, totp_jwt("session-1", 1700000456).c_str()) == ZITI_OK);
     CHECK(captured_event.count == 3);
 }
 
@@ -528,7 +553,7 @@ TEST_CASE("a TOTP token of another api session is no code of this one", "[postur
     ztx_posture_notify_mfa(&f.ztx);
     REQUIRE(captured_event.count == 1);
 
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, totp_jwt("session-2", 1700000123).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, totp_jwt("session-2", 1700000123).c_str()) == ZITI_OK);
     CHECK(captured_event.count == 1);
 
     // the context learns of that api session later (the reply of the token request came first)
@@ -542,7 +567,7 @@ TEST_CASE("a TOTP token of another api session is no code of this one", "[postur
 TEST_CASE("a code that the api session loses is reported as no code", "[posture][totp]") {
     posture_fixture f(SERVICE_JSON_MFA);
     watch(f);
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, totp_jwt("session-1", 1700000123).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, totp_jwt("session-1", 1700000123).c_str()) == ZITI_OK);
     REQUIRE(captured_event.count == 1);
     REQUIRE(captured_event.mfa_last_code_at == 1700000123);
 
@@ -581,7 +606,7 @@ TEST_CASE("a code far from the end of its timeout is not expiring", "[posture][t
     f.query()->timeout = 3600;
     watch(f);
 
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, aged_token(60).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, aged_token(60).c_str()) == ZITI_OK);
 
     REQUIRE(captured_event.count == 1);
     CHECK(captured_event.mfa_last_code_at != 0);
@@ -594,12 +619,12 @@ TEST_CASE("a code in the last 5 minutes of its timeout is expiring", "[posture][
     watch(f);
 
     // 3200 s old is 400 s from the end: more than 5 minutes, although it is past half of the timeout
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, aged_token(3200).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, aged_token(3200).c_str()) == ZITI_OK);
     REQUIRE(captured_event.count == 1);
     CHECK(captured_event.mfa_expiring == 0);
 
     // 3400 s old is 200 s from the end
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, aged_token(3400).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, aged_token(3400).c_str()) == ZITI_OK);
     REQUIRE(captured_event.count == 2);
     CHECK(captured_event.mfa_expiring == 1);
 }
@@ -608,7 +633,7 @@ TEST_CASE("the posture cycle finds out that a code starts to expire as time pass
     posture_fixture f(SERVICE_JSON_MFA);
     f.query()->timeout = 3600;
     watch(f);
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, aged_token(3200).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, aged_token(3200).c_str()) == ZITI_OK);
     REQUIRE(captured_event.count == 1);
 
     // nothing changed: the cycle says nothing
@@ -631,11 +656,11 @@ TEST_CASE("a timeout under 10 minutes warns from half of it", "[posture][totp]")
     f.query()->timeout = 60;
     watch(f);
 
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, aged_token(20).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, aged_token(20).c_str()) == ZITI_OK);
     REQUIRE(captured_event.count == 1);
     CHECK(captured_event.mfa_expiring == 0);
 
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, aged_token(40).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, aged_token(40).c_str()) == ZITI_OK);
     REQUIRE(captured_event.count == 2);
     CHECK(captured_event.mfa_expiring == 1);
 }
@@ -644,11 +669,11 @@ TEST_CASE("a new code ends the warning", "[posture][totp]") {
     posture_fixture f(SERVICE_JSON_MFA);
     f.query()->timeout = 3600;
     watch(f);
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, aged_token(3500).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, aged_token(3500).c_str()) == ZITI_OK);
     REQUIRE(captured_event.count == 1);
     REQUIRE(captured_event.mfa_expiring == 1);
 
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, aged_token(0).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, aged_token(0).c_str()) == ZITI_OK);
 
     REQUIRE(captured_event.count == 2);
     CHECK(captured_event.mfa_expiring == 0);
@@ -659,7 +684,7 @@ TEST_CASE("a code never expires when the check has no timeout", "[posture][totp]
     f.query()->timeout = -1;
     watch(f);
 
-    REQUIRE(ztx_posture_set_totp_token(&f.ztx, aged_token(100000).c_str()) == ZITI_OK);
+    REQUIRE(give_token(&f.ztx, aged_token(100000).c_str()) == ZITI_OK);
 
     REQUIRE(captured_event.count == 1);
     CHECK(captured_event.mfa_timeout == -1);
@@ -689,6 +714,209 @@ TEST_CASE("an MFA check shared by two services is reported once, for both", "[po
     REQUIRE(captured_event.service_names.size() == 2);
     CHECK(contains(captured_event.service_names, "mfa-service"));
     CHECK(contains(captured_event.service_names, "mfa-service-2"));
+}
+
+// The services a check governs are part of what the app was told: they change as the controller lists other services,
+// which the context takes in or out of ztx->services before it looks at the MFA checks again.
+namespace {
+    // as update_services() does when the controller no longer lists the service
+    void remove_service(posture_fixture &f, const char *name) {
+        free_ziti_service_ptr((ziti_service *) model_map_remove(&f.ztx.services, name));
+    }
+
+    void add_service(posture_fixture &f, const char *json) {
+        ziti_service *svc = parse_service(json);
+        model_map_set(&f.ztx.services, svc->name, svc);
+    }
+}
+
+TEST_CASE("a service that picks up an MFA check is added to what the app was told", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    watch(f);
+    ztx_posture_notify_mfa(&f.ztx);
+    REQUIRE(captured_event.count == 1);
+    REQUIRE(captured_event.service_names.size() == 1);
+
+    add_service(f, SERVICE_JSON_MFA_2);
+    ztx_posture_notify_mfa(&f.ztx);
+
+    REQUIRE(captured_event.count == 2);
+    REQUIRE(captured_event.service_names.size() == 2);
+    CHECK(contains(captured_event.service_names, "mfa-service"));
+    CHECK(contains(captured_event.service_names, "mfa-service-2"));
+}
+
+TEST_CASE("a service that leaves an MFA check is taken out of what the app was told", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    add_service(f, SERVICE_JSON_MFA_2);
+    watch(f);
+    ztx_posture_notify_mfa(&f.ztx);
+    REQUIRE(captured_event.count == 1);
+    REQUIRE(captured_event.service_names.size() == 2);
+
+    remove_service(f, "mfa-service-2");
+    ztx_posture_notify_mfa(&f.ztx);
+
+    REQUIRE(captured_event.count == 2);
+    REQUIRE(captured_event.service_names.size() == 1);
+    CHECK(captured_event.service_names[0] == "mfa-service");
+}
+
+TEST_CASE("the same services in another order are not a change", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    add_service(f, SERVICE_JSON_MFA_2);
+    watch(f);
+    ztx_posture_notify_mfa(&f.ztx);
+    REQUIRE(captured_event.count == 1);
+
+    // the controller lists both again: one of them comes back last
+    remove_service(f, "mfa-service");
+    add_service(f, SERVICE_JSON_MFA);
+    ztx_posture_notify_mfa(&f.ztx);
+
+    CHECK(captured_event.count == 1);
+}
+
+// The app learns that a service is gone from its ZitiServiceEvent: a check that no service carries any more is dropped
+// without an event of its own, and the app is told of it again when a service brings it back.
+TEST_CASE("an MFA check that goes away is dropped, and reported again when it comes back", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    watch(f);
+    ztx_posture_notify_mfa(&f.ztx);
+    REQUIRE(captured_event.count == 1);
+
+    remove_service(f, "mfa-service");
+    ztx_posture_notify_mfa(&f.ztx);
+    CHECK(captured_event.count == 1);
+
+    add_service(f, SERVICE_JSON_MFA);
+    ztx_posture_notify_mfa(&f.ztx);
+
+    REQUIRE(captured_event.count == 2);
+    REQUIRE(captured_event.service_names.size() == 1);
+    CHECK(captured_event.service_names[0] == "mfa-service");
+}
+
+// An app that needs a code asks for one, and one code serves every check: the SDK tells of the checks that need a code
+// now (no code was given, or the code is past the timeout of the check), all in one event, or else of the checks whose
+// code ends first. The other checks have nothing for the app to do yet.
+namespace {
+    // an MFA check as the controller describes it, on a service of its own
+    std::string mfa_service_json(const char *id, const char *name, const char *query_id, int timeout) {
+        char buf[600];
+        snprintf(buf, sizeof(buf),
+                 R"({"id":"%s","name":"%s","posturePolicies":{"p-%s":{"policyId":"p-%s","isPassing":false,)"
+                 R"("policyType":"Dial","postureQueries":[{"id":"%s","isPassing":false,"queryType":"MFA",)"
+                 R"("timeout":%d,"timeoutRemaining":-1}]}}})",
+                 id, name, id, id, query_id, timeout);
+        return buf;
+    }
+
+    void add_mfa_service(posture_fixture &f, const char *name, const char *query_id, int timeout) {
+        add_service(f, mfa_service_json(name, name, query_id, timeout).c_str());
+    }
+}
+
+TEST_CASE("checks that need a code are reported in one event, with the shortest timeout", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    add_mfa_service(f, "svc-short", "q-short", 60);
+    watch(f);
+
+    ztx_posture_notify_mfa(&f.ztx);
+
+    REQUIRE(captured_event.count == 1);
+    CHECK(captured_event.mfa_last_code_at == 0);
+    CHECK(captured_event.mfa_timeout == 60);
+    CHECK(captured_event.mfa_expiring == 0);
+    REQUIRE(captured_event.service_names.size() == 2);
+    CHECK(contains(captured_event.service_names, "mfa-service"));
+    CHECK(contains(captured_event.service_names, "svc-short"));
+}
+
+TEST_CASE("with a code, the check whose code ends first is reported, and no other", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    add_mfa_service(f, "svc-long", "q-long", 3600);
+    watch(f);
+
+    REQUIRE(give_token(&f.ztx, aged_token(10).c_str()) == ZITI_OK);
+
+    // 300 s ends before 3600 s
+    REQUIRE(captured_event.count == 1);
+    CHECK(captured_event.mfa_timeout == 300);
+    REQUIRE(captured_event.service_names.size() == 1);
+    CHECK(captured_event.service_names[0] == "mfa-service");
+}
+
+TEST_CASE("the checks that are past their timeout are reported together, the others are not", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    add_mfa_service(f, "svc-short", "q-short", 60);
+    add_mfa_service(f, "svc-mid", "q-mid", 90);
+    add_mfa_service(f, "svc-long", "q-long", 3600);
+    watch(f);
+
+    // 100 s old: the checks of 60 s and 90 s have ended, the ones of 300 s and 3600 s have not
+    REQUIRE(give_token(&f.ztx, aged_token(100).c_str()) == ZITI_OK);
+
+    REQUIRE(captured_event.count == 1);
+    CHECK(captured_event.mfa_timeout == 60);
+    CHECK(captured_event.mfa_expiring == 1);
+    REQUIRE(captured_event.service_names.size() == 2);
+    CHECK(contains(captured_event.service_names, "svc-short"));
+    CHECK(contains(captured_event.service_names, "svc-mid"));
+}
+
+TEST_CASE("checks without a timeout are reported together when a code is given", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    f.query()->timeout = -1;
+    add_mfa_service(f, "svc-never", "q-never", -1);
+    watch(f);
+
+    REQUIRE(give_token(&f.ztx, aged_token(10).c_str()) == ZITI_OK);
+
+    REQUIRE(captured_event.count == 1);
+    CHECK(captured_event.mfa_timeout == -1);
+    CHECK(captured_event.mfa_expiring == 0);
+    REQUIRE(captured_event.service_names.size() == 2);
+}
+
+TEST_CASE("a check with a timeout ends before one without", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    add_mfa_service(f, "svc-never", "q-never", -1);
+    watch(f);
+
+    REQUIRE(give_token(&f.ztx, aged_token(10).c_str()) == ZITI_OK);
+
+    REQUIRE(captured_event.count == 1);
+    CHECK(captured_event.mfa_timeout == 300);
+    REQUIRE(captured_event.service_names.size() == 1);
+    CHECK(captured_event.service_names[0] == "mfa-service");
+}
+
+TEST_CASE("the check that is reported changes as the code ages", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    add_mfa_service(f, "svc-short", "q-short", 60);
+    watch(f);
+    REQUIRE(give_token(&f.ztx, aged_token(0).c_str()) == ZITI_OK);
+    REQUIRE(captured_event.count == 1);
+    REQUIRE(captured_event.service_names.size() == 1);
+    CHECK(captured_event.service_names[0] == "svc-short");
+    CHECK(captured_event.mfa_expiring == 0);
+
+    // the 60 s of that check are over, the 300 s of the other are not
+    f.ztx.posture_checks->totp.issued_at -= 70;
+    ziti_send_posture_data(&f.ztx);
+
+    REQUIRE(captured_event.count == 2);
+    CHECK(captured_event.mfa_expiring == 1);
+    REQUIRE(captured_event.service_names.size() == 1);
+    CHECK(captured_event.service_names[0] == "svc-short");
+
+    // and both when the other ends too
+    f.ztx.posture_checks->totp.issued_at -= 300;
+    ziti_send_posture_data(&f.ztx);
+
+    REQUIRE(captured_event.count == 3);
+    CHECK(captured_event.service_names.size() == 2);
 }
 
 TEST_CASE("an MFA check is not reported when not subscribed, and is once the app subscribes", "[posture][totp]") {

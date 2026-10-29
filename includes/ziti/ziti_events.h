@@ -89,30 +89,23 @@ struct ziti_posture_status_process_info {
 };
 
 /**
- * \brief Payload for a PC_MFA posture check: what the SDK itself knows about the TOTP code
- * that satisfies it.
+ * \brief Payload for a PC_MFA posture check: the state of the TOTP code behind it.
  *
- * The SDK learns of a code through the TOTP token the controller issues for it, which is what
- * it sends the edge routers: they decide whether the check passes, by the timeout of the check
- * and its wake and unlock rules, and neither the controller nor the SDK can tell. The app
- * needs a code (see ziti_mfa_auth()) when `last_code_at` is 0 or `expiring` is true.
+ * One code serves every MFA check, so there is one event for all of them. It is about the checks
+ * that need a code now or, when none does, the check whose code expires first; `services` lists
+ * the services of those checks. The app needs a code (see ziti_mfa_auth()) when `last_code_at`
+ * is 0 or `expiring` is true.
  *
- * The event is sent when the SDK first sees the check, when a code is given, and when the code
- * starts to expire. The SDK looks at the clock with each posture cycle (every 20 seconds, and
- * at each dial), so that event can be up to a cycle late. The passing of the timeout itself is
- * no event: `expiring` stays true.
- *
- * Only authentication that has TOTP tokens (OIDC) tells the SDK of a code: otherwise
- * `last_code_at` is always 0.
+ * The event is sent when a check is first seen and when any of these values change; it can come
+ * a little after the fact. Only OIDC authentication reports a code, otherwise `last_code_at` is
+ * always 0.
  */
 struct ziti_posture_status_mfa_info {
-    /** seconds a code counts for, as the check says; -1 when the check has no timeout */
+    /** seconds a code counts for (the shortest of the checks); -1 when there is no timeout */
     int64_t timeout;
-    /** when the code of the TOTP token the SDK holds for the current api session was given,
-     *  in seconds since the epoch; 0 when it holds none, e.g. no code was given since the last login */
+    /** when the last code was given, in seconds since the epoch; 0 when none was since the login */
     int64_t last_code_at;
-    /** the code is close to the end of its timeout, or past it: within 5 minutes of it, within half of
-     *  the timeout for a timeout under 10 minutes. Never true without a code or when the check has no timeout */
+    /** the code is about to expire or has expired; never true without a code or a timeout */
     bool expiring;
 };
 
@@ -135,7 +128,7 @@ struct ziti_posture_status_mfa_info {
  * currently implemented.
  */
 struct ziti_posture_status_event {
-    /** every service this check currently governs; NULL-terminated */
+    /** every service this check currently governs; NULL-terminated (for PC_MFA see ziti_posture_status_mfa_info) */
     ziti_service_array services;
     ziti_posture_query_type query_type;
 
