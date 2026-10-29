@@ -87,9 +87,9 @@ TEST_CASE("a connection that ziti_dial refused on a disabled context can be clos
 // internal: the api session token, which the context has only while it is authenticated
 extern "C" const char *ziti_get_api_session_token(ziti_context ztx);
 
-// A dial that the app closes while the controller is still creating its session: the answer of the
-// controller comes back to the connection, so the connection has to be there to get it, and the app
-// hears nothing more of the dial.
+// A dial that the app closes while the controller is still creating its session: the app gets its close
+// callback without waiting for the controller, the memory of the connection stays for the answer of the
+// controller, and the app hears nothing more of the dial.
 TEST_CASE("a dial that was closed while the controller creates its session", "[conn]") {
     FakeDialController ctrl(500);
 
@@ -98,7 +98,7 @@ TEST_CASE("a dial that was closed while the controller creates its session", "[c
         bool close_called = false;
         int conn_cb = 0;
         int closed = 0;
-        int closed_before_answer = 0;
+        bool closed_before_answer = false;
         int ticks_after_answer = 0;
     } t;
 
@@ -120,15 +120,15 @@ TEST_CASE("a dial that was closed while the controller creates its session", "[c
         }
 
         if (!ctrl.session_answered()) {
-            t.closed_before_answer += t.closed;
+            t.closed_before_answer = t.closed_before_answer || t.closed > 0;
             return false;
         }
 
-        // the context has had its turns to dispose of the connection
+        // the context has had its turns to act on the answer
         return ++t.ticks_after_answer > 5;
     });
 
-    CHECK(t.closed_before_answer == 0);
+    CHECK(t.closed_before_answer);
     CHECK(t.closed == 1);
     CHECK(t.conn_cb == 0);
 }
