@@ -39,6 +39,17 @@ extern "C" {
  */
 int ziti_src_init(uv_loop_t *l, tlsuv_src_t *zl, const char *svc, ziti_context ztx);
 
+/**
+ * Free what ziti_src_init() allocated for the source, and close its ziti connection if it has one.
+ *
+ * The source serves every connection that its client makes: the client releases the link of a closed
+ * connection and uses the source again for its next request. Call this once the client is closed.
+ * The `tlsuv_src_t` itself belongs to the caller.
+ *
+ * @param zl the source that was initialized with ziti_src_init()
+ */
+void ziti_src_free(tlsuv_src_t *zl);
+
 #ifdef __cplusplus
 }
 #endif

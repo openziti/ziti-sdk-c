@@ -128,8 +128,10 @@ namespace {
 
     // Sends three requests, one after the other, on an HTTP client whose source cannot connect:
     // `disable` has the context refuse the dial (ZITI_DISABLED), otherwise the context is not
-    // authenticated and the dial fails through its conn cb.
-    void fail_dials(failed_dials &t, bool disable) {
+    // authenticated and the dial fails through its conn cb. `release_between` has the source released before
+    // each request after the first, as tlsuv does when it closes the link of a connection: it uses the same
+    // source for the next request of the client.
+    void fail_dials(failed_dials &t, bool disable, bool release_between = false) {
         using namespace fake_controller;
         FakeHttpServer ctrl([](const std::string &, const std::string &) { return not_found(); });
 
@@ -151,6 +153,9 @@ namespace {
             }
 
             if (t.ticks >= 4 && t.sent == t.failed && t.sent < 3) {
+                if (release_between && t.sent > 0) {
+                    t.src.release(&t.src);
+                }
                 t.sent++;
                 tlsuv_http_req(&t.clt, "GET", "/", [](tlsuv_http_resp_t *resp, void *ctx) {
                     auto t = static_cast<failed_dials *>(ctx);
@@ -171,8 +176,8 @@ namespace {
         };
         run_context(ctrl.url(), 10000, done);
 
-        // the client never connected, so it has not released the source
-        t.src.release(&t.src);
+        // the client is closed
+        ziti_src_free(&t.src);
     }
 }
 
@@ -189,6 +194,15 @@ TEST_CASE("ziti_src closes the connection of a dial that the context refused", "
 TEST_CASE("ziti_src closes the connection of a dial that failed", "[ziti_src][GH-1187]") {
     failed_dials t;
     fail_dials(t, false);
+
+    REQUIRE(t.failed == 3);
+    CHECK(t.open_conns == std::vector<int>{0, 0, 0});
+}
+
+// tlsuv releases the source whenever the link of a connection closes, and goes on to use it
+TEST_CASE("ziti_src connects again after tlsuv released it", "[ziti_src][GH-1187]") {
+    failed_dials t;
+    fail_dials(t, true, true);
 
     REQUIRE(t.failed == 3);
     CHECK(t.open_conns == std::vector<int>{0, 0, 0});
@@ -241,8 +255,8 @@ TEST_CASE("ziti_src closes the connection of a dial that tlsuv timed out", "[zit
     };
     run_context(ctrl.url(), 10000, done);
 
-    // the client never connected, so it has not released the source
-    t.src.release(&t.src);
+    // the client is closed
+    ziti_src_free(&t.src);
 
     CHECK(t.timed_out);
     CHECK(t.open_conns == 0);

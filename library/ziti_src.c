@@ -154,11 +154,20 @@ ziti_src_connect(tlsuv_src_t *src, const char *host, const char *port, tlsuv_src
     return status;
 }
 
+// tlsuv calls this every time the link of a connection is closed, and goes on to use the source for the
+// next request of its client: the source lives until ziti_src_free()
 static void ziti_src_release(tlsuv_src_t *src) {
+    close_conn((ziti_link_t *) src->link);
+}
+
+void ziti_src_free(tlsuv_src_t *src) {
     ziti_link_t *zl = (ziti_link_t *) src->link;
+    if (zl == NULL) return;
+
     close_conn(zl);
     free(zl->service);
-    free(src->link);
+    free(zl);
+    src->link = NULL;
 }
 
 static void zlnf_conn_cb(ziti_connection conn, int status) {
