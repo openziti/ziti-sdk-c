@@ -197,6 +197,13 @@ TEST_CASE("the refusal of the controller is what the caller is told", "[totp][to
         {api_error("409 Conflict", "MFA_NOT_ENROLLED"), ZITI_MFA_NOT_ENROLLED},
         // a controller without the endpoint
         {not_found(), ZITI_NOT_FOUND},
+        // a v1.x controller, which has the operation in its API and no handler for it: it answers 501, and the body is
+        // a plain string, no ziti error
+        {json_response("501 Not Implemented",
+                       R"("operation current_api_session.CreateTotpToken has not yet been implemented")"),
+         ZITI_NOT_SUPPORTED},
+        // a success that has no token in it
+        {json_response("200 OK", R"({"meta":{}})"), ZITI_INVALID_STATE},
     }));
     FakeTotpController ctrl(reply);
 
@@ -360,6 +367,35 @@ TEST_CASE("the code that verifies an enrollment after the login buys a TOTP toke
     CHECK(ctrl.count("/current-identity/mfa/verify") == 1);
     CHECK(ctrl.count(TOTP_TOKEN_PATH) == 1);
     CHECK(ctrl.code_sent("123456"));
+}
+
+// The verify itself went through: the controller passes the MFA of the session. That the controller has no TOTP token to
+// give (a v1.x controller) does not take that back, and the routers of such a controller do not ask for the token.
+TEST_CASE("a controller without TOTP tokens does not fail the verify of an enrollment", "[totp][totp-token]") {
+    FakeTotpController ctrl(json_response("501 Not Implemented",
+                                          R"("operation current_api_session.CreateTotpToken has not yet been implemented")"));
+    ctrl.mfa_verify_reply = json_response("200 OK", R"({"data":{},"meta":{}})");
+
+    token_request verified;
+    int polls_after_answer = 0;
+    std::string kept = "not read", code_left = "not read";
+    after_auth(ctrl, [&](ziti_context ztx) {
+        ztx_test_mfa_verify_without_login(ztx, "123456", on_token_request, &verified);
+    }, [&](ziti_context ztx) {
+        // the answer to the token request, which nothing reports, is handled a few polls after the verify
+        if (verified.calls == 0 || ctrl.count(TOTP_TOKEN_PATH) == 0 || ++polls_after_answer < 3) {
+            return false;
+        }
+        kept = ztx_test_totp_token(ztx);
+        code_left = ztx_test_totp_code(ztx);
+        return true;
+    });
+
+    CHECK(verified.calls == 1);
+    CHECK(verified.status == ZITI_OK);
+    CHECK(kept.empty());
+    CHECK(code_left.empty());
+    CHECK(ctrl.count(TOTP_TOKEN_PATH) == 1);
 }
 
 TEST_CASE("a code the controller turns down at the verify is not exchanged for a token", "[totp][totp-token]") {

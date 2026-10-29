@@ -130,6 +130,9 @@ static void totp_token_cb(totp_token *token, const ziti_error *err, void *ctx) {
     if (err != NULL) {
         ZTX_LOG(WARN, "failed to get a TOTP token: %d/%s", (int) err->err, err->message ? err->message : ziti_errorstr(err->err));
         status = (int) err->err;
+    } else if (token == NULL) {
+        ZTX_LOG(WARN, "the controller did not issue a TOTP token");
+        status = ZITI_INVALID_STATE;
     } else {
         status = ztx_posture_set_totp_token(ztx, token->token);
         if (status == ZITI_OK) {
