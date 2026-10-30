@@ -317,7 +317,7 @@ int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
  *
  * @param ztx the Ziti Edge identity context to use to check for the service's availability on
  * @param service the name of the service to check
- * @param cb callback called with #ZITI_OK or #ZITI_SERVICE_NOT_AVAILABLE
+ * @param cb callback called with #ZITI_OK or #ZITI_SERVICE_UNAVAILABLE
  * @param ctx additional context to be passed to the #ziti_service_cb
  *
  * @return #ZITI_OK or corresponding #ZITI_ERRORS

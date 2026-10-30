@@ -268,7 +268,8 @@ extern const char *ziti_conn_circuit_id(ziti_connection conn);
  * @param dest_port
  * @param src_host
  * @param src_port
- * @return ZITI_OK or error code
+ * @return the service that intercepts the destination address, or NULL if no service matches it
+ *         or the matching service has no intercept config
  */
 ZITI_FUNC
 extern const ziti_service* ziti_dial_opts_for_addr(ziti_dial_opts *opts, ziti_context ztx, ziti_protocol proto,

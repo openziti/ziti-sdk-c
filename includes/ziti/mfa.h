@@ -95,7 +95,7 @@ typedef void (*ziti_mfa_recovery_codes_cb)(ziti_context ztx, int status, const c
  * An error status will be returned if the request fails, #ZITI_OK is expected on success.
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
- * @param ziti_mfa_enroll_cb callback to receive MFA enrollment initialization status
+ * @param enroll_cb callback to receive MFA enrollment initialization status
  * @param ctx additional context to be passed into the enroll_cb callback
  */
 ZITI_FUNC
@@ -129,10 +129,8 @@ extern void ziti_mfa_remove(ziti_context ztx, const char *code, ziti_mfa_cb remo
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
  * @param code a valid TOTP code, must not be a recovery code
- * @param remove_cb callback to receive MFA verify status
+ * @param verify_cb callback to receive MFA verify status
  * @param ctx additional context to be passed into the verify_cb callback
- *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
  */
 ZITI_FUNC
 extern void ziti_mfa_verify(ziti_context ztx, const char *code, ziti_mfa_cb verify_cb, void *ctx);
@@ -148,7 +146,7 @@ extern void ziti_mfa_verify(ziti_context ztx, const char *code, ziti_mfa_cb veri
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
  * @param code a TOTP code, may be empty string for MFA enrollments that have not completed vi ziti_mfa_verify
- * @param remove_cb callback to receive the result status
+ * @param get_cb callback to receive the result status
  * @param ctx additional context to be passed into the get_cb callback
  */
 ZITI_FUNC
