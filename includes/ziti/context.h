@@ -35,16 +35,6 @@ extern "C" {
 #endif
 
 /**
-* Flag indicating service `Dial` permission
-*/
-#define ZITI_CAN_DIAL 1U
-
-/**
-* Flag indicating service `Bind` permission
-*/
-#define ZITI_CAN_BIND 2U
-
-/**
  * @brief Service status callback.
  *
  * This callback is invoked on the conclusion of ziti_service_available(). The result of the function

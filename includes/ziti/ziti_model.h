@@ -123,6 +123,16 @@ XX(is_passing, model_bool, none, isPassing, __VA_ARGS__) \
 XX(policy_type, model_string, none, policyType, __VA_ARGS__) \
 XX(posture_queries, ziti_posture_query, array, postureQueries, __VA_ARGS__)
 
+/**
+* Flag indicating service `Dial` permission
+*/
+#define ZITI_CAN_DIAL 1U
+
+/**
+* Flag indicating service `Bind` permission
+*/
+#define ZITI_CAN_BIND 2U
+
 #define ZITI_SERVICE_MODEL(XX, ...)                                                          \
     XX(id, model_string, none, id, __VA_ARGS__)                                              \
     XX(name, model_string, none, name, __VA_ARGS__)                                          \
