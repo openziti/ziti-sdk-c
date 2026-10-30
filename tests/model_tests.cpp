@@ -743,8 +743,12 @@ TEST_CASE("parse model_list", "[model]") {
 }
 
 TEST_CASE("list element that fails to parse is released", "[model]") {
-    // only a leak checker (LSan, leaks) tells: the first element goes with the list, the bad one was never in it
-    const char *json = R"({"fruit":[{"color":"red","count":1},{"color":"green","count":"many"}]})";
+    // the elements before the bad one are released with the list, only a leak checker (LSan, leaks) tells about the rest
+    const char *json = GENERATE(
+            R"({"fruit":[{"color":"red","count":1},{"color":"green","count":"many"}]})",
+            R"({"codes":[1,"x"]})",
+            R"({"errors":["abc",5]})");
+    CAPTURE(json);
 
     ListsObj o;
     CHECK(parse_ListsObj(&o, json, strlen(json)) < 0);
