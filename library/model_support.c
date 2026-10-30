@@ -573,10 +573,11 @@ int model_list_from_json (model_list *list, json_object *json, const type_meta *
                  el_meta->from_json(value, ch, el_meta) :
                  model_from_json(value, ch, el_meta);
         }
+        // a failed element is released with the others below
+        model_list_append(list, value);
         if (rc < 0) {
             break;
         }
-        model_list_append(list, value);
     }
 
     if (rc != 0) {
