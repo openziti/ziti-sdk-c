@@ -19,7 +19,7 @@ jobs:
           note="> **STALE DRAFT:** main has moved on since these notes were written (now at ${GITHUB_SHA::8}). Check them against the commits since the last release, then delete this line."
           gh api --paginate "repos/$REPO/releases" --jq '.[] | select(.draft and .target_commitish == "main") | .id' |
           while read -r id; do
-            gh api "repos/$REPO/releases/$id" --jq '.body // ""' |
-            jq -Rs --arg note "$note" '{body: ($note + "\n\n" + (rtrimstr("\n") | sub("\\A> \\*\\*STALE DRAFT:[^\r\n]*(\r?\n)*"; "")))}' |
+            gh api "repos/$REPO/releases/$id" |
+            jq --arg note "$note" '{tag_name, body: ($note + "\n\n" + ((.body // "") | rtrimstr("\n") | sub("\\A> \\*\\*STALE DRAFT:[^\r\n]*(\r?\n)*"; "")))}' |
             gh api -X PATCH "repos/$REPO/releases/$id" --input -
           done
