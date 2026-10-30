@@ -358,7 +358,7 @@ extern int ziti_listen_with_options(ziti_connection serv_conn, const char *servi
  * @param precedence new terminator precedence (see #ziti_terminator_precedence_s), or
  *                   NULL to leave unchanged
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK, or #ZITI_INVALID_STATE if there is something to update but the connection is not bound yet
  *
  * @see ziti_listen(), ziti_listen_with_options(), ziti_send_health_event()
  */
@@ -376,7 +376,7 @@ extern int ziti_update_terminator(ziti_connection server, const uint16_t *cost, 
  *               ziti_listen_with_options()
  * @param pass true if the health check passed, false if it failed
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK, or #ZITI_INVALID_STATE if the connection is not bound yet
  *
  * @see ziti_update_terminator()
  */
@@ -421,7 +421,8 @@ extern int ziti_accept(ziti_connection clt, ziti_conn_cb cb, ziti_data_cb data_c
  * @param close_cb callback called after connection is closed
  *
  * @return #ZITI_OK
- *         #ZITI_CONN_CLOSED if connection was already ziti_close() was already called on the given connection
+ *         #ZITI_CONN_CLOSED if ziti_close() was already called on the given connection
+ *         #ZITI_INVALID_STATE if conn is NULL
  *         other #ZITI_ERRORS
  */
 ZITI_FUNC

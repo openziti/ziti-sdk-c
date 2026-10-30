@@ -184,8 +184,9 @@ extern void ziti_mfa_new_recovery_codes(ziti_context ztx, char *code, ziti_mfa_r
  * at the moment (a posture check that needs MFA came later, or its timeout ran out): with an OIDC
  * authentication the code is then exchanged for a TOTP token, which proves the MFA to the edge routers.
  * Errors reported through the callback include #ZITI_MFA_INVALID_TOKEN (the code was not accepted),
- * #ZITI_MFA_NOT_ENROLLED (the identity has no MFA enrollment) and #ZITI_INVALID_STATE (the identity is
- * not authenticated, or the controller is not asking for a code and takes none).
+ * #ZITI_MFA_NOT_ENROLLED (the identity has no MFA enrollment), #ZITI_INVALID_STATE (the identity is
+ * not authenticated, the controller is not asking for a code and takes none, or an earlier call is still
+ * waiting for its result) and #ZITI_WTF (`code` is NULL).
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
  * @param code a TOTP code

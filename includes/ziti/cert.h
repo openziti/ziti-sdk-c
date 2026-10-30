@@ -79,7 +79,9 @@ extern void ziti_set_enroll_key_cb(ziti_context ztx, ziti_enroll_key_cb cb, void
  * @param cert_len the length of cert_buf
  * @param key_buf a PEM formatted x509 private key
  * @param key_len the length of key_buf
- * @return returns 0 on success
+ * @return #ZITI_OK on success, #ZITI_KEY_LOAD_FAILED if the key cannot be loaded,
+ *         #ZITI_INVALID_AUTHENTICATOR_CERT if the certificate cannot be loaded, or
+ *         #ZITI_INVALID_CERT_KEY_PAIR if the TLS context does not accept the key and certificate
  */
 ZITI_FUNC
 extern int ziti_set_client_cert(ziti_context ztx, const char *cert_buf, size_t cert_len, const char *key_buf, size_t key_len);
