@@ -1650,6 +1650,11 @@ static void ziti_re_auth(ziti_context ztx) {
 }
 
 static void set_posture_query_defaults(const ziti_service *service) {
+    // the controller left the array out
+    if (service->posture_query_set == NULL) {
+        return;
+    }
+
     for (int posture_set_idx = 0; service->posture_query_set[posture_set_idx] != 0; posture_set_idx++) {
         for (int posture_query_idx = 0; service->posture_query_set[posture_set_idx]->posture_queries[posture_query_idx]; posture_query_idx++) {
 
@@ -1883,8 +1888,8 @@ static void update_services(ziti_service_array services, const ziti_error *error
 // processing of posture queries assumes the map will be set.
 // The original array, will be NULL.
 static void set_service_posture_policy_map(ziti_service *service) {
-    // no work to do
-    if (service->posture_query_set != NULL && model_map_size(&service->posture_query_map) != 0) {
+    // no work to do: the controller sent the map, or sent no array to convert
+    if (service->posture_query_set == NULL || model_map_size(&service->posture_query_map) != 0) {
         return;
     }
 

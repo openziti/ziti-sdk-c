@@ -135,7 +135,7 @@ static bool find_running_match(uv_loop_t *loop, const char *pattern, char **matc
 
 static void send_posture_legacy(ziti_context ztx, model_list *send_prs);
 
-static int send_posture_ha(ziti_context ztx, model_list *send_prs);
+static int send_posture_routers(ziti_context ztx, model_list *send_prs);
 
 static void ziti_pr_free_pr_info(pr_info *info) {
     FREE(info->id);
@@ -646,6 +646,12 @@ void ztx_collect_posture(ziti_context ztx, model_list *send_prs, bool collect_al
     }
 }
 
+// Routers keep posture data by the token of an OIDC api session. The controller is what checks a legacy api session, so
+// its posture data goes to the controller, whatever the routers could take.
+static bool posture_goes_to_routers(ziti_context ztx) {
+    return ztx->auth_method == NULL || ztx->auth_method->kind != LEGACY;
+}
+
 static void ziti_pr_send_bulk(ziti_context ztx) {
     model_list send_prs = {};
     ztx_collect_posture(ztx, &send_prs, false);
@@ -653,7 +659,9 @@ static void ziti_pr_send_bulk(ziti_context ztx) {
     if (model_list_size(&send_prs) > 0) {
         ZTX_LOG(DEBUG, "sending posture responses [%zd]", model_list_size(&send_prs));
 
-        if (send_posture_ha(ztx, &send_prs) == ZITI_NOT_SUPPORTED) {
+        if (!posture_goes_to_routers(ztx)) {
+            send_posture_legacy(ztx, &send_prs);
+        } else if (send_posture_routers(ztx, &send_prs) == ZITI_NOT_SUPPORTED) {
             ZTX_LOG(INFO, "ERs do not support receiving posture responses");
             send_posture_legacy(ztx, &send_prs);
         }
@@ -851,7 +859,7 @@ Ziti__EdgeClient__Pb__PostureResponses *ztx_posture_resp_pb(ziti_context z, mode
     return resp;
 }
 
-static int send_posture_ha(ziti_context ztx, model_list *send_prs) {
+static int send_posture_routers(ziti_context ztx, model_list *send_prs) {
     uint8_t pad[128];
     Ziti__EdgeClient__Pb__PostureResponses *resp = ztx_posture_resp_pb(ztx, send_prs);
     if (resp == NULL) {
@@ -1715,6 +1723,10 @@ char **get_signers(const char *path, int *signers_count) {
 }
 
 void ziti_send_posture_er(ziti_context ztx, ziti_channel_t *ch) {
+    if (!posture_goes_to_routers(ztx)) {
+        return;
+    }
+
     if (!zch_can_accept_posture(ch)) {
         ZTX_LOG(DEBUG, "channel %s cannot accept posture responses", zch_get_name(ch));
         return;
