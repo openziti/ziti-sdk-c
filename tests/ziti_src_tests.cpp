@@ -13,10 +13,13 @@
 // limitations under the License.
 
 #include "catch2_includes.hpp"
+#include "fake_controller.h"
 
 #include <uv.h>
 #include <ziti/ziti.h>
 #include <ziti/ziti_src.h>
+
+#include <vector>
 
 struct source_test {
     source_test(): err(0), loop(nullptr), done(false), code(-1) {}
@@ -107,4 +110,154 @@ TEST_CASE("httpbin.ziti:ziti_src", "[integ]") {
     printf("%s", test.body.c_str());
     CHECK_THAT(test.body, Catch::Matchers::ContainsSubstring(R"("title": "Wake up to WonderWidgets!")"));
     CHECK(test.err == 0);
+}
+
+
+extern "C" int ztx_test_open_conns(ziti_context ztx);  // ztx_test_helper.c
+
+namespace {
+    struct failed_dials {
+        ziti_context ztx = nullptr;
+        tlsuv_src_t src{};
+        tlsuv_http_t clt{};
+        int ticks = 0;
+        int sent = 0;
+        int failed = 0;
+        std::vector<int> open_conns; // connections the app has not closed, after each failed request
+    };
+
+    // Sends three requests, one after the other, on an HTTP client whose source cannot connect:
+    // `disable` has the context refuse the dial (ZITI_DISABLED), otherwise the context is not
+    // authenticated and the dial fails through its conn cb. `release_between` has the source released before
+    // each request after the first, as tlsuv does when it closes the link of a connection: it uses the same
+    // source for the next request of the client.
+    void fail_dials(failed_dials &t, bool disable, bool release_between = false) {
+        using namespace fake_controller;
+        FakeHttpServer ctrl([](const std::string &, const std::string &) { return not_found(); });
+
+        auto done = [&](const context_run &run) {
+            switch (++t.ticks) {
+                case 1:
+                    if (disable) {
+                        ziti_set_enabled(run.ztx, false);
+                    }
+                    return false;
+                case 4:
+                    // the context has had its turns to stop
+                    t.ztx = run.ztx;
+                    ziti_src_init(test_loop(), &t.src, "svc", run.ztx);
+                    tlsuv_http_init_with_src(test_loop(), &t.clt, "http://svc", &t.src);
+                    break;
+                default:
+                    break;
+            }
+
+            if (t.ticks >= 4 && t.sent == t.failed && t.sent < 3) {
+                if (release_between && t.sent > 0) {
+                    t.src.release(&t.src);
+                }
+                t.sent++;
+                tlsuv_http_req(&t.clt, "GET", "/", [](tlsuv_http_resp_t *resp, void *ctx) {
+                    auto t = static_cast<failed_dials *>(ctx);
+                    if (resp->code < 0) {
+                        t->failed++;
+                        t->open_conns.push_back(ztx_test_open_conns(t->ztx));
+                    }
+                }, &t);
+            }
+
+            if (t.failed == 3 || t.ticks > 40) {
+                if (t.ticks >= 4) {
+                    tlsuv_http_close(&t.clt, nullptr);
+                }
+                return true;
+            }
+            return false;
+        };
+        run_context(ctrl.url(), 10000, done);
+
+        // the client is closed
+        ziti_src_free(&t.src);
+    }
+}
+
+// a source whose connect fails leaves tlsuv without links, so zl_close() never runs: ziti_src has to
+// close the connection of a failed dial itself, or each retry of the client leaves one more open
+TEST_CASE("ziti_src closes the connection of a dial that the context refused", "[ziti_src][GH-1187]") {
+    failed_dials t;
+    fail_dials(t, true);
+
+    REQUIRE(t.failed == 3);
+    CHECK(t.open_conns == std::vector<int>{0, 0, 0});
+}
+
+TEST_CASE("ziti_src closes the connection of a dial that failed", "[ziti_src][GH-1187]") {
+    failed_dials t;
+    fail_dials(t, false);
+
+    REQUIRE(t.failed == 3);
+    CHECK(t.open_conns == std::vector<int>{0, 0, 0});
+}
+
+// tlsuv releases the source whenever the link of a connection closes, and goes on to use it
+TEST_CASE("ziti_src connects again after tlsuv released it", "[ziti_src][GH-1187]") {
+    failed_dials t;
+    fail_dials(t, true, true);
+
+    REQUIRE(t.failed == 3);
+    CHECK(t.open_conns == std::vector<int>{0, 0, 0});
+}
+
+// internal: the api session token, which the context has only while it is authenticated
+extern "C" const char *ziti_get_api_session_token(ziti_context ztx);
+
+namespace {
+    struct timed_out_dial {
+        tlsuv_src_t src{};
+        tlsuv_http_t clt{};
+        bool sent = false;
+        bool timed_out = false;
+        int ticks_after_answer = 0;
+        int open_conns = -1;
+    };
+}
+
+// tlsuv gives up on a connect that takes longer than its timeout and tells the source to cancel it: the
+// dial that is still in flight must not be left open
+TEST_CASE("ziti_src closes the connection of a dial that tlsuv timed out", "[ziti_src][GH-1187]") {
+    using namespace fake_controller;
+    FakeDialController ctrl(700);
+
+    timed_out_dial t;
+    auto done = [&](const context_run &run) {
+        if (!t.sent) {
+            if (ziti_get_api_session_token(run.ztx) == nullptr) return false;
+
+            t.sent = true;
+            ziti_src_init(test_loop(), &t.src, "svc", run.ztx);
+            tlsuv_http_init_with_src(test_loop(), &t.clt, "http://svc", &t.src);
+            tlsuv_http_connect_timeout(&t.clt, 200);
+            tlsuv_http_req(&t.clt, "GET", "/", [](tlsuv_http_resp_t *resp, void *ctx) {
+                if (resp->code < 0) {
+                    static_cast<timed_out_dial *>(ctx)->timed_out = true;
+                }
+            }, &t);
+            return false;
+        }
+
+        // the controller answers after tlsuv gave up: give the context turns to act on it
+        if (ctrl.session_answered() && ++t.ticks_after_answer > 5) {
+            t.open_conns = ztx_test_open_conns(run.ztx);
+            tlsuv_http_close(&t.clt, nullptr);
+            return true;
+        }
+        return false;
+    };
+    run_context(ctrl.url(), 10000, done);
+
+    // the client is closed
+    ziti_src_free(&t.src);
+
+    CHECK(t.timed_out);
+    CHECK(t.open_conns == 0);
 }

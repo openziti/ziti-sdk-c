@@ -26,6 +26,8 @@
 static struct app_ctx {
     const char *service;
     uv_loop_t *l;
+    bool started;
+    tlsuv_src_t *src;
 } appCtx;
 
 static void init_cb(ziti_context ztx, const ziti_event_t *ev);
@@ -71,6 +73,14 @@ static void on_ws_write(uv_write_t *wr, int status) {
     free(wr);
 }
 
+// the websocket is closed: it is done with the source
+static void on_ws_closed(uv_handle_t *h) {
+    ziti_src_free(appCtx.src);
+    free(appCtx.src);
+    appCtx.src = NULL;
+    free(h);
+}
+
 static void input_read(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
     tlsuv_websocket_t *ws = s->data;
     if (len > 0) {
@@ -79,7 +89,7 @@ static void input_read(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
         wr->data = buf->base;
         tlsuv_websocket_write(wr, ws, &wb, on_ws_write);
     } else {
-        tlsuv_websocket_close(ws, NULL);
+        tlsuv_websocket_close(ws, on_ws_closed);
     }
 }
 
@@ -108,7 +118,7 @@ static void on_ws_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
         printf("< %.*s", (int)len, buf->base);
     } else if (len < 0) {
         fprintf(stderr, "=========================\nwebsocket error[%zd]: %s\n", len, ziti_errorstr(len));
-        tlsuv_websocket_close((tlsuv_websocket_t *) s, (uv_close_cb) free);
+        tlsuv_websocket_close((tlsuv_websocket_t *) s, on_ws_closed);
         uv_close((uv_handle_t *) &input, NULL);
         ziti_shutdown(ctx);
     }
@@ -116,8 +126,14 @@ static void on_ws_data(uv_stream_t *s, ssize_t len, const uv_buf_t *buf) {
 
 static void init_cb(ziti_context ztx, const ziti_event_t *ev) {
     struct app_ctx *ctx = ziti_app_ctx(ztx);
+
+    // the context reports its status more than once: there is one source and one websocket
+    if (ctx->started) return;
+    ctx->started = true;
+
     NEWP(src, tlsuv_src_t);
     ziti_src_init(ctx->l, src, ctx->service, ztx);
+    ctx->src = src;
 
     NEWP(ws, tlsuv_websocket_t);
     ws->data = ztx;

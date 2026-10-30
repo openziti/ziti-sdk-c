@@ -30,14 +30,29 @@ extern "C" {
 #endif
 
 /**
- * Initialize a `um_http_src_t` handle
- * 
+ * Initialize a `tlsuv_src_t` that sends the connections of a tlsuv client over ziti.
+ *
+ * The source can be used for every connection its client makes. Call ziti_src_free() once the
+ * client is closed (its close callback has been called), to free what this allocates.
+ *
  * @param l the uv loop
- * @param zl the um_http_src_t to initialize
- * @param svc the name of the service to be dialed
+ * @param zl the tlsuv_src_t to initialize
+ * @param svc the name of the service to dial, or NULL to find the service by the client's host and port
  * @param ztx the initialized ziti_context
  */
 int ziti_src_init(uv_loop_t *l, tlsuv_src_t *zl, const char *svc, ziti_context ztx);
+
+/**
+ * Free what ziti_src_init() allocated for the source, and close its ziti connection if it has one.
+ *
+ * The source serves every connection that its client makes: the client releases the link of a closed
+ * connection and uses the source again for its next request. Call this once the client is closed
+ * (its close callback has been called), not before: the client may still release the source.
+ * The `tlsuv_src_t` itself belongs to the caller.
+ *
+ * @param zl the source that was initialized with ziti_src_init()
+ */
+void ziti_src_free(tlsuv_src_t *zl);
 
 #ifdef __cplusplus
 }

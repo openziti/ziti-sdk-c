@@ -83,3 +83,52 @@ TEST_CASE("a connection that ziti_dial refused on a disabled context can be clos
     CHECK(t.rc == ZITI_DISABLED);
     CHECK(t.closed == 1);
 }
+
+// internal: the api session token, which the context has only while it is authenticated
+extern "C" const char *ziti_get_api_session_token(ziti_context ztx);
+
+// A dial that the app closes while the controller is still creating its session: the app gets its close
+// callback without waiting for the controller, the memory of the connection stays for the answer of the
+// controller, and the app hears nothing more of the dial.
+TEST_CASE("a dial that was closed while the controller creates its session", "[conn]") {
+    FakeDialController ctrl(500);
+
+    struct dial {
+        ziti_connection conn = nullptr;
+        bool close_called = false;
+        int conn_cb = 0;
+        int closed = 0;
+        bool closed_before_answer = false;
+        int ticks_after_answer = 0;
+    } t;
+
+    run_context(ctrl.url(), 10000, [&](const context_run &run) {
+        if (t.conn == nullptr) {
+            if (ziti_get_api_session_token(run.ztx) == nullptr) return false;
+
+            CHECK(ziti_conn_init(run.ztx, &t.conn, &t) == ZITI_OK);
+            CHECK(ziti_dial(t.conn, "svc",
+                            [](ziti_connection c, int) { static_cast<dial *>(ziti_conn_data(c))->conn_cb++; },
+                            [](ziti_connection, const uint8_t *, ssize_t) -> ssize_t { return 0; }) == ZITI_OK);
+            return false;
+        }
+
+        if (!t.close_called && ctrl.session_requested()) {
+            t.close_called = true;
+            ziti_close(t.conn, [](ziti_connection c) { static_cast<dial *>(ziti_conn_data(c))->closed++; });
+            return false;
+        }
+
+        if (!ctrl.session_answered()) {
+            t.closed_before_answer = t.closed_before_answer || t.closed > 0;
+            return false;
+        }
+
+        // the context has had its turns to act on the answer
+        return ++t.ticks_after_answer > 5;
+    });
+
+    CHECK(t.closed_before_answer);
+    CHECK(t.closed == 1);
+    CHECK(t.conn_cb == 0);
+}
