@@ -67,6 +67,13 @@ pkg_check_modules(STC REQUIRED IMPORTED_TARGET stc)
 set(ZITI_HEADER_FILES
         ${PROJECT_SOURCE_DIR}/includes/ziti/errors.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/handles.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/context.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/connection.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/posture.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/mfa.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/ext_auth.h
+        ${PROJECT_SOURCE_DIR}/includes/ziti/cert.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/enums.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_src.h
         ${PROJECT_SOURCE_DIR}/includes/ziti/ziti_events.h
