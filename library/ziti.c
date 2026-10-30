@@ -1017,7 +1017,10 @@ bool ziti_is_mfa_enrolled(ziti_context ztx) {
 int ziti_get_transfer_rates(ziti_context ztx, double *up, double *down) {
     if (!ztx->enabled) return ZITI_DISABLED;
 
-    return metrics_rate_get(&ztx->up_rate, up) || metrics_rate_get(&ztx->down_rate, down);
+    if (metrics_rate_get(&ztx->up_rate, up) != 0 || metrics_rate_get(&ztx->down_rate, down) != 0) {
+        return ZITI_INVALID_STATE;
+    }
+    return ZITI_OK;
 }
 
 static void free_ztx(uv_handle_t *h) {

@@ -36,6 +36,7 @@ extern "C" {
  * available during a ziti_pq_mac_cb()
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param id the id of the posture query this response answers, as received by ziti_pq_mac_cb()
  * @param mac_addresses an array of the mac addresses the host currently has access to. Values should be hex strings. Nil signifies not supported.
  * @param num_mac the size of the mac_addresses array
  *
@@ -50,6 +51,10 @@ typedef void (*ziti_pr_mac_cb)(ziti_context ztx, const char *id, char **mac_addr
  * The callback will be supplied a followup callback to supply an array of
  * MAC Addresses.
  *
+ * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param id the id of the posture query to answer, to be passed on to response_cb
+ * @param response_cb the callback to invoke to supply values
+ *
  * @see ziti_pr_mac_cb
  */
 typedef void (*ziti_pq_mac_cb)(ziti_context ztx, const char *id, ziti_pr_mac_cb response_cb);
@@ -61,6 +66,7 @@ typedef void (*ziti_pq_mac_cb)(ziti_context ztx, const char *id, ziti_pr_mac_cb 
  * of the host during a ziti_pq_domain_cb()
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param id the id of the posture query this response answers, as received by ziti_pq_domain_cb()
  * @param domain the domain the host has joint or nil if not supported
  *
  *  @see ziti_pq_domain_cb()
@@ -74,6 +80,7 @@ typedef void (*ziti_pr_domain_cb)(ziti_context ztx, const char *id, const char *
  * The callback will be supplied a followup callback to supply the host's domain.
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param id the id of the posture query to answer, to be passed on to response_cb
  * @param response_cb the callback to invoke to supply values
  *
  * @see ziti_pr_domain_cb
@@ -87,6 +94,7 @@ typedef void (*ziti_pq_domain_cb)(ziti_context ztx, const char *id, ziti_pr_doma
  * of the host during a ziti_pq_os_cb()
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param id the id of the posture query this response answers, as received by ziti_pq_os_cb()
  * @param os_type the OS type: Windows, Linux, Android, macOS, iOS
  * @param os_version the OS version or kernel version
  * @param os_build the build of the OS or nil if not supported
@@ -102,6 +110,7 @@ typedef void (*ziti_pr_os_cb)(ziti_context ztx, const char *id, const char *os_t
  * The callback will be supplied a followup callback to supply the host's OS information.
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param id the id of the posture query to answer, to be passed on to response_cb
  * @param response_cb the callback to invoke to supply values
  *
  * @see ziti_pr_os_cb
@@ -116,6 +125,7 @@ typedef void (*ziti_pq_os_cb)(ziti_context ztx, const char *id, ziti_pr_os_cb re
  *  from the host during a ziti_pq_process_cb()
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param id the id of the posture query this response answers, as received by ziti_pq_process_cb()
  * @param path the path of the inspect process
  * @param is_running if the process is running
  * @param sha_512_hash the sha512 hash of the process's binary file
@@ -134,6 +144,7 @@ typedef void(*ziti_pr_process_cb)(ziti_context ztx, const char *id, const char *
  * The callback will be supplied a followup callback to supply the process's status
  *
  * @param ztx the handle to the Ziti Edge identity context needed for other Ziti C SDK functions
+ * @param id the id of the posture query to answer, to be passed on to response_cb
  * @param path the process path to inspect
  * @param response_cb the callback to invoke
  *

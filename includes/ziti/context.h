@@ -40,7 +40,8 @@ extern "C" {
  * This callback is invoked on the conclusion of ziti_service_available(). The result of the function
  * may be an error condition so it is important to verify the status code in this callback. In the
  * event the service does not exist or the identity has not been given the access to the service the
- * #ZITI_SERVICE_UNAVAILABLE error code will be returned otherwise #ZITI_OK is expected.
+ * #ZITI_SERVICE_UNAVAILABLE error code will be returned. If the request to the controller fails, the error code
+ * of that request is returned instead. Otherwise #ZITI_OK is expected.
  *
  * @see ziti_service_available(), ZITI_ERRORS
  */
@@ -255,11 +256,13 @@ extern const ziti_identity *ziti_get_identity(ziti_context ztx);
 /**
  * @brief Retrieve current transfer rates. Rates are in bytes/second.
  *
- * Calculation is using 1 minute EWMA.
+ * The rates are averaged as selected by #ziti_options.metrics_type, a 1 minute EWMA by default.
+ *
  * @param ztx ziti context
  * @param up rate of bytes going up
  * @param down rate of bytes going down
- * @return ZITI_OK or error code
+ * @return #ZITI_OK, #ZITI_DISABLED if the context is not enabled, or #ZITI_INVALID_STATE if no rate is
+ *         being collected (an unsupported #ziti_options.metrics_type). `up` and `down` are only valid on #ZITI_OK.
  */
 ZITI_FUNC
 extern int ziti_get_transfer_rates(ziti_context ztx, double *up, double *down);
@@ -269,7 +272,7 @@ extern int ziti_get_transfer_rates(ziti_context ztx, double *up, double *down);
  * 
  * @param ztx the Ziti Edge identity context to be shut down. this reference is not safe to use after this call
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or corresponding @ref ZITI_ERRORS "error codes"
  */
 ZITI_FUNC
 extern int ziti_shutdown(ziti_context ztx);
@@ -312,15 +315,17 @@ int ziti_get_appdata(ziti_context ztx, const char *key, void *data,
  * @brief Checks availability of the service for the given edge context.
  *
  * Checks to see if a given #ziti_context has a service available by the name supplied. The supplied name
- * is case sensitive. This function is not synchronous - the #ziti_service_cb specified is invoked at the
- * end of the function invocation with the result.
+ * is case sensitive. The #ziti_service_cb specified is invoked with the result: before this function returns
+ * if the context already knows the service, otherwise after the controller has been asked. It is not invoked
+ * when this function returns an error.
  *
  * @param ztx the Ziti Edge identity context to use to check for the service's availability on
  * @param service the name of the service to check
- * @param cb callback called with #ZITI_OK or #ZITI_SERVICE_NOT_AVAILABLE
+ * @param cb callback called with #ZITI_OK, #ZITI_SERVICE_UNAVAILABLE if the controller does not return the
+ *           service, or the error code of the controller request if that fails
  * @param ctx additional context to be passed to the #ziti_service_cb
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK, or #ZITI_DISABLED if the context is disabled
  */
 ZITI_FUNC
 extern int ziti_service_available(ziti_context ztx, const char *service, ziti_service_cb cb, void *ctx);

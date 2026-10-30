@@ -106,7 +106,6 @@ SET(ZITI_SRC_FILES
         conn_bridge.c
         pool.c
         model_collections.c
-        authenticators.c
         crypto.c
         bind.c
         oidc.c

@@ -83,7 +83,7 @@ typedef struct ziti_listen_opts_s {
  *
  * @param conn The Ziti connection which received the data
  * @param data incoming data buffer
- * @param length size of data or error code as defined in #ZITI_ERRORS (will receive #ZITI_EOF
+ * @param length size of data or error code as defined in @ref ZITI_ERRORS "error codes" (will receive #ZITI_EOF
  *               when connection is closed)
  *
  * @return indicate how much data was consumed
@@ -99,7 +99,7 @@ typedef ssize_t (*ziti_data_cb)(ziti_connection conn, const uint8_t *data, ssize
  * If successful the status will be set to #ZITI_OK.
  *
  * @param conn the Ziti connection struct
- * @param status the result of the function. #ZITI_OK if successful otherwise see #ZITI_ERRORS
+ * @param status the result of the function. #ZITI_OK if successful otherwise see @ref ZITI_ERRORS "error codes"
  *
  * @see ziti_dial(), ziti_accept(), ZITI_ERRORS
  */
@@ -110,7 +110,7 @@ typedef void (*ziti_conn_cb)(ziti_connection conn, int status);
  *
  * This callback is invoked after ziti_listen() is completed. The result of the function may be an
  * error condition so it is important to verify the status code in this callback. If successful
- * the status will be set to #ZITI_OK otherwise the value will be a value defined in #ZITI_ERRORS
+ * the status will be set to #ZITI_OK otherwise the value will be a value defined in @ref ZITI_ERRORS "error codes"
  *
  * Generally this callback is used for any preparations necessary before accepting incoming data
  * from the Ziti network.
@@ -170,7 +170,7 @@ typedef void (*ziti_close_cb)(ziti_connection conn);
  * @param conn an uninitialized #ziti_connection to be initialized
  * @param data additional context to carry forward in ziti_dial() and ziti_listen() related callbacks
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or corresponding @ref ZITI_ERRORS "error codes"
  *
  * @see ziti_dial(), ziti_listen(), ZITI_ERRORS
  */
@@ -268,7 +268,8 @@ extern const char *ziti_conn_circuit_id(ziti_connection conn);
  * @param dest_port
  * @param src_host
  * @param src_port
- * @return ZITI_OK or error code
+ * @return the service that intercepts the destination address, or NULL if no service matches it
+ *         or the matching service has no intercept config
  */
 ZITI_FUNC
 extern const ziti_service* ziti_dial_opts_for_addr(ziti_dial_opts *opts, ziti_context ztx, ziti_protocol proto,
@@ -290,14 +291,14 @@ extern void ziti_dial_opts_free(ziti_dial_opts *opts);
  * called back using the provided #ziti_conn_cb.
  *
  * If the dial succeeds the provided #ziti_data_cb is used to handle bytes returned from the service. If the
- * dial fails only the #ziti_conn_cb will be invoked with the corresponding #ZITI_ERRORS code.
+ * dial fails only the #ziti_conn_cb will be invoked with the corresponding @ref ZITI_ERRORS "error code".
  *
  * @param conn the #ziti_connection to use in the dial operation
  * @param service the name of the service to dial
  * @param cb invoked after the dial operation completes
  * @param data_cb invoked if the dial operation succeeds with data received over the connection
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or corresponding @ref ZITI_ERRORS "error codes"
  *
  * @see ziti_dial(), ziti_write()
  */
@@ -327,7 +328,7 @@ extern int ziti_dial_with_options(ziti_connection conn, const char *service,
  * @param lcb invoked after the function completes
  * @param cb a callback invoked when when client is attempting to connect to advertised service
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or corresponding @ref ZITI_ERRORS "error codes"
  *
  * @see ziti_accept()
  */
@@ -357,7 +358,7 @@ extern int ziti_listen_with_options(ziti_connection serv_conn, const char *servi
  * @param precedence new terminator precedence (see #ziti_terminator_precedence_s), or
  *                   NULL to leave unchanged
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK, or #ZITI_INVALID_STATE if there is something to update but the connection is not bound yet
  *
  * @see ziti_listen(), ziti_listen_with_options(), ziti_send_health_event()
  */
@@ -375,7 +376,7 @@ extern int ziti_update_terminator(ziti_connection server, const uint16_t *cost, 
  *               ziti_listen_with_options()
  * @param pass true if the health check passed, false if it failed
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK, or #ZITI_INVALID_STATE if the connection is not bound yet
  *
  * @see ziti_update_terminator()
  */
@@ -400,7 +401,7 @@ extern int ziti_send_health_event(ziti_connection server, bool pass);
  * @param cb a callback invoked when the function completes
  * @param data_cb a callback invoked each time the client sends data
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or corresponding @ref ZITI_ERRORS "error codes"
  *
  * @see ziti_listen()
  */
@@ -420,8 +421,9 @@ extern int ziti_accept(ziti_connection clt, ziti_conn_cb cb, ziti_data_cb data_c
  * @param close_cb callback called after connection is closed
  *
  * @return #ZITI_OK
- *         #ZITI_CONN_CLOSED if connection was already ziti_close() was already called on the given connection
- *         other #ZITI_ERRORS
+ *         #ZITI_CONN_CLOSED if ziti_close() was already called on the given connection
+ *         #ZITI_INVALID_STATE if conn is NULL
+ *         other @ref ZITI_ERRORS "error codes"
  */
 ZITI_FUNC
 extern int ziti_close(ziti_connection conn, ziti_close_cb close_cb);
@@ -441,7 +443,7 @@ extern int ziti_close(ziti_connection conn, ziti_close_cb close_cb);
  *
  * @param conn the #ziti_connection to be closed
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or corresponding @ref ZITI_ERRORS "error codes"
  */
 ZITI_FUNC
 extern int ziti_close_write(ziti_connection conn);
@@ -460,7 +462,7 @@ extern int ziti_close_write(ziti_connection conn);
  * @param write_cb a callback invoked after the function completes indicating the buffer can now be reclaimed
  * @param write_ctx additional context to be passed to the #ziti_write_cb callback
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or corresponding @ref ZITI_ERRORS "error codes"
  */
 ZITI_FUNC
 extern int ziti_write(ziti_connection conn, const uint8_t *data, size_t length, ziti_write_cb write_cb, void *write_ctx);
