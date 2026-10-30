@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <cstring>
+#include <string>
+#include <vector>
 #include "catch2_includes.hpp"
 #include <catch2/generators/catch_generators.hpp>
 
@@ -21,6 +23,8 @@
 #include <tuple>
 
 #include <json-c/json.h>
+
+#include <zt_cstr.h>
 
 #define BAR_MODEL(xx, ...)\
 xx(num, model_number, none, num, __VA_ARGS__)\
@@ -853,4 +857,269 @@ TEST_CASE("parse duration", "[model]") {
     CAPTURE(test_input);
         // check it matches the pre-calculated data
     REQUIRE(d.timeout == expected_output);
+}
+
+// cstr is the stc string: a plain field is stored in the struct, a ptr/array/list/map element is allocated
+typedef cstr **cstr_array;
+
+#define CSTR_MODEL(XX, ...) \
+XX(name, cstr, none, name, __VA_ARGS__) \
+XX(nick, cstr, ptr, nick, __VA_ARGS__) \
+XX(aliases, cstr, array, aliases, __VA_ARGS__) \
+XX(roles, cstr, list, roles, __VA_ARGS__) \
+XX(labels, cstr, map, labels, __VA_ARGS__)
+
+DECLARE_MODEL(CstrHolder, CSTR_MODEL)
+IMPL_MODEL(CstrHolder, CSTR_MODEL)
+
+#define CSTR_HOLDER_JSON \
+    R"({"name":"alice","nick":"al","aliases":["a","b"],"roles":["admin","user"],"labels":{"env":"prod"}})"
+
+static std::vector<std::string> cstr_values(const cstr_array arr) {
+    std::vector<std::string> values;
+    for (int i = 0; arr != nullptr && arr[i] != nullptr; i++) {
+        values.emplace_back(cstr_str(arr[i]));
+    }
+    return values;
+}
+
+static std::vector<std::string> cstr_values(model_list *list) {
+    std::vector<std::string> values;
+    for (auto it = model_list_iterator(list); it != nullptr; it = model_list_it_next(it)) {
+        values.emplace_back(cstr_str((const cstr *) model_list_it_element(it)));
+    }
+    return values;
+}
+
+static std::string cstr_holder_json(const CstrHolder &h) {
+    size_t len = 0;
+    char *json = CstrHolder_to_json(&h, MODEL_JSON_COMPACT, &len);
+    REQUIRE(json != nullptr);
+    std::string s(json, len);
+    free(json);
+    return s;
+}
+
+TEST_CASE("cstr model round trip", "[model]") {
+    const char *json = CSTR_HOLDER_JSON;
+
+    CstrHolder h;
+    REQUIRE(parse_CstrHolder(&h, json, strlen(json)) == strlen(json));
+
+    CHECK_THAT(cstr_str(&h.name), Equals("alice"));
+    REQUIRE(h.nick != nullptr);
+    CHECK_THAT(cstr_str(h.nick), Equals("al"));
+    CHECK(cstr_values(h.aliases) == std::vector<std::string>{"a", "b"});
+    CHECK(cstr_values(&h.roles) == std::vector<std::string>{"admin", "user"});
+    REQUIRE(model_map_size(&h.labels) == 1);
+    CHECK_THAT(cstr_str((const cstr *) model_map_get(&h.labels, "env")), Equals("prod"));
+
+    CHECK(cstr_holder_json(h) == json);
+
+    free_CstrHolder(&h);
+}
+
+TEST_CASE("cstr model from json object", "[model]") {
+    json_object *j = json_tokener_parse(CSTR_HOLDER_JSON);
+    REQUIRE(j != nullptr);
+
+    CstrHolder h;
+    REQUIRE(CstrHolder_from_json(&h, j) == 0);
+    json_object_put(j);
+
+    CHECK_THAT(cstr_str(&h.name), Equals("alice"));
+    CHECK(cstr_holder_json(h) == CSTR_HOLDER_JSON);
+
+    free_CstrHolder(&h);
+}
+
+TEST_CASE("cstr model missing and null fields", "[model]") {
+    const char *json = GENERATE(
+            R"({})",
+            R"({"name":null,"nick":null,"aliases":null,"roles":null,"labels":null})");
+    CAPTURE(json);
+
+    CstrHolder h;
+    REQUIRE(parse_CstrHolder(&h, json, strlen(json)) == strlen(json));
+
+    CHECK(cstr_is_empty(&h.name));
+    CHECK(h.nick == nullptr);
+    CHECK(h.aliases == nullptr);
+    CHECK(model_list_size(&h.roles) == 0);
+    CHECK(model_map_size(&h.labels) == 0);
+
+    // a plain cstr has no null state: it is written as an empty string, the pointer/collection fields are left out
+    CHECK(cstr_holder_json(h) == R"({"name":""})");
+
+    free_CstrHolder(&h);
+}
+
+TEST_CASE("cstr model empty collections", "[model]") {
+    const char *json = R"({"name":"n","aliases":[],"roles":[],"labels":{}})";
+
+    CstrHolder h;
+    REQUIRE(parse_CstrHolder(&h, json, strlen(json)) == strlen(json));
+
+    CHECK(cstr_values(h.aliases).empty());
+    CHECK(cstr_values(&h.roles).empty());
+    CHECK(model_map_size(&h.labels) == 0);
+
+    free_CstrHolder(&h);
+}
+
+TEST_CASE("cstr model string lengths", "[model]") {
+    // an stc string keeps up to 22 characters inline and allocates beyond that
+    size_t len = GENERATE(0, 1, 22, 23, 24, 300);
+    CAPTURE(len);
+    std::string value(len, 'x');
+
+    std::string json = R"({"name":")" + value + R"(","nick":")" + value + R"(","aliases":[")" + value +
+                       R"("],"roles":[")" + value + R"("],"labels":{"k":")" + value + R"("}})";
+
+    CstrHolder h;
+    REQUIRE(parse_CstrHolder(&h, json.c_str(), json.size()) == json.size());
+
+    CHECK(cstr_size(&h.name) == len);
+    CHECK(value == cstr_str(&h.name));
+    REQUIRE(h.nick != nullptr);
+    CHECK(value == cstr_str(h.nick));
+    CHECK(cstr_values(h.aliases) == std::vector<std::string>{value});
+    CHECK(cstr_values(&h.roles) == std::vector<std::string>{value});
+    CHECK(value == cstr_str((const cstr *) model_map_get(&h.labels, "k")));
+
+    CHECK(cstr_holder_json(h) == json);
+
+    free_CstrHolder(&h);
+}
+
+TEST_CASE("cstr model escaped characters", "[model]") {
+    const char *json = R"({"name":"say \"hi\"\n\ttab \\ slash é ✓","nick":"\u0001 control"})";
+
+    CstrHolder h;
+    REQUIRE(parse_CstrHolder(&h, json, strlen(json)) == strlen(json));
+    CHECK_THAT(cstr_str(&h.name), Equals("say \"hi\"\n\ttab \\ slash \xc3\xa9 \xe2\x9c\x93"));
+    REQUIRE(h.nick != nullptr);
+    CHECK_THAT(cstr_str(h.nick), Equals("\x01 control"));
+
+    // what is written must parse back to the same strings
+    std::string written = cstr_holder_json(h);
+    CstrHolder again;
+    REQUIRE(parse_CstrHolder(&again, written.c_str(), written.size()) == written.size());
+    CHECK(cmp_CstrHolder(&h, &again) == 0);
+
+    free_CstrHolder(&h);
+    free_CstrHolder(&again);
+}
+
+TEST_CASE("cstr model rejects values that are not strings", "[model]") {
+    const char *json = GENERATE(
+            R"({"name":42})",
+            R"({"name":true})",
+            R"({"name":{"a":"b"}})",
+            R"({"nick":1})",
+            R"({"aliases":"a"})",
+            R"({"aliases":["ok",5]})",
+            R"({"roles":"a"})",
+            R"({"roles":["ok",{"a":"b"}]})",
+            R"({"labels":["a"]})",
+            R"({"labels":{"k":false}})",
+            // fields parsed before the bad one are released: inline strings, and strings longer than the inline capacity
+            R"({"name":"valid","nick":"valid","aliases":["a"],"roles":["a"],"labels":{"k":5}})",
+            R"({"name":"a name that is longer than the inline capacity","nick":"a nickname that is longer than the inline capacity","aliases":["an alias that is longer than the inline capacity"],"roles":["a role that is longer than the inline capacity"],"labels":{"k":5}})");
+    CAPTURE(json);
+
+    CstrHolder h;
+    CHECK(parse_CstrHolder(&h, json, strlen(json)) < 0);
+}
+
+TEST_CASE("cstr model compare", "[model]") {
+    const char *base = CSTR_HOLDER_JSON;
+    CstrHolder a;
+    REQUIRE(parse_CstrHolder(&a, base, strlen(base)) == strlen(base));
+
+    SECTION("same content") {
+        CstrHolder b;
+        REQUIRE(parse_CstrHolder(&b, base, strlen(base)) == strlen(base));
+        CHECK(cmp_CstrHolder(&a, &b) == 0);
+        CHECK(cmp_CstrHolder(&a, &a) == 0);
+        free_CstrHolder(&b);
+    }
+
+    SECTION("different content") {
+        const char *other = GENERATE(
+                R"({"name":"bob","nick":"al","aliases":["a","b"],"roles":["admin","user"],"labels":{"env":"prod"}})",
+                R"({"name":"alice","nick":"alf","aliases":["a","b"],"roles":["admin","user"],"labels":{"env":"prod"}})",
+                R"({"name":"alice","aliases":["a","b"],"roles":["admin","user"],"labels":{"env":"prod"}})",
+                R"({"name":"alice","nick":"al","aliases":["a","c"],"roles":["admin","user"],"labels":{"env":"prod"}})",
+                R"({"name":"alice","nick":"al","aliases":["a"],"roles":["admin","user"],"labels":{"env":"prod"}})",
+                R"({"name":"alice","nick":"al","aliases":["a","b"],"roles":["admin","guest"],"labels":{"env":"prod"}})",
+                R"({"name":"alice","nick":"al","aliases":["a","b"],"roles":["admin"],"labels":{"env":"prod"}})",
+                R"({"name":"alice","nick":"al","aliases":["a","b"],"roles":["admin","user"],"labels":{"env":"test"}})",
+                R"({"name":"alice","nick":"al","aliases":["a","b"],"roles":["admin","user"],"labels":{"stage":"prod"}})",
+                R"({"name":"alice","nick":"al","aliases":["a","b"],"roles":["admin","user"]})");
+        CAPTURE(other);
+
+        CstrHolder b;
+        REQUIRE(parse_CstrHolder(&b, other, strlen(other)) == strlen(other));
+        CHECK(cmp_CstrHolder(&a, &b) != 0);
+        CHECK(cmp_CstrHolder(&b, &a) != 0);
+        free_CstrHolder(&b);
+    }
+
+    free_CstrHolder(&a);
+}
+
+TEST_CASE("cstr model array of objects", "[model]") {
+    const char *json = R"([{"name":"a","roles":["x"]},{"name":"b","aliases":["y","z"]}])";
+
+    CstrHolder_array holders = nullptr;
+    REQUIRE(parse_CstrHolder_array(&holders, json, strlen(json)) == strlen(json));
+    REQUIRE(holders != nullptr);
+    REQUIRE(holders[0] != nullptr);
+    REQUIRE(holders[1] != nullptr);
+    CHECK(holders[2] == nullptr);
+
+    CHECK_THAT(cstr_str(&holders[0]->name), Equals("a"));
+    CHECK(cstr_values(&holders[0]->roles) == std::vector<std::string>{"x"});
+    CHECK_THAT(cstr_str(&holders[1]->name), Equals("b"));
+    CHECK(cstr_values(holders[1]->aliases) == std::vector<std::string>{"y", "z"});
+
+    free_CstrHolder_array(&holders);
+    CHECK(holders == nullptr);
+}
+
+TEST_CASE("cstr as a model type", "[model]") {
+    const type_meta *meta = get_cstr_meta();
+    REQUIRE(meta != nullptr);
+    CHECK_THAT(meta->name, Equals("cstr"));
+    CHECK(meta->size == sizeof(cstr));
+
+    cstr *s = (cstr *) model_alloc(meta);
+    REQUIRE(s != nullptr);
+
+    const char *json = R"("a string that is longer than the inline capacity")";
+    REQUIRE(model_parse(s, json, strlen(json), meta) == strlen(json));
+    CHECK_THAT(cstr_str(s), Equals("a string that is longer than the inline capacity"));
+
+    size_t len = 0;
+    char *out = model_to_json(s, meta, MODEL_JSON_COMPACT, &len);
+    REQUIRE(out != nullptr);
+    CHECK(std::string(out, len) == json);
+    free(out);
+
+    cstr *same = (cstr *) model_alloc(meta);
+    REQUIRE(model_parse(same, json, strlen(json), meta) == strlen(json));
+    CHECK(model_cmp(s, same, meta) == 0);
+    cstr_assign(same, "other");
+    CHECK(model_cmp(s, same, meta) != 0);
+
+    const char *not_a_string = "12";
+    cstr *bad = (cstr *) model_alloc(meta);
+    CHECK(model_parse(bad, not_a_string, strlen(not_a_string), meta) < 0);
+
+    model_free(s, meta);
+    model_free(same, meta);
+    free(s);
+    free(same);
+    free(bad);
 }
