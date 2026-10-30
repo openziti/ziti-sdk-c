@@ -210,7 +210,8 @@ namespace {
         ziti_service service{};
         ziti_connection conn;
 
-        dial_fixture() {
+        // connect_now false: the dial is started and the router has not answered yet, see connected()
+        explicit dial_fixture(bool connect_now = true) {
             er.name = (char *) "er";
             session.id = (char *) "session";
             model_list_append(&session.edge_routers, &er);
@@ -228,6 +229,13 @@ namespace {
             conn->rt_conn_id = 7;
             install(e2ee, conn);
 
+            if (connect_now) {
+                connected();
+            }
+        }
+
+        // the router answers the dial
+        void connected() {
             int32_t conn_id = (int32_t) htole32(conn->rt_conn_id);
             hdr_t hdrs[] = {
                 {ConnIdHeader, sizeof(conn_id), (const uint8_t *) &conn_id},
@@ -250,6 +258,28 @@ namespace {
         void advance(uint64_t ms) {
             loop.time += ms;
             run_all_due(&ztx);
+        }
+    };
+
+    int posture_sends = 0;
+
+    // the context of these tests has no posture checks: ziti_send_posture_data() says so every time it runs
+    void count_posture_sends(int, const char *, const char *msg, size_t len) {
+        if (std::string(msg, len).find("endpoint is disabled") != std::string::npos) {
+            posture_sends++;
+        }
+    }
+
+    struct posture_send_counter {
+        posture_send_counter() {
+            posture_sends = 0;
+            ziti_log_set_logger(count_posture_sends);
+            ziti_log_set_level(DEBUG, nullptr);
+        }
+
+        ~posture_send_counter() {
+            ziti_log_set_level(ZITI_LOG_DEFAULT_LEVEL, nullptr);
+            ziti_log_set_logger(nullptr);
         }
     };
 
@@ -388,6 +418,19 @@ TEST_CASE("a write gets a ciphertext buffer that fits tls record framing", "[e2e
     }
 
     f.dispose(conn);
+}
+
+TEST_CASE("a dial sends the posture data once, however often the connect sequence runs", "[connect][posture]") {
+    posture_send_counter counter;
+    dial_fixture f(false);
+    CHECK(posture_sends == 1);
+
+    // the service, the session and the edge router each take the sequence up again
+    process_connect(f.conn, &f.session);
+    process_connect(f.conn, nullptr);
+    CHECK(posture_sends == 1);
+
+    f.connected();
 }
 
 TEST_CASE("multipart payload parsing", "[multipart]") {
