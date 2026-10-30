@@ -29,6 +29,12 @@
 extern "C" {
 #endif
 
+/**
+ * @defgroup ZITI_ERRORS Error codes
+ * @brief The codes returned by the Ziti C SDK API, and ziti_errorstr() to describe them.
+ * @{
+ */
+
 /** The expected outcome of a successful operation */
 #define ZITI_OK                                                 (0)
 /** The provided configuration was not found */
@@ -136,6 +142,8 @@ is offline or did not respond to the request*/
 */
 ZITI_FUNC
 extern const char *ziti_errorstr(int err);
+
+/** @} */
 
 #ifdef __cplusplus
 }

@@ -271,7 +271,7 @@ extern int ziti_get_transfer_rates(ziti_context ztx, double *up, double *down);
  * 
  * @param ztx the Ziti Edge identity context to be shut down. this reference is not safe to use after this call
  *
- * @return #ZITI_OK or corresponding #ZITI_ERRORS
+ * @return #ZITI_OK or corresponding @ref ZITI_ERRORS "error codes"
  */
 ZITI_FUNC
 extern int ziti_shutdown(ziti_context ztx);
