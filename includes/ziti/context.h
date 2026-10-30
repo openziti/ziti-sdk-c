@@ -255,11 +255,13 @@ extern const ziti_identity *ziti_get_identity(ziti_context ztx);
 /**
  * @brief Retrieve current transfer rates. Rates are in bytes/second.
  *
- * Calculation is using 1 minute EWMA.
+ * The rates are averaged as selected by #ziti_options.metrics_type, a 1 minute EWMA by default.
+ *
  * @param ztx ziti context
  * @param up rate of bytes going up
  * @param down rate of bytes going down
- * @return ZITI_OK or error code
+ * @return #ZITI_OK, #ZITI_DISABLED if the context is not enabled, or #ZITI_INVALID_STATE if no rate is
+ *         being collected (an unsupported #ziti_options.metrics_type). `up` and `down` are only valid on #ZITI_OK.
  */
 ZITI_FUNC
 extern int ziti_get_transfer_rates(ziti_context ztx, double *up, double *down);
