@@ -542,8 +542,13 @@ int model_array_from_json(void ***arr, json_object *json, const type_meta *el_me
     }
     if (rc != 0) {
         for (int i = 0; elems[i] != NULL; i++) {
-            model_free(elems[i], el_meta);
-            free(elems[i]);
+            if (el_meta == get_model_string_meta()) {
+                // the element is the string itself
+                el_meta->destroyer(&elems[i]);
+            } else {
+                model_free(elems[i], el_meta);
+                free(elems[i]);
+            }
         }
         FREE(elems);
     }

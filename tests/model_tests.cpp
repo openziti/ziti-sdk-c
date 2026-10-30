@@ -754,6 +754,23 @@ TEST_CASE("list element that fails to parse is released", "[model]") {
     CHECK(parse_ListsObj(&o, json, strlen(json)) < 0);
 }
 
+TEST_CASE("array element that fails to parse is released", "[model]") {
+    const char *json = GENERATE(
+            R"({"errors":["abc",5]})",
+            R"({"codes":[1,"x"]})");
+    CAPTURE(json);
+
+    Bar bar;
+    CHECK(parse_Bar(&bar, json, strlen(json)) < 0);
+}
+
+TEST_CASE("array of objects with an element that fails to parse is released", "[model]") {
+    const char *json = R"({"bara":[{"msg":"first","num":1},{"msg":"second","num":"many"}]})";
+
+    Foo foo;
+    CHECK(parse_Foo(&foo, json, strlen(json)) < 0);
+}
+
 TEST_CASE("lists model", "[model]") {
     const char *json = R"(
 {
