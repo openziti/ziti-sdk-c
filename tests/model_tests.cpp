@@ -742,6 +742,14 @@ TEST_CASE("parse model_list", "[model]") {
     model_list_clear(&list, (void (*)(void *)) (free_Fruit_ptr));
 }
 
+TEST_CASE("list element that fails to parse is released", "[model]") {
+    // only a leak checker (LSan, leaks) tells: the first element goes with the list, the bad one was never in it
+    const char *json = R"({"fruit":[{"color":"red","count":1},{"color":"green","count":"many"}]})";
+
+    ListsObj o;
+    CHECK(parse_ListsObj(&o, json, strlen(json)) < 0);
+}
+
 TEST_CASE("lists model", "[model]") {
     const char *json = R"(
 {
