@@ -581,11 +581,18 @@ int model_list_from_json (model_list *list, json_object *json, const type_meta *
     }
 
     if (rc != 0) {
+        bool str_type = (el_meta == get_model_string_meta() || el_meta == get_json_meta());
+        // number and bool keep their value in the element pointer itself
+        bool value_type = (el_meta == get_model_number_meta() || el_meta == get_model_bool_meta());
         model_list_iter it = model_list_iterator(list);
         while (it) {
             void* val = (void*)model_list_it_element(it);
-            model_free(val, el_meta);
-            free(val);
+            if (str_type) {
+                el_meta->destroyer(&val);
+            } else if (!value_type) {
+                model_free(val, el_meta);
+                free(val);
+            }
             it = model_list_it_remove(it);
         }
     }
