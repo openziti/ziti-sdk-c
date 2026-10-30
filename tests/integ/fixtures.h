@@ -120,6 +120,11 @@ class ZitiTestCase : public LoopTestCase {
         unsigned success{};         // every time authentication completes, a re-authentication included
         std::string totpEnroll;
     } authState;
+    struct {                        // the last PC_MFA status event: only a test that subscribes to ZitiPostureStatusEvent sees it
+        unsigned mfa_events{};
+        int64_t mfa_last_code_at{-1};
+        int64_t mfa_timeout{-2};
+    } postureStatus;
 
     ZitiTestCase() {
         ziti_log_init(loop(), 5, nullptr);
@@ -151,6 +156,15 @@ class ZitiTestCase : public LoopTestCase {
                 if (ev->auth.detail) {
                     self->authState.totpEnroll = ev->auth.detail;
                 }
+            }
+            break;
+        case ZitiPostureStatusEvent:
+            if (ev->posture_status.query_type == ziti_posture_query_type_PC_MFA) {
+                ZITI_LOG(INFO, "got MFA status event: last_code_at=%lld timeout=%lld",
+                         (long long) ev->posture_status.mfa.last_code_at, (long long) ev->posture_status.mfa.timeout);
+                self->postureStatus.mfa_events++;
+                self->postureStatus.mfa_last_code_at = ev->posture_status.mfa.last_code_at;
+                self->postureStatus.mfa_timeout = ev->posture_status.mfa.timeout;
             }
             break;
 

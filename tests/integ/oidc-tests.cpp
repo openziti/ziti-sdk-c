@@ -304,6 +304,11 @@ TEST_CASE_METHOD(ZitiTestCase, "mfa-enrolled", "[mfa-enrolled]") {
 // has the auth policy of test_auth.py: cert as primary and TOTP as secondary.
 class TotpEnrolled : public ZitiTestCase {
 protected:
+    TotpEnrolled() {
+        options.events |= ZitiPostureStatusEvent;
+        REQUIRE_ZITI_OK(ziti_context_set_options(ztx, &options));
+    }
+
     std::vector<uint8_t> key;
 
     std::string code_now() const {
@@ -495,9 +500,18 @@ TEST_CASE_METHOD(TotpEnrolled, "oidc-totp-posture-check", "[totp]") {
     REQUIRE(load() == ZITI_OK);
     CHECK(dial(ztx, service) != ZITI_OK);
 
+    // the app is told that the service has an MFA check that no code was given for, and that it has no timeout
+    CHECK(run(UNTIL(postureStatus.mfa_events > 0)));
+    CHECK(postureStatus.mfa_last_code_at == 0);
+    CHECK(postureStatus.mfa_timeout == -1);
+
     enroll_and_verify();
     CHECK(run(UNTIL(*ztx_test_totp_token(ztx) != '\0')));
     CHECK_ZITI_OK(dial_after_totp_token(ztx, service));
+
+    // and that a code was given just now
+    CHECK(run(UNTIL(postureStatus.mfa_last_code_at != 0)));
+    CHECK(std::llabs((long long) time(nullptr) - postureStatus.mfa_last_code_at) < 120);
 
     login second;
     start_login(second);

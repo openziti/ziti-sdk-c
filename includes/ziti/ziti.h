@@ -1161,8 +1161,9 @@ extern void ziti_mfa_new_recovery_codes(ziti_context ztx, char *code, ziti_mfa_r
  * @brief Attempt to submit an MFA code for evaluation
  *
  * Attempts submit an MFA code for evaluation. This should be done in response to
- * the `ZitiMfaAuthEvent` event or when posture check timeouts would occur for a
- * service.
+ * a `ZitiAuthEvent` with `ziti_auth_prompt_totp`, or when a `ZitiPostureStatusEvent` of
+ * an MFA posture check (`ziti_posture_status_mfa_info`) says that no code was given
+ * (`last_code_at` is 0) or that the code is expiring (`expiring`).
  *
  * An error status will be returned if the request fails, #ZITI_OK is expected on success
  * via the `ziti_mfa_cb` provided.

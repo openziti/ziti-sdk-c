@@ -1853,6 +1853,8 @@ static void update_services(ziti_service_array services, const ziti_error *error
                 ztx->services_loaded ? "false" : "true", addIdx, remIdx, chIdx);
         ziti_send_event(ztx, &ev);
         ztx->services_loaded = true;
+        // the MFA checks of the services that are there now: new ones, and the ones whose services changed
+        ztx_posture_notify_mfa(ztx);
     } else {
         ZTX_LOG(VERBOSE, "no services added, changed, or removed");
     }
@@ -2950,6 +2952,8 @@ static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, vo
             // the first look at the posture data comes right after full authentication, before this session is known,
             // and sends nothing: a TOTP token that is already there must not wait for the next one
             ztx_posture_send_all(ztx);
+            // and the TOTP token of the session that is gone is no code of this one
+            ztx_posture_notify_mfa(ztx);
         }
 
         if (ztx->id_creds.cert == NULL && (changed || ztx->session_creds.cert == NULL)) {

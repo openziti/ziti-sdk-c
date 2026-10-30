@@ -138,6 +138,8 @@ static void totp_token_cb(totp_token *token, const ziti_error *err, void *ctx) {
         if (status == ZITI_OK) {
             ZTX_LOG(DEBUG, "the TOTP token of the api session is in place");
             ztx_posture_send_all(ztx);
+            // the app hears of the code after the token is on its way to the routers, not before
+            ztx_posture_notify_mfa(ztx);
         } else {
             ZTX_LOG(WARN, "the TOTP token of the controller is unusable: %d/%s", status, ziti_errorstr(status));
         }

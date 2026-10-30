@@ -89,6 +89,27 @@ struct ziti_posture_status_process_info {
 };
 
 /**
+ * \brief Payload for a PC_MFA posture check: the state of the TOTP code behind it.
+ *
+ * One code serves every MFA check, so there is one event for all of them. It is about the checks
+ * that need a code now or, when none does, the check whose code expires first; `services` lists
+ * the services of those checks. The app needs a code (see ziti_mfa_auth()) when `last_code_at`
+ * is 0 or `expiring` is true.
+ *
+ * The event is sent when a check is first seen and when any of these values change; it can come
+ * a little after the fact. Only OIDC authentication reports a code, otherwise `last_code_at` is
+ * always 0.
+ */
+struct ziti_posture_status_mfa_info {
+    /** seconds a code counts for (the shortest of the checks); -1 when there is no timeout */
+    int64_t timeout;
+    /** when the last code was given, in seconds since the epoch; 0 when none was since the login */
+    int64_t last_code_at;
+    /** the code is about to expire or has expired; never true without a code or a timeout */
+    bool expiring;
+};
+
+/**
  * \brief Posture Status event.
  *
  * Notifies the app of the SDK's own local observation of a posture check's requirements --
@@ -103,16 +124,17 @@ struct ziti_posture_status_process_info {
  * `services` lists every service this check currently applies to. One event is sent per
  * status change, never one per service.
  *
- * `query_type` discriminates the union below; only PC_Process/PC_Process_Multi are
+ * `query_type` discriminates the union below; PC_Process/PC_Process_Multi and PC_MFA are
  * currently implemented.
  */
 struct ziti_posture_status_event {
-    /** every service this check currently governs; NULL-terminated */
+    /** every service this check currently governs; NULL-terminated (for PC_MFA see ziti_posture_status_mfa_info) */
     ziti_service_array services;
     ziti_posture_query_type query_type;
 
     union {
         struct ziti_posture_status_process_info process;
+        struct ziti_posture_status_mfa_info mfa;
     };
 };
 /**

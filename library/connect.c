@@ -80,6 +80,8 @@ struct ziti_conn_req {
     int retry_count;
     struct waiter_s *waiter;
     bool failed;
+    // the posture data was sent for this attempt: process_connect() runs again for the service, the session and the router
+    bool posture_sent;
 
     deadline_t deadline;
 };
@@ -594,7 +596,10 @@ void process_connect(struct ziti_conn *conn, ziti_session *session) {
         return;
     }
 
-    ziti_send_posture_data(ztx);
+    if (!req->posture_sent) {
+        req->posture_sent = true;
+        ziti_send_posture_data(ztx);
+    }
     if (session == NULL) {
         session = model_map_get(&ztx->sessions, cstr_str(&req->service_id));
     }
@@ -1218,6 +1223,8 @@ static void restart_connect(struct ziti_conn *conn) {
 
     CONN_LOG(DEBUG, "restarting connect sequence");
     conn->channel = NULL;
+    // the retry may be on a new api session: it needs the posture data again
+    conn->conn_req->posture_sent = false;
 
     process_connect(conn, NULL);
 }
