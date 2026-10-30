@@ -33,9 +33,6 @@ struct posture_checks {
     // map<type/process_path,response>
     model_map responses;
 
-    // map<type/process_path, is errored
-    model_map error_states;
-
     cstr previous_api_session_id;
     cstr controller_instance_id;
     bool must_send;
@@ -61,7 +58,7 @@ void ziti_posture_init(ziti_context ztx, long interval_secs);
 void ziti_posture_checks_free(struct posture_checks *pcs);
 
 // keeps a TOTP token to be sent to the routers as a TotpToken posture response; does not send it, and does not tell the app
-// (ztx_posture_notify_mfa()): the app is told once the routers have the token, ztx_posture_send_all() comes first.
+// (ztx_posture_notify_mfa()): the app is told once the token is sent to the routers, ztx_posture_send_all() comes first.
 // ZITI_JWT_INVALID: not a JWT with a z_asid claim, ZITI_INVALID_STATE: no posture state (endpoint disabled)
 int ztx_posture_set_totp_token(ziti_context ztx, const char *token);
 
@@ -69,6 +66,10 @@ int ztx_posture_set_totp_token(ziti_context ztx, const char *token);
 // gets, see ziti_send_posture_er()); it does not ask the OS, MAC, domain and process queries again.
 // Nothing happens unless a TOTP token is there for the api session the context is on.
 void ztx_posture_send_all(ziti_context ztx);
+
+// what the posture timer does every period: ztx_posture_notify_mfa(), then ziti_send_posture_data(). The notify is not part of
+// ziti_send_posture_data(), which ziti_dial() calls: the app's event handler must not run inside ziti_dial()
+void ztx_posture_tick(ziti_context ztx);
 
 void ziti_send_posture_data(ziti_context ztx);
 

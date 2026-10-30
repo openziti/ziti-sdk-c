@@ -44,10 +44,7 @@
 #define NANOS(s) ((s) * 1e9)
 #define MILLIS(s) ((s) * 1000)
 
-const int NO_TIMEOUTS = -1;
-
-const bool IS_ERRORED = true;
-const bool IS_NOT_ERRORED = false;
+static const int NO_TIMEOUTS = -1;
 
 #define PC_DOMAIN_TYPE ziti_posture_query_types.name(ziti_posture_query_types.PC_Domain)
 #define PC_OS_TYPE ziti_posture_query_types.name(ziti_posture_query_types.PC_OS)
@@ -71,11 +68,6 @@ struct pr_info_s {
 
 typedef struct pr_info_s pr_info;
 
-struct pr_cb_ctx_s {
-    ziti_context ztx;
-    pr_info *info;
-};
-
 struct process_work {
     uv_work_t w;
     bool canceled;
@@ -90,7 +82,23 @@ struct process_work {
     int num_signers;
 };
 
-typedef struct pr_cb_ctx_s pr_cb_ctx;
+// an MFA query of a service; the pairs of one service come together
+typedef ziti_service *ziti_service_ptr;
+typedef struct mfa_pair {
+    ziti_service_ptr service;
+    const ziti_posture_query *query;
+} mfa_pair_t;
+
+#define i_type mfa_pair_vec
+#define i_key mfa_pair_t
+#include <stc/vec.h>
+
+
+#define i_type service_map
+#define i_keypro cstr
+#define i_val ziti_service_ptr
+#include <stc/smap.h>
+
 
 static void free_ziti_pr(ziti_pr_base *pr);
 
@@ -110,8 +118,6 @@ static void ziti_pr_handle_process(ziti_context ztx, const char *id, const char 
 static void ziti_pr_send(ziti_context ztx);
 
 static void ziti_pr_send_bulk(ziti_context ztx);
-
-static bool ziti_pr_is_info_errored(ziti_context ztx, const char *id);
 
 static void default_pq_os(ziti_context ztx, const char *id, ziti_pr_os_cb response_cb);
 
@@ -159,7 +165,6 @@ void ziti_posture_checks_free(struct posture_checks *pcs) {
     if (pcs != NULL) {
         clear_deadline(&pcs->deadline);
         model_map_clear(&pcs->responses, (_free_f)ziti_pr_free_pr_info);
-        model_map_clear(&pcs->error_states, NULL);
         model_map_iter it = model_map_iterator(&pcs->active_work);
         while (it) {
             struct process_work *pwk = model_map_it_value(it);
@@ -217,9 +222,18 @@ static const char *ztx_current_totp_token(ziti_context ztx) {
     return cstr_str(&checks->totp.token);
 }
 
+void ztx_posture_tick(ziti_context ztx) {
+    // the clock moves a code towards the end of its timeout between the events that change anything else about it.
+    // Not part of ziti_send_posture_data(): that runs inside ziti_dial(), and the app's event handler must not
+    if (ztx->auth_state == ZitiAuthStateFullyAuthenticated && ztx->session != NULL) {
+        ztx_posture_notify_mfa(ztx);
+    }
+    ziti_send_posture_data(ztx);
+}
+
 static void ziti_pr_ticker_cb(void *data) {
     ziti_context ztx = (ziti_context)data;
-    ziti_send_posture_data(ztx);
+    ztx_posture_tick(ztx);
     ztx_set_deadline(ztx, ztx->posture_checks->send_period, &ztx->posture_checks->deadline, ziti_pr_ticker_cb, ztx);
 }
 
@@ -246,9 +260,6 @@ void ziti_send_posture_data(ziti_context ztx) {
     }
 
     ZTX_LOG(VERBOSE, "starting to send posture data");
-
-    // the clock moves a code towards the end of its timeout between the events that change anything else about it
-    ztx_posture_notify_mfa(ztx);
 
     bool new_session_id = !cstr_equals(&checks->previous_api_session_id, ztx->session->id);
 
@@ -553,7 +564,7 @@ static void ziti_collect_pr(ziti_context ztx, void *req) {
             free_ziti_pr(pr);
         }
 
-        current_info->should_send = ztx->posture_checks->must_send_every_time || ziti_pr_is_info_errored(ztx, current_info->id) || changed;
+        current_info->should_send = ztx->posture_checks->must_send_every_time || changed;
     } else {
         ZTX_LOG(WARN, "response info not found, posture check obsolete? id[%s]", pr_key);
         free_ziti_pr(pr);
@@ -599,23 +610,6 @@ static void ziti_pr_post_bulk_cb(ziti_pr_response *pr_resp, const ziti_error *er
     }
 
     free_ziti_pr_response_ptr(pr_resp);
-}
-
-static void ziti_pr_set_info_errored(ziti_context ztx, const char *id) {
-    model_map_set(&ztx->posture_checks->error_states, id, (void *)&IS_ERRORED);
-}
-
-static void ziti_pr_set_info_success(ziti_context ztx, const char *id) {
-    model_map_set(&ztx->posture_checks->error_states, id, (void *)&IS_NOT_ERRORED);
-}
-
-static bool ziti_pr_is_info_errored(ziti_context ztx, const char *id) {
-    bool *is_errored = model_map_get(&ztx->posture_checks->error_states, id);
-    if (is_errored == NULL) {
-        return false;
-    }
-
-    return *is_errored;
 }
 
 static void ziti_pr_send(ziti_context ztx) {
@@ -1244,44 +1238,34 @@ struct mfa_status {
     int64_t timeout;
     bool expiring;
     // the services of the event: their ids, sorted and joined, see services_key()
-    char *services;
+    cstr services;
 };
 
 static void mfa_status_free(struct mfa_status *status) {
     if (status != NULL) {
-        free(status->services);
+        cstr_drop(&status->services);
         free(status);
     }
 }
 
-static int compare_ids(const void *a, const void *b) {
-    return strcmp(*(const char *const *) a, *(const char *const *) b);
+// the ids of the services, sorted and joined: the same services in any order are the same key
+static cstr services_key(const service_map *services) {
+    cstr key = cstr_init();
+    cstr_reserve(&key, service_map_size(services) * 16); // ids are short
+    c_foreach (it, service_map, *services) {
+        cstr_append(&key, cstr_str(&it.ref->first));
+        cstr_append(&key, ",");
+    }
+    return key;
 }
 
-// the ids of the services, sorted and joined: the same services in any order are the same key
-static char *services_key(ziti_service **services) {
-    size_t count = 0;
-    size_t len = 1;
-    for (; services[count] != NULL; count++) {
-        len += strlen(services[count]->id) + 1;
+static ziti_service** service_arr(const service_map *services) {
+    ziti_service** arr = calloc(service_map_size(services) + 1, sizeof(ziti_service*));
+    int i = 0;
+    c_foreach (it, service_map, *services) {
+        arr[i++] = it.ref->second;
     }
-
-    const char **ids = calloc(count + 1, sizeof(char *));
-    for (size_t i = 0; i < count; i++) {
-        ids[i] = services[i]->id;
-    }
-    qsort(ids, count, sizeof(char *), compare_ids);
-
-    char *key = calloc(len, 1);
-    char *p = key;
-    for (size_t i = 0; i < count; i++) {
-        size_t n = strlen(ids[i]);
-        memcpy(p, ids[i], n);
-        p += n;
-        *p++ = ',';
-    }
-    free(ids);
-    return key;
+    return arr;
 }
 
 // a code starts to expire this long before the end of its timeout, or half of the timeout when that is shorter
@@ -1305,22 +1289,6 @@ static int64_t mfa_code_ends(int64_t last_code_at, int64_t timeout) {
     return (last_code_at != 0 && timeout >= 0) ? last_code_at + timeout : INT64_MAX;
 }
 
-// the services that have any of the queries, each once
-static ziti_service **collect_services_for_queries(ziti_context ztx, const ziti_posture_query **queries, size_t count) {
-    ziti_service **services = calloc(model_map_size(&ztx->services) + 1, sizeof(ziti_service *));
-    size_t idx = 0;
-    const char *name;
-    ziti_service *svc;
-    MODEL_MAP_FOREACH(name, svc, &ztx->services) {
-        for (size_t i = 0; i < count; i++) {
-            if (service_has_query(svc, queries[i]->id)) {
-                services[idx++] = svc;
-                break;
-            }
-        }
-    }
-    return services;
-}
 
 void ztx_posture_notify_mfa(ziti_context ztx) {
     struct posture_checks *checks = ztx->posture_checks;
@@ -1332,8 +1300,8 @@ void ztx_posture_notify_mfa(ziti_context ztx) {
     int64_t last_code_at = ztx_current_totp_token(ztx) != NULL ? checks->totp.issued_at : 0;
     int64_t now = (int64_t) time(NULL);
 
-    // the MFA queries of the services the context has now, each once: one query can govern several services
-    model_map current = {0};
+    // the MFA queries of the services the context has now, with the service they belong to
+    mfa_pair_vec pv = {0};
     const char *name;
     ziti_service *svc;
     MODEL_MAP_FOREACH(name, svc, &ztx->services) {
@@ -1341,69 +1309,58 @@ void ztx_posture_notify_mfa(ziti_context ztx) {
         ziti_posture_query_set *set;
         MODEL_MAP_FOREACH(policy_id, set, &svc->posture_query_map) {
             for (int i = 0; set->posture_queries[i] != NULL; i++) {
-                const ziti_posture_query *query = set->posture_queries[i];
-                if (query->query_type == ziti_posture_query_type_PC_MFA && model_map_get(&current, query->id) == NULL) {
-                    model_map_set(&current, query->id, (void *) query);
+                if (set->posture_queries[i]->query_type != ziti_posture_query_type_PC_MFA) {
+                    continue;
                 }
+                mfa_pair_vec_push_back(&pv, (mfa_pair_t){.service = svc, .query = set->posture_queries[i]});
             }
         }
     }
 
-    // the queries the app is told of: all that need a code now, or else the ones whose code ends first
-    const ziti_posture_query **group = calloc(model_map_size(&current) + 1, sizeof(*group));
-    size_t count = 0;
-    bool unmet = false;
-    int64_t soonest = INT64_MAX;
-    model_map_iter it = model_map_iterator(&current);
-    while (it != NULL) {
-        const ziti_posture_query *query = model_map_it_value(it);
-        it = model_map_it_next(it);
-
-        if (mfa_code_unmet(last_code_at, query->timeout, now)) {
-            if (!unmet) {
-                unmet = true;
-                count = 0;
-            }
-            group[count++] = query;
-        } else if (!unmet) {
-            int64_t ends = mfa_code_ends(last_code_at, query->timeout);
-            if (ends < soonest) {
-                soonest = ends;
-                count = 0;
-            }
-            if (ends == soonest) {
-                group[count++] = query;
-            }
-        }
-    }
-    model_map_clear(&current, NULL);
-
-    if (count == 0) {
+    if (mfa_pair_vec_is_empty(&pv)) {
         // no service has an MFA check: nothing to tell, and the app is told again when one comes back
         mfa_status_free(checks->mfa_told);
         checks->mfa_told = NULL;
-        free(group);
         return;
+    }
+
+    // the app is told of the queries that need a code now, or else of the ones whose code ends first
+    bool unmet = false;
+    int64_t soonest = INT64_MAX;
+    c_foreach(i, mfa_pair_vec, pv) {
+        const ziti_posture_query *query = i.ref->query;
+        int64_t ends = mfa_code_ends(last_code_at, query->timeout);
+        if (mfa_code_unmet(last_code_at, query->timeout, now)) {
+            unmet = true;
+        } else if (ends < soonest) {
+            soonest = ends;
+        }
     }
 
     int64_t timeout = -1;
     bool expiring = false;
-    for (size_t i = 0; i < count; i++) {
-        if (group[i]->timeout >= 0 && (timeout < 0 || group[i]->timeout < timeout)) {
-            timeout = group[i]->timeout;
+    service_map services = {0};
+    c_foreach (i, mfa_pair_vec, pv) {
+        const ziti_posture_query *query = i.ref->query;
+        bool selected = unmet ? mfa_code_unmet(last_code_at, query->timeout, now)
+                              : mfa_code_ends(last_code_at, query->timeout) == soonest;
+        if (!selected) {
+            continue;
         }
-        expiring = expiring || mfa_code_expiring(last_code_at, group[i]->timeout, now);
+        if (query->timeout >= 0 && (timeout < 0 || query->timeout < timeout)) {
+            timeout = query->timeout;
+        }
+        expiring = expiring || mfa_code_expiring(last_code_at, query->timeout, now);
+        service_map_emplace(&services, i.ref->service->id, i.ref->service);
     }
-
-    ziti_service **services = collect_services_for_queries(ztx, group, count);
-    free(group);
-    char *key = services_key(services);
+    mfa_pair_vec_drop(&pv);
+    cstr key = services_key(&services);
 
     struct mfa_status *told = checks->mfa_told;
     if (told != NULL && told->last_code_at == last_code_at && told->timeout == timeout && told->expiring == expiring &&
-        strcmp(told->services, key) == 0) {
-        free(key);
-        free(services);
+        cstr_eq(&told->services, &key)) {
+        cstr_drop(&key);
+        service_map_drop(&services);
         return;
     }
     if (told == NULL) {
@@ -1413,13 +1370,14 @@ void ztx_posture_notify_mfa(ziti_context ztx) {
     told->last_code_at = last_code_at;
     told->timeout = timeout;
     told->expiring = expiring;
-    free(told->services);
+    cstr_drop(&told->services);
     told->services = key;
 
+    ziti_service** serv_arr = service_arr(&services);
     ziti_event_t ev = {
             .type = ZitiPostureStatusEvent,
             .posture_status = {
-                    .services = services,
+                    .services = serv_arr,
                     .query_type = ziti_posture_query_type_PC_MFA,
                     .mfa = {
                             .timeout = timeout,
@@ -1429,7 +1387,8 @@ void ztx_posture_notify_mfa(ziti_context ztx) {
             },
     };
     ziti_send_event(ztx, &ev);
-    free(services);
+    service_map_drop(&services);
+    free(serv_arr);
 }
 
 static void default_pq_process(ziti_context ztx, const char *id, const char *path, ziti_pr_process_cb cb) {
@@ -1485,7 +1444,7 @@ static void process_check_work(uv_work_t *w) {
     free(matched_path);
 }
 
-void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err, void *ctx) {
+static void ziti_endpoint_state_pr_cb(ziti_pr_response *pr_resp, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     if (err) {
         ZTX_LOG(ERROR, "error during endpoint state posture response submission: %d - %s",

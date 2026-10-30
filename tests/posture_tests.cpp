@@ -477,7 +477,7 @@ namespace {
     }
 
     // keeps the token as the context does when the controller issues it, then tells the app, as totp_token_cb() does once
-    // the routers have the token: an app that reacts to the event can count on the routers having it
+    // the token is sent to the routers: the routers apply it on their own time, so the event is no promise that they have it
     int give_token(ziti_ctx *ztx, const char *token) {
         int rc = ztx_posture_set_totp_token(ztx, token);
         if (rc == ZITI_OK) {
@@ -511,7 +511,7 @@ TEST_CASE("an MFA check is reported once while nothing about its code changes", 
     CHECK(captured_event.count == 1);
 }
 
-TEST_CASE("keeping a TOTP token does not report it, the app is told once the routers have the token", "[posture][totp]") {
+TEST_CASE("keeping a TOTP token does not report it, the app is told once the token is sent to the routers", "[posture][totp]") {
     posture_fixture f(SERVICE_JSON_MFA);
     watch(f);
     ztx_posture_notify_mfa(&f.ztx);
@@ -637,18 +637,36 @@ TEST_CASE("the posture cycle finds out that a code starts to expire as time pass
     REQUIRE(captured_event.count == 1);
 
     // nothing changed: the cycle says nothing
-    ziti_send_posture_data(&f.ztx);
+    ztx_posture_tick(&f.ztx);
     CHECK(captured_event.count == 1);
 
     // 200 s later
     f.ztx.posture_checks->totp.issued_at -= 200;
-    ziti_send_posture_data(&f.ztx);
+    ztx_posture_tick(&f.ztx);
     REQUIRE(captured_event.count == 2);
     CHECK(captured_event.mfa_expiring == 1);
 
     // and it says it once
-    ziti_send_posture_data(&f.ztx);
+    ztx_posture_tick(&f.ztx);
     CHECK(captured_event.count == 2);
+}
+
+TEST_CASE("the posture data sent by a dial does not run the handler of the MFA event", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    f.query()->timeout = 3600;
+    watch(f);
+    REQUIRE(give_token(&f.ztx, aged_token(3200).c_str()) == ZITI_OK);
+    REQUIRE(captured_event.count == 1);
+
+    // the code starts to expire; ziti_dial() sends posture data, and the app must not hear of it from inside the dial
+    f.ztx.posture_checks->totp.issued_at -= 200;
+    ziti_send_posture_data(&f.ztx);
+    CHECK(captured_event.count == 1);
+
+    // the timer tells it
+    ztx_posture_tick(&f.ztx);
+    REQUIRE(captured_event.count == 2);
+    CHECK(captured_event.mfa_expiring == 1);
 }
 
 TEST_CASE("a timeout under 10 minutes warns from half of it", "[posture][totp]") {
@@ -904,7 +922,7 @@ TEST_CASE("the check that is reported changes as the code ages", "[posture][totp
 
     // the 60 s of that check are over, the 300 s of the other are not
     f.ztx.posture_checks->totp.issued_at -= 70;
-    ziti_send_posture_data(&f.ztx);
+    ztx_posture_tick(&f.ztx);
 
     REQUIRE(captured_event.count == 2);
     CHECK(captured_event.mfa_expiring == 1);
@@ -913,7 +931,7 @@ TEST_CASE("the check that is reported changes as the code ages", "[posture][totp
 
     // and both when the other ends too
     f.ztx.posture_checks->totp.issued_at -= 300;
-    ziti_send_posture_data(&f.ztx);
+    ztx_posture_tick(&f.ztx);
 
     REQUIRE(captured_event.count == 3);
     CHECK(captured_event.service_names.size() == 2);
