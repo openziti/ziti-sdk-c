@@ -207,3 +207,8 @@ int ztx_test_open_conns(ziti_context ztx) {
     }
     return count;
 }
+
+// how many services the context has, whatever the controller sent for their posture queries
+int ztx_test_service_count(ziti_context ztx) {
+    return (int) model_map_size(&ztx->services);
+}
