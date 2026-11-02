@@ -38,6 +38,8 @@ extern "C" void ziti_services_refresh(ziti_context ztx, bool now);
 // ztx_test_helper.c: what the auth method reports
 extern "C" void ztx_test_lose_session(ziti_context ztx);
 extern "C" void ztx_test_restart_auth(ziti_context ztx);
+extern "C" bool ztx_test_totp_required(ziti_context ztx);
+extern "C" void ztx_test_set_totp_required(ziti_context ztx, bool required);
 
 namespace {
     std::string iso8601(time_t t) {
@@ -67,6 +69,12 @@ namespace {
 
         std::atomic<int> authenticate_count{0};
 
+        // the whole response to POST /authenticate/mfa; set before the context runs
+        std::string mfa_reply = not_found();
+
+        // the authQueries of the sessions it issues (the MFA query of a login that waits for a code); set before the context runs
+        std::string auth_queries = "[]";
+
         // the requests whose path ends with `suffix`
         int count(const std::string &suffix) const { return server_.count(suffix); }
 
@@ -90,14 +98,28 @@ namespace {
                         R"("expiresAt":")" + iso8601(ctrl_now + (time_t) expires_in) + R"(",)" +
                         R"("updatedAt":")" + iso8601(ctrl_now) + R"(",)" +
                         R"("cachedLastActivityAt":")" + iso8601(ctrl_now) + R"(",)" +
-                        R"("authQueries":[],"identity":{"id":"fake-id","name":"fake"}},"meta":{}})";
+                        R"("authQueries":)" + auth_queries + R"(,"identity":{"id":"fake-id","name":"fake"}},"meta":{}})";
                 return json_response("200 OK", body);
+            }
+            if (ends_with(path, "/authenticate/mfa")) {
+                return mfa_reply;
             }
             return not_found();
         }
 
         FakeHttpServer server_;
     };
+
+    struct mfa_result {
+        int calls = 0;
+        int status = ZITI_WTF;
+    };
+
+    void on_mfa(ziti_context, int status, void *ctx) {
+        auto *r = static_cast<mfa_result *>(ctx);
+        r->calls++;
+        r->status = status;
+    }
 }
 
 // ziti_refresh() asks the controller for the model of the context, which takes an api session: it says
@@ -205,4 +227,90 @@ TEST_CASE("legacy-auth-controller-issues-expired-session", "[legacy-auth][GH-116
 
     CHECK(ctrl.authenticate_count.load() == 1);
     CHECK(run.auth_failed == 1);
+}
+
+// A code that the controller does not take (a wrong one, or a controller that cannot answer) is reported to the caller,
+// and that is all: a session that has no MFA query to answer (it is fully authenticated, a posture check that needs a
+// code came later) has nothing to ask for again. The login that waits for a code is asked for it again, from the MFA
+// query of its session; with no query the auth method reported "partially authenticated" with nothing to prompt for,
+// and the context dereferenced the missing query.
+TEST_CASE("legacy-auth-code-turned-down-on-an-authenticated-session", "[legacy-auth][mfa]") {
+    auto [reply, status] = GENERATE(table<std::string, int>({
+        {api_error("400 Bad Request", "MFA_INVALID_TOKEN"), ZITI_MFA_INVALID_TOKEN},
+        {api_error("401 Unauthorized", "INVALID_AUTHENTICATION"), ZITI_MFA_INVALID_TOKEN},
+        {json_response("503 Service Unavailable", R"({"error":{"code":"UNAVAILABLE"}})"), ZITI_CONTROLLER_UNAVAILABLE},
+        {not_found(), ZITI_CONTROLLER_UNAVAILABLE},
+    }));
+    CAPTURE(reply);
+    FakeLegacyController ctrl(0, 1800);
+    ctrl.mfa_reply = reply;
+
+    mfa_result r;
+    bool asked = false;
+    int polls_after_answer = 0;
+    bool authenticated = false;
+    run_context(ctrl.url(), 10000, [&](const context_run &run) {
+        if (!asked) {
+            if (ziti_get_api_session_token(run.ztx) == nullptr) {
+                return false;
+            }
+            asked = true;
+            ziti_mfa_auth(run.ztx, "000000", on_mfa, &r);
+            return false;
+        }
+        // a few polls after the answer, what the context does about it has been done
+        if (r.calls == 0 || ++polls_after_answer < 4) {
+            return false;
+        }
+        authenticated = ziti_get_api_session_token(run.ztx) != nullptr;
+        return true;
+    });
+
+    CHECK(r.calls == 1);
+    CHECK(r.status == status);
+    CHECK(ctrl.count("/authenticate/mfa") == 1);
+    // the session is as it was
+    CHECK(authenticated);
+    CHECK(ctrl.authenticate_count.load() == 1);
+}
+
+// the other side of it: the login that waits for a code has the MFA query on its session, and a code that is turned
+// down has the app asked for the next one
+TEST_CASE("legacy-auth-code-turned-down-on-a-login-that-waits-for-one-asks-again", "[legacy-auth][mfa]") {
+    FakeLegacyController ctrl(0, 1800);
+    ctrl.mfa_reply = api_error("400 Bad Request", "MFA_INVALID_TOKEN");
+    ctrl.auth_queries = R"([{"id":"mfa-1","typeId":"MFA","provider":"ziti","isTotpEnrolled":true,)"
+                        R"("httpMethod":"POST","httpUrl":"./authenticate/mfa","minLength":4,"maxLength":8,)"
+                        R"("format":"numeric"}])";
+
+    mfa_result r;
+    bool asked = false;
+    int polls_after_answer = 0;
+    bool asked_again = false;
+    bool authenticated = true;
+    run_context(ctrl.url(), 10000, [&](const context_run &run) {
+        if (!asked) {
+            // the context asks the app for a code when the login says so
+            if (!ztx_test_totp_required(run.ztx)) {
+                return false;
+            }
+            asked = true;
+            // forget it, to see that the app is told again
+            ztx_test_set_totp_required(run.ztx, false);
+            ziti_mfa_auth(run.ztx, "000000", on_mfa, &r);
+            return false;
+        }
+        if (r.calls == 0 || ++polls_after_answer < 4) {
+            return false;
+        }
+        asked_again = ztx_test_totp_required(run.ztx);
+        authenticated = ziti_get_api_session_token(run.ztx) != nullptr;
+        return true;
+    });
+
+    CHECK(r.calls == 1);
+    CHECK(r.status == ZITI_MFA_INVALID_TOKEN);
+    CHECK(asked_again);
+    // the login is not over
+    CHECK_FALSE(authenticated);
 }
