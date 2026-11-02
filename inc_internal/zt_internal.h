@@ -148,6 +148,11 @@ struct ziti_ctx {
 
     // the TOTP code a login took and has not finished with, see ztx_mfa_keep_code()
     cstr totp_code;
+    // the last TOTP code the controller took, see ztx_posture_mfa_code_taken(); `at` is 0 when there is none
+    struct {
+        int64_t at;
+        cstr session_id;
+    } mfa_code;
     ziti_identity_data *identity_data;
     ziti_api_session *session;
 

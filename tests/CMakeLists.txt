@@ -32,6 +32,7 @@ add_executable(all_tests
         posture_tests.cpp
         posture_route_tests.cpp
         mfa_auth_tests.cpp
+        mfa_event_tests.cpp
         totp.h
         totp_jwt.h
         totp_tests.cpp

@@ -73,10 +73,25 @@ extern void ziti_auth_query_free(struct auth_queries *aq) {
     FREE(aq);
 }
 
+// The controller took a code. The app hears of the code whatever else becomes of it: an OIDC api session asks for a TOTP
+// token for the routers next (which can fail), a legacy one has none. A login that took the code has no api session yet to
+// tell the app about: the first one it gets is told.
+// `token_follows`: a request for a TOTP token follows, and totp_token_cb() tells the app when it is done, with the token
+// sent to the routers if it was issued; telling the app now would be a second event for the same code.
+static void mfa_code_accepted(ziti_context ztx, bool token_follows) {
+    ztx_posture_mfa_code_taken(ztx, (int64_t) time(NULL), NULL);
+    if (!token_follows && ztx->auth_state == ZitiAuthStateFullyAuthenticated && ztx->session != NULL) {
+        ztx_posture_notify_mfa(ztx);
+    }
+}
+
 static void mfa_cb(ziti_context ztx, int status) {
     if (status != ZITI_OK) {
         // the login did not take the code: nothing will need it
         ztx_mfa_drop_code(ztx);
+    } else {
+        // ziti_mfa_auth() hands a code of a fully authenticated OIDC context to the token request, not to the login
+        mfa_code_accepted(ztx, false);
     }
 
     if (ztx->mfa_cb) {
@@ -138,11 +153,14 @@ static void totp_token_cb(totp_token *token, const ziti_error *err, void *ctx) {
         if (status == ZITI_OK) {
             ZTX_LOG(DEBUG, "the TOTP token of the api session is in place");
             ztx_posture_send_all(ztx);
-            // the app hears of the code after the token is on its way to the routers, not before
-            ztx_posture_notify_mfa(ztx);
         } else {
             ZTX_LOG(WARN, "the TOTP token of the controller is unusable: %d/%s", status, ziti_errorstr(status));
         }
+    }
+    // the app hears of the code after the token is on its way to the routers, not before. Without a token it hears of the
+    // code the controller took before (the login's, or the one that verified an enrollment), which has no token to wait for
+    if (ztx->auth_state == ZitiAuthStateFullyAuthenticated && ztx->session != NULL) {
+        ztx_posture_notify_mfa(ztx);
     }
 
     if (req->cb) {
@@ -334,7 +352,10 @@ void ziti_mfa_verify_internal_cb(void *empty, const ziti_error *err, void *ctx) 
         mfa_cb_ctx->cb(mfa_cb_ctx->ztx, (int)err->err, mfa_cb_ctx->cb_ctx);
     } else {
         set_mfa_enrolled(ztx, true);
-        // the controller passes the MFA of the api session now: the routers need the token of the code to do the same
+        // the controller passes the MFA of the api session now, which is a code for the MFA checks. The code is kept only
+        // for OIDC, which has the routers' TOTP token to ask for
+        mfa_code_accepted(ztx, mfa_cb_ctx->code != NULL);
+        // the routers need the token of the code to do the same
         if (mfa_cb_ctx->code != NULL) {
             if (ztx->auth_state == ZitiAuthStateFullyAuthenticated) {
                 // an enrollment verified after the login: no login took the code

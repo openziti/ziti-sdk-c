@@ -120,6 +120,7 @@ namespace {
         ~posture_fixture() {
             ziti_posture_checks_free(ztx.posture_checks);
             ztx.posture_checks = nullptr;
+            cstr_drop(&ztx.mfa_code.session_id);
             model_map_clear(&ztx.services, (_free_f) free_ziti_service_ptr);
             captured = {};
             captured_by_path.clear();
@@ -579,6 +580,94 @@ TEST_CASE("a code that the api session loses is reported as no code", "[posture]
     CHECK(captured_event.mfa_last_code_at == 0);
 }
 
+// The code is the controller's answer to it, and a TOTP token for the routers (OIDC) is no part of that: a legacy api
+// session has none, and its code is reported the same.
+TEST_CASE("a code the controller took is reported without any TOTP token", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    watch(f);
+    ztx_posture_notify_mfa(&f.ztx);
+    REQUIRE(captured_event.count == 1);
+    REQUIRE(captured_event.mfa_last_code_at == 0);
+
+    ztx_posture_mfa_code_taken(&f.ztx, 1700000123, nullptr);
+    ztx_posture_notify_mfa(&f.ztx);
+
+    REQUIRE(captured_event.count == 2);
+    CHECK(captured_event.mfa_last_code_at == 1700000123);
+    CHECK(captured_event.mfa_timeout == 300);
+    CHECK(cstr_is_empty(&f.ztx.posture_checks->totp.token));
+
+    // the same code is told once
+    ztx_posture_notify_mfa(&f.ztx);
+    CHECK(captured_event.count == 2);
+}
+
+TEST_CASE("a code that the controller took for the api session the context is on is lost with that session",
+          "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    watch(f);
+    ztx_posture_mfa_code_taken(&f.ztx, 1700000123, nullptr);
+    ztx_posture_notify_mfa(&f.ztx);
+    REQUIRE(captured_event.count == 1);
+    REQUIRE(captured_event.mfa_last_code_at == 1700000123);
+
+    // a new login, a new api session
+    f.session.id = "session-3";
+    ztx_posture_notify_mfa(&f.ztx);
+
+    REQUIRE(captured_event.count == 2);
+    CHECK(captured_event.mfa_last_code_at == 0);
+}
+
+// a login takes the code before the context has its api session: the first session the login gets is the one the code is for
+TEST_CASE("a code taken before the api session is known counts for the first api session", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    f.ztx.session = nullptr;
+    watch(f);
+
+    ztx_posture_mfa_code_taken(&f.ztx, 1700000123, nullptr);
+    ztx_posture_notify_mfa(&f.ztx);
+    REQUIRE(captured_event.count == 1);
+    CHECK(captured_event.mfa_last_code_at == 0);
+
+    f.ztx.session = &f.session;
+    ztx_posture_notify_mfa(&f.ztx);
+    REQUIRE(captured_event.count == 2);
+    CHECK(captured_event.mfa_last_code_at == 1700000123);
+
+    // and no other one
+    f.session.id = "session-3";
+    ztx_posture_notify_mfa(&f.ztx);
+    REQUIRE(captured_event.count == 3);
+    CHECK(captured_event.mfa_last_code_at == 0);
+}
+
+TEST_CASE("a code taken for another api session is no code of this one", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    watch(f);
+
+    ztx_posture_mfa_code_taken(&f.ztx, 1700000123, "session-2");
+    ztx_posture_notify_mfa(&f.ztx);
+
+    REQUIRE(captured_event.count == 1);
+    CHECK(captured_event.mfa_last_code_at == 0);
+}
+
+TEST_CASE("a code that is forgotten is reported as no code", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    watch(f);
+    ztx_posture_mfa_code_taken(&f.ztx, 1700000123, nullptr);
+    ztx_posture_notify_mfa(&f.ztx);
+    REQUIRE(captured_event.count == 1);
+    REQUIRE(captured_event.mfa_last_code_at == 1700000123);
+
+    ztx_posture_mfa_code_forget(&f.ztx);
+    ztx_posture_notify_mfa(&f.ztx);
+
+    REQUIRE(captured_event.count == 2);
+    CHECK(captured_event.mfa_last_code_at == 0);
+}
+
 TEST_CASE("a change of the timeout of an MFA check fires again", "[posture][totp]") {
     posture_fixture f(SERVICE_JSON_MFA);
     watch(f);
@@ -641,7 +730,7 @@ TEST_CASE("the posture cycle finds out that a code starts to expire as time pass
     CHECK(captured_event.count == 1);
 
     // 200 s later
-    f.ztx.posture_checks->totp.issued_at -= 200;
+    f.ztx.mfa_code.at -= 200;
     ztx_posture_tick(&f.ztx);
     REQUIRE(captured_event.count == 2);
     CHECK(captured_event.mfa_expiring == 1);
@@ -659,7 +748,7 @@ TEST_CASE("the posture data sent by a dial does not run the handler of the MFA e
     REQUIRE(captured_event.count == 1);
 
     // the code starts to expire; ziti_dial() sends posture data, and the app must not hear of it from inside the dial
-    f.ztx.posture_checks->totp.issued_at -= 200;
+    f.ztx.mfa_code.at -= 200;
     ziti_send_posture_data(&f.ztx);
     CHECK(captured_event.count == 1);
 
@@ -921,7 +1010,7 @@ TEST_CASE("the check that is reported changes as the code ages", "[posture][totp
     CHECK(captured_event.mfa_expiring == 0);
 
     // the 60 s of that check are over, the 300 s of the other are not
-    f.ztx.posture_checks->totp.issued_at -= 70;
+    f.ztx.mfa_code.at -= 70;
     ztx_posture_tick(&f.ztx);
 
     REQUIRE(captured_event.count == 2);
@@ -930,7 +1019,7 @@ TEST_CASE("the check that is reported changes as the code ages", "[posture][totp
     CHECK(captured_event.service_names[0] == "svc-short");
 
     // and both when the other ends too
-    f.ztx.posture_checks->totp.issued_at -= 300;
+    f.ztx.mfa_code.at -= 300;
     ztx_posture_tick(&f.ztx);
 
     REQUIRE(captured_event.count == 3);

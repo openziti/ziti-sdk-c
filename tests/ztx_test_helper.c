@@ -137,6 +137,7 @@ ziti_context ztx_test_mfa_stub_new(int submit_rc, bool oidc, bool fully_authenti
 
 void ztx_test_mfa_stub_free(ziti_context ztx) {
     cstr_drop(&ztx->totp_code);
+    cstr_drop(&ztx->mfa_code.session_id);
     free(container_of(ztx->auth_method, struct mfa_stub, method));
     free(ztx);
 }
@@ -195,6 +196,11 @@ void ztx_test_mfa_verify_without_login(ziti_context ztx, const char *code, ziti_
 // the TOTP code a login took and has not finished with, "" when none
 const char *ztx_test_totp_code(ziti_context ztx) {
     return cstr_str(&ztx->totp_code);
+}
+
+// when the controller took the last TOTP code (seconds since the epoch), 0 when it took none
+int64_t ztx_test_mfa_code_at(ziti_context ztx) {
+    return ztx->mfa_code.at;
 }
 
 // the auth method reports that the (re)authentication is complete, with a new api session token

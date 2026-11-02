@@ -45,8 +45,6 @@ struct posture_checks {
     struct {
         cstr token;
         cstr api_session_id;
-        // when the code of the token was given (its iat), seconds since the epoch
-        int64_t issued_at;
     } totp;
 
     // what the app was told of the MFA checks by the last event, NULL when it was told nothing (yet), see ztx_posture_notify_mfa()
@@ -57,10 +55,21 @@ void ziti_posture_init(ziti_context ztx, long interval_secs);
 
 void ziti_posture_checks_free(struct posture_checks *pcs);
 
-// keeps a TOTP token to be sent to the routers as a TotpToken posture response; does not send it, and does not tell the app
+// keeps a TOTP token to be sent to the routers as a TotpToken posture response, and the moment of its code (its iat) as the
+// last code of the api session it is for (ztx_posture_mfa_code_taken()); does not send it, and does not tell the app
 // (ztx_posture_notify_mfa()): the app is told once the token is sent to the routers, ztx_posture_send_all() comes first.
 // ZITI_JWT_INVALID: not a JWT with a z_asid claim, ZITI_INVALID_STATE: no posture state (endpoint disabled)
 int ztx_posture_set_totp_token(ziti_context ztx, const char *token);
+
+// Remembers that the controller took a TOTP code, `at` seconds since the epoch: what the MFA event reports as the last code.
+// It is the answer of the controller to the code and nothing else, so it is the same for an OIDC api session (which also gets
+// a TOTP token for the routers) and a legacy one (which has none). Does not tell the app (ztx_posture_notify_mfa()).
+// `api_session_id` is the api session the code counts for. NULL: the one the context is fully authenticated on or, when a login
+// took the code and has not got its api session yet, the first one it gets.
+void ztx_posture_mfa_code_taken(ziti_context ztx, int64_t at, const char *api_session_id);
+
+// forgets the last code: the login it belonged to is over
+void ztx_posture_mfa_code_forget(ziti_context ztx);
 
 // sends everything that was answered so far, with the TOTP token, to every connected router (what a router that connects
 // gets, see ziti_send_posture_er()); it does not ask the OS, MAC, domain and process queries again.
@@ -95,7 +104,8 @@ void ziti_pr_notify_process_status(ziti_context ztx, const ziti_posture_query *q
 // (a code, the timeout, the expiry warning, the services). One code serves every query, so the event is about the queries
 // that need a code now (none was given, or its timeout is over), all together, or else about the queries whose code ends
 // first (a query with no timeout never ends: those are the last ones). Its services are the ones of those queries, its
-// timeout the shortest of theirs, the last code is the one of the TOTP token for the api session the context is on (0: none).
+// timeout the shortest of theirs, the last code is the last one the controller took for the api session the context is on, see
+// ztx_posture_mfa_code_taken() (0: none).
 // Nothing is sent, and what was told is forgotten, when no service has an MFA query. Does nothing, and remembers nothing,
 // unless the app subscribed to ZitiPostureStatusEvent.
 void ztx_posture_notify_mfa(ziti_context ztx);

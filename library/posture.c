@@ -204,11 +204,39 @@ int ztx_posture_set_totp_token(ziti_context ztx, const char *token) {
         cstr_assign(&checks->totp.token, token);
         cstr_assign(&checks->totp.api_session_id, json_object_get_string(asid));
         // the controller sets it to the moment of the code; a token without it is taken as given just now
-        checks->totp.issued_at = iat != NULL && (json_object_is_type(iat, json_type_int) || json_object_is_type(iat, json_type_double))
-                                 ? json_object_get_int64(iat) : (int64_t) time(NULL);
+        int64_t issued_at = iat != NULL && (json_object_is_type(iat, json_type_int) || json_object_is_type(iat, json_type_double))
+                            ? json_object_get_int64(iat) : (int64_t) time(NULL);
+        ztx_posture_mfa_code_taken(ztx, issued_at, json_object_get_string(asid));
     }
     zt_jwt_drop(&jwt);
     return rc;
+}
+
+void ztx_posture_mfa_code_taken(ziti_context ztx, int64_t at, const char *api_session_id) {
+    ztx->mfa_code.at = at;
+    if (api_session_id == NULL && ztx->auth_state == ZitiAuthStateFullyAuthenticated && ztx->session != NULL) {
+        api_session_id = ztx->session->id;
+    }
+    // no api session yet: ztx_posture_mfa_code() gives the code to the first one the context gets
+    cstr_assign(&ztx->mfa_code.session_id, api_session_id != NULL ? api_session_id : "");
+}
+
+void ztx_posture_mfa_code_forget(ziti_context ztx) {
+    ztx->mfa_code.at = 0;
+    cstr_clear(&ztx->mfa_code.session_id);
+}
+
+// when the last code was given, as long as it counts for the api session the context is on; 0 otherwise
+static int64_t ztx_posture_mfa_code(ziti_context ztx) {
+    if (ztx->mfa_code.at == 0 || ztx->session == NULL) {
+        return 0;
+    }
+    if (cstr_is_empty(&ztx->mfa_code.session_id)) {
+        cstr_assign(&ztx->mfa_code.session_id, ztx->session->id);
+    } else if (!cstr_equals(&ztx->mfa_code.session_id, ztx->session->id)) {
+        return 0;
+    }
+    return ztx->mfa_code.at;
 }
 
 // the TOTP token while the context is on the api session it was issued for, otherwise NULL.
@@ -1305,7 +1333,8 @@ void ztx_posture_notify_mfa(ziti_context ztx) {
         return;
     }
 
-    int64_t last_code_at = ztx_current_totp_token(ztx) != NULL ? checks->totp.issued_at : 0;
+    // the code is the controller's answer to it, not a token for the routers: a legacy api session has none
+    int64_t last_code_at = ztx_posture_mfa_code(ztx);
     int64_t now = (int64_t) time(NULL);
 
     // the MFA queries of the services the context has now, with the service they belong to
