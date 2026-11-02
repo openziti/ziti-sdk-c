@@ -542,8 +542,13 @@ int model_array_from_json(void ***arr, json_object *json, const type_meta *el_me
     }
     if (rc != 0) {
         for (int i = 0; elems[i] != NULL; i++) {
-            model_free(elems[i], el_meta);
-            free(elems[i]);
+            if (el_meta == get_model_string_meta()) {
+                // the element is the string itself
+                el_meta->destroyer(&elems[i]);
+            } else {
+                model_free(elems[i], el_meta);
+                free(elems[i]);
+            }
         }
         FREE(elems);
     }
@@ -573,18 +578,26 @@ int model_list_from_json (model_list *list, json_object *json, const type_meta *
                  el_meta->from_json(value, ch, el_meta) :
                  model_from_json(value, ch, el_meta);
         }
+        // a failed element is released with the others below
+        model_list_append(list, value);
         if (rc < 0) {
             break;
         }
-        model_list_append(list, value);
     }
 
     if (rc != 0) {
+        bool str_type = (el_meta == get_model_string_meta() || el_meta == get_json_meta());
+        // number and bool keep their value in the element pointer itself
+        bool value_type = (el_meta == get_model_number_meta() || el_meta == get_model_bool_meta());
         model_list_iter it = model_list_iterator(list);
         while (it) {
             void* val = (void*)model_list_it_element(it);
-            model_free(val, el_meta);
-            free(val);
+            if (str_type) {
+                el_meta->destroyer(&val);
+            } else if (!value_type) {
+                model_free(val, el_meta);
+                free(val);
+            }
             it = model_list_it_remove(it);
         }
     }
