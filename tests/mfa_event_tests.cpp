@@ -28,6 +28,7 @@
 
 #include "catch2_includes.hpp"
 
+#include <atomic>
 #include <ctime>
 #include <string>
 #include <vector>
@@ -42,6 +43,11 @@ extern "C" const char *ziti_get_api_session_token(ziti_context ztx);
 // code, on a context that runs another auth method (the fake controller authenticates the legacy way)
 extern "C" void ztx_test_mfa_auth_without_login(ziti_context ztx, const char *code, ziti_mfa_cb cb, void *ctx);
 extern "C" void ztx_test_mfa_verify_without_login(ziti_context ztx, const char *code, ziti_mfa_cb cb, void *ctx);
+// ztx_test_helper.c: the api session the context holds, and whether the login asks the app for a code
+extern "C" const char *ztx_test_api_session_id(ziti_context ztx);
+extern "C" bool ztx_test_totp_required(ziti_context ztx);
+// internal
+extern "C" void ziti_force_api_session_refresh(ziti_context ztx);
 
 namespace {
     const char *MFA_PATH = "/authenticate/mfa";
@@ -69,9 +75,33 @@ namespace {
 
         int count(const std::string &suffix) const { return server_.count(suffix); }
 
+        // The controller no longer knows the api session of the identity: the next request with it is turned down with a 401,
+        // and the login that follows gets an api session that waits for a code.
+        void drop_session() {
+            revoked_ = true;
+            next_login_needs_code_ = true;
+        }
+
     private:
         static bool ends_with(const std::string &s, const std::string &suffix) {
             return s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+        }
+
+        // the api session of the `n`th login; it carries the MFA query while the controller waits for a code
+        std::string api_session(int n) const {
+            time_t now = time(nullptr);
+            const char *queries = code_pending_
+                    ? R"([{"id":"mfa-1","typeId":"MFA","provider":"ziti","isTotpEnrolled":true,)"
+                      R"("httpMethod":"POST","httpUrl":"./authenticate/mfa","minLength":4,"maxLength":8,)"
+                      R"("format":"numeric"}])"
+                    : "[]";
+            return json_response("200 OK",
+                                 R"({"data":{"id":"sess-)" + std::to_string(n) + R"(","token":"fake-token-)" +
+                                 std::to_string(n) + R"(","identityId":"fake-id",)" +
+                                 R"("expiresAt":")" + iso8601(now + 1800) + R"(",)" +
+                                 R"("updatedAt":")" + iso8601(now) + R"(",)" +
+                                 R"("cachedLastActivityAt":")" + iso8601(now) + R"(",)" +
+                                 R"("authQueries":)" + queries + R"(,"identity":{"id":"fake-id","name":"fake"}},"meta":{}})");
         }
 
         static std::string iso8601(time_t t) {
@@ -92,15 +122,19 @@ namespace {
                                       R"("runtimeVersion":"fake","capabilities":[],"buildFlags":[],)"
                                       R"("apiVersions":{"edge":{"v1":{"path":"/edge/client/v1"}}}},"meta":{}})");
             }
-            // the api session of the login, and the same again for the context asking what its session is
-            if (ends_with(path, "/authenticate") || ends_with(path, "/current-api-session")) {
-                time_t now = time(nullptr);
-                return json_response("200 OK",
-                                     R"({"data":{"id":"sess-1","token":"fake-token","identityId":"fake-id",)"
-                                     R"("expiresAt":")" + iso8601(now + 1800) + R"(",)" +
-                                     R"("updatedAt":")" + iso8601(now) + R"(",)" +
-                                     R"("cachedLastActivityAt":")" + iso8601(now) + R"(",)" +
-                                     R"("authQueries":[],"identity":{"id":"fake-id","name":"fake"}},"meta":{}})");
+            // the api session of the login
+            if (ends_with(path, "/authenticate")) {
+                revoked_ = false;
+                int n = ++logins_;
+                code_pending_ = next_login_needs_code_.exchange(false);
+                return api_session(n);
+            }
+            // the session of the context asking what its session is, which the legacy auth method asks for to refresh it
+            if (ends_with(path, "/current-api-session")) {
+                if (revoked_) {
+                    return api_error("401 Unauthorized", "UNAUTHORIZED");
+                }
+                return api_session(logins_);
             }
             // the context fetches the services once the controller says that they changed
             if (ends_with(path, "/current-api-session/service-updates")) {
@@ -110,6 +144,10 @@ namespace {
                 return json_response("200 OK", MFA_SERVICE);
             }
             if (ends_with(path, MFA_PATH) || ends_with(path, VERIFY_PATH)) {
+                // a code that is taken is what the login waits for
+                if (code_reply.compare(0, 12, "HTTP/1.1 200") == 0) {
+                    code_pending_ = false;
+                }
                 return code_reply;
             }
             if (ends_with(path, TOTP_TOKEN_PATH)) {
@@ -121,6 +159,10 @@ namespace {
             return not_found();
         }
 
+        std::atomic<int> logins_{0};
+        std::atomic<bool> revoked_{false};
+        std::atomic<bool> next_login_needs_code_{false};
+        std::atomic<bool> code_pending_{false};
         FakeHttpServer server_;
     };
 
@@ -340,4 +382,59 @@ TEST_CASE("an OIDC code the controller turns down is not reported", "[posture][m
     CHECK(ctrl.count(TOTP_TOKEN_PATH) == 1);
     CHECK(r.events.seen.size() == r.told_before);
     CHECK(r.events.last_code_at() == 0);
+}
+
+// The controller turns the api session down, and the login that follows waits for a code. The code given then is for the
+// api session that login gets, and the app is told of it once the context holds that session: not for the api session that
+// was lost, and not as no code.
+TEST_CASE("a code given in the login that follows the loss of the api session counts for the new api session",
+          "[posture][mfa-event]") {
+    FakeLegacyMfaController ctrl;
+    mfa_events events;
+    mfa_result r;
+
+    int step = 0;
+    int polls_after_login = 0;
+    int64_t sent_at = 0;
+    std::string session_after = "not read";
+    run_context(ctrl.url(), 15000, [&](const context_run &run) {
+        switch (step) {
+            case 0:
+                // fully authenticated, and the app has been told of the check
+                if (ziti_get_api_session_token(run.ztx) == nullptr || events.seen.empty()) {
+                    return false;
+                }
+                ctrl.drop_session();
+                ziti_force_api_session_refresh(run.ztx);
+                step = 1;
+                return false;
+            case 1:
+                // the login that follows waits for a code
+                if (!ztx_test_totp_required(run.ztx)) {
+                    return false;
+                }
+                sent_at = (int64_t) time(nullptr);
+                ziti_mfa_auth(run.ztx, "123456", on_mfa, &r);
+                step = 2;
+                return false;
+            default:
+                // the code is taken, the login is over, and the app is told of the code once the context has the new api
+                // session (a few polls are all that it takes, and all that a failure waits for)
+                if (r.calls == 0 || ziti_get_api_session_token(run.ztx) == nullptr) {
+                    return false;
+                }
+                if (events.last_code_at() != 0 || ++polls_after_login >= 40) {
+                    session_after = ztx_test_api_session_id(run.ztx);
+                    return true;
+                }
+                return false;
+        }
+    }, ZitiPostureStatusEvent, [&](const ziti_event_t *ev) { events.add(ev); });
+
+    // two logins, and the code went to the second
+    CHECK(ctrl.count("/authenticate") == 2);
+    CHECK(ctrl.count(MFA_PATH) == 1);
+    CHECK(r.status == ZITI_OK);
+    CHECK(session_after == "sess-2");
+    CHECK(events.last_code_at() >= sent_at);
 }

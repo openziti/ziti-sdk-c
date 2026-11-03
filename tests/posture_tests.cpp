@@ -631,15 +631,42 @@ TEST_CASE("a code taken before the api session is known counts for the first api
     CHECK(captured_event.mfa_last_code_at == 0);
 
     f.ztx.session = &f.session;
+    CHECK(ztx_posture_mfa_code_session_installed(&f.ztx));
     ztx_posture_notify_mfa(&f.ztx);
     REQUIRE(captured_event.count == 2);
     CHECK(captured_event.mfa_last_code_at == 1700000123);
 
     // and no other one
     f.session.id = "session-3";
+    CHECK_FALSE(ztx_posture_mfa_code_session_installed(&f.ztx));
     ztx_posture_notify_mfa(&f.ztx);
     REQUIRE(captured_event.count == 3);
     CHECK(captured_event.mfa_last_code_at == 0);
+}
+
+// A login takes a code while the context still holds the api session of the login before it (the auth method did not say
+// that a login started again). The code is no code of that session, and the first look at the session of the login that
+// took the code, which comes after the old one is dropped, is not allowed to give it to the wrong one.
+TEST_CASE("a code taken by a login is not given to the api session the context held before it", "[posture][totp]") {
+    posture_fixture f(SERVICE_JSON_MFA);
+    watch(f);
+
+    // the login that waits for the code is not fully authenticated
+    f.ztx.auth_state = ZitiAuthStatePartiallyAuthenticated;
+    ztx_posture_mfa_code_taken(&f.ztx, 1700000123, nullptr);
+    // it is now, and the context holds session-1 still: the posture timer runs before the new api session is known
+    f.ztx.auth_state = ZitiAuthStateFullyAuthenticated;
+    ztx_posture_tick(&f.ztx);
+    REQUIRE(captured_event.count == 1);
+    CHECK(captured_event.mfa_last_code_at == 0);
+
+    // the api session of the login is installed
+    f.session.id = "session-2";
+    CHECK(ztx_posture_mfa_code_session_installed(&f.ztx));
+    ztx_posture_notify_mfa(&f.ztx);
+
+    REQUIRE(captured_event.count == 2);
+    CHECK(captured_event.mfa_last_code_at == 1700000123);
 }
 
 TEST_CASE("a code taken for another api session is no code of this one", "[posture][totp]") {

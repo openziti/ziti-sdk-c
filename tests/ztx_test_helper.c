@@ -198,6 +198,11 @@ const char *ztx_test_totp_code(ziti_context ztx) {
     return cstr_str(&ztx->totp_code);
 }
 
+// the id of the api session the context holds, "" when it holds none
+const char *ztx_test_api_session_id(ziti_context ztx) {
+    return ztx->session != NULL ? ztx->session->id : "";
+}
+
 // when the controller took the last TOTP code (seconds since the epoch), 0 when it took none
 int64_t ztx_test_mfa_code_at(ziti_context ztx) {
     return ztx->mfa_code.at;

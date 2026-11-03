@@ -65,11 +65,16 @@ int ztx_posture_set_totp_token(ziti_context ztx, const char *token);
 // It is the answer of the controller to the code and nothing else, so it is the same for an OIDC api session (which also gets
 // a TOTP token for the routers) and a legacy one (which has none). Does not tell the app (ztx_posture_notify_mfa()).
 // `api_session_id` is the api session the code counts for. NULL: the one the context is fully authenticated on or, when a login
-// took the code and has not got its api session yet, the first one it gets.
+// took the code and has not got its api session yet, the one that login gets (ztx_posture_mfa_code_session_installed()).
 void ztx_posture_mfa_code_taken(ziti_context ztx, int64_t at, const char *api_session_id);
 
 // forgets the last code: the login it belonged to is over
 void ztx_posture_mfa_code_forget(ziti_context ztx);
+
+// the context holds the api session of a login now: a code that was taken before there was one (and so counts for no api
+// session yet) is the code of this one. A code that was taken for another api session is forgotten.
+// Returns true when a code was given to the session, which the app has not been told of.
+bool ztx_posture_mfa_code_session_installed(ziti_context ztx);
 
 // sends everything that was answered so far, with the TOTP token, to every connected router (what a router that connects
 // gets, see ziti_send_posture_er()); it does not ask the OS, MAC, domain and process queries again.

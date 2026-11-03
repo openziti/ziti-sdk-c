@@ -2959,11 +2959,15 @@ static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, vo
         free_ziti_api_session_ptr(ztx->session);
         ztx->session = api_sess;
 
+        // a code that the login took before it had this api session is the code of it
+        bool code_given = ztx_posture_mfa_code_session_installed(ztx);
         if (changed) {
             // the first look at the posture data comes right after full authentication, before this session is known,
             // and sends nothing: a TOTP token that is already there must not wait for the next one
             ztx_posture_send_all(ztx);
             // and the TOTP token of the session that is gone is no code of this one
+            ztx_posture_notify_mfa(ztx);
+        } else if (code_given) {
             ztx_posture_notify_mfa(ztx);
         }
 

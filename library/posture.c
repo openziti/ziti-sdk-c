@@ -217,7 +217,7 @@ void ztx_posture_mfa_code_taken(ziti_context ztx, int64_t at, const char *api_se
     if (api_session_id == NULL && ztx->auth_state == ZitiAuthStateFullyAuthenticated && ztx->session != NULL) {
         api_session_id = ztx->session->id;
     }
-    // no api session yet: ztx_posture_mfa_code() gives the code to the first one the context gets
+    // no api session yet: ztx_posture_mfa_code_session_installed() gives the code to the one the login gets
     cstr_assign(&ztx->mfa_code.session_id, api_session_id != NULL ? api_session_id : "");
 }
 
@@ -226,14 +226,26 @@ void ztx_posture_mfa_code_forget(ziti_context ztx) {
     cstr_clear(&ztx->mfa_code.session_id);
 }
 
-// when the last code was given, as long as it counts for the api session the context is on; 0 otherwise
-static int64_t ztx_posture_mfa_code(ziti_context ztx) {
+bool ztx_posture_mfa_code_session_installed(ziti_context ztx) {
     if (ztx->mfa_code.at == 0 || ztx->session == NULL) {
-        return 0;
+        return false;
     }
     if (cstr_is_empty(&ztx->mfa_code.session_id)) {
         cstr_assign(&ztx->mfa_code.session_id, ztx->session->id);
-    } else if (!cstr_equals(&ztx->mfa_code.session_id, ztx->session->id)) {
+        return true;
+    }
+    if (!cstr_equals(&ztx->mfa_code.session_id, ztx->session->id)) {
+        // the code was for the api session that is gone
+        ztx_posture_mfa_code_forget(ztx);
+    }
+    return false;
+}
+
+// when the last code was given, as long as it counts for the api session the context is on; 0 otherwise.
+// A code that no api session has been given to yet is no code of the one the context holds: that one may be the one of a
+// login that is over.
+static int64_t ztx_posture_mfa_code(ziti_context ztx) {
+    if (ztx->mfa_code.at == 0 || ztx->session == NULL || !cstr_equals(&ztx->mfa_code.session_id, ztx->session->id)) {
         return 0;
     }
     return ztx->mfa_code.at;
