@@ -62,6 +62,16 @@ void ztx_test_lose_session(ziti_context ztx) {
     ztx_auth_state_cb(ztx, ZitiAuthStateUnauthenticated, &err);
 }
 
+// whether the context was told to ask the app for a TOTP code (set when the auth method reports "partially authenticated"
+// with an MFA query), and a way to take that back, to see that it is told again
+bool ztx_test_totp_required(ziti_context ztx) {
+    return ztx->auth_info.totp_required;
+}
+
+void ztx_test_set_totp_required(ziti_context ztx, bool required) {
+    ztx->auth_info.totp_required = required;
+}
+
 // the auth method reports that it has started to authenticate
 void ztx_test_restart_auth(ziti_context ztx) {
     ztx_auth_state_cb(ztx, ZitiAuthStateAuthStarted, NULL);

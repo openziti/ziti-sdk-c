@@ -226,8 +226,13 @@ static void legacy_totp_cb(tlsuv_http_resp_t *resp, const char *err, json_object
         auth->mfa_cb(auth->ctx, status);
     }
 
+    // a login that waits for a code is asked for it again, from the MFA query of its session. A session with no such query
+    // (it is fully authenticated, and the code was for a posture check) has nothing to ask for again
     if (status != ZITI_OK && auth->session) {
-        auth->cb(auth->ctx, ZitiAuthStatePartiallyAuthenticated, get_mfa(auth->session));
+        const ziti_auth_query_mfa *mfa = get_mfa(auth->session);
+        if (mfa != NULL) {
+            auth->cb(auth->ctx, ZitiAuthStatePartiallyAuthenticated, mfa);
+        }
     }
 }
 
