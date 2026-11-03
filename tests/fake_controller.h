@@ -344,13 +344,20 @@ namespace fake_controller {
         ziti_context ztx = nullptr;
         int fully_authenticated = 0; // ZitiContextEvent with ZITI_OK
         int auth_failed = 0;         // ZitiContextEvent with ZITI_AUTHENTICATION_FAILED
+        // sees the events of `events` that are not ZitiContextEvent, inside the callback of the context: record what the
+        // event says there and assert after the run (see the note on `done` in totp_token_tests.cpp)
+        const std::function<void(const ziti_event_t *)> *on_event = nullptr;
     };
 
     // Runs a context, with the identity of tls_test_util.h, against the controller at `url` until
     // `done` says so (it is asked every 50 ms, with the state of the run) or `timeout_ms` have passed, then shuts it down.
+    // `events`: more events than ZitiContextEvent for the app to hear of, which `on_event` is handed
     inline context_run run_context(const std::string &url, unsigned timeout_ms,
-                                   const std::function<bool(const context_run &)> &done = nullptr) {
+                                   const std::function<bool(const context_run &)> &done = nullptr,
+                                   unsigned events = 0,
+                                   const std::function<void(const ziti_event_t *)> &on_event = nullptr) {
         context_run run;
+        run.on_event = &on_event;
 
         // FAKE_CTRL_LOG=<level> prints the SDK log of the context to stderr
         if (const char *level = getenv("FAKE_CTRL_LOG")) {
@@ -372,10 +379,13 @@ namespace fake_controller {
 
         ziti_options opts = {};
         opts.app_ctx = &run;
-        opts.events = ZitiContextEvent;
+        opts.events = ZitiContextEvent | events;
         opts.event_cb = [](ziti_context ztx, const ziti_event_t *ev) {
             auto r = (context_run *) ziti_app_ctx(ztx);
-            if (ev->type != ZitiContextEvent) return;
+            if (ev->type != ZitiContextEvent) {
+                if (r->on_event != nullptr && *r->on_event) (*r->on_event)(ev);
+                return;
+            }
             if (ev->ctx.ctrl_status == ZITI_OK) r->fully_authenticated++;
             if (ev->ctx.ctrl_status == ZITI_AUTHENTICATION_FAILED) r->auth_failed++;
         };

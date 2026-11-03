@@ -266,8 +266,9 @@ static void ztx_set_unauthenticated(ziti_context ztx, const ziti_error *err) {
     ZTX_LOG(DEBUG, "setting auth_state[%d] to %d", ztx->auth_state, ZitiAuthStateUnauthenticated);
     ztx->auth_state = ZitiAuthStateUnauthenticated;
     ztx->awaiting_secondary = false;
-    // a login that ended here has no api session to buy a TOTP token for
+    // a login that ended here has no api session to buy a TOTP token for, and the code it took is no code of the next one
     ztx_mfa_drop_code(ztx);
+    ztx_posture_mfa_code_forget(ztx);
     cstr_clear(&ztx->session_token);
     free_ziti_api_session_ptr(ztx->session);
     ztx->session = NULL;
@@ -337,6 +338,7 @@ static void ztx_set_impossible_to_authenticate(ziti_context ztx, const ziti_erro
 
     ZTX_LOG(DEBUG, "setting api_session_state[%d] to %d", ztx->auth_state, ZitiAuthImpossibleToAuthenticate);
     ztx_mfa_drop_code(ztx);
+    ztx_posture_mfa_code_forget(ztx);
     cstr_clear(&ztx->session_token);
     free_ziti_api_session_ptr(ztx->session);
     ztx->session = NULL;
@@ -1039,6 +1041,7 @@ static void free_ztx(uv_handle_t *h) {
     FREE(ztx->last_update);
     cstr_drop(&ztx->session_token);
     cstr_drop(&ztx->totp_code);
+    cstr_drop(&ztx->mfa_code.session_id);
     free_ziti_api_session_ptr(ztx->session);
     ztx->session = NULL;
     cstr_drop(&ztx->auth_info.secondary_issuer);
@@ -2956,11 +2959,15 @@ static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, vo
         free_ziti_api_session_ptr(ztx->session);
         ztx->session = api_sess;
 
+        // a code that the login took before it had this api session is the code of it
+        bool code_given = ztx_posture_mfa_code_session_installed(ztx);
         if (changed) {
             // the first look at the posture data comes right after full authentication, before this session is known,
             // and sends nothing: a TOTP token that is already there must not wait for the next one
             ztx_posture_send_all(ztx);
             // and the TOTP token of the session that is gone is no code of this one
+            ztx_posture_notify_mfa(ztx);
+        } else if (code_given) {
             ztx_posture_notify_mfa(ztx);
         }
 

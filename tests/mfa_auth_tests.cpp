@@ -25,6 +25,7 @@
 
 #include "catch2_includes.hpp"
 
+#include <ctime>
 #include <uv.h>
 #include <ziti/ziti.h>
 #include <ziti/errors.h>
@@ -42,6 +43,7 @@ void ztx_test_mfa_stub_verify_report_error(ziti_context ztx, int err);
 void ztx_test_mfa_stub_verify_report_ok(ziti_context ztx);
 void ztx_test_mfa_stub_set_rc(ziti_context ztx, int submit_rc);
 const char *ztx_test_totp_code(ziti_context ztx);
+int64_t ztx_test_mfa_code_at(ziti_context ztx);
 }
 
 namespace {
@@ -225,4 +227,70 @@ TEST_CASE("the OIDC auth method answers ZITI_INVALID_STATE to a code when no log
     auth->free(auth);
     uv_run(loop, UV_RUN_DEFAULT);
     free_api_path(&oidc);
+}
+
+// The MFA event reports the last code the controller took (see mfa_event_tests.cpp): the context notes the moment of every
+// code that was taken, whichever auth method took it and whether or not a TOTP token follows, and of none that was turned down.
+TEST_CASE("the moment of a code the login takes is noted, for either auth method", "[mfa-auth][totp]") {
+    const bool oidc = GENERATE(false, true);
+    CAPTURE(oidc);
+    stub_context s(ZITI_OK, oidc, false);
+    mfa_result r;
+    REQUIRE(ztx_test_mfa_code_at(s.ztx) == 0);
+
+    ziti_mfa_auth(s.ztx, "123456", on_mfa, &r);
+    // the login has not answered yet
+    CHECK(ztx_test_mfa_code_at(s.ztx) == 0);
+
+    int64_t before = (int64_t) time(nullptr);
+    ztx_test_mfa_stub_report(s.ztx, ZITI_OK);
+    int64_t after = (int64_t) time(nullptr);
+
+    CHECK(r.status == ZITI_OK);
+    CHECK(ztx_test_mfa_code_at(s.ztx) >= before);
+    CHECK(ztx_test_mfa_code_at(s.ztx) <= after);
+}
+
+TEST_CASE("a code the login turns down leaves no moment", "[mfa-auth][totp]") {
+    const bool oidc = GENERATE(false, true);
+    CAPTURE(oidc);
+    stub_context s(ZITI_OK, oidc, false);
+    mfa_result r;
+
+    ziti_mfa_auth(s.ztx, "000000", on_mfa, &r);
+    ztx_test_mfa_stub_report(s.ztx, ZITI_MFA_INVALID_TOKEN);
+
+    CHECK(r.status == ZITI_MFA_INVALID_TOKEN);
+    CHECK(ztx_test_mfa_code_at(s.ztx) == 0);
+}
+
+TEST_CASE("the moment of the code that verifies an enrollment is noted, for either auth method", "[mfa-auth][totp]") {
+    const bool oidc = GENERATE(false, true);
+    CAPTURE(oidc);
+    stub_context s(ZITI_OK, oidc, false);
+    mfa_result r;
+
+    ziti_mfa_verify(s.ztx, "654321", on_mfa, &r);
+    CHECK(ztx_test_mfa_code_at(s.ztx) == 0);
+
+    int64_t before = (int64_t) time(nullptr);
+    ztx_test_mfa_stub_verify_report_ok(s.ztx);
+    int64_t after = (int64_t) time(nullptr);
+
+    CHECK(r.status == ZITI_OK);
+    CHECK(ztx_test_mfa_code_at(s.ztx) >= before);
+    CHECK(ztx_test_mfa_code_at(s.ztx) <= after);
+}
+
+TEST_CASE("a verify the login turns down leaves no moment", "[mfa-auth][totp]") {
+    const bool oidc = GENERATE(false, true);
+    CAPTURE(oidc);
+    stub_context s(ZITI_OK, oidc, false);
+    mfa_result r;
+
+    ziti_mfa_verify(s.ztx, "000000", on_mfa, &r);
+    ztx_test_mfa_stub_verify_report_error(s.ztx, ZITI_MFA_INVALID_TOKEN);
+
+    CHECK(r.status == ZITI_MFA_INVALID_TOKEN);
+    CHECK(ztx_test_mfa_code_at(s.ztx) == 0);
 }

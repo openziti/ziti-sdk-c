@@ -97,8 +97,10 @@ struct ziti_posture_status_process_info {
  * is 0 or `expiring` is true.
  *
  * The event is sent when a check is first seen and when any of these values change; it can come
- * a little after the fact. Only OIDC authentication reports a code, otherwise `last_code_at` is
- * always 0.
+ * a little after the fact. `last_code_at` is when the controller took the last code for the api
+ * session the context is on (ziti_mfa_auth(), or the code that verifies an MFA enrollment with
+ * ziti_mfa_verify()), with any authentication method. It does not depend on what is sent to the
+ * edge routers or the controller afterwards.
  */
 struct ziti_posture_status_mfa_info {
     /** seconds a code counts for (the shortest of the checks); -1 when there is no timeout */
