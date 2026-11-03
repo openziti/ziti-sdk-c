@@ -20,6 +20,7 @@
 #include <ziti/model_support.h>
 #include <buffer.h>
 #include <utils.h>
+#include <zt_cstr.h>
 
 #if _WIN32
 #include <time.h>
@@ -466,16 +467,15 @@ void model_free(void *obj, const type_meta *meta) {
             model_list *list = (model_list *) f_addr;
             model_list_iter it = model_list_iterator(list);
             bool str_type = (field_meta == get_model_string_meta() || field_meta == get_json_meta());
+            // number and bool keep their value in the element pointer itself
+            bool value_type = (field_meta == get_model_number_meta() || field_meta == get_model_bool_meta());
             while (it != NULL) {
                 void *el = (void*)model_list_it_element(it);
                 it = model_list_it_remove(it);
                 if (str_type) {
                     field_meta->destroyer(&el);
                 }
-                else if (field_meta->destroyer) {
-                    field_meta->destroyer(el);
-                }
-                else {
+                else if (!value_type) {
                     model_free(el, field_meta);
                     free(el);
                 }
@@ -1080,6 +1080,45 @@ static type_meta string_META = {
         .from_json = (from_json_func) string_from_json,
         .to_json = (to_json_func) string_to_json,
 };
+
+static int m_cmp_cstr(const cstr *lh, const cstr *rh) {
+    null_checks(lh, rh)
+    return cstr_cmp(lh, rh);
+}
+
+static int cstr_from_json(cstr *val, json_object *j, const type_meta *UNUSED(meta)) {
+    if (json_object_get_type(j) != json_type_string) {
+        return -1;
+    }
+    cstr_assign(val, json_object_get_string(j));
+    return 0;
+}
+
+static json_object *cstr_to_json_obj(const cstr *val) {
+    return json_object_new_string(cstr_str(val));
+}
+
+static int m_cstr_to_json(const cstr *val, string_buf_t *buf, int indent, int flags) {
+    return m_string_to_json(cstr_str(val), buf, indent, flags);
+}
+
+static void m_free_cstr(void *v) {
+    // a failed parse frees the object twice (model_from_json, then model_parse): leave an empty string behind
+    cstr_drop((cstr *) v);
+    *(cstr *) v = cstr_init();
+}
+
+static type_meta cstr_META = {
+        .name = "cstr",
+        .size = sizeof(cstr),
+        .comparer = (_cmp_f) m_cmp_cstr,
+        .jsonifier = (_to_json_f) m_cstr_to_json,
+        .destroyer = m_free_cstr,
+        .from_json = (from_json_func) cstr_from_json,
+        .to_json = (to_json_func) cstr_to_json_obj,
+};
+
+const type_meta *get_cstr_meta() { return &cstr_META; }
 
 static type_meta timestamp_META = {
         .name = "timestamp",
