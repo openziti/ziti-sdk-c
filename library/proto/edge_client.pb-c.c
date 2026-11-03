@@ -874,6 +874,231 @@ void   ziti__edge_client__pb__posture_state_change__free_unpacked
   assert(message->base.descriptor == &ziti__edge_client__pb__posture_state_change__descriptor);
   protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
 }
+void   ziti__edge_client__pb__xg_payload_flag__init
+                     (Ziti__EdgeClient__Pb__XgPayloadFlag         *message)
+{
+  static const Ziti__EdgeClient__Pb__XgPayloadFlag init_value = ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__xg_payload_flag__get_packed_size
+                     (const Ziti__EdgeClient__Pb__XgPayloadFlag *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_payload_flag__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__xg_payload_flag__pack
+                     (const Ziti__EdgeClient__Pb__XgPayloadFlag *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_payload_flag__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__xg_payload_flag__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__XgPayloadFlag *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_payload_flag__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__XgPayloadFlag *
+       ziti__edge_client__pb__xg_payload_flag__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__XgPayloadFlag *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__xg_payload_flag__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__xg_payload_flag__free_unpacked
+                     (Ziti__EdgeClient__Pb__XgPayloadFlag *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_payload_flag__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   ziti__edge_client__pb__xg_header_key__init
+                     (Ziti__EdgeClient__Pb__XgHeaderKey         *message)
+{
+  static const Ziti__EdgeClient__Pb__XgHeaderKey init_value = ZITI__EDGE_CLIENT__PB__XG_HEADER_KEY__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__xg_header_key__get_packed_size
+                     (const Ziti__EdgeClient__Pb__XgHeaderKey *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_header_key__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__xg_header_key__pack
+                     (const Ziti__EdgeClient__Pb__XgHeaderKey *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_header_key__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__xg_header_key__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__XgHeaderKey *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_header_key__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__XgHeaderKey *
+       ziti__edge_client__pb__xg_header_key__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__XgHeaderKey *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__xg_header_key__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__xg_header_key__free_unpacked
+                     (Ziti__EdgeClient__Pb__XgHeaderKey *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_header_key__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   ziti__edge_client__pb__xg_capability__init
+                     (Ziti__EdgeClient__Pb__XgCapability         *message)
+{
+  static const Ziti__EdgeClient__Pb__XgCapability init_value = ZITI__EDGE_CLIENT__PB__XG_CAPABILITY__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__xg_capability__get_packed_size
+                     (const Ziti__EdgeClient__Pb__XgCapability *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_capability__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__xg_capability__pack
+                     (const Ziti__EdgeClient__Pb__XgCapability *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_capability__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__xg_capability__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__XgCapability *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_capability__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__XgCapability *
+       ziti__edge_client__pb__xg_capability__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__XgCapability *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__xg_capability__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__xg_capability__free_unpacked
+                     (Ziti__EdgeClient__Pb__XgCapability *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_capability__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   ziti__edge_client__pb__xg_control__init
+                     (Ziti__EdgeClient__Pb__XgControl         *message)
+{
+  static const Ziti__EdgeClient__Pb__XgControl init_value = ZITI__EDGE_CLIENT__PB__XG_CONTROL__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__xg_control__get_packed_size
+                     (const Ziti__EdgeClient__Pb__XgControl *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_control__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__xg_control__pack
+                     (const Ziti__EdgeClient__Pb__XgControl *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_control__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__xg_control__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__XgControl *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_control__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__XgControl *
+       ziti__edge_client__pb__xg_control__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__XgControl *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__xg_control__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__xg_control__free_unpacked
+                     (Ziti__EdgeClient__Pb__XgControl *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_control__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
+void   ziti__edge_client__pb__xg_control_header__init
+                     (Ziti__EdgeClient__Pb__XgControlHeader         *message)
+{
+  static const Ziti__EdgeClient__Pb__XgControlHeader init_value = ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__INIT;
+  *message = init_value;
+}
+size_t ziti__edge_client__pb__xg_control_header__get_packed_size
+                     (const Ziti__EdgeClient__Pb__XgControlHeader *message)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_control_header__descriptor);
+  return protobuf_c_message_get_packed_size ((const ProtobufCMessage*)(message));
+}
+size_t ziti__edge_client__pb__xg_control_header__pack
+                     (const Ziti__EdgeClient__Pb__XgControlHeader *message,
+                      uint8_t       *out)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_control_header__descriptor);
+  return protobuf_c_message_pack ((const ProtobufCMessage*)message, out);
+}
+size_t ziti__edge_client__pb__xg_control_header__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__XgControlHeader *message,
+                      ProtobufCBuffer *buffer)
+{
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_control_header__descriptor);
+  return protobuf_c_message_pack_to_buffer ((const ProtobufCMessage*)message, buffer);
+}
+Ziti__EdgeClient__Pb__XgControlHeader *
+       ziti__edge_client__pb__xg_control_header__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data)
+{
+  return (Ziti__EdgeClient__Pb__XgControlHeader *)
+     protobuf_c_message_unpack (&ziti__edge_client__pb__xg_control_header__descriptor,
+                                allocator, len, data);
+}
+void   ziti__edge_client__pb__xg_control_header__free_unpacked
+                     (Ziti__EdgeClient__Pb__XgControlHeader *message,
+                      ProtobufCAllocator *allocator)
+{
+  if(!message)
+    return;
+  assert(message->base.descriptor == &ziti__edge_client__pb__xg_control_header__descriptor);
+  protobuf_c_message_free_unpacked ((ProtobufCMessage*)message, allocator);
+}
 static const ProtobufCEnumValue ziti__edge_client__pb__router_capability__kind__enum_values_by_number[6] =
 {
   { "NoRouterCapabilities", "ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__NoRouterCapabilities", 0 },
@@ -3066,6 +3291,262 @@ const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_state_change__de
   (ProtobufCMessageInit) ziti__edge_client__pb__posture_state_change__init,
   NULL,NULL,NULL    /* reserved[123] */
 };
+static const ProtobufCEnumValue ziti__edge_client__pb__xg_payload_flag__kind__enum_values_by_number[8] =
+{
+  { "None", "ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__None", 0 },
+  { "CircuitEnd", "ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__CircuitEnd", 1 },
+  { "Originator", "ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__Originator", 2 },
+  { "CircuitStart", "ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__CircuitStart", 4 },
+  { "Chunk", "ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__Chunk", 8 },
+  { "Retransmit", "ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__Retransmit", 16 },
+  { "EOF", "ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__EOF", 32 },
+  { "WriteFailed", "ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__WriteFailed", 64 },
+};
+static const ProtobufCIntRange ziti__edge_client__pb__xg_payload_flag__kind__value_ranges[] = {
+{0, 0},{4, 3},{8, 4},{16, 5},{32, 6},{64, 7},{0, 8}
+};
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__xg_payload_flag__kind__enum_values_by_name[8] =
+{
+  { "Chunk", 4 },
+  { "CircuitEnd", 1 },
+  { "CircuitStart", 3 },
+  { "EOF", 6 },
+  { "None", 0 },
+  { "Originator", 2 },
+  { "Retransmit", 5 },
+  { "WriteFailed", 7 },
+};
+const ProtobufCEnumDescriptor ziti__edge_client__pb__xg_payload_flag__kind__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.XgPayloadFlag.Kind",
+  "Kind",
+  "Ziti__EdgeClient__Pb__XgPayloadFlag__Kind",
+  "ziti.edge_client.pb",
+  8,
+  ziti__edge_client__pb__xg_payload_flag__kind__enum_values_by_number,
+  8,
+  ziti__edge_client__pb__xg_payload_flag__kind__enum_values_by_name,
+  6,
+  ziti__edge_client__pb__xg_payload_flag__kind__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+#define ziti__edge_client__pb__xg_payload_flag__field_descriptors NULL
+#define ziti__edge_client__pb__xg_payload_flag__field_indices_by_name NULL
+#define ziti__edge_client__pb__xg_payload_flag__number_ranges NULL
+const ProtobufCMessageDescriptor ziti__edge_client__pb__xg_payload_flag__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.XgPayloadFlag",
+  "XgPayloadFlag",
+  "Ziti__EdgeClient__Pb__XgPayloadFlag",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__XgPayloadFlag),
+  0,
+  ziti__edge_client__pb__xg_payload_flag__field_descriptors,
+  ziti__edge_client__pb__xg_payload_flag__field_indices_by_name,
+  0,  ziti__edge_client__pb__xg_payload_flag__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__xg_payload_flag__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCEnumValue ziti__edge_client__pb__xg_header_key__kind__enum_values_by_number[3] =
+{
+  { "UUID", "ZITI__EDGE_CLIENT__PB__XG_HEADER_KEY__KIND__UUID", 0 },
+  { "Capabilities", "ZITI__EDGE_CLIENT__PB__XG_HEADER_KEY__KIND__Capabilities", 1 },
+  { "EdgeFlags", "ZITI__EDGE_CLIENT__PB__XG_HEADER_KEY__KIND__EdgeFlags", 16 },
+};
+static const ProtobufCIntRange ziti__edge_client__pb__xg_header_key__kind__value_ranges[] = {
+{0, 0},{16, 2},{0, 3}
+};
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__xg_header_key__kind__enum_values_by_name[3] =
+{
+  { "Capabilities", 1 },
+  { "EdgeFlags", 2 },
+  { "UUID", 0 },
+};
+const ProtobufCEnumDescriptor ziti__edge_client__pb__xg_header_key__kind__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.XgHeaderKey.Kind",
+  "Kind",
+  "Ziti__EdgeClient__Pb__XgHeaderKey__Kind",
+  "ziti.edge_client.pb",
+  3,
+  ziti__edge_client__pb__xg_header_key__kind__enum_values_by_number,
+  3,
+  ziti__edge_client__pb__xg_header_key__kind__enum_values_by_name,
+  2,
+  ziti__edge_client__pb__xg_header_key__kind__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+#define ziti__edge_client__pb__xg_header_key__field_descriptors NULL
+#define ziti__edge_client__pb__xg_header_key__field_indices_by_name NULL
+#define ziti__edge_client__pb__xg_header_key__number_ranges NULL
+const ProtobufCMessageDescriptor ziti__edge_client__pb__xg_header_key__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.XgHeaderKey",
+  "XgHeaderKey",
+  "Ziti__EdgeClient__Pb__XgHeaderKey",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__XgHeaderKey),
+  0,
+  ziti__edge_client__pb__xg_header_key__field_descriptors,
+  ziti__edge_client__pb__xg_header_key__field_indices_by_name,
+  0,  ziti__edge_client__pb__xg_header_key__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__xg_header_key__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCEnumValue ziti__edge_client__pb__xg_capability__kind__enum_values_by_number[2] =
+{
+  { "None", "ZITI__EDGE_CLIENT__PB__XG_CAPABILITY__KIND__None", 0 },
+  { "EOF", "ZITI__EDGE_CLIENT__PB__XG_CAPABILITY__KIND__EOF", 8 },
+};
+static const ProtobufCIntRange ziti__edge_client__pb__xg_capability__kind__value_ranges[] = {
+{0, 0},{8, 1},{0, 2}
+};
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__xg_capability__kind__enum_values_by_name[2] =
+{
+  { "EOF", 1 },
+  { "None", 0 },
+};
+const ProtobufCEnumDescriptor ziti__edge_client__pb__xg_capability__kind__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.XgCapability.Kind",
+  "Kind",
+  "Ziti__EdgeClient__Pb__XgCapability__Kind",
+  "ziti.edge_client.pb",
+  2,
+  ziti__edge_client__pb__xg_capability__kind__enum_values_by_number,
+  2,
+  ziti__edge_client__pb__xg_capability__kind__enum_values_by_name,
+  2,
+  ziti__edge_client__pb__xg_capability__kind__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+#define ziti__edge_client__pb__xg_capability__field_descriptors NULL
+#define ziti__edge_client__pb__xg_capability__field_indices_by_name NULL
+#define ziti__edge_client__pb__xg_capability__number_ranges NULL
+const ProtobufCMessageDescriptor ziti__edge_client__pb__xg_capability__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.XgCapability",
+  "XgCapability",
+  "Ziti__EdgeClient__Pb__XgCapability",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__XgCapability),
+  0,
+  ziti__edge_client__pb__xg_capability__field_descriptors,
+  ziti__edge_client__pb__xg_capability__field_indices_by_name,
+  0,  ziti__edge_client__pb__xg_capability__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__xg_capability__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCEnumValue ziti__edge_client__pb__xg_control__kind__enum_values_by_number[3] =
+{
+  { "None", "ZITI__EDGE_CLIENT__PB__XG_CONTROL__KIND__None", 0 },
+  { "TraceRoute", "ZITI__EDGE_CLIENT__PB__XG_CONTROL__KIND__TraceRoute", 1 },
+  { "TraceRouteResponse", "ZITI__EDGE_CLIENT__PB__XG_CONTROL__KIND__TraceRouteResponse", 2 },
+};
+static const ProtobufCIntRange ziti__edge_client__pb__xg_control__kind__value_ranges[] = {
+{0, 0},{0, 3}
+};
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__xg_control__kind__enum_values_by_name[3] =
+{
+  { "None", 0 },
+  { "TraceRoute", 1 },
+  { "TraceRouteResponse", 2 },
+};
+const ProtobufCEnumDescriptor ziti__edge_client__pb__xg_control__kind__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.XgControl.Kind",
+  "Kind",
+  "Ziti__EdgeClient__Pb__XgControl__Kind",
+  "ziti.edge_client.pb",
+  3,
+  ziti__edge_client__pb__xg_control__kind__enum_values_by_number,
+  3,
+  ziti__edge_client__pb__xg_control__kind__enum_values_by_name,
+  1,
+  ziti__edge_client__pb__xg_control__kind__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+#define ziti__edge_client__pb__xg_control__field_descriptors NULL
+#define ziti__edge_client__pb__xg_control__field_indices_by_name NULL
+#define ziti__edge_client__pb__xg_control__number_ranges NULL
+const ProtobufCMessageDescriptor ziti__edge_client__pb__xg_control__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.XgControl",
+  "XgControl",
+  "Ziti__EdgeClient__Pb__XgControl",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__XgControl),
+  0,
+  ziti__edge_client__pb__xg_control__field_descriptors,
+  ziti__edge_client__pb__xg_control__field_indices_by_name,
+  0,  ziti__edge_client__pb__xg_control__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__xg_control__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
+static const ProtobufCEnumValue ziti__edge_client__pb__xg_control_header__kind__enum_values_by_number[7] =
+{
+  { "None", "ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__None", 0 },
+  { "HopCount", "ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__HopCount", 20 },
+  { "HopType", "ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__HopType", 21 },
+  { "HopId", "ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__HopId", 22 },
+  { "Timestamp", "ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__Timestamp", 23 },
+  { "UserVal", "ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__UserVal", 24 },
+  { "Error", "ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__Error", 25 },
+};
+static const ProtobufCIntRange ziti__edge_client__pb__xg_control_header__kind__value_ranges[] = {
+{0, 0},{20, 1},{0, 7}
+};
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__xg_control_header__kind__enum_values_by_name[7] =
+{
+  { "Error", 6 },
+  { "HopCount", 1 },
+  { "HopId", 3 },
+  { "HopType", 2 },
+  { "None", 0 },
+  { "Timestamp", 4 },
+  { "UserVal", 5 },
+};
+const ProtobufCEnumDescriptor ziti__edge_client__pb__xg_control_header__kind__descriptor =
+{
+  PROTOBUF_C__ENUM_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.XgControlHeader.Kind",
+  "Kind",
+  "Ziti__EdgeClient__Pb__XgControlHeader__Kind",
+  "ziti.edge_client.pb",
+  7,
+  ziti__edge_client__pb__xg_control_header__kind__enum_values_by_number,
+  7,
+  ziti__edge_client__pb__xg_control_header__kind__enum_values_by_name,
+  2,
+  ziti__edge_client__pb__xg_control_header__kind__value_ranges,
+  NULL,NULL,NULL,NULL   /* reserved[1234] */
+};
+#define ziti__edge_client__pb__xg_control_header__field_descriptors NULL
+#define ziti__edge_client__pb__xg_control_header__field_indices_by_name NULL
+#define ziti__edge_client__pb__xg_control_header__number_ranges NULL
+const ProtobufCMessageDescriptor ziti__edge_client__pb__xg_control_header__descriptor =
+{
+  PROTOBUF_C__MESSAGE_DESCRIPTOR_MAGIC,
+  "ziti.edge_client.pb.XgControlHeader",
+  "XgControlHeader",
+  "Ziti__EdgeClient__Pb__XgControlHeader",
+  "ziti.edge_client.pb",
+  sizeof(Ziti__EdgeClient__Pb__XgControlHeader),
+  0,
+  ziti__edge_client__pb__xg_control_header__field_descriptors,
+  ziti__edge_client__pb__xg_control_header__field_indices_by_name,
+  0,  ziti__edge_client__pb__xg_control_header__number_ranges,
+  (ProtobufCMessageInit) ziti__edge_client__pb__xg_control_header__init,
+  NULL,NULL,NULL    /* reserved[123] */
+};
 static const ProtobufCEnumValue ziti__edge_client__pb__content_type__enum_values_by_number[41] =
 {
   { "Hello", "ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Hello", 0 },
@@ -3172,7 +3653,7 @@ const ProtobufCEnumDescriptor ziti__edge_client__pb__content_type__descriptor =
   ziti__edge_client__pb__content_type__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };
-static const ProtobufCEnumValue ziti__edge_client__pb__header_id__enum_values_by_number[45] =
+static const ProtobufCEnumValue ziti__edge_client__pb__header_id__enum_values_by_number[51] =
 {
   { "ZER0", "ZITI__EDGE_CLIENT__PB__HEADER_ID__ZER0", 0 },
   { "UUID", "ZITI__EDGE_CLIENT__PB__HEADER_ID__UUID", 128 },
@@ -3219,11 +3700,17 @@ static const ProtobufCEnumValue ziti__edge_client__pb__header_id__enum_values_by
   { "ServiceSubscriptionIndex", "ZITI__EDGE_CLIENT__PB__HEADER_ID__ServiceSubscriptionIndex", 1040 },
   { "DirectE2EEModeHeader", "ZITI__EDGE_CLIENT__PB__HEADER_ID__DirectE2EEModeHeader", 1041 },
   { "DirectE2EECircuitTokenHeader", "ZITI__EDGE_CLIENT__PB__HEADER_ID__DirectE2EECircuitTokenHeader", 1042 },
+  { "XgCircuitId", "ZITI__EDGE_CLIENT__PB__HEADER_ID__XgCircuitId", 2256 },
+  { "XgSequence", "ZITI__EDGE_CLIENT__PB__HEADER_ID__XgSequence", 2257 },
+  { "XgFlags", "ZITI__EDGE_CLIENT__PB__HEADER_ID__XgFlags", 2258 },
+  { "XgRecvBufferSize", "ZITI__EDGE_CLIENT__PB__HEADER_ID__XgRecvBufferSize", 2259 },
+  { "XgRTT", "ZITI__EDGE_CLIENT__PB__HEADER_ID__XgRTT", 2260 },
+  { "XgPayloadRaw", "ZITI__EDGE_CLIENT__PB__HEADER_ID__XgPayloadRaw", 2261 },
 };
 static const ProtobufCIntRange ziti__edge_client__pb__header_id__value_ranges[] = {
-{0, 0},{128, 1},{1000, 2},{0, 45}
+{0, 0},{128, 1},{1000, 2},{2256, 45},{0, 51}
 };
-static const ProtobufCEnumValueIndex ziti__edge_client__pb__header_id__enum_values_by_name[45] =
+static const ProtobufCEnumValueIndex ziti__edge_client__pb__header_id__enum_values_by_name[51] =
 {
   { "AppData", 13 },
   { "CallerId", 10 },
@@ -3267,6 +3754,12 @@ static const ProtobufCEnumValueIndex ziti__edge_client__pb__header_id__enum_valu
   { "TraceSourceRequestId", 21 },
   { "UUID", 1 },
   { "UseXgressToSdk", 30 },
+  { "XgCircuitId", 45 },
+  { "XgFlags", 47 },
+  { "XgPayloadRaw", 50 },
+  { "XgRTT", 49 },
+  { "XgRecvBufferSize", 48 },
+  { "XgSequence", 46 },
   { "XgressAddress", 32 },
   { "XgressCtrlId", 31 },
   { "ZER0", 0 },
@@ -3278,11 +3771,11 @@ const ProtobufCEnumDescriptor ziti__edge_client__pb__header_id__descriptor =
   "HeaderId",
   "Ziti__EdgeClient__Pb__HeaderId",
   "ziti.edge_client.pb",
-  45,
+  51,
   ziti__edge_client__pb__header_id__enum_values_by_number,
-  45,
+  51,
   ziti__edge_client__pb__header_id__enum_values_by_name,
-  3,
+  4,
   ziti__edge_client__pb__header_id__value_ranges,
   NULL,NULL,NULL,NULL   /* reserved[1234] */
 };

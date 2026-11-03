@@ -50,6 +50,11 @@ typedef struct Ziti__EdgeClient__Pb__PostureCheckDef__Process Ziti__EdgeClient__
 typedef struct Ziti__EdgeClient__Pb__PostureStateChange Ziti__EdgeClient__Pb__PostureStateChange;
 typedef struct Ziti__EdgeClient__Pb__PostureStateChange__CheckState Ziti__EdgeClient__Pb__PostureStateChange__CheckState;
 typedef struct Ziti__EdgeClient__Pb__PostureStateChange__PolicyState Ziti__EdgeClient__Pb__PostureStateChange__PolicyState;
+typedef struct Ziti__EdgeClient__Pb__XgPayloadFlag Ziti__EdgeClient__Pb__XgPayloadFlag;
+typedef struct Ziti__EdgeClient__Pb__XgHeaderKey Ziti__EdgeClient__Pb__XgHeaderKey;
+typedef struct Ziti__EdgeClient__Pb__XgCapability Ziti__EdgeClient__Pb__XgCapability;
+typedef struct Ziti__EdgeClient__Pb__XgControl Ziti__EdgeClient__Pb__XgControl;
+typedef struct Ziti__EdgeClient__Pb__XgControlHeader Ziti__EdgeClient__Pb__XgControlHeader;
 
 
 /* --- enums --- */
@@ -80,6 +85,116 @@ typedef enum _Ziti__EdgeClient__Pb__RouterCapability__Kind {
   ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND__BindSuccess = 6
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__ROUTER_CAPABILITY__KIND)
 } Ziti__EdgeClient__Pb__RouterCapability__Kind;
+typedef enum _Ziti__EdgeClient__Pb__XgPayloadFlag__Kind {
+  /*
+   * None is the zero value: no flags set. It is never OR-ed into a flags field.
+   */
+  ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__None = 0,
+  /*
+   * CircuitEnd: the sender is ending the circuit. Also sent in place of EOF to a peer that
+   * did not advertise EOF support.
+   */
+  ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__CircuitEnd = 1,
+  /*
+   * Originator: set when the sender is the Terminator end of the circuit, clear when it is the
+   * Initiator. Present on both payloads and acknowledgements.
+   */
+  ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__Originator = 2,
+  /*
+   * CircuitStart: the first payload of a circuit. It carries the sender's capabilities in the
+   * xgress capabilities passthrough header, which the peer uses to negotiate features such
+   * as EOF.
+   */
+  ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__CircuitStart = 4,
+  /*
+   * Chunk: the payload holds one piece of a larger message that the receiver reassembles. The
+   * first chunk's data is prefixed with the total size of the reassembled message.
+   */
+  ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__Chunk = 8,
+  /*
+   * Retransmit: the payload is a retransmission of one already sent.
+   */
+  ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__Retransmit = 16,
+  /*
+   * EOF: the sender will write no more data (half-close). The circuit stays open for data in
+   * the other direction. Only sent to a peer that advertised EOF support.
+   */
+  ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__EOF = 32,
+  /*
+   * WriteFailed: the sender stopped writing to its client without having received an end of
+   * circuit (typically a failed write), so the receiver should stop sending. The payload carries
+   * no data; the receiver closes its send buffer and consumes it rather than delivering it.
+   */
+  ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND__WriteFailed = 64
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__KIND)
+} Ziti__EdgeClient__Pb__XgPayloadFlag__Kind;
+typedef enum _Ziti__EdgeClient__Pb__XgHeaderKey__Kind {
+  /*
+   * UUID: the uuid of an edge message, present only while a payload is being traced so it can
+   * be correlated across hops
+   */
+  ZITI__EDGE_CLIENT__PB__XG_HEADER_KEY__KIND__UUID = 0,
+  /*
+   * Capabilities: a big-endian uint32 of the sender's capability bits (see XgCapability).
+   * Sent on the circuit start payload and in the capabilities-only response to it.
+   */
+  ZITI__EDGE_CLIENT__PB__XG_HEADER_KEY__KIND__Capabilities = 1,
+  /*
+   * EdgeFlags: a little-endian uint32 of the edge message flags (the HeaderId Flags header, e.g.
+   * the edge FIN), carried through xgress so the far edge endpoint sees them unchanged. This is
+   * also how half-close is signalled to a peer that did not advertise EOF support.
+   */
+  ZITI__EDGE_CLIENT__PB__XG_HEADER_KEY__KIND__EdgeFlags = 16
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__XG_HEADER_KEY__KIND)
+} Ziti__EdgeClient__Pb__XgHeaderKey__Kind;
+typedef enum _Ziti__EdgeClient__Pb__XgCapability__Kind {
+  /*
+   * None is the zero value required by proto3. Bit 0 is not an xgress capability and is never
+   * advertised.
+   */
+  ZITI__EDGE_CLIENT__PB__XG_CAPABILITY__KIND__None = 0,
+  /*
+   * EOF: the endpoint understands the XgPayloadFlag EOF flag, i.e. half-close. A peer that
+   * does not advertise it is sent CircuitEnd (xgress) or an edge FIN (SDK edge connection)
+   * instead.
+   */
+  ZITI__EDGE_CLIENT__PB__XG_CAPABILITY__KIND__EOF = 8
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__XG_CAPABILITY__KIND)
+} Ziti__EdgeClient__Pb__XgCapability__Kind;
+typedef enum _Ziti__EdgeClient__Pb__XgControl__Kind {
+  ZITI__EDGE_CLIENT__PB__XG_CONTROL__KIND__None = 0,
+  ZITI__EDGE_CLIENT__PB__XG_CONTROL__KIND__TraceRoute = 1,
+  ZITI__EDGE_CLIENT__PB__XG_CONTROL__KIND__TraceRouteResponse = 2
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__XG_CONTROL__KIND)
+} Ziti__EdgeClient__Pb__XgControl__Kind;
+typedef enum _Ziti__EdgeClient__Pb__XgControlHeader__Kind {
+  ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__None = 0,
+  /*
+   * HopCount: uint32
+   */
+  ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__HopCount = 20,
+  /*
+   * HopType: string
+   */
+  ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__HopType = 21,
+  /*
+   * HopId: string
+   */
+  ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__HopId = 22,
+  /*
+   * Timestamp: uint64
+   */
+  ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__Timestamp = 23,
+  /*
+   * UserVal: uint32, echoed back unchanged in the response
+   */
+  ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__UserVal = 24,
+  /*
+   * Error: string, set on a response when the traceroute failed
+   */
+  ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND__Error = 25
+    PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__KIND)
+} Ziti__EdgeClient__Pb__XgControlHeader__Kind;
 typedef enum _Ziti__EdgeClient__Pb__ContentType {
   ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Hello = 0,
   ZITI__EDGE_CLIENT__PB__CONTENT_TYPE__Ping = 1,
@@ -212,7 +327,19 @@ typedef enum _Ziti__EdgeClient__Pb__HeaderId {
    * DirectE2EECircuitTokenHeader carries the controller-signed circuit token. Sent on
    * StateConnected to the dialer and on Dial to the host.
    */
-  ZITI__EDGE_CLIENT__PB__HEADER_ID__DirectE2EECircuitTokenHeader = 1042
+  ZITI__EDGE_CLIENT__PB__HEADER_ID__DirectE2EECircuitTokenHeader = 1042,
+  /*
+   * xgress protocol headers, allocated just above the passthrough window
+   */
+  ZITI__EDGE_CLIENT__PB__HEADER_ID__XgCircuitId = 2256,
+  ZITI__EDGE_CLIENT__PB__HEADER_ID__XgSequence = 2257,
+  /*
+   * XgFlags carries a uint32 bitmask of XgPayloadFlag.Kind values
+   */
+  ZITI__EDGE_CLIENT__PB__HEADER_ID__XgFlags = 2258,
+  ZITI__EDGE_CLIENT__PB__HEADER_ID__XgRecvBufferSize = 2259,
+  ZITI__EDGE_CLIENT__PB__HEADER_ID__XgRTT = 2260,
+  ZITI__EDGE_CLIENT__PB__HEADER_ID__XgPayloadRaw = 2261
     PROTOBUF_C__FORCE_ENUM_TO_BE_INT_SIZE(ZITI__EDGE_CLIENT__PB__HEADER_ID)
 } Ziti__EdgeClient__Pb__HeaderId;
 typedef enum _Ziti__EdgeClient__Pb__Error {
@@ -839,6 +966,78 @@ struct  Ziti__EdgeClient__Pb__PostureStateChange
 , 0, 0, NULL, 0,NULL, 0,NULL }
 
 
+/*
+ * XgPayloadFlag holds the flag bits of an xgress payload or acknowledgement. Unlike most enums,
+ * these values are bit masks (1, 2, 4, ...), not bit positions, and are OR-ed together: the flags
+ * travel as a single uint32 in the XgFlags header (an absent header means no flags are set), and
+ * a receiver tests each flag with flags & value.
+ */
+struct  Ziti__EdgeClient__Pb__XgPayloadFlag
+{
+  ProtobufCMessage base;
+};
+#define ZITI__EDGE_CLIENT__PB__XG_PAYLOAD_FLAG__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__xg_payload_flag__descriptor) \
+ }
+
+
+/*
+ * XgHeaderKey lists the keys of the xgress passthrough headers in use. A key indexes a payload's
+ * application headers (a uint8 key to a byte array); on the wire, key k travels as the message
+ * header with id 2000+k, inside the window reserved in HeaderId.
+ */
+struct  Ziti__EdgeClient__Pb__XgHeaderKey
+{
+  ProtobufCMessage base;
+};
+#define ZITI__EDGE_CLIENT__PB__XG_HEADER_KEY__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__xg_header_key__descriptor) \
+ }
+
+
+/*
+ * XgCapability lists the capability bits an xgress endpoint can advertise to its peer in the
+ * Capabilities passthrough header (XgHeaderKey). Unlike XgPayloadFlag, the values are bit
+ * positions, not masks: test a capability with caps & (1 << value). Bits 8 through 16 are
+ * reserved for these, and a receiver masks off the rest. A sender uses a feature with a peer only
+ * if the peer advertised its bit.
+ */
+struct  Ziti__EdgeClient__Pb__XgCapability
+{
+  ProtobufCMessage base;
+};
+#define ZITI__EDGE_CLIENT__PB__XG_CAPABILITY__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__xg_capability__descriptor) \
+ }
+
+
+/*
+ * XgControl lists the types of xgress control message. The type is the first byte of the body of
+ * an XgControlType message, followed by the circuit id.
+ */
+struct  Ziti__EdgeClient__Pb__XgControl
+{
+  ProtobufCMessage base;
+};
+#define ZITI__EDGE_CLIENT__PB__XG_CONTROL__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__xg_control__descriptor) \
+ }
+
+
+/*
+ * XgControlHeader lists the message header ids used by xgress control messages (XgControlType),
+ * such as a traceroute request or response. They are separate from HeaderId, which holds the edge
+ * and xgress payload headers. The type of each value is noted below.
+ */
+struct  Ziti__EdgeClient__Pb__XgControlHeader
+{
+  ProtobufCMessage base;
+};
+#define ZITI__EDGE_CLIENT__PB__XG_CONTROL_HEADER__INIT \
+ { PROTOBUF_C_MESSAGE_INIT (&ziti__edge_client__pb__xg_control_header__descriptor) \
+ }
+
+
 /* Ziti__EdgeClient__Pb__RouterCapability methods */
 void   ziti__edge_client__pb__router_capability__init
                      (Ziti__EdgeClient__Pb__RouterCapability         *message);
@@ -1213,6 +1412,101 @@ Ziti__EdgeClient__Pb__PostureStateChange *
 void   ziti__edge_client__pb__posture_state_change__free_unpacked
                      (Ziti__EdgeClient__Pb__PostureStateChange *message,
                       ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__XgPayloadFlag methods */
+void   ziti__edge_client__pb__xg_payload_flag__init
+                     (Ziti__EdgeClient__Pb__XgPayloadFlag         *message);
+size_t ziti__edge_client__pb__xg_payload_flag__get_packed_size
+                     (const Ziti__EdgeClient__Pb__XgPayloadFlag   *message);
+size_t ziti__edge_client__pb__xg_payload_flag__pack
+                     (const Ziti__EdgeClient__Pb__XgPayloadFlag   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__xg_payload_flag__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__XgPayloadFlag   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__XgPayloadFlag *
+       ziti__edge_client__pb__xg_payload_flag__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__xg_payload_flag__free_unpacked
+                     (Ziti__EdgeClient__Pb__XgPayloadFlag *message,
+                      ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__XgHeaderKey methods */
+void   ziti__edge_client__pb__xg_header_key__init
+                     (Ziti__EdgeClient__Pb__XgHeaderKey         *message);
+size_t ziti__edge_client__pb__xg_header_key__get_packed_size
+                     (const Ziti__EdgeClient__Pb__XgHeaderKey   *message);
+size_t ziti__edge_client__pb__xg_header_key__pack
+                     (const Ziti__EdgeClient__Pb__XgHeaderKey   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__xg_header_key__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__XgHeaderKey   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__XgHeaderKey *
+       ziti__edge_client__pb__xg_header_key__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__xg_header_key__free_unpacked
+                     (Ziti__EdgeClient__Pb__XgHeaderKey *message,
+                      ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__XgCapability methods */
+void   ziti__edge_client__pb__xg_capability__init
+                     (Ziti__EdgeClient__Pb__XgCapability         *message);
+size_t ziti__edge_client__pb__xg_capability__get_packed_size
+                     (const Ziti__EdgeClient__Pb__XgCapability   *message);
+size_t ziti__edge_client__pb__xg_capability__pack
+                     (const Ziti__EdgeClient__Pb__XgCapability   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__xg_capability__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__XgCapability   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__XgCapability *
+       ziti__edge_client__pb__xg_capability__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__xg_capability__free_unpacked
+                     (Ziti__EdgeClient__Pb__XgCapability *message,
+                      ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__XgControl methods */
+void   ziti__edge_client__pb__xg_control__init
+                     (Ziti__EdgeClient__Pb__XgControl         *message);
+size_t ziti__edge_client__pb__xg_control__get_packed_size
+                     (const Ziti__EdgeClient__Pb__XgControl   *message);
+size_t ziti__edge_client__pb__xg_control__pack
+                     (const Ziti__EdgeClient__Pb__XgControl   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__xg_control__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__XgControl   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__XgControl *
+       ziti__edge_client__pb__xg_control__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__xg_control__free_unpacked
+                     (Ziti__EdgeClient__Pb__XgControl *message,
+                      ProtobufCAllocator *allocator);
+/* Ziti__EdgeClient__Pb__XgControlHeader methods */
+void   ziti__edge_client__pb__xg_control_header__init
+                     (Ziti__EdgeClient__Pb__XgControlHeader         *message);
+size_t ziti__edge_client__pb__xg_control_header__get_packed_size
+                     (const Ziti__EdgeClient__Pb__XgControlHeader   *message);
+size_t ziti__edge_client__pb__xg_control_header__pack
+                     (const Ziti__EdgeClient__Pb__XgControlHeader   *message,
+                      uint8_t             *out);
+size_t ziti__edge_client__pb__xg_control_header__pack_to_buffer
+                     (const Ziti__EdgeClient__Pb__XgControlHeader   *message,
+                      ProtobufCBuffer     *buffer);
+Ziti__EdgeClient__Pb__XgControlHeader *
+       ziti__edge_client__pb__xg_control_header__unpack
+                     (ProtobufCAllocator  *allocator,
+                      size_t               len,
+                      const uint8_t       *data);
+void   ziti__edge_client__pb__xg_control_header__free_unpacked
+                     (Ziti__EdgeClient__Pb__XgControlHeader *message,
+                      ProtobufCAllocator *allocator);
 /* --- per-message closures --- */
 
 typedef void (*Ziti__EdgeClient__Pb__RouterCapability_Closure)
@@ -1317,6 +1611,21 @@ typedef void (*Ziti__EdgeClient__Pb__PostureStateChange__PolicyState_Closure)
 typedef void (*Ziti__EdgeClient__Pb__PostureStateChange_Closure)
                  (const Ziti__EdgeClient__Pb__PostureStateChange *message,
                   void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__XgPayloadFlag_Closure)
+                 (const Ziti__EdgeClient__Pb__XgPayloadFlag *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__XgHeaderKey_Closure)
+                 (const Ziti__EdgeClient__Pb__XgHeaderKey *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__XgCapability_Closure)
+                 (const Ziti__EdgeClient__Pb__XgCapability *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__XgControl_Closure)
+                 (const Ziti__EdgeClient__Pb__XgControl *message,
+                  void *closure_data);
+typedef void (*Ziti__EdgeClient__Pb__XgControlHeader_Closure)
+                 (const Ziti__EdgeClient__Pb__XgControlHeader *message,
+                  void *closure_data);
 
 /* --- services --- */
 
@@ -1365,6 +1674,16 @@ extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_check_def
 extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_state_change__descriptor;
 extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_state_change__check_state__descriptor;
 extern const ProtobufCMessageDescriptor ziti__edge_client__pb__posture_state_change__policy_state__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__xg_payload_flag__descriptor;
+extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__xg_payload_flag__kind__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__xg_header_key__descriptor;
+extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__xg_header_key__kind__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__xg_capability__descriptor;
+extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__xg_capability__kind__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__xg_control__descriptor;
+extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__xg_control__kind__descriptor;
+extern const ProtobufCMessageDescriptor ziti__edge_client__pb__xg_control_header__descriptor;
+extern const ProtobufCEnumDescriptor    ziti__edge_client__pb__xg_control_header__kind__descriptor;
 
 PROTOBUF_C__END_DECLS
 
