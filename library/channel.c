@@ -57,6 +57,7 @@ struct ziti_channel {
     cstr name;
     cstr url;
     cstr version;
+    cstr build;
     cstr host;
     int port;
 
@@ -153,6 +154,7 @@ const char* zch_get_host(ziti_channel_t *ch) { return cstr_str(&ch->host); }
 const char* zch_get_url(ziti_channel_t *ch) { return cstr_str(&ch->url); }
 const char* zch_get_name(ziti_channel_t *ch) { return cstr_str(&ch->name); }
 const char* zch_get_version(ziti_channel_t *ch) { return cstr_str(&ch->version); }
+const char* zch_get_build(ziti_channel_t *ch) { return cstr_str(&ch->build); }
 uint64_t zch_connect_time(ziti_channel_t *ch) { return ch->connect_time; }
 
 
@@ -249,6 +251,7 @@ void ziti_channel_free(ziti_channel_t *ch) {
     cstr_drop(&ch->name);
     cstr_drop(&ch->url);
     cstr_drop(&ch->version);
+    cstr_drop(&ch->build);
     cstr_drop(&ch->host);
 }
 
@@ -364,8 +367,8 @@ void zch_dump(ziti_channel_t *ch, dump_fn printer, void *ctx) {
     uint64_t now = uv_now(ch->ztx->loop);
 
     printer(ctx, "ch[%d] %s\n", zch_get_id(ch), zch_get_name(ch));
-    printer(ctx, "\tconnected[%c] version[%s] address[%s]",
-            ziti_channel_is_connected(ch) ? 'Y' : 'N', zch_get_version(ch), zch_get_url(ch));
+    printer(ctx, "\tconnected[%c] version[%s] build[%s] address[%s]",
+            ziti_channel_is_connected(ch) ? 'Y' : 'N', zch_get_version(ch), zch_get_build(ch), zch_get_url(ch));
     if (ziti_channel_is_connected(ch)) {
         printer(ctx, " latency[%" PRIu64 "] connected[%" PRIu64 "s]\n",
                 zch_latency(ch), (now - zch_connect_time(ch)) / 1000);
@@ -921,7 +924,17 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         CH_LOG(INFO, "connected. EdgeRouter version: %.*s", (int) erVersionLen, erVersion);
         ch->state = Connected;
         ch->connect_time = uv_now(ch->loop);
+        // header is "version|revision|build date|os|arch": the version and the rest of it (the build)
+        const char *build = "";
+        size_t buildLen = 0;
+        const char *sep = memchr(erVersion, '|', erVersionLen);
+        if (sep != NULL) {
+            build = sep + 1;
+            buildLen = erVersionLen - (size_t)(build - erVersion);
+            erVersionLen = (size_t)(sep - erVersion);
+        }
         cstr_assign_n(&ch->version, erVersion, (int)erVersionLen);
+        cstr_assign_n(&ch->build, build, (int)buildLen);
         ch->latency = uv_now(ch->loop) - ch->latency;
         ztx_set_deadline(ch->ztx, LATENCY_INTERVAL, &ch->deadline, send_latency_probe, ch);
 
