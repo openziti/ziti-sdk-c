@@ -65,14 +65,24 @@ TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
     REQUIRE_ZITI_OK(tls->load_key(&key, cfg.id.key, strlen(cfg.id.key)));
     tls->set_own_cert(tls, key, cert);
 
-    auto provider = (const char *)model_list_head(&cfg.controllers);
+    // the OIDC provider is at /oidc on the host and port of the controller (the "edge-oidc" API in /version), not under
+    // the API path (/edge/client/v1) of the controller url in the identity: give the client the origin only,
+    // oidc_client_set_cfg() adds /oidc
+    auto ctrl_url_str = (const char *)model_list_head(&cfg.controllers);
+    tlsuv_url_s ctrl_url{};
+    REQUIRE(tlsuv_parse_url(&ctrl_url, ctrl_url_str) == 0);
+    std::string provider = std::string(ctrl_url.scheme, ctrl_url.scheme_len) + "://" +
+                           std::string(ctrl_url.hostname, ctrl_url.hostname_len);
+    if (ctrl_url.port != 0) {
+        provider += ":" + std::to_string(ctrl_url.port);
+    }
 
     oidc_client_t oidcClient{};
     DEFER {
             oidc_client_close(&oidcClient, [](oidc_client_t *clt) { });
             uv_run(l, UV_RUN_DEFAULT);
     };
-    oidc_client_init(l, &oidcClient, provider, tls);
+    oidc_client_init(l, &oidcClient, provider.c_str(), tls);
     zt_x509 x509{key, cert};
     oidcClient.tls = tls;
     oidcClient.x509 = &x509;
