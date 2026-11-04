@@ -470,10 +470,10 @@ static void process_dial(struct binding_s *b, message *msg) {
         return;
     }
 
-    size_t peer_key_len, method_len;
-    const uint8_t *peer_key;
-    uint32_t rt_conn_id;
-    const uint8_t *method_id;
+    size_t peer_key_len = 0, method_len = 0;
+    const uint8_t *peer_key = NULL;
+    uint32_t rt_conn_id = 0;
+    const uint8_t *method_id = NULL;
 
     bool peer_key_sent = message_get_bytes_header(msg, PublicKeyHeader, &peer_key, &peer_key_len);
     bool rt_conn_id_sent = message_get_int32_header(msg, RouterProvidedConnId, (int32_t*)&rt_conn_id);
@@ -485,17 +485,19 @@ static void process_dial(struct binding_s *b, message *msg) {
         return;
     }
 
-    ziti_crypto_method method = b->e2ee->method;
+    ziti_crypto_method method = b->e2ee ? b->e2ee->method :
+                                conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none;
     if (method_sent) {
         cstr id = cstr_with_n((const char *)method_id, (int)method_len);
-        method = e2ee_method_from_id(cstr_str(&id));
+        ziti_crypto_method peer_method = e2ee_method_from_id(cstr_str(&id));
         cstr_drop(&id);
-    }
-    if (method != b->e2ee->method) {
-        CONN_LOG(ERROR, "failed to establish crypto: crypto method mismatch: peer[%s] != local[%s]",
-                 e2ee_method_id(method), e2ee_method_id(b->e2ee->method));
-        reject_dial_request(conn->conn_id, b->ch, msg->header.seq, "crypto method mismatch");
-        return;
+
+        if (peer_method != method) {
+            CONN_LOG(ERROR, "failed to establish crypto: crypto method mismatch: peer[%s] != local[%s]",
+                     e2ee_method_id(peer_method), e2ee_method_id(method));
+            reject_dial_request(conn->conn_id, b->ch, msg->header.seq, "crypto method mismatch");
+            return;
+        }
     }
 
     ziti_connection client;
@@ -521,7 +523,7 @@ static void process_dial(struct binding_s *b, message *msg) {
         client->e2ee = b->e2ee->clone(b->e2ee);
     else {
         // uses the session cert if the controller issued one, otherwise the identity cert
-        client->e2ee = create_e2ee(conn->ziti_ctx->opts.e2ee_mode, true, conn->ziti_ctx->e2ee_host_tls);
+        client->e2ee = create_e2ee(method, true, conn->ziti_ctx->e2ee_host_tls);
     }
 
     if (client->e2ee == NULL || client->e2ee->init(client->e2ee, peer_key, peer_key_len, true) != 0) {
@@ -629,19 +631,23 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
     }
 
     struct ziti_conn *conn = b->conn;
-    if (b->e2ee) {
-        b->e2ee->free(b->e2ee);
-        b->e2ee = NULL;
-    }
 
-    ziti_crypto_method cm = conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none;
-
-    b->e2ee = create_e2ee(cm, true, conn->ziti_ctx->e2ee_host_tls);
-    if (b->e2ee == NULL) {
-        CONN_LOG(ERROR, "failed to initialize crypto method[%s]", e2ee_method_id(cm));
-        return 0;
+    // after ziti 2.0.5 we no longer need to put crypto data on terminator
+    if (version_at_least(zch_get_version(ch), 2, 0, 5)) {
+        if (b->e2ee != NULL) {
+            b->e2ee->free(b->e2ee);
+            b->e2ee = NULL;
+        }
+    } else if (b->e2ee == NULL) {
+        // created once and kept across rebinds: crypto data on the terminator cannot be updated for the same listenerId
+        ziti_crypto_method cm = conn->encrypted ? conn->ziti_ctx->opts.e2ee_mode : ziti_crypto_none;
+        b->e2ee = create_e2ee(cm, true, conn->ziti_ctx->e2ee_host_tls);
+        if (b->e2ee == NULL) {
+            CONN_LOG(ERROR, "failed to initialize crypto method[%s]", e2ee_method_id(cm));
+            return 0;
+        }
+        CONN_LOG(DEBUG, "using crypto method[%s]", e2ee_method_id(cm));
     }
-    CONN_LOG(DEBUG, "using crypto method[%s]", e2ee_method_id(cm));
 
     char *token = conn->server.token;
     CONN_LOG(DEBUG, "requesting BIND on ch[%s]", zch_get_name(ch));
@@ -665,10 +671,14 @@ int start_binding(struct binding_s *b, ziti_channel_t *ch) {
     };
     int nheaders = 5;
 
-    // TODO: remove this when ER can accept per-accept key (ziti@2.1+)
-    e2ee_pub_t pub_key = b->e2ee->pub(b->e2ee);
-    if (pub_key.key_len > 0) {
-        headers[nheaders++] = header(PublicKeyHeader, pub_key.key_len, pub_key.key);
+    // ziti v2.0.5
+    // PR https://github.com/openziti/ziti/pull/4374
+    // added ability to accept per-accept key
+    if (b->e2ee != NULL) {
+        e2ee_pub_t pub_key = b->e2ee->pub(b->e2ee);
+        if (pub_key.key_len > 0) {
+            headers[nheaders++] = header(PublicKeyHeader, pub_key.key_len, pub_key.key);
+        }
     }
 
     if (conn->server.identity != NULL) {
