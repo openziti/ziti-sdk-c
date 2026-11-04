@@ -879,3 +879,40 @@ size_t sticky_key_raw_hash(const sticky_key_raw *r) {
         c_hash_str(nsafe(r->id)),
         c_hash_str(nsafe(r->group)));
 }
+
+bool version_at_least(const char *ver, int major, int minor, int patch) {
+    if (ver == NULL) return false;
+    if (*ver == 'v') ver++;
+
+    int have[3] = {0, 0, 0};
+    const char *p = ver;
+    for (int i = 0; i < 3; i++) {
+        if (*p < '0' || *p > '9') return false;
+        int n = 0;
+        for (; *p >= '0' && *p <= '9'; p++) {
+            if (n < 100000000) n = n * 10 + (*p - '0');
+        }
+        have[i] = n;
+        if (*p != '.') break;
+        p++;
+    }
+
+    if (have[0] == 0 && have[1] == 0 && have[2] == 0) return true; // dev build
+
+    const int want[3] = {major, minor, patch};
+    for (int i = 0; i < 3; i++) {
+        if (have[i] != want[i]) return have[i] > want[i];
+    }
+    if (*p != '-') return true;
+
+    // same version with a suffix: "-<commits>-g<hex>[-dirty]" is git describe output, a build made after the tag.
+    // anything else ("-pre1", "-rc2") is a pre-release, older than the version itself.
+    p++;
+    if (*p < '0' || *p > '9') return false;
+    while (*p >= '0' && *p <= '9') p++;
+    if (p[0] != '-' || p[1] != 'g') return false;
+    p += 2;
+    const char *hex = p;
+    while ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f')) p++;
+    return p > hex && (*p == '\0' || *p == '-' || *p == '|');
+}
