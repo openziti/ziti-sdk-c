@@ -65,14 +65,25 @@ TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
     REQUIRE_ZITI_OK(tls->load_key(&key, cfg.id.key, strlen(cfg.id.key)));
     tls->set_own_cert(tls, key, cert);
 
-    auto provider = (const char *)model_list_head(&cfg.controllers);
+    // the OIDC provider is at /oidc on the host and port of the controller (the "edge-oidc" API in /version), not under
+    // the API path (/edge/client/v1) of the controller url in the identity: give the client the origin only,
+    // oidc_client_set_cfg() adds /oidc
+    auto ctrl_url_str = (const char *)model_list_head(&cfg.controllers);
+    tlsuv_url_s ctrl_url{};
+    REQUIRE(tlsuv_parse_url(&ctrl_url, ctrl_url_str) == 0);
+    std::string provider = std::string(ctrl_url.scheme, ctrl_url.scheme_len) + "://" +
+                           std::string(ctrl_url.hostname, ctrl_url.hostname_len);
+    if (ctrl_url.port != 0) {
+        provider += ":" + std::to_string(ctrl_url.port);
+    }
 
     oidc_client_t oidcClient{};
+    // after the REQUIRE: oidc_client_close() on a client that failed to init would uv_close() a timer that was never allocated
+    REQUIRE(oidc_client_init(l, &oidcClient, provider.c_str(), tls) == 0);
     DEFER {
             oidc_client_close(&oidcClient, [](oidc_client_t *clt) { });
             uv_run(l, UV_RUN_DEFAULT);
     };
-    oidc_client_init(l, &oidcClient, provider, tls);
     zt_x509 x509{key, cert};
     oidcClient.tls = tls;
     oidcClient.x509 = &x509;
@@ -82,11 +93,11 @@ TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
     } cfg_result = {false, -1};
     oidcClient.data = &cfg_result;
 
-    oidc_client_configure(&oidcClient, [](oidc_client_t *clt, int status, const char *err) {
+    REQUIRE(oidc_client_configure(&oidcClient, [](oidc_client_t *clt, int status, const char *err) {
         auto res = (oidc_cfg_result *)clt->data;
         res->called = true;
         res->status = status;
-    });
+    }) == 0);
 
     uv_run(l, UV_RUN_DEFAULT);
 
@@ -98,12 +109,12 @@ TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
 
     std::string token;
     oidcClient.data = &token;
-    oidc_client_start(&oidcClient, [](oidc_client_t *clt, enum oidc_status status, const void *d) {
+    REQUIRE(oidc_client_start(&oidcClient, [](oidc_client_t *clt, enum oidc_status status, const void *d) {
         auto out = static_cast<std::string *>(clt->data);
         if (status == OIDC_TOKEN_OK) {
             *out = static_cast<const char *>(d);
         }
-    });
+    }) == 0);
 
     uv_run(l, UV_RUN_DEFAULT);
 
@@ -112,7 +123,7 @@ TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
     std::string old = token;
     token.clear();
 
-    oidc_client_refresh(&oidcClient);
+    REQUIRE(oidc_client_refresh(&oidcClient) == 0);
     uv_run(l, UV_RUN_DEFAULT);
 
     REQUIRE(!token.empty());
