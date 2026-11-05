@@ -78,11 +78,12 @@ TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
     }
 
     oidc_client_t oidcClient{};
+    // after the REQUIRE: oidc_client_close() on a client that failed to init would uv_close() a timer that was never allocated
+    REQUIRE(oidc_client_init(l, &oidcClient, provider.c_str(), tls) == 0);
     DEFER {
             oidc_client_close(&oidcClient, [](oidc_client_t *clt) { });
             uv_run(l, UV_RUN_DEFAULT);
     };
-    oidc_client_init(l, &oidcClient, provider.c_str(), tls);
     zt_x509 x509{key, cert};
     oidcClient.tls = tls;
     oidcClient.x509 = &x509;
@@ -92,11 +93,11 @@ TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
     } cfg_result = {false, -1};
     oidcClient.data = &cfg_result;
 
-    oidc_client_configure(&oidcClient, [](oidc_client_t *clt, int status, const char *err) {
+    REQUIRE(oidc_client_configure(&oidcClient, [](oidc_client_t *clt, int status, const char *err) {
         auto res = (oidc_cfg_result *)clt->data;
         res->called = true;
         res->status = status;
-    });
+    }) == 0);
 
     uv_run(l, UV_RUN_DEFAULT);
 
@@ -108,12 +109,12 @@ TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
 
     std::string token;
     oidcClient.data = &token;
-    oidc_client_start(&oidcClient, [](oidc_client_t *clt, enum oidc_status status, const void *d) {
+    REQUIRE(oidc_client_start(&oidcClient, [](oidc_client_t *clt, enum oidc_status status, const void *d) {
         auto out = static_cast<std::string *>(clt->data);
         if (status == OIDC_TOKEN_OK) {
             *out = static_cast<const char *>(d);
         }
-    });
+    }) == 0);
 
     uv_run(l, UV_RUN_DEFAULT);
 
@@ -122,7 +123,7 @@ TEST_CASE_METHOD(AuthTests, "oidc", "[auth]") {
     std::string old = token;
     token.clear();
 
-    oidc_client_refresh(&oidcClient);
+    REQUIRE(oidc_client_refresh(&oidcClient) == 0);
     uv_run(l, UV_RUN_DEFAULT);
 
     REQUIRE(!token.empty());
