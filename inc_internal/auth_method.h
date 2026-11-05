@@ -53,6 +53,9 @@ struct ziti_auth_method_s {
     int (*set_ca)(ziti_auth_method_t *self, const char *ca);
     int (*start)(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
     int (*force_refresh)(ziti_auth_method_t *self);
+    // a new login with the credentials of the identity, not a refresh of the session it has. NULL when a refresh is
+    // a login already (legacy)
+    int (*force_login)(ziti_auth_method_t *self);
     const struct timeval* (*expiration)(ziti_auth_method_t *self);
     int (*enroll_mfa)(ziti_auth_method_t *self, void (*cb)(ziti_mfa_enrollment *mfa_enrollment, const ziti_error *err, void *ctx), void *ctx);
     int (*verify_mfa)(ziti_auth_method_t *self, const char *code, void (*cb)(void *, const ziti_error *, void *), void *ctx);
