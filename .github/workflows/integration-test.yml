@@ -28,6 +28,7 @@ jobs:
     permissions:
       contents: read
       checks: write
+      id-token: write # test_github_oidc.py logs in with the GitHub token of the job
     name: ${{ matrix.spec.target }}-test-${{ inputs.ziti_version }}
     runs-on: ${{ matrix.spec.runner }}
     env:

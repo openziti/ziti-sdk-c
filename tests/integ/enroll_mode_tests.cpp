@@ -279,6 +279,7 @@ struct lifecycle_state {
     uv_loop_t *loop;
     std::string token;           // pre-obtained IdP token
     std::string signer_name;     // OIDC signer to select
+    bool direct{false};          // the app holds the token: no signer is selected, the token goes in when it is asked for
     bool config_received{false};
     bool cert_received{false};   // the config event had a client cert and its key
     bool auth_ok{false};
@@ -305,6 +306,16 @@ static void lifecycle_done(ziti_context ztx, lifecycle_state *state) {
     ziti_shutdown(ztx);
 }
 
+// hands the SDK the pre-obtained token
+static void lifecycle_feed_token(ziti_context ztx, lifecycle_state *state) {
+    state->token_rc = ziti_ext_auth_token(ztx, state->token.c_str());
+    if (state->token_rc != ZITI_OK) {
+        // nothing more is coming: no point in waiting for the timeout
+        state->error_msg = ziti_errorstr(state->token_rc);
+        lifecycle_done(ztx, state);
+    }
+}
+
 static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
     auto *state = static_cast<lifecycle_state *>(ziti_app_ctx(ztx));
 
@@ -314,17 +325,17 @@ static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
 
     if (ev->type == ZitiAuthEvent) {
         if (ev->auth.action == ziti_auth_select_external) {
-            // select the OIDC signer - token is fed after login_external event
-            ziti_use_ext_jwt_signer(ztx, state->signer_name.c_str());
-            ziti_ext_auth(ztx, nullptr, nullptr);
+            if (state->direct) {
+                // no signer to select, no login to start: the controller decides if it takes the token
+                lifecycle_feed_token(ztx, state);
+            } else {
+                // select the OIDC signer - token is fed after login_external event
+                ziti_use_ext_jwt_signer(ztx, state->signer_name.c_str());
+                ziti_ext_auth(ztx, nullptr, nullptr);
+            }
         } else if (ev->auth.action == ziti_auth_login_external) {
             // signer is configured and ready - feed the pre-obtained token
-            state->token_rc = ziti_ext_auth_token(ztx, state->token.c_str());
-            if (state->token_rc != ZITI_OK) {
-                // nothing more is coming: no point in waiting for the timeout
-                state->error_msg = ziti_errorstr(state->token_rc);
-                lifecycle_done(ztx, state);
-            }
+            lifecycle_feed_token(ztx, state);
         } else if (ev->auth.action == ziti_auth_cannot_continue) {
             state->auth_failed = true;
             state->error_msg = ev->auth.error ? ev->auth.error : "unknown";
@@ -479,6 +490,53 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-token-lifecycle", "[integ][enroll-mod
     state.loop = loop();
     state.token = idp_token;
     state.signer_name = idp_signer;
+
+    ziti_options opts2{};
+    opts2.app_ctx = &state;
+    opts2.events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent;
+    opts2.event_cb = lifecycle_event_cb;
+    opts2.enroll_mode = ziti_enroll_token;
+    ziti_context_set_options(ztx, &opts2);
+
+    ziti_context_run(ztx, loop());
+
+    uv_timer_t timer;
+    uv_timer_init(loop(), &timer);
+    timer.data = loop();
+    uv_timer_start(&timer, [](uv_timer_t *t) {
+        uv_stop((uv_loop_t *)t->data);
+    }, 30000, 0);
+    uv_unref((uv_handle_t *)&timer); // the loop ends when the context is gone, the timer only bounds a hang
+
+    uv_run(loop(), UV_RUN_DEFAULT);
+    uv_timer_stop(&timer);
+    uv_close((uv_handle_t *)&timer, nullptr);
+    uv_run(loop(), UV_RUN_NOWAIT);
+
+    INFO("error: " << state.error_msg);
+    CHECK_FALSE(state.auth_failed);
+    CHECK(state.auth_ok);
+    CHECK(state.config_received);
+}
+
+
+// Like ztx-enroll-token-lifecycle, for an app that holds the token already (a CI job with the token of its
+// workflow): it gives it to the SDK when asked to log in, and selects no signer. Only IDP_TOKEN is needed;
+// the signer that trusts the token's issuer need not have an IdP url or a client id.
+TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-token-direct-lifecycle", "[integ][enroll-mode][lifecycle]") {
+    std::string idp_token = checkENV("IDP_TOKEN");
+
+    // CA + controller URL only, no cert/key
+    bootstrap_config bootstrap;
+    bootstrap.init(TEST_CLIENT);
+
+    ziti_context ztx = nullptr;
+    REQUIRE(ziti_context_init(&ztx, &bootstrap.cfg) == ZITI_OK);
+
+    lifecycle_state state{};
+    state.loop = loop();
+    state.token = idp_token;
+    state.direct = true;
 
     ziti_options opts2{};
     opts2.app_ctx = &state;
