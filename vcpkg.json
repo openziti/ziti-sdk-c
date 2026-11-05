@@ -2,9 +2,9 @@
   "name": "ziti",
   "version-semver": "1.0.0",
   "description": [
-    "using vcpkg baseline: 2026.10.21 (a2f9862)"
+    "using vcpkg baseline: 2026.11.05 (29718cf)"
   ],
-  "builtin-baseline": "a2f9862da6d88040a8537fb9b8cb24deaa9a196b",
+  "builtin-baseline": "29718cfec805208b4e2d80ed91e681143b488dd7",
   "dependencies": [
     "libuv",
     "openssl",
