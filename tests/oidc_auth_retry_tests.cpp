@@ -417,52 +417,44 @@ struct TestClient {
 
 } // namespace
 
-// A 5xx is transient on any leg, so it is retried without ever telling the app,
-// and only becomes OIDC_TOKEN_FAILED once the window closes. The 3s window
-// guarantees at least one retry: the first backoff is
-// next_backoff(0, 5, 1000) == random % 2000, clamped to the window.
-TEST_CASE("oidc-auth-retries-transient-5xx-then-reports-once", "[oidc]") {
+// A 5xx is an outage (the controller or a proxy in front of it is away or overloaded), not an answer about the
+// identity. It is retried for as long as it lasts, whatever the retry window, without telling the app, and the
+// login completes once the server recovers.
+TEST_CASE("oidc-auth-retries-5xx-outage-until-recovery", "[oidc]") {
     FakeOidcEndpoint server;
-    for (int i = 0; i < 20; i++) server.scriptAuthorizeFailure("503 Service Unavailable");
+    for (int i = 0; i < 3; i++) server.scriptAuthorizeFailure("503 Service Unavailable");
 
-    TestClient c(server, 3000);
+    // a window far smaller than the outage: it must not end the retries
+    TestClient c(server, 1);
     REQUIRE(c.start() == 0);
 
-    // while the window is open the app hears nothing at all
-    c.pumpUntil([&] { return server.authorize_count.load() >= 2; }, std::chrono::seconds(4));
-    CHECK(server.authorize_count.load() >= 2);
+    c.pumpUntil([&] { return server.authorize_count.load() >= 3; }, std::chrono::seconds(12));
+    CHECK(server.authorize_count.load() >= 3);
     CHECK(c.result.calls == 0);
 
-    // once it closes, the failure surfaces exactly once
-    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(6));
+    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(15));
     REQUIRE(c.result.calls == 1);
-    CHECK(c.result.status == OIDC_TOKEN_FAILED);
-
-    // and nothing keeps retrying afterwards
-    int settled = server.authorize_count.load();
-    c.pumpFor(std::chrono::milliseconds(500));
-    CHECK(server.authorize_count.load() == settled);
-    CHECK(c.result.calls == 1);
+    CHECK(c.result.status == OIDC_TOKEN_OK);
+    CHECK(server.authorize_count.load() == 4);
 }
 
-// The window opens *at* the first failure, so the smallest possible window still
-// buys exactly one retry; the failure the app sees is the second attempt's.
-// Pins the floor of the behavior: the window can never swallow the failure
-// entirely, and an exhausted window reports once and stops.
+// A failure that is not an outage (here the cert login rejecting an identity the controller node does not know
+// yet) is still bounded by the retry window. The window opens *at* the first failure, so the smallest possible
+// window buys exactly one retry; the failure the app sees is the second attempt's.
 TEST_CASE("oidc-auth-smallest-window-retries-once-then-reports", "[oidc]") {
     FakeOidcEndpoint server;
-    for (int i = 0; i < 5; i++) server.scriptAuthorizeFailure("503 Service Unavailable");
+    for (int i = 0; i < 5; i++) server.scriptLoginFailure("401 Unauthorized");
 
-    TestClient c(server, 1);
+    TestClient c(server, 1, Creds::Cert);
     REQUIRE(c.start() == 0);
 
     c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(5));
     REQUIRE(c.result.calls == 1);
     CHECK(c.result.status == OIDC_TOKEN_FAILED);
-    CHECK(server.authorize_count.load() == 2);
+    CHECK(server.login_count.load() == 2);
 
     c.pumpFor(std::chrono::milliseconds(300));
-    CHECK(server.authorize_count.load() == 2);
+    CHECK(server.login_count.load() == 2);
     CHECK(c.result.calls == 1);
 }
 
@@ -581,20 +573,37 @@ TEST_CASE("oidc-auth-honours-retry-after-on-429", "[oidc]") {
     CHECK(gap < 6000);
 }
 
-// Retry-After longer than the remaining window: coming back sooner than the
-// server asked would defeat the header, so stop retrying and report instead.
-TEST_CASE("oidc-auth-gives-up-when-retry-after-exceeds-window", "[oidc]") {
+// A 429 is an outage like a 5xx, so a Retry-After longer than the retry window does not end the retries: the
+// login waits as long as the server asked and then completes.
+TEST_CASE("oidc-auth-honours-retry-after-longer-than-window", "[oidc]") {
     FakeOidcEndpoint server;
-    server.scriptAuthorizeFailure("429 Too Many Requests", "", {{"Retry-After", "600"}});
+    server.scriptAuthorizeFailure("429 Too Many Requests", "", {{"Retry-After", "3"}});
 
-    TestClient c(server, 5000);
+    TestClient c(server, 1000);
     REQUIRE(c.start() == 0);
 
-    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(5));
+    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(10));
 
     REQUIRE(c.result.calls == 1);
-    CHECK(c.result.status == OIDC_TOKEN_FAILED);
-    CHECK(server.authorize_count.load() == 1);
+    CHECK(c.result.status == OIDC_TOKEN_OK);
+    REQUIRE(server.authorize_count.load() == 2);
+    CHECK(server.authorizeGapMs(0) >= 2900);
+}
+
+// A 503 may carry Retry-After as well.
+TEST_CASE("oidc-auth-honours-retry-after-on-503", "[oidc]") {
+    FakeOidcEndpoint server;
+    server.scriptAuthorizeFailure("503 Service Unavailable", "", {{"Retry-After", "3"}});
+
+    TestClient c(server, 20000);
+    REQUIRE(c.start() == 0);
+
+    c.pumpUntil([&] { return c.result.calls > 0; }, std::chrono::seconds(10));
+
+    REQUIRE(c.result.calls == 1);
+    CHECK(c.result.status == OIDC_TOKEN_OK);
+    REQUIRE(server.authorize_count.load() == 2);
+    CHECK(server.authorizeGapMs(0) >= 2900);
 }
 
 // The HTTP-date form of Retry-After is not parsed (it would need strptime, which
