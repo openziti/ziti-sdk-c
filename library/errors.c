@@ -59,6 +59,7 @@
     XX(ZITI_ENROLLMENT_NOT_ALLOWED, "identity enrollment not allowed")   \
     XX(ZITI_API_SESSION_INVALID, "API session is invalid") \
     XX(ZITI_NOT_SUPPORTED, "Operation is not supported") \
+    XX(ZITI_CONN_ABORTED, "connection was aborted by the peer") \
     XX(ZITI_WTF, "WTF: programming error")
 
 

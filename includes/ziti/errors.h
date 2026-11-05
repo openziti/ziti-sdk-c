@@ -129,6 +129,9 @@ is offline or did not respond to the request*/
 #define ZITI_API_SESSION_INVALID                                 (-42)
 /** Operation is not supported */
 #define ZITI_NOT_SUPPORTED                                      (-43)
+/** The peer closed the connection abortively (see ziti_close_abort()), as opposed to #ZITI_EOF or #ZITI_CONN_CLOSED.
+ * Data that the peer sent before aborting is delivered first, but the peer did not finish what it was sending. */
+#define ZITI_CONN_ABORTED                                       (-44)
 
 
 
