@@ -152,6 +152,7 @@ static void looper(void *arg) {
 
 void do_shutdown(void *args, future_t *f, uv_loop_t *l) {
     (void)args;
+    zl_enroll_shutdown();
     model_map_iter *it = model_map_iterator(&ziti_contexts);
     while (it) {
         ztx_wrap_t *w = model_map_it_value(it);

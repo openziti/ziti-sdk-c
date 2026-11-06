@@ -30,6 +30,12 @@ extern "C" {
 typedef uint32_t ziti_handle_t;
 #define ZITI_INVALID_HANDLE ((ziti_handle_t)-1)
 
+/**
+ * @brief Handle of an enrollment that waits for an interactive login, see [Ziti_enroll_with_idp].
+ * Invalid is [ZITI_INVALID_HANDLE].
+ */
+typedef uint32_t ziti_enroll_handle_t;
+
 #if _WIN32
 #include <WinSock2.h>
 typedef SOCKET ziti_socket_t;
@@ -70,39 +76,93 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert,
                          char **id_json, unsigned long *id_json_len);
 
 /**
- * @brief Enroll or authenticate a Ziti identity via a controller URL.
+ * @brief Enroll a Ziti identity with an external identity provider (IdP).
  *
- * Bootstraps a Ziti identity from a controller URL. Behavior depends
- * on the enrollment mode:
+ * Bootstraps a Ziti identity from a controller and an ext-jwt-signer that the controller trusts.
+ * Behavior depends on the enrollment mode:
  *
- * - ziti_enroll_none: returns the bootstrap config (CA + controller URL)
- *   immediately, no OIDC authentication.
- * - ziti_enroll_token: performs OIDC authentication, auto-creates identity
- *   on the controller (no CSR). Returns config without cert/key.
- * - ziti_enroll_cert: performs OIDC authentication, generates a CSR,
- *   and exchanges the OIDC token + CSR for a client certificate.
+ * - ziti_enroll_none: returns the bootstrap config (CA + controller URL) immediately, \p idp is not used.
+ * - ziti_enroll_token: the controller creates the identity (no CSR). The returned config has no cert/key:
+ *   log in to it with [Ziti_load_context] and then [Ziti_login_with_token] or [Ziti_login_external].
+ * - ziti_enroll_cert: a CSR is generated and the controller signs it for the IdP token.
+ *   The returned config has the cert and key.
  *
- * If \p jwt is NULL, the network JWT is fetched from the controller's
- * /network-jwts endpoint, which requires the controller's TLS certificate
- * to be verifiable by the OS trust store (publicly-trusted CA).
+ * \p controller is either of:
+ * - the controller URL (e.g., "https://ctrl.example.com:1280"). The network JWT is fetched from the controller,
+ *   which requires its TLS certificate to be verifiable by the OS trust store (publicly-trusted CA).
+ * - the network JWT, obtained out of band. It is used to verify the controller, which allows privately-signed
+ *   controllers.
  *
- * If \p jwt is provided (obtained out of band), it is used directly to
- * verify the controller, allowing privately-signed controllers.
+ * \p idp is either of:
+ * - a token from the signer (a JWT, e.g., the OIDC token of a CI job). It is handed to the controller as is and
+ *   the controller decides if it takes it: no signer is selected and no login is started.
+ * - the name of an ext-jwt-signer, to log in with that signer.
+ * - NULL, to log in with the first signer that offers the enrollment mode.
  *
- * This is a blocking call.
+ * Determination is made from the form of the string: a URL contains "://", a JWT has three dot separated
+ * parts and starts with "eyJ".
  *
- * @param url controller URL (e.g., "https://ctrl.example.com:1280")
- * @param jwt network JWT string, or NULL to fetch from controller
+ * A login with a signer is interactive: the user opens a URL in a browser. The call does not wait for that:
+ * it returns [ZITI_EXTERNAL_LOGIN_REQUIRED] and the handle of the pending enrollment in \p pending. Get the URL
+ * to open with [Ziti_enroll_login_url], and the result with [Ziti_enroll_continue]. The login redirects to a fixed
+ * local port, so only one enrollment can be pending: another one that needs a login fails with [ZITI_INVALID_STATE]
+ * until the pending one is finished with [Ziti_enroll_continue] or [Ziti_enroll_cancel].
+ * Without \p pending (NULL) an enrollment that needs a login fails with [ZITI_INVALID_STATE].
+ *
+ * This is a blocking call, apart from the wait for the login.
+ *
+ * @param controller controller URL or network JWT
  * @param mode enrollment mode (ziti_enroll_none, ziti_enroll_cert, ziti_enroll_token)
- * @param signer_name ext-jwt-signer name to use, or NULL to auto-select
+ * @param idp token or ext-jwt-signer name, or NULL
+ * @param pending (output, optional) handle of the enrollment that waits for the login, set when the result is
+ *                [ZITI_EXTERNAL_LOGIN_REQUIRED], [ZITI_INVALID_HANDLE] otherwise
  * @param id_json (output) identity in JSON format, caller is responsible for freeing it
  * @param id_json_len (output) length of id_json
- * @return ZITI_OK on success, error code on failure
+ * @return ZITI_OK on success, [ZITI_EXTERNAL_LOGIN_REQUIRED] if the user has to log in (see above),
+ *         error code on failure ([ZITI_INVALID_STATE] for missing arguments)
  */
 ZITI_FUNC
-int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mode,
-                           const char *signer_name,
-                           char **id_json, unsigned long *id_json_len);
+int Ziti_enroll_with_idp(const char *controller, ziti_enroll_mode mode, const char *idp,
+                         ziti_enroll_handle_t *pending,
+                         char **id_json, unsigned long *id_json_len);
+
+/**
+ * @brief Get the URL that the user has to open to log in for a pending enrollment.
+ *
+ * The string belongs to the pending enrollment and must not be freed. It is valid until the enrollment is
+ * resolved: [Ziti_enroll_continue] with any result other than [ZITI_TIMEOUT], or [Ziti_enroll_cancel].
+ *
+ * @param pending handle from [Ziti_enroll_with_idp]
+ * @return the URL, or NULL if there is no such pending enrollment
+ */
+ZITI_FUNC
+const char *Ziti_enroll_login_url(ziti_enroll_handle_t pending);
+
+/**
+ * @brief Wait for the login of a pending enrollment, and get its result.
+ *
+ * @param pending handle from [Ziti_enroll_with_idp]
+ * @param timeout_ms how long to wait for the login, 0 waits for ever
+ * @param id_json (output) identity in JSON format, caller is responsible for freeing it
+ * @param id_json_len (output) length of id_json
+ * @return ZITI_OK on success, [ZITI_TIMEOUT] if the login did not complete in time (the enrollment is still pending,
+ *         call again), [ZITI_INVALID_STATE] if there is no such pending enrollment, or the error that ended the
+ *         enrollment. The handle is released with any other result than [ZITI_TIMEOUT].
+ */
+ZITI_FUNC
+int Ziti_enroll_continue(ziti_enroll_handle_t pending, int timeout_ms,
+                         char **id_json, unsigned long *id_json_len);
+
+/**
+ * @brief Abandon a pending enrollment. The handle is released.
+ *
+ * @param pending handle from [Ziti_enroll_with_idp]
+ * @return ZITI_OK, or [ZITI_INVALID_STATE] if there is no such pending enrollment
+ */
+ZITI_FUNC
+int Ziti_enroll_cancel(ziti_enroll_handle_t pending);
+
+
 /**
  * @brief Load Ziti identity.
  *
@@ -180,6 +240,26 @@ const char * const *  Ziti_get_ext_signers(ziti_handle_t ztx);
  */
 ZITI_FUNC
 char* Ziti_login_external(ziti_handle_t ztx, const char *signer_name);
+
+/**
+ * @brief Log in with an external token the application already holds.
+ *
+ * This is an alternative to [Ziti_login_external] for an application that has the token already (e.g. the OIDC
+ * token of a CI job) and so has no signer to select and no browser to open. Call it for a context that
+ * [Ziti_load_context] reported as [ZITI_EXTERNAL_LOGIN_REQUIRED], then [Ziti_wait_for_auth].
+ *
+ * The call returns when the token is submitted. An unusable token (cannot be parsed, expired) is reported here;
+ * if the controller turns it down, [Ziti_wait_for_auth] fails.
+ *
+ * The token is copied: the application may discard its string as soon as the call returns.
+ *
+ * @param ztx Ziti context handle
+ * @param token external JWT
+ * @return ZITI_OK if the token was submitted, [ZITI_JWT_INVALID] if it cannot be used,
+ *         [ZITI_INVALID_STATE] if the context is not waiting for a login or an argument is missing
+ */
+ZITI_FUNC
+int Ziti_login_with_token(ziti_handle_t ztx, const char *token);
 
 /**
  * @brief Login with TOTP code.

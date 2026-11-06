@@ -75,7 +75,7 @@ struct enroll_cert {
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <JWT file | URL> <ID file> [--enrollTo none|cert|token] [--signer <name>]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <JWT file | URL> <ID file> [--enrollTo none|cert|token] [--idp <signer name | token>]\n", argv[0]);
         fprintf(stderr, "       %s <OTT JWT file> <ID file> [ <key_file> [ <cert_file> ] ]\n", argv[0]);
         exit(1);
     }
@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
             net_jwt = jwt_buf;
         }
 
-        const char *signer_name = NULL;
+        const char *idp = NULL; // ext-jwt-signer name, or a token from it
         ziti_enroll_mode mode = ziti_enroll_none;
 
         for (int i = 3; i < argc; i++) {
@@ -127,8 +127,8 @@ int main(int argc, char **argv) {
                     return 1;
                 }
                 i++;
-            } else if (strcmp(argv[i], "--signer") == 0 && i + 1 < argc) {
-                signer_name = argv[i + 1];
+            } else if ((strcmp(argv[i], "--idp") == 0 || strcmp(argv[i], "--signer") == 0) && i + 1 < argc) {
+                idp = argv[i + 1];
                 i++;
             }
         }
@@ -136,8 +136,17 @@ int main(int argc, char **argv) {
         Ziti_lib_init();
         char *cfg = NULL;
         unsigned long len;
-        const char *url = strncmp(argv[1], "https://", 8) == 0 ? argv[1] : NULL;
-        int rc = Ziti_enroll_controller(url, net_jwt, mode, signer_name, &cfg, &len);
+        // the controller is the URL, or the network JWT read from the file
+        const char *controller = net_jwt != NULL ? net_jwt : argv[1];
+        ziti_enroll_handle_t pending = ZITI_INVALID_HANDLE;
+        int rc = Ziti_enroll_with_idp(controller, mode, idp, &pending, &cfg, &len);
+        if (rc == ZITI_EXTERNAL_LOGIN_REQUIRED) {
+            // the user has to log in with the signer, in a browser
+            const char *url = Ziti_enroll_login_url(pending); // the SDK keeps it until the enrollment is resolved
+            printf("open this URL to log in:\n%s\n", url != NULL ? url : "(no url)");
+            fflush(stdout);
+            rc = Ziti_enroll_continue(pending, 0, &cfg, &len); // 0: wait for ever
+        }
         if (rc == ZITI_OK) {
             FILE *id_file = fopen(argv[2], "w");
             if (id_file) {

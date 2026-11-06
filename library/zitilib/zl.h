@@ -93,12 +93,28 @@ typedef struct ztx_wrap {
     future_t *enroll_future;
     ziti_enroll_mode enroll_mode;
     const char *signer_name;
+    const char *ext_token; // external token to enroll with, instead of a login: owned by the caller of the enroll
+    bool can_pend;         // the caller can take a pending enrollment, i.e. an interactive login
+    bool enroll_over;      // the enrollment has ended (result handed over, or canceled)
+    struct pending_enroll *pending; // set while the enrollment waits for the interactive login
 
     bool services_loaded;
     future_t *services_loaded_f;
     model_map intercepts;
     char **signers;
 } ztx_wrap_t;
+
+// an enrollment that waits for the user to log in (loop thread only), see Ziti_enroll_with_idp
+struct pending_enroll {
+    ziti_enroll_handle_t handle;
+    ztx_wrap_t *wrap;       // the enrollment in progress, NULL once it is over
+    char *login_url;
+    bool done;              // the outcome is known
+    int err;                // the outcome
+    char *cfg_json;         // the identity, owned here, if the outcome is ZITI_OK
+    future_t *wait_f;       // Ziti_enroll_continue waits for the outcome
+    uv_timer_t *wait_timer; // ... for this long
+};
 
 typedef struct ziti_sock_s {
     ziti_socket_t fd;
@@ -116,6 +132,9 @@ typedef struct ziti_sock_s {
 } ziti_sock_t;
 
 extern model_map ziti_contexts;
+
+// ends the pending enrollment, if any: the library is shutting down (runs on the loop thread)
+void zl_enroll_shutdown(void);
 
 extern model_map ziti_sockets;
 

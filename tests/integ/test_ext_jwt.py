@@ -29,6 +29,8 @@ import json
 import secrets
 import ssl
 import subprocess
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -128,6 +130,18 @@ def identity_exists(external_id):
     return external_id in ziti_edge("list", "identities", f'externalId = "{external_id}"').stdout
 
 
+def network_jwt():
+    """What an app that does not trust the controller yet verifies it with: ``zl-enroll-token-login`` needs it."""
+    status, _, text = _request("GET", f"{CTRL_URL}/network-jwts")
+    assert status == 200, text
+    return json.loads(text)["data"][0]["token"]
+
+
+def zitilib_env(token):
+    """What the zitilib cases of an app that holds a token (``zl-enroll-*-login``) are given."""
+    return {"NETWORK_JWT": network_jwt(), "IDP_TOKEN": token}
+
+
 def test_signer_is_listed(idp, idp_signer):
     """What the SDK reads in ``ziti_get_ext_jwt_signers`` to find the idp and how to talk to it."""
     status, _, text = _request("GET", f"{CTRL_URL}/edge/client/v1/external-jwt-signers")
@@ -196,6 +210,77 @@ def test_sdk_login_per_enroll_mode(idp, idp_signer, idp_user, enroll_mode, clien
         "IDP_TOKEN": idp.password_grant(idp_user)["access_token"],
     }
     run_catch_test(env, tmp_path, test=f"ztx-enroll-{mode}-lifecycle")
+
+
+def test_zitilib_enroll_to_token_and_login(idp, idp_signer, idp_user, enroll_mode, tmp_path):
+    """An app that holds the token enrolls and logs in through zitilib: ``zl-enroll-token-login`` in zitilib_tests.cpp.
+
+    No identity of the app is involved: the token is all it has, the controller's network JWT its trust anchor.
+    """
+    enroll_mode("token")
+    env = zitilib_env(idp.password_grant(idp_user)["access_token"])
+    run_catch_test(env, tmp_path, test="zl-enroll-token-login")
+    assert identity_exists(idp_user)
+
+
+def test_zitilib_enroll_to_cert_and_login(idp, idp_signer, idp_user, enroll_mode, tmp_path):
+    """The same through a signer that enrolls to a cert: ``zl-enroll-cert-login`` in zitilib_tests.cpp."""
+    enroll_mode("cert")
+    env = zitilib_env(idp.password_grant(idp_user)["access_token"])
+    run_catch_test(env, tmp_path, test="zl-enroll-cert-login")
+    assert identity_exists(idp_user)
+
+
+def test_zitilib_enroll_none_bootstraps_from_network_jwt(ziti_model, tmp_path):
+    """No idp in mode none: ``zl-enroll-none-bootstrap`` in zitilib_tests.cpp."""
+    run_catch_test({"NETWORK_JWT": network_jwt()}, tmp_path, test="zl-enroll-none-bootstrap")
+
+
+def test_zitilib_enroll_with_unknown_signer_name(idp, idp_signer, enroll_mode, tmp_path):
+    """A signer name the controller does not have: ``zl-enroll-unknown-signer`` in zitilib_tests.cpp."""
+    enroll_mode("token")
+    run_catch_test({"NETWORK_JWT": network_jwt()}, tmp_path, test="zl-enroll-unknown-signer")
+
+
+def test_zitilib_enroll_interactive(idp, idp_signer, idp_user, enroll_mode, tmp_path):
+    """A login with a signer is interactive: ``zl-enroll-interactive`` in zitilib_tests.cpp.
+
+    This plays the browser: it takes the login url the SDK gives out, logs in at the idp, and delivers the
+    redirect to the SDK's local listener.
+    """
+    enroll_mode("token")
+    url_file = tmp_path / "login-url"
+    env = {"NETWORK_JWT": network_jwt(), "IDP_SIGNER": idp_signer, "LOGIN_URL_FILE": str(url_file)}
+    delivered = {}
+
+    def browser():
+        try:
+            deadline = time.monotonic() + 30
+            while not url_file.exists():
+                assert time.monotonic() < deadline, "the SDK gave out no login url"
+                time.sleep(0.05)
+            redirect = idp.login(url_file.read_text().strip(), idp_user)
+            delivered["status"], _, delivered["text"] = _request("GET", redirect)
+        except BaseException as e:  # reported by the test, this is not its thread
+            delivered["error"] = e
+
+    thread = threading.Thread(target=browser, daemon=True)
+    thread.start()
+    try:
+        run_catch_test(env, tmp_path, test="zl-enroll-interactive")
+    finally:
+        thread.join(timeout=10)
+
+    assert "error" not in delivered, delivered.get("error")
+    assert delivered.get("status") == 200, delivered
+    assert identity_exists(idp_user)
+
+
+def test_zitilib_enroll_interactive_cancel(idp, idp_signer, enroll_mode, tmp_path):
+    """A pending enrollment times out, is one at a time and can be abandoned: ``zl-enroll-interactive-cancel``."""
+    enroll_mode("token")
+    run_catch_test({"NETWORK_JWT": network_jwt(), "IDP_SIGNER": idp_signer}, tmp_path,
+                   test="zl-enroll-interactive-cancel")
 
 
 def test_sdk_enroll_cert_with_key_from_callback(idp, idp_signer, idp_user, enroll_mode, client_identity, tmp_path):
