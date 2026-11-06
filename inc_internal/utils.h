@@ -81,6 +81,15 @@ void ziti_fmt_time(char *time_str, size_t time_str_len, uv_timeval64_t *tv);
 
 void hexify(const uint8_t *bin, size_t bin_len, char sep, char **buf);
 
+// returns true if `ver` is at least major.minor.patch.
+// accepts "[v]MAJOR[.MINOR[.PATCH]][-prerelease][|anything]", so the router hello header
+// ("v2.0.5|revision|date|os|arch") can be passed as is.
+//  - dev build (0.0.0) satisfies any version, same as ziti's own HasMinimumVersion()
+//  - a pre-release of the exact version (2.0.5-pre1) does not satisfy it,
+//    but git describe output (2.0.5-11-g1a2b3c4, built after the tag) does
+//  - NULL or unparsable version does not satisfy it, callers should fall back to the older behavior
+bool version_at_least(const char *ver, int major, int minor, int patch);
+
 int lt_zero(int v);
 
 typedef const char *(*fmt_error_t)(int);
