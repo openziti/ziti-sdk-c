@@ -17,6 +17,8 @@
 
 #include <catch2/catch_all.hpp>
 
+#include <cstdio>
+#include <fstream>
 #include <memory>
 
 #include "fixtures.h"
@@ -96,10 +98,19 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: enroll with idp and login with token
     unsigned long len = 0;
     const char *url = "https://127.0.0.1:1"; // never contacted: the arguments are checked first
 
-    CHECK(Ziti_enroll_with_idp(nullptr, ziti_enroll_token, "token", &id, &len) == ZITI_INVALID_STATE);
-    CHECK(Ziti_enroll_with_idp("", ziti_enroll_token, "token", &id, &len) == ZITI_INVALID_STATE);
-    CHECK(Ziti_enroll_with_idp(url, ziti_enroll_token, "token", nullptr, &len) == ZITI_INVALID_STATE);
-    CHECK(Ziti_enroll_with_idp(url, ziti_enroll_token, "token", &id, nullptr) == ZITI_INVALID_STATE);
+    ziti_enroll_handle_t pending = 42;
+
+    CHECK(Ziti_enroll_with_idp(nullptr, ziti_enroll_token, "token", &pending, &id, &len) == ZITI_INVALID_STATE);
+    CHECK(pending == ZITI_INVALID_HANDLE); // never left as it was
+    CHECK(Ziti_enroll_with_idp("", ziti_enroll_token, "token", nullptr, &id, &len) == ZITI_INVALID_STATE);
+    CHECK(Ziti_enroll_with_idp(url, ziti_enroll_token, "token", nullptr, nullptr, &len) == ZITI_INVALID_STATE);
+    CHECK(Ziti_enroll_with_idp(url, ziti_enroll_token, "token", nullptr, &id, nullptr) == ZITI_INVALID_STATE);
+
+    // no such pending enrollment
+    CHECK(Ziti_enroll_login_url(ZITI_INVALID_HANDLE) == nullptr);
+    CHECK(Ziti_enroll_continue(ZITI_INVALID_HANDLE, 10, &id, &len) == ZITI_INVALID_STATE);
+    CHECK(Ziti_enroll_continue(7, 10, nullptr, &len) == ZITI_INVALID_STATE);
+    CHECK(Ziti_enroll_cancel(ZITI_INVALID_HANDLE) == ZITI_INVALID_STATE);
 
     CHECK(Ziti_login_with_token(ZITI_INVALID_HANDLE, "token") == ZITI_INVALID_STATE);
     auto ztx = loadContext(checkENV("test_client"));
@@ -117,7 +128,7 @@ TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-token-login", "[integ][zl-token]") 
 
     char *cfg = nullptr;
     unsigned long cfg_len = 0;
-    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_token, token.c_str(), &cfg, &cfg_len);
+    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_token, token.c_str(), nullptr, &cfg, &cfg_len);
     std::unique_ptr<char, decltype(&free)> id_json(cfg, free);
     INFO("enroll: " << rc << "/" << ziti_errorstr(rc));
     REQUIRE(rc == ZITI_OK);
@@ -153,7 +164,7 @@ TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-cert-login", "[integ][zl-token]") {
 
     char *cfg = nullptr;
     unsigned long cfg_len = 0;
-    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_cert, token.c_str(), &cfg, &cfg_len);
+    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_cert, token.c_str(), nullptr, &cfg, &cfg_len);
     std::unique_ptr<char, decltype(&free)> id_json(cfg, free);
     INFO("enroll: " << rc << "/" << ziti_errorstr(rc));
     REQUIRE(rc == ZITI_OK);
@@ -179,7 +190,7 @@ TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-none-bootstrap", "[integ][zl-token]
 
     char *cfg = nullptr;
     unsigned long cfg_len = 0;
-    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_none, nullptr, &cfg, &cfg_len);
+    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_none, nullptr, nullptr, &cfg, &cfg_len);
     std::unique_ptr<char, decltype(&free)> id_json(cfg, free);
     INFO("enroll: " << rc << "/" << ziti_errorstr(rc));
     REQUIRE(rc == ZITI_OK);
@@ -200,9 +211,96 @@ TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-unknown-signer", "[integ][zl-token]
 
     char *cfg = nullptr;
     unsigned long cfg_len = 0;
-    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_token, "no-such-signer", &cfg, &cfg_len);
+    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_token, "no-such-signer", nullptr, &cfg, &cfg_len);
     std::unique_ptr<char, decltype(&free)> id_json(cfg, free);
     INFO("enroll: " << rc << "/" << ziti_errorstr(rc));
     CHECK(rc == ZITI_INVALID_STATE);
     CHECK(id_json.get() == nullptr);
+}
+
+// A login with a signer is interactive: the call hands back a handle, the url the user has to open is asked
+// for, and Ziti_enroll_continue waits for the result. The pytest plays the browser: it reads the url from
+// LOGIN_URL_FILE, logs in at the idp and delivers the redirect to the SDK's local listener.
+// Env: NETWORK_JWT, IDP_SIGNER (its name), LOGIN_URL_FILE.
+TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-interactive", "[integ][zl-token]") {
+    std::string network_jwt = checkENV("NETWORK_JWT");
+    std::string signer = checkENV("IDP_SIGNER");
+    std::string url_file = checkENV("LOGIN_URL_FILE");
+
+    char *cfg = nullptr;
+    unsigned long cfg_len = 0;
+    ziti_enroll_handle_t pending = ZITI_INVALID_HANDLE;
+    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_token, signer.c_str(), &pending, &cfg, &cfg_len);
+    INFO("enroll: " << rc << "/" << ziti_errorstr(rc));
+    REQUIRE(rc == ZITI_EXTERNAL_LOGIN_REQUIRED);
+    REQUIRE(pending != ZITI_INVALID_HANDLE);
+    CHECK(cfg == nullptr);
+
+    // the SDK keeps the url until the enrollment is resolved: the same string every time, nothing to free
+    const char *url = Ziti_enroll_login_url(pending);
+    REQUIRE(url != nullptr);
+    CHECK(Ziti_enroll_login_url(pending) == url);
+    std::string login_url = url;
+    CHECK(login_url.rfind("http", 0) == 0);
+
+    // the file shows up whole: the other side reads it as soon as it is there
+    std::string tmp = url_file + ".tmp";
+    {
+        std::ofstream(tmp) << login_url;
+    }
+    REQUIRE(std::rename(tmp.c_str(), url_file.c_str()) == 0);
+
+    rc = Ziti_enroll_continue(pending, 30000, &cfg, &cfg_len);
+    std::unique_ptr<char, decltype(&free)> id_json(cfg, free);
+    INFO("continue: " << rc << "/" << ziti_errorstr(rc));
+    REQUIRE(rc == ZITI_OK);
+
+    // enrolled to a token: no cert, the token is the login
+    ziti_config id{};
+    REQUIRE(ziti_load_config(&id, id_json.get()) == ZITI_OK);
+    CHECK(id.id.cert == nullptr);
+    free_ziti_config(&id);
+
+    // the handle is spent
+    char *again = nullptr;
+    unsigned long again_len = 0;
+    CHECK(Ziti_enroll_continue(pending, 10, &again, &again_len) == ZITI_INVALID_STATE);
+}
+
+// A pending enrollment can be waited for with a timeout and abandoned, and there is one at a time.
+// Env: NETWORK_JWT, IDP_SIGNER.
+TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-interactive-cancel", "[integ][zl-token]") {
+    std::string network_jwt = checkENV("NETWORK_JWT");
+    std::string signer = checkENV("IDP_SIGNER");
+
+    char *cfg = nullptr;
+    unsigned long cfg_len = 0;
+
+    // a login needs somewhere to put the handle
+    CHECK(Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_token, signer.c_str(), nullptr, &cfg, &cfg_len)
+          == ZITI_INVALID_STATE);
+
+    ziti_enroll_handle_t first = ZITI_INVALID_HANDLE;
+    REQUIRE(Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_token, signer.c_str(), &first, &cfg, &cfg_len)
+            == ZITI_EXTERNAL_LOGIN_REQUIRED);
+    REQUIRE(first != ZITI_INVALID_HANDLE);
+
+    // the user does not log in: the wait ends with the timeout, and the enrollment is still pending
+    CHECK(Ziti_enroll_continue(first, 200, &cfg, &cfg_len) == ZITI_TIMEOUT);
+    CHECK(Ziti_enroll_login_url(first) != nullptr);
+
+    // one at a time
+    ziti_enroll_handle_t second = 7;
+    CHECK(Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_token, signer.c_str(), &second, &cfg, &cfg_len)
+          == ZITI_INVALID_STATE);
+    CHECK(second == ZITI_INVALID_HANDLE);
+
+    CHECK(Ziti_enroll_cancel(first) == ZITI_OK);
+    CHECK(Ziti_enroll_cancel(first) == ZITI_INVALID_STATE);
+    CHECK(Ziti_enroll_continue(first, 10, &cfg, &cfg_len) == ZITI_INVALID_STATE);
+
+    // the place is free again
+    REQUIRE(Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_token, signer.c_str(), &second, &cfg, &cfg_len)
+            == ZITI_EXTERNAL_LOGIN_REQUIRED);
+    CHECK(Ziti_enroll_cancel(second) == ZITI_OK);
 }

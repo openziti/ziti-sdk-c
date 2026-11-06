@@ -138,7 +138,15 @@ int main(int argc, char **argv) {
         unsigned long len;
         // the controller is the URL, or the network JWT read from the file
         const char *controller = net_jwt != NULL ? net_jwt : argv[1];
-        int rc = Ziti_enroll_with_idp(controller, mode, idp, &cfg, &len);
+        ziti_enroll_handle_t pending = ZITI_INVALID_HANDLE;
+        int rc = Ziti_enroll_with_idp(controller, mode, idp, &pending, &cfg, &len);
+        if (rc == ZITI_EXTERNAL_LOGIN_REQUIRED) {
+            // the user has to log in with the signer, in a browser
+            const char *url = Ziti_enroll_login_url(pending); // the SDK keeps it until the enrollment is resolved
+            printf("open this URL to log in:\n%s\n", url != NULL ? url : "(no url)");
+            fflush(stdout);
+            rc = Ziti_enroll_continue(pending, 0, &cfg, &len); // 0: wait for ever
+        }
         if (rc == ZITI_OK) {
             FILE *id_file = fopen(argv[2], "w");
             if (id_file) {

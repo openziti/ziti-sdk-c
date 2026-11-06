@@ -29,6 +29,8 @@ import json
 import secrets
 import ssl
 import subprocess
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -238,6 +240,47 @@ def test_zitilib_enroll_with_unknown_signer_name(idp, idp_signer, enroll_mode, t
     """A signer name the controller does not have: ``zl-enroll-unknown-signer`` in zitilib_tests.cpp."""
     enroll_mode("token")
     run_catch_test({"NETWORK_JWT": network_jwt()}, tmp_path, test="zl-enroll-unknown-signer")
+
+
+def test_zitilib_enroll_interactive(idp, idp_signer, idp_user, enroll_mode, tmp_path):
+    """A login with a signer is interactive: ``zl-enroll-interactive`` in zitilib_tests.cpp.
+
+    This plays the browser: it takes the login url the SDK gives out, logs in at the idp, and delivers the
+    redirect to the SDK's local listener.
+    """
+    enroll_mode("token")
+    url_file = tmp_path / "login-url"
+    env = {"NETWORK_JWT": network_jwt(), "IDP_SIGNER": idp_signer, "LOGIN_URL_FILE": str(url_file)}
+    delivered = {}
+
+    def browser():
+        try:
+            deadline = time.monotonic() + 30
+            while not url_file.exists():
+                assert time.monotonic() < deadline, "the SDK gave out no login url"
+                time.sleep(0.05)
+            redirect = idp.login(url_file.read_text().strip(), idp_user)
+            delivered["status"], _, delivered["text"] = _request("GET", redirect)
+        except BaseException as e:  # reported by the test, this is not its thread
+            delivered["error"] = e
+
+    thread = threading.Thread(target=browser, daemon=True)
+    thread.start()
+    try:
+        run_catch_test(env, tmp_path, test="zl-enroll-interactive")
+    finally:
+        thread.join(timeout=10)
+
+    assert "error" not in delivered, delivered.get("error")
+    assert delivered.get("status") == 200, delivered
+    assert identity_exists(idp_user)
+
+
+def test_zitilib_enroll_interactive_cancel(idp, idp_signer, enroll_mode, tmp_path):
+    """A pending enrollment times out, is one at a time and can be abandoned: ``zl-enroll-interactive-cancel``."""
+    enroll_mode("token")
+    run_catch_test({"NETWORK_JWT": network_jwt(), "IDP_SIGNER": idp_signer}, tmp_path,
+                   test="zl-enroll-interactive-cancel")
 
 
 def test_sdk_enroll_cert_with_key_from_callback(idp, idp_signer, idp_user, enroll_mode, client_identity, tmp_path):
