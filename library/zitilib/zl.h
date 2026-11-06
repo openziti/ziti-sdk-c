@@ -93,6 +93,7 @@ typedef struct ztx_wrap {
     future_t *enroll_future;
     ziti_enroll_mode enroll_mode;
     const char *signer_name;
+    const char *ext_token; // external token to enroll with, instead of a login: owned by the caller of the enroll
 
     bool services_loaded;
     future_t *services_loaded_f;

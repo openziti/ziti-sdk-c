@@ -103,6 +103,33 @@ ZITI_FUNC
 int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mode,
                            const char *signer_name,
                            char **id_json, unsigned long *id_json_len);
+
+/**
+ * @brief Enroll a Ziti identity via a controller URL with an external token the caller already holds.
+ *
+ * Same as [Ziti_enroll_controller], except that no signer is selected and no login is started:
+ * \p token (a JWT from an external signer that the controller trusts, e.g. the OIDC token of a CI job)
+ * is handed to the controller as is, and the controller decides if it takes it.
+ *
+ * - ziti_enroll_none: returns the bootstrap config (CA + controller URL) immediately, \p token is not used.
+ * - ziti_enroll_token: the controller creates the identity, the returned config has no cert/key:
+ *   log in to it with [Ziti_load_context] and [Ziti_login_with_token].
+ * - ziti_enroll_cert: the controller signs a CSR, the returned config has the cert and key.
+ *
+ * This is a blocking call.
+ *
+ * @param url controller URL (e.g., "https://ctrl.example.com:1280")
+ * @param jwt network JWT string, or NULL to fetch from controller
+ * @param mode enrollment mode (ziti_enroll_none, ziti_enroll_cert, ziti_enroll_token)
+ * @param token external token, must not be NULL
+ * @param id_json (output) identity in JSON format, caller is responsible for freeing it
+ * @param id_json_len (output) length of id_json
+ * @return ZITI_OK on success, error code on failure (ZITI_INVALID_STATE for missing arguments)
+ */
+ZITI_FUNC
+int Ziti_enroll_controller_with_token(const char *url, const char *jwt, ziti_enroll_mode mode,
+                                      const char *token,
+                                      char **id_json, unsigned long *id_json_len);
 /**
  * @brief Load Ziti identity.
  *
@@ -180,6 +207,26 @@ const char * const *  Ziti_get_ext_signers(ziti_handle_t ztx);
  */
 ZITI_FUNC
 char* Ziti_login_external(ziti_handle_t ztx, const char *signer_name);
+
+/**
+ * @brief Log in with an external token the application already holds.
+ *
+ * This is an alternative to [Ziti_login_external] for an application that has the token already (e.g. the OIDC
+ * token of a CI job) and so has no signer to select and no browser to open. Call it for a context that
+ * [Ziti_load_context] reported as [ZITI_EXTERNAL_LOGIN_REQUIRED], then [Ziti_wait_for_auth].
+ *
+ * The call returns when the token is submitted. An unusable token (cannot be parsed, expired) is reported here;
+ * if the controller turns it down, [Ziti_wait_for_auth] fails.
+ *
+ * The token is copied: the application may discard its string as soon as the call returns.
+ *
+ * @param ztx Ziti context handle
+ * @param token external JWT
+ * @return ZITI_OK if the token was submitted, [ZITI_JWT_INVALID] if it cannot be used,
+ *         [ZITI_INVALID_STATE] if the context is not waiting for a login or an argument is missing
+ */
+ZITI_FUNC
+int Ziti_login_with_token(ziti_handle_t ztx, const char *token);
 
 /**
  * @brief Login with TOTP code.

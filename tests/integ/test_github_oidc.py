@@ -35,6 +35,7 @@ import urllib.request
 import pytest
 
 from conftest import ziti_edge
+from test_ext_jwt import zitilib_env
 from test_integ import run_catch_test
 
 pytestmark = [
@@ -108,6 +109,21 @@ def test_sdk_enrolls_to_token_with_github_token(client_identity, github_login, t
 
     env = {"test_client": client_identity["path"], "IDP_TOKEN": token}
     run_catch_test(env, tmp_path, test="ztx-enroll-token-direct-lifecycle")
+
+    created = identities_of(repository)
+    assert [i["name"] for i in created] == [repository]
+
+
+def test_zitilib_enrolls_to_token_with_github_token(github_login, tmp_path):
+    """The zitilib calls of an app that holds the token, as a Python hook makes them: ``zl-enroll-token-login``.
+
+    The token is all the app has, the controller's network JWT its trust anchor: it enrolls, loads the
+    identity it gets and logs in to it with the same token.
+    """
+    token, repository = github_login
+    assert not identities_of(repository), "nothing could have enrolled this repository yet"
+
+    run_catch_test(zitilib_env(token), tmp_path, test="zl-enroll-token-login")
 
     created = identities_of(repository)
     assert [i["name"] for i in created] == [repository]

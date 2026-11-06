@@ -187,6 +187,18 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
                 }
             }
 
+            if (wrap->ext_token) {
+                // the caller holds the token: no signer to select, no login to start
+                int rc = ziti_ext_auth_token(ztx, wrap->ext_token);
+                if (rc != ZITI_OK) {
+                    ZITI_LOG(ERROR, "enrollment: external token rejected: %s", ziti_errorstr(rc));
+                    fail_future(wrap->enroll_future, rc);
+                    wrap->enroll_future = NULL;
+                    ziti_shutdown(ztx);
+                }
+                return;
+            }
+
             for (int i = 0; ev->auth.providers && ev->auth.providers[i]; i++) {
                 // if signer_name specified, skip non-matching signers
                 if (wrap->signer_name &&
@@ -580,6 +592,7 @@ struct enroll_url_req {
     const char *jwt;
     ziti_enroll_mode mode;
     const char *signer_name;
+    const char *token; // external token, when the caller has one
     future_t *enroll_f;
     uv_loop_t *loop;
 };
@@ -616,6 +629,7 @@ static void enroll_url_bootstrap_cb(const ziti_config *cfg, int status, const ch
     wrap->enroll_future = req->enroll_f;
     wrap->enroll_mode = req->mode;
     wrap->signer_name = req->signer_name;
+    wrap->ext_token = req->token;
 
     ziti_context_set_options(ztx, &(ziti_options){
             .app_ctx = wrap,
@@ -646,9 +660,9 @@ static void do_enroll_url(void *arg, future_t *f, uv_loop_t *l) {
     }
 }
 
-int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mode,
-                           const char *signer_name,
-                           char **id_json, unsigned long *id_json_len) {
+static int enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mode,
+                             const char *signer_name, const char *token,
+                             char **id_json, unsigned long *id_json_len) {
     if ((url == NULL && jwt == NULL) || id_json == NULL || id_json_len == NULL) {
         return ZITI_INVALID_STATE;
     }
@@ -663,6 +677,7 @@ int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mo
     req->jwt = jwt;
     req->mode = mode;
     req->signer_name = signer_name;
+    req->token = token;
     req->enroll_f = enroll_f;
 
     // schedule context creation - auth events drive signer selection and OIDC
@@ -678,6 +693,21 @@ int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mo
     destroy_future(enroll_f);
     free(req);
     return rc;
+}
+
+int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mode,
+                           const char *signer_name,
+                           char **id_json, unsigned long *id_json_len) {
+    return enroll_controller(url, jwt, mode, signer_name, NULL, id_json, id_json_len);
+}
+
+int Ziti_enroll_controller_with_token(const char *url, const char *jwt, ziti_enroll_mode mode,
+                                      const char *token,
+                                      char **id_json, unsigned long *id_json_len) {
+    if (token == NULL) {
+        return ZITI_INVALID_STATE;
+    }
+    return enroll_controller(url, jwt, mode, NULL, token, id_json, id_json_len);
 }
 
 static model_map host_to_ip;
@@ -999,6 +1029,49 @@ char* Ziti_login_external(ziti_handle_t ztx, const char *signer_name) {
     zl_set_error(err);
     destroy_future(f);
     return login_url;
+}
+
+struct token_login_req_s {
+    ziti_handle_t ziti_handle;
+    const char *token;
+};
+
+static void do_token_login(void *arg, future_t *f, uv_loop_t *l) {
+    struct token_login_req_s *req = arg;
+    ztx_wrap_t *wrap = zl_find_wrap(req->ziti_handle);
+    if (wrap == NULL) {
+        fail_future(f, EINVAL);
+        return;
+    }
+
+    // the context has to be waiting for the login: ziti_ext_auth_token needs the auth method it has started
+    if (wrap->ztx->auth_method == NULL) {
+        fail_future(f, ZITI_INVALID_STATE);
+        return;
+    }
+
+    int err = ziti_ext_auth_token(wrap->ztx, req->token);
+    if (err != ZITI_OK) {
+        fail_future(f, err);
+    } else {
+        complete_future(f, NULL, 0);
+    }
+}
+
+int Ziti_login_with_token(ziti_handle_t ztx, const char *token) {
+    if (ztx == ZITI_INVALID_HANDLE || token == NULL || !zl_check_daemon()) {
+        return ZITI_INVALID_STATE;
+    }
+
+    struct token_login_req_s req = {
+            .ziti_handle = ztx,
+            .token = token,
+    };
+
+    future_t *f = schedule_on_loop(do_token_login, &req, true);
+    int err = await_future(f, NULL);
+    destroy_future(f);
+    return err;
 }
 
 static void on_totp_login(ziti_context ztx, int status, void *ctx) {

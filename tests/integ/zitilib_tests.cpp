@@ -17,6 +17,8 @@
 
 #include <catch2/catch_all.hpp>
 
+#include <memory>
+
 #include "fixtures.h"
 #include <ziti/zitilib.h>
 
@@ -87,4 +89,90 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: load context with timeout", "[zitili
             CHECK(ztx == ZITI_INVALID_HANDLE);
         }
     }
+}
+
+TEST_CASE_METHOD(ZitilibTestCase, "zitilib: token entry points reject missing arguments", "[zitilib]") {
+    char *id = nullptr;
+    unsigned long len = 0;
+    const char *url = "https://127.0.0.1:1"; // never contacted: the arguments are checked first
+
+    CHECK(Ziti_enroll_controller_with_token(url, nullptr, ziti_enroll_token, nullptr, &id, &len) == ZITI_INVALID_STATE);
+    CHECK(Ziti_enroll_controller_with_token(nullptr, nullptr, ziti_enroll_token, "token", &id, &len) == ZITI_INVALID_STATE);
+    CHECK(Ziti_enroll_controller_with_token(url, nullptr, ziti_enroll_token, "token", nullptr, &len) == ZITI_INVALID_STATE);
+    CHECK(Ziti_enroll_controller_with_token(url, nullptr, ziti_enroll_token, "token", &id, nullptr) == ZITI_INVALID_STATE);
+
+    CHECK(Ziti_login_with_token(ZITI_INVALID_HANDLE, "token") == ZITI_INVALID_STATE);
+    auto ztx = loadContext(checkENV("test_client"));
+    CHECK(Ziti_login_with_token(ztx, nullptr) == ZITI_INVALID_STATE);
+}
+
+// What an app that holds an external token does (a CI job with the OIDC token of its workflow, e.g. a Python
+// hook through the zitilib bindings): no signer to select, no browser to open. The signer that trusts the
+// token's issuer enrolls to a token, so the first use of the token creates the identity.
+// Env, set by the pytest that has the token: IDP_TOKEN, NETWORK_JWT (the controller is not publicly trusted),
+// CONTROLLER_URL.
+TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-token-login", "[integ][zl-token]") {
+    std::string token = checkENV("IDP_TOKEN");
+    std::string network_jwt = checkENV("NETWORK_JWT");
+    std::string url = checkENV("CONTROLLER_URL");
+
+    char *cfg = nullptr;
+    unsigned long cfg_len = 0;
+    int rc = Ziti_enroll_controller_with_token(url.c_str(), network_jwt.c_str(), ziti_enroll_token, token.c_str(),
+                                               &cfg, &cfg_len);
+    std::unique_ptr<char, decltype(&free)> id_json(cfg, free);
+    INFO("enroll: " << rc << "/" << ziti_errorstr(rc));
+    REQUIRE(rc == ZITI_OK);
+    REQUIRE(cfg_len > 0);
+
+    // enrolled to a token: the identity has no cert, the token is its login
+    ziti_handle_t ztx = ZITI_INVALID_HANDLE;
+    rc = Ziti_load_context(&ztx, id_json.get());
+    INFO("load: " << rc << "/" << ziti_errorstr(rc));
+    REQUIRE(rc == ZITI_EXTERNAL_LOGIN_REQUIRED);
+    REQUIRE(ztx != ZITI_INVALID_HANDLE);
+
+    // a token that cannot be used is turned down at once, and the context keeps waiting for a login
+    CHECK(Ziti_login_with_token(ztx, "not a jwt") == ZITI_JWT_INVALID);
+
+    // the SDK copies the token: the app may discard its string once the call returns
+    std::string login_token = token;
+    rc = Ziti_login_with_token(ztx, login_token.c_str());
+    INFO("login: " << rc << "/" << ziti_errorstr(rc));
+    REQUIRE(rc == ZITI_OK);
+    login_token.assign(login_token.size(), 'x');
+
+    rc = Ziti_wait_for_auth(ztx, 30000);
+    INFO("wait for auth: " << rc << "/" << ziti_errorstr(rc));
+    CHECK(rc == ZITI_OK);
+}
+
+// The same app, with a signer that enrolls to a cert: the controller signs a CSR for the token, and the
+// identity it gets can log in on its own, without the token. Same env as zl-enroll-token-login.
+TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-cert-login", "[integ][zl-token]") {
+    std::string token = checkENV("IDP_TOKEN");
+    std::string network_jwt = checkENV("NETWORK_JWT");
+    std::string url = checkENV("CONTROLLER_URL");
+
+    char *cfg = nullptr;
+    unsigned long cfg_len = 0;
+    int rc = Ziti_enroll_controller_with_token(url.c_str(), network_jwt.c_str(), ziti_enroll_cert, token.c_str(),
+                                               &cfg, &cfg_len);
+    std::unique_ptr<char, decltype(&free)> id_json(cfg, free);
+    INFO("enroll: " << rc << "/" << ziti_errorstr(rc));
+    REQUIRE(rc == ZITI_OK);
+    REQUIRE(cfg_len > 0);
+
+    ziti_config id{};
+    REQUIRE(ziti_load_config(&id, id_json.get()) == ZITI_OK);
+    CHECK(id.id.cert != nullptr);
+    CHECK(id.id.key != nullptr);
+    free_ziti_config(&id);
+
+    // the cert is the login: no external login is asked for
+    ziti_handle_t ztx = ZITI_INVALID_HANDLE;
+    rc = Ziti_load_context(&ztx, id_json.get());
+    INFO("load: " << rc << "/" << ziti_errorstr(rc));
+    CHECK(rc == ZITI_OK);
+    CHECK(ztx != ZITI_INVALID_HANDLE);
 }

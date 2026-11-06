@@ -128,6 +128,18 @@ def identity_exists(external_id):
     return external_id in ziti_edge("list", "identities", f'externalId = "{external_id}"').stdout
 
 
+def network_jwt():
+    """What an app that does not trust the controller yet verifies it with: ``zl-enroll-token-login`` needs it."""
+    status, _, text = _request("GET", f"{CTRL_URL}/network-jwts")
+    assert status == 200, text
+    return json.loads(text)["data"][0]["token"]
+
+
+def zitilib_env(token):
+    """What the zitilib cases of an app that holds a token (``zl-enroll-*-login``) are given."""
+    return {"CONTROLLER_URL": CTRL_URL, "NETWORK_JWT": network_jwt(), "IDP_TOKEN": token}
+
+
 def test_signer_is_listed(idp, idp_signer):
     """What the SDK reads in ``ziti_get_ext_jwt_signers`` to find the idp and how to talk to it."""
     status, _, text = _request("GET", f"{CTRL_URL}/edge/client/v1/external-jwt-signers")
@@ -196,6 +208,25 @@ def test_sdk_login_per_enroll_mode(idp, idp_signer, idp_user, enroll_mode, clien
         "IDP_TOKEN": idp.password_grant(idp_user)["access_token"],
     }
     run_catch_test(env, tmp_path, test=f"ztx-enroll-{mode}-lifecycle")
+
+
+def test_zitilib_enroll_to_token_and_login(idp, idp_signer, idp_user, enroll_mode, tmp_path):
+    """An app that holds the token enrolls and logs in through zitilib: ``zl-enroll-token-login`` in zitilib_tests.cpp.
+
+    No identity of the app is involved: the token is all it has, the controller's network JWT its trust anchor.
+    """
+    enroll_mode("token")
+    env = zitilib_env(idp.password_grant(idp_user)["access_token"])
+    run_catch_test(env, tmp_path, test="zl-enroll-token-login")
+    assert identity_exists(idp_user)
+
+
+def test_zitilib_enroll_to_cert_and_login(idp, idp_signer, idp_user, enroll_mode, tmp_path):
+    """The same through a signer that enrolls to a cert: ``zl-enroll-cert-login`` in zitilib_tests.cpp."""
+    enroll_mode("cert")
+    env = zitilib_env(idp.password_grant(idp_user)["access_token"])
+    run_catch_test(env, tmp_path, test="zl-enroll-cert-login")
+    assert identity_exists(idp_user)
 
 
 def test_sdk_enroll_cert_with_key_from_callback(idp, idp_signer, idp_user, enroll_mode, client_identity, tmp_path):
