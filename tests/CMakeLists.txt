@@ -26,6 +26,7 @@ add_executable(all_tests
         ctrl_auth_tests.cpp
         legacy_auth_tests.cpp
         reauth_tests.cpp
+        totp_required_reauth_tests.cpp
         oidc_transport_tests.cpp
         ztx_test_helper.c
         enroll_url_tests.cpp
