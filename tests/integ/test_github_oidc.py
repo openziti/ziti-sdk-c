@@ -72,8 +72,12 @@ def identities_of(external_id):
 
 
 @pytest.fixture(scope="session")
-def github_signer(ziti_model):
+def github_signer(ziti_model, ziti_version):
     """Name of the ext-jwt-signer that trusts GitHub, names an identity after the repository and enrolls it to a token."""
+    # the ``require_ziti`` mark is applied by a fixture that runs after the session ones: skip here, like ``idp_signer``
+    if ziti_version.major < 2:
+        pytest.skip("JWT signers require Ziti 2.0 or later")
+
     jwks = _get_json(f"{GH_ISSUER}/.well-known/openid-configuration")["jwks_uri"]
 
     # GitHub has no login to start, and the SDK selects no signer: no IdP url, no client id
