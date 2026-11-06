@@ -91,15 +91,15 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: load context with timeout", "[zitili
     }
 }
 
-TEST_CASE_METHOD(ZitilibTestCase, "zitilib: token entry points reject missing arguments", "[zitilib]") {
+TEST_CASE_METHOD(ZitilibTestCase, "zitilib: enroll with idp and login with token reject missing arguments", "[zitilib]") {
     char *id = nullptr;
     unsigned long len = 0;
     const char *url = "https://127.0.0.1:1"; // never contacted: the arguments are checked first
 
-    CHECK(Ziti_enroll_controller_with_token(url, nullptr, ziti_enroll_token, nullptr, &id, &len) == ZITI_INVALID_STATE);
-    CHECK(Ziti_enroll_controller_with_token(nullptr, nullptr, ziti_enroll_token, "token", &id, &len) == ZITI_INVALID_STATE);
-    CHECK(Ziti_enroll_controller_with_token(url, nullptr, ziti_enroll_token, "token", nullptr, &len) == ZITI_INVALID_STATE);
-    CHECK(Ziti_enroll_controller_with_token(url, nullptr, ziti_enroll_token, "token", &id, nullptr) == ZITI_INVALID_STATE);
+    CHECK(Ziti_enroll_with_idp(nullptr, ziti_enroll_token, "token", &id, &len) == ZITI_INVALID_STATE);
+    CHECK(Ziti_enroll_with_idp("", ziti_enroll_token, "token", &id, &len) == ZITI_INVALID_STATE);
+    CHECK(Ziti_enroll_with_idp(url, ziti_enroll_token, "token", nullptr, &len) == ZITI_INVALID_STATE);
+    CHECK(Ziti_enroll_with_idp(url, ziti_enroll_token, "token", &id, nullptr) == ZITI_INVALID_STATE);
 
     CHECK(Ziti_login_with_token(ZITI_INVALID_HANDLE, "token") == ZITI_INVALID_STATE);
     auto ztx = loadContext(checkENV("test_client"));
@@ -109,17 +109,15 @@ TEST_CASE_METHOD(ZitilibTestCase, "zitilib: token entry points reject missing ar
 // What an app that holds an external token does (a CI job with the OIDC token of its workflow, e.g. a Python
 // hook through the zitilib bindings): no signer to select, no browser to open. The signer that trusts the
 // token's issuer enrolls to a token, so the first use of the token creates the identity.
-// Env, set by the pytest that has the token: IDP_TOKEN, NETWORK_JWT (the controller is not publicly trusted),
-// CONTROLLER_URL.
+// Env, set by the pytest that has the token: IDP_TOKEN, NETWORK_JWT (the controller is not publicly trusted,
+// so the network JWT stands for it).
 TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-token-login", "[integ][zl-token]") {
     std::string token = checkENV("IDP_TOKEN");
     std::string network_jwt = checkENV("NETWORK_JWT");
-    std::string url = checkENV("CONTROLLER_URL");
 
     char *cfg = nullptr;
     unsigned long cfg_len = 0;
-    int rc = Ziti_enroll_controller_with_token(url.c_str(), network_jwt.c_str(), ziti_enroll_token, token.c_str(),
-                                               &cfg, &cfg_len);
+    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_token, token.c_str(), &cfg, &cfg_len);
     std::unique_ptr<char, decltype(&free)> id_json(cfg, free);
     INFO("enroll: " << rc << "/" << ziti_errorstr(rc));
     REQUIRE(rc == ZITI_OK);
@@ -152,12 +150,10 @@ TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-token-login", "[integ][zl-token]") 
 TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-cert-login", "[integ][zl-token]") {
     std::string token = checkENV("IDP_TOKEN");
     std::string network_jwt = checkENV("NETWORK_JWT");
-    std::string url = checkENV("CONTROLLER_URL");
 
     char *cfg = nullptr;
     unsigned long cfg_len = 0;
-    int rc = Ziti_enroll_controller_with_token(url.c_str(), network_jwt.c_str(), ziti_enroll_cert, token.c_str(),
-                                               &cfg, &cfg_len);
+    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_cert, token.c_str(), &cfg, &cfg_len);
     std::unique_ptr<char, decltype(&free)> id_json(cfg, free);
     INFO("enroll: " << rc << "/" << ziti_errorstr(rc));
     REQUIRE(rc == ZITI_OK);
@@ -175,4 +171,38 @@ TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-cert-login", "[integ][zl-token]") {
     INFO("load: " << rc << "/" << ziti_errorstr(rc));
     CHECK(rc == ZITI_OK);
     CHECK(ztx != ZITI_INVALID_HANDLE);
+}
+
+// The network JWT stands for the controller, and in mode none there is no idp: the result is the bootstrap config.
+TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-none-bootstrap", "[integ][zl-token]") {
+    std::string network_jwt = checkENV("NETWORK_JWT");
+
+    char *cfg = nullptr;
+    unsigned long cfg_len = 0;
+    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_none, nullptr, &cfg, &cfg_len);
+    std::unique_ptr<char, decltype(&free)> id_json(cfg, free);
+    INFO("enroll: " << rc << "/" << ziti_errorstr(rc));
+    REQUIRE(rc == ZITI_OK);
+
+    ziti_config bootstrap{};
+    REQUIRE(ziti_load_config(&bootstrap, id_json.get()) == ZITI_OK);
+    CHECK(bootstrap.controller_url != nullptr);
+    CHECK(bootstrap.id.ca != nullptr);
+    CHECK(bootstrap.id.cert == nullptr);
+    free_ziti_config(&bootstrap);
+}
+
+// An idp that is not a token is a signer name: the controller has no such signer, so the enrollment is turned
+// down at once instead of waiting for a login (the pytest has a signer on the controller, so there is a list
+// to look the name up in).
+TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-unknown-signer", "[integ][zl-token]") {
+    std::string network_jwt = checkENV("NETWORK_JWT");
+
+    char *cfg = nullptr;
+    unsigned long cfg_len = 0;
+    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_token, "no-such-signer", &cfg, &cfg_len);
+    std::unique_ptr<char, decltype(&free)> id_json(cfg, free);
+    INFO("enroll: " << rc << "/" << ziti_errorstr(rc));
+    CHECK(rc == ZITI_INVALID_STATE);
+    CHECK(id_json.get() == nullptr);
 }

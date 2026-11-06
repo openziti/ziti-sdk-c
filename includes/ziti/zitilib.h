@@ -70,66 +70,46 @@ int Ziti_enroll_identity(const char *jwt, const char *key, const char *cert,
                          char **id_json, unsigned long *id_json_len);
 
 /**
- * @brief Enroll or authenticate a Ziti identity via a controller URL.
+ * @brief Enroll a Ziti identity with an external identity provider (IdP).
  *
- * Bootstraps a Ziti identity from a controller URL. Behavior depends
- * on the enrollment mode:
+ * Bootstraps a Ziti identity from a controller and an ext-jwt-signer that the controller trusts.
+ * Behavior depends on the enrollment mode:
  *
- * - ziti_enroll_none: returns the bootstrap config (CA + controller URL)
- *   immediately, no OIDC authentication.
- * - ziti_enroll_token: performs OIDC authentication, auto-creates identity
- *   on the controller (no CSR). Returns config without cert/key.
- * - ziti_enroll_cert: performs OIDC authentication, generates a CSR,
- *   and exchanges the OIDC token + CSR for a client certificate.
+ * - ziti_enroll_none: returns the bootstrap config (CA + controller URL) immediately, \p idp is not used.
+ * - ziti_enroll_token: the controller creates the identity (no CSR). The returned config has no cert/key:
+ *   log in to it with [Ziti_load_context] and then [Ziti_login_with_token] or [Ziti_login_external].
+ * - ziti_enroll_cert: a CSR is generated and the controller signs it for the IdP token.
+ *   The returned config has the cert and key.
  *
- * If \p jwt is NULL, the network JWT is fetched from the controller's
- * /network-jwts endpoint, which requires the controller's TLS certificate
- * to be verifiable by the OS trust store (publicly-trusted CA).
+ * \p controller is either of:
+ * - the controller URL (e.g., "https://ctrl.example.com:1280"). The network JWT is fetched from the controller,
+ *   which requires its TLS certificate to be verifiable by the OS trust store (publicly-trusted CA).
+ * - the network JWT, obtained out of band. It is used to verify the controller, which allows privately-signed
+ *   controllers.
  *
- * If \p jwt is provided (obtained out of band), it is used directly to
- * verify the controller, allowing privately-signed controllers.
+ * \p idp is either of:
+ * - a token from the signer (a JWT, e.g., the OIDC token of a CI job). It is handed to the controller as is and
+ *   the controller decides if it takes it: no signer is selected and no login is started.
+ * - the name of an ext-jwt-signer, to log in with that signer.
+ * - NULL, to log in with the first signer that offers the enrollment mode.
  *
- * This is a blocking call.
- *
- * @param url controller URL (e.g., "https://ctrl.example.com:1280")
- * @param jwt network JWT string, or NULL to fetch from controller
- * @param mode enrollment mode (ziti_enroll_none, ziti_enroll_cert, ziti_enroll_token)
- * @param signer_name ext-jwt-signer name to use, or NULL to auto-select
- * @param id_json (output) identity in JSON format, caller is responsible for freeing it
- * @param id_json_len (output) length of id_json
- * @return ZITI_OK on success, error code on failure
- */
-ZITI_FUNC
-int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mode,
-                           const char *signer_name,
-                           char **id_json, unsigned long *id_json_len);
-
-/**
- * @brief Enroll a Ziti identity via a controller URL with an external token the caller already holds.
- *
- * Same as [Ziti_enroll_controller], except that no signer is selected and no login is started:
- * \p token (a JWT from an external signer that the controller trusts, e.g. the OIDC token of a CI job)
- * is handed to the controller as is, and the controller decides if it takes it.
- *
- * - ziti_enroll_none: returns the bootstrap config (CA + controller URL) immediately, \p token is not used.
- * - ziti_enroll_token: the controller creates the identity, the returned config has no cert/key:
- *   log in to it with [Ziti_load_context] and [Ziti_login_with_token].
- * - ziti_enroll_cert: the controller signs a CSR, the returned config has the cert and key.
+ * Which is which is told from the form of the string: a URL contains "://", a JWT has three dot separated
+ * parts and starts with "eyJ".
  *
  * This is a blocking call.
  *
- * @param url controller URL (e.g., "https://ctrl.example.com:1280")
- * @param jwt network JWT string, or NULL to fetch from controller
+ * @param controller controller URL or network JWT
  * @param mode enrollment mode (ziti_enroll_none, ziti_enroll_cert, ziti_enroll_token)
- * @param token external token, must not be NULL
+ * @param idp token or ext-jwt-signer name, or NULL
  * @param id_json (output) identity in JSON format, caller is responsible for freeing it
  * @param id_json_len (output) length of id_json
  * @return ZITI_OK on success, error code on failure (ZITI_INVALID_STATE for missing arguments)
  */
 ZITI_FUNC
-int Ziti_enroll_controller_with_token(const char *url, const char *jwt, ziti_enroll_mode mode,
-                                      const char *token,
-                                      char **id_json, unsigned long *id_json_len);
+int Ziti_enroll_with_idp(const char *controller, ziti_enroll_mode mode, const char *idp,
+                         char **id_json, unsigned long *id_json_len);
+
+
 /**
  * @brief Load Ziti identity.
  *

@@ -660,10 +660,27 @@ static void do_enroll_url(void *arg, future_t *f, uv_loop_t *l) {
     }
 }
 
-static int enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mode,
-                             const char *signer_name, const char *token,
-                             char **id_json, unsigned long *id_json_len) {
-    if ((url == NULL && jwt == NULL) || id_json == NULL || id_json_len == NULL) {
+// a controller is given as a URL, or as its network JWT: a URL has a scheme, a JWT never contains "://"
+static bool is_controller_url(const char *s) {
+    return strstr(s, "://") != NULL;
+}
+
+// an idp is given as a signer name, or as a token from the signer: a compact JWT is three dot separated parts,
+// and its header and claims are JSON objects, so it starts with "eyJ" (base64url of `{"`)
+static bool is_jwt(const char *s) {
+    if (strncmp(s, "eyJ", 3) != 0) {
+        return false;
+    }
+    int dots = 0;
+    for (const char *p = s; *p != '\0'; p++) {
+        if (*p == '.') dots++;
+    }
+    return dots == 2;
+}
+
+int Ziti_enroll_with_idp(const char *controller, ziti_enroll_mode mode, const char *idp,
+                         char **id_json, unsigned long *id_json_len) {
+    if (controller == NULL || *controller == '\0' || id_json == NULL || id_json_len == NULL) {
         return ZITI_INVALID_STATE;
     }
 
@@ -673,11 +690,19 @@ static int enroll_controller(const char *url, const char *jwt, ziti_enroll_mode 
 
     future_t *enroll_f = new_future();
     struct enroll_url_req *req = calloc(1, sizeof(struct enroll_url_req));
-    req->url = url;
-    req->jwt = jwt;
+    if (is_controller_url(controller)) {
+        req->url = controller;
+    } else {
+        req->jwt = controller;
+    }
     req->mode = mode;
-    req->signer_name = signer_name;
-    req->token = token;
+    if (idp != NULL && *idp != '\0') {
+        if (is_jwt(idp)) {
+            req->token = idp;
+        } else {
+            req->signer_name = idp;
+        }
+    }
     req->enroll_f = enroll_f;
 
     // schedule context creation - auth events drive signer selection and OIDC
@@ -693,21 +718,6 @@ static int enroll_controller(const char *url, const char *jwt, ziti_enroll_mode 
     destroy_future(enroll_f);
     free(req);
     return rc;
-}
-
-int Ziti_enroll_controller(const char *url, const char *jwt, ziti_enroll_mode mode,
-                           const char *signer_name,
-                           char **id_json, unsigned long *id_json_len) {
-    return enroll_controller(url, jwt, mode, signer_name, NULL, id_json, id_json_len);
-}
-
-int Ziti_enroll_controller_with_token(const char *url, const char *jwt, ziti_enroll_mode mode,
-                                      const char *token,
-                                      char **id_json, unsigned long *id_json_len) {
-    if (token == NULL) {
-        return ZITI_INVALID_STATE;
-    }
-    return enroll_controller(url, jwt, mode, NULL, token, id_json, id_json_len);
 }
 
 static model_map host_to_ip;
