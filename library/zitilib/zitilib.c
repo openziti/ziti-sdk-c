@@ -60,6 +60,10 @@ static void free_wrap(ztx_wrap_t *w) {
         w->pending->wrap = NULL;
     }
 
+    // the context is gone: the url is not coming
+    fail_future(w->login_future, ZITI_DISABLED);
+    w->login_future = NULL;
+
     for (int i = 0; w->signers && w->signers[i]; i++) {
         free((void*)w->signers[i]);
     }
@@ -242,6 +246,13 @@ static void process_service_event(ztx_wrap_t *wrap, const struct ziti_service_ev
 }
 
 static void process_auth_event(ztx_wrap_t *wrap, const struct ziti_auth_event *ev) {
+    if (wrap->login_future != NULL && ev->action == ziti_auth_cannot_continue) {
+        // the login cannot start (the provider does not answer, ...): the url is not coming
+        future_t *lf = wrap->login_future;
+        wrap->login_future = NULL;
+        fail_future(lf, ZITI_AUTHENTICATION_FAILED);
+    }
+
     if (wrap->auth_future == NULL) {
         return;
     }
@@ -1229,7 +1240,13 @@ struct login_req_s {
 };
 
 static void on_ext_login(ziti_context ztx, const char *url, void *ctx) {
-    future_t *f = ctx;
+    ztx_wrap_t *wrap = ctx;
+    future_t *f = wrap->login_future;
+    if (f == NULL) {
+        return; // the call has ended already
+    }
+    wrap->login_future = NULL;
+
     if (url == NULL) {
         fail_future(f, EINVAL);
     } else {
@@ -1238,6 +1255,9 @@ static void on_ext_login(ziti_context ztx, const char *url, void *ctx) {
     }
 }
 
+// The url is handed over by on_ext_login, and a login that cannot start is reported with an auth event
+// (process_auth_event): the future that waits for the url is its own, since the one of the auth events is
+// completed with a context id, which is not a url.
 static void start_ext_login(void *arg, future_t *f, uv_loop_t *loop) {
     struct login_req_s *req = arg;
     ztx_wrap_t *wrap = zl_find_wrap(req->ziti_handle);
@@ -1246,8 +1266,16 @@ static void start_ext_login(void *arg, future_t *f, uv_loop_t *loop) {
         return;
     }
 
-    int err = ziti_ext_auth(wrap->ztx, on_ext_login, f);
+    if (wrap->login_future != NULL) {
+        ZITI_LOG(WARN, "another external login is starting for ztx[%d]", wrap->ztx->id);
+        fail_future(f, ZITI_INVALID_STATE);
+        return;
+    }
+
+    wrap->login_future = f;
+    int err = ziti_ext_auth(wrap->ztx, on_ext_login, wrap);
     if (err != ZITI_OK) {
+        wrap->login_future = NULL;
         fail_future(f, err);
     }
 }
@@ -1261,10 +1289,12 @@ static void set_ext_signer(void *arg, future_t *f, uv_loop_t *loop) {
     }
 
     assert(wrap->auth_future == NULL);
+    // the SDK reports the signer in use with an event sent from inside the call: the future is to be there for it
+    wrap->auth_future = f;
     int err = ziti_use_ext_jwt_signer(wrap->ztx, req->signer_name);
-    if (err == ZITI_OK) {
-        wrap->auth_future = f;
-    } else {
+    if (err != ZITI_OK && wrap->auth_future == f) {
+        // no event took the future: it is still ours to fail (a completed one may be gone already)
+        wrap->auth_future = NULL;
         fail_future(f, err);
     }
 }

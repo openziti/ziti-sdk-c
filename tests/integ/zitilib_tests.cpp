@@ -17,9 +17,13 @@
 
 #include <catch2/catch_all.hpp>
 
+#include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <future>
 #include <memory>
+#include <string>
+#include <thread>
 
 #include "fixtures.h"
 #include <ziti/zitilib.h>
@@ -303,4 +307,102 @@ TEST_CASE_METHOD(ZitilibTestCase, "zl-enroll-interactive-cancel", "[integ][zl-to
     REQUIRE(Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_token, signer.c_str(), &second, &cfg, &cfg_len)
             == ZITI_EXTERNAL_LOGIN_REQUIRED);
     CHECK(Ziti_enroll_cancel(second) == ZITI_OK);
+}
+
+namespace {
+struct LoginExternalResult {
+    std::string url;
+    int err = 0;
+};
+
+// Ziti_login_external has no timeout of its own, so a call that never returns would hold the whole suite until
+// run_catch_test gives up: the call runs on a thread this case does not wait for.
+std::future<LoginExternalResult> loginExternalAsync(ziti_handle_t ztx, const std::string &signer) {
+    auto result = std::make_shared<std::promise<LoginExternalResult>>();
+    auto future = result->get_future();
+    std::thread([result, ztx, signer] {
+        LoginExternalResult r;
+        char *url = Ziti_login_external(ztx, signer.c_str());
+        r.err = Ziti_last_error(); // the last error belongs to the calling thread
+        if (url != nullptr) {
+            r.url = url;
+            free(url);
+        }
+        result->set_value(std::move(r));
+    }).detach();
+    return future;
+}
+
+// What an app with only the controller's address and CA (the bootstrap config) has: no login of its own, so the
+// context asks for an external one and lists the signers to pick from.
+ziti_handle_t loadBootstrapContext(const std::string &network_jwt, const std::string &signer) {
+    char *cfg = nullptr;
+    unsigned long cfg_len = 0;
+    int rc = Ziti_enroll_with_idp(network_jwt.c_str(), ziti_enroll_none, nullptr, nullptr, &cfg, &cfg_len);
+    std::unique_ptr<char, decltype(&free)> bootstrap(cfg, free);
+    INFO("bootstrap: " << rc << "/" << ziti_errorstr(rc));
+    REQUIRE(rc == ZITI_OK);
+
+    ziti_handle_t ztx = ZITI_INVALID_HANDLE;
+    rc = Ziti_load_context(&ztx, bootstrap.get());
+    INFO("load: " << rc << "/" << ziti_errorstr(rc));
+    REQUIRE(rc == ZITI_EXTERNAL_LOGIN_REQUIRED);
+    REQUIRE(ztx != ZITI_INVALID_HANDLE);
+
+    const char *const *signers = Ziti_get_ext_signers(ztx);
+    REQUIRE(signers != nullptr);
+    bool listed = false;
+    for (int i = 0; signers[i] != nullptr; i++) {
+        listed = listed || signer == signers[i];
+    }
+    REQUIRE(listed);
+    return ztx;
+}
+}
+
+// The app picks one of the signers the context lists, and the call gives it the url the user has to open.
+// The pytest plays the browser: it reads the url from LOGIN_URL_FILE, logs in at the idp and delivers the
+// redirect to the SDK's local listener, which lets Ziti_wait_for_auth finish.
+// Env: NETWORK_JWT, IDP_SIGNER (its name), LOGIN_URL_FILE.
+TEST_CASE_METHOD(ZitilibTestCase, "zl-login-external", "[integ][zl-login]") {
+    std::string network_jwt = checkENV("NETWORK_JWT");
+    std::string signer = checkENV("IDP_SIGNER");
+    std::string url_file = checkENV("LOGIN_URL_FILE");
+
+    ziti_handle_t ztx = loadBootstrapContext(network_jwt, signer);
+
+    auto login = loginExternalAsync(ztx, signer);
+    REQUIRE(login.wait_for(std::chrono::seconds(20)) == std::future_status::ready);
+    LoginExternalResult r = login.get();
+    INFO("login external: " << r.err << "/" << ziti_errorstr(r.err));
+    REQUIRE(!r.url.empty());
+    CHECK(r.url.rfind("http", 0) == 0);
+
+    // the file shows up whole: the other side reads it as soon as it is there
+    std::string tmp = url_file + ".tmp";
+    {
+        std::ofstream(tmp) << r.url;
+    }
+    REQUIRE(std::rename(tmp.c_str(), url_file.c_str()) == 0);
+
+    int rc = Ziti_wait_for_auth(ztx, 30000);
+    INFO("wait for auth: " << rc << "/" << ziti_errorstr(rc));
+    CHECK(rc == ZITI_OK);
+}
+
+// The idp does not answer (it refuses the connection, or takes it and says nothing): the SDK cannot get the url
+// the user is to open, and the call has to say so instead of waiting for it. The 20 s the call gets is longer
+// than the SDK waits for an idp. Env: NETWORK_JWT, IDP_SIGNER (the name of a signer whose idp is down).
+TEST_CASE_METHOD(ZitilibTestCase, "zl-login-external-idp-down", "[integ][zl-login]") {
+    std::string network_jwt = checkENV("NETWORK_JWT");
+    std::string signer = checkENV("IDP_SIGNER");
+
+    ziti_handle_t ztx = loadBootstrapContext(network_jwt, signer);
+
+    auto login = loginExternalAsync(ztx, signer);
+    REQUIRE(login.wait_for(std::chrono::seconds(20)) == std::future_status::ready);
+    LoginExternalResult r = login.get();
+    INFO("login external: " << r.err << "/" << ziti_errorstr(r.err));
+    CHECK(r.url.empty());
+    CHECK(r.err != ZITI_OK);
 }

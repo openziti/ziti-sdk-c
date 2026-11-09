@@ -82,6 +82,9 @@
 #endif
 #define OIDC_ACCEPT_TIMEOUT 60
 #define OIDC_REQ_TIMEOUT 5
+// how long the idp has, in milliseconds, to connect and to answer a request (configuration, token, refresh)
+#define OIDC_HTTP_CONNECT_TIMEOUT 10000
+#define OIDC_HTTP_REQUEST_TIMEOUT 10000
 
 #define OIDC_LOG(lvl, fmt, ...) \
     ZITI_LOG(lvl, "oidc[%s] " fmt, cstr_str(&clt->name), ##__VA_ARGS__)
@@ -233,7 +236,8 @@ int ext_oidc_client_init(uv_loop_t *loop, ext_oidc_client_t *clt,
         return rc;
     }
 
-    tlsuv_http_connect_timeout(&clt->http, 10 * 1000);
+    tlsuv_http_connect_timeout(&clt->http, OIDC_HTTP_CONNECT_TIMEOUT);
+    tlsuv_http_request_timeout(&clt->http, OIDC_HTTP_REQUEST_TIMEOUT);
     tlsuv_http_idle_keepalive(&clt->http, 0); // no reason to keep idle connections
     tlsuv_http_header(&clt->http, HTTP_ACCEPT, APPLICATION_JSON);
 

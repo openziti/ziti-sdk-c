@@ -27,6 +27,7 @@ import base64
 import hashlib
 import json
 import secrets
+import socket
 import ssl
 import subprocess
 import threading
@@ -76,6 +77,23 @@ def _request(method, url, *, headers=None, body=None, form=None):
             return resp.status, resp.headers, resp.read().decode()
     except urllib.error.HTTPError as e:
         return e.code, e.headers, e.read().decode()
+
+
+def _request_to_loopback(url):
+    """``GET`` an url of ``localhost``, on whichever loopback address something listens.
+
+    The SDK's login listener is on the IPv6 loopback, and a browser tries every address of ``localhost``.
+    This resolver does not: where ``/etc/hosts`` has ``localhost`` for ``127.0.0.1`` only (Ubuntu's default),
+    ``localhost`` would never get there.
+    """
+    parts = urllib.parse.urlsplit(url)
+    failure = None
+    for host in ("[::1]", "127.0.0.1"):
+        try:
+            return _request("GET", parts._replace(netloc=f"{host}:{parts.port}").geturl())
+        except OSError as e:  # nothing listens there
+            failure = e
+    raise failure
 
 
 def ctrl_login(token):
@@ -140,6 +158,31 @@ def network_jwt():
 def zitilib_env(token):
     """What the zitilib cases of an app that holds a token (``zl-enroll-*-login``) are given."""
     return {"NETWORK_JWT": network_jwt(), "IDP_TOKEN": token}
+
+
+def start_browser(idp, user, url_file):
+    """Plays the user of an interactive login: takes the login url the SDK writes to ``url_file``, logs in at
+    the idp and delivers the redirect to the SDK's local listener.
+
+    Returns ``(thread, delivered)``: join the thread, then check ``delivered`` (``error``, or the ``status``
+    the listener answered with).
+    """
+    delivered = {}
+
+    def browser():
+        try:
+            deadline = time.monotonic() + 30
+            while not url_file.exists():
+                assert time.monotonic() < deadline, "the SDK gave out no login url"
+                time.sleep(0.05)
+            redirect = idp.login(url_file.read_text().strip(), user)
+            delivered["status"], _, delivered["text"] = _request_to_loopback(redirect)
+        except BaseException as e:  # reported by the test, this is not its thread
+            delivered["error"] = e
+
+    thread = threading.Thread(target=browser, daemon=True)
+    thread.start()
+    return thread, delivered
 
 
 def test_signer_is_listed(idp, idp_signer):
@@ -251,21 +294,8 @@ def test_zitilib_enroll_interactive(idp, idp_signer, idp_user, enroll_mode, tmp_
     enroll_mode("token")
     url_file = tmp_path / "login-url"
     env = {"NETWORK_JWT": network_jwt(), "IDP_SIGNER": idp_signer, "LOGIN_URL_FILE": str(url_file)}
-    delivered = {}
 
-    def browser():
-        try:
-            deadline = time.monotonic() + 30
-            while not url_file.exists():
-                assert time.monotonic() < deadline, "the SDK gave out no login url"
-                time.sleep(0.05)
-            redirect = idp.login(url_file.read_text().strip(), idp_user)
-            delivered["status"], _, delivered["text"] = _request("GET", redirect)
-        except BaseException as e:  # reported by the test, this is not its thread
-            delivered["error"] = e
-
-    thread = threading.Thread(target=browser, daemon=True)
-    thread.start()
+    thread, delivered = start_browser(idp, idp_user, url_file)
     try:
         run_catch_test(env, tmp_path, test="zl-enroll-interactive")
     finally:
@@ -281,6 +311,74 @@ def test_zitilib_enroll_interactive_cancel(idp, idp_signer, enroll_mode, tmp_pat
     enroll_mode("token")
     run_catch_test({"NETWORK_JWT": network_jwt(), "IDP_SIGNER": idp_signer}, tmp_path,
                    test="zl-enroll-interactive-cancel")
+
+
+def test_zitilib_login_external(idp, idp_signer, idp_user, enroll_mode, tmp_path):
+    """An identity of the idp's user is logged in through zitilib: ``zl-login-external`` in zitilib_tests.cpp.
+
+    The identity exists already (``enroll none``), and the app has only the controller's address and CA:
+    ``Ziti_login_external`` gives it the url, and this plays the browser at that url.
+    """
+    enroll_mode("none")
+    ziti_edge("create", "identity", idp_user, "--external-id", idp_user, "-a", "client")
+    url_file = tmp_path / "login-url"
+    env = {"NETWORK_JWT": network_jwt(), "IDP_SIGNER": idp_signer, "LOGIN_URL_FILE": str(url_file)}
+
+    thread, delivered = start_browser(idp, idp_user, url_file)
+    try:
+        run_catch_test(env, tmp_path, test="zl-login-external")
+    finally:
+        thread.join(timeout=10)
+
+    assert "error" not in delivered, delivered.get("error")
+    assert delivered.get("status") == 200, delivered
+
+
+@pytest.fixture
+def silent_idp():
+    """Url of an idp that takes every connection and never answers it."""
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(8)
+    server.settimeout(0.2)
+    held, stop = [], threading.Event()
+
+    def accept():
+        while not stop.is_set():
+            try:
+                held.append(server.accept()[0])
+            except OSError:  # nobody came
+                pass
+
+    thread = threading.Thread(target=accept, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.getsockname()[1]}"
+    stop.set()
+    thread.join(timeout=5)
+    for conn in held:
+        conn.close()
+    server.close()
+
+
+@pytest.fixture(params=["refused", "silent"])
+def idp_down_signer(ziti_model, request):
+    """Name of an ext-jwt-signer whose idp does not answer: nothing listens at its address (the port is reserved),
+    or the idp takes the connection and says nothing."""
+    name = "integration-test-idp-down"
+    down = "http://127.0.0.1:1" if request.param == "refused" else request.getfixturevalue("silent_idp")
+    ziti_edge("create", "ext-jwt-signer", name, down,
+              "--jwks-endpoint", f"{down}/keys",
+              "--external-auth-url", down,
+              "--client-id", IDP_CLIENT_ID,
+              "--audience", IDP_CLIENT_ID)
+    yield name
+    ziti_edge("delete", "ext-jwt-signer", name, check=False)
+
+
+def test_zitilib_login_external_idp_down(idp_down_signer, tmp_path):
+    """The idp of the signer does not answer: ``zl-login-external-idp-down`` in zitilib_tests.cpp."""
+    run_catch_test({"NETWORK_JWT": network_jwt(), "IDP_SIGNER": idp_down_signer}, tmp_path,
+                   test="zl-login-external-idp-down")
 
 
 def test_sdk_enroll_cert_with_key_from_callback(idp, idp_signer, idp_user, enroll_mode, client_identity, tmp_path):

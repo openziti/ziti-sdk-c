@@ -90,6 +90,7 @@ typedef struct ztx_wrap {
     ziti_options opts;
     ziti_context ztx;
     future_t *auth_future;
+    future_t *login_future; // Ziti_login_external waits for the login url (loop thread only)
     future_t *enroll_future;
     ziti_enroll_mode enroll_mode;
     const char *signer_name;
