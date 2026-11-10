@@ -177,7 +177,7 @@ def start_browser(idp, user, url_file):
                 time.sleep(0.05)
             redirect = idp.login(url_file.read_text().strip(), user)
             delivered["status"], _, delivered["text"] = _request_to_loopback(redirect)
-        except BaseException as e:  # reported by the test, this is not its thread
+        except Exception as e:  # reported by the test, this is not its thread
             delivered["error"] = e
 
     thread = threading.Thread(target=browser, daemon=True)
