@@ -248,12 +248,12 @@ TEST_CASE("a login that does not ask for the owed totp code is not repeated righ
     // the first login for the code starts right away
     CHECK(ctrl.logins() >= 2);
     // the next ones wait at least a second each (AUTH_RETRY_BASE_MS): without the wait they ran as fast as the
-    // rejections came back, dozens in this time
+    // rejections came back, dozens in this time. Nor do the requests turned down during the wait start one: the
+    // services refresh that the login starts (api_session_cb) sends its requests after the /current-api-session check,
+    // they come back turned down during the wait, and a lost session would authenticate right away, a login now that
+    // the session is invalidated. ztx_unauthorized ignores them while totp_login is set.
     CHECK(ctrl.logins() <= 5);
-    // and the token is not refreshed in the meantime, which goes round as fast: the services refresh that the login
-    // starts (api_session_cb) sends its requests after the /current-api-session check, they come back turned down
-    // during the wait, and a lost session refreshes with the refresh token, which the login has not dropped yet.
-    // ztx_unauthorized ignores them while totp_login is set.
+    // and the invalidated session is not refreshed
     CHECK(ctrl.refreshes() <= 1);
 }
 
