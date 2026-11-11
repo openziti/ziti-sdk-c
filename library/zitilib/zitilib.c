@@ -1429,6 +1429,7 @@ int Ziti_login_totp(ziti_handle_t ztx, const char *code) {
 
     future_t *f = schedule_on_loop(do_totp_login, &req, true);
     int err = await_future(f, NULL);
+    destroy_future(f);
     return err;
 }
 
