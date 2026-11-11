@@ -333,6 +333,16 @@ std::future<LoginExternalResult> loginExternalAsync(ziti_handle_t ztx, const std
     return future;
 }
 
+void requireSignerListed(ziti_handle_t ztx, const std::string &signer) {
+    const char *const *signers = Ziti_get_ext_signers(ztx);
+    REQUIRE(signers != nullptr);
+    bool listed = false;
+    for (int i = 0; signers[i] != nullptr; i++) {
+        listed = listed || signer == signers[i];
+    }
+    REQUIRE(listed);
+}
+
 // What an app with only the controller's address and CA (the bootstrap config) has: no login of its own, so the
 // context asks for an external one and lists the signers to pick from.
 ziti_handle_t loadBootstrapContext(const std::string &network_jwt, const std::string &signer) {
@@ -349,13 +359,7 @@ ziti_handle_t loadBootstrapContext(const std::string &network_jwt, const std::st
     REQUIRE(rc == ZITI_EXTERNAL_LOGIN_REQUIRED);
     REQUIRE(ztx != ZITI_INVALID_HANDLE);
 
-    const char *const *signers = Ziti_get_ext_signers(ztx);
-    REQUIRE(signers != nullptr);
-    bool listed = false;
-    for (int i = 0; signers[i] != nullptr; i++) {
-        listed = listed || signer == signers[i];
-    }
-    REQUIRE(listed);
+    requireSignerListed(ztx, signer);
     return ztx;
 }
 }
@@ -404,5 +408,71 @@ TEST_CASE_METHOD(ZitilibTestCase, "zl-login-external-idp-down", "[integ][zl-logi
     LoginExternalResult r = login.get();
     INFO("login external: " << r.err << "/" << ziti_errorstr(r.err));
     CHECK(r.url.empty());
-    CHECK(r.err != ZITI_OK);
+    CHECK(r.err == ZITI_AUTHENTICATION_FAILED);
+}
+
+// A login that is waiting for the idp holds the context: a second one is turned down at once, and it does not
+// take the idp client away from the first, which still gets its answer.
+// Env: NETWORK_JWT, IDP_SIGNER (the name of a signer whose idp takes the connection and says nothing).
+TEST_CASE_METHOD(ZitilibTestCase, "zl-login-external-concurrent", "[integ][zl-login]") {
+    std::string network_jwt = checkENV("NETWORK_JWT");
+    std::string signer = checkENV("IDP_SIGNER");
+
+    ziti_handle_t ztx = loadBootstrapContext(network_jwt, signer);
+
+    // the idp says nothing, so the first call is still waiting for it a second later
+    auto first = loginExternalAsync(ztx, signer);
+    REQUIRE(first.wait_for(std::chrono::seconds(1)) == std::future_status::timeout);
+
+    auto second = loginExternalAsync(ztx, signer);
+    REQUIRE(second.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+    LoginExternalResult r2 = second.get();
+    INFO("second login external: " << r2.err << "/" << ziti_errorstr(r2.err));
+    CHECK(r2.url.empty());
+    CHECK(r2.err == ZITI_INVALID_STATE);
+
+    REQUIRE(first.wait_for(std::chrono::seconds(20)) == std::future_status::ready);
+    LoginExternalResult r1 = first.get();
+    INFO("first login external: " << r1.err << "/" << ziti_errorstr(r1.err));
+    CHECK(r1.url.empty());
+    CHECK(r1.err == ZITI_AUTHENTICATION_FAILED);
+}
+
+// Another call is waiting for the authentication of the context: it keeps its place, and the login is turned
+// down. Env: NETWORK_JWT, IDP_SIGNER (the name of a signer).
+TEST_CASE_METHOD(ZitilibTestCase, "zl-login-external-while-waiting", "[integ][zl-login]") {
+    std::string network_jwt = checkENV("NETWORK_JWT");
+    std::string signer = checkENV("IDP_SIGNER");
+
+    ziti_handle_t ztx = loadBootstrapContext(network_jwt, signer);
+
+    auto waiting = std::async(std::launch::async, [ztx] { return Ziti_wait_for_auth(ztx, 2000); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(500)); // it is waiting by now
+
+    auto login = loginExternalAsync(ztx, signer);
+    REQUIRE(login.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+    LoginExternalResult r = login.get();
+    INFO("login external: " << r.err << "/" << ziti_errorstr(r.err));
+    CHECK(r.url.empty());
+    CHECK(r.err == ZITI_INVALID_STATE);
+
+    // nobody logs in
+    CHECK(waiting.get() == ZITI_TIMEOUT);
+}
+
+// The context is logged in already, and the app starts a login with a signer whose idp is down: the call says
+// so, as it does for a context that is not logged in.
+// Env: test_client (an identity that logs in on its own), IDP_SIGNER (the name of a signer whose idp is down).
+TEST_CASE_METHOD(ZitilibTestCase, "zl-login-external-authenticated-idp-down", "[integ][zl-login]") {
+    std::string signer = checkENV("IDP_SIGNER");
+
+    ziti_handle_t ztx = loadContext(checkENV("test_client"));
+    requireSignerListed(ztx, signer);
+
+    auto login = loginExternalAsync(ztx, signer);
+    REQUIRE(login.wait_for(std::chrono::seconds(20)) == std::future_status::ready);
+    LoginExternalResult r = login.get();
+    INFO("login external: " << r.err << "/" << ziti_errorstr(r.err));
+    CHECK(r.url.empty());
+    CHECK(r.err == ZITI_AUTHENTICATION_FAILED);
 }

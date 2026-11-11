@@ -360,25 +360,61 @@ def silent_idp():
     server.close()
 
 
-@pytest.fixture(params=["refused", "silent"])
-def idp_down_signer(ziti_model, request):
-    """Name of an ext-jwt-signer whose idp does not answer: nothing listens at its address (the port is reserved),
-    or the idp takes the connection and says nothing."""
+def _create_down_signer(url):
     name = "integration-test-idp-down"
-    down = "http://127.0.0.1:1" if request.param == "refused" else request.getfixturevalue("silent_idp")
-    ziti_edge("create", "ext-jwt-signer", name, down,
-              "--jwks-endpoint", f"{down}/keys",
-              "--external-auth-url", down,
+    ziti_edge("create", "ext-jwt-signer", name, url,
+              "--jwks-endpoint", f"{url}/keys",
+              "--external-auth-url", url,
               "--client-id", IDP_CLIENT_ID,
               "--audience", IDP_CLIENT_ID)
+    return name
+
+
+@pytest.fixture
+def refusing_idp_signer(ziti_model):
+    """Name of an ext-jwt-signer whose idp refuses the connection: nothing listens at its address (the port is
+    reserved)."""
+    name = _create_down_signer("http://127.0.0.1:1")
     yield name
     ziti_edge("delete", "ext-jwt-signer", name, check=False)
+
+
+@pytest.fixture
+def silent_idp_signer(ziti_model, silent_idp):
+    """Name of an ext-jwt-signer whose idp takes the connection and says nothing."""
+    name = _create_down_signer(silent_idp)
+    yield name
+    ziti_edge("delete", "ext-jwt-signer", name, check=False)
+
+
+@pytest.fixture(params=["refused", "silent"])
+def idp_down_signer(request):
+    """Name of an ext-jwt-signer whose idp does not answer, in each of the two ways."""
+    return request.getfixturevalue(f"{'refusing' if request.param == 'refused' else 'silent'}_idp_signer")
 
 
 def test_zitilib_login_external_idp_down(idp_down_signer, tmp_path):
     """The idp of the signer does not answer: ``zl-login-external-idp-down`` in zitilib_tests.cpp."""
     run_catch_test({"NETWORK_JWT": network_jwt(), "IDP_SIGNER": idp_down_signer}, tmp_path,
                    test="zl-login-external-idp-down")
+
+
+def test_zitilib_login_external_concurrent(silent_idp_signer, tmp_path):
+    """A second login is turned down while the first waits for the idp: ``zl-login-external-concurrent``."""
+    run_catch_test({"NETWORK_JWT": network_jwt(), "IDP_SIGNER": silent_idp_signer}, tmp_path,
+                   test="zl-login-external-concurrent")
+
+
+def test_zitilib_login_external_while_waiting(idp, idp_signer, tmp_path):
+    """A login is turned down while another call waits for the authentication: ``zl-login-external-while-waiting``."""
+    run_catch_test({"NETWORK_JWT": network_jwt(), "IDP_SIGNER": idp_signer}, tmp_path,
+                   test="zl-login-external-while-waiting")
+
+
+def test_zitilib_login_external_authenticated_idp_down(refusing_idp_signer, client_identity, tmp_path):
+    """The context is logged in already and the idp is down: ``zl-login-external-authenticated-idp-down``."""
+    run_catch_test({"test_client": client_identity["path"], "IDP_SIGNER": refusing_idp_signer}, tmp_path,
+                   test="zl-login-external-authenticated-idp-down")
 
 
 def test_sdk_enroll_cert_with_key_from_callback(idp, idp_signer, idp_user, enroll_mode, client_identity, tmp_path):

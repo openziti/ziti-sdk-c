@@ -171,7 +171,9 @@ static void ext_token_cb(ext_oidc_client_t *oidc, enum ext_oidc_status status, c
         }
     }
 
-    if (ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
+    // The configuration is only fetched for a login that the application started (ziti_ext_auth): it is waiting
+    // for the url, and hears about the failure even if the context is authenticated already.
+    if (status == EXT_OIDC_CONFIG_FAILED || ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
         ziti_event_t ev = {
             .type = ZitiAuthEvent,
             .auth = {

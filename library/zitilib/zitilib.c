@@ -1288,7 +1288,14 @@ static void set_ext_signer(void *arg, future_t *f, uv_loop_t *loop) {
         return;
     }
 
-    assert(wrap->auth_future == NULL);
+    // another call waits for this context: it keeps its place. A login that starts now would also close the idp
+    // client of a login that is waiting for its url, which would never hear about it.
+    if (wrap->auth_future != NULL || wrap->login_future != NULL) {
+        ZITI_LOG(WARN, "another auth operation is in progress for ztx[%d]", wrap->ztx->id);
+        fail_future(f, ZITI_INVALID_STATE);
+        return;
+    }
+
     // the SDK reports the signer in use with an event sent from inside the call: the future is to be there for it
     wrap->auth_future = f;
     int err = ziti_use_ext_jwt_signer(wrap->ztx, req->signer_name);
