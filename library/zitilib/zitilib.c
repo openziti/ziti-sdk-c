@@ -253,6 +253,11 @@ static void process_auth_event(ztx_wrap_t *wrap, const struct ziti_auth_event *e
         fail_future(lf, ZITI_AUTHENTICATION_FAILED);
     }
 
+    if (ev->action == ziti_auth_success) {
+        // a new login fetches the services anew: an error of the one before does not stand
+        wrap->services_error = 0;
+    }
+
     if (wrap->auth_future == NULL) {
         return;
     }
@@ -303,6 +308,17 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
             complete_future(wrap->auth_future, (void *) (uintptr_t) ztx->id, ZITI_PARTIALLY_AUTHENTICATED);
             wrap->auth_future = NULL;
             return;
+        } else if (err == ZITI_CONTROLLER_UNAVAILABLE && ztx->auth_state == ZitiAuthStateFullyAuthenticated &&
+                   !wrap->services_loaded) {
+            // The initial services cannot be loaded. The SDK reports a status once, and the app may not be waiting yet,
+            // so the error is kept for the wait that comes. A load of the context is left to its caller's timeout: it
+            // has no handle to give back with an error.
+            wrap->services_error = err;
+            if (wrap->wait_future != NULL && wrap->wait_future == wrap->auth_future) {
+                fail_future(wrap->auth_future, err);
+                wrap->auth_future = NULL;
+                wrap->wait_future = NULL;
+            }
         } else if (err == ZITI_DISABLED) {
             wrap->services_loaded = false;
             destroy_future(wrap->services_loaded_f);
@@ -401,10 +417,12 @@ static void on_ctx_event(ziti_context ztx, const ziti_event_t *ev) {
     } else if (ev->type == ZitiServiceEvent) {
         process_service_event(wrap, &ev->service);
         wrap->services_loaded = true;
+        wrap->services_error = 0;
         if (wrap->auth_future) {
             // if we were waiting for services to load before completing auth, do that now
             complete_future(wrap->auth_future, (void *) (uintptr_t) ztx->id, ZITI_OK);
             wrap->auth_future = NULL;
+            wrap->wait_future = NULL;
         }
     } else if (ev->type == ZitiConfigEvent && enrolling(wrap)) {
         // cert mode: wait for cert; token/none mode: any config event
@@ -1454,8 +1472,15 @@ static void wait_for_auth_cb(void *arg, future_t *f, uv_loop_t *l) {
         return;
     }
 
+    // the initial services could not be loaded, which the SDK reported before the app got here
+    if (wrap->ztx->auth_state == ZitiAuthStateFullyAuthenticated && wrap->services_error != 0) {
+        fail_future(f, wrap->services_error);
+        return;
+    }
+
     assert(wrap->auth_future == NULL);
     wrap->auth_future = f;
+    wrap->wait_future = f;
 }
 
 struct wait_cancel_s {
@@ -1471,6 +1496,7 @@ static void cancel_wait(void *arg, future_t *unused, uv_loop_t *loop) {
     // the future is only compared: if something completed it in the meantime, the caller may have freed it already
     if (wrap != NULL && wrap->auth_future == c->f) {
         wrap->auth_future = NULL;
+        wrap->wait_future = NULL;
         fail_future(c->f, UV_ETIMEDOUT); // frees it, if the caller discarded it already
     }
     free(c);

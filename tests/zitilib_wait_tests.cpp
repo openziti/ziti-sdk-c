@@ -34,11 +34,12 @@ using namespace fake_controller;
 
 namespace {
     // a legacy controller that wants a TOTP code from the identity, and that answers the request for the services after
-    // `services_delay_ms`
+    // `services_delay_ms`, with the services or (`fail_services`) with an error
     class FakeSlowServicesController {
     public:
-        explicit FakeSlowServicesController(unsigned services_delay_ms)
+        explicit FakeSlowServicesController(unsigned services_delay_ms, bool fail_services = false)
                 : services_delay_ms_(services_delay_ms),
+                  fail_services_(fail_services),
                   server_([this](const std::string &method, const std::string &path) { return respond(method, path); }) {}
 
         std::string url() const { return server_.url(); }
@@ -98,6 +99,9 @@ namespace {
             if (ends_with(path, "/services")) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(services_delay_ms_));
                 services_answered_ = true;
+                if (fail_services_) {
+                    return not_found();
+                }
                 return json_response("200 OK", R"({"data":[{"id":"svc-id","name":"svc","permissions":["Dial"],)"
                                       R"("encryptionRequired":false}],"meta":{}})");
             }
@@ -108,6 +112,7 @@ namespace {
         }
 
         const unsigned services_delay_ms_;
+        const bool fail_services_;
         std::atomic<bool> code_pending_{true};
         std::atomic<bool> services_answered_{false};
         FakeHttpServer server_;
@@ -158,4 +163,27 @@ TEST_CASE("Ziti_wait_for_auth waits for the initial services", "[zitilib][wait-f
     auto before = std::chrono::steady_clock::now();
     CHECK(Ziti_wait_for_auth(ztx, 1000) == ZITI_OK);
     CHECK(std::chrono::steady_clock::now() - before < std::chrono::milliseconds(500));
+}
+
+// The services cannot be loaded: the wait says so instead of running into its timeout. The controller refuses the
+// request for the services right away (so the failure is over before the wait starts, and the SDK reports a change of
+// status only once), or after the wait has started.
+TEST_CASE("Ziti_wait_for_auth fails when the initial services cannot be loaded", "[zitilib][wait-for-auth]") {
+    unsigned services_delay_ms = GENERATE(0u, 1500u);
+    FakeSlowServicesController ctrl(services_delay_ms, true);
+    ZitilibScope zitilib;
+
+    ziti_handle_t ztx = ZITI_INVALID_HANDLE;
+    std::string identity = identity_json(ctrl.url());
+    REQUIRE(Ziti_load_context(&ztx, identity.c_str()) == ZITI_PARTIALLY_AUTHENTICATED);
+    REQUIRE(ztx != ZITI_INVALID_HANDLE);
+
+    REQUIRE(Ziti_login_totp(ztx, "123456") == ZITI_OK);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    auto before = std::chrono::steady_clock::now();
+    int rc = Ziti_wait_for_auth(ztx, 5000);
+    INFO("services delay " << services_delay_ms << " ms, wait for auth: " << rc << "/" << ziti_errorstr(rc));
+    CHECK(rc == ZITI_CONTROLLER_UNAVAILABLE);
+    CHECK(std::chrono::steady_clock::now() - before < std::chrono::milliseconds(4000));
 }
