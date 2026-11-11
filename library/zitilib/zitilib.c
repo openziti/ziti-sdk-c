@@ -1440,7 +1440,10 @@ static void wait_for_auth_cb(void *arg, future_t *f, uv_loop_t *l) {
         return;
     }
 
-    if (wrap->ztx->auth_state == ZitiAuthStateFullyAuthenticated) {
+    // The app goes on to use the services once the authentication is over, so it is not over until the initial
+    // services are there. If they are not yet, the future waits like one that was there before the login: the
+    // service event completes it.
+    if (wrap->ztx->auth_state == ZitiAuthStateFullyAuthenticated && wrap->services_loaded) {
         complete_future(f, NULL, 0);
         return;
     }
