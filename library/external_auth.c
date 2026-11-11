@@ -312,8 +312,14 @@ static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti
                                     cert_resp->client_cert_pem,
                                     strlen(cert_resp->client_cert_pem)) != 0) {
             ZTX_LOG(ERROR, "failed to load enrolled certificate");
-        } else {
-            ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->id_creds.key, ztx->id_creds.cert);
+        } else if (ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->id_creds.key, ztx->id_creds.cert) == 0) {
+            // the edge router channels and the e2ee contexts have TLS contexts of their own: without the cert they
+            // connect with no client identity, and the routers refuse them, until the context is restarted.
+            // A session cert (requested while there was no identity cert) stays on the channels until it is replaced.
+            if (ztx->session_creds.cert == NULL &&
+                ztx_set_channel_cert(ztx, ztx->id_creds.key, ztx->id_creds.cert) != 0) {
+                ZTX_LOG(ERROR, "failed to set enrolled certificate on channel TLS");
+            }
         }
 
         // finalize the OIDC callback successfully before ztx_config_update,

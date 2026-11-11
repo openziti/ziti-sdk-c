@@ -291,6 +291,11 @@ struct lifecycle_state {
     std::string enroll_key;      // what enroll_key_cb returns, when the test sets it
     int enroll_key_calls{0};
     bool key_is_cb_string{false}; // the config event's id.key is exactly what enroll_key_cb returned
+
+    ziti_context ztx{nullptr};
+    bool until_router{false};     // keep the context running past the config and the controller login, until a router answers
+    bool router_connected{false}; // an edge router accepted the channel's Hello
+    bool timed_out{false};
 };
 
 // hands the SDK the key string in lifecycle_state::enroll_key; the SDK owns the copy
@@ -344,7 +349,9 @@ static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
     } else if (ev->type == ZitiContextEvent) {
         if (ev->ctx.ctrl_status == ZITI_OK) {
             state->auth_ok = true;
-            lifecycle_done(ztx, state);
+            if (!state->until_router) {
+                lifecycle_done(ztx, state);
+            }
         } else if (ev->ctx.ctrl_status != ZITI_PARTIALLY_AUTHENTICATED) {
             state->auth_failed = true;
             state->error_msg = ev->ctx.err ? ev->ctx.err : "unknown";
@@ -355,8 +362,13 @@ static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
         state->config_received = true;
         state->cert_received = ev->cfg.config->id.cert && ev->cfg.config->id.key;
         state->key_is_cb_string = ev->cfg.config->id.key && state->enroll_key == ev->cfg.config->id.key;
-        if (ev->cfg.config->id.cert) {
+        if (ev->cfg.config->id.cert && !state->until_router) {
             // cert mode: got the cert, we're done
+            lifecycle_done(ztx, state);
+        }
+    } else if (ev->type == ZitiRouterEvent) {
+        if (ev->router.status == EdgeRouterConnected) {
+            state->router_connected = true;
             lifecycle_done(ztx, state);
         }
     }
@@ -375,24 +387,32 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-lifecycle", "[integ][enroll-mode
 
     lifecycle_state state{};
     state.loop = loop();
+    state.ztx = ztx;
     state.token = idp_token;
     state.signer_name = idp_signer;
+    // the enrolled certificate is the identity's only credential: the context that enrolled has to reach an
+    // edge router with it, without a restart, so the case ends when a router accepts the channel
+    state.until_router = true;
 
     ziti_options opts{};
     opts.app_ctx = &state;
-    opts.events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent;
+    opts.events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent | ZitiRouterEvent;
     opts.event_cb = lifecycle_event_cb;
     opts.enroll_mode = ziti_enroll_cert;
     ziti_context_set_options(ztx, &opts);
 
     ziti_context_run(ztx, loop());
 
-    // add a timeout to avoid hanging
+    // a router that drops the Hello is retried with a backoff and never reported: bound the wait
     uv_timer_t timer;
     uv_timer_init(loop(), &timer);
-    timer.data = loop();
+    timer.data = &state;
     uv_timer_start(&timer, [](uv_timer_t *t) {
-        uv_stop((uv_loop_t *)t->data);
+        auto *s = static_cast<lifecycle_state *>(t->data);
+        if (!s->done) {
+            s->timed_out = true;
+            lifecycle_done(s->ztx, s);
+        }
     }, 30000, 0);
     uv_unref((uv_handle_t *)&timer); // the loop ends when the context is gone, the timer only bounds a hang
 
@@ -405,6 +425,8 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-lifecycle", "[integ][enroll-mode
     CHECK_FALSE(state.auth_failed);
     CHECK(state.config_received);
     CHECK(state.cert_received);
+    INFO("timed out waiting for an edge router to accept the channel: " << state.timed_out);
+    CHECK(state.router_connected);
 }
 
 
