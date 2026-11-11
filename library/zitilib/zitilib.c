@@ -1454,15 +1454,37 @@ static void wait_for_auth_cb(void *arg, future_t *f, uv_loop_t *l) {
     wrap->auth_future = f;
 }
 
+struct wait_cancel_s {
+    ziti_handle_t ziti_handle;
+    future_t *f;
+};
+
+// The wait gave up and its caller discards the future: nothing is left to complete it, so it must not stay the future
+// of the context, where it would turn down the next wait and the next login.
+static void cancel_wait(void *arg, future_t *unused, uv_loop_t *loop) {
+    struct wait_cancel_s *c = arg;
+    ztx_wrap_t *wrap = zl_find_wrap(c->ziti_handle);
+    // the future is only compared: if something completed it in the meantime, the caller may have freed it already
+    if (wrap != NULL && wrap->auth_future == c->f) {
+        wrap->auth_future = NULL;
+        fail_future(c->f, UV_ETIMEDOUT); // frees it, if the caller discarded it already
+    }
+    free(c);
+}
+
 int Ziti_wait_for_auth(ziti_handle_t ztx, int timeout_ms) {
     if (ztx == ZITI_INVALID_HANDLE || !zl_check_daemon()) {
         return ZITI_INVALID_STATE;
     }
     future_t *f = schedule_on_loop(wait_for_auth_cb, (void *)(uintptr_t)ztx, true);
     int err = await_future_timed(f, NULL, timeout_ms);
-    destroy_future(f);
-    if(err == UV_ETIMEDOUT) {
+    if (err == UV_ETIMEDOUT) {
+        struct wait_cancel_s *c = calloc(1, sizeof(*c));
+        c->ziti_handle = ztx;
+        c->f = f;
+        schedule_on_loop(cancel_wait, c, false);
         err = ZITI_TIMEOUT;
     }
+    destroy_future(f);
     return err;
 }

@@ -476,3 +476,23 @@ TEST_CASE_METHOD(ZitilibTestCase, "zl-login-external-authenticated-idp-down", "[
     CHECK(r.url.empty());
     CHECK(r.err == ZITI_AUTHENTICATION_FAILED);
 }
+
+// A wait that gave up leaves nothing behind: the context can be waited for again, and a login can start (it is
+// turned down while another call waits for the authentication, which a wait that is over does not do).
+// Env: NETWORK_JWT, IDP_SIGNER (the name of a signer).
+TEST_CASE_METHOD(ZitilibTestCase, "zl-wait-for-auth-timeout", "[integ][zl-login]") {
+    std::string network_jwt = checkENV("NETWORK_JWT");
+    std::string signer = checkENV("IDP_SIGNER");
+
+    ziti_handle_t ztx = loadBootstrapContext(network_jwt, signer);
+
+    // nobody logs in: the waits end with their timeouts, however many
+    CHECK(Ziti_wait_for_auth(ztx, 200) == ZITI_TIMEOUT);
+    CHECK(Ziti_wait_for_auth(ztx, 200) == ZITI_TIMEOUT);
+
+    auto login = loginExternalAsync(ztx, signer);
+    REQUIRE(login.wait_for(std::chrono::seconds(20)) == std::future_status::ready);
+    LoginExternalResult r = login.get();
+    INFO("login external: " << r.err << "/" << ziti_errorstr(r.err));
+    CHECK(!r.url.empty());
+}

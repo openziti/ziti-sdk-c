@@ -411,6 +411,12 @@ def test_zitilib_login_external_while_waiting(idp, idp_signer, tmp_path):
                    test="zl-login-external-while-waiting")
 
 
+def test_zitilib_wait_for_auth_timeout(idp, idp_signer, tmp_path):
+    """A wait that timed out leaves nothing behind: ``zl-wait-for-auth-timeout`` in zitilib_tests.cpp."""
+    run_catch_test({"NETWORK_JWT": network_jwt(), "IDP_SIGNER": idp_signer}, tmp_path,
+                   test="zl-wait-for-auth-timeout")
+
+
 def test_zitilib_login_external_authenticated_idp_down(refusing_idp_signer, client_identity, tmp_path):
     """The context is logged in already and the idp is down: ``zl-login-external-authenticated-idp-down``."""
     run_catch_test({"test_client": client_identity["path"], "IDP_SIGNER": refusing_idp_signer}, tmp_path,
