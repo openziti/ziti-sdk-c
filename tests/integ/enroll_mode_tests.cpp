@@ -374,6 +374,28 @@ static void lifecycle_event_cb(ziti_context ztx, const ziti_event_t *ev) {
     }
 }
 
+// Runs the loop until the context is gone. With lifecycle_state::until_router (and state.ztx set) that is when an
+// edge router accepts a channel, or after 30 s: a router that drops the Hello is retried with a backoff and
+// never reported, so the wait has to be bounded. The case checks state.router_connected.
+static void run_until_router(lifecycle_state &state) {
+    uv_timer_t timer;
+    uv_timer_init(state.loop, &timer);
+    timer.data = &state;
+    uv_timer_start(&timer, [](uv_timer_t *t) {
+        auto *s = static_cast<lifecycle_state *>(t->data);
+        if (!s->done) {
+            s->timed_out = true;
+            lifecycle_done(s->ztx, s);
+        }
+    }, 30000, 0);
+    uv_unref((uv_handle_t *)&timer); // the loop ends when the context is gone, the timer only bounds a hang
+
+    uv_run(state.loop, UV_RUN_DEFAULT);
+    uv_timer_stop(&timer);
+    uv_close((uv_handle_t *)&timer, nullptr);
+    uv_run(state.loop, UV_RUN_NOWAIT);
+}
+
 TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-lifecycle", "[integ][enroll-mode][lifecycle]") {
     std::string idp_token = checkENV("IDP_TOKEN");
     std::string idp_signer = checkENV("IDP_SIGNER");
@@ -403,23 +425,7 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-cert-lifecycle", "[integ][enroll-mode
 
     ziti_context_run(ztx, loop());
 
-    // a router that drops the Hello is retried with a backoff and never reported: bound the wait
-    uv_timer_t timer;
-    uv_timer_init(loop(), &timer);
-    timer.data = &state;
-    uv_timer_start(&timer, [](uv_timer_t *t) {
-        auto *s = static_cast<lifecycle_state *>(t->data);
-        if (!s->done) {
-            s->timed_out = true;
-            lifecycle_done(s->ztx, s);
-        }
-    }, 30000, 0);
-    uv_unref((uv_handle_t *)&timer); // the loop ends when the context is gone, the timer only bounds a hang
-
-    uv_run(loop(), UV_RUN_DEFAULT);
-    uv_timer_stop(&timer);
-    uv_close((uv_handle_t *)&timer, nullptr);
-    uv_run(loop(), UV_RUN_NOWAIT);
+    run_until_router(state);
 
     INFO("error: " << state.error_msg);
     CHECK_FALSE(state.auth_failed);
@@ -510,35 +516,28 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-token-lifecycle", "[integ][enroll-mod
 
     lifecycle_state state{};
     state.loop = loop();
+    state.ztx = ztx;
     state.token = idp_token;
     state.signer_name = idp_signer;
+    state.until_router = true;
 
     ziti_options opts2{};
     opts2.app_ctx = &state;
-    opts2.events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent;
+    opts2.events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent | ZitiRouterEvent;
     opts2.event_cb = lifecycle_event_cb;
     opts2.enroll_mode = ziti_enroll_token;
     ziti_context_set_options(ztx, &opts2);
 
     ziti_context_run(ztx, loop());
 
-    uv_timer_t timer;
-    uv_timer_init(loop(), &timer);
-    timer.data = loop();
-    uv_timer_start(&timer, [](uv_timer_t *t) {
-        uv_stop((uv_loop_t *)t->data);
-    }, 30000, 0);
-    uv_unref((uv_handle_t *)&timer); // the loop ends when the context is gone, the timer only bounds a hang
-
-    uv_run(loop(), UV_RUN_DEFAULT);
-    uv_timer_stop(&timer);
-    uv_close((uv_handle_t *)&timer, nullptr);
-    uv_run(loop(), UV_RUN_NOWAIT);
+    run_until_router(state);
 
     INFO("error: " << state.error_msg);
     CHECK_FALSE(state.auth_failed);
     CHECK(state.auth_ok);
     CHECK(state.config_received);
+    INFO("timed out waiting for an edge router to accept the channel: " << state.timed_out);
+    CHECK(state.router_connected);
 }
 
 
@@ -559,33 +558,26 @@ TEST_CASE_METHOD(LoopTestCase, "ztx-enroll-token-direct-lifecycle", "[integ][enr
     state.loop = loop();
     state.token = idp_token;
     state.direct = true;
+    state.ztx = ztx;
+    state.until_router = true;
 
     ziti_options opts2{};
     opts2.app_ctx = &state;
-    opts2.events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent;
+    opts2.events = ZitiContextEvent | ZitiAuthEvent | ZitiConfigEvent | ZitiRouterEvent;
     opts2.event_cb = lifecycle_event_cb;
     opts2.enroll_mode = ziti_enroll_token;
     ziti_context_set_options(ztx, &opts2);
 
     ziti_context_run(ztx, loop());
 
-    uv_timer_t timer;
-    uv_timer_init(loop(), &timer);
-    timer.data = loop();
-    uv_timer_start(&timer, [](uv_timer_t *t) {
-        uv_stop((uv_loop_t *)t->data);
-    }, 30000, 0);
-    uv_unref((uv_handle_t *)&timer); // the loop ends when the context is gone, the timer only bounds a hang
-
-    uv_run(loop(), UV_RUN_DEFAULT);
-    uv_timer_stop(&timer);
-    uv_close((uv_handle_t *)&timer, nullptr);
-    uv_run(loop(), UV_RUN_NOWAIT);
+    run_until_router(state);
 
     INFO("error: " << state.error_msg);
     CHECK_FALSE(state.auth_failed);
     CHECK(state.auth_ok);
     CHECK(state.config_received);
+    INFO("timed out waiting for an edge router to accept the channel: " << state.timed_out);
+    CHECK(state.router_connected);
 }
 
 
