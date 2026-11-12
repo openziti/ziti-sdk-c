@@ -956,7 +956,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         if (message_get_error(msg, &e)) {
             CH_LOG(ERROR, "connect rejected: %" PRIi64 " %s[%s]", e.code, e.message, e.cause);
         } else {
-            CH_LOG(ERROR, "connect rejected: %d %*s", success, msg->header.body_len, (const char*)msg->body);
+            CH_LOG(ERROR, "connect rejected: %d %.*s", success, (int)msg->header.body_len, (const char*)msg->body);
         }
         free_edge_error(&e);
         on_channel_close(ch, ZITI_CONNABORT, 0);
