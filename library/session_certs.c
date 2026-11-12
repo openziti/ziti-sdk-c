@@ -129,6 +129,19 @@ int ztx_set_channel_cert(ziti_context ztx, tlsuv_private_key_t key, tlsuv_certif
     return ztx->channel_tls->set_own_cert(ztx->channel_tls, key, cert);
 }
 
+int ztx_set_identity_cert(ziti_context ztx, tlsuv_private_key_t key, tlsuv_certificate_t cert) {
+    if (ztx->tlsCtx->set_own_cert(ztx->tlsCtx, key, cert) != 0) {
+        return ZITI_INVALID_CERT_KEY_PAIR;
+    }
+
+    // a session cert only stands in for the identity certificate: drop it, and its renewal, so the channels switch
+    ztx_clear_session_creds(ztx);
+    if (ztx_set_channel_cert(ztx, key, cert) != 0) {
+        return ZITI_INVALID_CERT_KEY_PAIR;
+    }
+    return ZITI_OK;
+}
+
 void ztx_clear_session_creds(ziti_context ztx) {
     if (ztx->session_creds.cert || ztx->session_creds.key) {
         if (ztx->channel_tls) {

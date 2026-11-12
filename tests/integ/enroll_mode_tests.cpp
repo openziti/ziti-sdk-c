@@ -383,10 +383,15 @@ static void run_until_router(lifecycle_state &state) {
     timer.data = &state;
     uv_timer_start(&timer, [](uv_timer_t *t) {
         auto *s = static_cast<lifecycle_state *>(t->data);
-        if (!s->done) {
-            s->timed_out = true;
-            lifecycle_done(s->ztx, s);
+        if (s->done) {
+            // the shutdown was asked for long ago and is not finishing: stop the run, so the case fails, not hangs
+            uv_stop(t->loop);
+            return;
         }
+        s->timed_out = true;
+        lifecycle_done(s->ztx, s);
+        // the shutdown gets a moment to end the loop itself, and then the run is stopped
+        uv_timer_start(t, [](uv_timer_t *t) { uv_stop(t->loop); }, 5000, 0);
     }, 30000, 0);
     uv_unref((uv_handle_t *)&timer); // the loop ends when the context is gone, the timer only bounds a hang
 

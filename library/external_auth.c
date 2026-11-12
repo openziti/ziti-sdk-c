@@ -258,24 +258,30 @@ extern int ziti_ext_auth(ziti_context ztx,
     return ZITI_OK;
 }
 
+// the enrollment cannot continue: the browser gets the error page, the app gets the event.
+// `code` is the controller's error code, NULL when the failure is not one of its.
+static void ztx_enroll_failed(ziti_context ztx, const char *message, const char *code) {
+    if (ztx->ext_auth) {
+        ext_oidc_client_finalize(ztx->ext_auth, false, message);
+    }
+    ziti_send_event(ztx, &(ziti_event_t){
+            .type = ZitiAuthEvent,
+            .auth = {
+                    .action = ziti_auth_cannot_continue,
+                    .type = "enrollment",
+                    .error = message,
+                    .error_code = code,
+            },
+    });
+}
+
 static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti_error *error, void *ctx) {
     ziti_context ztx = ctx;
     assert(ztx->auth_method);
 
     if (error) {
         ZTX_LOG(WARN, "enrollment failed: %s", error->message);
-        if (ztx->ext_auth) {
-            ext_oidc_client_finalize(ztx->ext_auth, false, error->message);
-        }
-        ziti_send_event(ztx, &(ziti_event_t){
-                .type = ZitiAuthEvent,
-                .auth = {
-                        .action = ziti_auth_cannot_continue,
-                        .type = "enrollment",
-                        .error = error->message,
-                        .error_code = error->code,
-                },
-        });
+        ztx_enroll_failed(ztx, error->message, error->code);
         if (cert_resp) { free_ziti_enrollment_cert_resp_ptr(cert_resp); }
         return;
     }
@@ -287,6 +293,31 @@ static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti
 
     if (cert_resp && cert_resp->client_cert_pem) {
         ZTX_LOG(INFO, "received client certificate from enrollToCert");
+
+        // The certificate has to work before it is stored: a config the app saves with one that does not is one that
+        // cannot start, and the channels would connect with no client identity and be refused, with no event.
+        // It goes on the controller TLS context, the router channels and the e2ee contexts, which have their own.
+        int rc = ztx->tlsCtx->load_cert(&ztx->id_creds.cert,
+                                        cert_resp->client_cert_pem,
+                                        strlen(cert_resp->client_cert_pem));
+        if (rc != 0) {
+            ZTX_LOG(ERROR, "failed to load enrolled certificate");
+            rc = ZITI_INVALID_CERT_KEY_PAIR;
+        } else {
+            rc = ztx_set_identity_cert(ztx, ztx->id_creds.key, ztx->id_creds.cert);
+            if (rc != 0) {
+                ZTX_LOG(ERROR, "failed to set enrolled certificate: %s", ziti_errorstr(rc));
+                // nothing is left half done: no certificate on the controller TLS context, none in the credentials
+                ztx->tlsCtx->set_own_cert(ztx->tlsCtx, NULL, NULL);
+                ztx->id_creds.cert->free(ztx->id_creds.cert);
+                ztx->id_creds.cert = NULL;
+            }
+        }
+        if (rc != 0) {
+            ztx_enroll_failed(ztx, ziti_errorstr(rc), NULL);
+            free_ziti_enrollment_cert_resp_ptr(cert_resp);
+            return;
+        }
 
         // store cert in config for persistence
         FREE(ztx->config.id.cert);
@@ -304,21 +335,6 @@ static void ztx_on_token_enroll(ziti_enrollment_cert_resp *cert_resp, const ziti
             if (ztx->id_creds.key->to_pem(ztx->id_creds.key, &key_pem, &key_pem_len) == 0) {
                 FREE(ztx->config.id.key);
                 ztx->config.id.key = key_pem;
-            }
-        }
-
-        // load cert into TLS credentials
-        if (ztx->tlsCtx->load_cert(&ztx->id_creds.cert,
-                                    cert_resp->client_cert_pem,
-                                    strlen(cert_resp->client_cert_pem)) != 0) {
-            ZTX_LOG(ERROR, "failed to load enrolled certificate");
-        } else if (ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->id_creds.key, ztx->id_creds.cert) == 0) {
-            // the edge router channels and the e2ee contexts have TLS contexts of their own: without the cert they
-            // connect with no client identity, and the routers refuse them, until the context is restarted.
-            // A session cert (requested while there was no identity cert) stays on the channels until it is replaced.
-            if (ztx->session_creds.cert == NULL &&
-                ztx_set_channel_cert(ztx, ztx->id_creds.key, ztx->id_creds.cert) != 0) {
-                ZTX_LOG(ERROR, "failed to set enrolled certificate on channel TLS");
             }
         }
 

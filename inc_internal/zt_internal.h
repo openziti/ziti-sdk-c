@@ -307,6 +307,9 @@ extern void ztx_request_session_cert(ziti_context ztx);
 extern void ztx_clear_session_creds(ziti_context ztx);
 // sets the cert on channel_tls and both e2ee contexts so they don't drift apart
 extern int ztx_set_channel_cert(ziti_context ztx, tlsuv_private_key_t key, tlsuv_certificate_t cert);
+// makes cert the identity certificate of the controller TLS context, the channels and the e2ee contexts, in place of
+// any session cert. Returns ZITI_OK or ZITI_INVALID_CERT_KEY_PAIR; the caller keeps ownership of key and cert.
+extern int ztx_set_identity_cert(ziti_context ztx, tlsuv_private_key_t key, tlsuv_certificate_t cert);
 
 void ztx_auth_state_cb(void *, ziti_auth_state , const void *);
 ziti_channel_t * ztx_get_channel(ziti_context ztx, const ziti_edge_router *er);
