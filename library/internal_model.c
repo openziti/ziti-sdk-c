@@ -155,6 +155,8 @@ IMPL_MODEL(ziti_mfa_enrollment, ZITI_MFA_ENROLLMENT_MODEL)
 
 IMPL_MODEL(ziti_mfa_code_req, ZITI_MFA_CODE_REQ)
 
+IMPL_MODEL(ziti_session_req, ZITI_SESSION_REQ)
+
 IMPL_MODEL(ziti_identity_data, ZITI_IDENTITY_DATA_MODEL)
 
 IMPL_MODEL(ziti_extend_cert_authenticator_req, ZITI_EXTEND_CERT_AUTHENTICATOR_REQ)

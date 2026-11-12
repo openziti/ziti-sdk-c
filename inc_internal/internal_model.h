@@ -201,6 +201,10 @@ XX(last_change, model_string, none, lastChangeAt, __VA_ARGS__)
 #define ZITI_MFA_CODE_REQ(XX, ...) \
 XX(code, model_string, none, code, __VA_ARGS__)
 
+#define ZITI_SESSION_REQ(XX, ...) \
+XX(service_id, model_string, none, serviceId, __VA_ARGS__) \
+XX(type, ziti_session_type, none, type, __VA_ARGS__)
+
 #define ZITI_MFA_RECOVERY_CODES_MODEL(XX, ...) \
 XX(recovery_codes, model_string, array, recoveryCodes, __VA_ARGS__)
 
@@ -317,6 +321,8 @@ DECLARE_MODEL(ziti_auth_query_mfa, ZITI_AUTH_QUERY_MFA_MODEL)
 DECLARE_MODEL(ziti_service_update, ZITI_SERVICE_UPDATE)
 
 DECLARE_MODEL(ziti_mfa_code_req, ZITI_MFA_CODE_REQ)
+
+DECLARE_MODEL(ziti_session_req, ZITI_SESSION_REQ)
 
 DECLARE_MODEL(ziti_mfa_recovery_codes, ZITI_MFA_RECOVERY_CODES_MODEL)
 

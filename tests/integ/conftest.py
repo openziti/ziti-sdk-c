@@ -361,6 +361,15 @@ def test_service(quickstart, request):
     return dict(name=name, intercept=json.dumps(intercept))
 
 @pytest.fixture
+def service_terminators(test_service):
+    """Router terminators on the test service, enough for more than one page. Returns their count."""
+    routers = json.loads(ziti_edge("list", "edge-routers", "-j").stdout)["data"]
+    count = 2
+    for port in range(1, count + 1):
+        ziti_edge("create", "terminator", test_service['name'], routers[0]["id"], f"tcp:127.0.0.1:{port}")
+    return count
+
+@pytest.fixture
 def echo_server(server_identity, test_service, tmp_path):
     """Start the echo server and wait for it to be ready."""
     echo_exe = os.environ.get("ECHO_SERVER")
