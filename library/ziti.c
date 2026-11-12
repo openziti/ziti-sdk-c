@@ -2783,16 +2783,9 @@ static void cert_verify_cb(void *r, const ziti_error *err, void *ctx) {
         goto done;
     }
 
-    if (ztx->tlsCtx->set_own_cert(ztx->tlsCtx, ztx->id_creds.key, req->new_cert) != 0) {
+    if (ztx_set_identity_cert(ztx, ztx->id_creds.key, req->new_cert) != 0) {
         ZTX_LOG(ERROR, "extended certificate did not match key");
         goto done;
-    }
-
-    if (ztx->session_creds.cert == NULL) {
-        if (ztx_set_channel_cert(ztx, ztx->id_creds.key, req->new_cert) != 0) {
-            ZTX_LOG(ERROR, "extended certificate did not match key");
-            goto done;
-        }
     }
 
     struct tm exp;
