@@ -257,15 +257,21 @@ TEST_CASE("a bool header without a value reads as false", "[model]") {
             },
     };
     constexpr size_t body_len = 4;
-    message *m = message_new(nullptr, ContentTypeData, headers, 1, body_len);
-    REQUIRE(m != nullptr);
-    memset(m->body, 0x01, body_len); // what the unchecked read lands on
-    m->nhdrs = parse_hdrs(m->headers, m->header.headers_len, &m->hdrs);
-    REQUIRE(m->nhdrs == 1);
+    message *m1 = message_new(nullptr, ContentTypeData, headers, 1, body_len);
+    REQUIRE(m1 != nullptr);
+    memset(m1->body, 0x01, body_len); // what the unchecked read lands on
+
+    // parse it the way the channel does for an inbound message
+    message *m2 = nullptr;
+    REQUIRE(message_new_from_header(nullptr, m1->msgbufp, &m2) == ZITI_OK);
+    memcpy(m2->msgbufp, m1->msgbufp, m1->msgbuflen);
+    m2->nhdrs = parse_hdrs(m2->headers, m2->header.headers_len, &m2->hdrs);
+    REQUIRE(m2->nhdrs == 1);
 
     bool v = true;
-    CHECK(message_get_bool_header(m, 1, &v));
+    CHECK(message_get_bool_header(m2, 1, &v));
     CHECK_FALSE(v);
 
-    pool_return_obj(m);
+    pool_return_obj(m1);
+    pool_return_obj(m2);
 }
