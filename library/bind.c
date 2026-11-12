@@ -568,7 +568,7 @@ static void on_message(struct binding_s *b, message *msg, int code) {
                  content_type_id(msg->header.content), code, zch_get_name(b->ch));
         switch (msg->header.content) {
             case ContentTypeStateClosed:
-                CONN_LOG(DEBUG, "binding[%s] was closed: %.*s", zch_get_url(b->ch), msg->header.body_len, msg->body);
+                CONN_LOG(DEBUG, "binding[%s] was closed: %.*s", zch_get_url(b->ch), (int)msg->header.body_len, msg->body);
                 FREE(conn->server.token);
                 stop_binding(b);
                 schedule_rebind(conn);
@@ -610,7 +610,7 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
         b->state = st_bound;
     } else {
         CONN_LOG(WARN, "bind request rejected on router[%s]: ct[%s] %.*s",
-                 zch_get_name(b->ch), content_type_id(msg->header.content), msg->header.body_len, msg->body);
+                 zch_get_name(b->ch), content_type_id(msg->header.content), (int)msg->header.body_len, msg->body);
 
         FREE(conn->server.token);
         ziti_channel_rem_receiver(b->ch, b->conn_id);

@@ -783,10 +783,10 @@ static void process_inbound(ziti_channel_t *ch) {
         if (ch->in_next == NULL) { break; }
 
         // to complete the message need to read headers_len + body_len - (whatever was read already)
-        uint32_t total = ch->in_next->header.body_len + ch->in_next->header.headers_len;
-        uint32_t want = total - ch->in_body_offset;
+        size_t total = ch->in_next->msgbuflen - HEADER_SIZE;
+        size_t want = total - ch->in_body_offset;
         len = buffer_get_next(ch->incoming, want, &ptr);
-        CH_LOG(TRACE, "completing msg seq[%d] body+hrds=%d+%d, in_offset=%zd, want=%d, got=%zd", ch->in_next->header.seq,
+        CH_LOG(TRACE, "completing msg seq[%d] body+hrds=%d+%d, in_offset=%zd, want=%zd, got=%zd", ch->in_next->header.seq,
                ch->in_next->header.body_len, ch->in_next->header.headers_len, ch->in_body_offset, want, len);
 
         if (len == -1) {
@@ -956,7 +956,7 @@ static void hello_reply_cb(void *ctx, message *msg, int err) {
         if (message_get_error(msg, &e)) {
             CH_LOG(ERROR, "connect rejected: %" PRIi64 " %s[%s]", e.code, e.message, e.cause);
         } else {
-            CH_LOG(ERROR, "connect rejected: %d %*s", success, msg->header.body_len, (const char*)msg->body);
+            CH_LOG(ERROR, "connect rejected: %d %.*s", success, (int)msg->header.body_len, (const char*)msg->body);
         }
         free_edge_error(&e);
         on_channel_close(ch, ZITI_CONNABORT, 0);

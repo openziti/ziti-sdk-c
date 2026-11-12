@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "catch2_includes.hpp"
+#include <catch2/generators/catch_generators.hpp>
 
 #include <cstdlib>
 #include <cstring>
@@ -58,6 +59,22 @@ TEST_CASE("parse_hdrs handles misaligned subsequent headers", "[model][alignment
     CHECK(hdrs[1].value[3] == 0xEF);
 
     free(hdrs);
+}
+
+// A header length larger than what is left of the headers is an error. The parser added it to its read
+// position before looking: past the end on 64-bit builds (caught afterwards), and on 32-bit builds a length
+// near 2^32 wraps the position back below the end, so parsing carried on out of bounds.
+TEST_CASE("parse_hdrs rejects a header longer than the headers", "[model]") {
+    alignas(uint32_t) uint8_t buf[] = {
+        // header[0]: id=1, length=0xFFFFFFF0, then 4 bytes of value
+        0x01, 0x00, 0x00, 0x00,
+        0xF0, 0xFF, 0xFF, 0xFF,
+        0x00, 0x00, 0x00, 0x00,
+    };
+
+    hdr_t *hdrs = nullptr;
+    CHECK(parse_hdrs(buf, sizeof(buf), &hdrs) == ZITI_INVALID_STATE);
+    CHECK(hdrs == nullptr);
 }
 
 TEST_CASE("simple", "[model]") {
@@ -202,4 +219,59 @@ TEST_CASE("large unpooled", "[model]") {
     pool_return_obj(m2);
 
     pool_destroy(p);
+}
+// The lengths in an inbound header come from the peer. They were summed in 32 bits, so a header whose
+// headers_len + body_len came close to 2^32 got a buffer of a few bytes, and the channel then copied the
+// whole declared length into it.
+TEST_CASE("inbound header with an oversized data section is rejected", "[model]") {
+    auto lens = GENERATE(
+            std::pair<uint32_t, uint32_t>{0xFFFFFFECu, 0},           // + HEADER_SIZE wraps to 0
+            std::pair<uint32_t, uint32_t>{0xFFFFFFF0u, 0xFu},        // wraps to 19
+            std::pair<uint32_t, uint32_t>{0xFFFFFFFFu, 0xFFFFFFFFu}, // the sum of the two wraps too
+            std::pair<uint32_t, uint32_t>{0x80000000u, 0});          // over INT32_MAX without a wrap
+
+    auto p = pool_new(sizeof(message) + 200, 3, (void (*)(void *)) message_free);
+    header_t h = EMPTY_HEADER;
+    h.content = ContentTypeData;
+    h.headers_len = lens.first;
+    h.body_len = lens.second;
+    uint8_t buf[HEADER_SIZE];
+    header_to_buffer(&h, buf);
+
+    message *m = nullptr;
+    CHECK(message_new_from_header(p, buf, &m) != ZITI_OK);
+    CHECK(m == nullptr);
+
+    if (m) pool_return_obj(m);
+    pool_destroy(p);
+}
+
+// A header with no value is legal on the wire. The bool getter read value[0] regardless, which is the first
+// byte after the header: the body, or one byte past the buffer when there is none.
+TEST_CASE("a bool header without a value reads as false", "[model]") {
+    hdr_t headers[] = {
+            {
+                    .header_id = 1,
+                    .length = 0,
+                    .value = nullptr,
+            },
+    };
+    constexpr size_t body_len = 4;
+    message *m1 = message_new(nullptr, ContentTypeData, headers, 1, body_len);
+    REQUIRE(m1 != nullptr);
+    memset(m1->body, 0x01, body_len); // what the unchecked read lands on
+
+    // parse it the way the channel does for an inbound message
+    message *m2 = nullptr;
+    REQUIRE(message_new_from_header(nullptr, m1->msgbufp, &m2) == ZITI_OK);
+    memcpy(m2->msgbufp, m1->msgbufp, m1->msgbuflen);
+    m2->nhdrs = parse_hdrs(m2->headers, m2->header.headers_len, &m2->hdrs);
+    REQUIRE(m2->nhdrs == 1);
+
+    bool v = true;
+    CHECK(message_get_bool_header(m2, 1, &v));
+    CHECK_FALSE(v);
+
+    pool_return_obj(m1);
+    pool_return_obj(m2);
 }
