@@ -957,10 +957,9 @@ void ziti_ctrl_create_session(
 
     if (!verify_api_session(ctrl, (void (*)(void *, const ziti_error *, void *)) cb, ctx)) return;
 
-    char *content = malloc(128);
-    size_t len = snprintf(content, 128,
-                          "{\"serviceId\": \"%s\", \"type\": \"%s\"}",
-                          service_id, ziti_session_types.name(type));
+    ziti_session_req session_req = {.service_id = (char *) service_id, .type = type};
+    size_t len;
+    char *content = ziti_session_req_to_json(&session_req, MODEL_JSON_COMPACT, &len);
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_session_ptr_from_json, ctx);
     resp->ctrl = ctrl;

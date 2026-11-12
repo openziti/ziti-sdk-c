@@ -14,8 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Controller responses that fail: what the callback of the caller gets, and that the request is released
-// (LeakSanitizer reports a request that is not).
+// Controller requests against a fake controller: the body that is sent, and for responses that fail, what
+// the callback of the caller gets and that the request is released (LeakSanitizer reports one that is not).
 //
 // A response that fails after its headers arrived ends in the failure branch of the body callback of
 // ziti_ctrl.c. That branch called the callback of the caller with the request as its context (and crashed
@@ -29,6 +29,7 @@
 #include "ziti_ctrl.h"
 
 #include <ziti/errors.h>
+#include <json-c/json.h>
 
 using namespace fake_controller;
 
@@ -163,4 +164,35 @@ TEST_CASE("failed PEM enrollment response gives the callback only the error", "[
     CHECK(res.called);
     CHECK(res.err != ZITI_OK);
     CHECK_FALSE(res.got_data);
+}
+
+// The body of POST /sessions was formatted into a 128-byte buffer and sent with the untruncated length, so
+// a service id (it comes from the controller) longer than 95 characters sent the heap past that buffer.
+// The id was not escaped either.
+TEST_CASE("session request carries a long service id intact", "[controller]") {
+    const std::string service_id = std::string(200, 'x') + R"("quoted\)";
+    FakeHttpServer server([](const std::string &, const std::string &path) {
+        if (path == "/version") return json_response("200 OK", R"({"data":{"version":"v0.0.0"}})");
+        return not_found();
+    });
+    ctrl_under_test c(server.url());
+    ziti_ctrl_set_token(&c.ctrl, "token");
+
+    result res;
+    ziti_ctrl_create_session(&c.ctrl, service_id.c_str(), ziti_session_types.Dial,
+                             [](ziti_session *s, const ziti_error *, void *ctx) {
+                                 auto r = static_cast<result *>(ctx);
+                                 r->called = true;
+                                 if (s) free_ziti_session_ptr(s);
+                             }, &res);
+    run_until(c.loop, [&] { return res.called; }, 5000);
+
+    REQUIRE(server.count("/sessions") == 1);
+    const std::string body = server.last_body("/sessions");
+    CHECK(body.find('\0') == std::string::npos);
+
+    std::unique_ptr<json_object, decltype(&json_object_put)> json(json_tokener_parse(body.c_str()), json_object_put);
+    REQUIRE(json != nullptr);
+    CHECK(json_object_get_string(json_object_object_get(json.get(), "serviceId")) == service_id);
+    CHECK(json_object_get_string(json_object_object_get(json.get(), "type")) == std::string("Dial"));
 }
