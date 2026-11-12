@@ -55,6 +55,7 @@ protected:
     tls_context *tls = nullptr;
     tls_credentials creds{};
     ziti_controller ctrl{};
+    ziti_auth_method_t *auth = nullptr;
 
     CtrlTest() {
         ziti_log_init(loop(), 5, nullptr);
@@ -65,6 +66,7 @@ protected:
     }
 
     ~CtrlTest() {
+        if (auth) auth->free(auth);
         ziti_ctrl_close(&ctrl);
         creds.cert->free(creds.cert);
         creds.key->free(creds.key);
@@ -132,6 +134,9 @@ protected:
             SKIP("capability[" << ziti_ctrl_caps.name(cap) << "] not supported");
         }
     }
+
+    // OIDC login with the client identity; the token is set on ctrl
+    void authenticate();
 };
 
 TEST_CASE_METHOD(CtrlTest, "get-version", "[controller]") {
@@ -180,17 +185,13 @@ TEST_CASE_METHOD(CtrlTest, "cltr-network-jwt", "[controller]") {
     CHECK(jwt.method == ziti_enrollment_method_network);
 }
 
-TEST_CASE_METHOD(CtrlTest, "authenticate", "[controller]") {
+void CtrlTest::authenticate() {
     check_capability(ziti_ctrl_cap_OIDC_AUTH);
     auto version = CALL(ziti_ctrl_get_version);
     REQUIRE(version);
     auto p = map_get<api_path*>(version.value()->api_versions->oidc, "v1");
-    auto auth = new_oidc_auth(loop(), p, cfg->id.ca, &creds);
+    auth = new_oidc_auth(loop(), p, cfg->id.ca, &creds);
     REQUIRE(auth != nullptr);
-
-    DEFER {
-        auth->free(auth);
-    };
 
     struct auth_result {
         bool success{};
@@ -212,6 +213,10 @@ TEST_CASE_METHOD(CtrlTest, "authenticate", "[controller]") {
     REQUIRE(auth_res.state == ZitiAuthStateFullyAuthenticated);
 
     ziti_ctrl_set_token(&ctrl, auth_res.token.c_str());
+}
+
+TEST_CASE_METHOD(CtrlTest, "authenticate", "[controller]") {
+    authenticate();
 
     auto services = CALL(ziti_ctrl_get_services);
     REQUIRE(services);
@@ -230,4 +235,35 @@ TEST_CASE_METHOD(CtrlTest, "authenticate", "[controller]") {
     DEFER {
         free_ziti_session_ptr(session.value());
     };
+}
+
+// GH-1238: pages after the first are requested from the path kept in the request
+TEST_CASE_METHOD(CtrlTest, "list-terminators-paging", "[controller]") {
+    int expected = std::stoi(checkENV("test_terminators"));
+    std::string service_name = checkENV("test_service");
+    REQUIRE(expected > 1);
+
+    authenticate();
+
+    auto svc = CALL(ziti_ctrl_get_service, service_name.c_str());
+    REQUIRE(svc);
+    DEFER {
+        free_ziti_service_ptr(svc.value());
+    };
+    const char *service_id = svc.value()->id;
+
+    // one terminator per page
+    ziti_ctrl_set_page_size(&ctrl, 1);
+    auto terms = CALL(ziti_ctrl_list_terminators, service_id);
+    REQUIRE(terms);
+    auto arr = terms.value();
+    DEFER {
+        free_ziti_terminator_array(&arr);
+    };
+
+    int count = 0;
+    for (; arr[count]; count++) {
+        CHECK_THAT(arr[count]->service_id, Catch::Matchers::Equals(service_id));
+    }
+    CHECK(count == expected);
 }
