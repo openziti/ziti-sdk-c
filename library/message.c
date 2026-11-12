@@ -103,6 +103,10 @@ int parse_hdrs(const uint8_t *buf, uint32_t len, hdr_t **hp) {
         uint32_t id, length;
         p = read_int32(p, &id);
         p = read_int32(p, &length);
+        if (length > (size_t) (end - p)) {
+            ZITI_LOG(ERROR, "header[%u] length[%u] exceeds the remaining %zd bytes", id, length, end - p);
+            return ZITI_INVALID_STATE;
+        }
         p += length;
         ZITI_LOG(TRACE, "hdr[%d] id[%d] len[%d]", count, id, length);
         count++;
@@ -200,7 +204,15 @@ int message_new_from_header(pool_t *pool, uint8_t buf[HEADER_SIZE], message **ms
         return ZITI_INVALID_STATE;
     }
 
-    size_t msgbuflen = HEADER_SIZE + h.headers_len + h.body_len;
+    // the lengths come from the peer: summed in 32 bits they wrap to a small buffer that the channel then
+    // fills with the declared length. Same bound as the Go channel library.
+    uint64_t data_len = (uint64_t) h.headers_len + h.body_len;
+    if (data_len > INT32_MAX) {
+        ZITI_LOG(ERROR, "message data section of %" PRIu64 " bytes exceeds the maximum of %d", data_len, INT32_MAX);
+        return ZITI_INVALID_STATE;
+    }
+
+    size_t msgbuflen = HEADER_SIZE + (size_t) data_len;
     message *m = pool ? pool_alloc_obj(pool) : alloc_unpooled_obj(sizeof(message) + msgbuflen,
                                                                   (void (*)(void *)) message_free);
 
