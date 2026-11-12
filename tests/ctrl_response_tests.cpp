@@ -14,11 +14,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// A controller response that fails after its headers arrived ends in the failure branch of the body
-// callback of ziti_ctrl.c. That branch called the callback of the caller with the request as its context
-// (and crashed on the internal /version request, which has no caller callback) and never freed the
-// request. A body that does not inflate is a deterministic way to get there: tlsuv reports it to the
-// body callback when the message ends.
+// Controller responses that fail: what the callback of the caller gets, and that the request is released
+// (LeakSanitizer reports a request that is not).
+//
+// A response that fails after its headers arrived ends in the failure branch of the body callback of
+// ziti_ctrl.c. That branch called the callback of the caller with the request as its context (and crashed
+// on the internal /version request, which has no caller callback) and never freed the request. A body that
+// does not inflate is a deterministic way to get there: tlsuv reports it to the body callback when the
+// message ends.
 
 #include "fake_controller.h"
 
@@ -128,4 +131,36 @@ TEST_CASE("version response failing mid-body fails the version request", "[contr
     CHECK(res.called);
     CHECK_FALSE(res.got_data);
     CHECK(res.err == ZITI_CONTROLLER_UNAVAILABLE);
+}
+
+// An /enroll answered with a PEM certificate is a non-JSON response: an error, with no enrollment response
+// for the callback (the enrollment code does not free one on errors). The SDK asks for JSON, which every
+// controller sends it; a PEM path that got here gave the callback a response with the error and never
+// freed the request.
+TEST_CASE("failed PEM enrollment response gives the callback only the error", "[controller]") {
+    FakeHttpServer server([](const std::string &, const std::string &path) {
+        if (path == "/version") return json_response("200 OK", R"({"data":{"version":"v0.0.0"}})");
+        if (path == "/enroll") {
+            return http_response("200 OK", {{"Content-Type", "application/x-pem-file"}},
+                                 "-----BEGIN CERTIFICATE-----\nMA==\n-----END CERTIFICATE-----\n");
+        }
+        return not_found();
+    });
+    ctrl_under_test c(server.url());
+
+    result res;
+    ziti_ctrl_enroll(&c.ctrl, ziti_enrollment_method_ott, "token", "csr", nullptr,
+                     [](ziti_enrollment_resp *er, const ziti_error *err, void *ctx) {
+                         auto r = static_cast<result *>(ctx);
+                         r->called = true;
+                         r->got_data = er != nullptr;
+                         r->err = err ? err->err : ZITI_OK;
+                         free_ziti_enrollment_resp_ptr(er);
+                     }, &res);
+    run_until(c.loop, [&] { return res.called; }, 5000);
+
+    REQUIRE(server.count("/enroll") == 1);
+    CHECK(res.called);
+    CHECK(res.err != ZITI_OK);
+    CHECK_FALSE(res.got_data);
 }

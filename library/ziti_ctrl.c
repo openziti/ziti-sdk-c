@@ -969,29 +969,6 @@ void ziti_ctrl_create_session(
     tlsuv_http_req_data(req, content, len, free_body_cb);
 }
 
-static void enroll_pem_cb(void *body, const ziti_error *err, struct ctrl_resp *resp) {
-    ziti_enrollment_resp *er = alloc_ziti_enrollment_resp();
-    er->cert = (char *) body;
-    if (resp->resp_cb) {
-        resp->resp_cb(er, err, resp->ctx);
-    }
-}
-
-static void ctrl_enroll_http_cb(tlsuv_http_resp_t *http_resp, void *data) {
-    if (http_resp->code < 0) {
-        ctrl_resp_cb(http_resp, data);
-    }
-    else {
-        const char *content_type = tlsuv_http_resp_header(http_resp, HTTP_CONTENT_TYPE);
-        if (content_type != NULL && strcasecmp("application/x-pem-file", content_type) == 0) {
-            struct ctrl_resp *resp = data;
-            resp->resp_content = ctrl_content_text;
-            resp->ctrl_cb = enroll_pem_cb;
-        }
-        ctrl_resp_cb(http_resp, data);
-    }
-}
-
 void
 ziti_ctrl_enroll(ziti_controller *ctrl, ziti_enrollment_method method, const char *token, const char *csr,
                  const char *name,
@@ -1001,7 +978,7 @@ ziti_ctrl_enroll(ziti_controller *ctrl, ziti_enrollment_method method, const cha
 
     struct ctrl_resp *resp = MAKE_RESP(ctrl, cb, ziti_enrollment_resp_ptr_from_json, ctx);
 
-    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/enroll", ctrl_enroll_http_cb, resp);
+    tlsuv_http_req_t *req = start_request(ctrl->client, "POST", "/enroll", ctrl_resp_cb, resp);
     size_t q_count = method == ziti_enrollment_method_ca ? 1 : 2;
     const tlsuv_http_pair q_params[] = {
         { "method", ziti_enrollment_methods.name(method)},
