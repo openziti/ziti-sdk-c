@@ -610,7 +610,7 @@ static void bind_reply_cb(void *ctx, message *msg, int code) {
         b->state = st_bound;
     } else {
         CONN_LOG(WARN, "bind request rejected on router[%s]: ct[%s] %.*s",
-                 zch_get_name(b->ch), content_type_id(msg->header.content), msg->header.body_len, msg->body);
+                 zch_get_name(b->ch), content_type_id(msg->header.content), (int)msg->header.body_len, msg->body);
 
         FREE(conn->server.token);
         ziti_channel_rem_receiver(b->ch, b->conn_id);

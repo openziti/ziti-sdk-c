@@ -1257,9 +1257,9 @@ void connect_reply_cb(void *ctx, message *msg, int err) {
                 conn->channel = NULL;
                 restart_connect(conn);
             } else {
-                CONN_LOG(ERROR, "failed to %s, reason=%*.*s",
+                CONN_LOG(ERROR, "failed to %s, reason=%.*s",
                          "connect",
-                         (int)msg->header.body_len, (int)msg->header.body_len, (char*)msg->body);
+                         (int)msg->header.body_len, (char*)msg->body);
                 conn_set_state(conn, Disconnected);
                 complete_conn_req(conn, ZITI_CONN_CLOSED);
             }
@@ -1676,7 +1676,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
     switch (msg->header.content) {
         case ContentTypeStateClosed:
             CONN_LOG(DEBUG, "connection status[%s] seq[%d] err[%.*s]", content_type_id(msg->header.content), seq,
-                     msg->header.body_len, msg->body);
+                     (int)msg->header.body_len, msg->body);
             bool retry_connect = false;
 
             switch (conn->state) {
@@ -1694,7 +1694,7 @@ static void process_edge_message(struct ziti_conn *conn, message *msg) {
                         restart_connect(conn);
                     } else {
                         CONN_LOG(ERROR, "failed to connect, reason=%.*s",
-                                 msg->header.body_len, (const char*)msg->body);
+                                 (int)msg->header.body_len, (const char*)msg->body);
                         conn_set_state(conn, Disconnected);
                         complete_conn_req(conn, ZITI_CONN_CLOSED);
                     }

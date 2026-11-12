@@ -245,3 +245,27 @@ TEST_CASE("inbound header with an oversized data section is rejected", "[model]"
     if (m) pool_return_obj(m);
     pool_destroy(p);
 }
+
+// A header with no value is legal on the wire. The bool getter read value[0] regardless, which is the first
+// byte after the header: the body, or one byte past the buffer when there is none.
+TEST_CASE("a bool header without a value reads as false", "[model]") {
+    hdr_t headers[] = {
+            {
+                    .header_id = 1,
+                    .length = 0,
+                    .value = nullptr,
+            },
+    };
+    constexpr size_t body_len = 4;
+    message *m = message_new(nullptr, ContentTypeData, headers, 1, body_len);
+    REQUIRE(m != nullptr);
+    memset(m->body, 0x01, body_len); // what the unchecked read lands on
+    m->nhdrs = parse_hdrs(m->headers, m->header.headers_len, &m->hdrs);
+    REQUIRE(m->nhdrs == 1);
+
+    bool v = true;
+    CHECK(message_get_bool_header(m, 1, &v));
+    CHECK_FALSE(v);
+
+    pool_return_obj(m);
+}

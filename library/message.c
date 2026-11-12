@@ -149,8 +149,8 @@ static hdr_t *find_header(message *m, int header_id) {
 bool message_get_bool_header(message *m, int header_id, bool *v) {
     hdr_t *h = find_header(m, header_id);
     if (h != NULL) {
-        char val = (char)h->value[0];
-        *v = (val != 0);
+        // a header without a value has nothing to read: value[0] is the next byte after the header
+        *v = h->length > 0 && h->value[0] != 0;
         return true;
     }
     return false;
