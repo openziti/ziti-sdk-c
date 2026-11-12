@@ -556,6 +556,8 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
         CTRL_LOG(WARN, "failed to read response body: %zd[%s]", len, uv_strerror(len));
         if (resp->resp_content == ctrl_content_json) {
             json_tokener_free(resp->content_proc);
+            json_object_put(resp->content);
+            resp->content = NULL;
             json_object_put(resp->resp_json);
             resp->resp_json = NULL;
         } else {
@@ -573,7 +575,7 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
             err.err = ZITI_DISABLED;
             err.code = "CONTEXT_DISABLED";
         }
-        resp->resp_cb(NULL, &err, resp);
+        resp->ctrl_cb(NULL, &err, resp);
     }
 }
 
