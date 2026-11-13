@@ -39,6 +39,8 @@ add_executable(IntegrationTests
         bind_tests.cpp
         zitilib_tests.cpp
         zl_connect_tests.cpp
+        zl_bind_tests.cpp
+        zl_bind_helper.c
         e2e_tests.cpp
 )
 target_include_directories(IntegrationTests
