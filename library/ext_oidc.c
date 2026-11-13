@@ -161,18 +161,18 @@ static char *build_failure_body(const char *step, const char *error, const char 
             string_buf_append(&buf, "</dd>\n");
         }
         if (jwt) {
-            json_object *parsed = json_tokener_parse(jwt_payload(jwt));
-            if (parsed) {
+            zt_jwt token = {};
+            if (zt_jwt_parse(jwt, &token) == 0) {
                 for (int i = 0; OPAQUE_CLAIMS[i]; i++) {
-                    json_object_object_del(parsed, OPAQUE_CLAIMS[i]);
+                    json_object_object_del(token.claims, OPAQUE_CLAIMS[i]);
                 }
-                const char *pretty = json_object_to_json_string_ext(parsed,
+                const char *pretty = json_object_to_json_string_ext(token.claims,
                         JSON_C_TO_STRING_PRETTY | JSON_C_TO_STRING_NOSLASHESCAPE);
                 string_buf_append(&buf, "        <dt>Token claims</dt><dd><pre>");
                 append_html_escaped(&buf, pretty);
                 string_buf_append(&buf, "</pre></dd>\n");
-                json_object_put(parsed);
             }
+            zt_jwt_drop(&token);
         }
 
         string_buf_append(&buf, "      </dl>\n");

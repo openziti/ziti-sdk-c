@@ -74,7 +74,6 @@ extern const char *ziti_git_commit();
 
 extern void hexDump(char *desc, void *addr, int len);
 
-extern cstr jwt_issuer(const char *jwt);
 extern const char *jwt_payload(const char *jwt);
 
 void ziti_fmt_time(char *time_str, size_t time_str_len, uv_timeval64_t *tv);
