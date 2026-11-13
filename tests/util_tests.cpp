@@ -15,6 +15,10 @@
 #include "catch2/catch_test_macros.hpp"
 #include "catch2/matchers/catch_matchers_string.hpp"
 #include "utils.h"
+#include "totp_jwt.h"
+
+#include <cstring>
+#include <string>
 
 #if _WIN32
 #include <io.h>
@@ -128,5 +132,37 @@ TEST_CASE("http_error_is_temporary", "[util]") {
     SECTION("success and other 4xx are not temporary") {
         CHECK_FALSE(classify(200));
         CHECK_FALSE(classify(409));
+    }
+}
+
+// jwt_payload decodes into a static buffer of 4096 bytes and needs one of them for the terminator
+TEST_CASE("jwt_payload", "[util]") {
+    auto token = [](const std::string &payload) {
+        return totp_test::b64url(R"({"alg":"none"})") + "." + totp_test::b64url(payload) + ".c2ln";
+    };
+
+    SECTION("the payload is decoded") {
+        auto t = token(R"({"iss":"https://ctrl.example"})");
+        CHECK_THAT(jwt_payload(t.c_str()), Catch::Matchers::Equals(R"({"iss":"https://ctrl.example"})"));
+    }
+
+    SECTION("the largest payload that fits, with its terminator") {
+        auto t = token(std::string(4095, 'p'));
+        CHECK_THAT(jwt_payload(t.c_str()), Catch::Matchers::Equals(std::string(4095, 'p')));
+    }
+
+    SECTION("a payload that fills the whole buffer has no room for the terminator") {
+        auto t = token(std::string(4096, 'p'));
+        CHECK_THAT(jwt_payload(t.c_str()), Catch::Matchers::Equals("<JWT too long?>"));
+    }
+
+    SECTION("a payload longer than the buffer") {
+        auto t = token(std::string(5000, 'p'));
+        CHECK_THAT(jwt_payload(t.c_str()), Catch::Matchers::Equals("<JWT too long?>"));
+    }
+
+    SECTION("no token, and a token without a payload") {
+        CHECK_THAT(jwt_payload(nullptr), Catch::Matchers::Equals("null"));
+        CHECK_THAT(jwt_payload("legacy-token"), Catch::Matchers::Equals("<legacy token>"));
     }
 }
