@@ -173,17 +173,30 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     ZITI_LOG(INFO, "exiting");
 }
 
-static int dump(void *out, const char *fmt, ...) {
-    char line[4096] = {};
-    uv_udp_t *u = out;
-    const struct sockaddr *addr = u->data;
-    va_list args;
-    va_start(args, fmt);
-    int len = vsnprintf(line, sizeof(line), fmt, args);
-    va_end(args);
+#define DUMP_DATAGRAM_MAX 4096
 
-    uv_buf_t b = uv_buf_init(line, len);
-    return uv_udp_try_send(u, &b, 1, addr);
+// sends the dump text in datagrams of up to DUMP_DATAGRAM_MAX bytes, each ending
+// at a line break unless a single line is longer than that
+static void send_dump(uv_udp_t *u, const struct sockaddr *addr, const cstr *dump) {
+    const char *text = cstr_str(dump);
+    size_t len = cstr_size(dump);
+    while (len > 0) {
+        size_t n = MIN(len, DUMP_DATAGRAM_MAX);
+        if (n < len) {
+            size_t eol = n;
+            while (eol > 0 && text[eol - 1] != '\n') eol--;
+            if (eol > 0) n = eol;
+        }
+
+        uv_buf_t b = uv_buf_init((char *) text, (unsigned int) n);
+        int rc = uv_udp_try_send(u, &b, 1, addr);
+        if (rc < 0) {
+            ZITI_LOG(WARN, "failed to send dump: %d/%s", rc, uv_strerror(rc));
+            return;
+        }
+        text += n;
+        len -= n;
+    }
 }
 
 static void debug_dump(struct proxy_app_ctx *app_ctx,
@@ -642,7 +655,8 @@ struct mfa_work {
 
 void mfa_response_cb(ziti_context ztx, int status, void *ctx);
 
-void prompt_stdin(char *buffer, size_t buflen) {
+// returns false at EOF, the buffer is left alone then
+bool prompt_stdin(char *buffer, size_t buflen) {
     if (fgets(buffer, (int)buflen, stdin) != 0) {
         size_t len = strlen(buffer);
         if (len > 0 && buffer[len - 1] == '\n') {
@@ -651,7 +665,9 @@ void prompt_stdin(char *buffer, size_t buflen) {
             int ch;
             while ((ch = getc(stdin)) != EOF && ch != '\n');
         }
+        return true;
     }
+    return false;
 }
 
 void mfa_prompt(struct mfa_work *mfa_wr) {
@@ -704,29 +720,98 @@ void mfa_auth_event_handler(ziti_context ztx) {
     uv_queue_work(pxy->loop, &mfa_wr->w, mfa_worker, mfa_worker_done);
 }
 
+struct ext_auth_work {
+    uv_work_t w;
+    struct proxy_app_ctx *pxy;
+    bool proceed;
+};
+
 static void ext_auth_prompt(uv_work_t *wr) {
+    struct ext_auth_work *work = wr->data;
     printf("continue with external signer[Y/n]? ");
     fflush(stdout);
 
-    char resp[1];
-    prompt_stdin(resp, 1);
+    // prompt_stdin leaves the buffer alone at EOF, so no answer means no
+    char resp[8] = "n";
+    prompt_stdin(resp, sizeof(resp));
+    work->proceed = resp[0] == '\0' || resp[0] == 'y' || resp[0] == 'Y';
+}
+
+// the system opener also opens files and applications: only hand it web URLs
+static bool is_web_url(const char *url) {
+    if (url == NULL ||
+        (strncasecmp(url, "https://", 8) != 0 && strncasecmp(url, "http://", 7) != 0)) {
+        return false;
+    }
+
+    for (const unsigned char *p = (const unsigned char *) url; *p; p++) {
+        if (*p <= ' ' || *p == 0x7f) return false;
+    }
+    return true;
+}
+
+static void opener_exit_cb(uv_process_t *p, int64_t status, int term_signal) {
+    if (status != 0 || term_signal != 0) {
+        fprintf(stderr, "browser launcher failed: status[%d] signal[%d]\n", (int) status, term_signal);
+    }
+    uv_close((uv_handle_t *) p, (uv_close_cb) free);
+}
+
+// runs args[0] with the rest as its arguments, no shell is involved
+static int run_opener(uv_loop_t *loop, char *args[]) {
+    uv_process_t *p = calloc(1, sizeof(*p));
+    uv_stdio_container_t stdio[3] = {
+            {.flags = UV_IGNORE},
+            {.flags = UV_IGNORE},
+            {.flags = UV_INHERIT_FD, .data.fd = 2},
+    };
+    uv_process_options_t opts = {
+            .exit_cb = opener_exit_cb,
+            .file = args[0],
+            .args = args,
+            .stdio_count = 3,
+            .stdio = stdio,
+    };
+
+    int rc = uv_spawn(loop, p, &opts);
+    if (rc != 0) {
+        uv_close((uv_handle_t *) p, (uv_close_cb) free);
+    }
+    return rc;
 }
 
 static void ext_url_launch(ziti_context ztx, const char *url, void *ctx) {
-    char cmd[1024];
-#if _WIN32
-    snprintf(cmd, sizeof(cmd), "start \"\" \"%s\"", url);
-#else
-    snprintf(cmd, sizeof(cmd), "/usr/bin/open '%s'", url);
-#endif
-    int status = system(cmd);
-    fprintf(stderr, "open url[%s] in browser status[%d]\n", url, status);
-}
-static void ext_auth_done(uv_work_t *wr, int status) {
-    struct proxy_app_ctx *pxy = wr->data;
+    struct proxy_app_ctx *pxy = ziti_app_ctx(ztx);
 
-    ziti_ext_auth(pxy->ziti, ext_url_launch, NULL);
-    free(wr);
+    // the url comes from the controller and the IdP
+    if (!is_web_url(url)) {
+        fprintf(stderr, "not opening the external signer url: only http(s) urls without whitespace or control characters are opened\n");
+        return;
+    }
+
+#if _WIN32
+    char *args[] = {"rundll32.exe", "url.dll,FileProtocolHandler", (char *) url, NULL};
+#else
+    char *args[] = {"/usr/bin/open", (char *) url, NULL};
+#endif
+    fprintf(stderr, "open url[%s] in browser\n", url);
+    int rc = run_opener(pxy->loop, args);
+    if (rc != 0) {
+        fprintf(stderr, "failed to start the browser launcher: %s\n", uv_strerror(rc));
+    }
+}
+
+static void ext_auth_done(uv_work_t *wr, int status) {
+    struct ext_auth_work *work = (struct ext_auth_work *) wr;
+
+    if (status != 0) {
+        ZITI_LOG(ERROR, "external signer prompt failed: %s", uv_strerror(status));
+    } else if (work->proceed) {
+        ziti_ext_auth(work->pxy->ziti, ext_url_launch, NULL);
+    } else {
+        fprintf(stderr, "not continuing with the external signer\n");
+    }
+    free(work);
 }
 
 void ext_auth_event_handler(ziti_context ztx, const char *name) {
@@ -737,34 +822,57 @@ void ext_auth_event_handler(ziti_context ztx, const char *name) {
         return;
     }
 
-    NEWP(ext_wr, uv_work_t);
-    ext_wr->data = pxy;
-    uv_queue_work(pxy->loop, ext_wr, ext_auth_prompt, ext_auth_done);
+    NEWP(work, struct ext_auth_work);
+    work->pxy = pxy;
+    work->w.data = work;
+    uv_queue_work(pxy->loop, &work->w, ext_auth_prompt, ext_auth_done);
 }
 
 static vec_cstr ext_auth_providers;
 static void ext_auth_select_done(uv_work_t *wr, int status) {
     struct proxy_app_ctx *pxy = wr->data;
-    ziti_use_ext_jwt_signer(pxy->ziti, cstr_str(&pxy->auth_provider));
+
+    if (status != 0) {
+        ZITI_LOG(ERROR, "external auth provider prompt failed: %s", uv_strerror(status));
+    } else if (cstr_is_empty(&pxy->auth_provider)) {
+        fprintf(stderr, "no external auth provider selected\n");
+    } else {
+        ziti_use_ext_jwt_signer(pxy->ziti, cstr_str(&pxy->auth_provider));
+    }
     free(wr);
 }
 
 static void ext_auth_select_work(uv_work_t *wr) {
     struct proxy_app_ctx *pxy = wr->data;
 
+    cstr_clear(&pxy->auth_provider);
+    if (vec_cstr_size(&ext_auth_providers) == 0) {
+        fprintf(stderr, "no external auth providers are available\n");
+        return;
+    }
+
     printf("the following external auth providers are available:\n");
 
     for (int i = 0; i < vec_cstr_size(&ext_auth_providers); i++) {
         printf("%d - %s\n", i, cstr_str(vec_cstr_at(&ext_auth_providers, i)));
     }
-    printf("select provider[0-%d]: ", (int)vec_cstr_size(&ext_auth_providers) - 1);
-    fflush(stdout);
 
-    char resp[8];
-    prompt_stdin(resp, sizeof(resp));
+    // ask until the answer is the number of a listed provider, nothing is selected at EOF
+    while (true) {
+        printf("select provider[0-%d]: ", (int)vec_cstr_size(&ext_auth_providers) - 1);
+        fflush(stdout);
 
-    int idx = atoi(resp);
-    cstr_assign(&pxy->auth_provider, cstr_str(vec_cstr_at(&ext_auth_providers, idx)));
+        char resp[8];
+        if (!prompt_stdin(resp, sizeof(resp))) return;
+
+        char *end;
+        long idx = strtol(resp, &end, 10);
+        if (end != resp && *end == '\0' && idx >= 0 && idx < vec_cstr_size(&ext_auth_providers)) {
+            cstr_assign(&pxy->auth_provider, cstr_str(vec_cstr_at(&ext_auth_providers, idx)));
+            return;
+        }
+        printf("invalid selection\n");
+    }
 }
 
 void ext_auth_select(ziti_context ztx, const ziti_jwt_signer *providers[]) {
@@ -812,10 +920,13 @@ static void stopper_recv(uv_udp_t *u, ssize_t len,
         case ProxyCmd_Unknown:
             ZITI_LOG(WARN, "unknown cmd: %.*s", (int)len, b->base);
             break;
-        case ProxyCmd_dump:
-            u->data = (void *) addr;
-            debug_dump(&app_ctx, dump, u);
+        case ProxyCmd_dump: {
+            cstr out = cstr_init();
+            debug_dump(&app_ctx, (int (*)(void *, const char *, ...)) cstr_append_fmt, &out);
+            send_dump(u, addr, &out);
+            cstr_drop(&out);
             break;
+        }
         case ProxyCmd_stop:
             process_stop(u->loop, &app_ctx);
             uv_unref((uv_handle_t *) u);
