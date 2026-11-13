@@ -717,12 +717,21 @@ void mfa_auth_event_handler(ziti_context ztx) {
     uv_queue_work(pxy->loop, &mfa_wr->w, mfa_worker, mfa_worker_done);
 }
 
+struct ext_auth_work {
+    uv_work_t w;
+    struct proxy_app_ctx *pxy;
+    bool proceed;
+};
+
 static void ext_auth_prompt(uv_work_t *wr) {
+    struct ext_auth_work *work = wr->data;
     printf("continue with external signer[Y/n]? ");
     fflush(stdout);
 
-    char resp[1];
-    prompt_stdin(resp, 1);
+    // prompt_stdin leaves the buffer alone at EOF, so no answer means no
+    char resp[8] = "n";
+    prompt_stdin(resp, sizeof(resp));
+    work->proceed = resp[0] == '\0' || resp[0] == 'y' || resp[0] == 'Y';
 }
 
 // the system opener also opens files and applications: only hand it web URLs
@@ -790,10 +799,16 @@ static void ext_url_launch(ziti_context ztx, const char *url, void *ctx) {
 }
 
 static void ext_auth_done(uv_work_t *wr, int status) {
-    struct proxy_app_ctx *pxy = wr->data;
+    struct ext_auth_work *work = (struct ext_auth_work *) wr;
 
-    ziti_ext_auth(pxy->ziti, ext_url_launch, NULL);
-    free(wr);
+    if (status != 0) {
+        ZITI_LOG(ERROR, "external signer prompt failed: %s", uv_strerror(status));
+    } else if (work->proceed) {
+        ziti_ext_auth(work->pxy->ziti, ext_url_launch, NULL);
+    } else {
+        fprintf(stderr, "not continuing with the external signer\n");
+    }
+    free(work);
 }
 
 void ext_auth_event_handler(ziti_context ztx, const char *name) {
@@ -804,9 +819,10 @@ void ext_auth_event_handler(ziti_context ztx, const char *name) {
         return;
     }
 
-    NEWP(ext_wr, uv_work_t);
-    ext_wr->data = pxy;
-    uv_queue_work(pxy->loop, ext_wr, ext_auth_prompt, ext_auth_done);
+    NEWP(work, struct ext_auth_work);
+    work->pxy = pxy;
+    work->w.data = work;
+    uv_queue_work(pxy->loop, &work->w, ext_auth_prompt, ext_auth_done);
 }
 
 static vec_cstr ext_auth_providers;
