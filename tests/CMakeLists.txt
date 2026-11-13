@@ -22,6 +22,7 @@ add_executable(all_tests
         util_tests.cpp
         oidc_recovery_tests.cpp
         oidc_auth_retry_tests.cpp
+        ext_oidc_page_tests.cpp
         ctrl_endpoint_tests.cpp
         ctrl_auth_tests.cpp
         ctrl_response_tests.cpp

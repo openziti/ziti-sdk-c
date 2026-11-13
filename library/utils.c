@@ -841,15 +841,9 @@ bool ziti_http_error_is_temporary(tlsuv_http_resp_t *resp, json_object *body) {
     return false;
 }
 
-cstr jwt_issuer(const char *jwt) {
-    assert(jwt);
-    json_object *claims = json_tokener_parse(jwt_payload(jwt));
-    json_object *iss = json_object_object_get(claims, "iss");
-    cstr result = iss ? cstr_from(json_object_get_string(iss)) : cstr_lit("<unknown>");
-    json_object_put(claims);
-    return result;
-}
-
+// The payload (claims) of a JWT as a string, for log lines only.
+// It lives in a static buffer that the next call overwrites and that all threads share, so do not keep the pointer.
+// A payload of 4095 bytes or more gives "<JWT too long?>".
 const char *jwt_payload(const char *jwt) {
     if (jwt == NULL) {
         return "null";
