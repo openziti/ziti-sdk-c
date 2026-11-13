@@ -244,11 +244,42 @@ static void do_ziti_accept(void *r, future_t *f, uv_loop_t *l) {
 
 }
 
+// The server connection failed: nothing will be accepted from it any more. The SDK keeps a failed server connection, and
+// goes on reporting to on_ziti_client, until the application closes it. So close it, and take the socket out of its data
+// before the socket is freed.
+static void close_server(ziti_connection server) {
+    ziti_conn_set_data(server, NULL);
+    ziti_close(server, NULL);
+}
+
+// whoever waits for a client of this server will not get one: fail the accepts that wait, close the clients that do not
+static void drop_pending(ziti_sock_t *server_sock, int status) {
+    future_t *accept_f;
+    while ((accept_f = model_list_pop(&server_sock->accept_q)) != NULL) {
+        fail_future(accept_f, status);
+    }
+
+    struct backlog_entry_s *pending;
+    while ((pending = model_list_pop(&server_sock->backlog)) != NULL) {
+        ziti_close(pending->conn, NULL);
+        cstr_drop(&pending->caller_id);
+        free(pending);
+    }
+}
+
 static void on_ziti_client(ziti_connection server, ziti_connection client, int status, const ziti_client_ctx *clt_ctx) {
     ziti_sock_t *server_sock = ziti_conn_data(server);
 
+    // the socket was freed with the server connection that failed
+    if (server_sock == NULL) {
+        if (client != NULL) ziti_close(client, NULL);
+        return;
+    }
+
     if (status != ZITI_OK) {
         ZITI_LOG(ERROR, "closing server fd[%d]: failed to accept client [%d/%s]", server_sock->fd, status, ziti_errorstr(status));
+        close_server(server);
+        drop_pending(server_sock, status);
         on_bridge_close(server_sock);
         return;
     }
@@ -297,6 +328,7 @@ static void on_ziti_bind(ziti_connection server, int status) {
 
     if (status != ZITI_OK) {
         ZITI_LOG(WARN, "failed to bind fd[%d] to service[%s] err[%d/%s]", zs->fd, cstr_str(&zs->service), status, ziti_errorstr(status));
+        close_server(server);
         fail_future(zs->f, status);
         cstr_drop(&zs->service);
         free(zs);
