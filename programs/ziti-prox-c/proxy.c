@@ -725,16 +725,70 @@ static void ext_auth_prompt(uv_work_t *wr) {
     prompt_stdin(resp, 1);
 }
 
-static void ext_url_launch(ziti_context ztx, const char *url, void *ctx) {
-    char cmd[1024];
-#if _WIN32
-    snprintf(cmd, sizeof(cmd), "start \"\" \"%s\"", url);
-#else
-    snprintf(cmd, sizeof(cmd), "/usr/bin/open '%s'", url);
-#endif
-    int status = system(cmd);
-    fprintf(stderr, "open url[%s] in browser status[%d]\n", url, status);
+// the system opener also opens files and applications: only hand it web URLs
+static bool is_web_url(const char *url) {
+    if (url == NULL ||
+        (strncasecmp(url, "https://", 8) != 0 && strncasecmp(url, "http://", 7) != 0)) {
+        return false;
+    }
+
+    for (const unsigned char *p = (const unsigned char *) url; *p; p++) {
+        if (*p <= ' ' || *p == 0x7f) return false;
+    }
+    return true;
 }
+
+static void opener_exit_cb(uv_process_t *p, int64_t status, int term_signal) {
+    if (status != 0 || term_signal != 0) {
+        fprintf(stderr, "browser launcher failed: status[%d] signal[%d]\n", (int) status, term_signal);
+    }
+    uv_close((uv_handle_t *) p, (uv_close_cb) free);
+}
+
+// runs args[0] with the rest as its arguments, no shell is involved
+static int run_opener(uv_loop_t *loop, char *args[]) {
+    uv_process_t *p = calloc(1, sizeof(*p));
+    uv_stdio_container_t stdio[3] = {
+            {.flags = UV_IGNORE},
+            {.flags = UV_IGNORE},
+            {.flags = UV_INHERIT_FD, .data.fd = 2},
+    };
+    uv_process_options_t opts = {
+            .exit_cb = opener_exit_cb,
+            .file = args[0],
+            .args = args,
+            .stdio_count = 3,
+            .stdio = stdio,
+    };
+
+    int rc = uv_spawn(loop, p, &opts);
+    if (rc != 0) {
+        uv_close((uv_handle_t *) p, (uv_close_cb) free);
+    }
+    return rc;
+}
+
+static void ext_url_launch(ziti_context ztx, const char *url, void *ctx) {
+    struct proxy_app_ctx *pxy = ziti_app_ctx(ztx);
+
+    // the url comes from the controller and the IdP
+    if (!is_web_url(url)) {
+        fprintf(stderr, "not opening the external signer url: only http(s) urls without whitespace or control characters are opened\n");
+        return;
+    }
+
+#if _WIN32
+    char *args[] = {"rundll32.exe", "url.dll,FileProtocolHandler", (char *) url, NULL};
+#else
+    char *args[] = {"/usr/bin/open", (char *) url, NULL};
+#endif
+    fprintf(stderr, "open url[%s] in browser\n", url);
+    int rc = run_opener(pxy->loop, args);
+    if (rc != 0) {
+        fprintf(stderr, "failed to start the browser launcher: %s\n", uv_strerror(rc));
+    }
+}
+
 static void ext_auth_done(uv_work_t *wr, int status) {
     struct proxy_app_ctx *pxy = wr->data;
 
