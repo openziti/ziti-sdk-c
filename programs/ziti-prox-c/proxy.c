@@ -173,17 +173,30 @@ static void process_stop(uv_loop_t *loop, struct proxy_app_ctx *app_ctx) {
     ZITI_LOG(INFO, "exiting");
 }
 
-static int dump(void *out, const char *fmt, ...) {
-    char line[4096] = {};
-    uv_udp_t *u = out;
-    const struct sockaddr *addr = u->data;
-    va_list args;
-    va_start(args, fmt);
-    int len = vsnprintf(line, sizeof(line), fmt, args);
-    va_end(args);
+#define DUMP_DATAGRAM_MAX 4096
 
-    uv_buf_t b = uv_buf_init(line, len);
-    return uv_udp_try_send(u, &b, 1, addr);
+// sends the dump text in datagrams of up to DUMP_DATAGRAM_MAX bytes, each ending
+// at a line break unless a single line is longer than that
+static void send_dump(uv_udp_t *u, const struct sockaddr *addr, const cstr *dump) {
+    const char *text = cstr_str(dump);
+    size_t len = cstr_size(dump);
+    while (len > 0) {
+        size_t n = MIN(len, DUMP_DATAGRAM_MAX);
+        if (n < len) {
+            size_t eol = n;
+            while (eol > 0 && text[eol - 1] != '\n') eol--;
+            if (eol > 0) n = eol;
+        }
+
+        uv_buf_t b = uv_buf_init((char *) text, (unsigned int) n);
+        int rc = uv_udp_try_send(u, &b, 1, addr);
+        if (rc < 0) {
+            ZITI_LOG(WARN, "failed to send dump: %d/%s", rc, uv_strerror(rc));
+            return;
+        }
+        text += n;
+        len -= n;
+    }
 }
 
 static void debug_dump(struct proxy_app_ctx *app_ctx,
@@ -812,10 +825,13 @@ static void stopper_recv(uv_udp_t *u, ssize_t len,
         case ProxyCmd_Unknown:
             ZITI_LOG(WARN, "unknown cmd: %.*s", (int)len, b->base);
             break;
-        case ProxyCmd_dump:
-            u->data = (void *) addr;
-            debug_dump(&app_ctx, dump, u);
+        case ProxyCmd_dump: {
+            cstr out = cstr_init();
+            debug_dump(&app_ctx, (int (*)(void *, const char *, ...)) cstr_append_fmt, &out);
+            send_dump(u, addr, &out);
+            cstr_drop(&out);
             break;
+        }
         case ProxyCmd_stop:
             process_stop(u->loop, &app_ctx);
             uv_unref((uv_handle_t *) u);
