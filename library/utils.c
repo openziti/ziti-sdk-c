@@ -865,7 +865,8 @@ const char *jwt_payload(const char *jwt) {
 
     jwt++;
     const char *end;
-    if (sodium_base642bin(payload, sizeof(payload), jwt, strlen(jwt), NULL,
+    // one byte of the buffer is kept for the terminator
+    if (sodium_base642bin(payload, sizeof(payload) - 1, jwt, strlen(jwt), NULL,
                           &payload_len, &end, sodium_base64_VARIANT_URLSAFE_NO_PADDING) == 0) {
         payload[payload_len] = '\0';
         return (const char *)payload;
