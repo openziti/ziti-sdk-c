@@ -655,7 +655,8 @@ struct mfa_work {
 
 void mfa_response_cb(ziti_context ztx, int status, void *ctx);
 
-void prompt_stdin(char *buffer, size_t buflen) {
+// returns false at EOF, the buffer is left alone then
+bool prompt_stdin(char *buffer, size_t buflen) {
     if (fgets(buffer, (int)buflen, stdin) != 0) {
         size_t len = strlen(buffer);
         if (len > 0 && buffer[len - 1] == '\n') {
@@ -664,7 +665,9 @@ void prompt_stdin(char *buffer, size_t buflen) {
             int ch;
             while ((ch = getc(stdin)) != EOF && ch != '\n');
         }
+        return true;
     }
+    return false;
 }
 
 void mfa_prompt(struct mfa_work *mfa_wr) {
@@ -828,26 +831,48 @@ void ext_auth_event_handler(ziti_context ztx, const char *name) {
 static vec_cstr ext_auth_providers;
 static void ext_auth_select_done(uv_work_t *wr, int status) {
     struct proxy_app_ctx *pxy = wr->data;
-    ziti_use_ext_jwt_signer(pxy->ziti, cstr_str(&pxy->auth_provider));
+
+    if (status != 0) {
+        ZITI_LOG(ERROR, "external auth provider prompt failed: %s", uv_strerror(status));
+    } else if (cstr_is_empty(&pxy->auth_provider)) {
+        fprintf(stderr, "no external auth provider selected\n");
+    } else {
+        ziti_use_ext_jwt_signer(pxy->ziti, cstr_str(&pxy->auth_provider));
+    }
     free(wr);
 }
 
 static void ext_auth_select_work(uv_work_t *wr) {
     struct proxy_app_ctx *pxy = wr->data;
 
+    cstr_clear(&pxy->auth_provider);
+    if (vec_cstr_size(&ext_auth_providers) == 0) {
+        fprintf(stderr, "no external auth providers are available\n");
+        return;
+    }
+
     printf("the following external auth providers are available:\n");
 
     for (int i = 0; i < vec_cstr_size(&ext_auth_providers); i++) {
         printf("%d - %s\n", i, cstr_str(vec_cstr_at(&ext_auth_providers, i)));
     }
-    printf("select provider[0-%d]: ", (int)vec_cstr_size(&ext_auth_providers) - 1);
-    fflush(stdout);
 
-    char resp[8];
-    prompt_stdin(resp, sizeof(resp));
+    // ask until the answer is the number of a listed provider, nothing is selected at EOF
+    while (true) {
+        printf("select provider[0-%d]: ", (int)vec_cstr_size(&ext_auth_providers) - 1);
+        fflush(stdout);
 
-    int idx = atoi(resp);
-    cstr_assign(&pxy->auth_provider, cstr_str(vec_cstr_at(&ext_auth_providers, idx)));
+        char resp[8];
+        if (!prompt_stdin(resp, sizeof(resp))) return;
+
+        char *end;
+        long idx = strtol(resp, &end, 10);
+        if (end != resp && *end == '\0' && idx >= 0 && idx < vec_cstr_size(&ext_auth_providers)) {
+            cstr_assign(&pxy->auth_provider, cstr_str(vec_cstr_at(&ext_auth_providers, idx)));
+            return;
+        }
+        printf("invalid selection\n");
+    }
 }
 
 void ext_auth_select(ziti_context ztx, const ziti_jwt_signer *providers[]) {
