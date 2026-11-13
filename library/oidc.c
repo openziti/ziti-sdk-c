@@ -100,6 +100,7 @@ static int oidc_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx
 static int oidc_auth_mfa(ziti_auth_method_t *self, const char *code, auth_mfa_cb cb);
 static int oidc_auth_stop(ziti_auth_method_t *self);
 static int oidc_auth_refresh(ziti_auth_method_t *self);
+static void oidc_auth_invalidate_session(ziti_auth_method_t *self);
 static const struct timeval *oidc_auth_expiration(ziti_auth_method_t *self);
 static int oidc_auth_ext_jwt(ziti_auth_method_t *self, const char *token);
 static int oidc_auth_set_endpoint(ziti_auth_method_t *self, const api_path *api);
@@ -1091,6 +1092,7 @@ ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, const char 
         .set_ca = oidc_auth_set_ca,
         .stop = oidc_auth_stop,
         .force_refresh = oidc_auth_refresh,
+        .invalidate_session = oidc_auth_invalidate_session,
         .expiration = oidc_auth_expiration,
         .submit_mfa = oidc_auth_mfa,
         .free = oidc_auth_free,
@@ -1450,6 +1452,17 @@ static int oidc_auth_refresh(ziti_auth_method_t *self) {
         return ZITI_OK;
     }
     return oidc_client_refresh(clt);
+}
+
+// The session is no good any more: the controller asks for more than it gave (a TOTP code), and a refresh would only
+// get another token for it. Without a refresh token, the next refresh starts a login instead (refresh_time_cb), with
+// the guards of a refresh: one at a time, and not during a configuration.
+static void oidc_auth_invalidate_session(ziti_auth_method_t *self) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    OIDC_LOG(DEBUG, "invalidating the api session");
+    zt_jwt_drop(&clt->current);
+    zt_jwt_drop(&clt->refresh_token);
+    clt->expiration = (struct timeval){};
 }
 
 static const struct timeval *oidc_auth_expiration(ziti_auth_method_t *self) {
