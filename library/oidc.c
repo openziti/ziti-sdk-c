@@ -1208,17 +1208,12 @@ static void oidc_auth_dump(ziti_auth_method_t *self, int (*printer)(void *arg, c
     }
 }
 
-static void set_expiration(oidc_client_t *clt, const char *token) {
-    json_object *payload = json_tokener_parse(jwt_payload(token));
-    json_object *exp = json_object_object_get(payload, "exp");
-    if (exp) {
-        int exp_time = json_object_get_int(exp);
-        clt->expiration.tv_sec = exp_time;
-        clt->expiration.tv_usec = 0;
-    } else {
-        clt->expiration = (struct timeval){};
-    }
-    json_object_put(payload);
+// The access token was parsed into clt->current before it was reported. Its exp is 64 bits wide, a struct timeval
+// may not be: where tv_sec is a 32 bit long the best that can be said about a token valid beyond 2038 is LONG_MAX.
+static void set_expiration(oidc_client_t *clt) {
+    int64_t exp = clt->current.expiration;
+    clt->expiration.tv_sec = (long) (exp > LONG_MAX ? LONG_MAX : exp);
+    clt->expiration.tv_usec = 0;
 }
 
 struct totp_ctx_s {
@@ -1335,7 +1330,7 @@ static void oidc_auth_token_cb(oidc_client_t *clt, enum oidc_status status, cons
     if (clt->auth_cb) {
         switch (status) {
             case OIDC_TOKEN_OK:
-                set_expiration(clt, (const char*)data);
+                set_expiration(clt);
                 clt->auth_cb(clt->auth_cb_ctx, ZitiAuthStateFullyAuthenticated, data);
                 break;
             case OIDC_EXT_JWT_NEEDED:

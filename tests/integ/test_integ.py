@@ -105,6 +105,14 @@ def test_zitilib_connect(client_identity, test_service, echo_server, tmp_path):
     run_catch_test(env, tmp_path, "zl-connect")
 
 
+def test_zitilib_bind(client_identity, test_service, tmp_path):
+    env = dict()
+    # an identity that can dial the service but not bind it
+    env['test_client']=client_identity['path']
+    env['test_service']=test_service['name']
+    run_catch_test(env, tmp_path, "zl-bind")
+
+
 def test_controller(client_identity, test_service, service_terminators, tmp_path):
     env = dict()
     env['test_client']=client_identity['path']

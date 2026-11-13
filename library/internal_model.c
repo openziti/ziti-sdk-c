@@ -374,7 +374,8 @@ int ziti_address_match(const ziti_address *addr, const ziti_address *range) {
                     bits = bits - 8;
                     mask = 0xff;
                 } else {
-                    mask = 0xff << bits;
+                    // the last byte of the prefix: its leading `bits` bits (1 to 8)
+                    mask = (uint8_t) (0xff << (8 - bits));
                     bits = 0;
                 }
 

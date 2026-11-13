@@ -35,14 +35,21 @@
 // every "mock" here is a real loopback socket server.
 
 #include "catch2_includes.hpp"
+#include <catch2/generators/catch_generators.hpp>
 
 #include "oidc.h"
+#include "auth_method.h"
+#include "internal_model.h"
+#include "totp_jwt.h"
 #include <ziti/model_collections.h>
 #include <tlsuv/tlsuv.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <ctime>
+#include <limits>
 #include <cstring>
 #include <deque>
 #include <mutex>
@@ -112,6 +119,8 @@ constexpr const char *LOGIN_JWT_PATH = "/oidc/login/ext-jwt";
 constexpr const char *LOGIN_CERT_PATH = "/oidc/login/cert";
 constexpr const char *CODE_PATH = "/oidc/redirect";
 constexpr const char *TOKEN_PATH = "/token";
+// where oidc_client_configure() asks for the endpoints (only the auth method does, TestClient skips it)
+constexpr const char *DISCOVERY_PATH = "/oidc/.well-known/openid-configuration";
 
 // A local OIDC-ish endpoint. The authorize leg serves a scripted queue of HTTP
 // statuses (so a test can say "fail with 401 twice, then let the flow through");
@@ -149,6 +158,12 @@ public:
         if (authorize_at_.size() <= n + 1) return -1;
         return std::chrono::duration_cast<std::chrono::milliseconds>(
                    authorize_at_[n + 1] - authorize_at_[n]).count();
+    }
+
+    // the access_token the token endpoint hands out: FAKE_JWT unless a test says otherwise
+    void serveAccessToken(const std::string &jwt) {
+        std::lock_guard<std::mutex> lock(mu_);
+        access_token_ = jwt;
     }
 
     FakeOidcEndpoint() {
@@ -299,8 +314,19 @@ private:
 
         if (path == TOKEN_PATH) {
             token_count++;
-            std::string body = std::string("{\"access_token\":\"") + FAKE_JWT +
+            std::string access_token;
+            {
+                std::lock_guard<std::mutex> lock(mu_);
+                access_token = access_token_;
+            }
+            std::string body = "{\"access_token\":\"" + access_token +
                                "\",\"refresh_token\":\"" + FAKE_JWT + "\"}";
+            return response("200 OK", {{"Content-Type", "application/json"}}, body);
+        }
+
+        if (path == DISCOVERY_PATH) {
+            std::string body = "{\"authorization_endpoint\":\"" + url(AUTHORIZE_PATH) +
+                               "\",\"token_endpoint\":\"" + url(TOKEN_PATH) + "\"}";
             return response("200 OK", {{"Content-Type", "application/json"}}, body);
         }
 
@@ -325,6 +351,7 @@ private:
     std::thread accept_thread_;
     std::vector<std::thread> workers_;
     mutable std::mutex mu_;
+    std::string access_token_ = FAKE_JWT;
     std::deque<ScriptedResp> authorize_script_;
     std::deque<ScriptedResp> login_script_;
     std::vector<std::chrono::steady_clock::time_point> authorize_at_;
@@ -698,4 +725,54 @@ TEST_CASE("oidc-auth-outage-does-not-use-up-the-window-of-other-failures", "[oid
 
     REQUIRE(c.result.calls == 1);
     CHECK(c.result.status == OIDC_TOKEN_OK);
+}
+
+// The context re-authenticates around the time its auth method says the session expires: the exp of the access token.
+// Where a long is 64 bits wide, 2096 (the exp of FAKE_JWT) must survive in the struct timeval; where it is 32 bits wide
+// the largest representable time is the best that can be said.
+TEST_CASE("oidc-auth-method-expires-with-its-access-token", "[oidc]") {
+    const int64_t exp = GENERATE(static_cast<int64_t>(time(nullptr)) + 3600, INT64_C(4000000000));
+    CAPTURE(exp);
+
+    FakeOidcEndpoint server;
+    server.serveAccessToken(totp_test::b64url(R"({"alg":"none"})") + "." +
+                            totp_test::b64url(R"({"iss":"test","exp":)" + std::to_string(exp) + "}") + ".sig");
+
+    std::string json = R"({"path": "/oidc", "apiBaseUrls": [")" + server.url("") + R"("]})";
+    api_path api{};
+    REQUIRE(parse_api_path(&api, json.c_str(), json.size()) >= 0);
+
+    zt_x509 creds{};
+    uv_loop_t *loop = uv_loop_new();
+    ziti_auth_method_t *auth = new_oidc_auth(loop, &api, FAKE_CERT_PEM, &creds);
+    REQUIRE(auth != nullptr);
+    // the ext jwt makes the login leg the ext-jwt one, see TestClient
+    REQUIRE(auth->set_ext_jwt(auth, FAKE_JWT) == 0);
+
+    struct Seen {
+        int calls = 0;
+        ziti_auth_state state{};
+    } seen;
+    REQUIRE(auth->start(auth, [](void *ctx, ziti_auth_state state, const void *) {
+        auto *s = (Seen *) ctx;
+        s->calls++;
+        s->state = state;
+    }, &seen) == 0);
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (seen.calls == 0 && std::chrono::steady_clock::now() < deadline) {
+        uv_run(loop, UV_RUN_NOWAIT);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    REQUIRE(seen.calls == 1);
+    CHECK(seen.state == ZitiAuthStateFullyAuthenticated);
+    const struct timeval *expires = auth->expiration(auth);
+    REQUIRE(expires != nullptr);
+    CHECK(static_cast<int64_t>(expires->tv_sec) == std::min<int64_t>(exp, std::numeric_limits<long>::max()));
+
+    auth->free(auth);
+    uv_run(loop, UV_RUN_DEFAULT);
+    uv_loop_delete(loop);
+    free_api_path(&api);
 }
