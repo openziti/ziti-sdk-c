@@ -27,6 +27,8 @@ extern "C" {
 #include <stc/cstr.h>
 }
 
+#include <uv.h>
+
 #include "connect.h"
 #include "edge_protocol.h"
 #include "endian_internal.h"
@@ -188,10 +190,15 @@ namespace {
             run_all_due(&ztx);
         }
 
-        void receive(ziti_connection conn, uint32_t content, const std::string &body, uint32_t flags = 0) {
+        // queues a message without flushing, for messages that reach the conn together
+        void enqueue(ziti_connection conn, uint32_t content, const std::string &body, uint32_t flags = 0) {
             // TAILQ_INSERT_TAIL evaluates the element more than once
             message *m = conn_msg(content, conn->rt_conn_id, body, flags);
             TAILQ_INSERT_TAIL(&conn->in_q, m, _next);
+        }
+
+        void receive(ziti_connection conn, uint32_t content, const std::string &body, uint32_t flags = 0) {
+            enqueue(conn, content, body, flags);
             flush(conn);
         }
 
@@ -486,4 +493,310 @@ TEST_CASE("multipart message delivery", "[multipart]") {
     }
 
     f.dispose(conn);
+}
+
+TEST_CASE("the end of a connection, as the peer ended it", "[conn][abort]") {
+    ztx_fixture f;
+    auto conn = f.new_conn(on_data);
+
+    SECTION("a FIN is an end of data") {
+        f.receive(conn, ContentTypeData, "tail", EDGE_FIN);
+        CHECK(f.app.data == "tail");
+        CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_EOF});
+    }
+
+    SECTION("a close without a FIN is not an abort") {
+        f.receive(conn, ContentTypeStateClosed, "closed");
+        CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_CONN_CLOSED});
+    }
+
+    SECTION("an abort is not an end of data") {
+        f.receive(conn, ContentTypeData, "tail", EDGE_FIN | EDGE_ABORT);
+        // what the peer sent before is delivered first
+        CHECK(f.app.data == "tail");
+        CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_CONN_ABORTED});
+        CHECK(ziti_conn_set_data_cb(conn, on_data) == ZITI_CONN_ABORTED);
+    }
+
+    SECTION("the close that follows an abort is the same close") {
+        f.enqueue(conn, ContentTypeData, "", EDGE_FIN | EDGE_ABORT);
+        f.enqueue(conn, ContentTypeStateClosed, "closed");
+        f.flush(conn);
+        CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_CONN_ABORTED, ZITI_CONN_CLOSED});
+    }
+
+    SECTION("an abort without a FIN still is an abort") {
+        f.receive(conn, ContentTypeData, "tail", EDGE_ABORT);
+        CHECK(f.app.data == "tail");
+        CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_CONN_ABORTED});
+    }
+
+    SECTION("the FIN that comes with the abort or before it does not turn it into an end of data") {
+        f.enqueue(conn, ContentTypeData, "tail", EDGE_FIN);
+        f.enqueue(conn, ContentTypeData, "", EDGE_FIN | EDGE_ABORT);
+        f.flush(conn);
+        CHECK(f.app.data == "tail");
+        CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_CONN_ABORTED});
+    }
+
+    SECTION("the app that closes on the abort hears nothing more") {
+        conn->data_cb = on_data_close_on_error;
+        f.enqueue(conn, ContentTypeData, "", EDGE_FIN | EDGE_ABORT);
+        f.enqueue(conn, ContentTypeStateClosed, "closed");
+        f.flush(conn);
+        CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_CONN_ABORTED});
+    }
+
+    f.dispose(conn);
+}
+
+TEST_CASE("ziti_close_abort", "[conn][abort]") {
+    ztx_fixture f;
+    auto conn = f.new_conn(on_data);
+    // the writes are not run here, they only have to be queued: nothing on this path reads the channel
+    conn->channel = (ziti_channel_t *) &f;
+
+    auto queued = [&]() {
+        std::vector<std::string> q;
+        struct ziti_write_req_s *r;
+        TAILQ_FOREACH(r, &conn->wreqs, _next) {
+            q.push_back(r->abort ? "abort" : r->close ? "close" : r->eof ? "fin" : "data");
+        }
+        return q;
+    };
+
+    SECTION("ziti_close sends no abort") {
+        REQUIRE(ziti_close(conn, nullptr) == ZITI_OK);
+        CHECK(queued() == std::vector<std::string>{"close"});
+    }
+
+    SECTION("the abort goes out before the close") {
+        REQUIRE(ziti_write(conn, (const uint8_t *) "data", 4, on_write, nullptr) == ZITI_OK);
+        REQUIRE(ziti_close_abort(conn, nullptr) == ZITI_OK);
+        CHECK(queued() == std::vector<std::string>{"data", "abort", "close"});
+        CHECK(conn->disconnecting);
+    }
+
+    SECTION("a second close is refused") {
+        REQUIRE(ziti_close_abort(conn, nullptr) == ZITI_OK);
+        CHECK(ziti_close_abort(conn, nullptr) == ZITI_CONN_CLOSED);
+        CHECK(ziti_close(conn, nullptr) == ZITI_CONN_CLOSED);
+        CHECK(queued() == std::vector<std::string>{"abort", "close"});
+    }
+
+    SECTION("after the FIN") {
+        REQUIRE(ziti_close_write(conn) == ZITI_OK);
+        REQUIRE(ziti_close_abort(conn, nullptr) == ZITI_OK);
+        CHECK(queued() == std::vector<std::string>{"fin", "abort", "close"});
+    }
+
+    SECTION("a connection that is not connected has nothing to abort") {
+        conn->state = Disconnected;
+        REQUIRE(ziti_close_abort(conn, nullptr) == ZITI_OK);
+        CHECK(queued().empty());
+    }
+
+    SECTION("NULL") {
+        CHECK(ziti_close_abort(nullptr, nullptr) == ZITI_INVALID_STATE);
+    }
+
+    SECTION("the message is an empty FIN with the abort flag") {
+        message *m = conn_abort_msg(conn);
+        int32_t flags = 0;
+        CHECK(m->header.content == ContentTypeData);
+        CHECK(m->header.body_len == 0);
+        REQUIRE(message_get_int32_header(m, FlagsHeader, &flags));
+        CHECK((flags & EDGE_FIN) != 0);
+        CHECK((flags & EDGE_ABORT) != 0);
+        pool_return_obj(m);
+        REQUIRE(ziti_close(conn, nullptr) == ZITI_OK);
+    }
+
+    f.dispose(conn);
+}
+
+TEST_CASE("the abort is a distinct error", "[conn][abort]") {
+    CHECK(ZITI_CONN_ABORTED != ZITI_EOF);
+    CHECK(ZITI_CONN_ABORTED != ZITI_CONN_CLOSED);
+    CHECK(ZITI_CONN_ABORTED != ZITI_CONNABORT);
+    CHECK(std::string(ziti_errorstr(ZITI_CONN_ABORTED)) == "connection was aborted by the peer");
+}
+
+namespace {
+    // a connected pair of loopback TCP sockets: `accepted` is what a bridge takes, `client` is the peer it talks to
+    struct tcp_pair {
+        uv_loop_t *loop;
+        uv_tcp_t listener{}, client{}, accepted{};
+        uv_connect_t creq{};
+        bool connected = false, accepted_ok = false, client_closed = false;
+        // what the client reads: the byte count, or the error (UV_EOF, UV_ECONNRESET)
+        std::vector<ssize_t> client_reads;
+
+        static void on_accept(uv_stream_t *l, int status) {
+            auto self = (tcp_pair *) l->data;
+            if (status == 0 && uv_accept(l, (uv_stream_t *) &self->accepted) == 0) {
+                self->accepted_ok = true;
+            }
+        }
+
+        static void on_connect(uv_connect_t *r, int status) {
+            ((tcp_pair *) r->data)->connected = status == 0;
+        }
+
+        static void alloc(uv_handle_t *, size_t, uv_buf_t *b) {
+            static char buf[4096];
+            *b = uv_buf_init(buf, sizeof(buf));
+        }
+
+        static void on_read(uv_stream_t *s, ssize_t n, const uv_buf_t *) {
+            if (n != 0) {
+                ((tcp_pair *) s->data)->client_reads.push_back(n);
+            }
+        }
+
+        explicit tcp_pair(uv_loop_t *l) : loop(l) {
+            uv_tcp_init(loop, &listener);
+            uv_tcp_init(loop, &client);
+            uv_tcp_init(loop, &accepted);
+            listener.data = client.data = creq.data = this;
+
+            sockaddr_in addr{};
+            uv_ip4_addr("127.0.0.1", 0, &addr);
+            REQUIRE(uv_tcp_bind(&listener, (sockaddr *) &addr, 0) == 0);
+            REQUIRE(uv_listen((uv_stream_t *) &listener, 1, on_accept) == 0);
+            sockaddr_storage bound{};
+            int len = sizeof(bound);
+            REQUIRE(uv_tcp_getsockname(&listener, (sockaddr *) &bound, &len) == 0);
+            REQUIRE(uv_tcp_connect(&creq, &client, (sockaddr *) &bound, on_connect) == 0);
+            REQUIRE(run_until([&] { return connected && accepted_ok; }));
+            REQUIRE(uv_read_start((uv_stream_t *) &client, alloc, on_read) == 0);
+        }
+
+        template<typename Pred>
+        bool run_until(Pred done) {
+            for (int i = 0; i < 3000 && !done(); i++) {
+                uv_run(loop, UV_RUN_NOWAIT);
+                uv_sleep(1);
+            }
+            return done();
+        }
+
+        // the client goes away: with RST when `reset`, with FIN otherwise
+        void drop_client(bool reset) {
+            if (reset) {
+                uv_os_fd_t fd;
+                REQUIRE(uv_fileno((uv_handle_t *) &client, &fd) == 0);
+                linger l = {1, 0};
+                REQUIRE(setsockopt((uv_os_sock_t) fd, SOL_SOCKET, SO_LINGER, (const char *) &l, sizeof(l)) == 0);
+            }
+            uv_close((uv_handle_t *) &client, [](uv_handle_t *h) { ((tcp_pair *) h->data)->client_closed = true; });
+        }
+
+        ~tcp_pair() {
+            if (!client_closed && !uv_is_closing((uv_handle_t *) &client)) {
+                uv_close((uv_handle_t *) &client, nullptr);
+            }
+            uv_close((uv_handle_t *) &listener, nullptr);
+            if (!uv_is_closing((uv_handle_t *) &accepted)) {
+                uv_close((uv_handle_t *) &accepted, nullptr);
+            }
+            for (int i = 0; i < 100 && uv_loop_alive(loop); i++) {
+                uv_run(loop, UV_RUN_NOWAIT);
+            }
+        }
+    };
+
+    struct bridge_fixture : ztx_fixture {
+        tcp_pair *socks = nullptr;
+        ziti_connection conn = nullptr;
+
+        bridge_fixture() {
+            REQUIRE(uv_loop_init(&loop) == 0);
+            ztx.loop = &loop;
+        }
+
+        // a Connected conn, bridged to the accepted socket. The writes only have to be queued: nothing reads the channel
+        void bridge(tcp_pair &p) {
+            socks = &p;
+            conn = new_conn(on_data);
+            conn->channel = (ziti_channel_t *) this;
+            REQUIRE(ziti_conn_bridge(conn, (uv_handle_t *) &p.accepted, [](uv_handle_t *h) {
+                uv_close(h, nullptr);
+            }) == ZITI_OK);
+        }
+
+        // what flush_to_client hands to the data cb at the end of the stream. The flusher is not run: it would send
+        // the writes that these tests only look at over the channel that is not there
+        void from_ziti(ssize_t code) {
+            REQUIRE(conn->data_cb != nullptr);
+            conn->data_cb(conn, nullptr, code);
+        }
+
+        std::vector<std::string> queued() {
+            std::vector<std::string> q;
+            struct ziti_write_req_s *r;
+            TAILQ_FOREACH(r, &conn->wreqs, _next) {
+                q.push_back(r->abort ? "abort" : r->close ? "close" : r->eof ? "fin" : "data");
+            }
+            return q;
+        }
+
+        ~bridge_fixture() {
+            // the bridge frees itself when the conn is disposed of
+            dispose(conn);
+            socks = nullptr;
+        }
+    };
+}
+
+TEST_CASE("a bridge tells the other end when its socket fails", "[conn][abort][bridge]") {
+    SECTION("a reset socket aborts the connection") {
+        bridge_fixture f;
+        tcp_pair p(&f.loop);
+        f.bridge(p);
+
+        p.drop_client(true);
+        REQUIRE(p.run_until([&] { return f.conn->close; }));
+        CHECK(f.queued() == std::vector<std::string>{"abort", "close"});
+    }
+
+    SECTION("a socket that closes cleanly is a FIN, not an abort") {
+        bridge_fixture f;
+        tcp_pair p(&f.loop);
+        f.bridge(p);
+
+        p.drop_client(false);
+        REQUIRE(p.run_until([&] { return !TAILQ_EMPTY(&f.conn->wreqs); }));
+        CHECK(f.queued() == std::vector<std::string>{"fin"});
+
+        // the other end finishes too: a plain close
+        f.from_ziti(ZITI_EOF);
+        CHECK(f.queued() == std::vector<std::string>{"fin", "close"});
+    }
+
+    SECTION("the other end closing without a FIN is a plain close") {
+        bridge_fixture f;
+        tcp_pair p(&f.loop);
+        f.bridge(p);
+
+        f.from_ziti(ZITI_CONN_CLOSED);
+        CHECK(f.conn->close);
+        CHECK(f.queued() == std::vector<std::string>{"close"});
+        // the socket got FIN
+        REQUIRE(p.run_until([&] { return !p.client_reads.empty(); }));
+        CHECK(p.client_reads == std::vector<ssize_t>{UV_EOF});
+    }
+}
+
+TEST_CASE("a bridge resets its socket when the other end aborts", "[conn][abort][bridge]") {
+    bridge_fixture f;
+    tcp_pair p(&f.loop);
+    f.bridge(p);
+
+    f.from_ziti(ZITI_CONN_ABORTED);
+    CHECK(f.conn->close);
+    // the connection is already gone on the other end: a plain close, no abort back
+    CHECK(f.queued() == std::vector<std::string>{"close"});
+    REQUIRE(p.run_until([&] { return !p.client_reads.empty(); }));
+    CHECK(p.client_reads == std::vector<ssize_t>{UV_ECONNRESET});
 }
