@@ -181,7 +181,9 @@ static char *build_failure_body(const char *step, const char *error, const char 
 
     string_buf_append(&buf, HTTP_FAILURE_FOOTER);
 
-    return string_buf_to_string(&buf, NULL);
+    char *body = string_buf_to_string(&buf, NULL);
+    string_buf_free(&buf);
+    return body;
 }
 
 
