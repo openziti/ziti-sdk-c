@@ -769,7 +769,7 @@ TEST_CASE("oidc-auth-method-expires-with-its-access-token", "[oidc]") {
     CHECK(seen.state == ZitiAuthStateFullyAuthenticated);
     const struct timeval *expires = auth->expiration(auth);
     REQUIRE(expires != nullptr);
-    CHECK(static_cast<int64_t>(expires->tv_sec) == std::min<int64_t>(exp, std::numeric_limits<long>::max()));
+    CHECK(static_cast<int64_t>(expires->tv_sec) == std::min<int64_t>(exp, (std::numeric_limits<long>::max)()));
 
     auth->free(auth);
     uv_run(loop, UV_RUN_DEFAULT);
