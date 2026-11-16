@@ -146,11 +146,15 @@ public:
 
     // The SDK reports a listener as bound once its BIND request is on the way, not once the router accepted it.
     // A router that has not received the new identities from the controller yet refuses the BIND and the DIAL
-    // ("identity not found by id"), and that can take seconds on a slow CI runner. The router creates the terminator
-    // when it accepts the BIND, so wait for the service to have one (present) or to have none (!present).
+    // ("identity not found by id"). A ziti 2.0.x router subscribes to the controller's data model changes for 5 min
+    // and renews on a 30 s ticker that misses the expiry by a few ms, so it hears nothing for 30 s every ~5.5 min
+    // (openziti/ziti#4795, drop the long wait once the routers under test have the fix).
+    // The SDK then retries the BIND with a backoff of up to ~32 s. The router creates the terminator when it accepts
+    // the BIND, so wait for the service to have one (present) or to have none (!present): the default covers
+    // the 30 s gap plus the backoff.
     // The client API does not tell the terminators of a service apart (its `identity` is the bind's instance id,
     // empty here), which is why a case that binds the same service again first waits for the previous one to be gone.
-    bool waitForTerminators(const char *service, bool present, int timeout_ms = 30000) {
+    bool waitForTerminators(const char *service, bool present, int timeout_ms = 90000) {
         struct poll_t {
             bool done{false};
             int count{0};

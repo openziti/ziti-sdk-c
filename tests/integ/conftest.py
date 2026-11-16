@@ -22,6 +22,7 @@ import re
 import secrets
 import subprocess
 import threading
+import time
 from semver import Version
 
 import pytest
@@ -369,6 +370,29 @@ def service_terminators(test_service):
         ziti_edge("create", "terminator", test_service['name'], routers[0]["id"], f"tcp:127.0.0.1:{port}")
     return count
 
+def wait_for_terminator(service_name, timeout=90) -> bool:
+    """Wait until the service has a terminator, i.e. the router accepted a bind.
+
+    The SDK reports a listener as bound once its BIND request is on the way. A router that has not received the new
+    identity from the controller yet refuses the BIND ("identity not found by id"). A ziti 2.0.x router subscribes to
+    the controller's data model changes for 5 minutes and renews on a 30 s ticker that misses the expiry by a few ms,
+    so it hears nothing for 30 s every ~5.5 minutes (openziti/ziti#4795). The SDK then retries the BIND with a backoff
+    of up to ~32 s.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        result = ziti_edge("list", "terminators", f'service.name = "{service_name}"', "-j", check=False)
+        if result.returncode == 0:
+            try:
+                if json.loads(result.stdout)["data"]:
+                    return True
+            except (ValueError, KeyError):
+                pass
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(1)
+
+
 @pytest.fixture
 def echo_server(server_identity, test_service, tmp_path):
     """Start the echo server and wait for it to be ready."""
@@ -401,6 +425,11 @@ def echo_server(server_identity, test_service, tmp_path):
         if not ready.wait(timeout=60):
             proc.kill()
             pytest.fail("echo-server did not become ready within 60s")
+
+        # "ready" only means the bind was started, the router may still refuse it
+        if not wait_for_terminator(test_service['name']):
+            proc.kill()
+            pytest.fail(f"no terminator for {test_service['name']}, the router did not accept the echo-server bind")
 
         yield proc
 
