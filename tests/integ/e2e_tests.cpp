@@ -20,6 +20,8 @@
 
 #include <catch2/catch_all.hpp>
 
+#include <memory>
+
 #include <tlsuv/tlsuv.h>
 #include <ziti/ziti.h>
 #include <ziti/ziti_log.h>
@@ -142,6 +144,69 @@ public:
         return c.srv;
     }
 
+    // The SDK reports a listener as bound once its BIND request is on the way, not once the router accepted it.
+    // A router that has not received the new identities from the controller yet refuses the BIND and the DIAL
+    // ("identity not found by id"), and that can take seconds on a slow CI runner. The router creates the terminator
+    // when it accepts the BIND, so wait for the service to have one (present) or to have none (!present).
+    // The client API does not tell the terminators of a service apart (its `identity` is the bind's instance id,
+    // empty here), which is why a case that binds the same service again first waits for the previous one to be gone.
+    bool waitForTerminators(const char *service, bool present, int timeout_ms = 30000) {
+        struct poll_t {
+            bool done{false};
+            int count{0};
+            int status{ZITI_OK};
+        };
+
+        auto start = uv_now(loop());
+        auto deadline = start + timeout_ms;
+        int last_status = ZITI_OK;
+        int last_count = -1;
+        while (uv_now(loop()) < deadline) {
+            auto poll = std::make_shared<poll_t>();
+            // the callback owns a reference: a request still in flight when this returns must not write to freed memory
+            auto ref = new std::shared_ptr<poll_t>(poll);
+            int rc = ziti_list_terminators(
+                client, service,
+                [](ziti_context, const ziti_terminator *const *terminators, int status, void *ctx) {
+                    auto ref = static_cast<std::shared_ptr<poll_t> *>(ctx);
+                    auto &p = **ref;
+                    p.status = status;
+                    for (int i = 0; terminators && terminators[i]; i++) {
+                        p.count++;
+                    }
+                    p.done = true;
+                    delete ref;
+                },
+                ref);
+            if (rc != ZITI_OK) {
+                delete ref;
+                last_status = rc;
+                break;
+            }
+
+            // nothing ran the loop since the check above, so there is time left
+            auto remaining = (int)(deadline - uv_now(loop()));
+            if (!run(UNTIL(poll->done), remaining)) {
+                break;
+            }
+            last_status = poll->status;
+            if (last_status == ZITI_OK) {
+                last_count = poll->count;
+                if ((poll->count > 0) == present) {
+                    ZITI_LOG(INFO, "service[%s] has %d terminators, waited for %s: %d ms", service, poll->count,
+                             present ? "some" : "none", (int)(uv_now(loop()) - start));
+                    return true;
+                }
+            }
+
+            auto resume = uv_now(loop()) + 250;
+            run(WHILE(uv_now(loop()) < resume), 1000);
+        }
+        UNSCOPED_INFO("waiting for " << (present ? "a terminator" : "no terminators") << " of service " << service
+                      << ", last count: " << last_count << ", last list result: " << ziti_errorstr(last_status));
+        return false;
+    }
+
 };
 }
 
@@ -248,6 +313,8 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
         }
 
         ensureService(server);
+        // the server of the previous crypto method is still being removed from the router, it must not pass for this one
+        REQUIRE(waitForTerminators(test_service(), false));
         struct srv_ctx_s {
             bool bound = false;
             int bound_res{0};
@@ -297,6 +364,11 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
         REQUIRE(bound_done);
         REQUIRE(srv_ctx.bound);
 
+        // "bound" is not "the router accepted the BIND", see waitForTerminators(). The client's identity was created
+        // before the server's, and the router applies the controller's changes in order, so once the router
+        // knows the server it knows the client as well.
+        REQUIRE(waitForTerminators(test_service(), true));
+
         ziti_connection clt_conn{};
         struct clt_ctx_s {
             bool connected{false};
@@ -329,10 +401,6 @@ TEST_CASE_METHOD(E2ETest, "e2ee connection test", "[e2ee]") {
                 c_ctx->received.insert(c_ctx->received.end(), data, data + len);
                 return len;
             }));
-
-        // race condition
-        // bound returned success but terminator is established async
-        uv_sleep(1000);
 
         bool connect_done = run(UNTIL(clt_ctx.connected || clt_ctx.connect_res != ZITI_OK ));
         INFO("connected result: " << ziti_errorstr(clt_ctx.connect_res));
