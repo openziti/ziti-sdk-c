@@ -798,6 +798,63 @@ TEST_CASE("ziti-address-match", "[model]") {
     free_ziti_intercept_cfg_v1(&intercept);
 }
 
+TEST_CASE("ziti-address-match prefix lengths", "[model]") {
+    // an address inside the range matches with (address prefix length) - (range prefix length), else -1
+    struct {
+        const char *addr;
+        const char *range;
+        int expected;
+    } cases[] = {
+            // whole-byte prefixes: the last byte of the prefix is compared
+            {"2001:db8::1",     "2001:db8::1/128", 0},
+            {"2001:db8::2",     "2001:db8::1/128", -1},   // not the 256 addresses of its /120
+            {"2001:db8::1",     "2001:db8::/120",  8},
+            {"2001:db8::100",   "2001:db8::/120",  -1},
+            {"2001:db8::abcd",  "2001:db8::/64",   64},
+            {"2001:db8:0:1::1", "2001:db8::/64",   -1},   // not the whole /56
+            {"2001:db8::1",     "2001::/16",       112},
+            {"2002::1",         "2001::/16",       -1},
+            {"3001::1",         "2000::/8",        -1},   // the first byte is not ignored
+            {"2000::1",         "2000::/8",        120},
+
+            // prefixes that end inside a byte: only its leading bits are compared
+            {"2001:db8::1",     "2001:db8::/127",  1},
+            {"2001:db8::2",     "2001:db8::/127",  -1},
+            {"2001:db8:0:1::1", "2001:db8::/63",   65},
+            {"2001:db8:0:2::1", "2001:db8::/63",   -1},
+            {"2001:db8:0:7f::1", "2001:db8::/57",  71},
+            {"2001:db8:0:80::1", "2001:db8::/57",  -1},
+            {"ffff::1",         "8000::/1",        127},
+            {"7fff::1",         "8000::/1",        -1},
+
+            // the extremes and prefixes inside prefixes
+            {"2001:db8::1",     "::/0",            128},
+            {"2001:db8:0:1::/64", "2001:db8::/56", 8},
+            {"2001:db8::/32",   "2001:db8::/64",   -1},   // wider than the range
+            {"2001:db8::1",     "2001:db8::/32",   96},
+
+            // other address families never match
+            {"1.2.3.4",         "2001:db8::/32",   -1},
+            {"2001:db8::1",     "1.2.3.0/24",      -1},
+
+            // ipv4 is unchanged
+            {"10.0.0.5",        "10.0.0.0/24",     8},
+            {"10.0.1.5",        "10.0.0.0/24",     -1},
+            {"10.0.0.127",      "10.0.0.0/25",     7},
+            {"10.0.0.128",      "10.0.0.0/25",     -1},
+    };
+
+    for (const auto &c: cases) {
+        ziti_address addr, range;
+        REQUIRE(parse_ziti_address_str(&addr, c.addr) == 0);
+        REQUIRE(parse_ziti_address_str(&range, c.range) == 0);
+        CAPTURE(c.addr, c.range);
+        CHECK(ziti_address_match(&addr, &range) == c.expected);
+        free_ziti_address(&addr);
+        free_ziti_address(&range);
+    }
+}
+
 TEST_CASE("ziti-intercept_test", "[model]") {
     ziti_client_cfg_v1 cltV1;
     REQUIRE(parse_ziti_address_str(&cltV1.hostname, "httpbin.ziti") == 0);
