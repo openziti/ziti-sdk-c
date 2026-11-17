@@ -492,6 +492,17 @@ static ziti_auth_query_mfa *ext_jwt_query(ziti_api_session *api_sess) {
     return NULL;
 }
 
+// the TOTP code that the controller still wants of the api session, if it wants one
+static ziti_auth_query_mfa *totp_query(ziti_api_session *api_sess) {
+    ziti_auth_query_mfa *q;
+    MODEL_LIST_FOREACH(q, api_sess->auth_queries) {
+        if (q->type_id == ziti_auth_query_type_MFA || q->type_id == ziti_auth_query_type_TOTP) {
+            return q;
+        }
+    }
+    return NULL;
+}
+
 // The api session is there but the secondary external signer has no token the controller takes: it has expired,
 // or the controller turned it down. Declaring success would only have every request turned down, and the
 // re-authentications that follow succeed without a new token (the controller does not ask for it on a token
@@ -709,6 +720,9 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
         clear_deadline(&ztx->refresh_deadline);
         clear_deadline(&ztx->api_session_deadline);
         clear_deadline(&ztx->ca_bundle_deadline);
+        clear_deadline(&ztx->totp_login_deadline);
+        ztx->totp_login = false;
+        ztx->totp_logins = 0;
 
         // the failures in a row were of this run: enabling the context starts over
         ztx->auth_retries = 0;
@@ -2055,6 +2069,37 @@ static void ztx_session_lost(ziti_context ztx, const ziti_error *err) {
     update_ctrl_status(ztx, (int) err->err, err->message);
 }
 
+static void ztx_totp_login(void *data);
+
+// the next login for the TOTP code, after a wait that grows with the logins for it in a row
+static void ztx_totp_login_later(ziti_context ztx, const char *why) {
+    // MAX() evaluates its arguments twice, and every call of next_backoff() is another login
+    uint64_t delay = next_backoff(&ztx->totp_logins, AUTH_RETRY_MAX_BACKOFF, AUTH_RETRY_BASE_MS);
+    delay = MAX(delay, AUTH_RETRY_BASE_MS);
+    ZTX_LOG(WARN, "%s: logging in again in %" PRIu64 " ms", why, delay);
+    ztx_set_deadline(ztx, delay, &ztx->totp_login_deadline, ztx_totp_login, ztx);
+}
+
+// The login for the TOTP code that the api session owes (unauthorized_check_cb): the auth method has invalidated the
+// session, and authenticating without it is a login. Not if something else has authenticated the context in the
+// meantime.
+static void ztx_totp_login(void *data) {
+    ziti_context ztx = data;
+    if (!ztx->enabled || ztx->auth_method == NULL || ztx->auth_state != ZitiAuthStateUnauthenticated) {
+        ztx->totp_login = false;
+        return;
+    }
+
+    int rc = ztx->auth_method->force_refresh(ztx->auth_method);
+    if (rc != 0) {
+        // nothing else would start one: the context would stay without a session, and the app would never be asked
+        // for the code. (The OIDC client turns it down only while it closes, and a context that is disabled stops
+        // the retry, above and in ziti_stop_internal.)
+        ZTX_LOG(WARN, "login did not start: %d/%s", rc, uv_strerror(rc));
+        ztx_totp_login_later(ztx, "the login for the TOTP code did not start");
+    }
+}
+
 struct unauthorized_check {
     ziti_context ztx;
     int err;
@@ -2075,6 +2120,24 @@ static void unauthorized_check_cb(ziti_api_session *api_sess, const ziti_error *
         ZTX_LOG(WARN, "controller wants the external login of signer[%s]: the secondary token is missing or invalid",
                 query->id);
         ztx_wait_for_secondary(ztx, cstr_str(&ztx->session_token), query->id);
+    } else if (api_sess && totp_query(api_sess) && ztx->auth_method && ztx->auth_method->invalidate_session) {
+        // The api session owes a TOTP code: the auth policy of the identity came to require one, and the session gave
+        // none. A refresh of the session gets a token that the controller turns down again (it does not ask for the
+        // code on a refresh), round and round without ever asking for the code. The session is no good: without it,
+        // authenticating is a login, which asks the app for the code.
+        ZTX_LOG(WARN, "controller wants a TOTP code for the api session: invalidating it and logging in again");
+        ztx->auth_method->invalidate_session(ztx->auth_method);
+        ziti_error rejection = {.err = check->err, .message = check->message};
+        ztx_set_unauthenticated(ztx, &rejection);
+        ztx->totp_login = true;
+        if (ztx->totp_logins == 0) {
+            ztx->totp_logins = 1;
+            ztx_totp_login(ztx);
+        } else {
+            // the last login ended without the controller asking for the code, and the session still owes it: another
+            // login right away would only go round the same way, as fast as the answers come back
+            ztx_totp_login_later(ztx, "the last login did not ask for the TOTP code");
+        }
     } else {
         ziti_error rejection = {.err = check->err, .message = check->message};
         ztx_session_lost(ztx, &rejection);
@@ -2097,6 +2160,15 @@ static void ztx_unauthorized(ziti_context ztx, const ziti_error *err) {
     // that reports a success the controller does not agree to, and the round starts again.
     if (ztx->awaiting_secondary && ztx->auth_state == ZitiAuthStatePartiallyAuthenticated) {
         ZTX_LOG(DEBUG, "request turned down while waiting for the secondary external login: ignored");
+        return;
+    }
+
+    // Likewise while the login for the TOTP code is under way or waits for its turn. Requests that went out after the
+    // check that started it (the refresh of the services that api_session_cb starts, for one) are answered after it,
+    // and turned down. Taking them for a lost session would authenticate right away, without the session that was
+    // invalidated: a login for each of them, ahead of the wait between the logins, as fast as the answers come back.
+    if (ztx->totp_login && ztx->auth_state != ZitiAuthStateFullyAuthenticated) {
+        ZTX_LOG(DEBUG, "request turned down during the login for the TOTP code: ignored");
         return;
     }
 
@@ -2689,6 +2761,16 @@ void ztx_auth_state_cb(void *ctx, ziti_auth_state state, const void *data) {
         }
     }
 
+    if (ztx->totp_login) {
+        if (state == ZitiAuthStatePartiallyAuthenticated) {
+            // the controller asks for the code: the login does what it is for, and the next one need not wait
+            ztx->totp_logins = 0;
+        } else if (state != ZitiAuthStateAuthStarted) {
+            // the login is over, one way or the other
+            ztx->totp_login = false;
+        }
+    }
+
     bool success = false;
     const char *message = NULL;
     switch (state) {
@@ -2943,6 +3025,12 @@ static void api_session_cb(ziti_api_session *api_sess, const ziti_error *err, vo
     }
 
     if (api_sess) {
+        // the session owes no TOTP code: the logins for one that did not get the controller to ask for it are over,
+        // and the next time a code is owed, its login need not wait for them
+        if (totp_query(api_sess) == NULL) {
+            ztx->totp_logins = 0;
+        }
+
         bool changed = ztx->session == NULL || strcmp(api_sess->id, ztx->session->id) != 0;
         if (changed) {
             model_map_clear(&ztx->sessions, (_free_f)free_ziti_session_ptr);

@@ -131,6 +131,13 @@ struct ziti_ctx {
     ziti_auth_state auth_state;
     // the api session is there, but the token of the secondary external signer is not: waiting for the external login
     bool awaiting_secondary;
+    // a login for the TOTP code that the api session owes is under way, or waits for its turn (totp_login_deadline):
+    // requests turned down in the meantime are ignored (ztx_unauthorized), and the auth state changes it brings tell
+    // whether the controller asked for the code (ztx_auth_state_cb)
+    bool totp_login;
+    // logins for that code in a row that ended without the controller asking for it: the wait before the next one
+    int totp_logins;
+    deadline_t totp_login_deadline;
     ziti_mfa_cb mfa_cb;
     void *mfa_ctx;
     model_map ext_jwt_tokens; // map<issuer, zt_jwt>

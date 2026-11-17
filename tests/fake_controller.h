@@ -153,6 +153,18 @@ namespace fake_controller {
             return n;
         }
 
+        // requests received so far whose path ends with `suffix` and whose body has `needle` in it
+        int count_with_body(const std::string &suffix, const std::string &needle) const {
+            std::lock_guard<std::mutex> lock(mu_);
+            int n = 0;
+            for (size_t i = 0; i < paths_.size(); i++) {
+                if (has_suffix(paths_[i], suffix) && bodies_[i].find(needle) != std::string::npos) {
+                    n++;
+                }
+            }
+            return n;
+        }
+
         // the body of the last request whose path ends with `suffix`, "" when there was none
         std::string last_body(const std::string &suffix) const {
             std::lock_guard<std::mutex> lock(mu_);

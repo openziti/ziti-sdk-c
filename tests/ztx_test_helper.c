@@ -56,6 +56,11 @@ int ztx_test_auth_retries(ziti_context ztx) {
     return ztx->auth_retries;
 }
 
+// the auth state of the context (ziti_auth_state)
+int ztx_test_auth_state(ziti_context ztx) {
+    return (int) ztx->auth_state;
+}
+
 // the auth method reports that the api session is gone
 void ztx_test_lose_session(ziti_context ztx) {
     ziti_error err = {.err = ZITI_AUTHENTICATION_FAILED, .message = "api session is gone"};
