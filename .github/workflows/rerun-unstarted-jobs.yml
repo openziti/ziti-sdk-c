@@ -1,0 +1,43 @@
+name: Re-run jobs that never got a runner
+
+# A job that no runner picks up fails ("The job was not acquired by Runner of type hosted even after
+# multiple attempts") without a runner assigned and without running a single step, and GitHub does not
+# retry it. This looks at the finished runs of the workflows below and, if a job failed that way,
+# re-runs the failed jobs of that run (and the jobs that wait for them). It does that at most twice per
+# run. A job that got a runner and then failed, whatever the step, is never a reason to re-run.
+#
+# workflow_run workflows run from the default branch, so a change here takes effect once it is merged.
+
+on:
+  workflow_run:
+    workflows: [ 'C/C++ CI', 'Publish Release', 'CodeQL Advanced' ]
+    types: [ completed ]
+
+permissions:
+  actions: write
+
+jobs:
+  rerun:
+    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+    steps:
+      - name: re-run when a job was not acquired by a runner
+        run: |
+          set -euo pipefail
+
+          unacquired=$(gh api --paginate "repos/${GH_REPO}/actions/runs/${RUN_ID}/attempts/${ATTEMPT}/jobs" \
+            --jq '.jobs[] | select(.conclusion == "failure" and (.runner_id // 0) == 0 and (.steps | length) == 0) | .name')
+
+          if [ -z "${unacquired}" ]; then
+            echo "every failed job had a runner, leaving the run alone"
+            exit 0
+          fi
+
+          echo "jobs that never got a runner:"
+          echo "${unacquired}" | sed 's/^/  /'
+          gh run rerun "${RUN_ID}" --failed
