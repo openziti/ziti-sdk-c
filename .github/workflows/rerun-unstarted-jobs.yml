@@ -1,10 +1,11 @@
 name: Re-run jobs that never got a runner
 
 # A job that no runner picks up fails ("The job was not acquired by Runner of type hosted even after
-# multiple attempts") without a runner assigned and without running a single step, and GitHub does not
-# retry it. This looks at the finished runs of the workflows below and, if a job failed that way,
-# re-runs the failed jobs of that run (and the jobs that wait for them). It does that at most twice per
-# run. A job that got a runner and then failed, whatever the step, is never a reason to re-run.
+# multiple attempts") or is cancelled after waiting for one, and GitHub does not retry it. Either way
+# the job never had a runner assigned. This looks at the finished runs of the workflows below and, if a
+# job ended that way, re-runs the failed jobs of that run (and the jobs that wait for them). It does that
+# at most twice per run. A job that got a runner and then failed, whatever the step, is never a reason
+# to re-run.
 #
 # workflow_run workflows run from the default branch, so a change here takes effect once it is merged.
 
@@ -32,10 +33,10 @@ jobs:
           set -euo pipefail
 
           unacquired=$(gh api --paginate "repos/${GH_REPO}/actions/runs/${RUN_ID}/attempts/${ATTEMPT}/jobs" \
-            --jq '.jobs[] | select(.conclusion == "failure" and (.runner_id // 0) == 0 and (.steps | length) == 0) | .name')
+            --jq '.jobs[] | select((.conclusion == "failure" or .conclusion == "cancelled") and (.runner_id // 0) == 0) | .name')
 
           if [ -z "${unacquired}" ]; then
-            echo "every failed job had a runner, leaving the run alone"
+            echo "every failed or cancelled job had a runner, leaving the run alone"
             exit 0
           fi
 
