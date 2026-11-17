@@ -67,8 +67,11 @@
 // full-jitter backoff between attempts inside that window (max ~32s/attempt)
 // match external auth timing
 #define OIDC_AUTH_RETRY_WINDOW_MS (60 * 1000)
-#define AUTH_BACKOFF_MAX  5
+// Outage backoff (server errors, rate limiting, transport errors): full jitter over [0, min(2^n, 2^AUTH_BACKOFF_MAX) s),
+// i.e. a ceiling of about 4 minutes, for as long as the outage lasts. AUTH_OUTAGE_RETRY_AFTER_CAP_MS bounds a Retry-After.
+#define AUTH_BACKOFF_MAX  8
 #define AUTH_BACKOFF_BASE 1000
+#define AUTH_OUTAGE_RETRY_AFTER_CAP_MS (5 * 60 * 1000)
 #define AUTH_MIN_BACKOFF 10
 
 typedef struct auth_req auth_req;
@@ -348,7 +351,8 @@ static bool auth_error_is_temporary(tlsuv_http_resp_t *resp, json_object *body, 
 // zitadel both send seconds. Returns 0 when the header is absent or unusable,
 // meaning "fall back to normal backoff".
 static uint64_t auth_retry_after_ms(tlsuv_http_resp_t *resp) {
-    if (resp == NULL || resp->code != HTTP_STATUS_TOO_MANY_REQUESTS) return 0;
+    // 429, and 503 (an overloaded or restarting controller or proxy sends it with the same meaning)
+    if (resp == NULL || (resp->code != HTTP_STATUS_TOO_MANY_REQUESTS && resp->code != 503)) return 0;
 
     const char *val = tlsuv_http_resp_header(resp, HTTP_RETRY_AFTER);
     if (val == NULL) return 0;
@@ -370,6 +374,17 @@ static uint64_t auth_retry_after_ms(tlsuv_http_resp_t *resp) {
     // schedule_auth_retry() decides what to do with a delay this long
     if (secs > 24 * 60 * 60) secs = 24 * 60 * 60;
     return (uint64_t) secs * 1000;
+}
+
+// The controller (or the proxy in front of it) is away or overloaded: a transport error, a 5xx, rate limiting or a request
+// timeout. That says nothing about the identity or the credentials, only that the other end cannot answer now, for as long as
+// it cannot: a restart, an upgrade or a reconnect storm after one takes minutes. Retrying such an answer for 60 s and then
+// giving up hands the retry to the app, and every client then comes back at the same fixed cadence. These are retried with
+// a growing, jittered backoff for as long as they last, whichever leg of the login they hit.
+static bool auth_error_is_outage(tlsuv_http_resp_t *resp) {
+    if (resp == NULL) return false;
+    return resp->code < 0 || resp->code / 100 == 5 ||
+           resp->code == HTTP_STATUS_TOO_MANY_REQUESTS || resp->code == HTTP_STATUS_REQUEST_TIMEOUT;
 }
 
 // forget the retry window: called on a successful auth and whenever the app
@@ -400,13 +415,13 @@ static void auth_retry_cb(uv_timer_t *t) {
 static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, json_object *body,
                                 bool cert_login) {
     if (clt->token_cb == NULL) return false;
-    if (!auth_error_is_temporary(resp, body, cert_login)) return false;
+    if (!auth_error_is_outage(resp) && !auth_error_is_temporary(resp, body, cert_login)) return false;
 
     // resp is not NULL: auth_error_is_temporary() is false for no response
-    const bool transport = resp->code < 0;
+    const bool outage = auth_error_is_outage(resp);
 
     // controller knows about this identity
-    if (clt->primary_ok && !transport) return false;
+    if (clt->primary_ok && !outage) return false;
 
     // same guard as oidc_client_refresh(): nothing to arm during/after teardown
     if (clt->timer == NULL || uv_is_closing((const uv_handle_t *) clt->timer)) {
@@ -414,8 +429,8 @@ static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, jso
         return false;
     }
 
-    if (transport) {
-        // the time of an outage does not count against the window of the failures that are not transport errors: the
+    if (outage) {
+        // the time of an outage does not count against the window of the failures that are not outages: the
         // first of those after it is retried like the first one before it
         clt->auth_retry_until = 0;
 
@@ -423,7 +438,12 @@ static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, jso
         uint64_t delay = next_backoff(&clt->auth_failures, AUTH_BACKOFF_MAX, AUTH_BACKOFF_BASE);
         if (delay < AUTH_BACKOFF_BASE) delay = AUTH_BACKOFF_BASE;
 
-        OIDC_LOG(WARN, "OIDC auth failed (%d %s), attempt %d; retrying in %" PRIu64 ".%03" PRIu64 " s",
+        // never earlier than the server asked (bounded: a hostile or broken header must not park the login for hours)
+        uint64_t retry_after = auth_retry_after_ms(resp);
+        if (retry_after > AUTH_OUTAGE_RETRY_AFTER_CAP_MS) retry_after = AUTH_OUTAGE_RETRY_AFTER_CAP_MS;
+        if (delay < retry_after) delay = retry_after;
+
+        OIDC_LOG(WARN, "OIDC auth failed (%d %s) [outage], attempt %d; retrying in %" PRIu64 ".%03" PRIu64 " s",
                  resp->code, resp->status, clt->auth_failures, delay / 1000, delay % 1000);
         uv_ref((uv_handle_t *) clt->timer);
         uv_timer_start(clt->timer, auth_retry_cb, delay, 0);
