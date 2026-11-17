@@ -1376,32 +1376,39 @@ static void oidc_auth_config_cb(oidc_client_t *clt, int status, const char *err)
             clt->started = true;
             oidc_client_start(clt, oidc_auth_token_cb);
         }
-    } else {
-        const char *prev_url = model_list_it_element(clt->cur_url);
-        clt->cur_url = model_list_it_next(clt->cur_url);
-        if (clt->cur_url == NULL) {
-            ZITI_LOG(ERROR, "failed to configure OIDC[%s] (no more URLs to try): %d/%s",
-                     prev_url, status, err);
-            if (clt->auth_cb) {
-                ziti_error error = {
-                    .err = status,
-                    .message = err,
-                };
-                clt->auth_cb(clt->auth_cb_ctx, ZitiAuthImpossibleToAuthenticate, &error);
-            }
-            return;
-        }
-
-        ZITI_LOG(DEBUG, "failed to configure OIDC[%s] client: %d/%s",
-                 prev_url, status, err);
-
-        const char *u = model_list_it_element(clt->cur_url);
-        cstr oidc_url = internal_oidc_path(u, "/oidc");
-        ZITI_LOG(DEBUG, "trying next url[%s]", cstr_str(&oidc_url));
-        oidc_client_set_cfg(clt, cstr_str(&oidc_url));
-        oidc_client_configure(clt, oidc_auth_config_cb);
-        cstr_drop(&oidc_url);
+        return;
     }
+
+    if (status == UV_ECANCELED) {
+        // oidc client was canceled
+        OIDC_LOG(DEBUG, "oidc client was canceled");
+        return;
+    }
+
+    const char *prev_url = model_list_it_element(clt->cur_url);
+    clt->cur_url = model_list_it_next(clt->cur_url);
+    if (clt->cur_url == NULL) {
+        ZITI_LOG(ERROR, "failed to configure OIDC[%s] (no more URLs to try): %d/%s",
+                 prev_url, status, err);
+        if (clt->auth_cb) {
+            ziti_error error = {
+                .err = status,
+                .message = err,
+            };
+            clt->auth_cb(clt->auth_cb_ctx, ZitiAuthImpossibleToAuthenticate, &error);
+        }
+        return;
+    }
+
+    ZITI_LOG(DEBUG, "failed to configure OIDC[%s] client: %d/%s",
+             prev_url, status, err);
+
+    const char *u = model_list_it_element(clt->cur_url);
+    cstr oidc_url = internal_oidc_path(u, "/oidc");
+    ZITI_LOG(DEBUG, "trying next url[%s]", cstr_str(&oidc_url));
+    oidc_client_set_cfg(clt, cstr_str(&oidc_url));
+    oidc_client_configure(clt, oidc_auth_config_cb);
+    cstr_drop(&oidc_url);
 }
 
 static int oidc_auth_start(ziti_auth_method_t *self, auth_state_cb cb, void *ctx) {
