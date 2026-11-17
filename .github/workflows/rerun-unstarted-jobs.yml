@@ -10,7 +10,8 @@ name: Re-run jobs that never got a runner
 
 on:
   workflow_run:
-    workflows: [ 'C/C++ CI', 'Publish Release', 'CodeQL Advanced' ]
+    # the names are filter patterns: `+` is special, so the plus signs of "C/C++ CI" are escaped
+    workflows: [ 'C/C\+\+ CI', 'Publish Release', 'CodeQL Advanced' ]
     types: [ completed ]
 
 permissions:
