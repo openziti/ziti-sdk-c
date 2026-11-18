@@ -73,6 +73,7 @@ struct ziti_write_req_s {
     const uint8_t *buf;
     size_t len;
     bool eof;
+    bool abort; // end the stream abortively: FIN + EDGE_ABORT
     bool close;
 
     struct message_s *message;
