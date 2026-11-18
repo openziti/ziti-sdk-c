@@ -658,6 +658,13 @@ void ziti_authenticate_now(ziti_context ztx) {
             return;
     }
 
+    // The version of the controller was asked for (an earlier call, or a retry that fired): its callback sets up the
+    // auth method and starts the login, or refreshes it. A forced refresh now would be a second login.
+    if (ztx->pre_auth_pending) {
+        ZTX_LOG(DEBUG, "the authentication is starting already");
+        return;
+    }
+
     // A retry of the SDK is waiting: the controller could not be reached (its version is not known yet, and there may
     // be no auth method), or the auth provider was not available. What the retry does is done now, and only once: a
     // forced refresh next to it would have it start a second login when it fires.
@@ -668,10 +675,27 @@ void ziti_authenticate_now(ziti_context ztx) {
         return;
     }
 
-    // nothing to do without an auth method: the authentication starts with the external login
-    if (ztx->auth_state == ZitiAuthStateUnauthenticated && ztx->auth_method) {
+    // No auth method: the checks above should cover this (the version of the controller is being asked for, or its
+    // retry is waiting), but the pre-auth is what sets one up, so do it rather than nothing
+    if (ztx->auth_method == NULL) {
+        ZTX_LOG(INFO, "no auth method: authenticating now");
+        ziti_re_auth(ztx);
+        return;
+    }
+
+    if (ztx->auth_state != ZitiAuthStateUnauthenticated) {
+        return;
+    }
+
+    // UV_EAGAIN: the auth method has nothing to refresh yet. The auth method of an identity without a key is started by
+    // the external login; an OIDC auth method that is still being configured starts its first login when that is done.
+    int rc = ztx->auth_method->force_refresh(ztx->auth_method);
+    if (rc == UV_EAGAIN) {
+        ZTX_LOG(DEBUG, "the auth method is not ready: nothing to refresh yet");
+    } else if (rc != 0) {
+        ZTX_LOG(WARN, "not authenticated: forced session refresh did not start: %d/%s", rc, uv_strerror(rc));
+    } else {
         ZTX_LOG(INFO, "not authenticated: authenticating now");
-        ziti_force_api_session_refresh(ztx);
     }
 }
 
@@ -716,6 +740,7 @@ static void ziti_stop_internal(ziti_context ztx, void *data) {
 
         // the failures in a row were of this run: enabling the context starts over
         ztx->auth_retries = 0;
+        ztx->pre_auth_pending = false;
 
         if (ztx->posture_checks) {
             ziti_posture_checks_free(ztx->posture_checks);
@@ -1655,6 +1680,7 @@ static void ziti_re_auth(ziti_context ztx) {
     ziti_get_ext_jwt_signers(ztx, NULL, NULL);
 
     // always get controller version to get the right auth method
+    ztx->pre_auth_pending = true;
     ziti_ctrl_get_version(ztx_get_controller(ztx), version_pre_auth_cb, ztx);
 }
 
@@ -2606,6 +2632,7 @@ static void pre_auth_retry(void *data) {
 
 static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
+    ztx->pre_auth_pending = false;
     if (err) {
         ZTX_LOG(WARN, "failed to get controller version: %s/%s", err->code, err->message);
         ztx_set_deadline(ztx, 5000, &ztx->refresh_deadline, pre_auth_retry, ztx);
@@ -2671,7 +2698,8 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
         // force refresh with the new endpoint
         ztx->auth_method->set_endpoint(ztx->auth_method, oidc_path);
         int rc = ztx->auth_method->force_refresh(ztx->auth_method);
-        if (rc != 0) {
+        // UV_EAGAIN: no login to refresh yet; the external login, or the configuration set_endpoint started, starts it
+        if (rc != 0 && rc != UV_EAGAIN) {
             ZTX_LOG(WARN, "forced session refresh did not start: %d/%s", rc, uv_strerror(rc));
         }
     }

@@ -204,6 +204,8 @@ struct ziti_ctx {
     deadline_t ca_bundle_deadline;
     // consecutive failures to authenticate because the controller (or its auth provider) is not reachable
     int auth_retries;
+    // ziti_re_auth() asked the controller for its version, and version_pre_auth_cb() has not run yet
+    bool pre_auth_pending;
     deadline_list_t deadlines;
 
     uv_loop_t *loop;

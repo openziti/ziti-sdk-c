@@ -1446,6 +1446,17 @@ static int oidc_auth_stop(ziti_auth_method_t *self) {
 
 static int oidc_auth_refresh(ziti_auth_method_t *self) {
     oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    // not started (the identity has no key, and the external login has not come yet): nothing to refresh
+    if (clt->auth_cb == NULL) {
+        OIDC_LOG(DEBUG, "not started: nothing to refresh");
+        return UV_EAGAIN;
+    }
+    // started, but the first login has not: the configuration of the client (oidc_auth_start, set_endpoint, or the
+    // retry of the context) starts it when it completes
+    if (!clt->started) {
+        OIDC_LOG(DEBUG, "first login not started yet: nothing to refresh");
+        return UV_EAGAIN;
+    }
     reset_auth_retry(clt);
     if (clt->request) {
         OIDC_LOG(DEBUG, "skipping refresh while auth request is in progress");
