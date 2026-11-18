@@ -869,6 +869,8 @@ static void on_ctrl_redirect(const char *new_addr, void *ctx) {
         if (strcasecmp(addr, ztx->config.controller_url) == 0) {
             it = model_list_it_remove(it);
             free(addr);
+        } else {
+            it = model_list_it_next(it);
         }
     }
     FREE(ztx->config.controller_url);
