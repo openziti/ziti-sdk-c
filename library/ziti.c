@@ -643,9 +643,9 @@ void ziti_force_api_session_refresh(ziti_context ztx) {
     }
 }
 
-// Public API (context.h); also called by ziti_endpoint_state_change() on wake or unlock. A context that has no api
-// session may be waiting for the end of a backoff of the authentication; that wait was for a network that may be there
-// now. The backoff is for the failures that come back on their own: an explicit caller does not wait for it.
+// Public API (context.h); also called by ziti_endpoint_state_change() on wake or unlock. A context that is not
+// authenticated may be waiting out the backoff between authentication attempts. The backoff paces retries of failures
+// that clear on their own; a caller with reason to think the cause has cleared does not wait for it.
 void ziti_authenticate_now(ziti_context ztx) {
     if (ztx == NULL || !ztx->enabled) return;
 
