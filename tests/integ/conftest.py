@@ -367,7 +367,8 @@ def service_terminators(test_service):
     routers = json.loads(ziti_edge("list", "edge-routers", "-j").stdout)["data"]
     count = 2
     for port in range(1, count + 1):
-        ziti_edge("create", "terminator", test_service['name'], routers[0]["id"], f"tcp:127.0.0.1:{port}")
+        # "--": a random router id can start with "-" and would be read as a flag
+        ziti_edge("create", "terminator", "--", test_service['name'], routers[0]["id"], f"tcp:127.0.0.1:{port}")
     return count
 
 def wait_for_terminator(service_name, timeout=90) -> bool:
