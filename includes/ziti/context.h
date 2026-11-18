@@ -211,6 +211,22 @@ ZITI_FUNC
 extern void ziti_set_enabled(ziti_context ztx, bool enabled);
 
 /**
+ * Authenticate now, if the context is waiting to retry authentication.
+ *
+ * After a failed authentication attempt, the SDK waits before the next one, and the wait grows with each failure.
+ * This ends the wait and starts the next attempt now. It is meant for an app that knows the cause of the failures may
+ * have cleared, e.g. connectivity was restored.
+ *
+ * It has no effect when the context is disabled, authenticated, already authenticating, or waiting for user input
+ * (an MFA code or an external login). It sends nothing to the controller other than the authentication itself.
+ *
+ * Must be called on the loop thread of the context.
+ * @param ztx ziti context
+ */
+ZITI_FUNC
+extern void ziti_authenticate_now(ziti_context ztx);
+
+/**
  * @brief returns ziti_options.app_ctx for the given Ziti context.
  *
  * @param ztx

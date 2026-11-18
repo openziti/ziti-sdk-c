@@ -34,6 +34,7 @@ using namespace fake_controller;
 extern "C" void ziti_services_refresh(ziti_context ztx, bool now);
 extern "C" int ztx_test_auth_retries(ziti_context ztx);  // ztx_test_helper.c
 extern "C" void ztx_test_auth_impossible(ziti_context ztx, int err);  // ztx_test_helper.c
+extern "C" bool ztx_test_auth_retry_pending(ziti_context ztx);  // ztx_test_helper.c
 
 namespace {
     bool ends_with(const std::string &s, const std::string &suffix) {
@@ -42,12 +43,16 @@ namespace {
 
     class FakeOidcController {
     public:
-        // the OIDC endpoint is declared first: the version of the controller names its address
-        FakeOidcController()
+        // the OIDC endpoint is declared first: the version of the controller names its address. `ctrl_up` false: the
+        // controller refuses connections until open_ctrl()
+        explicit FakeOidcController(bool ctrl_up = true)
                 : oidc_([this](const std::string &, const std::string &path) { return oidc(path); }, false),
-                  ctrl_([this](const std::string &, const std::string &path) { return ctrl(path); }) {}
+                  ctrl_([this](const std::string &, const std::string &path) { return ctrl(path); }, ctrl_up) {}
 
         std::string url() const { return ctrl_.url(); }
+
+        // from here on the controller takes connections
+        void open_ctrl() { ctrl_.listen(); }
 
         // from here on the OIDC endpoint takes connections
         void open_oidc() { oidc_.listen(); }
@@ -197,6 +202,68 @@ TEST_CASE("reauth-does-not-wait-for-the-retry-when-the-device-wakes-up", "[reaut
 
     REQUIRE(login_seen > 0);
     CHECK(login_seen - woke < 800);
+}
+
+// the app says that the network is back, without an endpoint state change: the context that waits for the retry of its
+// authentication does not wait either
+TEST_CASE("reauth-does-not-wait-for-the-retry-when-the-app-says-to-authenticate-now", "[reauth]") {
+    FakeOidcController ctrl;
+
+    uint64_t nudged = 0;
+    uint64_t login_seen = 0;
+    auto done = [&](const context_run &run) {
+        uint64_t now = uv_now(test_loop());
+        if (nudged == 0) {
+            // the first attempt has failed, and the retry is waiting
+            if (ztx_test_auth_retries(run.ztx) >= 1) {
+                ctrl.open_oidc();
+                ziti_authenticate_now(run.ztx);
+                nudged = now;
+            }
+            return false;
+        }
+        if (ctrl.login_attempts() >= 1) {
+            login_seen = now;
+            return true;
+        }
+        return now - nudged > 5000;
+    };
+    run_context(ctrl.url(), 10000, done);
+
+    REQUIRE(login_seen > 0);
+    CHECK(login_seen - nudged < 800);
+}
+
+// the controller could not be reached when the context started: the context has no auth method yet and waits for the
+// retry of the version of the controller (5 s). The app says that the network is back: that retry does not wait.
+TEST_CASE("reauth-does-not-wait-for-the-version-retry-when-the-app-says-to-authenticate-now", "[reauth]") {
+    FakeOidcController ctrl(false);
+
+    uint64_t nudged = 0;
+    uint64_t login_seen = 0;
+    auto done = [&](const context_run &run) {
+        uint64_t now = uv_now(test_loop());
+        if (nudged == 0) {
+            // the version could not be fetched, and its retry is waiting
+            if (ztx_test_auth_retry_pending(run.ztx)) {
+                ctrl.open_ctrl();
+                ctrl.open_oidc();
+                ziti_authenticate_now(run.ztx);
+                nudged = now;
+            }
+            return false;
+        }
+        if (ctrl.login_attempts() >= 1) {
+            login_seen = now;
+            return true;
+        }
+        return now - nudged > 6000;
+    };
+    run_context(ctrl.url(), 10000, done);
+
+    REQUIRE(nudged > 0);
+    REQUIRE(login_seen > 0);
+    CHECK(login_seen - nudged < 800);
 }
 
 namespace {
