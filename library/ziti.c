@@ -653,8 +653,23 @@ void ziti_authenticate_now(ziti_context ztx) {
         case ZitiAuthStateUnauthenticated:
         case ZitiAuthImpossibleToAuthenticate:
             break;
+        case ZitiAuthStatePartiallyAuthenticated:
+            // Waiting for the secondary external login: the api session the wait ends with is kept alive by the refresh
+            // timer of the auth method, which can fire late after the device slept (the loop clock does not count the
+            // sleep). Refresh it now, so a login finished after the wake completes with a live session. The refresh
+            // does not end the wait (ztx_auth_state_cb keeps it on a refreshed session).
+            if (ztx->awaiting_secondary && ztx->auth_method) {
+                int rc = ztx->auth_method->force_refresh(ztx->auth_method);
+                if (rc == 0) {
+                    ZTX_LOG(INFO, "waiting for the secondary external login: refreshing the api session");
+                } else if (rc != UV_EAGAIN) {
+                    ZTX_LOG(WARN, "waiting for the secondary external login: refresh did not start: %d/%s",
+                            rc, uv_strerror(rc));
+                }
+            }
+            return;
         default:
-            // authenticated, or waiting for the login of the user
+            // authenticated, or waiting for the login of the user (MFA code)
             return;
     }
 

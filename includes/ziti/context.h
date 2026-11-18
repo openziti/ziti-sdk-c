@@ -217,8 +217,9 @@ extern void ziti_set_enabled(ziti_context ztx, bool enabled);
  * This ends the wait and starts the next attempt now. It is meant for an app that knows the cause of the failures may
  * have cleared, e.g. connectivity was restored.
  *
- * It has no effect when the context is disabled, authenticated, already authenticating, or waiting for user input
- * (an MFA code or an external login). It sends nothing to the controller other than the authentication itself.
+ * It has no effect when the context is disabled, authenticated, already authenticating, or waiting for an MFA code or
+ * for the first external login. While waiting for a secondary external login, it refreshes the api session that
+ * the login will complete, which may have expired while the device slept; the wait for the login goes on.
  *
  * Must be called on the loop thread of the context.
  * @param ztx ziti context
