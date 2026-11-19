@@ -249,6 +249,163 @@ TEST_CASE("endpoint-selection-skips-the-one-still-cooling-down", "[controller]")
     tls->free_ctx(tls);
 }
 
+namespace {
+    // What the controller lists after a login: every controller online, each with its edge API address.
+    // The context goes on using the URL it started with.
+    void list_endpoints(ziti_controller &ctrl, const std::vector<std::string> &edge_urls) {
+        auto arr = (ziti_controller_detail_array) calloc(edge_urls.size() + 1, sizeof(ziti_controller_detail *));
+        for (size_t i = 0; i < edge_urls.size(); i++) {
+            ziti_controller_detail *d = alloc_ziti_controller_detail();
+            d->id = strdup(("ctrl" + std::to_string(i)).c_str());
+            d->name = strdup(d->id);
+            d->is_online = true;
+
+            api_address *addr = alloc_api_address();
+            addr->version = strdup("v1");
+            addr->url = strdup(edge_urls[i].c_str());
+            model_list_append(&d->apis.edge, addr);
+            arr[i] = d;
+        }
+        ziti_ctrl_set_endpoints(&ctrl, arr);
+    }
+
+    // which of the three documentation-range hosts an endpoint is on, whatever form its URL has
+    bool on_host(const char *url, const char *host) {
+        return std::string(url).find(std::string("//") + host) != std::string::npos;
+    }
+}
+
+// An identity file names a controller by its origin, the controller list by its edge API address, and
+// the list replaces the endpoints while ctrl.url stays as it was. A request to ctrl.url fails: the
+// endpoint has to be found under it all the same, or it is never marked offline and the next
+// selection hands it out again.
+
+TEST_CASE("failed-endpoint-is-marked-offline-when-the-list-names-it-differently", "[controller]") {
+    struct form {
+        const char *in_map;
+        const char *current;
+    };
+    const form f = GENERATE(
+            // the identity file, then the list
+            form{"https://203.0.113.1:1280/edge/client/v1", "https://203.0.113.1:1280"},
+            // the other way round
+            form{"https://203.0.113.1:1280", "https://203.0.113.1:1280/edge/client/v1"},
+            // a port that is left out is the one of the scheme
+            form{"https://203.0.113.1:443/edge/client/v1", "https://203.0.113.1"},
+            // the scheme is not case sensitive
+            form{"https://203.0.113.1:1280/edge/client/v1", "HTTPS://203.0.113.1:1280"});
+
+    const uint64_t failed_at = 100 * 1000;
+    uv_loop_t *loop = test_loop();
+    simulate_uptime(loop, failed_at);
+
+    tls_context *tls = default_tls_context();
+
+    model_list urls = {};
+    model_list_append(&urls, (void *) f.current);
+
+    ziti_controller ctrl{};
+    REQUIRE(ziti_ctrl_init(loop, &ctrl, &urls, tls) == ZITI_OK);
+
+    list_endpoints(ctrl, {f.in_map, "https://203.0.113.2:1280/edge/client/v1",
+                          "https://203.0.113.3:1280/edge/client/v1"});
+
+    // a request to the URL the context uses fails
+    REQUIRE(ziti_ctrl_next_ep(&ctrl, cstr_str(&ctrl.url)) != nullptr);
+
+    // the selection indexes by the clock, so three consecutive values reach every one of three endpoints
+    for (uint64_t now = failed_at + 1; now <= failed_at + 3; now++) {
+        simulate_uptime(loop, now);
+        const char *chosen = ziti_ctrl_next_ep(&ctrl, nullptr);
+        REQUIRE(chosen != nullptr);
+        CHECK_FALSE(on_host(chosen, "203.0.113.1"));
+    }
+
+    model_list_clear(&urls, nullptr);
+    ziti_ctrl_close(&ctrl);
+    tls->free_ctx(tls);
+}
+
+TEST_CASE("endpoint-on-another-port-is-not-taken-for-the-failed-one", "[controller]") {
+    const uint64_t failed_at = 100 * 1000;
+    uv_loop_t *loop = test_loop();
+    simulate_uptime(loop, failed_at);
+
+    tls_context *tls = default_tls_context();
+
+    model_list urls = {};
+    model_list_append(&urls, (void *) "https://203.0.113.1:1280");
+
+    ziti_controller ctrl{};
+    REQUIRE(ziti_ctrl_init(loop, &ctrl, &urls, tls) == ZITI_OK);
+
+    list_endpoints(ctrl, {"https://203.0.113.1:1280/edge/client/v1", "https://203.0.113.2:1280/edge/client/v1"});
+
+    // the same host on a port the list does not have: nothing the list holds failed
+    REQUIRE(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:8441") != nullptr);
+
+    // two endpoints, two consecutive clock values: both are still handed out
+    bool listed_chosen = false;
+    for (uint64_t now = failed_at + 1; now <= failed_at + 2; now++) {
+        simulate_uptime(loop, now);
+        const char *chosen = ziti_ctrl_next_ep(&ctrl, nullptr);
+        REQUIRE(chosen != nullptr);
+        listed_chosen = listed_chosen || on_host(chosen, "203.0.113.1");
+    }
+    CHECK(listed_chosen);
+
+    model_list_clear(&urls, nullptr);
+    ziti_ctrl_close(&ctrl);
+    tls->free_ctx(tls);
+}
+
+// Apps get the controllers of the context in their events by the keys of the endpoints, and the path of the
+// edge API the controller lists them with is not part of what a controller is: the keys are origins.
+TEST_CASE("listed-controllers-are-endpoints-at-their-origin", "[controller]") {
+    uv_loop_t *loop = test_loop();
+    simulate_uptime(loop, 100 * 1000);
+
+    tls_context *tls = default_tls_context();
+
+    model_list urls = {};
+    model_list_append(&urls, (void *) "https://203.0.113.1:1280");
+
+    ziti_controller ctrl{};
+    REQUIRE(ziti_ctrl_init(loop, &ctrl, &urls, tls) == ZITI_OK);
+
+    list_endpoints(ctrl, {"https://203.0.113.1:1280/edge/client/v1", "https://203.0.113.2:1280/edge/client/v1"});
+
+    CHECK(model_map_size(&ctrl.endpoints) == 2);
+    CHECK(model_map_get(&ctrl.endpoints, "https://203.0.113.1:1280") != nullptr);
+    CHECK(model_map_get(&ctrl.endpoints, "https://203.0.113.2:1280") != nullptr);
+    CHECK(model_map_get(&ctrl.endpoints, "https://203.0.113.1:1280/edge/client/v1") == nullptr);
+
+    model_list_clear(&urls, nullptr);
+    ziti_ctrl_close(&ctrl);
+    tls->free_ctx(tls);
+}
+
+TEST_CASE("urls-of-one-controller-are-one-endpoint", "[controller]") {
+    uv_loop_t *loop = test_loop();
+    simulate_uptime(loop, 100 * 1000);
+
+    tls_context *tls = default_tls_context();
+
+    // an identity file can carry both: the URL it was enrolled with and the address the controller listed
+    model_list urls = {};
+    model_list_append(&urls, (void *) "https://203.0.113.1:1280");
+    model_list_append(&urls, (void *) "https://203.0.113.1:1280/edge/client/v1");
+
+    ziti_controller ctrl{};
+    REQUIRE(ziti_ctrl_init(loop, &ctrl, &urls, tls) == ZITI_OK);
+
+    CHECK(model_map_size(&ctrl.endpoints) == 1);
+
+    model_list_clear(&urls, nullptr);
+    ziti_ctrl_close(&ctrl);
+    tls->free_ctx(tls);
+}
+
 TEST_CASE("controller-init-rejects-empty-endpoint-list", "[controller]") {
     uv_loop_t *loop = test_loop();
     simulate_uptime(loop, 5 * 1000);

@@ -75,6 +75,9 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
 // one-minute backoff, can be tested without driving a failing request through the loop.
 const char *ziti_ctrl_next_ep(ziti_controller *ctrl, const char *current);
 
+// Takes the controllers the controller lists (and the array), and makes them the endpoints when they differ.
+void ziti_ctrl_set_endpoints(ziti_controller *ctrl, ziti_controller_detail_array arr);
+
 int ziti_ctrl_set_token(ziti_controller *ctrl, const char *access_token);
 // sets the external JWT of its issuer, replacing the one that issuer had. The controller keeps a copy of the
 // encoded token, `jwt` does not have to outlive the call.

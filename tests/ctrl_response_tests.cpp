@@ -134,6 +134,27 @@ TEST_CASE("version response failing mid-body fails the version request", "[contr
     CHECK(res.err == ZITI_CONTROLLER_UNAVAILABLE);
 }
 
+// A controller that answers from another address says so, and the endpoint it was reached at moves there.
+TEST_CASE("controller-supplied-address-replaces-the-endpoint-it-came-from", "[controller]") {
+    const std::string moved_to = "http://203.0.113.9:1280";
+    FakeHttpServer server([&](const std::string &, const std::string &path) {
+        if (path == "/version") {
+            return http_response("200 OK", {{"Content-Type", "application/json"}, {"ziti-ctrl-address", moved_to}},
+                                 R"({"data":{"version":"v0.0.0"}})");
+        }
+        return not_found();
+    });
+    ctrl_under_test c(server.url());
+    const std::string started_at = server.url();
+
+    run_until(c.loop, [&] { return moved_to == cstr_str(&c.ctrl.url); }, 5000);
+
+    CHECK(moved_to == cstr_str(&c.ctrl.url));
+    CHECK(model_map_size(&c.ctrl.endpoints) == 1);
+    CHECK(model_map_get(&c.ctrl.endpoints, moved_to.c_str()) != nullptr);
+    CHECK(model_map_get(&c.ctrl.endpoints, started_at.c_str()) == nullptr);
+}
+
 // An /enroll answered with a PEM certificate is a non-JSON response: an error, with no enrollment response
 // for the callback (the enrollment code does not free one on errors). The SDK asks for JSON, which every
 // controller sends it; a PEM path that got here gave the callback a response with the error and never
