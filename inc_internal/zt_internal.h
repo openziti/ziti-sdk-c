@@ -204,6 +204,8 @@ struct ziti_ctx {
     deadline_t ca_bundle_deadline;
     // consecutive failures to authenticate because the controller (or its auth provider) is not reachable
     int auth_retries;
+    // ziti_re_auth() asked the controller for its version, and version_pre_auth_cb() has not run yet
+    bool pre_auth_pending;
     deadline_list_t deadlines;
 
     uv_loop_t *loop;
@@ -224,9 +226,6 @@ void ziti_invalidate_session(ziti_context ztx, const char *service_id, ziti_sess
 void ziti_on_channel_event(ziti_channel_t *ch, ziti_router_status status, int err, ziti_context ztx);
 
 void ziti_force_api_session_refresh(ziti_context ztx);
-
-// the app says that the network may be back: a context that waits to authenticate again does not wait any longer
-void ztx_authenticate_now(ziti_context ztx);
 
 const char* ziti_get_api_session_token(ziti_context ztx);
 

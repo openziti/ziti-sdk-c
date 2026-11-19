@@ -23,6 +23,8 @@
 #include "posture.h"
 #include "auth_queries.h"
 
+#include <string.h>
+
 // The OIDC client treats the failures of a login as temporary for a window (a minute), then reports them. Shortens the
 // window of the context, and the one that is open already: the first failure may come before the test can call this.
 int ztx_test_oidc_retry_window(ziti_context ztx, uint64_t window_ms) {
@@ -54,6 +56,13 @@ int ztx_test_oidc_cancel_retry(ziti_context ztx) {
 // how many failures in a row the retry of the authentication has counted
 int ztx_test_auth_retries(ziti_context ztx) {
     return ztx->auth_retries;
+}
+
+// whether the context waits for the retry of its authentication (pre_auth_retry is static in ziti.c: the deadline has
+// its name)
+bool ztx_test_auth_retry_pending(ziti_context ztx) {
+    const char *name = ztx->refresh_deadline.expire_cb ? ztx->refresh_deadline.expire_cb_name : NULL;
+    return name != NULL && strstr(name, "pre_auth_retry") != NULL;
 }
 
 // the auth method reports that the api session is gone

@@ -163,8 +163,11 @@ static void legacy_auth_dump(ziti_auth_method_t *self, int (*printer)(void *arg,
 
 int legacy_auth_refresh(ziti_auth_method_t *self) {
     struct legacy_auth_s *auth = container_of(self, struct legacy_auth_s, api);
-    assert(auth->ctx);
-    assert(auth->cb);
+    // not started (the identity has no key, and the external login has not come yet): nothing to refresh
+    if (auth->cb == NULL) {
+        AUTH_LOG(DEBUG, "not started: nothing to refresh");
+        return UV_EAGAIN;
+    }
 
     if (auth->refreshing) {
         AUTH_LOG(DEBUG, "refresh already in progress");
