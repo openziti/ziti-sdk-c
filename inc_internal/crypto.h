@@ -57,6 +57,14 @@ typedef struct e2ee {
     // optional: handshake output a decrypt produced, which the peer needs next, e.g. the host's final
     // TLS 1.2 flight or a TLS 1.3 post-handshake reply. NULL means decrypt never produces any
     ssize_t (*handshake_output)(struct e2ee *e2ee, uint8_t out[E2EE_MAX_HEADER_LEN]);
+    // optional: writes the chunk that ends the outgoing stream, which only the holder of the session key
+    // can produce. Returns its length, 0 if there is nothing to send, or a negative value on error.
+    // Nothing can be encrypted afterwards. NULL means the method has no such chunk
+    ssize_t (*finish)(struct e2ee *e2ee, uint8_t *ciphertext, size_t ciphertext_len);
+    // optional: true if the peer ends its stream with such a chunk and it has not been received,
+    // so an end of stream signalled outside of the encryption cut the stream short.
+    // NULL means the method cannot tell
+    bool (*truncated)(struct e2ee *e2ee);
     void (*free)(struct e2ee *e2ee);
 } e2ee_t;
 

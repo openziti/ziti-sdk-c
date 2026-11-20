@@ -40,6 +40,7 @@ namespace {
         e2ee_t api{};
         bool ready = false;
         bool fail_decrypt = false;
+        bool truncated = false;
         int decrypts = 0;
         std::vector<std::pair<size_t, size_t>> encrypts; // plaintext len, ciphertext capacity
     };
@@ -66,6 +67,8 @@ namespace {
         as_fake(e)->encrypts.emplace_back(len, cap);
         return -1;
     }
+
+    bool fake_truncated(e2ee_t *e) { return as_fake(e)->truncated; }
 
     void install(fake_e2ee &f, ziti_connection conn) {
         f.api.method = conn->e2ee ? conn->e2ee->method : ziti_crypto_none;
@@ -375,6 +378,38 @@ TEST_CASE("host holds writes until the e2ee handshake completes", "[e2ee]") {
     CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_CONN_CLOSED});
     CHECK(f.app.write_cb == std::vector<ssize_t>{ZITI_INVALID_STATE, ZITI_INVALID_STATE});
     CHECK(TAILQ_EMPTY(&conn->wreqs));
+
+    f.dispose(conn);
+}
+
+TEST_CASE("a FIN ends the stream only if the encrypted stream has ended", "[e2ee]") {
+    ztx_fixture f;
+    auto conn = f.new_conn(on_data);
+    install(f.e2ee, conn);
+    f.e2ee.ready = true;
+
+    SECTION("the peer's stream is complete") {
+        f.e2ee.api.truncated = fake_truncated;
+        f.receive(conn, ContentTypeData, "", EDGE_FIN);
+        CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_EOF});
+        CHECK(conn->state == Connected);
+    }
+
+    SECTION("the crypto method cannot tell") {
+        f.receive(conn, ContentTypeData, "", EDGE_FIN);
+        CHECK(f.app.data_cb == std::vector<ssize_t>{ZITI_EOF});
+        CHECK(conn->state == Connected);
+    }
+
+    SECTION("the peer's stream has not ended: the FIN is not the peer's") {
+        f.e2ee.api.truncated = fake_truncated;
+        f.e2ee.truncated = true;
+        f.receive(conn, ContentTypeData, "", EDGE_FIN);
+        // the conn fails the way it does on a decrypt error, and is reported closed from then on
+        REQUIRE_FALSE(f.app.data_cb.empty());
+        CHECK(f.app.data_cb == std::vector<ssize_t>(f.app.data_cb.size(), ZITI_CONN_CLOSED));
+        CHECK(conn->state == Disconnected);
+    }
 
     f.dispose(conn);
 }

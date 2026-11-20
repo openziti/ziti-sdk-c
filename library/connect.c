@@ -94,6 +94,8 @@ static bool flush_to_client(ziti_connection conn);
 
 static int send_fin_message(ziti_connection conn, struct ziti_write_req_s *wr);
 
+static message *create_final_message(ziti_connection conn, uint32_t flags);
+
 static void queue_edge_message(struct ziti_conn *conn, message *msg, int code);
 
 static void process_edge_message(struct ziti_conn *conn, message *msg);
@@ -711,6 +713,12 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
     }
 
     if (req->close) {
+        // the peer is told the stream is complete before it is told the conn is gone
+        message *final = create_final_message(conn, 0);
+        if (final) {
+            send_message(conn, final, NULL);
+        }
+
         // conn->state will be set on_disconnect callback
         message *m = create_message(conn, ContentTypeStateClosed, 0, 0);
         send_message(conn, m, req);
@@ -1072,6 +1080,13 @@ static bool flush_to_client(ziti_connection conn) {
 
     if (conn->fin_recv == 1 && conn->data_cb) { // if fin was received and all data is flushed, signal EOF
         conn->fin_recv = 2;
+        if (conn->e2ee->truncated && conn->e2ee->truncated(conn->e2ee)) {
+            // the FIN flag is not covered by the encryption: without the chunk that ends
+            // the peer's stream it does not show that the peer sent everything
+            CONN_LOG(ERROR, "FIN received before the end of the encrypted stream");
+            conn_failed(conn, ZITI_CONN_CLOSED);
+            return false;
+        }
         conn->data_cb(conn, NULL, ZITI_EOF);
     }
 
@@ -1519,9 +1534,36 @@ int ziti_write(ziti_connection conn, const uint8_t *data, size_t length, ziti_wr
     return 0;
 }
 
+// the message that ends the encrypted stream: a data message holding the chunk e2ee->finish() writes.
+// The FIN flag and StateClosed travel outside of the encryption, so anything on the path can produce
+// them; this chunk is what lets the peer tell that the stream is complete.
+// NULL if the crypto method has no such chunk, or there is no stream to end
+static message *create_final_message(ziti_connection conn, uint32_t flags) {
+    if (conn->e2ee == NULL || conn->e2ee->finish == NULL || !e2ee_ready(conn)) {
+        return NULL;
+    }
+
+    uint8_t final[E2EE_MAX_MSG_OVERHEAD];
+    ssize_t final_len = conn->e2ee->finish(conn->e2ee, final, sizeof(final));
+    if (final_len < 0) {
+        CONN_LOG(ERROR, "failed to end the encrypted stream: %zd", final_len);
+        return NULL;
+    }
+    if (final_len == 0) {
+        return NULL;
+    }
+
+    message *m = create_message(conn, ContentTypeData, flags, final_len);
+    memcpy(m->body, final, final_len);
+    return m;
+}
+
 static int send_fin_message(ziti_connection conn, struct ziti_write_req_s *wr) {
     CONN_LOG(DEBUG, "sending FIN");
-    message *m = create_message(conn, ContentTypeData, EDGE_FIN, 0);
+    message *m = create_final_message(conn, EDGE_FIN);
+    if (m == NULL) {
+        m = create_message(conn, ContentTypeData, EDGE_FIN, 0);
+    }
     return send_message(conn, m, wr);
 }
 
