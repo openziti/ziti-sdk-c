@@ -70,10 +70,17 @@ typedef struct ziti_controller_s {
 
 int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls_context *tls);
 
-// Selects the endpoint to use, marking `current` offline first when it is not NULL. Returns NULL when
-// no endpoint qualifies, which callers have to handle. Declared here so the selection, including its
-// one-minute backoff, can be tested without driving a failing request through the loop.
-const char *ziti_ctrl_next_ep(ziti_controller *ctrl, const char *current);
+// The APIs of a controller that a client may need, as the controller lists them (ziti_controller_detail.apis).
+typedef enum {
+    ZITI_CTRL_API_EDGE,
+    ZITI_CTRL_API_OIDC,
+} ziti_ctrl_api;
+
+// Selects the endpoint to use, marking `current` offline first when it is not NULL. Only a controller that serves
+// `api` qualifies: a listed controller without it is skipped (one that is not listed yet is not). Returns NULL when
+// no endpoint qualifies, which callers have to handle. The pointer belongs to ctrl->endpoints. Declared here so the
+// selection, including its one-minute backoff, can be tested without driving a failing request through the loop.
+const char *ziti_ctrl_next_ep(ziti_controller *ctrl, const char *current, ziti_ctrl_api api);
 
 // Takes the controllers the controller lists (and the array), and makes them the endpoints when they differ.
 void ziti_ctrl_set_endpoints(ziti_controller *ctrl, ziti_controller_detail_array arr);

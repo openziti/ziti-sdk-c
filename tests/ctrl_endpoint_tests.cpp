@@ -27,6 +27,7 @@
 #include <ziti/errors.h>
 #include <catch2/generators/catch_generators.hpp>
 #include <tlsuv/tlsuv.h>
+#include <algorithm>
 #include <functional>
 #include <string>
 #include <vector>
@@ -118,15 +119,15 @@ TEST_CASE("endpoint-backoff-lasts-a-minute-after-a-failure", "[controller]") {
     REQUIRE(ziti_ctrl_init(loop, &ctrl, &urls, tls) == ZITI_OK);
 
     // reporting the only endpoint as failed leaves nothing to fall back to
-    CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280") == nullptr);
+    CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280", ZITI_CTRL_API_EDGE) == nullptr);
 
     // still cooling down: the test is `offline_time + ONE_MINUTE < now`, so the minute mark is out
     simulate_uptime(loop, failed_at + 60 * 1000);
-    CHECK(ziti_ctrl_next_ep(&ctrl, nullptr) == nullptr);
+    CHECK(ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE) == nullptr);
 
     // a millisecond past the minute it is a candidate again
     simulate_uptime(loop, failed_at + 60 * 1000 + 1);
-    const char *revived = ziti_ctrl_next_ep(&ctrl, nullptr);
+    const char *revived = ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE);
     REQUIRE(revived != nullptr);
     CHECK(std::string(revived) == "https://203.0.113.1:1280");
 
@@ -164,15 +165,15 @@ TEST_CASE("endpoint-cooldown-is-not-extended-by-failures-during-it", "[controlle
     const uint64_t failed_at = 200 * 1000;
 
     with_one_endpoint(failed_at, [&](ziti_controller &ctrl, uv_loop_t *loop) {
-        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280") == nullptr);
+        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280", ZITI_CTRL_API_EDGE) == nullptr);
 
         // another request fails in the middle of the cooldown
         simulate_uptime(loop, failed_at + 30 * 1000);
-        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280") == nullptr);
+        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280", ZITI_CTRL_API_EDGE) == nullptr);
 
         // the minute counts from the first failure
         simulate_uptime(loop, failed_at + 60 * 1000 + 1);
-        const char *revived = ziti_ctrl_next_ep(&ctrl, nullptr);
+        const char *revived = ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE);
         REQUIRE(revived != nullptr);
         CHECK(std::string(revived) == "https://203.0.113.1:1280");
     });
@@ -183,20 +184,20 @@ TEST_CASE("endpoint-that-fails-its-re-probe-cools-down-again", "[controller][GH-
     const uint64_t probed_at = failed_at + 61 * 1000;
 
     with_one_endpoint(failed_at, [&](ziti_controller &ctrl, uv_loop_t *loop) {
-        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280") == nullptr);
+        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280", ZITI_CTRL_API_EDGE) == nullptr);
 
         // the cooldown is over, the endpoint is tried and fails again
         simulate_uptime(loop, probed_at);
-        REQUIRE(ziti_ctrl_next_ep(&ctrl, nullptr) != nullptr);
-        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280") == nullptr);
+        REQUIRE(ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE) != nullptr);
+        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280", ZITI_CTRL_API_EDGE) == nullptr);
 
         // a new cooldown, counted from the failed probe and not from the first failure
         simulate_uptime(loop, probed_at + 30 * 1000);
-        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr) == nullptr);
+        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE) == nullptr);
         simulate_uptime(loop, probed_at + 60 * 1000);
-        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr) == nullptr);
+        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE) == nullptr);
         simulate_uptime(loop, probed_at + 60 * 1000 + 1);
-        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr) != nullptr);
+        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE) != nullptr);
     });
 }
 
@@ -206,13 +207,13 @@ TEST_CASE("endpoint-failing-within-a-minute-of-boot-still-cools-down", "[control
     const uint64_t failed_at = 5 * 1000;
 
     with_one_endpoint(failed_at, [&](ziti_controller &ctrl, uv_loop_t *loop) {
-        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280") == nullptr);
+        CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280", ZITI_CTRL_API_EDGE) == nullptr);
 
         simulate_uptime(loop, failed_at + 30 * 1000);
-        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr) == nullptr);
+        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE) == nullptr);
 
         simulate_uptime(loop, failed_at + 60 * 1000 + 1);
-        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr) != nullptr);
+        CHECK(ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE) != nullptr);
     });
 }
 
@@ -236,11 +237,11 @@ TEST_CASE("endpoint-selection-skips-the-one-still-cooling-down", "[controller]")
     REQUIRE(ziti_ctrl_init(loop, &ctrl, &urls, tls) == ZITI_OK);
 
     // one endpoint fails, so two of the three remain candidates
-    ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280");
+    ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280", ZITI_CTRL_API_EDGE);
     REQUIRE(now % model_map_size(&ctrl.endpoints) == 2);
 
     simulate_uptime(loop, now);
-    const char *chosen = ziti_ctrl_next_ep(&ctrl, nullptr);
+    const char *chosen = ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE);
     REQUIRE(chosen != nullptr);
     CHECK(std::string(chosen) != "https://203.0.113.1:1280");
 
@@ -250,9 +251,11 @@ TEST_CASE("endpoint-selection-skips-the-one-still-cooling-down", "[controller]")
 }
 
 namespace {
-    // What the controller lists after a login: every controller online, each with its edge API address.
+    // What the controller lists after a login: every controller online, each with its edge API address and
+    // its OIDC one, except the controllers (by position) named in `without_oidc`, which list no OIDC API.
     // The context goes on using the URL it started with.
-    void list_endpoints(ziti_controller &ctrl, const std::vector<std::string> &edge_urls) {
+    void list_endpoints(ziti_controller &ctrl, const std::vector<std::string> &edge_urls,
+                        const std::vector<size_t> &without_oidc = {}) {
         auto arr = (ziti_controller_detail_array) calloc(edge_urls.size() + 1, sizeof(ziti_controller_detail *));
         for (size_t i = 0; i < edge_urls.size(); i++) {
             ziti_controller_detail *d = alloc_ziti_controller_detail();
@@ -264,6 +267,13 @@ namespace {
             addr->version = strdup("v1");
             addr->url = strdup(edge_urls[i].c_str());
             model_list_append(&d->apis.edge, addr);
+
+            if (std::find(without_oidc.begin(), without_oidc.end(), i) == without_oidc.end()) {
+                api_address *oidc = alloc_api_address();
+                oidc->version = strdup("v1");
+                oidc->url = strdup((edge_urls[i].substr(0, edge_urls[i].find("/edge/")) + "/oidc").c_str());
+                model_list_append(&d->apis.oidc, oidc);
+            }
             arr[i] = d;
         }
         ziti_ctrl_set_endpoints(&ctrl, arr);
@@ -311,12 +321,12 @@ TEST_CASE("failed-endpoint-is-marked-offline-when-the-list-names-it-differently"
                           "https://203.0.113.3:1280/edge/client/v1"});
 
     // a request to the URL the context uses fails
-    REQUIRE(ziti_ctrl_next_ep(&ctrl, cstr_str(&ctrl.url)) != nullptr);
+    REQUIRE(ziti_ctrl_next_ep(&ctrl, cstr_str(&ctrl.url), ZITI_CTRL_API_EDGE) != nullptr);
 
     // the selection indexes by the clock, so three consecutive values reach every one of three endpoints
     for (uint64_t now = failed_at + 1; now <= failed_at + 3; now++) {
         simulate_uptime(loop, now);
-        const char *chosen = ziti_ctrl_next_ep(&ctrl, nullptr);
+        const char *chosen = ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE);
         REQUIRE(chosen != nullptr);
         CHECK_FALSE(on_host(chosen, "203.0.113.1"));
     }
@@ -342,13 +352,13 @@ TEST_CASE("endpoint-on-another-port-is-not-taken-for-the-failed-one", "[controll
     list_endpoints(ctrl, {"https://203.0.113.1:1280/edge/client/v1", "https://203.0.113.2:1280/edge/client/v1"});
 
     // the same host on a port the list does not have: nothing the list holds failed
-    REQUIRE(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:8441") != nullptr);
+    REQUIRE(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:8441", ZITI_CTRL_API_EDGE) != nullptr);
 
     // two endpoints, two consecutive clock values: both are still handed out
     bool listed_chosen = false;
     for (uint64_t now = failed_at + 1; now <= failed_at + 2; now++) {
         simulate_uptime(loop, now);
-        const char *chosen = ziti_ctrl_next_ep(&ctrl, nullptr);
+        const char *chosen = ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE);
         REQUIRE(chosen != nullptr);
         listed_chosen = listed_chosen || on_host(chosen, "203.0.113.1");
     }
@@ -426,6 +436,126 @@ TEST_CASE("listed-controllers-of-one-origin-are-one-endpoint", "[controller]") {
     auto kept = static_cast<ziti_controller_detail *>(model_map_get(&ctrl.endpoints, "https://203.0.113.1:1280"));
     REQUIRE(kept != nullptr);
     CHECK(std::string("ctrl1") == kept->id); // the later of the two, as when two URLs of an identity are read
+
+    model_list_clear(&urls, nullptr);
+    ziti_ctrl_close(&ctrl);
+    tls->free_ctx(tls);
+}
+
+// The OIDC client asks for the controller to move to the way the REST client does, and what it needs is one that
+// serves the OIDC API. It is the same selection: the controller that failed goes offline, a lone one included.
+
+TEST_CASE("endpoint-selection-offers-a-configured-controller-for-any-api", "[controller]") {
+    // the controllers of the identity file list no APIs yet: not knowing is no reason to leave one out
+    const uint64_t failed_at = 100 * 1000;
+    uv_loop_t *loop = test_loop();
+    simulate_uptime(loop, failed_at);
+
+    tls_context *tls = default_tls_context();
+
+    model_list urls = {};
+    model_list_append(&urls, (void *) "https://203.0.113.1:1280");
+    model_list_append(&urls, (void *) "https://203.0.113.2:1280");
+
+    ziti_controller ctrl{};
+    REQUIRE(ziti_ctrl_init(loop, &ctrl, &urls, tls) == ZITI_OK);
+
+    const char *next = ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280", ZITI_CTRL_API_OIDC);
+    REQUIRE(next != nullptr);
+    CHECK(std::string(next) == "https://203.0.113.2:1280");
+
+    // the failed one is cooling down, whatever the clock says
+    for (uint64_t now = failed_at + 1; now <= failed_at + 3; now++) {
+        simulate_uptime(loop, now);
+        const char *chosen = ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE);
+        REQUIRE(chosen != nullptr);
+        CHECK_FALSE(on_host(chosen, "203.0.113.1"));
+    }
+
+    model_list_clear(&urls, nullptr);
+    ziti_ctrl_close(&ctrl);
+    tls->free_ctx(tls);
+}
+
+namespace {
+    // a context that started on the first of three listed controllers, the second of which lists no OIDC API,
+    // and the clock at `now`
+    struct listed_three {
+        tls_context *tls;
+        model_list urls = {};
+        ziti_controller ctrl{};
+
+        explicit listed_three(uint64_t now) {
+            simulate_uptime(test_loop(), now);
+            tls = default_tls_context();
+            model_list_append(&urls, (void *) "https://203.0.113.1:1280");
+            REQUIRE(ziti_ctrl_init(test_loop(), &ctrl, &urls, tls) == ZITI_OK);
+            list_endpoints(ctrl, {"https://203.0.113.1:1280/edge/client/v1",
+                                  "https://203.0.113.2:1280/edge/client/v1",
+                                  "https://203.0.113.3:1280/edge/client/v1"}, {1});
+        }
+
+        ~listed_three() {
+            model_list_clear(&urls, nullptr);
+            ziti_ctrl_close(&ctrl);
+            tls->free_ctx(tls);
+        }
+    };
+}
+
+// A controller the list shows without an OIDC API is not somewhere the OIDC client can go: it would answer its
+// configuration request with an error, and stay in the rotation because it was never reported failed.
+
+TEST_CASE("endpoint-selection-skips-a-listed-controller-that-does-not-serve-the-api", "[controller]") {
+    // the selection indexes by the clock: four consecutive values reach the controller without OIDC,
+    // were it a candidate
+    for (uint64_t now = 100 * 1000; now < 100 * 1000 + 4; now++) {
+        listed_three c(now);
+
+        const char *next = ziti_ctrl_next_ep(&c.ctrl, "https://203.0.113.1:1280", ZITI_CTRL_API_OIDC);
+        REQUIRE(next != nullptr);
+        CHECK(std::string(next) == "https://203.0.113.3:1280");
+    }
+}
+
+TEST_CASE("endpoint-selection-takes-a-controller-without-oidc-for-the-edge-api", "[controller]") {
+    bool reached_without_oidc = false;
+    for (uint64_t now = 100 * 1000; now < 100 * 1000 + 4; now++) {
+        listed_three c(now);
+
+        const char *next = ziti_ctrl_next_ep(&c.ctrl, "https://203.0.113.1:1280", ZITI_CTRL_API_EDGE);
+        REQUIRE(next != nullptr);
+        CHECK_FALSE(on_host(next, "203.0.113.1"));
+        reached_without_oidc = reached_without_oidc || on_host(next, "203.0.113.2");
+    }
+    CHECK(reached_without_oidc);
+}
+
+TEST_CASE("failed-endpoint-goes-offline-when-no-other-controller-serves-the-api", "[controller]") {
+    const uint64_t failed_at = 100 * 1000;
+    uv_loop_t *loop = test_loop();
+    simulate_uptime(loop, failed_at);
+
+    tls_context *tls = default_tls_context();
+
+    model_list urls = {};
+    model_list_append(&urls, (void *) "https://203.0.113.1:1280");
+
+    ziti_controller ctrl{};
+    REQUIRE(ziti_ctrl_init(loop, &ctrl, &urls, tls) == ZITI_OK);
+
+    list_endpoints(ctrl, {"https://203.0.113.1:1280/edge/client/v1",
+                          "https://203.0.113.2:1280/edge/client/v1"}, {1});
+
+    CHECK(ziti_ctrl_next_ep(&ctrl, "https://203.0.113.1:1280", ZITI_CTRL_API_OIDC) == nullptr);
+
+    // it failed, as any failure: the REST requests do not go to it while it cools down
+    for (uint64_t now = failed_at + 1; now <= failed_at + 4; now++) {
+        simulate_uptime(loop, now);
+        const char *chosen = ziti_ctrl_next_ep(&ctrl, nullptr, ZITI_CTRL_API_EDGE);
+        REQUIRE(chosen != nullptr);
+        CHECK_FALSE(on_host(chosen, "203.0.113.1"));
+    }
 
     model_list_clear(&urls, nullptr);
     ziti_ctrl_close(&ctrl);
