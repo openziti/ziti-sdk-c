@@ -506,7 +506,7 @@ static void request_token(auth_req *req, const char *auth_code) {
     ext_oidc_client_t *clt = req->clt;
     json_object *token_ep = json_object_object_get(clt->config, TOKEN_EP);
     const char *token_url = json_object_get_string(token_ep);
-    ZITI_LOG(INFO, "requesting token path[%s] auth[%s]", token_url, auth_code);
+    ZITI_LOG(INFO, "requesting token path[%s]", token_url);
     tlsuv_http_set_url(&clt->http, token_url);
     tlsuv_http_req_t *token_req = ziti_json_request(&clt->http, "POST", NULL, token_cb, req);
     tlsuv_http_pair form[] = {
