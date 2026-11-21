@@ -43,6 +43,7 @@
 #include <tlsuv/tlsuv.h>
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -95,6 +96,12 @@ public:
     void setBody(const std::string &body) {
         std::lock_guard<std::mutex> lock(mu_);
         body_ = body;
+    }
+
+    // headers and body of the last request that got a response
+    std::string lastRequest() {
+        std::lock_guard<std::mutex> lock(mu_);
+        return last_request_;
     }
 
     FakeTokenEndpoint() {
@@ -178,6 +185,7 @@ private:
         while (bodySoFar < contentLength) {
             ssize_t n = recv(client, buf, sizeof(buf), 0);
             if (n <= 0) { CLOSESOCK(client); return; }
+            received.append(buf, n);
             bodySoFar += (size_t) n;
         }
 
@@ -185,6 +193,7 @@ private:
         {
             std::lock_guard<std::mutex> lock(mu_);
             body = body_;
+            last_request_ = received;
         }
         std::string resp = "HTTP/1.1 200 OK\r\n"
                             "Content-Type: application/json\r\n"
@@ -204,6 +213,7 @@ private:
     std::thread accept_thread_;
     std::mutex mu_;
     std::vector<int> hungFds_;
+    std::string last_request_;
     std::string body_ = std::string("{\"access_token\":\"") + FAKE_ACCESS_TOKEN_2 +
                         "\",\"refresh_token\":\"" + FAKE_REFRESH_TOKEN + "\"}";
 };
@@ -361,6 +371,33 @@ TEST_CASE("ext-oidc-refresh-keeps-the-refresh-token-that-the-response-omits", "[
     CHECK(std::string(json_object_get_string(refresh_token)) == FAKE_REFRESH_TOKEN);
     // the next refresh is scheduled
     CHECK(uv_is_active((uv_handle_t *) clt.timer));
+
+    close_ext_client(loop, &clt);
+}
+
+// The external OIDC client is a public client (RFC 6749 section 2.1): it has no client secret and identifies itself
+// with client_id in the form. A provider may reject a public client that sends client credentials in a header.
+TEST_CASE("ext-oidc-refresh-request-identifies-the-client-in-the-form-only", "[oidc]") {
+    FakeTokenEndpoint server;
+    server.hang = false;
+
+    uv_loop_t *loop = uv_loop_new();
+    ext_oidc_client_t clt{};
+    ExtResult result;
+    init_ext_client(loop, &clt, "http://127.0.0.1:1/oidc", &result);
+    set_logged_in(&clt, server);
+
+    REQUIRE(ext_oidc_client_refresh(&clt) == 0);
+    run_until_calls(loop, result, 1);
+    REQUIRE(result.calls == 1);
+    CHECK(result.status == EXT_OIDC_TOKEN_OK);
+
+    std::string request = server.lastRequest();
+    std::string lower = request;
+    for (char &ch: lower) ch = (char) std::tolower((unsigned char) ch);
+    CHECK(lower.find("authorization:") == std::string::npos);
+    CHECK(request.find("client_id=test-client") != std::string::npos);
+    CHECK(request.find("grant_type=refresh_token") != std::string::npos);
 
     close_ext_client(loop, &clt);
 }
