@@ -22,6 +22,7 @@
 #include "connect.h"
 #include "posture.h"
 #include "auth_queries.h"
+#include "ext_oidc.h"
 
 #include <string.h>
 
@@ -241,4 +242,43 @@ int ztx_test_open_conns(ziti_context ztx) {
 // how many services the context has, whatever the controller sent for their posture queries
 int ztx_test_service_count(ziti_context ztx) {
     return (int) model_map_size(&ztx->services);
+}
+
+// A context that has a loop and nothing else: for ziti_ext_auth_set_params(), which reaches no further than the
+// external OIDC clients of the context.
+ziti_context ztx_test_ext_auth_stub_new(uv_loop_t *loop) {
+    ziti_context ztx = calloc(1, sizeof(*ztx));
+    ztx->loop = loop;
+    return ztx;
+}
+
+// the caller runs the loop afterwards: the OIDC clients are freed when their handles are closed
+void ztx_test_ext_auth_stub_free(ziti_context ztx) {
+    if (ztx->ext_auth) ext_oidc_client_close(ztx->ext_auth, (ext_oidc_close_cb) free);
+    if (ztx->ext_auth2) ext_oidc_client_close(ztx->ext_auth2, (ext_oidc_close_cb) free);
+    ztx_free_ext_auth_params(ztx);
+    free(ztx);
+}
+
+// sets up the primary or the secondary external signer; 192.0.2.0/24 is the RFC 5737 documentation range: the
+// provider is never contacted
+int ztx_test_init_ext_signer(ziti_context ztx, const char *id, bool secondary) {
+    ziti_jwt_signer signer = {
+            .id = id,
+            .name = id,
+            .provider_url = "https://192.0.2.1",
+            .client_id = "test-client",
+    };
+    return ztx_init_external_auth(ztx, &signer, secondary);
+}
+
+// the value of an authorize parameter of the primary or the secondary OIDC client, "" when it has none of that name
+const char *ztx_test_ext_auth_param(ziti_context ztx, bool secondary, const char *name) {
+    ext_oidc_client_t *clt = secondary ? ztx->ext_auth2 : ztx->ext_auth;
+    for (int i = 0; clt && i < clt->auth_params_count; i++) {
+        if (strcmp(clt->auth_params[i].name, name) == 0) {
+            return clt->auth_params[i].value;
+        }
+    }
+    return "";
 }
