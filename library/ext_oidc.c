@@ -630,7 +630,9 @@ static void ext_accept(uv_work_t *wr) {
     buf[c] = 0;
 
     char *cs = strstr(buf, "code=");
-    if (!cs) {
+    // the code is part of the request target, and a space ends the target in a complete request line
+    char *ce = cs ? strchr(cs, ' ') : NULL;
+    if (!ce) {
         ZITI_LOG(WARN, "no code parameter found: %s", buf);
         char resp[] = "HTTP/1.1 400 Invalid Request\r\n"
                       "Content-Type: text/html\r\n"
@@ -650,7 +652,6 @@ static void ext_accept(uv_work_t *wr) {
         return;
     }
     cs += strlen("code=");
-    char *ce = strchr(cs, ' ');
     *ce = 0;
     char *amp = strchr(cs, '&');
     if (amp) {
