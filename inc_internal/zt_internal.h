@@ -138,6 +138,9 @@ struct ziti_ctx {
     model_map ext_signers;
     struct ext_oidc_client_s *ext_auth;
     struct ext_oidc_client_s *ext_auth2;
+    // extra authorize query parameters for ext_auth and ext_auth2, set by ziti_ext_auth_set_params()
+    tlsuv_http_pair *ext_auth_params;
+    int ext_auth_params_count;
     void (*ext_launch_cb)(ziti_context, const char*, void*);
     void *ext_launch_ctx;
     ziti_enroll_key_cb enroll_key_cb;
@@ -299,6 +302,7 @@ static inline bool ctrl_version_supports_enroll_to(const char *ctrl_ver) {
 const ziti_env_info* get_env_info();
 
 int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *signer, bool secondary);
+void ztx_free_ext_auth_params(ziti_context ztx);
 // a new external token arrived: completes the authentication that waited for the secondary one, if it is that one's
 void ztx_ext_token_received(ziti_context ztx, const zt_jwt *jwt);
 void ztx_dump_external_auth(ziti_context ztx, int (*printer)(void *arg, const char *fmt, ...), void *ctx);
