@@ -401,3 +401,27 @@ TEST_CASE("ext-oidc-refresh-request-identifies-the-client-in-the-form-only", "[o
 
     close_ext_client(loop, &clt);
 }
+
+TEST_CASE("ext-oidc-start-requests-the-configuration-again-after-a-failure", "[oidc]") {
+    // a configuration without endpoints is a failure
+    FakeTokenEndpoint server;
+    server.hang = false;
+    server.setBody("{}");
+
+    uv_loop_t *loop = uv_loop_new();
+    ext_oidc_client_t clt{};
+    ExtResult result;
+    init_ext_client(loop, &clt, "http://127.0.0.1:" + std::to_string(server.port), &result);
+
+    REQUIRE(ext_oidc_client_start(&clt, ext_result_cb) == 0);
+    run_until_calls(loop, result, 1);
+    REQUIRE(result.calls == 1);
+    CHECK(result.status == EXT_OIDC_CONFIG_FAILED);
+
+    REQUIRE(ext_oidc_client_start(&clt, ext_result_cb) == 0);
+    run_until_calls(loop, result, 2);
+    CHECK(result.calls == 2);
+    CHECK(result.status == EXT_OIDC_CONFIG_FAILED);
+
+    close_ext_client(loop, &clt);
+}

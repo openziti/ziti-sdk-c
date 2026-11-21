@@ -332,6 +332,9 @@ static void internal_config_cb(tlsuv_http_resp_t *r, const char * err, json_obje
         }
     } else {
         OIDC_LOG(ERROR, "OIDC provider configuration failed: %s", err);
+        // drop the empty object that marks a request in flight: the next ext_oidc_client_start() requests again
+        json_object_put(clt->config);
+        clt->config = NULL;
         if (clt->token_cb) {
             clt->token_cb(clt, EXT_OIDC_CONFIG_FAILED, err);
         }
@@ -1032,7 +1035,6 @@ static void ext_refresh_time_cb(uv_timer_t *t) {
     uv_unref((uv_handle_t *) t);
     ext_oidc_client_t *clt = t->data;
     OIDC_LOG(DEBUG, "refreshing OIDC token");
-    assert(clt->config);
 
     if (clt->refresh_req) {
         // as in oidc.c's oidc_client_refresh: a refresh_req still set when
@@ -1052,6 +1054,8 @@ static void ext_refresh_time_cb(uv_timer_t *t) {
         return;
     }
 
+    // tokens come from a login, and a login needs the configuration
+    assert(clt->config);
     struct json_object *token_ep = json_object_object_get(clt->config, TOKEN_EP);
     const char *token_url = json_object_get_string(token_ep);
 
