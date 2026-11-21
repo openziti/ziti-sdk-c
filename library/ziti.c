@@ -1078,6 +1078,7 @@ static void free_ztx(uv_handle_t *h) {
 
     model_map_clear(&ztx->ext_jwt_tokens, (_free_f)zt_jwt_free);
     model_map_clear(&ztx->ext_signers, (_free_f)free_ziti_jwt_signer_ptr);
+    ztx_free_ext_auth_params(ztx);
     model_map_clear(&ztx->ctrl_details, (_free_f) free_ziti_controller_detail_ptr);
     ziti_auth_query_free(ztx->auth_queries);
     ziti_posture_checks_free(ztx->posture_checks);
