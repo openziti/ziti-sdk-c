@@ -94,6 +94,9 @@ extern int ziti_ext_auth(ziti_context ztx, ziti_ext_auth_launch_cb launch_cb, vo
  *
  * Parameters are appended to the authorize URL when the SDK starts the
  * OIDC flow with an external JWT signer. Call before ziti_ext_auth().
+ * The parameters apply to the primary and the secondary external signer,
+ * including signers that the context sets up after this call. A call with
+ * no parameters removes them.
  *
  * @param ztx the handle to the Ziti Edge identity context
  * @param params array of name/value pairs (copied by the SDK)

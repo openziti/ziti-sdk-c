@@ -19,6 +19,7 @@
 #include <ziti/ziti_events.h>
 
 static void ext_token_cb(ext_oidc_client_t *oidc, enum ext_oidc_status status, const void *data);
+static void apply_auth_params(ziti_context ztx, ext_oidc_client_t *clt);
 
 static void ext_auth_send_event(ext_oidc_client_t *oidc) {
     ziti_context ztx = oidc->data;
@@ -71,6 +72,7 @@ int ztx_init_external_auth(ziti_context ztx, const ziti_jwt_signer *oidc_cfg, bo
                 return rc;
             }
             oidc->data = ztx;
+            apply_auth_params(ztx, oidc);
         }
 
         if (secondary) {
@@ -186,37 +188,56 @@ static void ext_token_cb(ext_oidc_client_t *oidc, enum ext_oidc_status status, c
     }
 }
 
+static void free_auth_params(tlsuv_http_pair **params, int *count) {
+    for (int i = 0; i < *count; i++) {
+        free((void *)(*params)[i].name);
+        free((void *)(*params)[i].value);
+    }
+    free(*params);
+    *params = NULL;
+    *count = 0;
+}
+
+// replace the authorize parameters of an OIDC client with a copy of the context parameters
+static void apply_auth_params(ziti_context ztx, ext_oidc_client_t *clt) {
+    if (clt == NULL) {
+        return;
+    }
+    free_auth_params(&clt->auth_params, &clt->auth_params_count);
+    if (ztx->ext_auth_params_count == 0) {
+        return;
+    }
+    clt->auth_params = calloc(ztx->ext_auth_params_count, sizeof(tlsuv_http_pair));
+    for (int i = 0; i < ztx->ext_auth_params_count; i++) {
+        clt->auth_params[i].name = strdup(ztx->ext_auth_params[i].name);
+        clt->auth_params[i].value = strdup(ztx->ext_auth_params[i].value);
+    }
+    clt->auth_params_count = ztx->ext_auth_params_count;
+}
+
+void ztx_free_ext_auth_params(ziti_context ztx) {
+    free_auth_params(&ztx->ext_auth_params, &ztx->ext_auth_params_count);
+}
+
 extern int ziti_ext_auth_set_params(ziti_context ztx, const ziti_auth_query_param *params, int count) {
-    if (ztx->ext_auth == NULL) {
-        return ZITI_INVALID_STATE;
-    }
+    ztx_free_ext_auth_params(ztx);
 
-    // free previous params
-    if (ztx->ext_auth->auth_params) {
-        for (int i = 0; i < ztx->ext_auth->auth_params_count; i++) {
-            free((void *)ztx->ext_auth->auth_params[i].name);
-            free((void *)ztx->ext_auth->auth_params[i].value);
+    if (params != NULL && count > 0) {
+        // copy params, skip entries with NULL name or value
+        ztx->ext_auth_params = calloc(count, sizeof(tlsuv_http_pair));
+        int ci = 0;
+        for (int i = 0; i < count; i++) {
+            if (params[i].name && params[i].value) {
+                ztx->ext_auth_params[ci].name = strdup(params[i].name);
+                ztx->ext_auth_params[ci].value = strdup(params[i].value);
+                ci++;
+            }
         }
-        free(ztx->ext_auth->auth_params);
-        ztx->ext_auth->auth_params = NULL;
-        ztx->ext_auth->auth_params_count = 0;
+        ztx->ext_auth_params_count = ci;
     }
 
-    if (params == NULL || count <= 0) {
-        return ZITI_OK;
-    }
-
-    // copy params, skip entries with NULL name or value
-    ztx->ext_auth->auth_params = calloc(count, sizeof(tlsuv_http_pair));
-    int ci = 0;
-    for (int i = 0; i < count; i++) {
-        if (params[i].name && params[i].value) {
-            ztx->ext_auth->auth_params[ci].name = strdup(params[i].name);
-            ztx->ext_auth->auth_params[ci].value = strdup(params[i].value);
-            ci++;
-        }
-    }
-    ztx->ext_auth->auth_params_count = ci;
+    apply_auth_params(ztx, ztx->ext_auth);
+    apply_auth_params(ztx, ztx->ext_auth2);
     return ZITI_OK;
 }
 
