@@ -992,6 +992,13 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
     if (http_resp->code == 200 && resp != NULL) {
         OIDC_LOG(DEBUG,  "token refresh success");
         clt->refresh_failures = 0;
+        // RFC 6749 section 6: the response may omit refresh_token, the one that was sent stays in use
+        if (json_object_is_type(resp, json_type_object) && json_object_object_get(resp, "refresh_token") == NULL) {
+            json_object *sent = json_object_object_get(clt->tokens, "refresh_token");
+            if (sent != NULL) {
+                json_object_object_add(resp, "refresh_token", json_object_get(sent));
+            }
+        }
         ext_oidc_client_set_tokens(clt, resp);
         return;
     }

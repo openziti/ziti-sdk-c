@@ -38,6 +38,7 @@
 
 #include "catch2_includes.hpp"
 
+#include "ext_oidc.h"
 #include "oidc.h"
 #include <tlsuv/tlsuv.h>
 
@@ -91,6 +92,11 @@ public:
     std::atomic<bool> hang{true};
     uint16_t port{};
 
+    void setBody(const std::string &body) {
+        std::lock_guard<std::mutex> lock(mu_);
+        body_ = body;
+    }
+
     FakeTokenEndpoint() {
 #if _WIN32
         WSADATA wsaData;
@@ -142,11 +148,11 @@ private:
                 hungFds_.push_back(client);
                 continue;
             }
-            std::thread(serveAlive, client).detach();
+            std::thread([this, client] { serveAlive(client); }).detach();
         }
     }
 
-    static void serveAlive(int client) {
+    void serveAlive(int client) {
         // Read headers, then drain exactly Content-Length bytes of body -
         // the refresh POST always carries a form-encoded body. Leaving any
         // of it unread in the socket's receive buffer and then closing is
@@ -175,8 +181,11 @@ private:
             bodySoFar += (size_t) n;
         }
 
-        std::string body = std::string("{\"access_token\":\"") + FAKE_ACCESS_TOKEN_2 +
-                            "\",\"refresh_token\":\"" + FAKE_REFRESH_TOKEN + "\"}";
+        std::string body;
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            body = body_;
+        }
         std::string resp = "HTTP/1.1 200 OK\r\n"
                             "Content-Type: application/json\r\n"
                             "Content-Length: " + std::to_string(body.size()) + "\r\n"
@@ -195,6 +204,8 @@ private:
     std::thread accept_thread_;
     std::mutex mu_;
     std::vector<int> hungFds_;
+    std::string body_ = std::string("{\"access_token\":\"") + FAKE_ACCESS_TOKEN_2 +
+                        "\",\"refresh_token\":\"" + FAKE_REFRESH_TOKEN + "\"}";
 };
 
 struct RefreshResult {
@@ -202,6 +213,56 @@ struct RefreshResult {
     enum oidc_status status{};
     std::string token;
 };
+
+struct ExtResult {
+    int calls = 0;
+    enum ext_oidc_status status{};
+    std::string token;
+};
+
+void ext_result_cb(ext_oidc_client_t *c, enum ext_oidc_status status, const void *data) {
+    auto *r = (ExtResult *) c->data;
+    r->calls++;
+    r->status = status;
+    if (status == EXT_OIDC_TOKEN_OK && data) r->token = (const char *) data;
+}
+
+void init_ext_client(uv_loop_t *loop, ext_oidc_client_t *clt, const std::string &provider_url, ExtResult *result) {
+    ziti_jwt_signer signer{};
+    signer.id = (char *) "test-signer";
+    signer.name = (char *) "test-signer";
+    signer.client_id = (char *) "test-client";
+    signer.provider_url = (char *) provider_url.c_str();
+    REQUIRE(ext_oidc_client_init(loop, clt, &signer) == 0);
+    clt->data = result;
+    clt->token_cb = ext_result_cb;
+}
+
+// the state of an external OIDC client after a login: the token endpoint is known and a refresh_token is in hand
+void set_logged_in(ext_oidc_client_t *clt, const FakeTokenEndpoint &server) {
+    std::string tokenUrl = "http://127.0.0.1:" + std::to_string(server.port) + "/token";
+    json_object *cfg = json_object_new_object();
+    json_object_object_add(cfg, "token_endpoint", json_object_new_string(tokenUrl.c_str()));
+    clt->config = cfg;
+    json_object *tokens = json_object_new_object();
+    json_object_object_add(tokens, "access_token", json_object_new_string(FAKE_ACCESS_TOKEN_1));
+    json_object_object_add(tokens, "refresh_token", json_object_new_string(FAKE_REFRESH_TOKEN));
+    clt->tokens = tokens;
+}
+
+void run_until_calls(uv_loop_t *loop, const ExtResult &result, int calls) {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (result.calls < calls && std::chrono::steady_clock::now() < deadline) {
+        uv_run(loop, UV_RUN_NOWAIT);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+}
+
+void close_ext_client(uv_loop_t *loop, ext_oidc_client_t *clt) {
+    ext_oidc_client_close(clt, [](ext_oidc_client_t *) {});
+    for (int i = 0; i < 10 && uv_run(loop, UV_RUN_ONCE) != 0; i++) {}
+    uv_loop_delete(loop);
+}
 
 } // namespace
 
@@ -276,4 +337,30 @@ TEST_CASE("oidc-refresh-recovers-after-silent-connection-death", "[oidc]") {
     // catches even on an otherwise fully-passing run.
     uv_loop_delete(loop);
     tls->free_ctx(tls);
+}
+
+TEST_CASE("ext-oidc-refresh-keeps-the-refresh-token-that-the-response-omits", "[oidc]") {
+    FakeTokenEndpoint server;
+    server.hang = false;
+    server.setBody(std::string("{\"access_token\":\"") + FAKE_ACCESS_TOKEN_2 + "\"}");
+
+    uv_loop_t *loop = uv_loop_new();
+    ext_oidc_client_t clt{};
+    ExtResult result;
+    init_ext_client(loop, &clt, "http://127.0.0.1:1/oidc", &result);
+    set_logged_in(&clt, server);
+
+    REQUIRE(ext_oidc_client_refresh(&clt) == 0);
+    run_until_calls(loop, result, 1);
+
+    REQUIRE(result.calls == 1);
+    CHECK(result.status == EXT_OIDC_TOKEN_OK);
+    CHECK(result.token == FAKE_ACCESS_TOKEN_2);
+    json_object *refresh_token = json_object_object_get((json_object *) clt.tokens, "refresh_token");
+    REQUIRE(refresh_token != nullptr);
+    CHECK(std::string(json_object_get_string(refresh_token)) == FAKE_REFRESH_TOKEN);
+    // the next refresh is scheduled
+    CHECK(uv_is_active((uv_handle_t *) clt.timer));
+
+    close_ext_client(loop, &clt);
 }
