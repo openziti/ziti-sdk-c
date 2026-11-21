@@ -992,6 +992,13 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
     if (http_resp->code == 200 && resp != NULL) {
         OIDC_LOG(DEBUG,  "token refresh success");
         clt->refresh_failures = 0;
+        // RFC 6749 section 6: the response may omit refresh_token, the one that was sent stays in use
+        if (json_object_is_type(resp, json_type_object) && json_object_object_get(resp, "refresh_token") == NULL) {
+            json_object *sent = json_object_object_get(clt->tokens, "refresh_token");
+            if (sent != NULL) {
+                json_object_object_add(resp, "refresh_token", json_object_get(sent));
+            }
+        }
         ext_oidc_client_set_tokens(clt, resp);
         return;
     }
@@ -1019,16 +1026,6 @@ static void refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_objec
     zt_jwt_drop(&clt->refresh_token);
     clt->refresh_token_exp = 0;
     clt->token_cb(clt, EXT_OIDC_RESTART, NULL);
-}
-
-static const char* get_basic_auth_header(const char *client_id) {
-    static char header[256];
-    char auth[128];
-    char auth64[sodium_base64_ENCODED_LEN(sizeof(auth), sodium_base64_VARIANT_URLSAFE)];
-    size_t auth_len = snprintf(auth, sizeof(auth), "%s:", client_id);
-    sodium_bin2base64(auth64, sizeof(auth64), (uint8_t*)auth, auth_len, sodium_base64_VARIANT_URLSAFE);
-    snprintf(header, sizeof(header), "Basic %s", auth64);
-    return header;
 }
 
 static void ext_refresh_time_cb(uv_timer_t *t) {
@@ -1060,8 +1057,6 @@ static void ext_refresh_time_cb(uv_timer_t *t) {
 
     tlsuv_http_set_url(&clt->http, token_url);
     tlsuv_http_req_t *req = ziti_json_request(&clt->http, "POST", NULL, refresh_cb, clt);
-    tlsuv_http_req_header(req, HTTP_AUTHORIZATION,
-                          get_basic_auth_header(clt->signer_cfg.client_id));
     const char *refresher = json_object_get_string(tok);
     tlsuv_http_req_form(req, 3, (tlsuv_http_pair[]) {
         {"client_id",     clt->signer_cfg.client_id},
