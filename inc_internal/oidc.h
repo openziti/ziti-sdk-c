@@ -83,6 +83,12 @@ struct oidc_client_s {
     model_list_iter cur_url;
     auth_state_cb auth_cb;
     void *auth_cb_ctx;
+    auth_next_url_cb next_url; // where to move when the controller cannot be reached, see oidc_failover()
+    void *next_url_ctx;
+    // what worked before the client moved (the json_object of its configuration, and its provider URL), until the
+    // configuration of the controller it moved to arrives: if nothing answers, the client goes back to it
+    void *failover_config;
+    cstr failover_url;
     auth_mfa_cb mfa_cb;
     struct timeval expiration;
     bool started;

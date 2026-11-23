@@ -104,6 +104,7 @@ static const struct timeval *oidc_auth_expiration(ziti_auth_method_t *self);
 static int oidc_auth_ext_jwt(ziti_auth_method_t *self, const char *token);
 static int oidc_auth_set_endpoint(ziti_auth_method_t *self, const api_path *api);
 static int oidc_auth_set_ca(ziti_auth_method_t *self, const char *ca);
+static int oidc_auth_set_failover(ziti_auth_method_t *self, auth_next_url_cb cb, void *ctx);
 static void oidc_auth_free(ziti_auth_method_t *self);
 static void oidc_auth_dump(ziti_auth_method_t *self, int (*printer)(void *arg, const char *fmt, ...), void *ctx);
 static void oidc_auth_close_cb(oidc_client_t *clt);
@@ -151,6 +152,8 @@ int oidc_client_init(uv_loop_t *loop, oidc_client_t *clt,
     clt->token_cb = NULL;
     clt->close_cb = NULL;
     clt->provider_url = cstr_init();
+    clt->failover_config = NULL;
+    clt->failover_url = cstr_init();
 
     if (tlsuv_http_init(loop, &clt->http, provider) != 0) {
         OIDC_LOG(ERROR, "ziti_jwt_signer.provider_url[%s] is invalid", provider);
@@ -380,6 +383,64 @@ static void reset_auth_retry(oidc_client_t *clt) {
     clt->auth_retry_until = 0;
 }
 
+// the configuration of the controller the client moved to arrived (or the client is going away, or the context
+// points it somewhere itself): what worked before is not needed any more
+static void failover_forget(oidc_client_t *clt) {
+    json_object_put((json_object *) clt->failover_config);
+    clt->failover_config = NULL;
+    cstr_clear(&clt->failover_url);
+}
+
+// Moves the client to the controller the failover selector offers, when it offers one. The configuration of the new
+// controller is fetched, and what was going on (a refresh with the refresh token the client has, or a login when it
+// has none) goes on there. The configuration and the provider URL that worked are kept until the new one arrives, so
+// that the client can go back to them when no controller answers (see oidc_auth_config_cb). False, and nothing
+// changed, when there is nowhere to go: no selector, nothing offered, the client's own controller offered, or the
+// client is closing or in the middle of a request.
+static bool oidc_failover(oidc_client_t *clt) {
+    if (clt->next_url == NULL || clt->close_cb != NULL || clt->request != NULL ||
+        clt->timer == NULL || uv_is_closing((const uv_handle_t *) clt->timer)) {
+        return false;
+    }
+
+    const char *next = clt->next_url(clt->next_url_ctx, cstr_str(&clt->provider_url));
+    if (next == NULL) {
+        return false;
+    }
+
+    cstr url = internal_oidc_path(next, "/oidc");
+    bool moved = false;
+    if (!cstr_equals(&clt->provider_url, cstr_str(&url))) {
+        cstr previous = cstr_from(cstr_str(&clt->provider_url));
+        // configure() drops the configuration: keep one, it is what worked
+        json_object *previous_config = json_object_get((json_object *) clt->config);
+        const bool need_refresh = clt->need_refresh;
+
+        if (oidc_client_set_cfg(clt, cstr_str(&url)) == 0) {
+            clt->need_refresh = true;
+            if (oidc_client_configure(clt, oidc_auth_config_cb) == 0) {
+                // a second move before the first one got its configuration keeps what worked before both
+                if (clt->failover_config == NULL && previous_config != NULL) {
+                    clt->failover_config = previous_config;
+                    previous_config = NULL;
+                    cstr_assign(&clt->failover_url, cstr_str(&previous));
+                }
+                reset_auth_retry(clt);
+                clt->refresh_failures = 0;
+                OIDC_LOG(INFO, "switching OIDC provider to [%s]", cstr_str(&url));
+                moved = true;
+            } else {
+                clt->need_refresh = need_refresh;
+                oidc_client_set_cfg(clt, cstr_str(&previous));
+            }
+        }
+        json_object_put(previous_config);
+        cstr_drop(&previous);
+    }
+    cstr_drop(&url);
+    return moved;
+}
+
 static void auth_retry_cb(uv_timer_t *t) {
     uv_unref((uv_handle_t *) t);
     oidc_client_t *clt = t->data;
@@ -415,6 +476,9 @@ static bool schedule_auth_retry(oidc_client_t *clt, tlsuv_http_resp_t *resp, jso
     }
 
     if (transport) {
+        // another controller may be reachable: the login goes on there
+        if (oidc_failover(clt)) return true;
+
         // the time of an outage does not count against the window of the failures that are not transport errors: the
         // first of those after it is retried like the first one before it
         clt->auth_retry_until = 0;
@@ -884,6 +948,8 @@ int oidc_client_close(oidc_client_t *clt, oidc_close_cb cb) {
     uv_close((uv_handle_t *) clt->timer, (uv_close_cb) free);
     clt->timer = NULL;
     cstr_drop(&clt->provider_url);
+    failover_forget(clt);
+    cstr_drop(&clt->failover_url);
     model_map_clear(&clt->ext_tokens, (_free_f)zt_jwt_free);
     zt_jwt_drop(&clt->current);
     zt_jwt_drop(&clt->refresh_token);
@@ -952,6 +1018,11 @@ static void oidc_refresh_cb(tlsuv_http_resp_t *http_resp, const char *err, json_
 
     if (http_resp->code == UV_ECANCELED) {
         OIDC_LOG(DEBUG, "OIDC token refresh was canceled");
+        return;
+    }
+
+    // the controller cannot be reached: another one may be, and takes the same refresh token
+    if (http_resp->code < 0 && oidc_failover(clt)) {
         return;
     }
 
@@ -1088,6 +1159,7 @@ ziti_auth_method_t *new_oidc_auth(uv_loop_t *l, const api_path *api, const char 
         .kind = OIDC,
         .start = oidc_auth_start,
         .set_endpoint = oidc_auth_set_endpoint,
+        .set_failover = oidc_auth_set_failover,
         .set_ca = oidc_auth_set_ca,
         .stop = oidc_auth_stop,
         .force_refresh = oidc_auth_refresh,
@@ -1145,9 +1217,18 @@ static int oidc_auth_set_ca(ziti_auth_method_t *self, const char *ca) {
     return clt->tls->set_ca_bundle(clt->tls, ca, strlen(ca));
 }
 
+static int oidc_auth_set_failover(ziti_auth_method_t *self, auth_next_url_cb cb, void *ctx) {
+    oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
+    clt->next_url = cb;
+    clt->next_url_ctx = ctx;
+    return 0;
+}
+
 static int oidc_auth_set_endpoint(ziti_auth_method_t *self, const api_path *api) {
     oidc_client_t *clt = OIDC_AUTH_FROM_API(self);
     reset_auth_retry(clt);
+    // the context says where the client goes: a move of its own in progress is over
+    failover_forget(clt);
 
     model_list_clear(&clt->urls, free);
     const char *u;
@@ -1370,6 +1451,7 @@ static void oidc_auth_token_cb(oidc_client_t *clt, enum oidc_status status, cons
 static void oidc_auth_config_cb(oidc_client_t *clt, int status, const char *err) {
     ZITI_LOG(DEBUG, "oidc config callback: %d/%s", status, err);
     if (status == 0) {
+        failover_forget(clt);
         if (clt->started) {
             oidc_client_refresh(clt);
         } else {
@@ -1382,6 +1464,37 @@ static void oidc_auth_config_cb(oidc_client_t *clt, int status, const char *err)
     if (status == UV_ECANCELED) {
         // oidc client was canceled
         OIDC_LOG(DEBUG, "oidc client was canceled");
+        return;
+    }
+
+    // this controller cannot give its configuration: another one may, before the URLs of the one it advertises
+    // are tried, and before the client gives up. A controller that answered with something the client cannot use
+    // (UV_EINVAL) is not one that cannot be reached: the selector takes what it is asked about out of the rotation
+    // of the REST requests, so it is not asked.
+    if (status != UV_EINVAL && oidc_failover(clt)) {
+        return;
+    }
+
+    // The client moved, and nothing answers. Giving up here would refuse every dial of a context whose access token
+    // is still good, where before the move the client just retried: go back to what worked, and retry the way a failed
+    // refresh does. (A client that has not had a configuration yet, at startup, gives up as it always did.)
+    if (clt->failover_config != NULL) {
+        json_object_put((json_object *) clt->config);
+        clt->config = clt->failover_config;
+        clt->failover_config = NULL;
+        oidc_client_set_cfg(clt, cstr_str(&clt->failover_url));
+        cstr_clear(&clt->failover_url);
+        clt->need_refresh = false;
+
+        clt->refresh_failures++;
+        uint64_t delay = oidc_refresh_delay(clt);
+        if (delay == 0) {
+            // the access token is gone: log in again (or refresh, and be told to) after a short wait
+            delay = AUTH_BACKOFF_BASE;
+        }
+        OIDC_LOG(WARN, "no controller could be reached (%d/%s), retrying provider[%s] in %" PRIu64 ".%03" PRIu64 " s",
+                 status, err, cstr_str(&clt->provider_url), delay / 1000, delay % 1000);
+        uv_timer_start(clt->timer, refresh_time_cb, delay, 0);
         return;
     }
 

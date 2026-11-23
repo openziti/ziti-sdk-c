@@ -189,11 +189,50 @@ public:
         accept_thread_ = std::thread([this] { acceptLoop(); });
     }
 
-    ~FakeOidcEndpoint() {
+    // the body of the last request to the token endpoint: it says which grant the client asked for
+    std::string lastTokenBody() const {
+        std::lock_guard<std::mutex> lock(mu_);
+        return last_token_body_;
+    }
+
+    // Stop answering. The port is closed, so a new connection is refused: a port that is bound but does not
+    // listen makes connections hang on macOS, which is not the failure this stands for.
+    void goDark() {
+        if (listen_fd_ == INVALID_SOCK) return;
         stop_ = true;
         shutdown(listen_fd_, SHUT_BOTH);
         CLOSESOCK(listen_fd_);
         if (accept_thread_.joinable()) accept_thread_.join();
+        listen_fd_ = INVALID_SOCK;
+    }
+
+    // Listen again on the port it had, after goDark().
+    void comeBack() {
+        if (listen_fd_ != INVALID_SOCK) return;
+        listen_fd_ = (int) ::socket(AF_INET, SOCK_STREAM, 0);
+        int one = 1;
+        setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, (const char *) &one, sizeof(one));
+
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(port);
+        REQUIRE(::bind(listen_fd_, (sockaddr *) &addr, sizeof(addr)) == 0);
+
+        listen(listen_fd_, 16);
+        stop_ = false;
+        accept_thread_ = std::thread([this] { acceptLoop(); });
+    }
+
+    // From here on the request for the OIDC configuration is answered with this status and nothing else: a
+    // controller that answers, but not with what the client needs (the OIDC API is not where it looks).
+    void failDiscovery(const std::string &statusLine) {
+        std::lock_guard<std::mutex> lock(mu_);
+        discovery_status_ = statusLine;
+    }
+
+    ~FakeOidcEndpoint() {
+        goDark();
         for (auto &t: workers_) {
             if (t.joinable()) t.join();
         }
@@ -243,12 +282,12 @@ private:
         if (clPos != std::string::npos && clPos < headerEnd) {
             contentLength = (size_t) std::strtoul(received.c_str() + clPos + strlen("Content-Length:"), nullptr, 10);
         }
-        size_t bodySoFar = received.size() - (headerEnd + 4);
-        while (bodySoFar < contentLength) {
+        while (received.size() - (headerEnd + 4) < contentLength) {
             ssize_t n = recv(client, buf, sizeof(buf), 0);
             if (n <= 0) { CLOSESOCK(client); return; }
-            bodySoFar += (size_t) n;
+            received.append(buf, (size_t) n);
         }
+        const std::string body = received.substr(headerEnd + 4, contentLength);
 
         // route on the exact request path: substring matching is a trap here,
         // since the legs share prefixes with each other
@@ -259,7 +298,7 @@ private:
                                  ? std::string()
                                  : requestLine.substr(targetStart + 1, targetEnd - targetStart - 1);
         std::string path = target.substr(0, target.find('?'));
-        std::string resp = respondTo(path);
+        std::string resp = respondTo(path, body);
         send(client, resp.data(), resp.size(), 0);
         // shutdown the write side before closing so the client is guaranteed to
         // see the response before the FIN
@@ -267,7 +306,7 @@ private:
         CLOSESOCK(client);
     }
 
-    std::string respondTo(const std::string &path) {
+    std::string respondTo(const std::string &path, const std::string &body) {
         if (path == AUTHORIZE_PATH) {
             authorize_count++;
             ScriptedResp scripted;
@@ -318,13 +357,20 @@ private:
             {
                 std::lock_guard<std::mutex> lock(mu_);
                 access_token = access_token_;
+                last_token_body_ = body;
             }
-            std::string body = "{\"access_token\":\"" + access_token +
-                               "\",\"refresh_token\":\"" + FAKE_JWT + "\"}";
-            return response("200 OK", {{"Content-Type", "application/json"}}, body);
+            std::string tokens = "{\"access_token\":\"" + access_token +
+                                 "\",\"refresh_token\":\"" + FAKE_JWT + "\"}";
+            return response("200 OK", {{"Content-Type", "application/json"}}, tokens);
         }
 
         if (path == DISCOVERY_PATH) {
+            {
+                std::lock_guard<std::mutex> lock(mu_);
+                if (!discovery_status_.empty()) {
+                    return response(discovery_status_);
+                }
+            }
             std::string body = "{\"authorization_endpoint\":\"" + url(AUTHORIZE_PATH) +
                                "\",\"token_endpoint\":\"" + url(TOKEN_PATH) + "\"}";
             return response("200 OK", {{"Content-Type", "application/json"}}, body);
@@ -352,6 +398,8 @@ private:
     std::vector<std::thread> workers_;
     mutable std::mutex mu_;
     std::string access_token_ = FAKE_JWT;
+    std::string last_token_body_;
+    std::string discovery_status_;
     std::deque<ScriptedResp> authorize_script_;
     std::deque<ScriptedResp> login_script_;
     std::vector<std::chrono::steady_clock::time_point> authorize_at_;
@@ -439,6 +487,67 @@ struct TestClient {
 
     void pumpFor(std::chrono::milliseconds duration) {
         pumpUntil([] { return false; }, duration);
+    }
+};
+
+// What the context offers when the client cannot reach its controller: controllers (origins) one at a time,
+// then nothing. `asked` records the provider URL the client was on every time it asked.
+struct Offers {
+    std::vector<std::string> list;
+    size_t next = 0;
+    std::vector<std::string> asked;
+};
+
+const char *offer_next(void *ctx, const char *current) {
+    auto *offers = static_cast<Offers *>(ctx);
+    offers->asked.emplace_back(current);
+    return offers->next < offers->list.size() ? offers->list[offers->next++].c_str() : nullptr;
+}
+
+// The real auth method against a fake controller, with a failover selector, logging in with an ext JWT.
+struct FailoverClient {
+    uv_loop_t *loop{};
+    zt_x509 creds{};
+    api_path api{};
+    ziti_auth_method_t *auth{};
+    std::vector<ziti_auth_state> states; // every state the auth method reported
+
+    FailoverClient(const FakeOidcEndpoint &first, Offers &offers) {
+        std::string json = R"({"path": "/oidc", "apiBaseUrls": [")" + first.url("") + R"("]})";
+        REQUIRE(parse_api_path(&api, json.c_str(), json.size()) >= 0);
+
+        loop = uv_loop_new();
+        auth = new_oidc_auth(loop, &api, FAKE_CERT_PEM, &creds);
+        REQUIRE(auth != nullptr);
+        REQUIRE(auth->set_ext_jwt(auth, FAKE_JWT) == 0);
+        REQUIRE(auth->set_failover(auth, offer_next, &offers) == 0);
+    }
+
+    ~FailoverClient() {
+        auth->free(auth);
+        uv_run(loop, UV_RUN_DEFAULT);
+        uv_loop_delete(loop);
+        free_api_path(&api);
+    }
+
+    void start() {
+        REQUIRE(auth->start(auth, [](void *ctx, ziti_auth_state state, const void *) {
+            static_cast<FailoverClient *>(ctx)->states.push_back(state);
+        }, this) == 0);
+    }
+
+    oidc_client_t *client() {
+        return reinterpret_cast<oidc_client_t *>(reinterpret_cast<char *>(auth) - offsetof(oidc_client_t, api));
+    }
+
+    template<typename Pred>
+    void run_until(Pred pred, std::chrono::milliseconds timeout = std::chrono::seconds(20)) {
+        // generous: on Windows a refused loopback connection takes about two seconds, and a case may need two
+        auto deadline = std::chrono::steady_clock::now() + timeout;
+        while (!pred() && std::chrono::steady_clock::now() < deadline) {
+            uv_run(loop, UV_RUN_NOWAIT);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
     }
 };
 
@@ -775,4 +884,191 @@ TEST_CASE("oidc-auth-method-expires-with-its-access-token", "[oidc]") {
     uv_run(loop, UV_RUN_DEFAULT);
     uv_loop_delete(loop);
     free_api_path(&api);
+}
+
+// The identity is logged in at one controller of a cluster, and that controller goes away: the renewal moves to
+// the next controller the context offers, with the refresh token it has, and the context never hears of it.
+TEST_CASE("oidc-refresh-fails-over-to-another-controller", "[oidc]") {
+    FakeOidcEndpoint a, b;
+    Offers offers;
+    offers.list = {b.url("")};
+    FailoverClient c(a, offers);
+
+    c.start();
+    c.run_until([&] { return c.states.size() == 1; });
+    REQUIRE(c.states.size() == 1);
+
+    a.goDark();
+    REQUIRE(c.auth->force_refresh(c.auth) == 0);
+    c.run_until([&] { return c.states.size() == 2; });
+
+    REQUIRE(c.states.size() == 2);
+    CHECK(c.states[0] == ZitiAuthStateFullyAuthenticated);
+    CHECK(c.states[1] == ZitiAuthStateFullyAuthenticated);
+
+    REQUIRE(offers.asked.size() == 1);
+    CHECK(offers.asked[0].find(std::to_string(a.port)) != std::string::npos);
+
+    CHECK(b.token_count >= 1);
+    CHECK(b.lastTokenBody().find("grant_type=refresh_token") != std::string::npos);
+    CHECK(b.authorize_count == 0);
+    CHECK(b.login_count == 0);
+}
+
+// Nowhere to go (the selector has nothing, or offers the controller the client is on): the client stays where it
+// is and retries as it always did, it does not loop and it does not report a failure.
+TEST_CASE("oidc-failover-without-a-usable-offer-keeps-the-backoff", "[oidc]") {
+    const bool offer_its_own = GENERATE(false, true);
+
+    FakeOidcEndpoint a;
+    Offers offers;
+    if (offer_its_own) {
+        offers.list = {a.url("")};
+    }
+    FailoverClient c(a, offers);
+
+    c.start();
+    c.run_until([&] { return c.states.size() == 1; });
+    REQUIRE(c.states.size() == 1);
+
+    a.goDark();
+    REQUIRE(c.auth->force_refresh(c.auth) == 0);
+    c.run_until([&] { return offers.asked.size() == 1; });
+    c.run_until([] { return false; }, std::chrono::milliseconds(500));
+
+    CHECK(offers.asked.size() == 1);
+    CHECK(c.states.size() == 1);
+    CHECK(c.client()->refresh_failures == 1);
+    CHECK(std::string(cstr_str(&c.client()->provider_url)) == a.url("/oidc"));
+}
+
+// Without a refresh token the client has to log in again, and the controller it logs in at is gone: the login
+// moves to the next controller, not into the retry loop of the one that does not answer.
+TEST_CASE("oidc-login-fails-over-when-the-controller-goes-away", "[oidc]") {
+    FakeOidcEndpoint a, b;
+    Offers offers;
+    offers.list = {b.url("")};
+    FailoverClient c(a, offers);
+
+    c.start();
+    c.run_until([&] { return c.states.size() == 1; });
+    REQUIRE(c.states.size() == 1);
+
+    zt_jwt_drop(&c.client()->refresh_token);
+    a.goDark();
+    REQUIRE(c.auth->force_refresh(c.auth) == 0);
+    c.run_until([&] { return c.states.size() == 2; });
+
+    REQUIRE(c.states.size() == 2);
+    CHECK(c.states[1] == ZitiAuthStateFullyAuthenticated);
+    REQUIRE(offers.asked.size() == 1);
+    CHECK(offers.asked[0].find(std::to_string(a.port)) != std::string::npos);
+    CHECK(b.login_count >= 1);
+    CHECK(b.lastTokenBody().find("grant_type=authorization_code") != std::string::npos);
+}
+
+// The controller the client is sent to cannot give its configuration either: that is another controller that
+// cannot be reached, so the client moves on (and when nothing is left it goes back, see the next cases).
+TEST_CASE("oidc-failover-moves-on-when-the-next-controller-is-unreachable", "[oidc]") {
+    FakeOidcEndpoint a, b, third;
+    Offers offers;
+    offers.list = {b.url(""), third.url("")};
+    FailoverClient c(a, offers);
+
+    c.start();
+    c.run_until([&] { return c.states.size() == 1; });
+    REQUIRE(c.states.size() == 1);
+
+    a.goDark();
+    b.goDark();
+    REQUIRE(c.auth->force_refresh(c.auth) == 0);
+    c.run_until([&] { return c.states.size() == 2; });
+
+    REQUIRE(c.states.size() == 2);
+    CHECK(c.states[1] == ZitiAuthStateFullyAuthenticated);
+    REQUIRE(offers.asked.size() == 2);
+    CHECK(offers.asked[0].find(std::to_string(a.port)) != std::string::npos);
+    CHECK(offers.asked[1].find(std::to_string(b.port)) != std::string::npos);
+    CHECK(third.token_count >= 1);
+    CHECK(third.lastTokenBody().find("grant_type=refresh_token") != std::string::npos);
+}
+
+// The client is closed while the configuration of the controller it was sent to is being fetched. Nothing to
+// assert but that it ends cleanly: leak checking (ASAN/LSan on Linux) is the judge.
+TEST_CASE("oidc-closing-while-failing-over-is-clean", "[oidc]") {
+    FakeOidcEndpoint a, b;
+    Offers offers;
+    offers.list = {b.url("")};
+    FailoverClient c(a, offers);
+
+    c.start();
+    c.run_until([&] { return c.states.size() == 1; });
+    REQUIRE(c.states.size() == 1);
+
+    a.goDark();
+    REQUIRE(c.auth->force_refresh(c.auth) == 0);
+    c.run_until([&] { return offers.asked.size() == 1; });
+
+    CHECK(offers.asked.size() == 1);
+}
+
+// Every controller the client can be sent to is gone, the one it was on too. The client does not give up (that
+// would refuse every dial while the access token is still good): it goes back to where it worked and retries as a
+// failed refresh does, and it works there as soon as that controller is back.
+TEST_CASE("oidc-failover-with-nowhere-left-puts-the-client-back-where-it-was", "[oidc]") {
+    FakeOidcEndpoint a, b;
+    Offers offers;
+    offers.list = {b.url("")};
+    FailoverClient c(a, offers);
+
+    c.start();
+    c.run_until([&] { return c.states.size() == 1; });
+    REQUIRE(c.states.size() == 1);
+
+    a.goDark();
+    b.goDark();
+    REQUIRE(c.auth->force_refresh(c.auth) == 0);
+    // a refused the refresh, b its configuration, and nothing else is offered
+    c.run_until([&] { return offers.asked.size() == 2; });
+    c.run_until([] { return false; }, std::chrono::milliseconds(500));
+
+    REQUIRE(offers.asked.size() == 2);
+    CHECK(c.states.size() == 1);
+    CHECK(std::string(cstr_str(&c.client()->provider_url)) == a.url("/oidc"));
+    CHECK(c.client()->config != nullptr);
+    CHECK(uv_is_active((const uv_handle_t *) c.client()->timer));
+
+    // the controller it was on is back: the next refresh works there, as if nothing had happened
+    a.comeBack();
+    REQUIRE(c.auth->force_refresh(c.auth) == 0);
+    c.run_until([&] { return c.states.size() == 2; });
+
+    REQUIRE(c.states.size() == 2);
+    CHECK(c.states[1] == ZitiAuthStateFullyAuthenticated);
+    CHECK(a.lastTokenBody().find("grant_type=refresh_token") != std::string::npos);
+}
+
+// A controller that answers, but not with an OIDC configuration (its OIDC API is not where the client looks), is not
+// one that cannot be reached: the selector is not asked about it, which would take it out of the rotation of the REST
+// requests, and the client goes back to where it worked.
+TEST_CASE("oidc-failover-does-not-give-up-on-a-controller-that-answered", "[oidc]") {
+    FakeOidcEndpoint a, b, third;
+    b.failDiscovery("404 Not Found");
+    Offers offers;
+    offers.list = {b.url(""), third.url("")};
+    FailoverClient c(a, offers);
+
+    c.start();
+    c.run_until([&] { return c.states.size() == 1; });
+    REQUIRE(c.states.size() == 1);
+
+    a.goDark();
+    REQUIRE(c.auth->force_refresh(c.auth) == 0);
+    c.run_until([&] { return offers.asked.size() >= 1; });
+    c.run_until([] { return false; }, std::chrono::milliseconds(500));
+
+    CHECK(offers.asked.size() == 1);
+    CHECK(c.states.size() == 1);
+    CHECK(std::string(cstr_str(&c.client()->provider_url)) == a.url("/oidc"));
+    CHECK(third.token_count == 0);
 }
