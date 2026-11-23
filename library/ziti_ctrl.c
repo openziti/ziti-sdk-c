@@ -263,31 +263,38 @@ static cstr endpoint_key(const char *url) {
 
 static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp) {
     ziti_controller *ctrl = resp->ctrl;
-    if (resp->new_address && !cstr_equals(&ctrl->url, resp->new_address)) {
+
+    // The address is the one the controller is configured with, "https://host:443" for one on the default port,
+    // and is compared as the origin that it is: it is a move only if it is another endpoint than the current one.
+    cstr new_key = resp->new_address ? endpoint_key(resp->new_address) : cstr_init();
+    cstr old_key = resp->new_address ? endpoint_key(cstr_str(&ctrl->url)) : cstr_init();
+    if (resp->new_address && !cstr_equals(&old_key, cstr_str(&new_key))) {
         CTRL_LOG(INFO, "controller supplied new address[%s]", resp->new_address);
 
-        cstr old_key = endpoint_key(cstr_str(&ctrl->url));
         ziti_controller_detail *detail = model_map_remove(&ctrl->endpoints, cstr_str(&old_key));
-        cstr_drop(&old_key);
-
-        cstr_assign(&ctrl->url, resp->new_address);
-        if(detail == NULL) {
-            detail = alloc_ziti_controller_detail();
+        if (model_map_get(&ctrl->endpoints, cstr_str(&new_key)) != NULL) {
+            // the list of controllers has it already, with its id and its state
+            if (detail != NULL) {
+                free_ziti_controller_detail_ptr(detail);
+            }
+        } else {
+            if (detail == NULL) {
+                detail = alloc_ziti_controller_detail();
+            }
+            FREE(detail->name);
+            detail->name = strdup(resp->new_address);
+            model_map_set(&ctrl->endpoints, cstr_str(&new_key), detail);
         }
-        FREE(detail->name);
-        detail->name = resp->new_address;
-        resp->new_address = NULL;
 
-        cstr key = endpoint_key(detail->name);
-        model_map_set(&ctrl->endpoints, cstr_str(&key), detail);
-        cstr_drop(&key);
-
+        cstr_assign(&ctrl->url, cstr_str(&new_key));
         tlsuv_http_set_url(ctrl->client, cstr_str(&ctrl->url));
 
-        if (resp->ctrl->redirect_cb) {
-            ctrl->redirect_cb(cstr_str(&ctrl->url), ctrl->cb_ctx);
+        if (ctrl->redirect_cb) {
+            ctrl->redirect_cb(resp->new_address, ctrl->cb_ctx);
         }
     }
+    cstr_drop(&new_key);
+    cstr_drop(&old_key);
 
     if (resp->resp_cb) {
         resp->resp_cb(s, e, resp->ctx);
@@ -327,7 +334,11 @@ void ziti_ctrl_set_endpoints(ziti_controller *ctrl, ziti_controller_detail_array
 
         if (addr != NULL) {
             cstr key = endpoint_key(addr->url);
-            model_map_set(&new_eps, cstr_str(&key), d);
+            ziti_controller_detail *same = model_map_set(&new_eps, cstr_str(&key), d);
+            if (same != NULL) { // listed at one origin: one endpoint, the later one
+                CTRL_LOG(DEBUG, "two controllers are listed at %s, using the later one", cstr_str(&key));
+                free_ziti_controller_detail_ptr(same);
+            }
 
             ziti_controller_detail *old_detail = model_map_get(&ctrl->endpoints, cstr_str(&key));
             cstr_drop(&key);

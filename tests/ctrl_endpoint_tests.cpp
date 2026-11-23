@@ -406,6 +406,32 @@ TEST_CASE("urls-of-one-controller-are-one-endpoint", "[controller]") {
     tls->free_ctx(tls);
 }
 
+// Two controllers listed at one origin (the host serves both by path) are one endpoint, as two URLs of one
+// controller are. The one that is replaced has to be freed: LeakSanitizer reports it on Linux.
+TEST_CASE("listed-controllers-of-one-origin-are-one-endpoint", "[controller]") {
+    uv_loop_t *loop = test_loop();
+    simulate_uptime(loop, 100 * 1000);
+
+    tls_context *tls = default_tls_context();
+
+    model_list urls = {};
+    model_list_append(&urls, (void *) "https://203.0.113.9:1280");
+
+    ziti_controller ctrl{};
+    REQUIRE(ziti_ctrl_init(loop, &ctrl, &urls, tls) == ZITI_OK);
+
+    list_endpoints(ctrl, {"https://203.0.113.1:1280/a/edge/client/v1", "https://203.0.113.1:1280/b/edge/client/v1"});
+
+    CHECK(model_map_size(&ctrl.endpoints) == 1);
+    auto kept = static_cast<ziti_controller_detail *>(model_map_get(&ctrl.endpoints, "https://203.0.113.1:1280"));
+    REQUIRE(kept != nullptr);
+    CHECK(std::string("ctrl1") == kept->id); // the later of the two, as when two URLs of an identity are read
+
+    model_list_clear(&urls, nullptr);
+    ziti_ctrl_close(&ctrl);
+    tls->free_ctx(tls);
+}
+
 TEST_CASE("controller-init-rejects-empty-endpoint-list", "[controller]") {
     uv_loop_t *loop = test_loop();
     simulate_uptime(loop, 5 * 1000);
