@@ -69,6 +69,7 @@ static void ziti_init_async(ziti_context ztx, void *data);
 
 static void ziti_re_auth(ziti_context ztx);
 static void pre_auth_retry(void *data);
+static void ztx_set_auth_failover(ziti_context ztx);
 
 static void ztx_prepare(uv_prepare_t *prep);
 static void grim_reaper(ziti_context ztx);
@@ -552,6 +553,8 @@ static void ztx_set_fully_authenticated(ziti_context ztx, const char *session_to
         if (ziti_ctrl_has_capability(&ztx->ctrl, ziti_ctrl_cap_HA_CONTROLLER)) {
             ziti_ctrl_list_controllers(ctrl, ctrl_list_cb, ztx);
         }
+        // the controller may have been upgraded to HA since the client was created
+        ztx_set_auth_failover(ztx);
 
         const char* er_name;
         ziti_channel_t *ch;
@@ -2645,6 +2648,32 @@ static void pre_auth_retry(void *data) {
     }
 }
 
+// where the OIDC client goes when it cannot reach its controller: another controller of the cluster that serves OIDC,
+// if there is one
+static const char *ztx_next_auth_url(void *ctx, const char *current) {
+    ziti_context ztx = ctx;
+    ziti_controller *ctrl = ztx_get_controller(ztx);
+
+    // A lone controller is the one the client is on, and its address cannot say so when the controller names its OIDC
+    // API at another origin: there is nowhere to go, and the client keeps retrying where it is.
+    if (model_map_size(&ctrl->endpoints) < 2) {
+        return NULL;
+    }
+    return ziti_ctrl_next_ep(ctrl, current, ZITI_CTRL_API_OIDC);
+}
+
+// Only the client of a controller that advertises HA has other controllers to go to. Done when the client is created and
+// after each login, so a controller that is upgraded to HA while the context runs gets it too.
+static void ztx_set_auth_failover(ziti_context ztx) {
+    if (ztx->auth_method == NULL || ztx->auth_method->set_failover == NULL) {
+        return;
+    }
+    if (!ziti_ctrl_has_capability(&ztx->ctrl, ziti_ctrl_cap_HA_CONTROLLER)) {
+        return;
+    }
+    ztx->auth_method->set_failover(ztx->auth_method, ztx_next_auth_url, ztx);
+}
+
 static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_error *err, void *ctx) {
     ziti_context ztx = ctx;
     ztx->pre_auth_pending = false;
@@ -2694,6 +2723,7 @@ static void version_pre_auth_cb(const ziti_ctrl_version *version, const ziti_err
                 update_ctrl_status(ztx, ZITI_INVALID_CONFIG, ziti_errorstr(ZITI_INVALID_CONFIG));
                 return;
             }
+            ztx_set_auth_failover(ztx);
         } else {
             ztx->auth_method = new_legacy_auth(ztx->loop, ziti_get_controller(ztx), ztx->tlsCtx,
                                                ztx->id_creds.key != NULL);

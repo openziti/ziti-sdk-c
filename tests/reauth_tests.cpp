@@ -35,6 +35,9 @@ extern "C" void ziti_services_refresh(ziti_context ztx, bool now);
 extern "C" int ztx_test_auth_retries(ziti_context ztx);  // ztx_test_helper.c
 extern "C" void ztx_test_auth_impossible(ziti_context ztx, int err);  // ztx_test_helper.c
 extern "C" bool ztx_test_auth_retry_pending(ziti_context ztx);  // ztx_test_helper.c
+extern "C" int ztx_test_oidc_failover(ziti_context ztx);  // ztx_test_helper.c
+extern "C" void ztx_test_set_ctrl_ha(ziti_context ztx, bool ha);  // ztx_test_helper.c
+extern "C" void ztx_test_oidc_token_received(ziti_context ztx);  // ztx_test_helper.c
 
 namespace {
     bool ends_with(const std::string &s, const std::string &suffix) {
@@ -44,9 +47,10 @@ namespace {
     class FakeOidcController {
     public:
         // the OIDC endpoint is declared first: the version of the controller names its address. `ctrl_up` false: the
-        // controller refuses connections until open_ctrl()
-        explicit FakeOidcController(bool ctrl_up = true)
-                : oidc_([this](const std::string &, const std::string &path) { return oidc(path); }, false),
+        // controller refuses connections until open_ctrl(). `ha`: the controller advertises HA_CONTROLLER
+        explicit FakeOidcController(bool ctrl_up = true, bool ha = false)
+                : ha_(ha),
+                  oidc_([this](const std::string &, const std::string &path) { return oidc(path); }, false),
                   ctrl_([this](const std::string &, const std::string &path) { return ctrl(path); }, ctrl_up) {}
 
         std::string url() const { return ctrl_.url(); }
@@ -75,12 +79,17 @@ namespace {
         }
 
     private:
+        std::string capabilities() const {
+            return ha_ ? R"("OIDC_AUTH","HA_CONTROLLER")" : R"("OIDC_AUTH")";
+        }
+
         std::string ctrl(const std::string &path) {
             if (ends_with(path, "/version")) {
                 return json_response(
                         "200 OK",
                         R"({"data":{"version":"v0.0.0-fake","revision":"fake","buildDate":"never",)"
-                        R"("runtimeVersion":"fake","capabilities":["OIDC_AUTH"],"buildFlags":[],"apiVersions":{)"
+                        R"("runtimeVersion":"fake","capabilities":[)" + capabilities() +
+                        R"(],"buildFlags":[],"apiVersions":{)"
                         R"("edge":{"v1":{"path":"/edge/client/v1"}},)"
                         R"("edge-oidc":{"v1":{"path":"/oidc","apiBaseUrls":[")" + oidc_.url() + R"("]}}}},"meta":{}})");
             }
@@ -105,12 +114,65 @@ namespace {
         }
 
         // before the servers: their threads use it
+        const bool ha_;
         std::mutex mu_;
         std::string configuration_error_;
 
         FakeHttpServer oidc_;
         FakeHttpServer ctrl_;
     };
+}
+
+// The OIDC client moves to another controller of the cluster when its own cannot be reached: the context
+// gives it the way to ask for one when the controller advertises HA.
+TEST_CASE("context-gives-its-oidc-client-a-failover-selector", "[reauth]") {
+    FakeOidcController ctrl(true, true);
+
+    int installed = -1;
+    auto done = [&](const context_run &run) {
+        installed = ztx_test_oidc_failover(run.ztx);
+        return installed != -1;
+    };
+    run_context(ctrl.url(), 10000, done);
+
+    CHECK(installed == 1);
+}
+
+// A controller that does not advertise HA is not one of a cluster: its client has no other controller to go to.
+TEST_CASE("context-gives-no-failover-selector-to-a-controller-that-is-not-ha", "[reauth]") {
+    FakeOidcController ctrl;
+
+    int installed = -1;
+    auto done = [&](const context_run &run) {
+        installed = ztx_test_oidc_failover(run.ztx);
+        return installed != -1;
+    };
+    run_context(ctrl.url(), 10000, done);
+
+    CHECK(installed == 0);
+}
+
+// A controller upgraded to HA while the context runs: its OIDC client has no selector yet, and gets one when the
+// context logs in again (a refresh of the token is one), which is where the context acts on the capability.
+TEST_CASE("context-gives-its-oidc-client-a-failover-selector-when-the-controller-becomes-ha", "[reauth]") {
+    FakeOidcController ctrl;
+
+    int before = -1;
+    int after = -1;
+    auto done = [&](const context_run &run) {
+        before = ztx_test_oidc_failover(run.ztx);
+        if (before == -1) {
+            return false;
+        }
+        ztx_test_set_ctrl_ha(run.ztx, true);
+        ztx_test_oidc_token_received(run.ztx);
+        after = ztx_test_oidc_failover(run.ztx);
+        return true;
+    };
+    run_context(ctrl.url(), 10000, done);
+
+    CHECK(before == 0);
+    CHECK(after == 1);
 }
 
 // the authentication provider refusing connections is retried with a backoff
