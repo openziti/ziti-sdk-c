@@ -26,6 +26,12 @@
 #include "auth_method.h"
 #include "credentials.h"
 
+// ztx_test_helper.c
+extern "C" ziti_context ztx_test_ext_auth_stub_new(uv_loop_t *loop);
+extern "C" void ztx_test_ext_auth_stub_free(ziti_context ztx);
+extern "C" int ztx_test_init_ext_signer(ziti_context ztx, const char *id, bool secondary);
+extern "C" const char *ztx_test_ext_auth_param(ziti_context ztx, bool secondary, const char *name);
+
 namespace {
     // one loop for every case: creating and closing a loop per case trips libuv's fd assertion when
     // the whole suite runs in one process
@@ -226,4 +232,39 @@ TEST_CASE("new_oidc_auth fails on a CA bundle the TLS backend cannot load", "[zt
         uv_run(loop, UV_RUN_DEFAULT);
     }
     free_api_path(&oidc);
+}
+
+TEST_CASE("ziti_ext_auth_set_params applies to the primary and the secondary signer", "[ztx]") {
+    uv_loop_t *loop = test_loop();
+    ziti_context ztx = ztx_test_ext_auth_stub_new(loop);
+
+    // no signer is set up yet: the parameters are kept for the OIDC clients that come later
+    ziti_auth_query_param params[] = {{"access_type", "offline"}};
+    REQUIRE(ziti_ext_auth_set_params(ztx, params, 1) == ZITI_OK);
+
+    REQUIRE(ztx_test_init_ext_signer(ztx, "primary", false) == ZITI_OK);
+    REQUIRE(ztx_test_init_ext_signer(ztx, "secondary", true) == ZITI_OK);
+    CHECK(std::string(ztx_test_ext_auth_param(ztx, false, "access_type")) == "offline");
+    CHECK(std::string(ztx_test_ext_auth_param(ztx, true, "access_type")) == "offline");
+
+    SECTION("a signer that replaces the secondary one receives them") {
+        REQUIRE(ztx_test_init_ext_signer(ztx, "other secondary", true) == ZITI_OK);
+        CHECK(std::string(ztx_test_ext_auth_param(ztx, true, "access_type")) == "offline");
+    }
+    SECTION("new parameters replace the old ones on both signers") {
+        ziti_auth_query_param prompt[] = {{"prompt", "consent"}};
+        REQUIRE(ziti_ext_auth_set_params(ztx, prompt, 1) == ZITI_OK);
+        for (bool secondary: {false, true}) {
+            CHECK(std::string(ztx_test_ext_auth_param(ztx, secondary, "prompt")) == "consent");
+            CHECK(std::string(ztx_test_ext_auth_param(ztx, secondary, "access_type")).empty());
+        }
+    }
+    SECTION("a call with no parameters removes them from both signers") {
+        REQUIRE(ziti_ext_auth_set_params(ztx, nullptr, 0) == ZITI_OK);
+        CHECK(std::string(ztx_test_ext_auth_param(ztx, false, "access_type")).empty());
+        CHECK(std::string(ztx_test_ext_auth_param(ztx, true, "access_type")).empty());
+    }
+
+    ztx_test_ext_auth_stub_free(ztx);
+    uv_run(loop, UV_RUN_DEFAULT);
 }
