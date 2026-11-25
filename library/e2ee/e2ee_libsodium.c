@@ -42,6 +42,10 @@ struct libsodium_e2ee {
     crypto_secretstream_xchacha20poly1305_state encrypt_state;
     crypto_secretstream_xchacha20poly1305_state decrypt_state;
     bool header_received;
+    bool final_sent;
+    // the peer sent a tag other than TAG_MESSAGE: it ends its stream with TAG_FINAL
+    bool peer_tagged;
+    bool final_received;
 };
 
 static e2ee_pub_t libsodium_pub(struct e2ee *e2ee) {
@@ -87,18 +91,49 @@ static ssize_t libsodium_get_header(struct e2ee *e2ee, uint8_t header[E2EE_MAX_H
 
 static ssize_t libsodium_encrypt(e2ee_t *e2ee, const uint8_t *plaintext, size_t plaintext_len, uint8_t *ciphertext, size_t ciphertext_len) {
     struct libsodium_e2ee *e = (struct libsodium_e2ee*) e2ee;
+    if (e->final_sent) {
+        return -1;
+    }
     if (ciphertext_len < plaintext_len + crypto_secretstream_xchacha20poly1305_abytes()) {
         return -1;
     }
     unsigned long long c_len = ciphertext_len;
+    // TAG_PUSH rather than TAG_MESSAGE tells the peer, under the protection of the stream's MAC,
+    // that this side ends its stream with TAG_FINAL
     int rc = crypto_secretstream_xchacha20poly1305_push(&e->encrypt_state, ciphertext, &c_len,
                                                         plaintext, (unsigned long long)plaintext_len,
-                                                        NULL, 0, 0);
+                                                        NULL, 0, crypto_secretstream_xchacha20poly1305_TAG_PUSH);
     if (rc != 0) {
         return -1;
     }
 
     return (ssize_t)c_len;
+}
+
+static ssize_t libsodium_finish(e2ee_t *e2ee, uint8_t *ciphertext, size_t ciphertext_len) {
+    struct libsodium_e2ee *e = (struct libsodium_e2ee*) e2ee;
+    // nothing to end: the stream was never started, or was ended already
+    if (e->final_sent || sodium_is_zero((void*)&e->encrypt_state, sizeof(e->encrypt_state))) {
+        return 0;
+    }
+    if (ciphertext_len < crypto_secretstream_xchacha20poly1305_abytes()) {
+        return -1;
+    }
+    unsigned long long c_len = ciphertext_len;
+    int rc = crypto_secretstream_xchacha20poly1305_push(&e->encrypt_state, ciphertext, &c_len,
+                                                        NULL, 0,
+                                                        NULL, 0, crypto_secretstream_xchacha20poly1305_TAG_FINAL);
+    if (rc != 0) {
+        return -1;
+    }
+
+    e->final_sent = true;
+    return (ssize_t)c_len;
+}
+
+static bool libsodium_truncated(e2ee_t *e2ee) {
+    struct libsodium_e2ee *e = (struct libsodium_e2ee*) e2ee;
+    return e->peer_tagged && !e->final_received;
 }
 
 static ssize_t libsodium_decrypt(e2ee_t *e2ee, const uint8_t *ciphertext, size_t ciphertext_len, uint8_t *plaintext, size_t plaintext_len) {
@@ -121,16 +156,28 @@ static ssize_t libsodium_decrypt(e2ee_t *e2ee, const uint8_t *ciphertext, size_t
         }
     }
 
+    // nothing follows the end of the peer's stream
+    if (e->final_received) {
+        return -1;
+    }
+
     if (ciphertext_len < crypto_secretstream_xchacha20poly1305_abytes() ||
         plaintext_len < ciphertext_len - crypto_secretstream_xchacha20poly1305_abytes()) {
         return -1;
     }
     unsigned long long plen = plaintext_len;
-    unsigned char tag; // ignored since we cannot send it via this API, and ziti connection signals EOF via other methods
+    unsigned char tag;
 
     int rc = crypto_secretstream_xchacha20poly1305_pull(&e->decrypt_state, plaintext, &plen, &tag, ciphertext, (unsigned long long)ciphertext_len, NULL, 0);
     if (rc != 0) {
         return -1;
+    }
+
+    if (tag != crypto_secretstream_xchacha20poly1305_TAG_MESSAGE) {
+        e->peer_tagged = true;
+    }
+    if (tag == crypto_secretstream_xchacha20poly1305_TAG_FINAL) {
+        e->final_received = true;
     }
 
     return (ssize_t)plen;
@@ -170,6 +217,8 @@ static e2ee_t libsodium_e2ee_impl = {
     .get_header = libsodium_get_header,
     .encrypt = libsodium_encrypt,
     .decrypt = libsodium_decrypt,
+    .finish = libsodium_finish,
+    .truncated = libsodium_truncated,
     .free = libsodium_free,
 };
 

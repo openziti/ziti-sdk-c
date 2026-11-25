@@ -189,6 +189,107 @@ TEST_CASE("e2ee libsodium decrypt retries after partial header", "[crypto]") {
     REQUIRE(memcmp(out, plaintext, sizeof(plaintext)) == 0);
 }
 
+namespace {
+    // alice sends, bob receives
+    struct libsodium_pair {
+        std::unique_ptr<e2ee_t, e2ee_deleter> alice{create_e2ee(ziti_crypto_libsodium, false, nullptr)};
+        std::unique_ptr<e2ee_t, e2ee_deleter> bob{create_e2ee(ziti_crypto_libsodium, false, nullptr)};
+        uint8_t out[1024]{};
+
+        libsodium_pair() {
+            auto alice_pub = alice->pub(alice.get());
+            auto bob_pub = bob->pub(bob.get());
+            REQUIRE(alice->init(alice.get(), bob_pub.key, bob_pub.key_len, true) == 0);
+            REQUIRE(bob->init(bob.get(), alice_pub.key, alice_pub.key_len, false) == 0);
+        }
+
+        void send_header() {
+            uint8_t header[E2EE_MAX_HEADER_LEN];
+            auto header_len = alice->get_header(alice.get(), header);
+            REQUIRE(header_len > 0);
+            REQUIRE(bob->decrypt(bob.get(), header, (size_t) header_len, out, sizeof(out)) == 0);
+        }
+
+        void send_data() {
+            uint8_t ciphertext[4 + E2EE_MAX_MSG_OVERHEAD];
+            auto len = alice->encrypt(alice.get(), (const uint8_t *) "data", 4, ciphertext, sizeof(ciphertext));
+            REQUIRE(len > 0);
+            REQUIRE(bob->decrypt(bob.get(), ciphertext, (size_t) len, out, sizeof(out)) == 4);
+        }
+    };
+}
+
+TEST_CASE("e2ee libsodium marks the end of the stream", "[crypto]") {
+    libsodium_pair p;
+    auto alice = p.alice.get();
+    auto bob = p.bob.get();
+    uint8_t final[E2EE_MAX_MSG_OVERHEAD];
+
+    SECTION("a stream that was never started has no end to send") {
+        CHECK(alice->finish(alice, final, sizeof(final)) == 0);
+    }
+
+    SECTION("a peer that has sent data owes the end of its stream") {
+        p.send_header();
+        CHECK_FALSE(bob->truncated(bob));
+        p.send_data();
+        // an end of stream signalled outside of the encryption now would be a truncation
+        CHECK(bob->truncated(bob));
+
+        auto final_len = alice->finish(alice, final, sizeof(final));
+        REQUIRE(final_len == crypto_secretstream_xchacha20poly1305_ABYTES);
+        CHECK(bob->decrypt(bob, final, (size_t) final_len, p.out, sizeof(p.out)) == 0);
+        CHECK_FALSE(bob->truncated(bob));
+
+        // the stream is ended once, and nothing can be sent after it
+        CHECK(alice->finish(alice, final, sizeof(final)) == 0);
+        uint8_t ciphertext[4 + E2EE_MAX_MSG_OVERHEAD];
+        CHECK(alice->encrypt(alice, (const uint8_t *) "data", 4, ciphertext, sizeof(ciphertext)) == -1);
+    }
+
+    SECTION("a stream can end without any data") {
+        p.send_header();
+        auto final_len = alice->finish(alice, final, sizeof(final));
+        REQUIRE(final_len > 0);
+        CHECK(bob->decrypt(bob, final, (size_t) final_len, p.out, sizeof(p.out)) == 0);
+        CHECK_FALSE(bob->truncated(bob));
+    }
+
+    SECTION("nothing is accepted after the end of the stream") {
+        p.send_header();
+        auto final_len = alice->finish(alice, final, sizeof(final));
+        REQUIRE(final_len > 0);
+        REQUIRE(bob->decrypt(bob, final, (size_t) final_len, p.out, sizeof(p.out)) == 0);
+        // replaying the final chunk stands in for anything that arrives later
+        CHECK(bob->decrypt(bob, final, (size_t) final_len, p.out, sizeof(p.out)) == -1);
+    }
+}
+
+TEST_CASE("e2ee libsodium does not hold a peer that sends untagged chunks to an end of stream", "[crypto]") {
+    // what an SDK without this convention sends: every chunk tagged TAG_MESSAGE, no final chunk
+    auto bob = std::unique_ptr<e2ee_t, e2ee_deleter>(create_e2ee(ziti_crypto_libsodium, false, nullptr));
+    auto bob_pub = bob->pub(bob.get());
+
+    uint8_t peer_pk[crypto_kx_PUBLICKEYBYTES], peer_sk[crypto_kx_SECRETKEYBYTES];
+    uint8_t peer_rx[crypto_kx_SESSIONKEYBYTES], peer_tx[crypto_kx_SESSIONKEYBYTES];
+    REQUIRE(crypto_kx_keypair(peer_pk, peer_sk) == 0);
+    REQUIRE(crypto_kx_server_session_keys(peer_rx, peer_tx, peer_pk, peer_sk, bob_pub.key) == 0);
+    REQUIRE(bob->init(bob.get(), peer_pk, sizeof(peer_pk), false) == 0);
+
+    crypto_secretstream_xchacha20poly1305_state state;
+    uint8_t header[crypto_secretstream_xchacha20poly1305_HEADERBYTES];
+    REQUIRE(crypto_secretstream_xchacha20poly1305_init_push(&state, header, peer_tx) == 0);
+
+    uint8_t out[64];
+    REQUIRE(bob->decrypt(bob.get(), header, sizeof(header), out, sizeof(out)) == 0);
+
+    uint8_t ciphertext[4 + crypto_secretstream_xchacha20poly1305_ABYTES];
+    REQUIRE(crypto_secretstream_xchacha20poly1305_push(&state, ciphertext, nullptr, (const uint8_t *) "data", 4,
+                                                       nullptr, 0, crypto_secretstream_xchacha20poly1305_TAG_MESSAGE) == 0);
+    REQUIRE(bob->decrypt(bob.get(), ciphertext, sizeof(ciphertext), out, sizeof(out)) == 4);
+    CHECK_FALSE(bob->truncated(bob.get()));
+}
+
 
 TEST_CASE("e2ee-tls", "[crypto]") {
     ziti_log_init(nullptr, 6, nullptr);
