@@ -12,6 +12,7 @@
 // 	See the License for the specific language governing permissions and
 // 	limitations under the License.
 
+#include <ctype.h>
 #include <inttypes.h>
 #include <stdlib.h>
 
@@ -238,34 +239,62 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
     }
 }
 
+// The key of an endpoint is the origin of its URL in one canonical form, so that every URL of a controller (the one
+// of an identity file, the edge API address the controller lists, the address it redirects to) finds the same entry:
+// the scheme and the host in lower case, and no port that is the default of the scheme. It is a URL that can be
+// connected to. A URL that cannot be parsed is its own key.
+static cstr endpoint_key(const char *url) {
+    struct tlsuv_url_s u = {0};
+    if (tlsuv_parse_url(&u, url) != 0 || u.scheme_len == 0 || u.hostname_len == 0) {
+        return cstr_from(url);
+    }
+
+    cstr key = cstr_from_fmt("%.*s://%.*s", (int) u.scheme_len, u.scheme, (int) u.hostname_len, u.hostname);
+    for (char *c = cstr_data(&key); *c != '\0'; c++) {
+        *c = (char) tolower((unsigned char) *c);
+    }
+
+    const bool plain = u.scheme_len == 4 && strncasecmp(u.scheme, "http", 4) == 0;
+    if (u.port != 0 && u.port != (plain ? 80 : 443)) {
+        cstr_append_fmt(&key, ":%d", u.port);
+    }
+    return key;
+}
+
 static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp) {
     ziti_controller *ctrl = resp->ctrl;
-    if (resp->new_address && !cstr_equals(&ctrl->url, resp->new_address)) {
+
+    // The address is the one the controller is configured with, "https://host:443" for one on the default port,
+    // and is compared as the origin that it is: it is a move only if it is another endpoint than the current one.
+    cstr new_key = resp->new_address ? endpoint_key(resp->new_address) : cstr_init();
+    cstr old_key = resp->new_address ? endpoint_key(cstr_str(&ctrl->url)) : cstr_init();
+    if (resp->new_address && !cstr_equals(&old_key, cstr_str(&new_key))) {
         CTRL_LOG(INFO, "controller supplied new address[%s]", resp->new_address);
 
-        const char *k;
-        ziti_controller_detail *detail;
-        MODEL_MAP_FOREACH(k, detail, &ctrl->endpoints) {
-            if (cstr_iequals(&ctrl->url, k)) {
-                model_map_remove(&ctrl->endpoints, k);
-                break;
+        ziti_controller_detail *detail = model_map_remove(&ctrl->endpoints, cstr_str(&old_key));
+        if (model_map_get(&ctrl->endpoints, cstr_str(&new_key)) != NULL) {
+            // the list of controllers has it already, with its id and its state
+            if (detail != NULL) {
+                free_ziti_controller_detail_ptr(detail);
             }
+        } else {
+            if (detail == NULL) {
+                detail = alloc_ziti_controller_detail();
+            }
+            FREE(detail->name);
+            detail->name = strdup(resp->new_address);
+            model_map_set(&ctrl->endpoints, cstr_str(&new_key), detail);
         }
-        cstr_assign(&ctrl->url, resp->new_address);
-        if(detail == NULL) {
-            detail = alloc_ziti_controller_detail();
-        }
-        FREE(detail->name);
-        detail->name = resp->new_address;
-        resp->new_address = NULL;
-        model_map_set(&ctrl->endpoints, detail->name, detail);
 
+        cstr_assign(&ctrl->url, cstr_str(&new_key));
         tlsuv_http_set_url(ctrl->client, cstr_str(&ctrl->url));
 
-        if (resp->ctrl->redirect_cb) {
-            ctrl->redirect_cb(cstr_str(&ctrl->url), ctrl->cb_ctx);
+        if (ctrl->redirect_cb) {
+            ctrl->redirect_cb(resp->new_address, ctrl->cb_ctx);
         }
     }
+    cstr_drop(&new_key);
+    cstr_drop(&old_key);
 
     if (resp->resp_cb) {
         resp->resp_cb(s, e, resp->ctx);
@@ -287,16 +316,11 @@ static void ctrl_default_cb(void *s, const ziti_error *e, struct ctrl_resp *resp
     free(resp);
 }
 
-static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_error *err, void *ctx) {
-    ziti_controller *ctrl = ctx;
+// the controllers the controller lists replace the endpoints, when the list differs from them
+void ziti_ctrl_set_endpoints(ziti_controller *ctrl, ziti_controller_detail_array arr) {
     ziti_controller_detail *d;
     bool change = false;
     model_map new_eps = {0};
-
-    if (err) {
-        CTRL_LOG(WARN, "failed to get list of HA controllers: %s", err->message);
-        return;
-    }
 
     FOR (d, arr) {
         api_address *addr = NULL;
@@ -309,9 +333,15 @@ static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_e
         }
 
         if (addr != NULL) {
-            model_map_set(&new_eps, addr->url, d);
+            cstr key = endpoint_key(addr->url);
+            ziti_controller_detail *same = model_map_set(&new_eps, cstr_str(&key), d);
+            if (same != NULL) { // listed at one origin: one endpoint, the later one
+                CTRL_LOG(DEBUG, "two controllers are listed at %s, using the later one", cstr_str(&key));
+                free_ziti_controller_detail_ptr(same);
+            }
 
-            ziti_controller_detail *old_detail = model_map_get(&ctrl->endpoints, addr->url);
+            ziti_controller_detail *old_detail = model_map_get(&ctrl->endpoints, cstr_str(&key));
+            cstr_drop(&key);
             if (old_detail == NULL) { // new controller discovered
                 change = true;
             } else {
@@ -337,6 +367,17 @@ static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_e
         model_map_clear(&new_eps, (void (*)(void *)) free_ziti_controller_detail_ptr);
     }
     free(arr);
+}
+
+static void internal_ctrl_list_cb(ziti_controller_detail_array arr, const ziti_error *err, void *ctx) {
+    ziti_controller *ctrl = ctx;
+
+    if (err) {
+        CTRL_LOG(WARN, "failed to get list of HA controllers: %s", err->message);
+        return;
+    }
+
+    ziti_ctrl_set_endpoints(ctrl, arr);
 }
 
 static void internal_version_cb(ziti_ctrl_version *v, ziti_error *e, struct ctrl_resp *resp) {
@@ -586,8 +627,12 @@ const char* ziti_ctrl_next_ep(ziti_controller *ctrl, const char *current) {
         return NULL;
     }
     uint64_t now = uv_now(ctrl->loop);
-    ziti_controller_detail *curr = current ?
-            model_map_get(&ctrl->endpoints, current) : NULL;
+    ziti_controller_detail *curr = NULL;
+    if (current) {
+        cstr current_key = endpoint_key(current);
+        curr = model_map_get(&ctrl->endpoints, cstr_str(&current_key));
+        cstr_drop(&current_key);
+    }
 
     if (curr) {
         // Every failed request reports its endpoint. One that fails while the cooldown runs does not
@@ -649,7 +694,14 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
     MODEL_LIST_FOREACH(ep, *urls) {
         ziti_controller_detail *detail = alloc_ziti_controller_detail();
         detail->name = strdup(ep);
-        model_map_set(&ctrl->endpoints, ep, detail);
+
+        // two URLs of one controller are one endpoint
+        cstr key = endpoint_key(ep);
+        ziti_controller_detail *replaced = model_map_set(&ctrl->endpoints, cstr_str(&key), detail);
+        cstr_drop(&key);
+        if (replaced != NULL) {
+            free_ziti_controller_detail_ptr(replaced);
+        }
     }
 
     const char *initial_ep = ziti_ctrl_next_ep(ctrl, NULL);

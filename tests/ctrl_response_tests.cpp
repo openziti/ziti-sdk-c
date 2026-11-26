@@ -134,6 +134,99 @@ TEST_CASE("version response failing mid-body fails the version request", "[contr
     CHECK(res.err == ZITI_CONTROLLER_UNAVAILABLE);
 }
 
+// A controller that answers from another address says so, and the endpoint it was reached at moves there.
+TEST_CASE("controller-supplied-address-replaces-the-endpoint-it-came-from", "[controller]") {
+    const std::string moved_to = "http://203.0.113.9:1280";
+    FakeHttpServer server([&](const std::string &, const std::string &path) {
+        if (path == "/version") {
+            return http_response("200 OK", {{"Content-Type", "application/json"}, {"ziti-ctrl-address", moved_to}},
+                                 R"({"data":{"version":"v0.0.0"}})");
+        }
+        return not_found();
+    });
+    ctrl_under_test c(server.url());
+    const std::string started_at = server.url();
+
+    run_until(c.loop, [&] { return moved_to == cstr_str(&c.ctrl.url); }, 5000);
+
+    CHECK(moved_to == cstr_str(&c.ctrl.url));
+    CHECK(model_map_size(&c.ctrl.endpoints) == 1);
+    CHECK(model_map_get(&c.ctrl.endpoints, moved_to.c_str()) != nullptr);
+    CHECK(model_map_get(&c.ctrl.endpoints, started_at.c_str()) == nullptr);
+}
+
+// The address a controller supplies is "https://" and its configured host:port, so it always has a port, and
+// the endpoint is known by its origin: the same origin in another spelling is no move. A redirect rewrites the
+// identity file, and one per start would rewrite it every time.
+TEST_CASE("controller-supplied-address-of-the-same-origin-is-no-redirect", "[controller]") {
+    std::string advertised;
+    FakeHttpServer server([&](const std::string &, const std::string &path) {
+        if (path == "/version") {
+            return http_response("200 OK", {{"Content-Type", "application/json"}, {"ziti-ctrl-address", advertised}},
+                                 R"({"data":{"version":"v0.0.0"}})");
+        }
+        return not_found();
+    });
+    const std::string started_at = server.url();
+    advertised = "HTTP" + started_at.substr(4); // the scheme is not case sensitive
+    ctrl_under_test c(started_at);
+
+    int redirects = 0;
+    ziti_ctrl_set_callbacks(&c.ctrl, &redirects, [](const char *, void *ctx) { ++*static_cast<int *>(ctx); }, nullptr);
+
+    run_until(c.loop, [&] { return c.ctrl.version.version != nullptr; }, 5000);
+
+    REQUIRE(c.ctrl.version.version != nullptr);
+    CHECK(redirects == 0);
+    CHECK(started_at == cstr_str(&c.ctrl.url));
+    CHECK(model_map_size(&c.ctrl.endpoints) == 1);
+}
+
+// The controller names an address the list of controllers already holds, for example after it moved from an IP
+// to a host name: the listed controller is the endpoint, with its id and its state, not a new one that replaces
+// it. The detail that was replaced was leaked.
+TEST_CASE("controller-supplied-address-of-a-listed-controller-keeps-the-listed-one", "[controller]") {
+    const std::string moved_to = "http://203.0.113.9:1280";
+    FakeHttpServer server([&](const std::string &, const std::string &path) {
+        if (path == "/version") {
+            return http_response("200 OK", {{"Content-Type", "application/json"}, {"ziti-ctrl-address", moved_to}},
+                                 R"({"data":{"version":"v0.0.0"}})");
+        }
+        return not_found();
+    });
+    ctrl_under_test c(server.url());
+
+    // the list names this controller by the address the context uses and, once more, by the address it moves to
+    const std::vector<std::pair<std::string, std::string>> listed = {
+            {"here", server.url() + "/edge/client/v1"},
+            {"listed", moved_to + "/edge/client/v1"},
+    };
+    auto arr = (ziti_controller_detail_array) calloc(listed.size() + 1, sizeof(ziti_controller_detail *));
+    for (size_t i = 0; i < listed.size(); i++) {
+        ziti_controller_detail *d = alloc_ziti_controller_detail();
+        d->id = strdup(listed[i].first.c_str());
+        d->name = strdup(d->id);
+        d->is_online = true;
+
+        api_address *addr = alloc_api_address();
+        addr->version = strdup("v1");
+        addr->url = strdup(listed[i].second.c_str());
+        model_list_append(&d->apis.edge, addr);
+        arr[i] = d;
+    }
+    ziti_ctrl_set_endpoints(&c.ctrl, arr);
+    REQUIRE(model_map_size(&c.ctrl.endpoints) == 2);
+
+    run_until(c.loop, [&] { return moved_to == cstr_str(&c.ctrl.url); }, 5000);
+
+    CHECK(moved_to == cstr_str(&c.ctrl.url));
+    CHECK(model_map_size(&c.ctrl.endpoints) == 1);
+    auto kept = static_cast<ziti_controller_detail *>(model_map_get(&c.ctrl.endpoints, moved_to.c_str()));
+    REQUIRE(kept != nullptr);
+    CHECK(std::string("listed") == kept->id);
+    CHECK(kept->is_online);
+}
+
 // An /enroll answered with a PEM certificate is a non-JSON response: an error, with no enrollment response
 // for the callback (the enrollment code does not free one on errors). The SDK asks for JSON, which every
 // controller sends it; a PEM path that got here gave the callback a response with the error and never
