@@ -107,6 +107,8 @@ struct ziti_conn {
             enum conn_state state;
             bool fin_sent;
             int fin_recv; // 0 - not received, 1 - received, 2 - called app data cb
+            int abort_recv; // 0 - not received, 1 - received, 2 - called app data cb
+            bool abort_close; // ziti_close_abort(): send the abort before closing
             bool disconnecting;
 
             deadline_t flusher;
@@ -152,6 +154,9 @@ void conn_inbound_data_msg(ziti_connection conn, message *msg);
 // appends the parts of a multipart payload (2-byte little-endian length, then the part) to out.
 // returns the bytes appended, or -1 with nothing appended when a length runs past the payload
 ssize_t conn_parse_multipart(buffer *out, const uint8_t *data, size_t len);
+
+// the message that ziti_close_abort() sends before it closes
+message *conn_abort_msg(ziti_connection conn);
 
 void on_write_completed(struct ziti_conn *conn, struct ziti_write_req_s *req, int status);
 

@@ -124,7 +124,11 @@ int ziti_conn_set_data_cb(ziti_connection conn, ziti_data_cb cb) {
         return ZITI_CONN_CLOSED;
     }
 
-    // app already received EOF
+    // app already received EOF, or the abort
+    if (conn->abort_recv == 2) {
+        return ZITI_CONN_ABORTED;
+    }
+
     if (conn->fin_recv == 2) {
         return ZITI_EOF;
     }
@@ -698,6 +702,21 @@ int ziti_dial_with_options(ziti_connection conn, const char *service, const ziti
     return do_ziti_dial(conn, service, dial_opts, conn_cb, data_cb);
 }
 
+// The empty data message that ends a connection abortively. FIN rides along, so a peer that does not know
+// EDGE_ABORT reads an ordinary end of stream.
+message *conn_abort_msg(struct ziti_conn *conn) {
+    return create_message(conn, ContentTypeData, EDGE_FIN | EDGE_ABORT, 0);
+}
+
+static void conn_send_abort(struct ziti_conn *conn, struct ziti_write_req_s *req) {
+    CONN_LOG(DEBUG, "sending abort");
+    conn->fin_sent = true;
+    if (conn->state == Connected) {
+        conn_set_state(conn, CloseWrite);
+    }
+    send_message(conn, conn_abort_msg(conn), req);
+}
+
 static void ziti_write_req(struct ziti_write_req_s *req) {
     // only accessed on the event loop thread
     static uint8_t msg_buf[MAX_CHAIN_LEN];
@@ -707,6 +726,11 @@ static void ziti_write_req(struct ziti_write_req_s *req) {
     if (req->eof) {
         conn_set_state(conn, CloseWrite);
         send_fin_message(conn, req);
+        return;
+    }
+
+    if (req->abort) {
+        conn_send_abort(conn, req);
         return;
     }
 
@@ -799,6 +823,12 @@ static void ziti_disconnect_async(struct ziti_conn *conn) {
         case Connected:
         case CloseWrite:
         case Timedout: {
+            if (conn->abort_close && (conn->state == Connected || conn->state == CloseWrite)) {
+                NEWP(ar, struct ziti_write_req_s);
+                ar->conn = conn;
+                ar->abort = true;
+                TAILQ_INSERT_TAIL(&conn->wreqs, ar, _next);
+            }
             NEWP(wr, struct ziti_write_req_s);
             wr->conn = conn;
             wr->close = true;
@@ -941,7 +971,7 @@ void chain_data_requests(ziti_connection conn, struct ziti_write_req_s *req) {
 
     while(!TAILQ_EMPTY(&conn->wreqs)) {
         struct ziti_write_req_s *next = TAILQ_FIRST(&conn->wreqs);
-        if (next->message || next->close || next->eof)
+        if (next->message || next->close || next->eof || next->abort)
             break;
 
         if (chain_len + next->len + boundary_len > MAX_CHAIN_LEN)
@@ -990,7 +1020,7 @@ static bool flush_to_service(ziti_connection conn) {
     int count = 0;
     while (!TAILQ_EMPTY(&conn->wreqs)) {
         struct ziti_write_req_s *req = TAILQ_FIRST(&conn->wreqs);
-        if (conn->state == Connected && !req->message && !req->close && !e2ee_ready(conn)) {
+        if (conn->state == Connected && !req->message && !req->close && !req->abort && !e2ee_ready(conn)) {
             if (!conn->disconnecting) {
                 CONN_LOG(VERBOSE, "holding writes until the e2ee handshake completes");
                 return false;
@@ -1005,9 +1035,9 @@ static bool flush_to_service(ziti_connection conn) {
         }
         TAILQ_REMOVE(&conn->wreqs, req, _next);
 
-        if (conn->state == Connected || req->close) {
+        if (conn->state == Connected || req->close || req->abort) {
             if ((conn->flags & (EDGE_MULTIPART | EDGE_STREAM)) &&
-                !req->close && !req->eof) {
+                !req->close && !req->eof && !req->abort) {
                 chain_data_requests(conn, req);
             }
 
@@ -1070,7 +1100,10 @@ static bool flush_to_client(ziti_connection conn) {
         return conn->data_cb != NULL;
     }
 
-    if (conn->fin_recv == 1 && conn->data_cb) { // if fin was received and all data is flushed, signal EOF
+    if (conn->abort_recv == 1 && conn->data_cb) { // the peer aborted: all of its data is flushed, signal that instead of EOF
+        conn->abort_recv = 2;
+        conn->data_cb(conn, NULL, ZITI_CONN_ABORTED);
+    } else if (conn->fin_recv == 1 && conn->abort_recv == 0 && conn->data_cb) { // if fin was received and all data is flushed, signal EOF
         conn->fin_recv = 2;
         conn->data_cb(conn, NULL, ZITI_EOF);
     }
@@ -1112,13 +1145,25 @@ ssize_t conn_parse_multipart(buffer *out, const uint8_t *data, size_t len) {
 }
 
 void conn_inbound_data_msg(ziti_connection conn, message *msg) {
-    if (conn->state >= Disconnected || conn->fin_recv) {
+    if (conn->state >= Disconnected) {
         CONN_LOG(WARN, "inbound data on closed connection");
         return;
     }
 
     int32_t flags = 0;
     message_get_int32_header(msg, FlagsHeader, &flags);
+    // an abort that follows a FIN still counts: the app has not been told the stream ended cleanly yet
+    // or, if it was, it hears about the abort afterwards
+    if ((flags & EDGE_ABORT) && conn->abort_recv == 0) {
+        CONN_LOG(DEBUG, "peer aborted the connection");
+        conn->abort_recv = 1;
+    }
+
+    if (conn->fin_recv) {
+        CONN_LOG(WARN, "inbound data on closed connection");
+        return;
+    }
+
     if (flags & EDGE_FIN) {
         conn->fin_recv = true;
     }
@@ -1541,6 +1586,14 @@ int ziti_close(ziti_connection conn, ziti_close_cb close_cb) {
     return ziti_disconnect(conn);
 }
 
+
+int ziti_close_abort(ziti_connection conn, ziti_close_cb close_cb) {
+    if (conn == NULL) return ZITI_INVALID_STATE;
+    if (conn->close) return ZITI_CONN_CLOSED;
+
+    conn->abort_close = conn->type != Server;
+    return ziti_close(conn, close_cb);
+}
 
 int ziti_close_write(ziti_connection conn) {
     if (conn->fin_sent || conn->state >= CloseWrite) {

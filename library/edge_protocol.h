@@ -134,6 +134,9 @@ enum edge_flag {
     EDGE_STREAM = ZITI__EDGE_CLIENT__PB__FLAG__STREAM,
     // set on data message with multiple payloads
     EDGE_MULTIPART_MSG = ZITI__EDGE_CLIENT__PB__FLAG__MULTIPART_MSG,
+    // set (together with EDGE_FIN) on the empty data message that ends a connection abortively:
+    // the sender failed, it did not just finish. Peers that do not know the flag see an ordinary FIN.
+    EDGE_ABORT = 32,
 };
 
 // bit masks for the RouterCapabilitiesHeader value; the proto KIND values are bit positions

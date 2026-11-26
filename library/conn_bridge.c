@@ -60,6 +60,8 @@ static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t l
 
 static void bridge_alloc(uv_handle_t *h, size_t req, uv_buf_t *b);
 static void close_bridge(struct ziti_bridge_s *br);
+static void abort_bridge(struct ziti_bridge_s *br);
+static void reset_bridge(struct ziti_bridge_s *br);
 
 static void on_input(uv_stream_t *s, ssize_t len, const uv_buf_t *b);
 static void on_udp_input(uv_udp_t *udp, ssize_t len, const uv_buf_t *b, const struct sockaddr *addr, unsigned int flags);
@@ -300,10 +302,10 @@ static void on_ziti_close(ziti_connection conn) {
     free(br);
 }
 
-static void close_bridge(struct ziti_bridge_s *br) {
+static void bridge_close(struct ziti_bridge_s *br, bool abort) {
     if (br == NULL || br->closed) { return; }
 
-    BR_LOG(DEBUG, "closing");
+    BR_LOG(DEBUG, "closing%s", abort ? " (abort)" : "");
     br->closed = true;
 
     if (br->input) {
@@ -312,7 +314,39 @@ static void close_bridge(struct ziti_bridge_s *br) {
         br->input = NULL;
     }
 
-    ziti_close(br->conn, on_ziti_close);
+    if (abort) {
+        ziti_close_abort(br->conn, on_ziti_close);
+    } else {
+        ziti_close(br->conn, on_ziti_close);
+    }
+}
+
+static void close_bridge(struct ziti_bridge_s *br) {
+    bridge_close(br, false);
+}
+
+// the target failed (reset, write error): the other end has to learn that, a clean close would look like a complete response
+static void abort_bridge(struct ziti_bridge_s *br) {
+    bridge_close(br, true);
+}
+
+// linger with a zero timeout makes the close() of the socket send RST
+static void set_reset_on_close(uv_handle_t *h) {
+    uv_os_fd_t fd;
+    if (h == NULL || h->type != UV_TCP || uv_fileno(h, &fd) != 0) {
+        return;
+    }
+    struct linger l = {.l_onoff = 1, .l_linger = 0};
+    setsockopt((uv_os_sock_t) fd, SOL_SOCKET, SO_LINGER, (const char *) &l, sizeof(l));
+}
+
+// the other end aborted: reset the TCP peer, the way a direct connection would have seen the failure
+static void reset_bridge(struct ziti_bridge_s *br) {
+    set_reset_on_close(br->output);
+    if (br->input != br->output) {
+        set_reset_on_close(br->input);
+    }
+    close_bridge(br);
 }
 
 static void on_shutdown(uv_shutdown_t *sr, int status) {
@@ -321,7 +355,7 @@ static void on_shutdown(uv_shutdown_t *sr, int status) {
     if (status != 0 && status != UV_ECANCELED) {
         struct ziti_bridge_s *br = sr->handle->data;
         BR_LOG(WARN, "shutdown failed: %d(%s)", status, uv_strerror(status));
-        close_bridge(sr->handle->data);
+        abort_bridge(sr->handle->data);
     }
     free(sr);
 }
@@ -330,7 +364,7 @@ static void on_pipe_write(uv_write_t *wr, int status) {
     struct ziti_bridge_s *br = wr->handle->data;
     if (status < 0) {
         BR_LOG(WARN, "write failed: %d(%s)", status, uv_strerror(status));
-        close_bridge(br);
+        abort_bridge(br);
     }
     free(wr->data);
     free(wr);
@@ -369,7 +403,7 @@ static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t l
                     BR_LOG(WARN, "write failed: %d(%s)", rc, uv_strerror(rc));
                     free(w->data);
                     free(w);
-                    close_bridge(br);
+                    abort_bridge(br);
                     return rc;
                 }
                 return len;
@@ -379,7 +413,7 @@ static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t l
         }
 
         BR_LOG(WARN, "write failed: %zd(%s)", rc, uv_strerror((int) rc));
-        close_bridge(br);
+        abort_bridge(br);
         return rc;
 
     } else if (len == ZITI_EOF) {
@@ -401,6 +435,10 @@ static ssize_t on_ziti_data(ziti_connection conn, const uint8_t *data, ssize_t l
     } else {
         if (len == ZITI_CONN_CLOSED) {
             BR_LOG(VERBOSE, "closing bridge");
+        } else if (len == ZITI_CONN_ABORTED) {
+            BR_LOG(WARN, "ziti connection was aborted by the peer, resetting");
+            reset_bridge(br);
+            return 0;
         } else {
             BR_LOG(WARN, "closing bridge due to error: %zd(%s)", len, ziti_errorstr((int) len));
         }
@@ -520,7 +558,7 @@ void on_input(uv_stream_t *s, ssize_t len, const uv_buf_t *b) {
             }
         } else if (len < 0) {
             BR_LOG(WARN, "err = %zd", len);
-            close_bridge(br);
+            abort_bridge(br);
         }
     }
 }

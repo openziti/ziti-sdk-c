@@ -84,7 +84,8 @@ typedef struct ziti_listen_opts_s {
  * @param conn The Ziti connection which received the data
  * @param data incoming data buffer
  * @param length size of data or error code as defined in @ref ZITI_ERRORS "error codes" (will receive #ZITI_EOF
- *               when connection is closed)
+ *               when the peer finished sending, #ZITI_CONN_ABORTED when the peer ended the connection with
+ *               ziti_close_abort(), and #ZITI_CONN_CLOSED when the connection closed without either)
  *
  * @return indicate how much data was consumed
  * @see ziti_dial(), ziti_accept(), ZITI_ERRORS
@@ -427,6 +428,27 @@ extern int ziti_accept(ziti_connection clt, ziti_conn_cb cb, ziti_data_cb data_c
  */
 ZITI_FUNC
 extern int ziti_close(ziti_connection conn, ziti_close_cb close_cb);
+
+/**
+ * @brief Closes the given connection abortively.
+ *
+ * Does what ziti_close() does, but first tells the peer that the connection ended because of a failure and not because
+ * the application was done with it: the peer's data callback receives #ZITI_CONN_ABORTED instead of #ZITI_EOF (after
+ * all data that was sent before). A bridge to a TCP socket uses this when the socket fails, so that the other end of
+ * the connection can reset its own client instead of reporting a clean, but truncated, end of data.
+ *
+ * Data that was passed to ziti_write() before this call is still sent first. Peers that do not know about the abort
+ * see an ordinary end of data (a FIN followed by the close), exactly as if ziti_close_write() had been called before
+ * ziti_close().
+ *
+ * @param conn the #ziti_connection to be closed
+ * @param close_cb callback called after connection is closed
+ *
+ * @return same as ziti_close()
+ * @see ziti_close()
+ */
+ZITI_FUNC
+extern int ziti_close_abort(ziti_connection conn, ziti_close_cb close_cb);
 
 /**
  * @brief Closes the outgoing (write) side of the given ziti connection.
