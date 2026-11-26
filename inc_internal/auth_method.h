@@ -46,11 +46,17 @@ typedef struct ziti_auth_method_s ziti_auth_method_t;
 typedef void (*auth_state_cb)(void *ctx, ziti_auth_state, const void *data);
 typedef void (*auth_mfa_cb)(void *ctx, int status);
 
+// Asked when the controller `current` (the URL the auth method is using) cannot be reached: the origin of another
+// controller to move to, or NULL. The pointer is only good until the context's controllers change: copy it.
+typedef const char *(*auth_next_url_cb)(void *ctx, const char *current);
+
 struct ziti_auth_method_s {
     enum AuthenticationMethod kind;
     int (*set_ext_jwt)(ziti_auth_method_t *self, const char *token);
     int (*set_endpoint)(ziti_auth_method_t *self, const api_path *api);
     int (*set_ca)(ziti_auth_method_t *self, const char *ca);
+    // optional (NULL when the method has nowhere else to go): where to move when its controller cannot be reached
+    int (*set_failover)(ziti_auth_method_t *self, auth_next_url_cb cb, void *ctx);
     int (*start)(ziti_auth_method_t *self, auth_state_cb cb, void *ctx);
     int (*force_refresh)(ziti_auth_method_t *self);
     const struct timeval* (*expiration)(ziti_auth_method_t *self);

@@ -187,7 +187,7 @@ static void ctrl_resp_cb(tlsuv_http_resp_t *r, void *data) {
 
             if (ctrl->active_reqs == 0) {
                 CTRL_LOG(INFO, "attempting to switch endpoint");
-                const char *next_ep = ziti_ctrl_next_ep(ctrl, cstr_str(&ctrl->url));
+                const char *next_ep = ziti_ctrl_next_ep(ctrl, cstr_str(&ctrl->url), ZITI_CTRL_API_EDGE);
                 if (next_ep != NULL) {
                     CTRL_LOG(INFO, "switching to endpoint[%s]", next_ep);
                     cstr_assign(&ctrl->url, next_ep);
@@ -620,8 +620,24 @@ static void ctrl_body_cb(tlsuv_http_req_t *req, char *b, ssize_t len) {
     }
 }
 
-// pick next random endpoint
-const char* ziti_ctrl_next_ep(ziti_controller *ctrl, const char *current) {
+// Whether the controller serves the v1 of `api`. One known only by the URL it was configured with has no list of
+// APIs yet, and not knowing is no reason to leave it out; one the list shows without the API is left out.
+static bool serves_api(ziti_controller_detail *d, ziti_ctrl_api api) {
+    if (d == NULL || model_list_size(&d->apis.edge) == 0) {
+        return true;
+    }
+    model_list apis = api == ZITI_CTRL_API_OIDC ? d->apis.oidc : d->apis.edge;
+    api_address *addr;
+    MODEL_LIST_FOREACH(addr, apis) {
+        if (addr->version && strcmp(addr->version, "v1") == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// pick next random endpoint, among the ones that serve `api`
+const char* ziti_ctrl_next_ep(ziti_controller *ctrl, const char *current, ziti_ctrl_api api) {
     if(model_map_size(&ctrl->endpoints) == 0) {
         CTRL_LOG(WARN, "empty endpoints map");
         return NULL;
@@ -649,6 +665,9 @@ const char* ziti_ctrl_next_ep(ziti_controller *ctrl, const char *current) {
     const char *url;
     ziti_controller_detail *d;
     MODEL_MAP_FOREACH(url, d, &ctrl->endpoints) {
+        if (!serves_api(d, api)) {
+            continue;
+        }
         if (d == NULL || d->is_online) {
             model_list_append(&online, (void*)url);
         } else if (d->offline_time == 0 || d->offline_time + ONE_MINUTE < now) {
@@ -704,7 +723,7 @@ int ziti_ctrl_init(uv_loop_t *loop, ziti_controller *ctrl, model_list *urls, tls
         }
     }
 
-    const char *initial_ep = ziti_ctrl_next_ep(ctrl, NULL);
+    const char *initial_ep = ziti_ctrl_next_ep(ctrl, NULL, ZITI_CTRL_API_EDGE);
     if (initial_ep == NULL) {
         return ZITI_INVALID_CONFIG;
     }

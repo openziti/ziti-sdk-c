@@ -53,6 +53,30 @@ int ztx_test_oidc_cancel_retry(ziti_context ztx) {
     return uv_timer_stop(clt->timer);
 }
 
+// whether the OIDC client of the context has a selector to ask for another controller: -1 while the context has no
+// OIDC auth method yet
+int ztx_test_oidc_failover(ziti_context ztx) {
+    if (ztx->auth_method == NULL || ztx->auth_method->kind != OIDC) {
+        return -1;
+    }
+    oidc_client_t *clt = container_of(ztx->auth_method, oidc_client_t, api);
+    return clt->next_url != NULL;
+}
+
+// the OIDC client got a token (a refresh of it is the same to the context): it reports full authentication, and has the
+// expiration of the token that the context asks it for
+void ztx_test_oidc_token_received(ziti_context ztx) {
+    oidc_client_t *clt = container_of(ztx->auth_method, oidc_client_t, api);
+    clt->expiration = (struct timeval){.tv_sec = (long) time(NULL) + 3600};
+    ztx_auth_state_cb(ztx, ZitiAuthStateFullyAuthenticated, "fake-token-2");
+}
+
+// the controller client has noticed that its controller was upgraded to HA (or took the capability away): it learns the
+// capabilities from the version of the controller, again when it sees the controller restart
+void ztx_test_set_ctrl_ha(ziti_context ztx, bool ha) {
+    ztx->ctrl.capabilities.ha = ha;
+}
+
 // how many failures in a row the retry of the authentication has counted
 int ztx_test_auth_retries(ziti_context ztx) {
     return ztx->auth_retries;
